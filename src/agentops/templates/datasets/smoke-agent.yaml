@@ -1,0 +1,13 @@
+version: 1
+name: smoke
+description: Small smoke dataset for local validation.
+source:
+  type: file
+  path: ../../eval/datasets/smoke-agent.jsonl
+format:
+  type: jsonl
+  input_field: input
+  expected_field: expected
+metadata:
+  size_hint: 20
+  owner: local

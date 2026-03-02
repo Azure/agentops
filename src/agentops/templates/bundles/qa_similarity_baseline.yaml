@@ -1,0 +1,16 @@
+version: 1
+name: qa_similarity_baseline
+description: Baseline evaluation bundle for QA scenarios using Foundry SimilarityEvaluator.
+evaluators:
+  - name: SimilarityEvaluator
+    source: foundry
+    enabled: true
+thresholds:
+  - evaluator: SimilarityEvaluator
+    criteria: ">="
+    value: 3
+metadata:
+  category: qa
+  tags:
+    - baseline
+    - similarity

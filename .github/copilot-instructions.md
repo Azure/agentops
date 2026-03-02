@@ -2,50 +2,57 @@
 
 ## Project Overview
 
-AgentOps is a **standalone Python CLI** that helps developers run **standardized evaluation workflows** using reusable **evaluation bundles**.
+AgentOps is a **standalone Python CLI** that helps developers run **standardized evaluation workflows** for **Microsoft Foundry agents** using reusable **evaluation bundles**.
 
 The CLI:
-- Is installed via `pipx`
+- Is installed via `pip`
 - Uses YAML configuration
+- Executes evaluations against Foundry Agent Service agents
+- Supports **cloud evaluation** (New Foundry Experience) and **local evaluation** (fallback)
 - Produces normalized outputs:
   - `results.json` (machine-readable)
   - `report.md` (human-readable, PR-friendly)
 - Returns **CI-friendly exit codes** to gate pipelines on quality thresholds
 
-This repository currently targets **MVP scope only**.
-
-The authoritative design and MVP contract is defined in:
-👉 `docs/SPEC.md`
-
-All code, commands, schemas, and behavior **must conform to that document**.
+Design documentation lives in `docs/`:
+- `docs/how-it-works.md` — Architecture, workspace structure, config schema, flow
+- `docs/tutorial-basic-foundry-agent.md` — End-to-end tutorial
+- `docs/foundry-evaluation-sdk-built-in-evaluators.md` — Evaluator reference
 
 ---
 
-## Technology Choices (MVP)
+## Technology Choices
 
 - **Language**: Python 3.11+
 - **CLI framework**: Typer
 - **Config & schema validation**: Pydantic v2
 - **Configuration format**: YAML
-- **Execution model**: backend abstraction
-  - MVP backend is **subprocess-based**
-- **Installation**: `pipx install <package>`
+- **Primary backend**: Microsoft Foundry Agent Service (native)
+  - Cloud evaluation via OpenAI Evals API (New Foundry Experience)
+  - Local evaluation via `azure-ai-evaluation` SDK (fallback)
+- **Secondary backend**: subprocess-based (generic)
+- **Azure SDK dependencies** (runtime, for Foundry backend):
+  - `azure-ai-projects>=2.0.0b1` — Foundry project client, `get_openai_client()`
+  - `azure-ai-evaluation` — Local evaluator classes (SimilarityEvaluator, etc.)
+  - `azure-identity` — `DefaultAzureCredential` authentication
+  - `openai` — Evals API types (`DataSourceConfigCustom`, etc.)
+- **Installation**: agentops is intended to be installed within the project's virtual environment, following the same usage pattern as tools like pytest or MkDocs. This ensures versions are pinned to the project and runs are fully reproducible. Once installed via pip in the project environment, it can be executed either through the `agentops` command or using `python -m agentops`, and all commands (`init`, `run`) are expected to be run from the project root.
 
-Do **not** introduce additional frameworks or SDK integrations unless explicitly defined in `docs/SPEC.md`.
+Azure SDK dependencies are **not** declared in `pyproject.toml` — they are runtime dependencies that users install separately (documented in the tutorial).
 
 ---
 
-## CLI Command Surface (MVP – fixed contract)
+## CLI Command Surface (fixed contract)
 
 The CLI command name is `agentops`.
 
-Only the following commands are in scope for MVP:
+Only the following commands are in scope:
 
 - `agentops init`
 - `agentops eval run --config <run.yaml> [--output <dir>]`
 - `agentops report --in <results.json> [--out <report.md>]`
 
-Do not add new commands or flags unless the spec is updated.
+Do not add new commands or flags unless explicitly discussed.
 
 ---
 
@@ -63,37 +70,87 @@ Do not overload or reinterpret these codes.
 
 ## Architecture Rules
 
-- Use **Python src layout**
-- Keep CLI command handlers **thin**
+- Use **Python src layout** (`src/agentops/`)
+- Keep CLI command handlers **thin** (`cli/app.py`)
 - Place business logic in:
-  - `core/`
-  - `services/`
-  - `backends/`
+  - `core/` — config loading, models, thresholds, reporting
+  - `services/` — orchestration (runner), Foundry publishing, reporting
+  - `backends/` — execution backends (Foundry, subprocess)
 - Use `pathlib.Path` everywhere (no raw string paths)
 - No side effects at import time
 - No hidden global state
+- Azure SDK imports are **lazy** (`import` inside functions), not top-level
 - Prefer small, focused functions
 - Explicit, user-friendly error messages
 
 ---
 
-## Configuration Model (MVP)
+## Foundry Backend Architecture (critical)
+
+The Foundry backend (`backends/foundry_backend.py`) is the largest and most complex module. Key architecture:
+
+### Execution Modes
+
+1. **Cloud evaluation** (default) — Uses the OpenAI Evals API via Foundry:
+   - `project_client.get_openai_client()` — **never pass `api_version`** (SDK picks the correct one)
+   - `client.evals.create()` with `azure_ai_evaluator` testing criteria
+   - `client.evals.runs.create()` with `azure_ai_target_completions` data source
+   - Results appear in the **New Foundry Experience** Evaluations page
+   - Writes `cloud_evaluation.json` with `report_url` for downstream reporting
+   - Reference: https://learn.microsoft.com/azure/foundry/how-to/develop/cloud-evaluation
+
+2. **Local evaluation** (fallback) — Set `AGENTOPS_FOUNDRY_MODE=local`:
+   - Invokes the agent via REST API (Agent Service responses/threads endpoint)
+   - Runs `azure.ai.evaluation` evaluator classes locally
+   - Publishes results to Foundry via OneDP (`_log_metrics_and_instance_results_onedp`)
+   - Results appear in the **Classic Foundry Experience**
+
+### Key Rules
+
+- **Never hardcode `api_version`** when calling `get_openai_client()` — the SDK handles this. Previous 404 errors were caused by explicit `api_version` parameters.
+- Use `DefaultAzureCredential(exclude_developer_cli_credential=True)` for authentication.
+- Auto-derive Azure OpenAI endpoint from the project endpoint via `_derive_openai_endpoint_from_project()` — users should not need to set `AZURE_OPENAI_ENDPOINT` manually.
+- Agent invocation supports both reference-based and threads-based API calls.
+- Evaluator names map from class names to builtins: `SimilarityEvaluator` → `builtin.similarity`.
+
+### Environment Variables
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `AGENTOPS_FOUNDRY_MODE` | `cloud` (New Experience) or `local` (Classic) | `cloud` |
+| `AZURE_AI_PROJECT_ENDPOINT` | Foundry project endpoint URL | Required |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint (auto-derived if absent) | Auto-derived |
+| `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (auto-derived if absent) | Auto-derived |
+
+---
+
+## Configuration Model
 
 Configuration is **YAML-first** and layered:
 
 - `.agentops/config.yaml` → workspace defaults
-- bundle YAML → evaluators + thresholds
-- dataset YAML → dataset reference and metadata
-- run YAML → concrete run specification
+- bundle YAML → evaluators + thresholds (see `docs/how-it-works.md` for schema)
+- dataset YAML → dataset reference and metadata (`.jsonl` format)
+- run YAML → concrete run specification (backend, agent, model, dataset, bundle)
 - CLI flags override YAML
 
-Schemas are validated using **Pydantic v2 models**.
+Schemas are validated using **Pydantic v2 models** (`core/models.py`).
 
 Both config files and results files must include a `version` field.
 
+### Foundry-specific run.yaml fields
+
+The `backend` section for Foundry runs includes:
+- `name: foundry`
+- `project_endpoint` — Foundry project URL (or `${env:AZURE_AI_PROJECT_ENDPOINT}`)
+- `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version)
+- `model` — Deployment name, e.g. `gpt-4o`
+- `poll_interval_seconds` — Polling interval for cloud eval (default: 2.0)
+- `max_poll_attempts` — Max polling attempts (default: 120)
+
 ---
 
-## Outputs (MVP)
+## Outputs
 
 Every evaluation run must produce:
 
@@ -106,41 +163,37 @@ Every evaluation run must produce:
 
 `agentops report` must be able to regenerate `report.md` from `results.json`.
 
----
-
-## Execution Backend (MVP)
-
-- Use a backend abstraction
-- MVP backend is **subprocess-based**
-- The CLI orchestrates execution; it does **not** embed SDK logic
-- Backend commands are defined in `run.yaml`
-- Support placeholder substitution in backend args (as defined in `docs/SPEC.md`)
+When cloud evaluation is used, a `cloud_evaluation.json` is also produced containing:
+- `eval_id`, `run_id` — OpenAI Evals API identifiers
+- `report_url` — Deep-link to the New Foundry Experience Evaluations page
 
 ---
 
 ## Testing Expectations
 
 - Unit tests for:
-  - config parsing and validation
-  - threshold evaluation
-  - results normalization
+  - config parsing and validation (`test_models.py`)
+  - threshold evaluation (`test_reporter.py`)
+  - YAML loading (`test_yaml_loader.py`)
   - report generation
+  - Foundry backend helpers (`test_foundry_backend.py`)
+  - Subprocess backend (`test_subprocess_backend.py`)
+  - Initializer (`test_initializer.py`)
 - Integration test for:
-  - `agentops eval run` end-to-end using a fake subprocess backend
+  - `agentops eval run` end-to-end using a fake subprocess backend (`test_eval_run_integration.py`)
 - Tests must assert correct **exit codes**
+- Azure SDK calls in tests should be **mocked** — tests must run without Azure credentials
+- Run all tests: `python -m pytest tests/ -x -q`
 
 ---
 
-## Out of Scope (MVP)
+## Out of Scope
 
-Do not implement the following unless the spec changes:
+Do not implement the following unless explicitly discussed:
 
-- Direct integration with Foundry SDK
-- Azure Monitor / KQL integration
 - Remote bundle registries
 - Dataset ingestion pipelines
 - Interactive prompts
-- azd integration
 - Web UI or dashboards
 
 ---
@@ -149,7 +202,11 @@ Do not implement the following unless the spec changes:
 
 When generating or modifying code:
 
-- Follow `docs/SPEC.md` as a **hard contract**
+- Reference `docs/how-it-works.md` for architecture decisions
 - Do not invent new concepts or commands
 - Prefer clarity and determinism over cleverness
 - Optimize for maintainability and CI usage
+- Azure SDK imports must be **lazy** (inside functions, not top-level)
+- Never hardcode Azure API versions — let the SDK handle versioning
+- Keep user-facing log output clean — no warning cascades or retry noise
+- When adding evaluator support, update both cloud (`_cloud_evaluator_data_mapping`) and local paths

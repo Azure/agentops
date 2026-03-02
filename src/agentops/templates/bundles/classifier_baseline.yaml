@@ -1,0 +1,20 @@
+version: 1
+name: classifier_baseline
+description: Baseline evaluation bundle for classifier-style exact-answer scenarios.
+evaluators:
+  - name: exact_match
+    source: local
+    enabled: true
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: exact_match
+    criteria: "true"
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 10.0
+metadata:
+  category: qa
+  tags:
+    - baseline

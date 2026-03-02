@@ -1,0 +1,10 @@
+version: 1
+paths:
+  bundles_dir: .agentops/bundles
+  datasets_dir: .agentops/datasets
+  results_dir: .agentops/results
+defaults:
+  backend: foundry
+  timeout_seconds: 1800
+report:
+  generate_markdown: true

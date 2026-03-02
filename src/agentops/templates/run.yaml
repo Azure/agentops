@@ -1,0 +1,16 @@
+version: 1
+bundle:
+  path: bundles/qa_similarity_baseline.yaml
+dataset:
+  path: datasets/sample-dataset.yaml
+backend:
+  type: foundry
+  target: agent
+  agent_id: asst_your_agent_id
+  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+  api_version: "2025-05-01"
+  poll_interval_seconds: 2
+  max_poll_attempts: 120
+  timeout_seconds: 1800
+output:
+  write_report: true

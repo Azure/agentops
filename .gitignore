@@ -3,6 +3,37 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
 
+# -----------------------------------------------------------------------------
+# Python / packaging / test artifacts
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+.venv/
+venv/
+env/
+
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+build/
+dist/
+
+# AgentOps local runtime artifacts
+.agentops
+.agentops/results/
+.agentops/.resolved/
+eval/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -10,6 +41,7 @@
 *.userosscache
 *.sln.docstates
 *.env
+.local
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
