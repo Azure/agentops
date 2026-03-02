@@ -142,6 +142,14 @@ output:
   write_report: true
 ```
 
+### Output options
+
+| Option | Default | Description |
+|---|---|---|
+| `write_report` | `true` | Generate `report.md` alongside `results.json` |
+| `publish_foundry_evaluation` | `false` | Publish results to Foundry v2 Evaluations panel (Classic Experience) |
+| `fail_on_foundry_publish_error` | `false` | Return exit code `1` if Foundry publish fails |
+
 ## Backend behavior
 
 - AgentOps Toolkit provides backend orchestration with native `foundry` support.

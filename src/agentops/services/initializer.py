@@ -25,6 +25,7 @@ _TEMPLATE_FILES: tuple[str, ...] = (
     "bundles/classifier_baseline.yaml",
     "bundles/qa_similarity_baseline.yaml",
     "datasets/sample-dataset.yaml",
+    "datasets/smoke-agent.yaml",
 )
 
 

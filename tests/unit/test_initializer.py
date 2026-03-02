@@ -17,10 +17,11 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ".agentops" / "bundles" / "classifier_baseline.yaml").is_file()
     assert (tmp_path / ".agentops" / "bundles" / "qa_similarity_baseline.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "sample-dataset.yaml").is_file()
+    assert (tmp_path / ".agentops" / "datasets" / "smoke-agent.yaml").is_file()
     assert (tmp_path / ".agentops" / "run.yaml").is_file()
     assert (tmp_path / ".agentops" / ".gitignore").is_file()
 
-    assert len(result.created_files) == 7
+    assert len(result.created_files) == 8
     assert len(result.overwritten_files) == 0
 
     run_config = load_yaml(tmp_path / ".agentops" / "run.yaml")

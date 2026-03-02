@@ -34,7 +34,8 @@ This creates the `.agentops/` workspace with the following structure:
 │   ├── rag_baseline.yaml
 │   └── classifier_baseline.yaml
 ├── datasets/
-│   └── sample-dataset.yaml
+│   ├── sample-dataset.yaml           (placeholder — edit for your project)
+│   └── smoke-agent.yaml              (ready-to-use smoke test)
 └── results/
 ```
 
@@ -101,6 +102,26 @@ Bundles created by `agentops init`:
 - `agentops eval run`
   - `--config` default: `.agentops/run.yaml`
   - `--output` default: timestamp folder under `.agentops/results/`
+
+## Commands
+
+### `agentops eval run`
+
+Run an evaluation defined in a `run.yaml` file.
+
+```bash
+agentops eval run [--config <path>] [--output <dir>]
+```
+
+### `agentops report`
+
+Regenerate `report.md` from an existing `results.json`.
+
+```bash
+agentops report [--in <results.json>] [--out <report.md>]
+```
+
+Defaults: `--in .agentops/results/latest/results.json`
 
 ## Exit codes
 

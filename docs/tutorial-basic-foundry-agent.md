@@ -96,7 +96,8 @@ This creates the `.agentops/` workspace with the following structure:
 │   ├── rag_baseline.yaml                # RAG evaluators (Groundedness, Relevance, etc.)
 │   └── classifier_baseline.yaml         # Classification evaluators
 ├── datasets/
-│   └── sample-dataset.yaml              # placeholder dataset config (replace with your own)
+│   ├── sample-dataset.yaml              # placeholder dataset config (replace with your own)
+│   └── smoke-agent.yaml                 # ready-to-use smoke test config
 └── results/                             # evaluation output (auto-generated)
 ```
 
@@ -104,7 +105,7 @@ If the workspace already exists, existing files are **not** overwritten (use `ag
 
 ### 4) Update `.agentops/run.yaml`
 
-Use this minimal config (replace `agent_id` with your real value):
+For this tutorial, use the `smoke-agent.yaml` dataset config. Update `run.yaml` to:
 
 ```yaml
 version: 1
@@ -125,37 +126,11 @@ output:
   write_report: true
 ```
 
-### 5) Create `.agentops/datasets/smoke-agent.yaml`
+### 5) Create `eval/datasets/smoke-agent.jsonl`
 
-For this tutorial, create a dedicated dataset config file:
-
-- `.agentops/datasets/smoke-agent.yaml`
-
-You can copy `.agentops/datasets/sample-dataset.yaml` and adapt it, or create it directly with:
-
-```yaml
-version: 1
-name: smoke
-description: Small smoke dataset for local validation.
-source:
-  type: file
-  path: ../../eval/datasets/smoke-agent.jsonl
-format:
-  type: jsonl
-  input_field: input
-  expected_field: expected
-metadata:
-  size_hint: 20
-  owner: local
-```
-
-### 6) Create `eval/datasets/smoke-agent.jsonl`
+The `smoke-agent.yaml` config points to `../../eval/datasets/smoke-agent.jsonl`.
 
 Create this file manually:
-
-- `eval/datasets/smoke-agent.jsonl`
-
-With this content:
 
 ```jsonl
 {"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
