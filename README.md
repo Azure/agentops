@@ -22,36 +22,55 @@ From your project root:
 agentops init
 ```
 
-Set the minimum configuration:
+This creates the `.agentops/` workspace with the following structure:
 
-- In `.agentops/run.yaml`:
-  - `backend.type: foundry`
-  - `backend.target: agent`
-  - `backend.agent_id: <your-agent-id>` (example: `my-agent:2`)
-- Environment variable:
-  - `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>`
-
-Create the dataset file expected by `.agentops/datasets/smoke-agent.yaml`:
-
-Create this file manually in your project:
-
-- `eval/datasets/smoke-agent.jsonl`
-
-With this content:
-
-```jsonl
-{"id":"1","input":"What is 7 + 5?","expected":"12"}
-{"id":"2","input":"What is 9 * 6?","expected":"54"}
+```
+.agentops/
+├── config.yaml
+├── run.yaml
+├── .gitignore
+├── bundles/
+│   ├── qa_similarity_baseline.yaml   (default bundle)
+│   ├── rag_baseline.yaml
+│   └── classifier_baseline.yaml
+├── datasets/
+│   └── sample-dataset.yaml
+└── results/
 ```
 
-If this file is missing, `agentops eval run` fails with a dataset file not found error.
+### Configure
+
+Edit `.agentops/run.yaml` to set your agent:
+
+- `backend.agent_id: <your-agent-id>` (example: `my-agent:2`)
+
+Set the environment variable for your Foundry project:
+
+```bash
+export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>
+```
+
+### Create a dataset
+
+The default `run.yaml` uses `datasets/sample-dataset.yaml`, which points to `../../eval/datasets/your-dataset.jsonl` as a placeholder.
+
+Create your dataset file at `eval/datasets/your-dataset.jsonl` (or choose any path and update the `source.path` field in `sample-dataset.yaml`):
+
+```jsonl
+{"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
+{"id":"2","input":"Which planet is known as the Red Planet?","expected":"Mars is known as the Red Planet."}
+```
+
+If the `.jsonl` file is missing, `agentops eval run` fails with a dataset-not-found error.
+
+### Authenticate
 
 Authentication is automatic via `DefaultAzureCredential`:
 - Local dev: `az login`
 - CI/CD: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`
 - Azure hosted: managed identity
 
-Run:
+### Run
 
 ```bash
 agentops eval run
@@ -59,18 +78,26 @@ agentops eval run
 
 This uses `.agentops/run.yaml` by default and generates `results.json` + `report.md`.
 
-Evaluation model:
-- `evaluators` define which scores are produced (for example, `exact_match`, `avg_latency_seconds`, `GroundednessEvaluator`).
+### Evaluation model
+
+- `evaluators` define which scores are produced (for example, `exact_match`, `avg_latency_seconds`, `SimilarityEvaluator`).
 - `thresholds` validate evaluator scores using `evaluator` + `criteria` (+ `value` when numeric).
 - Every enabled evaluator in the bundle must produce scores in `row_metrics`.
 - Each item gets a threshold verdict per evaluator, and an item final verdict (`passed_all`).
 - Each run also generates consolidated `run_metrics` (for example `run_pass`, `threshold_pass_rate`, `items_pass_rate`, `accuracy`, plus avg/stddev metrics).
 
-Starter bundles created by `agentops init`:
-- `rag_baseline` (groundedness + latency)
-- `classifier_baseline` (exact_match + latency)
+### Starter bundles
 
-Default behavior:
+Bundles created by `agentops init`:
+
+| Bundle | Evaluators | Use case |
+|---|---|---|
+| `qa_similarity_baseline` (default) | `SimilarityEvaluator` | QA scenarios with semantic similarity scoring |
+| `rag_baseline` | `GroundednessEvaluator` | RAG scenarios with groundedness scoring |
+| `classifier_baseline` | `exact_match` + `avg_latency_seconds` | Classifier-style exact-answer scenarios |
+
+### Default behavior
+
 - `agentops eval run`
   - `--config` default: `.agentops/run.yaml`
   - `--output` default: timestamp folder under `.agentops/results/`
