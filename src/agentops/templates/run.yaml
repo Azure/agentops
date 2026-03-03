@@ -1,12 +1,12 @@
 version: 1
 bundle:
-  path: bundles/qa_similarity_baseline.yaml
+  path: bundles/model_direct_baseline.yaml
 dataset:
-  path: datasets/sample-dataset.yaml
+  path: datasets/smoke-model-direct.yaml
 backend:
   type: foundry
-  target: agent
-  agent_id: asst_your_agent_id
+  target: model
+  model: gpt-5-mini
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2

@@ -1,15 +1,155 @@
-# How it works
+# How It Works
 
-## Workspace structure
+This document is the single source of truth for understanding the AgentOps architecture. Read it before making any changes.
 
-- **Workspace (`.agentops/`)**
-  - Local folder that stores your evaluation configuration.
-  - Typical structure:
-    - `.agentops/config.yaml`
-    - `.agentops/bundles/*.yaml`
-    - `.agentops/datasets/*.yaml`
-    - `.agentops/run.yaml`
-    - `.agentops/results/` (generated artifacts)
+---
+
+## What Is AgentOps?
+
+AgentOps is a **standalone Python CLI** that runs **standardized evaluation workflows** for AI agents and models. It:
+
+1. Reads YAML configuration (bundles, datasets, run specs).
+2. Executes evaluation against a target (Foundry agent, model deployment, or custom subprocess).
+3. Produces normalized outputs: `results.json` (machine-readable) and `report.md` (human-readable).
+4. Returns **CI-friendly exit codes** (`0` = pass, `2` = threshold failure, `1` = error) so pipelines can gate on quality.
+
+### Key Principles
+
+| Principle | What It Means in Practice |
+|---|---|
+| **Thin CLI** | `cli/app.py` only parses args and calls services. No business logic here. |
+| **Core is pure** | `core/` has zero Azure imports, zero network calls. It only transforms data. |
+| **Lazy Azure imports** | All `azure-*` SDK imports happen inside functions in `backends/` and `services/`, never at the module top level. This keeps the CLI fast and allows tests to run without Azure credentials. |
+| **Pydantic v2 everywhere** | Every YAML config and every JSON output is validated by a Pydantic model in `core/models.py`. |
+| **pathlib.Path only** | No raw string paths anywhere in the codebase. |
+| **No global state** | No singletons, no module-level side effects. |
+
+---
+
+## Source Code Layout (src layout)
+
+```
+src/
+└── agentops/
+    ├── __init__.py            # Package root (version only)
+    ├── __main__.py            # Enables `python -m agentops`
+    │
+    ├── cli/
+    │   └── app.py             # Typer CLI definition (init, eval run, report)
+    │
+    ├── core/                  # Pure data logic — ADD models, loaders, threshold rules here
+    │   ├── models.py          # All Pydantic schemas
+    │   ├── config_loader.py   # YAML → Pydantic model
+    │   ├── thresholds.py      # Threshold pass/fail evaluation
+    │   └── reporter.py        # Markdown report generation
+    │
+    ├── services/              # Orchestration — ADD workflows here
+    │   ├── runner.py          # Main evaluation orchestrator
+    │   ├── reporting.py       # Report regeneration service
+    │   ├── initializer.py     # Workspace scaffolding (agentops init)
+    │   └── foundry_evals.py   # Foundry Evaluations panel publishing
+    │
+    ├── backends/              # Execution engines — ADD new backends here
+    │   ├── base.py            # Backend Protocol + shared dataclasses
+    │   ├── foundry_backend.py # Foundry Agent Service (cloud + local)
+    │   └── subprocess_backend.py # Generic subprocess runner
+    │
+    ├── utils/                 # Shared helpers
+    │   ├── yaml.py            # YAML load + env-var interpolation
+    │   └── logging.py         # Logger factory and setup
+    │
+    └── templates/             # Starter files for `agentops init`
+        ├── config.yaml
+        ├── run.yaml
+        ├── bundles/           # Pre-built evaluation bundles
+        └── datasets/          # Sample datasets (.yaml + .jsonl)
+```
+
+### Where to Add New Code
+
+| I want to… | Directory / File |
+|---|---|
+| Add a new Pydantic model or schema field | `core/models.py` |
+| Add a new config file type | `core/config_loader.py` (new loader) + `core/models.py` (new model) |
+| Add a new local evaluator | `backends/foundry_backend.py` (local eval path) + update bundle docs |
+| Add a new execution backend | `backends/` (new file implementing `Backend` protocol from `base.py`) + register in `services/runner.py` |
+| Add a new CLI command | `cli/app.py` (keep it thin — delegate to `services/`) |
+| Add a new workflow/service | `services/` (new file) |
+| Add a starter template | `templates/` + update `pyproject.toml` package-data |
+
+---
+
+## Request Flow (eval run)
+
+When you run `agentops eval run`, the following happens step by step:
+
+```
+1. CLI parses args               (cli/app.py → cmd_eval_run)
+2. Runner loads config            (services/runner.py → load_run_config, load_bundle_config, load_dataset_config)
+3. Runner selects backend         (FoundryBackend or SubprocessBackend based on run.yaml)
+4. Backend executes evaluation    (backends/ → invokes agent/model, collects responses)
+5. Backend writes backend_metrics.json  (raw scores per row)
+6. Runner loads backend metrics   (services/runner.py → _load_backend_metrics)
+7. Runner evaluates thresholds    (core/thresholds.py → pass/fail per metric per row)
+8. Runner consolidates results    (services/runner.py → builds RunResult)
+9. Runner writes results.json     (normalized, versioned output)
+10. Runner generates report.md    (core/reporter.py → Markdown from RunResult)
+11. Runner syncs latest/ dir      (copies to .agentops/results/latest/)
+12. CLI returns exit code         (0 = pass, 2 = threshold fail, 1 = error)
+```
+
+---
+
+## CLI Commands
+
+| Command | Purpose |
+|---|---|
+| `agentops init` | Scaffold `.agentops/` workspace with starter config, bundles, and datasets |
+| `agentops eval run` | Execute an evaluation (main command) |
+| `agentops eval run -c <path>` | Use a specific run config instead of `.agentops/run.yaml` |
+| `agentops eval run -o <dir>` | Write output to a custom directory |
+| `agentops report` | Regenerate `report.md` from an existing `results.json` |
+| `agentops report --in <path>` | Specify which `results.json` to use |
+
+---
+
+## Exit Code Contract
+
+Exit codes are part of the public API. **Do not change their meaning.**
+
+| Code | Meaning |
+|---|---|
+| `0` | Execution succeeded **and** all thresholds passed |
+| `2` | Execution succeeded **but** one or more thresholds failed |
+| `1` | Runtime or configuration error |
+
+---
+
+## User Workspace Structure (`.agentops/`)
+
+The `.agentops/` directory lives in your project root and stores all evaluation configuration and outputs.
+
+```
+.agentops/
+├── config.yaml                # Workspace-level defaults
+├── run.yaml                   # Default run specification (bundle + dataset + backend)
+├── bundles/
+│   ├── rag_retrieval_baseline.yaml
+│   ├── model_direct_baseline.yaml
+│   └── agent_tools_baseline.yaml
+├── datasets/
+│   ├── smoke-rag.yaml         # Dataset metadata
+│   ├── smoke-rag.jsonl        # Actual data rows
+│   └── ...
+└── results/
+    ├── 2026-03-03_143022/     # Timestamped run (immutable)
+    │   ├── results.json
+    │   ├── report.md
+    │   └── backend_metrics.json
+    └── latest/                # Always points to the most recent run
+        ├── results.json
+        └── report.md
+```
 
 ## Bundle (`.agentops/bundles/*.yaml`)
 
@@ -18,7 +158,7 @@
 - Evaluators are explicit score producers:
   - `source: local` for AgentOps-native evaluators (for example `exact_match`, `avg_latency_seconds`)
   - `source: foundry` for Foundry SDK evaluators (name must match evaluator class name, for example `GroundednessEvaluator`)
-- Supported local evaluators are explicit: `exact_match`, `pass_at_1`, `latency_seconds`, `avg_latency_seconds`.
+- Supported local evaluators are explicit: `exact_match`, `latency_seconds`, `avg_latency_seconds`.
 - AgentOps does not emulate Foundry evaluators locally; if you configure `SimilarityEvaluator`/`GroundednessEvaluator`, use `source: foundry`.
 - Foundry evaluators support generic configuration via `evaluators[].config`:
   - `kind`: `builtin` (default) or `custom`
@@ -86,10 +226,10 @@ thresholds:
 
 For built-in Foundry evaluators, AgentOps uses `DefaultAzureCredential` by default (passwordless). Prefer managed identity in Azure environments and avoid API keys.
 
-- Recommended baseline split:
-  - `rag_baseline`: groundedness
-  - `qa_similarity_baseline`: similarity
-  - `classifier_baseline`: exact-match + latency
+- Recommended evaluation scenario bundles:
+  - `model_direct_baseline`: Model-Only — SimilarityEvaluator (no retrieval, no tools)
+  - `rag_retrieval_baseline`: RAG — GroundednessEvaluator (retrieval-augmented)
+  - `agent_tools_baseline`: Agent with Tools — placeholder (to be expanded)
 
 - Threshold criteria:
   - Numeric: `>=`, `>`, `<=`, `<`, `==` (requires `value`)
@@ -106,7 +246,7 @@ version: 1
 name: regression_set
 source:
   type: file
-  path: ../../eval/datasets/regression.jsonl
+  path: regression.jsonl
 format:
   type: jsonl
   input_field: input
@@ -114,7 +254,7 @@ format:
 ```
 
 - `path` is resolved relative to the dataset config file location.
-- For files under `.agentops/datasets/`, use `../../eval/datasets/<file>.jsonl`.
+- Place `.jsonl` files in `.agentops/datasets/` alongside the YAML configs for simple co-location.
 
 ## Run config (`.agentops/run.yaml`)
 
@@ -150,6 +290,33 @@ output:
 | `publish_foundry_evaluation` | `false` | Publish results to Foundry v2 Evaluations panel (Classic Experience) |
 | `fail_on_foundry_publish_error` | `false` | Return exit code `1` if Foundry publish fails |
 
+## Evaluation scenarios
+
+AgentOps supports three evaluation scenarios:
+
+### Model-Only (no retrieval, no tools)
+
+- Sends prompts directly to a model deployment
+- No agent involved — the model is the target
+- Uses `SimilarityEvaluator` to compare model responses against expected answers
+- Bundle: `model_direct_baseline.yaml`
+- Dataset: rows with `input` and `expected` fields
+- Backend config: `target: model`
+
+### RAG (Retrieval-Augmented Generation)
+
+- Evaluates grounding of responses against context/retrieved documents
+- Uses `GroundednessEvaluator` to check that responses are grounded in the provided context
+- Bundle: `rag_retrieval_baseline.yaml`
+- Dataset: rows with `input`, `expected`, and `context` fields
+- Backend config: `target: agent` (agent with knowledge base / retrieval)
+
+### Agent with Tools (placeholder)
+
+- Evaluates agents that use tool calls (function calling)
+- Bundle: `agent_tools_baseline.yaml` (placeholder — will be expanded with tool-call evaluators)
+- Backend config: `target: agent`
+
 ## Backend behavior
 
 - AgentOps Toolkit provides backend orchestration with native `foundry` support.
@@ -161,11 +328,19 @@ output:
 
 ## Foundry target mode
 
-- `target: agent` (required for `backend.type: foundry`)
+- `target: agent` (default for `backend.type: foundry`)
   - Required in backend config: `agent_id`
   - Required env: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
   - Authentication: automatic via `DefaultAzureCredential` (supports `az login`, managed identity, service principal)
   - Optional tuning: `poll_interval_seconds`, `max_poll_attempts`
+
+- `target: model`
+  - Sends prompts directly to a model deployment (no agent involved)
+  - Required in backend config: `model` (deployment name, e.g. `gpt-5-mini`)
+  - Required env: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
+  - Does **not** require `agent_id`
+  - Cloud evaluation uses `completions` data source type
+  - Local evaluation uses OpenAI chat completions API via the Foundry project client
 
 ## Main Foundry testing flow
 
@@ -177,16 +352,38 @@ output:
   - `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>`
 - Configure `.agentops/run.yaml`:
 
+Example for agent target:
+
 ```yaml
 version: 1
 bundle:
-  path: bundles/rag_strict.yaml
+  path: bundles/rag_retrieval_baseline.yaml
 dataset:
-  path: datasets/regression_set.yaml
+  path: datasets/smoke-rag.yaml
 backend:
   type: foundry
   target: agent
   agent_id: my-agent:1
+  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+  api_version: "2025-05-01"
+  poll_interval_seconds: 2
+  max_poll_attempts: 120
+output:
+  write_report: true
+```
+
+Example for model-direct target:
+
+```yaml
+version: 1
+bundle:
+  path: bundles/model_direct_baseline.yaml
+dataset:
+  path: datasets/smoke-model-direct.yaml
+backend:
+  type: foundry
+  target: model
+  model: gpt-5-mini
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2
@@ -205,7 +402,7 @@ output:
 - For `target: agent`, each row input is sent as a user message to the configured Foundry agent.
 - The backend computes only the metrics configured in the bundle:
   - **Foundry evaluators** (`source: foundry`) are executed by the cloud evaluation API.
-  - **Local evaluators** (`source: local`) such as `exact_match`, `latency_seconds`, `avg_latency_seconds`, and `pass_at_1` are computed by AgentOps only when explicitly enabled in the bundle.
+  - **Local evaluators** (`source: local`) such as `exact_match`, `latency_seconds`, and `avg_latency_seconds` are computed by AgentOps only when explicitly enabled in the bundle.
   - `samples_evaluated` is always emitted.
 
 ## Backend metrics contract (`backend_metrics.json`)
@@ -224,15 +421,15 @@ output:
     {
       "row_index": 1,
       "metrics": [
-        { "name": "pass_at_1", "value": 1.0 },
-        { "name": "pass_at_3", "value": 1.0 }
+        { "name": "exact_match", "value": 1.0 },
+        { "name": "avg_latency_seconds", "value": 1.21 }
       ]
     },
     {
       "row_index": 2,
       "metrics": [
-        { "name": "pass_at_1", "value": 0.0 },
-        { "name": "pass_at_3", "value": 1.0 }
+        { "name": "exact_match", "value": 0.0 },
+        { "name": "avg_latency_seconds", "value": 0.98 }
       ]
     }
   ]
@@ -288,12 +485,6 @@ In short:
     - `latency_seconds_stddev`
   - `accuracy` (from row-level `exact_match` average when available)
 
-### About pass@1 / pass@k
-
-- `pass@1` and `pass@k` can represent different concepts depending on your evaluation design.
-- For multi-attempt or multi-run scenarios (for example "passed at least once across N runs"), compute them in a separate analysis layer.
-- AgentOps keeps single-run consolidation simple and focused on row verdicts + run aggregates.
-
 ## Outputs and history
 
 - Every run stores artifacts in `.agentops/results/<timestamp>/`.
@@ -313,3 +504,70 @@ AgentOps writes to both:
 - `.agentops/results/latest/` (convenient pointer to last run content)
 
 If you pass `--output`, AgentOps writes to that directory and still updates `.agentops/results/latest/` with the newest run content.
+
+---
+
+## Testing
+
+Tests live in `tests/` and are organized as:
+
+```
+tests/
+├── fixtures/
+│   └── fake_eval_runner.py          # Fake backend for integration tests
+├── integration/
+│   └── test_eval_run_integration.py # End-to-end via subprocess backend
+└── unit/
+    ├── test_models.py               # Pydantic model validation
+    ├── test_reporter.py             # Threshold evaluation + report
+    ├── test_yaml_loader.py          # YAML loading + env-var interpolation
+    ├── test_foundry_backend.py      # Foundry backend helpers (mocked)
+    ├── test_subprocess_backend.py   # Subprocess backend
+    └── test_initializer.py          # Workspace scaffolding
+```
+
+Run all tests:
+
+```bash
+python -m pytest tests/ -x -q
+```
+
+Key testing rules:
+- All Azure SDK calls must be **mocked** — tests run without Azure credentials.
+- Tests must assert correct **exit codes** (0, 1, 2).
+- Unit tests go in `tests/unit/`, integration tests in `tests/integration/`.
+
+---
+
+## Dependencies
+
+Declared in `pyproject.toml`:
+
+| Package | Purpose |
+|---|---|
+| `typer` | CLI framework |
+| `pydantic` (v2) | Config and results schema validation |
+| `ruamel.yaml` | YAML parsing with env-var interpolation |
+
+**Runtime Azure dependencies** (installed by the user, not declared in `pyproject.toml`):
+
+| Package | Purpose |
+|---|---|
+| `azure-ai-projects` | Foundry project client, `get_openai_client()` |
+| `azure-ai-evaluation` | Local evaluator classes (SimilarityEvaluator, etc.) |
+| `azure-identity` | `DefaultAzureCredential` authentication |
+| `openai` | OpenAI Evals API types |
+
+Azure SDK dependencies are kept separate so the CLI stays lightweight and tests can run without cloud credentials.
+
+---
+
+## Quick Reference for New Contributors
+
+1. **Install in dev mode**: `pip install -e ".[dev]"` or `pip install -e .` then `pip install pytest`
+2. **Run tests**: `python -m pytest tests/ -x -q`
+3. **Try it out**: `agentops init` then explore `.agentops/`
+4. **Read the models**: `core/models.py` is the best single file to understand all data structures
+5. **Follow the flow**: `cli/app.py` → `services/runner.py` → `backends/` → `core/`
+6. **Keep CLI thin**: never put logic in `cli/app.py` — delegate to `services/`
+7. **Keep core pure**: never import Azure SDK in `core/` — that belongs in `backends/` and `services/`

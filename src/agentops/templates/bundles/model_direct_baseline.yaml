@@ -1,0 +1,26 @@
+version: 1
+name: model_direct_baseline
+description: >
+  Baseline evaluation bundle for Model-Only scenarios (no retrieval, no tools).
+  Sends prompts directly to a model deployment and evaluates response quality
+  using SimilarityEvaluator.
+evaluators:
+  - name: SimilarityEvaluator
+    source: foundry
+    enabled: true
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: SimilarityEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 10.0
+metadata:
+  category: model-only
+  scenario: model_direct
+  tags:
+    - baseline
+    - model-only

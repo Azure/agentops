@@ -102,7 +102,7 @@ def test_row_metrics_requires_positive_row_index() -> None:
         RowMetricsResult.model_validate(
             {
                 "row_index": 0,
-                "metrics": [{"name": "pass_at_1", "value": 1.0}],
+                "metrics": [{"name": "exact_match", "value": 1.0}],
             }
         )
         assert False, "expected validation error"
@@ -189,13 +189,35 @@ def test_foundry_agent_target_accepts_agent_id() -> None:
     assert backend.agent_id == "asst_abc123"
 
 
-def test_foundry_rejects_model_target() -> None:
+def test_foundry_accepts_model_target() -> None:
+    backend = BackendConfig.model_validate(
+        {
+            "type": "foundry",
+            "target": "model",
+        }
+    )
+    assert backend.target == "model"
+    assert backend.agent_id is None
+
+
+def test_foundry_model_target_ignores_agent_id() -> None:
+    backend = BackendConfig.model_validate(
+        {
+            "type": "foundry",
+            "target": "model",
+            "agent_id": "asst_abc123",
+        }
+    )
+    assert backend.target == "model"
+    assert backend.agent_id == "asst_abc123"
+
+
+def test_foundry_rejects_invalid_target() -> None:
     try:
         BackendConfig.model_validate(
             {
                 "type": "foundry",
-                "target": "model",
-                "agent_id": "asst_abc123",
+                "target": "unknown",
             }
         )
         assert False, "expected validation error"

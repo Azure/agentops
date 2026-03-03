@@ -1,0 +1,5 @@
+{"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
+{"id":"2","input":"Which planet is known as the Red Planet?","expected":"Mars is known as the Red Planet."}
+{"id":"3","input":"What is the chemical symbol for water?","expected":"The chemical symbol for water is H2O."}
+{"id":"4","input":"Who wrote Romeo and Juliet?","expected":"William Shakespeare wrote Romeo and Juliet."}
+{"id":"5","input":"What is the largest ocean on Earth?","expected":"The Pacific Ocean is the largest ocean on Earth."}

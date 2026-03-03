@@ -1,0 +1,14 @@
+version: 1
+name: smoke_agent_tools
+description: Placeholder smoke dataset for Agent with Tools evaluation (to be expanded).
+source:
+  type: file
+  path: smoke-agent-tools.jsonl
+format:
+  type: jsonl
+  input_field: input
+  expected_field: expected
+metadata:
+  scenario: agent_with_tools
+  size_hint: 5
+  owner: local

@@ -41,21 +41,31 @@ This creates the `.agentops/` workspace with the following structure:
 
 ### Configure
 
-Edit `.agentops/run.yaml` to set your agent:
+Edit `.agentops/run.yaml` to set your target:
 
-- `backend.agent_id: <your-agent-id>` (example: `my-agent:2`)
+- For **model-direct** evaluation (default): set `backend.target: model` and `backend.model: <deployment>`
+- For **agent** evaluation: set `backend.target: agent` and `backend.agent_id: <your-agent-id>`
 
 Set the environment variable for your Foundry project:
 
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>
+PowerShell:
+
+```powershell
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 
-### Create a dataset
+Bash/zsh:
 
-The default `run.yaml` uses `datasets/sample-dataset.yaml`, which points to `../../eval/datasets/your-dataset.jsonl` as a placeholder.
+```bash
+export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+```
 
-Create your dataset file at `eval/datasets/your-dataset.jsonl` (or choose any path and update the `source.path` field in `sample-dataset.yaml`):
+### Dataset
+
+`agentops init` creates sample `.jsonl` datasets alongside the YAML configs in `.agentops/datasets/`.
+The default `run.yaml` uses `datasets/smoke-model-direct.yaml`, which points to `smoke-model-direct.jsonl` in the same folder.
+
+To use your own data, create a `.jsonl` file and update the `source.path` in the dataset YAML config:
 
 ```jsonl
 {"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}

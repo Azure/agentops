@@ -33,8 +33,6 @@ def build_metrics_payload(bundle_path: str, dataset_path: str) -> dict[str, Any]
                     {"name": "relevance", "value": 0.83},
                     {"name": "coherence", "value": 0.82},
                     {"name": "fluency", "value": 0.81},
-                    {"name": "pass_at_1", "value": 1.0},
-                    {"name": "pass_at_3", "value": 1.0},
                 ],
             },
             {
@@ -44,8 +42,6 @@ def build_metrics_payload(bundle_path: str, dataset_path: str) -> dict[str, Any]
                     {"name": "relevance", "value": 0.83},
                     {"name": "coherence", "value": 0.82},
                     {"name": "fluency", "value": 0.81},
-                    {"name": "pass_at_1", "value": 1.0},
-                    {"name": "pass_at_3", "value": 1.0},
                 ],
             },
         ],

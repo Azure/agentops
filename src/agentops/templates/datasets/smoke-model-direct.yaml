@@ -1,0 +1,14 @@
+version: 1
+name: smoke_model_direct
+description: Small smoke dataset for Model-Only evaluation (no retrieval, no tools).
+source:
+  type: file
+  path: smoke-model-direct.jsonl
+format:
+  type: jsonl
+  input_field: input
+  expected_field: expected
+metadata:
+  scenario: model_direct
+  size_hint: 5
+  owner: local

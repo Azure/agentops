@@ -15,9 +15,13 @@ The CLI:
 - Returns **CI-friendly exit codes** to gate pipelines on quality thresholds
 
 Design documentation lives in `docs/`:
-- `docs/how-it-works.md` — Architecture, workspace structure, config schema, flow
-- `docs/tutorial-basic-foundry-agent.md` — End-to-end tutorial
+- `docs/how-it-works.md` — Architecture, source code layout, config schema, request flow
+- `docs/tutorial-basic-foundry-agent.md` — End-to-end tutorial (agent target)
+- `docs/tutorial-model-direct.md` — Model-direct evaluation tutorial
+- `docs/tutorial-rag.md` — RAG evaluation tutorial
 - `docs/foundry-evaluation-sdk-built-in-evaluators.md` — Evaluator reference
+
+Contribution guidelines live in `CONTRIBUTING.md` at the repo root.
 
 ---
 
@@ -70,18 +74,32 @@ Do not overload or reinterpret these codes.
 
 ## Architecture Rules
 
+See `docs/how-it-works.md` for the full source-code map and architecture diagrams.
+
 - Use **Python src layout** (`src/agentops/`)
-- Keep CLI command handlers **thin** (`cli/app.py`)
+- Keep CLI command handlers **thin** (`cli/app.py`) — only parse args and call `services/`
 - Place business logic in:
-  - `core/` — config loading, models, thresholds, reporting
-  - `services/` — orchestration (runner), Foundry publishing, reporting
-  - `backends/` — execution backends (Foundry, subprocess)
+  - `core/` — config loading, Pydantic models, thresholds, report generation. **Must have zero Azure SDK imports and zero network calls.**
+  - `services/` — orchestration (runner), Foundry publishing, workspace init, report regen
+  - `backends/` — execution backends (Foundry, subprocess). Each implements the `Backend` protocol from `base.py`.
 - Use `pathlib.Path` everywhere (no raw string paths)
 - No side effects at import time
 - No hidden global state
 - Azure SDK imports are **lazy** (`import` inside functions), not top-level
 - Prefer small, focused functions
 - Explicit, user-friendly error messages
+
+### Where to add new code
+
+| I want to… | Directory / File |
+|---|---|
+| Add a new Pydantic model or schema field | `core/models.py` |
+| Add a new config file type | `core/config_loader.py` + `core/models.py` |
+| Add a new local evaluator | `backends/foundry_backend.py` (local eval path) |
+| Add a new execution backend | `backends/` (new file implementing `Backend` protocol) + register in `services/runner.py` |
+| Add a new CLI command | `cli/app.py` (thin handler) + `services/` (logic) |
+| Add a new workflow/service | `services/` (new file) |
+| Add starter templates | `templates/` + update `pyproject.toml` package-data |
 
 ---
 
@@ -118,9 +136,11 @@ The Foundry backend (`backends/foundry_backend.py`) is the largest and most comp
 | Variable | Purpose | Default |
 |---|---|---|
 | `AGENTOPS_FOUNDRY_MODE` | `cloud` (New Experience) or `local` (Classic) | `cloud` |
-| `AZURE_AI_PROJECT_ENDPOINT` | Foundry project endpoint URL | Required |
+| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project endpoint URL | Required |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint (auto-derived if absent) | Auto-derived |
 | `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (auto-derived if absent) | Auto-derived |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Fallback model deployment name | `gpt-5-mini` |
+| `AZURE_OPENAI_API_VERSION` | OpenAI API version for local evaluators | SDK default |
 
 ---
 
@@ -140,13 +160,19 @@ Both config files and results files must include a `version` field.
 
 ### Foundry-specific run.yaml fields
 
-The `backend` section for Foundry runs includes:
-- `name: foundry`
-- `project_endpoint` — Foundry project URL (or `${env:AZURE_AI_PROJECT_ENDPOINT}`)
-- `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version)
-- `model` — Deployment name, e.g. `gpt-4o`
+The `backend` section for Foundry runs uses `type: foundry` (not `name`). Fields:
+- `type: foundry` — Backend type selector (must be `foundry` or `subprocess`)
+- `target` — `agent` (default) or `model`
+- `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version); required when `target: agent`
+- `model` — Deployment name, e.g. `gpt-5-mini`; used when `target: model` or for evaluators
+- `project_endpoint` — Foundry project URL (inline value)
+- `project_endpoint_env` — Env var name holding the project URL (default: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`)
+- `api_version` — Agent Service API version (default: `2025-05-01`)
 - `poll_interval_seconds` — Polling interval for cloud eval (default: 2.0)
 - `max_poll_attempts` — Max polling attempts (default: 120)
+- `timeout_seconds` — Overall timeout for the backend execution
+
+The backend resolves the project endpoint by checking `project_endpoint` first, then falling back to `os.getenv(project_endpoint_env)`.
 
 ---
 
@@ -202,11 +228,17 @@ Do not implement the following unless explicitly discussed:
 
 When generating or modifying code:
 
-- Reference `docs/how-it-works.md` for architecture decisions
+- **Read `docs/how-it-works.md` first** — it is the single source of truth for architecture
+- **Read `CONTRIBUTING.md`** for contribution rules and workflow
 - Do not invent new concepts or commands
 - Prefer clarity and determinism over cleverness
 - Optimize for maintainability and CI usage
 - Azure SDK imports must be **lazy** (inside functions, not top-level)
 - Never hardcode Azure API versions — let the SDK handle versioning
 - Keep user-facing log output clean — no warning cascades or retry noise
-- When adding evaluator support, update both cloud (`_cloud_evaluator_data_mapping`) and local paths
+- When adding evaluator support, update both cloud (`_cloud_evaluator_data_mapping` + `_cloud_evaluator_needs_model`) and local paths
+- All new logic must have corresponding unit tests in `tests/unit/`
+- Always mock Azure SDK calls in tests — tests must run without credentials
+- The `core/` package must remain free of Azure imports and I/O
+- Follow the request flow: CLI → Services → Backends → Core (never skip layers)
+- If a change is user-visible, add an entry to `CHANGELOG.md` under `[Unreleased]` (Keep a Changelog format)

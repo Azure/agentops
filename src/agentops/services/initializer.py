@@ -21,11 +21,15 @@ _TEMPLATE_FILES: tuple[str, ...] = (
     "config.yaml",
     "run.yaml",
     ".gitignore",
-    "bundles/rag_baseline.yaml",
-    "bundles/classifier_baseline.yaml",
-    "bundles/qa_similarity_baseline.yaml",
-    "datasets/sample-dataset.yaml",
-    "datasets/smoke-agent.yaml",
+    "bundles/model_direct_baseline.yaml",
+    "bundles/rag_retrieval_baseline.yaml",
+    "bundles/agent_tools_baseline.yaml",
+    "datasets/smoke-model-direct.yaml",
+    "datasets/smoke-model-direct.jsonl",
+    "datasets/smoke-rag.yaml",
+    "datasets/smoke-rag.jsonl",
+    "datasets/smoke-agent-tools.yaml",
+    "datasets/smoke-agent-tools.jsonl",
 )
 
 

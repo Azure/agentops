@@ -1,0 +1,27 @@
+version: 1
+name: rag_retrieval_baseline
+description: >
+  Baseline evaluation bundle for RAG (Retrieval-Augmented Generation) scenarios.
+  Evaluates grounding of agent responses against the retrieved context using
+  GroundednessEvaluator.
+evaluators:
+  - name: GroundednessEvaluator
+    source: foundry
+    enabled: true
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: GroundednessEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 10.0
+metadata:
+  category: rag
+  scenario: rag_retrieval
+  tags:
+    - baseline
+    - rag
+    - groundedness

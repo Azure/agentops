@@ -155,8 +155,6 @@ def test_foundry_backend_agent_service_target(tmp_path: Path) -> None:
     first_row_metrics = {item["name"]: item["value"] for item in payload["row_metrics"][0]["metrics"]}
     assert "GroundednessEvaluator" not in first_row_metrics
     assert first_row_metrics["exact_match"] == 1.0
-    # pass_at_1 was not configured in the bundle, so it should not appear
-    assert "pass_at_1" not in first_row_metrics
 
 
 def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(tmp_path: Path) -> None:
@@ -251,3 +249,43 @@ def test_foundry_backend_rejects_unsupported_local_evaluator(tmp_path: Path) -> 
             assert False, "expected ValueError"
         except ValueError as exc:
             assert "Unsupported local evaluator(s): SimilarityEvaluator" in str(exc)
+
+
+def test_foundry_backend_model_direct_target(tmp_path: Path) -> None:
+    """Verify model-direct target calls the model via chat completions."""
+    dataset_path = _dataset_yaml(tmp_path)
+    bundle_path = _bundle_yaml(tmp_path)
+    context = BackendRunContext(
+        backend_config=BackendConfig(
+            type="foundry",
+            target="model",
+            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
+            model="gpt-5-mini",
+            api_version="2025-05-01",
+            timeout_seconds=15,
+            poll_interval_seconds=0.01,
+            max_poll_attempts=5,
+        ),
+        bundle_path=bundle_path,
+        dataset_path=dataset_path,
+        backend_output_dir=tmp_path / "out-model-direct",
+    )
+
+    def _fake_invoke_model_direct(self_backend, settings, prompt):
+        if "2 + 2" in prompt:
+            return "4"
+        return "8"
+
+    with patch("agentops.backends.foundry_backend._acquire_token", return_value="fake-token"):
+        with patch.object(FoundryBackend, "_invoke_model_direct", _fake_invoke_model_direct):
+            result = FoundryBackend().execute(context)
+
+    assert result.backend == "foundry"
+    assert result.exit_code == 0
+    assert "model_direct" in result.command
+
+    metrics_path = tmp_path / "out-model-direct" / "backend_metrics.json"
+    payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+    metrics_by_name = {item["name"]: item["value"] for item in payload["metrics"]}
+    assert metrics_by_name["exact_match"] == 1.0
+    assert metrics_by_name["samples_evaluated"] == 2.0

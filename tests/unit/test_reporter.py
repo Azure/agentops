@@ -25,7 +25,6 @@ def _sample_result(overall_passed: bool = True) -> RunResult:
                 {"name": "run_pass", "value": 0.0 if not overall_passed else 1.0},
                 {"name": "threshold_pass_rate", "value": 0.5 if not overall_passed else 1.0},
                 {"name": "accuracy", "value": 0.84},
-                {"name": "pass_at_1", "value": 0.84},
             ],
             "thresholds": [
                 {"evaluator": "groundedness", "criteria": ">=", "expected": "0.800000", "actual": "0.840000", "passed": True},
@@ -72,7 +71,6 @@ def test_report_markdown_contains_required_sections_and_tables() -> None:
 
     assert "## Run Metrics" in markdown
     assert "| run_pass | 0.000000 |" in markdown
-    assert "| pass_at_1 | 0.840000 |" in markdown
 
     assert "## Threshold Checks" in markdown
     assert "| Evaluator | Criteria | Expected | Actual | Status |" in markdown

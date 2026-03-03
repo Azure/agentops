@@ -185,12 +185,14 @@ class BackendConfig(BaseModel):
                 raise ValueError("backend.args is required for subprocess")
         elif self.type == "foundry":
             target = (self.target or "agent").strip().lower()
-            if target != "agent":
-                raise ValueError("backend.target must be 'agent' for foundry")
+            if target not in {"agent", "model"}:
+                raise ValueError("backend.target must be 'agent' or 'model' for foundry")
 
             self.target = target
-            if not self.agent_id or not self.agent_id.strip():
-                raise ValueError("backend.agent_id is required for foundry")
+            if target == "agent":
+                if not self.agent_id or not self.agent_id.strip():
+                    raise ValueError("backend.agent_id is required for foundry target=agent")
+            # target=model does not require agent_id
 
             if self.max_poll_attempts is not None and self.max_poll_attempts <= 0:
                 raise ValueError("backend.max_poll_attempts must be > 0")

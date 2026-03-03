@@ -23,6 +23,16 @@ from agentops.core.models import EvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
+_CREDENTIAL_HELP_MESSAGE = (
+    "Azure authentication failed. To fix this, do one of the following:\n"
+    "\n"
+    "  1. Run 'az login' (Azure CLI) to authenticate interactively.\n"
+    "  2. Set AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_CLIENT_SECRET \n"
+    "     environment variables for service-principal authentication.\n"
+    "  3. If running on Azure, ensure a managed identity is configured.\n"
+    "\n"
+    "Docs: https://aka.ms/azsdk/python/identity/defaultazurecredential/troubleshoot"
+)
 
 
 def _to_utc_timestamp(value: datetime) -> str:
@@ -158,9 +168,14 @@ def _acquire_token(scope: str) -> str:
             "Install with:  pip install azure-identity"
         ) from exc
 
-    credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
-    token = credential.get_token(scope)
-    return token.token
+    try:
+        credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
+        token = credential.get_token(scope)
+        return token.token
+    except Exception as exc:
+        # Catch ClientAuthenticationError and any other credential failures
+        # and re-raise with a clean, actionable message.
+        raise RuntimeError(_CREDENTIAL_HELP_MESSAGE) from exc
 
 
 def _preferred_scope_for_agent_id(agent_id: str) -> str:
@@ -185,13 +200,14 @@ def _is_audience_mismatch(details: str) -> bool:
 @dataclass(frozen=True)
 class FoundrySettings:
     project_endpoint: str
-    agent_id: str
+    agent_id: str | None
     model: str
     api_version: str
     agent_token: str
     token_scope: str
     poll_interval_seconds: float
     max_poll_attempts: int
+    target: str = "agent"  # 'agent' or 'model'
 
 
 @dataclass(frozen=True)
@@ -253,7 +269,10 @@ def _default_credential() -> Any:
             "Install with: pip install azure-identity"
         ) from exc
 
-    return DefaultAzureCredential(exclude_developer_cli_credential=True)
+    try:
+        return DefaultAzureCredential(exclude_developer_cli_credential=True)
+    except Exception as exc:
+        raise RuntimeError(_CREDENTIAL_HELP_MESSAGE) from exc
 
 
 _AI_ASSISTED_EVALUATORS = {
@@ -565,7 +584,6 @@ def _extract_evaluator_score(payload: Dict[str, Any], preferred_keys: List[str],
 
 _SUPPORTED_LOCAL_EVALUATORS = {
     "exact_match",
-    "pass_at_1",
     "latency_seconds",
     "avg_latency_seconds",
 }
@@ -734,6 +752,7 @@ class FoundryBackend:
 
         project_endpoint = backend.project_endpoint or os.getenv(project_endpoint_env)
         agent_id = backend.agent_id
+        target = (backend.target or "agent").strip().lower()
         model = (
             backend.model
             or os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
@@ -743,13 +762,27 @@ class FoundryBackend:
 
         if not project_endpoint:
             raise ValueError(
-                "Foundry backend requires backend.project_endpoint or "
-                f"environment variable {project_endpoint_env}"
+                f"Foundry backend requires a project endpoint. Set it via:\n"
+                f"\n"
+                f"  1. 'backend.project_endpoint' in your run.yaml, or\n"
+                f"  2. Environment variable {project_endpoint_env}:\n"
+                f"\n"
+                f"     PowerShell:\n"
+                f"       $env:{project_endpoint_env} = \"https://<account>.services.ai.azure.com/api/projects/<project>\"\n"
+                f"\n"
+                f"     Bash/zsh:\n"
+                f"       export {project_endpoint_env}=\"https://<account>.services.ai.azure.com/api/projects/<project>\"\n"
+                f"\n"
+                f"You can find this URL in the Azure AI Foundry portal under your project settings."
             )
-        if not agent_id:
-            raise ValueError("Foundry backend requires backend.agent_id")
+        if target == "agent" and not agent_id:
+            raise ValueError("Foundry backend requires backend.agent_id when target=agent")
 
-        token_scope = _preferred_scope_for_agent_id(agent_id)
+        if target == "model":
+            # Model-direct: use cognitive services scope
+            token_scope = "https://cognitiveservices.azure.com/.default"
+        else:
+            token_scope = _preferred_scope_for_agent_id(agent_id)
         logger.info("Acquiring token via DefaultAzureCredential…")
         agent_token = _acquire_token(token_scope)
 
@@ -762,6 +795,7 @@ class FoundryBackend:
             token_scope=token_scope,
             poll_interval_seconds=backend.poll_interval_seconds or 2.0,
             max_poll_attempts=backend.max_poll_attempts or 120,
+            target=target,
         )
 
     def _request_json(
@@ -962,6 +996,42 @@ class FoundryBackend:
 
         return self._extract_agent_message_text(messages_payload)
 
+    def _invoke_model_direct(self, settings: FoundrySettings, prompt: str) -> str:
+        """Call the model deployment directly via the OpenAI chat completions API.
+
+        Used when ``target=model`` — no agent is involved.  The Foundry project
+        endpoint is used to derive the Azure OpenAI base URL, and the model
+        deployment name comes from ``settings.model``.
+        """
+        try:
+            from azure.ai.projects import AIProjectClient  # noqa: WPS433
+            from azure.identity import DefaultAzureCredential  # noqa: WPS433
+        except ImportError as exc:
+            raise ImportError(
+                "Model-direct evaluation requires 'azure-ai-projects>=2.0.0b1' "
+                "and 'azure-identity'. "
+                "Install with: pip install 'azure-ai-projects>=2.0.0b1' azure-identity openai"
+            ) from exc
+
+        credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
+        project_client = AIProjectClient(
+            endpoint=settings.project_endpoint,
+            credential=credential,
+        )
+        openai_client = project_client.get_openai_client()
+
+        response = openai_client.chat.completions.create(
+            model=settings.model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        if response.choices:
+            message = response.choices[0].message
+            if message and message.content:
+                return message.content.strip()
+
+        raise ValueError("Model-direct invocation returned no content")
+
     def _execute_cloud_evaluation(
         self,
         *,
@@ -1018,9 +1088,10 @@ class FoundryBackend:
 
         logger.info(
             "Starting Foundry Cloud Evaluation for %d dataset row(s) "
-            "(agent=%s, model=%s, evaluators=%s)",
+            "(target=%s, agent=%s, model=%s, evaluators=%s)",
             total_rows,
-            settings.agent_id,
+            settings.target,
+            settings.agent_id or "(none)",
             settings.model,
             [e.name for e in foundry_evaluators],
         )
@@ -1044,11 +1115,17 @@ class FoundryBackend:
             testing_criteria.append(criterion)
 
         # --- Create OpenAI client (SDK picks correct api-version) -----------
-        project_client = AIProjectClient(
-            endpoint=settings.project_endpoint,
-            credential=DefaultAzureCredential(exclude_developer_cli_credential=True),
-        )
-        openai_client = project_client.get_openai_client()
+        try:
+            credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
+            project_client = AIProjectClient(
+                endpoint=settings.project_endpoint,
+                credential=credential,
+            )
+            openai_client = project_client.get_openai_client()
+        except ImportError:
+            raise
+        except Exception as exc:
+            raise RuntimeError(_CREDENTIAL_HELP_MESSAGE) from exc
 
         # --- Data schema ----------------------------------------------------
         item_schema: Dict[str, Any] = {
@@ -1072,15 +1149,7 @@ class FoundryBackend:
         )
         logger.info("Cloud evaluation created: %s", eval_object.id)
 
-        # --- Agent target + input messages ----------------------------------
-        agent_name, agent_version = _parse_agent_name_version(settings.agent_id)
-        target: Dict[str, Any] = {
-            "type": "azure_ai_agent",
-            "name": agent_name,
-        }
-        if agent_version:
-            target["version"] = agent_version
-
+        # --- Target + input messages ----------------------------------------
         input_messages: Dict[str, Any] = {
             "type": "template",
             "template": [
@@ -1095,21 +1164,46 @@ class FoundryBackend:
             ],
         }
 
-        # --- Create the evaluation run --------------------------------------
         run_name = f"agentops-run-{uuid.uuid4().hex[:8]}"
-        eval_run = openai_client.evals.runs.create(
-            eval_id=eval_object.id,
-            name=run_name,
-            data_source={
-                "type": "azure_ai_target_completions",
-                "source": {
-                    "type": "file_content",
-                    "content": [{"item": row} for row in rows],
+
+        if settings.target == "model":
+            # Model-direct: use completions data source (no agent)
+            eval_run = openai_client.evals.runs.create(
+                eval_id=eval_object.id,
+                name=run_name,
+                data_source={
+                    "type": "completions",
+                    "source": {
+                        "type": "file_content",
+                        "content": [{"item": row} for row in rows],
+                    },
+                    "input_messages": input_messages,
+                    "model": settings.model,
                 },
-                "input_messages": input_messages,
-                "target": target,
-            },
-        )
+            )
+        else:
+            # Agent target
+            agent_name, agent_version = _parse_agent_name_version(settings.agent_id)
+            target: Dict[str, Any] = {
+                "type": "azure_ai_agent",
+                "name": agent_name,
+            }
+            if agent_version:
+                target["version"] = agent_version
+
+            eval_run = openai_client.evals.runs.create(
+                eval_id=eval_object.id,
+                name=run_name,
+                data_source={
+                    "type": "azure_ai_target_completions",
+                    "source": {
+                        "type": "file_content",
+                        "content": [{"item": row} for row in rows],
+                    },
+                    "input_messages": input_messages,
+                    "target": target,
+                },
+            )
         logger.info(
             "Cloud evaluation run started: %s  (polling every %.0fs, timeout %.0fs)",
             eval_run.id,
@@ -1173,6 +1267,19 @@ class FoundryBackend:
         enabled_local_names = frozenset(
             e.name for e in enabled_evaluators if e.source == "local"
         )
+
+        # Approximate per-row latency from total cloud eval duration.
+        eval_elapsed = perf_counter() - poll_start
+        approx_latency_per_row = eval_elapsed / len(output_items)
+        if {"latency_seconds", "avg_latency_seconds"} & enabled_local_names:
+            logger.info(
+                "Latency in cloud evaluation is estimated from total eval duration "
+                "(%.1fs / %d rows ≈ %.2fs per row)",
+                eval_elapsed,
+                len(output_items),
+                approx_latency_per_row,
+            )
+
         row_metrics_payload: List[Dict[str, Any]] = []
         stdout_lines: List[str] = []
         stderr_lines: List[str] = []
@@ -1206,16 +1313,21 @@ class FoundryBackend:
                             break
                     value = float(metric_score)
                     row_metric_entries.append({"name": metric_name, "value": value})
-                    if metric_name in evaluator_aggregate_values:
-                        evaluator_aggregate_values[metric_name].append(value)
 
             # Only emit local evaluator metrics if they are configured in the bundle.
             if "exact_match" in enabled_local_names:
                 passed = prediction.lower() == expected.lower() if expected else False
                 row_metric_entries.append({"name": "exact_match", "value": 1.0 if passed else 0.0})
-            if "pass_at_1" in enabled_local_names:
-                passed_p = prediction.lower() == expected.lower() if expected else False
-                row_metric_entries.append({"name": "pass_at_1", "value": 1.0 if passed_p else 0.0})
+            if "latency_seconds" in enabled_local_names:
+                row_metric_entries.append({"name": "latency_seconds", "value": approx_latency_per_row})
+            if "avg_latency_seconds" in enabled_local_names:
+                row_metric_entries.append({"name": "avg_latency_seconds", "value": approx_latency_per_row})
+
+            # Update aggregate values for local evaluator metrics.
+            for entry in row_metric_entries:
+                agg_name = entry["name"]
+                if agg_name in evaluator_aggregate_values:
+                    evaluator_aggregate_values[agg_name].append(entry["value"])
 
             row_index = index
             datasource_item_id = getattr(item, "datasource_item_id", None)
@@ -1268,10 +1380,16 @@ class FoundryBackend:
 
         finished = datetime.now(timezone.utc)
         duration = perf_counter() - started_perf
-        command_display = (
-            "foundry.cloud_evaluation "
-            f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id}"
-        )
+        if settings.target == "model":
+            command_display = (
+                "foundry.cloud_evaluation "
+                f"project_endpoint={settings.project_endpoint} target=model model={settings.model}"
+            )
+        else:
+            command_display = (
+                "foundry.cloud_evaluation "
+                f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id}"
+            )
 
         logger.info("Cloud evaluation completed with %d output item(s)", total)
         if report_url:
@@ -1395,9 +1513,6 @@ class FoundryBackend:
             if "exact_match" in enabled_local_names:
                 passed = prediction_normalized.lower() == expected_text.lower()
                 row_metric_entries.append({"name": "exact_match", "value": 1.0 if passed else 0.0})
-            if "pass_at_1" in enabled_local_names:
-                passed_p = prediction_normalized.lower() == expected_text.lower()
-                row_metric_entries.append({"name": "pass_at_1", "value": 1.0 if passed_p else 0.0})
             if "latency_seconds" in enabled_local_names:
                 row_metric_entries.append({"name": "latency_seconds", "value": row_latency})
             if "avg_latency_seconds" in enabled_local_names:
@@ -1432,7 +1547,10 @@ class FoundryBackend:
 
             row_start = perf_counter()
             try:
-                prediction = self._invoke_agent_service(settings, prompt, timeout_seconds)
+                if settings.target == "model":
+                    prediction = self._invoke_model_direct(settings, prompt)
+                else:
+                    prediction = self._invoke_agent_service(settings, prompt, timeout_seconds)
             except urllib.error.HTTPError as exc:
                 details = exc.read().decode("utf-8", errors="replace")
                 if exc.code == 401 and _is_audience_mismatch(details):
@@ -1444,7 +1562,10 @@ class FoundryBackend:
                             agent_token=_acquire_token(alternate_scope),
                             token_scope=alternate_scope,
                         )
-                        prediction = self._invoke_agent_service(settings, prompt, timeout_seconds)
+                        if settings.target == "model":
+                            prediction = self._invoke_model_direct(settings, prompt)
+                        else:
+                            prediction = self._invoke_agent_service(settings, prompt, timeout_seconds)
                     except Exception as retry_exc:  # noqa: BLE001
                         retry_details = str(retry_exc)
                         logger.error(
@@ -1531,11 +1652,17 @@ class FoundryBackend:
 
         finished = datetime.now(timezone.utc)
         duration = perf_counter() - started_perf
-        command_display = (
-            "foundry.agent_service "
-            f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id} "
-            f"api_version={settings.api_version}"
-        )
+        if settings.target == "model":
+            command_display = (
+                "foundry.model_direct "
+                f"project_endpoint={settings.project_endpoint} model={settings.model}"
+            )
+        else:
+            command_display = (
+                "foundry.agent_service "
+                f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id} "
+                f"api_version={settings.api_version}"
+            )
 
         return BackendExecutionResult(
             backend="foundry",

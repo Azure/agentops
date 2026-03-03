@@ -31,4 +31,5 @@ where = ["src"]
   ".gitignore",
   "bundles/*.yaml",
   "datasets/*.yaml",
+  "datasets/*.jsonl",
 ]

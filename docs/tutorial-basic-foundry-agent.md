@@ -1,6 +1,11 @@
-# Tutorial (Basic): New Foundry QA Agent + Similarity Evaluation
+# Tutorial (Basic): Foundry Agent + Similarity Evaluation
 
-Goal: create a **New Foundry** QA agent and run a minimal AgentOps evaluation using **SimilarityEvaluator** end-to-end.
+Goal: create a **Foundry** QA agent and run a minimal AgentOps evaluation using **SimilarityEvaluator** end-to-end.
+
+> **New to AgentOps?** This tutorial uses the **agent** target. If you want to
+> evaluate a model deployment directly (no agent), see the
+> [Model-Direct Tutorial](tutorial-model-direct.md). For RAG evaluation,
+> see the [RAG Tutorial](tutorial-rag.md).
 
 ## Prerequisites
 
@@ -8,9 +13,9 @@ Goal: create a **New Foundry** QA agent and run a minimal AgentOps evaluation us
 - Azure CLI
 - Access to Azure AI Foundry
 
-## Part 1: Create the agent in New Foundry
+## Part 1: Create the agent in Foundry
 
-### 1) Create or open a New Foundry project
+### 1) Create or open a Foundry project
 
 1. Open `https://ai.azure.com`.
 2. Create a new Foundry project (or open an existing one).
@@ -88,31 +93,35 @@ This creates the `.agentops/` workspace with the following structure:
 
 ```
 .agentops/
-├── config.yaml                          # workspace defaults (paths, timeout, report settings)
-├── run.yaml                             # run specification (bundle, dataset, backend config)
-├── .gitignore                           # ignores results/ from version control
+├── config.yaml                              # workspace defaults
+├── run.yaml                                 # run specification (defaults to model-direct)
+├── .gitignore
 ├── bundles/
-│   ├── qa_similarity_baseline.yaml      # SimilarityEvaluator >= 3
-│   ├── rag_baseline.yaml                # RAG evaluators (Groundedness, Relevance, etc.)
-│   └── classifier_baseline.yaml         # Classification evaluators
+│   ├── model_direct_baseline.yaml           # Model-Only: SimilarityEvaluator >= 3
+│   ├── rag_retrieval_baseline.yaml          # RAG: GroundednessEvaluator >= 3
+│   └── agent_tools_baseline.yaml            # Agent with Tools (placeholder)
 ├── datasets/
-│   ├── sample-dataset.yaml              # placeholder dataset config (replace with your own)
-│   └── smoke-agent.yaml                 # ready-to-use smoke test config
-└── results/                             # evaluation output (auto-generated)
+│   ├── smoke-model-direct.yaml              # simple QA for model-direct
+│   ├── smoke-model-direct.jsonl             # sample data (5 rows)
+│   ├── smoke-rag.yaml                       # QA + context for RAG
+│   ├── smoke-rag.jsonl                      # sample data with context field
+│   ├── smoke-agent-tools.yaml               # placeholder for tools
+│   └── smoke-agent-tools.jsonl              # sample tool-calling data
+└── results/
 ```
 
 If the workspace already exists, existing files are **not** overwritten (use `agentops init --force` to reset).
 
 ### 4) Update `.agentops/run.yaml`
 
-For this tutorial, use the `smoke-agent.yaml` dataset config. Update `run.yaml` to:
+For this tutorial, use the `smoke-model-direct.yaml` dataset config with the agent target. Update `run.yaml` to:
 
 ```yaml
 version: 1
 bundle:
-  path: bundles/qa_similarity_baseline.yaml
+  path: bundles/model_direct_baseline.yaml
 dataset:
-  path: datasets/smoke-agent.yaml
+  path: datasets/smoke-model-direct.yaml
 backend:
   type: foundry
   target: agent
@@ -126,11 +135,9 @@ output:
   write_report: true
 ```
 
-### 5) Create `eval/datasets/smoke-agent.jsonl`
+### 5) Verify the sample dataset
 
-The `smoke-agent.yaml` config points to `../../eval/datasets/smoke-agent.jsonl`.
-
-Create this file manually:
+`agentops init` already created `.agentops/datasets/smoke-model-direct.jsonl` with sample data:
 
 ```jsonl
 {"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
@@ -140,8 +147,8 @@ Create this file manually:
 {"id":"5","input":"What is the largest ocean on Earth?","expected":"The Pacific Ocean is the largest ocean on Earth."}
 ```
 
-This tutorial uses `qa_similarity_baseline`, which applies:
-- `SimilarityEvaluator >= 3` (ordinal scale 1-5)
+This tutorial uses `model_direct_baseline`, which applies:
+- `SimilarityEvaluator >= 3` (ordinal scale 1–5)
 
 ## Part 3: Run evaluation
 
@@ -155,6 +162,19 @@ agentops eval run
 
 - `.agentops/results/latest/results.json`
 - `.agentops/results/latest/report.md`
+
+## Evaluation scenarios
+
+AgentOps supports three evaluation scenarios:
+
+| Scenario | Bundle | Target | Description |
+|---|---|---|---|
+| **Model-Only** | `model_direct_baseline.yaml` | `model` | Direct model calls, SimilarityEvaluator |
+| **RAG** | `rag_retrieval_baseline.yaml` | `agent` | Agent with retrieval, GroundednessEvaluator |
+| **Agent with Tools** | `agent_tools_baseline.yaml` | `agent` | Placeholder for tool-calling agents |
+
+- [Model-Direct Tutorial](tutorial-model-direct.md) — evaluate a model without an agent
+- [RAG Tutorial](tutorial-rag.md) — evaluate groundedness of RAG responses
 
 ## Notes
 
