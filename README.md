@@ -30,12 +30,16 @@ This creates the `.agentops/` workspace with the following structure:
 ├── run.yaml
 ├── .gitignore
 ├── bundles/
-│   ├── qa_similarity_baseline.yaml   (default bundle)
-│   ├── rag_baseline.yaml
-│   └── classifier_baseline.yaml
+│   ├── model_direct_baseline.yaml    (default bundle)
+│   ├── rag_retrieval_baseline.yaml
+│   └── agent_tools_baseline.yaml
 ├── datasets/
-│   ├── sample-dataset.yaml           (placeholder — edit for your project)
-│   └── smoke-agent.yaml              (ready-to-use smoke test)
+│   ├── smoke-model-direct.yaml
+│   ├── smoke-model-direct.jsonl
+│   ├── smoke-rag.yaml
+│   ├── smoke-rag.jsonl
+│   ├── smoke-agent-tools.yaml
+│   └── smoke-agent-tools.jsonl
 └── results/
 ```
 
@@ -103,9 +107,9 @@ Bundles created by `agentops init`:
 
 | Bundle | Evaluators | Use case |
 |---|---|---|
-| `qa_similarity_baseline` (default) | `SimilarityEvaluator` | QA scenarios with semantic similarity scoring |
-| `rag_baseline` | `GroundednessEvaluator` | RAG scenarios with groundedness scoring |
-| `classifier_baseline` | `exact_match` + `avg_latency_seconds` | Classifier-style exact-answer scenarios |
+| `model_direct_baseline` (default) | `SimilarityEvaluator` + `avg_latency_seconds` | Model-direct QA scenarios with semantic similarity and latency checks |
+| `rag_retrieval_baseline` | `GroundednessEvaluator` + `avg_latency_seconds` | RAG scenarios with groundedness and latency checks |
+| `agent_tools_baseline` | `SimilarityEvaluator` + `avg_latency_seconds` | Agent-with-tools placeholder baseline (to be expanded) |
 
 ### Default behavior
 
