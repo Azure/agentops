@@ -204,7 +204,7 @@ AgentOps provides sensible defaults so you don't need to configure extra environ
 
 | Setting | Default | Override |
 |---|---|---|
-| Judge model (AI-assisted evaluators) | `gpt-5-mini` | `backend.model` in `run.yaml` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` env var |
+| Judge model (AI-assisted evaluators) | A deployment you configure in your project | `backend.model` in `run.yaml` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` env var |
 | Authentication | `DefaultAzureCredential` (passwordless) | `az login` locally, Managed Identity in Azure |
 
 ## 7) Known caveats

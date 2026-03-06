@@ -14,6 +14,7 @@ EvaluatorSource = Literal["local", "foundry"]
 class WorkspacePaths(BaseModel):
     bundles_dir: Path
     datasets_dir: Path
+    data_dir: Path
     results_dir: Path
 
 
@@ -175,6 +176,23 @@ class BackendConfig(BaseModel):
     poll_interval_seconds: Optional[float] = None
     max_poll_attempts: Optional[int] = None
     model: Optional[str] = None
+
+    @field_validator("model")
+    @classmethod
+    def _reject_placeholder_model(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+
+        normalized = value.strip()
+        looks_like_placeholder = (
+            (normalized.startswith("<") and normalized.endswith(">"))
+            or "replace-with" in normalized.lower()
+        )
+        if looks_like_placeholder:
+            raise ValueError(
+                "backend.model must be replaced with a real Foundry model deployment name"
+            )
+        return normalized
 
     @model_validator(mode="after")
     def _validate_subprocess_requirements(self) -> "BackendConfig":

@@ -20,16 +20,18 @@ _TEMPLATE_PACKAGE = "agentops.templates"
 _TEMPLATE_FILES: tuple[str, ...] = (
     "config.yaml",
     "run.yaml",
+    "run-rag.yaml",
+    "run-agent.yaml",
     ".gitignore",
     "bundles/model_direct_baseline.yaml",
     "bundles/rag_retrieval_baseline.yaml",
     "bundles/agent_tools_baseline.yaml",
     "datasets/smoke-model-direct.yaml",
-    "datasets/smoke-model-direct.jsonl",
     "datasets/smoke-rag.yaml",
-    "datasets/smoke-rag.jsonl",
     "datasets/smoke-agent-tools.yaml",
-    "datasets/smoke-agent-tools.jsonl",
+    "data/smoke-model-direct.jsonl",
+    "data/smoke-rag.jsonl",
+    "data/smoke-agent-tools.jsonl",
 )
 
 
@@ -55,6 +57,7 @@ def initialize_workspace(directory: Path, force: bool = False) -> InitResult:
         agentops_dir,
         agentops_dir / "bundles",
         agentops_dir / "datasets",
+        agentops_dir / "data",
         agentops_dir / "results",
     ]
 

@@ -1,12 +1,14 @@
 version: 1
 bundle:
-  path: bundles/model_direct_baseline.yaml
+  path: bundles/rag_retrieval_baseline.yaml
 dataset:
-  path: datasets/smoke-model-direct.yaml
+  path: datasets/smoke-rag.yaml
 backend:
   type: foundry
-  target: model
-  # Replace with a model deployment that exists in your Foundry project.
+  target: agent
+  # Replace with your Foundry agent id, for example my-agent:3.
+  agent_id: <replace-with-your-foundry-agent-id>
+  # Required by AI-assisted evaluators (judge model).
   model: <replace-with-your-foundry-model-deployment-name>
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"

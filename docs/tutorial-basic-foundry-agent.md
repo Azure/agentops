@@ -73,15 +73,16 @@ Authentication is passwordless via `DefaultAzureCredential` (local `az login`, o
 
 > **Minimal setup:** For cloud evaluation, the only required environment variable is
 > `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. AgentOps automatically defaults the OpenAI
-> API version to `2025-05-01` and resolves the evaluator model from `backend.model`
-> in `run.yaml` (default `gpt-5-mini`). No additional OpenAI env vars are needed
+> API version to `2025-05-01`. For AI-assisted evaluators, explicitly configure a
+> model deployment that exists in your project via `backend.model` or
+> `AZURE_AI_MODEL_DEPLOYMENT_NAME`. No additional OpenAI env vars are needed
 > unless you want to override the defaults.
 
 #### Optional overrides
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Override the judge model used by AI-assisted evaluators | `gpt-5-mini` (from `backend.model` in `run.yaml`) |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Set the judge model used by AI-assisted evaluators when `backend.model` is not provided | No project-universal default deployment |
 
 ### 3) Initialize AgentOps
 
@@ -94,27 +95,30 @@ This creates the `.agentops/` workspace with the following structure:
 ```
 .agentops/
 ├── config.yaml                              # workspace defaults
-├── run.yaml                                 # run specification (defaults to model-direct)
+├── run.yaml                                 # default model-direct run
+├── run-rag.yaml                             # example run for RAG scenario
+├── run-agent.yaml                           # example run for agent scenario
 ├── .gitignore
 ├── bundles/
 │   ├── model_direct_baseline.yaml           # Model-Only: SimilarityEvaluator >= 3
 │   ├── rag_retrieval_baseline.yaml          # RAG: GroundednessEvaluator >= 3
 │   └── agent_tools_baseline.yaml            # Agent with Tools (placeholder)
 ├── datasets/
-│   ├── smoke-model-direct.yaml              # simple QA for model-direct
+│   ├── smoke-model-direct.yaml              # simple QA definition for model-direct
+│   ├── smoke-rag.yaml                       # QA + context definition for RAG
+│   └── smoke-agent-tools.yaml               # placeholder definition for tools
+├── data/
 │   ├── smoke-model-direct.jsonl             # sample data (5 rows)
-│   ├── smoke-rag.yaml                       # QA + context for RAG
 │   ├── smoke-rag.jsonl                      # sample data with context field
-│   ├── smoke-agent-tools.yaml               # placeholder for tools
 │   └── smoke-agent-tools.jsonl              # sample tool-calling data
 └── results/
 ```
 
 If the workspace already exists, existing files are **not** overwritten (use `agentops init --force` to reset).
 
-### 4) Update `.agentops/run.yaml`
+### 4) Update `.agentops/run-agent.yaml`
 
-For this tutorial, use the `smoke-model-direct.yaml` dataset config with the agent target. Update `run.yaml` to:
+For this tutorial, use the `smoke-model-direct.yaml` dataset spec with the agent target. Update `run-agent.yaml` to:
 
 ```yaml
 version: 1
@@ -126,6 +130,7 @@ backend:
   type: foundry
   target: agent
   agent_id: <your-agent-id>
+  model: <replace-with-your-foundry-model-deployment-name>
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2
@@ -137,7 +142,7 @@ output:
 
 ### 5) Verify the sample dataset
 
-`agentops init` already created `.agentops/datasets/smoke-model-direct.jsonl` with sample data:
+`agentops init` already created `.agentops/data/smoke-model-direct.jsonl` with sample data:
 
 ```jsonl
 {"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
@@ -155,7 +160,7 @@ This tutorial uses `model_direct_baseline`, which applies:
 ### 1) Run
 
 ```bash
-agentops eval run
+agentops eval run --config .agentops/run-agent.yaml
 ```
 
 ### 2) Check results
@@ -180,5 +185,6 @@ AgentOps supports three evaluation scenarios:
 
 - Authentication is automatic via `DefaultAzureCredential`.
 - For local development, `az login` is enough.
-- AgentOps defaults the OpenAI API version (`2025-05-01`) and judge model (`gpt-5-mini`) automatically — no extra env vars needed beyond `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`.
+- AgentOps defaults the OpenAI API version to `2025-05-01`.
+- For AI-assisted evaluators, set `backend.model` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` to a deployment that exists in your Foundry project.
 - This tutorial intentionally keeps the flow minimal.

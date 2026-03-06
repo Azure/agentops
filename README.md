@@ -1,56 +1,92 @@
-# AgentOps Toolkit
+<h1 align="center">AgentOps Toolkit</h1>
 
-AgentOps Toolkit is an open-source project that makes agent evaluation easier to run and maintain. It gives you reusable templates and a simple workflow so teams can run the same checks in local development and CI. In short, it helps make quality checks repeatable and easier to trust.
+<p align="center">
+AgentOps CLI for evaluation, observability, and operational workflows for Microsoft Foundry Agents and Models.
+</p>
 
-## Quick install (pip)
+<p align="center">
+<a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
+<img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg"/>
+<img alt="CLI" src="https://img.shields.io/badge/CLI-Typer-5A67D8.svg"/>
+<img alt="Built on Microsoft Foundry" src="https://img.shields.io/badge/Built%20on-Microsoft%20Foundry-0078D4.svg"/>
+</p>
+
+## Overview
+
+AgentOps Toolkit is a CLI built on Microsoft Foundry that standardizes evaluation and operational workflows for AI agents and models, helping teams run, monitor, and automate AgentOps processes.
+
+The project enables:
+
+- Consistent local and CI execution of agent evaluations
+- Reusable evaluation policies through bundles
+- Operational observability through tracing, monitoring, and run inspection
+- Stable machine-readable outputs for automation
+- Human-readable reports for PR reviews and quality gates
+
+Operational capabilities include:
+
+- Standardized evaluation workflows
+- Run history and result inspection
+- Tracing and observability
+- Monitoring (dashboards and alerts)
+- CI/CD automation
+- Operational reporting and analysis
+
+Core outputs:
+
+- `results.json` (machine-readable)
+- `report.md` (human-readable)
+
+Exit code contract:
+
+- `0` execution succeeded and all thresholds passed
+- `2` execution succeeded but one or more thresholds failed
+- `1` runtime or configuration error
+
+## Quickstart
+
+This section is structured for demos and onboarding, so you can present the project flow end-to-end in a few minutes.
+
+### 1) Install
 
 ```bash
 python -m venv .venv
-# activate the virtual environment in your shell
+# activate your venv in the current shell
 python -m pip install -U pip
 python -m pip install agentops-toolkit
 ```
 
-## Quickstart
-
-This quickstart is the minimal path to test a single **Foundry agent** end-to-end.
-AgentOps also supports other evaluation setups, but this section intentionally keeps the flow simple.
-
-From your project root:
+### 2) Initialize Workspace
 
 ```bash
 agentops init
 ```
 
-This creates the `.agentops/` workspace with the following structure:
+Generated structure:
 
-```
+```text
 .agentops/
 ├── config.yaml
 ├── run.yaml
+├── run-rag.yaml
+├── run-agent.yaml
 ├── .gitignore
 ├── bundles/
-│   ├── model_direct_baseline.yaml    (default bundle)
+│   ├── model_direct_baseline.yaml
 │   ├── rag_retrieval_baseline.yaml
 │   └── agent_tools_baseline.yaml
 ├── datasets/
 │   ├── smoke-model-direct.yaml
-│   ├── smoke-model-direct.jsonl
 │   ├── smoke-rag.yaml
+│   └── smoke-agent-tools.yaml
+├── data/
+│   ├── smoke-model-direct.jsonl
 │   ├── smoke-rag.jsonl
-│   ├── smoke-agent-tools.yaml
 │   └── smoke-agent-tools.jsonl
 └── results/
 ```
 
-### Configure
-
-Edit `.agentops/run.yaml` to set your target:
-
-- For **model-direct** evaluation (default): set `backend.target: model` and `backend.model: <deployment>`
-- For **agent** evaluation: set `backend.target: agent` and `backend.agent_id: <your-agent-id>`
-
-Set the environment variable for your Foundry project:
+### 3) Configure Foundry Endpoint
 
 PowerShell:
 
@@ -64,89 +100,112 @@ Bash/zsh:
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 
-### Dataset
+Authentication uses `DefaultAzureCredential`:
+- local: `az login`
+- CI/CD: service principal env vars
+- Azure-hosted: managed identity
 
-`agentops init` creates sample `.jsonl` datasets alongside the YAML configs in `.agentops/datasets/`.
-The default `run.yaml` uses `datasets/smoke-model-direct.yaml`, which points to `smoke-model-direct.jsonl` in the same folder.
+### 4) Choose Scenario Run Config
 
-To use your own data, create a `.jsonl` file and update the `source.path` in the dataset YAML config:
+Starter run files created by `agentops init`:
+- `.agentops/run.yaml` (default model-direct)
+- `.agentops/run-rag.yaml` (agent + rag baseline)
+- `.agentops/run-agent.yaml` (agent + tools baseline)
 
-```jsonl
-{"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
-{"id":"2","input":"Which planet is known as the Red Planet?","expected":"Mars is known as the Red Planet."}
-```
+Important:
+- Replace placeholders (`backend.model`, `backend.agent_id`) with values that exist in your Foundry project.
+- There is no universal deployment name guaranteed across all Foundry projects/regions.
 
-If the `.jsonl` file is missing, `agentops eval run` fails with a dataset-not-found error.
-
-### Authenticate
-
-Authentication is automatic via `DefaultAzureCredential`:
-- Local dev: `az login`
-- CI/CD: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`
-- Azure hosted: managed identity
-
-### Run
+### 5) Run Evaluation
 
 ```bash
 agentops eval run
 ```
 
-This uses `.agentops/run.yaml` by default and generates `results.json` + `report.md`.
+Or run a specific scenario file:
 
-### Evaluation model
+```bash
+agentops eval run --config .agentops/run-rag.yaml
+agentops eval run --config .agentops/run-agent.yaml
+```
 
-- `evaluators` define which scores are produced (for example, `exact_match`, `avg_latency_seconds`, `SimilarityEvaluator`).
-- `thresholds` validate evaluator scores using `evaluator` + `criteria` (+ `value` when numeric).
-- Every enabled evaluator in the bundle must produce scores in `row_metrics`.
-- Each item gets a threshold verdict per evaluator, and an item final verdict (`passed_all`).
-- Each run also generates consolidated `run_metrics` (for example `run_pass`, `threshold_pass_rate`, `items_pass_rate`, `accuracy`, plus avg/stddev metrics).
+Default behavior:
+- input config: `.agentops/run.yaml`
+- output location: timestamped folder under `.agentops/results/`
+- latest pointer: `.agentops/results/latest/`
 
-### Starter bundles
+### 6) Regenerate Report (Optional)
 
-Bundles created by `agentops init`:
+```bash
+agentops report
+```
 
-| Bundle | Evaluators | Use case |
+Default input:
+- `.agentops/results/latest/results.json`
+
+## Evaluation Scenarios
+
+Starter bundles created by `agentops init`:
+
+| Bundle | Evaluators | Typical use |
 |---|---|---|
-| `model_direct_baseline` (default) | `SimilarityEvaluator` + `avg_latency_seconds` | Model-direct QA scenarios with semantic similarity and latency checks |
-| `rag_retrieval_baseline` | `GroundednessEvaluator` + `avg_latency_seconds` | RAG scenarios with groundedness and latency checks |
-| `agent_tools_baseline` | `SimilarityEvaluator` + `avg_latency_seconds` | Agent-with-tools placeholder baseline (to be expanded) |
+| `model_direct_baseline` (default) | `SimilarityEvaluator` + `avg_latency_seconds` | Model-direct QA checks |
+| `rag_retrieval_baseline` | `GroundednessEvaluator` + `avg_latency_seconds` | RAG groundedness checks |
+| `agent_tools_baseline` | `SimilarityEvaluator` + `avg_latency_seconds` | Agent-with-tools baseline (placeholder) |
 
-### Default behavior
-
-- `agentops eval run`
-  - `--config` default: `.agentops/run.yaml`
-  - `--output` default: timestamp folder under `.agentops/results/`
+`datasets/` stores YAML dataset definitions.
+`data/` stores JSONL rows referenced by dataset definitions.
 
 ## Commands
 
-### `agentops eval run`
+### Command Line Reference
 
-Run an evaluation defined in a `run.yaml` file.
+| Command | Description | Status |
+|---|---|---|
+| `agentops init [--path DIR]` | Scaffold project workspace and starter files | Available |
+| `agentops eval run` | Evaluate a dataset against a bundle | Available |
+| `agentops eval compare --runs ID1,ID2` | Compare two past runs | Planned (stub) |
+| `agentops run list\|show` | List or inspect past runs | Planned (stub) |
+| `agentops run view <id> [--entry N]` | Deep run inspection | Planned (stub) |
+| `agentops report` | Regenerate `report.md` from `results.json` | Available |
+| `agentops report show\|export` | View/export reports | Planned (stub) |
+| `agentops bundle list\|show` | Browse bundle catalog | Planned (stub) |
+| `agentops dataset validate\|describe\|import` | Dataset utilities | Planned (stub) |
+| `agentops config validate\|show\|cicd` | Config/CI utilities | Planned (stub) |
+| `agentops trace init` | Tracing setup | Planned (stub) |
+| `agentops monitor setup\|dashboard\|alert` | Monitoring operations | Planned (stub) |
+| `agentops model list` | List Foundry model deployments | Planned (stub) |
+| `agentops agent list` | List Foundry agents | Planned (stub) |
+
+Implemented command usage:
 
 ```bash
+agentops init [--path <dir>]
 agentops eval run [--config <path>] [--output <dir>]
-```
-
-### `agentops report`
-
-Regenerate `report.md` from an existing `results.json`.
-
-```bash
 agentops report [--in <results.json>] [--out <report.md>]
 ```
 
-Defaults: `--in .agentops/results/latest/results.json`
+For planned commands, the CLI returns a friendly message indicating the command is planned but not implemented in this release.
 
-## Exit codes
+## Project Structure
 
-- `0`: execution succeeded and thresholds passed
-- `2`: execution succeeded, but one or more thresholds failed
-- `1`: runtime/configuration error
+High-level code layout:
 
-## Tutorials
+- `src/agentops/cli/` command entrypoints (Typer)
+- `src/agentops/services/` orchestration workflows
+- `src/agentops/backends/` execution engines (`foundry`, `subprocess`)
+- `src/agentops/core/` schemas, thresholds, and report generation
+- `src/agentops/templates/` starter workspace assets
+- `tests/unit/` and `tests/integration/` automated tests
 
-[Foundry Agent Evaluation](docs/tutorial-basic-foundry-agent.md)
+## Documentation
 
-## How it works
+- Architecture and request flow: [docs/how-it-works.md](docs/how-it-works.md)
+- Foundry agent tutorial: [docs/tutorial-basic-foundry-agent.md](docs/tutorial-basic-foundry-agent.md)
+- Model-direct tutorial: [docs/tutorial-model-direct.md](docs/tutorial-model-direct.md)
+- RAG tutorial: [docs/tutorial-rag.md](docs/tutorial-rag.md)
+- Built-in evaluator notes: [docs/foundry-evaluation-sdk-built-in-evaluators.md](docs/foundry-evaluation-sdk-built-in-evaluators.md)
 
-For architecture, configuration model, runtime flow, and output behavior, see: [How it works](docs/how-it-works.md)
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture rules, testing expectations, and contribution workflow.

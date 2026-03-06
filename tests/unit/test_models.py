@@ -156,6 +156,20 @@ def test_backend_accepts_foundry_with_agent_id() -> None:
     assert backend.agent_id == "asst_abc123"
 
 
+def test_backend_rejects_placeholder_model_name() -> None:
+    try:
+        BackendConfig.model_validate(
+            {
+                "type": "foundry",
+                "target": "model",
+                "model": "<replace-with-your-foundry-model-deployment-name>",
+            }
+        )
+        assert False, "expected validation error"
+    except Exception as exc:
+        assert "backend.model" in str(exc) or "deployment name" in str(exc)
+
+
 def test_backend_rejects_unsupported_type() -> None:
     try:
         BackendConfig.model_validate({"type": "unknown"})

@@ -3,7 +3,7 @@ name: smoke_rag
 description: Small smoke dataset for RAG evaluation. Each row includes a context field representing retrieved documents.
 source:
   type: file
-  path: smoke-rag.jsonl
+  path: ../data/smoke-rag.jsonl
 format:
   type: jsonl
   input_field: input

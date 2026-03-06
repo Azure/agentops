@@ -28,8 +28,10 @@ where = ["src"]
 "agentops.templates" = [
   "config.yaml",
   "run.yaml",
+  "run-rag.yaml",
+  "run-agent.yaml",
   ".gitignore",
   "bundles/*.yaml",
   "datasets/*.yaml",
-  "datasets/*.jsonl",
+  "data/*.jsonl",
 ]

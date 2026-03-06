@@ -289,3 +289,29 @@ def test_foundry_backend_model_direct_target(tmp_path: Path) -> None:
     metrics_by_name = {item["name"]: item["value"] for item in payload["metrics"]}
     assert metrics_by_name["exact_match"] == 1.0
     assert metrics_by_name["samples_evaluated"] == 2.0
+
+
+def test_foundry_backend_model_target_requires_explicit_model(tmp_path: Path) -> None:
+    dataset_path = _dataset_yaml(tmp_path)
+    bundle_path = _bundle_yaml(tmp_path)
+    context = BackendRunContext(
+        backend_config=BackendConfig(
+            type="foundry",
+            target="model",
+            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
+            api_version="2025-05-01",
+            timeout_seconds=15,
+            poll_interval_seconds=0.01,
+            max_poll_attempts=5,
+        ),
+        bundle_path=bundle_path,
+        dataset_path=dataset_path,
+        backend_output_dir=tmp_path / "out-model-missing",
+    )
+
+    try:
+        FoundryBackend().execute(context)
+        assert False, "expected ValueError"
+    except ValueError as exc:
+        assert "target=model" in str(exc)
+        assert "backend.model" in str(exc)

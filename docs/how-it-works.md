@@ -61,8 +61,11 @@ src/
     └── templates/             # Starter files for `agentops init`
         ├── config.yaml
         ├── run.yaml
+        ├── run-rag.yaml
+        ├── run-agent.yaml
         ├── bundles/           # Pre-built evaluation bundles
-        └── datasets/          # Sample datasets (.yaml + .jsonl)
+        ├── datasets/         # Dataset definitions (.yaml)
+        └── data/             # Sample dataset rows (.jsonl)
 ```
 
 ### Where to Add New Code
@@ -102,14 +105,22 @@ When you run `agentops eval run`, the following happens step by step:
 
 ## CLI Commands
 
-| Command | Purpose |
-|---|---|
-| `agentops init` | Scaffold `.agentops/` workspace with starter config, bundles, and datasets |
-| `agentops eval run` | Execute an evaluation (main command) |
-| `agentops eval run -c <path>` | Use a specific run config instead of `.agentops/run.yaml` |
-| `agentops eval run -o <dir>` | Write output to a custom directory |
-| `agentops report` | Regenerate `report.md` from an existing `results.json` |
-| `agentops report --in <path>` | Specify which `results.json` to use |
+| Command | Purpose | Status |
+|---|---|---|
+| `agentops init [--path DIR]` | Scaffold `.agentops/` workspace with starter config, bundles, datasets, and data | Available |
+| `agentops eval run` | Execute an evaluation (main command) | Available |
+| `agentops eval compare --runs ID1,ID2` | Compare two past evaluation runs | Planned (stub) |
+| `agentops run list\|show` | List or inspect past runs | Planned (stub) |
+| `agentops run view <id> [--entry N]` | Deep-inspect a run | Planned (stub) |
+| `agentops report [--in <path>] [--out <path>]` | Regenerate `report.md` from `results.json` | Available |
+| `agentops report show\|export` | View or export reports | Planned (stub) |
+| `agentops bundle list\|show` | Browse bundle definitions | Planned (stub) |
+| `agentops dataset validate\|describe\|import` | Validate, describe, and import datasets | Planned (stub) |
+| `agentops config validate\|show\|cicd` | Validate config and CI/CD scaffolding | Planned (stub) |
+| `agentops trace init` | Initialize tracing setup | Planned (stub) |
+| `agentops monitor setup\|dashboard\|alert` | Monitoring setup and operations | Planned (stub) |
+| `agentops model list` | List model deployments from Foundry project | Planned (stub) |
+| `agentops agent list` | List agent deployments from Foundry project | Planned (stub) |
 
 ---
 
@@ -132,13 +143,17 @@ The `.agentops/` directory lives in your project root and stores all evaluation 
 ```
 .agentops/
 ├── config.yaml                # Workspace-level defaults
-├── run.yaml                   # Default run specification (bundle + dataset + backend)
+├── run.yaml                   # Default model-direct run specification
+├── run-rag.yaml               # Example run for RAG scenario
+├── run-agent.yaml             # Example run for Agent-with-tools scenario
 ├── bundles/
 │   ├── rag_retrieval_baseline.yaml
 │   ├── model_direct_baseline.yaml
 │   └── agent_tools_baseline.yaml
 ├── datasets/
-│   ├── smoke-rag.yaml         # Dataset metadata
+│   ├── smoke-rag.yaml         # Dataset metadata and source mapping
+│   └── ...
+├── data/
 │   ├── smoke-rag.jsonl        # Actual data rows
 │   └── ...
 └── results/
@@ -246,7 +261,7 @@ version: 1
 name: regression_set
 source:
   type: file
-  path: regression.jsonl
+  path: ../data/regression.jsonl
 format:
   type: jsonl
   input_field: input
@@ -254,7 +269,7 @@ format:
 ```
 
 - `path` is resolved relative to the dataset config file location.
-- Place `.jsonl` files in `.agentops/datasets/` alongside the YAML configs for simple co-location.
+- Keep dataset YAML definitions in `.agentops/datasets/` and `.jsonl` rows in `.agentops/data/` so definitions and data stay separate.
 
 ## Run config (`.agentops/run.yaml`)
 
@@ -262,6 +277,11 @@ format:
 - This is the default run file loaded by `agentops eval run`.
 - This is the file you change most often to point to your target (Foundry agent service, or subprocess app).
 - Create additional run files when you need different execution modes (for example: local vs CI backend args).
+
+`agentops init` seeds three scenario-oriented run files:
+- `.agentops/run.yaml` (model-direct, default)
+- `.agentops/run-rag.yaml` (agent + rag baseline)
+- `.agentops/run-agent.yaml` (agent + tools baseline)
 - Minimal shape:
 
 ```yaml
@@ -274,6 +294,7 @@ backend:
   type: foundry
   target: agent
   agent_id: asst_abc123
+  model: <replace-with-your-foundry-model-deployment-name>
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2
@@ -336,7 +357,7 @@ AgentOps supports three evaluation scenarios:
 
 - `target: model`
   - Sends prompts directly to a model deployment (no agent involved)
-  - Required in backend config: `model` (deployment name, e.g. `gpt-5-mini`)
+  - Required in backend config: `model` (deployment name that already exists in the Foundry project)
   - Required env: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
   - Does **not** require `agent_id`
   - Cloud evaluation uses `completions` data source type
@@ -350,7 +371,7 @@ AgentOps supports three evaluation scenarios:
   - Azure hosted: managed identity (no config needed)
 - Set project endpoint:
   - `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/projects/<project>`
-- Configure `.agentops/run.yaml`:
+- Configure the run file for your scenario (`.agentops/run.yaml`, `.agentops/run-rag.yaml`, or `.agentops/run-agent.yaml`):
 
 Example for agent target:
 
@@ -364,6 +385,7 @@ backend:
   type: foundry
   target: agent
   agent_id: my-agent:1
+  model: <replace-with-your-foundry-model-deployment-name>
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2
@@ -383,7 +405,7 @@ dataset:
 backend:
   type: foundry
   target: model
-  model: gpt-5-mini
+  model: <replace-with-your-foundry-model-deployment-name>
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2
@@ -392,7 +414,7 @@ output:
   write_report: true
 ```
 
-- Run `agentops eval run`.
+- Run `agentops eval run` for the default model-direct config, or `agentops eval run --config .agentops/run-rag.yaml` / `agentops eval run --config .agentops/run-agent.yaml` for scenario-specific files.
 - AgentOps creates one thread/run per dataset row, fetches the assistant response, computes metrics, and writes artifacts.
 
 ## Foundry backend inputs

@@ -139,7 +139,7 @@ The Foundry backend (`backends/foundry_backend.py`) is the largest and most comp
 | `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project endpoint URL | Required |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint (auto-derived if absent) | Auto-derived |
 | `AZURE_OPENAI_DEPLOYMENT` | Model deployment name (auto-derived if absent) | Auto-derived |
-| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Fallback model deployment name | `gpt-5-mini` |
+| `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Explicit model deployment name override | No project-universal default deployment |
 | `AZURE_OPENAI_API_VERSION` | OpenAI API version for local evaluators | SDK default |
 
 ---
@@ -150,9 +150,12 @@ Configuration is **YAML-first** and layered:
 
 - `.agentops/config.yaml` → workspace defaults
 - bundle YAML → evaluators + thresholds (see `docs/how-it-works.md` for schema)
-- dataset YAML → dataset reference and metadata (`.jsonl` format)
+- dataset YAML config (`.yaml`) → dataset reference and metadata, including the path to JSONL rows
+- dataset JSONL → evaluation rows, typically stored separately under `.agentops/data/`
 - run YAML → concrete run specification (backend, agent, model, dataset, bundle)
 - CLI flags override YAML
+
+By default, `agentops init` keeps dataset YAML configs in `.agentops/datasets/` and dataset rows in `.agentops/data/`.
 
 Schemas are validated using **Pydantic v2 models** (`core/models.py`).
 
@@ -164,7 +167,7 @@ The `backend` section for Foundry runs uses `type: foundry` (not `name`). Fields
 - `type: foundry` — Backend type selector (must be `foundry` or `subprocess`)
 - `target` — `agent` (default) or `model`
 - `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version); required when `target: agent`
-- `model` — Deployment name, e.g. `gpt-5-mini`; used when `target: model` or for evaluators
+- `model` — Deployment name that already exists in the Foundry project; used when `target: model` or for evaluators
 - `project_endpoint` — Foundry project URL (inline value)
 - `project_endpoint_env` — Env var name holding the project URL (default: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`)
 - `api_version` — Agent Service API version (default: `2025-05-01`)
@@ -225,6 +228,14 @@ Do not implement the following unless explicitly discussed:
 ---
 
 ## Copilot Guidance
+
+## Workflow Skills
+
+This repository also defines workflow-oriented Copilot skills under `.github/skills/`.
+
+- Use these skills for operational guidance on running evaluations, investigating regressions, and observability triage workflows.
+- Treat the CLI as the source of truth and keep planned/stubbed commands clearly marked as not yet implemented.
+- Do not duplicate architecture or code-structure guidance from this file inside workflow skills.
 
 When generating or modifying code:
 

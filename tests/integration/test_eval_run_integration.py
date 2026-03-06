@@ -18,9 +18,11 @@ def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
     agentops_dir = tmp_path / ".agentops"
     bundles_dir = agentops_dir / "bundles"
     datasets_dir = agentops_dir / "datasets"
+    data_dir = agentops_dir / "data"
 
     bundles_dir.mkdir(parents=True, exist_ok=True)
     datasets_dir.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
 
     threshold_value = 0.95 if fail_thresholds else 0.8
 
@@ -52,10 +54,21 @@ def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
             "version": 1,
             "name": "smoke",
             "description": "Integration dataset",
-            "source": {"type": "file", "path": "./data/smoke.jsonl"},
+            "source": {"type": "file", "path": "../data/smoke.jsonl"},
             "format": {"type": "jsonl", "input_field": "input", "expected_field": "expected"},
             "metadata": {"owner": "tests"},
         },
+    )
+
+    (data_dir / "smoke.jsonl").write_text(
+        '\n'.join(
+            [
+                '{"id":"1","input":"hello","expected":"hello"}',
+                '{"id":"2","input":"world","expected":"world"}',
+            ]
+        )
+        + '\n',
+        encoding="utf-8",
     )
 
     run_payload = {

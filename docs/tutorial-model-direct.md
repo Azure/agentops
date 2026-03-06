@@ -6,7 +6,7 @@ Goal: evaluate a **model deployment** directly using **SimilarityEvaluator** —
 
 - Python 3.11+
 - Azure CLI
-- Access to Azure AI Foundry with a deployed model (e.g. `gpt-5-mini`)
+- Access to Azure AI Foundry with at least one deployed model in your project
 
 ## Part 1: Set up
 
@@ -44,15 +44,21 @@ This creates the `.agentops/` workspace:
 .agentops/
 ├── config.yaml
 ├── run.yaml                                  # defaults to model-direct scenario
+├── run-rag.yaml                              # example run for RAG scenario
+├── run-agent.yaml                            # example run for agent scenario
 ├── .gitignore
 ├── bundles/
 │   ├── model_direct_baseline.yaml            # SimilarityEvaluator >= 3
 │   ├── rag_retrieval_baseline.yaml           # GroundednessEvaluator >= 3
 │   └── agent_tools_baseline.yaml             # placeholder (Agent with Tools)
 ├── datasets/
-│   ├── smoke-model-direct.yaml               # simple QA dataset for model-direct
-│   ├── smoke-rag.yaml                        # QA + context for RAG
-│   └── smoke-agent-tools.yaml                # placeholder dataset for tools
+│   ├── smoke-model-direct.yaml               # model-direct dataset definition
+│   ├── smoke-rag.yaml                        # RAG dataset definition
+│   └── smoke-agent-tools.yaml                # tools dataset definition
+├── data/
+│   ├── smoke-model-direct.jsonl              # simple QA dataset for model-direct
+│   ├── smoke-rag.jsonl                       # QA + context for RAG
+│   └── smoke-agent-tools.jsonl               # placeholder dataset for tools
 └── results/
 ```
 
@@ -69,7 +75,7 @@ dataset:
 backend:
   type: foundry
   target: model
-  model: gpt-5-mini
+  model: <replace-with-your-foundry-model-deployment-name>
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2
@@ -81,12 +87,12 @@ output:
 
 Key differences from agent evaluation:
 - `target: model` — calls the model deployment directly (no agent)
-- `model: gpt-5-mini` — the deployment name to use
+- `model` — the deployment name to use, and it must match a model already deployed in your Foundry project
 - No `agent_id` needed
 
 ### Update the model name
 
-If your deployment is named differently (e.g. `gpt-4o`), update:
+Replace the placeholder with your actual deployment name, for example:
 
 ```yaml
 backend:
@@ -95,7 +101,7 @@ backend:
 
 ## Part 3: Verify the dataset
 
-`agentops init` already created `.agentops/datasets/smoke-model-direct.jsonl` with sample data:
+`agentops init` already created `.agentops/data/smoke-model-direct.jsonl` with sample data:
 
 ```jsonl
 {"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
@@ -139,5 +145,5 @@ For RAG evaluation (with retrieval context), see the [RAG Tutorial](tutorial-rag
 
 - Authentication is automatic via `DefaultAzureCredential`.
 - For local development, `az login` is enough.
-- The default judge model for evaluators is `gpt-5-mini` (from `backend.model`).
-- Set `AZURE_AI_MODEL_DEPLOYMENT_NAME` to override the judge model.
+- Replace the placeholder in `backend.model` with a deployment name that already exists in your Foundry project.
+- If you configure AI-assisted evaluators separately, you can also set `AZURE_AI_MODEL_DEPLOYMENT_NAME` to a deployment that exists in the same project.

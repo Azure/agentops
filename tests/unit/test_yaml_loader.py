@@ -43,6 +43,7 @@ version: 1
 paths:
   bundles_dir: ".agentops/bundles"
   datasets_dir: ".agentops/datasets"
+  data_dir: ".agentops/data"
   results_dir: ".agentops/results"
 
 defaults:
@@ -57,6 +58,8 @@ report:
 
     cfg = load_workspace_config(path)
     assert cfg.paths.bundles_dir.as_posix() == ".agentops/bundles"
+    assert cfg.paths.datasets_dir.as_posix() == ".agentops/datasets"
+    assert cfg.paths.data_dir.as_posix() == ".agentops/data"
 
 
 def test_load_bundle_config_validation_error(tmp_path: Path) -> None:

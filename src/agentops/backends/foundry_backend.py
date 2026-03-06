@@ -201,7 +201,7 @@ def _is_audience_mismatch(details: str) -> bool:
 class FoundrySettings:
     project_endpoint: str
     agent_id: str | None
-    model: str
+    model: str | None
     api_version: str
     agent_token: str
     token_scope: str
@@ -753,11 +753,7 @@ class FoundryBackend:
         project_endpoint = backend.project_endpoint or os.getenv(project_endpoint_env)
         agent_id = backend.agent_id
         target = (backend.target or "agent").strip().lower()
-        model = (
-            backend.model
-            or os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-            or "gpt-5-mini"
-        )
+        model = backend.model or os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
         api_version = backend.api_version or "2025-05-01"
 
         if not project_endpoint:
@@ -777,6 +773,11 @@ class FoundryBackend:
             )
         if target == "agent" and not agent_id:
             raise ValueError("Foundry backend requires backend.agent_id when target=agent")
+        if target == "model" and not model:
+            raise ValueError(
+                "Foundry backend requires a model deployment name when target=model. "
+                "Set 'backend.model' in run.yaml or AZURE_AI_MODEL_DEPLOYMENT_NAME."
+            )
 
         if target == "model":
             # Model-direct: use cognitive services scope
@@ -883,6 +884,12 @@ class FoundryBackend:
         prompt: str,
         timeout_seconds: int | None,
     ) -> str:
+        if not settings.model:
+            raise ValueError(
+                "Foundry agent reference mode requires a model deployment name. "
+                "Set 'backend.model' in run.yaml or AZURE_AI_MODEL_DEPLOYMENT_NAME."
+            )
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {settings.agent_token}",
@@ -1109,6 +1116,11 @@ class FoundryBackend:
                 ),
             }
             if _cloud_evaluator_needs_model(builtin_name):
+                if not settings.model:
+                    raise ValueError(
+                        f"Evaluator '{evaluator.name}' requires a model deployment name. "
+                        "Set 'backend.model' in run.yaml or AZURE_AI_MODEL_DEPLOYMENT_NAME."
+                    )
                 criterion["initialization_parameters"] = {
                     "deployment_name": settings.model,
                 }

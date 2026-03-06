@@ -2,6 +2,7 @@ version: 1
 paths:
   bundles_dir: .agentops/bundles
   datasets_dir: .agentops/datasets
+  data_dir: .agentops/data
   results_dir: .agentops/results
 defaults:
   backend: foundry

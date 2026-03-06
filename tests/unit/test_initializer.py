@@ -10,6 +10,7 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ".agentops").is_dir()
     assert (tmp_path / ".agentops" / "bundles").is_dir()
     assert (tmp_path / ".agentops" / "datasets").is_dir()
+    assert (tmp_path / ".agentops" / "data").is_dir()
     assert (tmp_path / ".agentops" / "results").is_dir()
 
     assert (tmp_path / ".agentops" / "config.yaml").is_file()
@@ -17,21 +18,24 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ".agentops" / "bundles" / "rag_retrieval_baseline.yaml").is_file()
     assert (tmp_path / ".agentops" / "bundles" / "agent_tools_baseline.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-model-direct.yaml").is_file()
-    assert (tmp_path / ".agentops" / "datasets" / "smoke-model-direct.jsonl").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-rag.yaml").is_file()
-    assert (tmp_path / ".agentops" / "datasets" / "smoke-rag.jsonl").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-agent-tools.yaml").is_file()
-    assert (tmp_path / ".agentops" / "datasets" / "smoke-agent-tools.jsonl").is_file()
+    assert (tmp_path / ".agentops" / "data" / "smoke-model-direct.jsonl").is_file()
+    assert (tmp_path / ".agentops" / "data" / "smoke-rag.jsonl").is_file()
+    assert (tmp_path / ".agentops" / "data" / "smoke-agent-tools.jsonl").is_file()
     assert (tmp_path / ".agentops" / "run.yaml").is_file()
+    assert (tmp_path / ".agentops" / "run-rag.yaml").is_file()
+    assert (tmp_path / ".agentops" / "run-agent.yaml").is_file()
     assert (tmp_path / ".agentops" / ".gitignore").is_file()
 
-    assert len(result.created_files) == 12
+    assert len(result.created_files) == 14
     assert len(result.overwritten_files) == 0
 
     run_config = load_yaml(tmp_path / ".agentops" / "run.yaml")
     assert run_config["backend"]["type"] == "foundry"
     assert run_config["backend"]["target"] == "model"
     assert "agent_id" not in run_config["backend"]
+    assert run_config["dataset"]["path"] == "datasets/smoke-model-direct.yaml"
 
 
 def test_init_does_not_overwrite_without_force(tmp_path: Path) -> None:

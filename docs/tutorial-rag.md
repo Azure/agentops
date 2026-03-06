@@ -73,7 +73,7 @@ agentops init
 
 ## Part 3: Configure the run
 
-Update `.agentops/run.yaml` for RAG evaluation:
+Update `.agentops/run-rag.yaml` for RAG evaluation:
 
 ```yaml
 version: 1
@@ -85,6 +85,7 @@ backend:
   type: foundry
   target: agent
   agent_id: <your-agent-id>
+  model: <replace-with-your-foundry-model-deployment-name>
   project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
   api_version: "2025-05-01"
   poll_interval_seconds: 2
@@ -101,7 +102,7 @@ Key settings:
 
 ## Part 4: Verify the dataset
 
-`agentops init` already created `.agentops/datasets/smoke-rag.jsonl` with sample data:
+`agentops init` already created `.agentops/data/smoke-rag.jsonl` with sample data:
 
 ```jsonl
 {"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France.","context":"France is a country in Western Europe. Its capital city is Paris, which is also the largest city in France."}
@@ -123,7 +124,7 @@ The `GroundednessEvaluator` checks whether the agent's response is grounded in t
 ## Part 5: Run evaluation
 
 ```bash
-agentops eval run
+agentops eval run --config .agentops/run-rag.yaml
 ```
 
 This will:
@@ -149,6 +150,6 @@ For model-only evaluation (no retrieval), see the [Model-Direct Tutorial](tutori
 ## Notes
 
 - The `GroundednessEvaluator` is an AI-assisted evaluator — it uses a judge model to score groundedness.
-- The judge model defaults to `gpt-5-mini` (from `backend.model`). Override with `AZURE_AI_MODEL_DEPLOYMENT_NAME`.
+- Set `backend.model` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` to a deployment that exists in your Foundry project for the judge model.
 - Authentication is automatic via `DefaultAzureCredential`.
 - For local development, `az login` is enough.

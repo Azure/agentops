@@ -3,7 +3,7 @@ name: smoke_agent_tools
 description: Placeholder smoke dataset for Agent with Tools evaluation (to be expanded).
 source:
   type: file
-  path: smoke-agent-tools.jsonl
+  path: ../data/smoke-agent-tools.jsonl
 format:
   type: jsonl
   input_field: input

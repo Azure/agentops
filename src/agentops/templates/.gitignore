@@ -8,3 +8,4 @@ results/**
 !run.yaml
 !bundles/**
 !datasets/**
+!data/**
