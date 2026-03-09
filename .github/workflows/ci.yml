@@ -3,7 +3,6 @@
 # Workflows:
 #   1. ci.yml          — Lint + test on every push/PR
 #   2. release.yml     — Build + publish to PyPI on tag push
-#   3. agentops-eval.yml        — Run agent evaluation on PR (user-configurable)
 
 name: CI
 
