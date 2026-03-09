@@ -162,6 +162,7 @@ Starter bundles created by `agentops init`:
 
 | Command | Description | Status |
 |---|---|---|
+| `agentops --version` | Show installed version | Available |
 | `agentops init [--path DIR]` | Scaffold project workspace and starter files | Available |
 | `agentops eval run` | Evaluate a dataset against a bundle | Available |
 | `agentops eval compare --runs ID1,ID2` | Compare two past runs | Planned (stub) |
@@ -171,7 +172,8 @@ Starter bundles created by `agentops init`:
 | `agentops report show\|export` | View/export reports | Planned (stub) |
 | `agentops bundle list\|show` | Browse bundle catalog | Planned (stub) |
 | `agentops dataset validate\|describe\|import` | Dataset utilities | Planned (stub) |
-| `agentops config validate\|show\|cicd` | Config/CI utilities | Planned (stub) |
+| `agentops config cicd` | Generate GitHub Actions workflow for CI evaluation | Available |
+| `agentops config validate\|show` | Config validation and inspection | Planned (stub) |
 | `agentops trace init` | Tracing setup | Planned (stub) |
 | `agentops monitor setup\|dashboard\|alert` | Monitoring operations | Planned (stub) |
 | `agentops model list` | List Foundry model deployments | Planned (stub) |
@@ -180,9 +182,11 @@ Starter bundles created by `agentops init`:
 Implemented command usage:
 
 ```bash
+agentops --version
 agentops init [--path <dir>]
 agentops eval run [--config <path>] [--output <dir>]
 agentops report [--in <results.json>] [--out <report.md>]
+agentops config cicd [--force] [--dir <path>]
 ```
 
 For planned commands, the CLI returns a friendly message indicating the command is planned but not implemented in this release.
@@ -205,6 +209,7 @@ High-level code layout:
 - Model-direct tutorial: [docs/tutorial-model-direct.md](docs/tutorial-model-direct.md)
 - RAG tutorial: [docs/tutorial-rag.md](docs/tutorial-rag.md)
 - Built-in evaluator notes: [docs/foundry-evaluation-sdk-built-in-evaluators.md](docs/foundry-evaluation-sdk-built-in-evaluators.md)
+- CI/CD setup guide: [docs/ci-github-actions.md](docs/ci-github-actions.md)
 
 ## Contributing
 
