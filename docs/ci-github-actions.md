@@ -14,13 +14,13 @@ This guide explains how to add AgentOps evaluation to your CI pipeline using Git
 
    This creates the `.agentops/` directory with starter configs, bundles, and datasets.
 
-2. **Copy the workflow** into your repository:
+2. **Generate the workflow file**:
 
-   ```text
-   .github/workflows/agentops-eval.yml
+   ```bash
+   agentops config cicd
    ```
 
-   A ready-to-use template is provided in this repository at the same path. Copy it directly into your consumer repo.
+   This creates `.github/workflows/agentops-eval.yml` in your repository.
 
 3. **Configure GitHub Secrets** (see [Authentication](#authentication) below).
 
@@ -161,6 +161,29 @@ The workflow writes a [GitHub Actions Job Summary](https://docs.github.com/en/ac
 - Full `report.md` content (when available)
 
 This is visible on the workflow run page without downloading artifacts.
+
+---
+
+## CLI Command Reference
+
+### Generate the workflow
+
+```bash
+agentops config cicd
+```
+
+Options:
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `--dir PATH` | Target repository root directory | `.` (current directory) |
+| `--force` | Overwrite existing workflow file | `false` |
+
+### Regenerate (overwrite)
+
+```bash
+agentops config cicd --force
+```
 
 ---
 
