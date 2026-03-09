@@ -1,8 +1,11 @@
 # AgentOps Evaluation — GitHub Actions Workflow
 #
-# Runs `agentops eval run` on pull requests and manual dispatch.
+# Runs `agentops eval run` after CI passes, or on manual dispatch.
 # Uploads evaluation artifacts (results.json, report.md, logs).
 # Fails the job when thresholds are not met (exit code 2) or on errors (exit code 1).
+#
+# Dependency: This workflow runs AFTER the CI workflow completes successfully.
+# On manual dispatch it runs independently (no CI gate).
 #
 # Authentication:
 #   Uses Workload Identity Federation (OIDC) — no secrets to rotate.
@@ -19,10 +22,9 @@
 name: AgentOps Evaluation
 
 on:
-  push:
-    branches: [feature/cicd]
-  pull_request:
-    branches: [main, develop, feature/cicd]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       config:
@@ -46,6 +48,10 @@ jobs:
   evaluate:
     name: Run AgentOps Evaluation
     runs-on: ubuntu-latest
+    # Skip if CI failed (workflow_run triggers on all completions)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
 
     env:
       # Foundry project endpoint — set as a GitHub repository secret

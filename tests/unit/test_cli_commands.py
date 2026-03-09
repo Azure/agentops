@@ -6,11 +6,17 @@ from agentops.cli.app import app
 runner = CliRunner()
 
 
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences for reliable text matching."""
+    import re
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def test_init_help_exposes_path_alias() -> None:
     result = runner.invoke(app, ["init", "--help"])
 
     assert result.exit_code == 0
-    assert "--path" in result.stdout
+    assert "--path" in _strip_ansi(result.stdout)
 
 
 def test_eval_compare_is_planned_stub() -> None:
@@ -38,6 +44,7 @@ def test_report_help_exposes_available_and_planned_commands() -> None:
     result = runner.invoke(app, ["report", "--help"])
 
     assert result.exit_code == 0
-    assert "--in" in result.stdout
-    assert "show" in result.stdout
-    assert "export" in result.stdout
+    stripped = _strip_ansi(result.stdout)
+    assert "--in" in stripped
+    assert "show" in stripped
+    assert "export" in stripped

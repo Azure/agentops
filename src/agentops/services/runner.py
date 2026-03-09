@@ -6,7 +6,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 from agentops.backends.base import BackendRunContext
 from agentops.backends.foundry_backend import FoundryBackend

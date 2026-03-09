@@ -1304,7 +1304,7 @@ class FoundryBackend:
                 else {}
             )
 
-            prompt = _normalize_text(row_data.get(input_field))
+            prompt = _normalize_text(row_data.get(input_field))  # noqa: F841
             expected = _normalize_text(row_data.get(expected_field))
 
             # Extract prediction from sample
@@ -1637,7 +1637,7 @@ class FoundryBackend:
         if total == 0 and exit_code == 0:
             raise RuntimeError("Foundry backend did not process any dataset rows")
 
-        avg_latency_seconds = sum(per_item_latencies) / len(per_item_latencies) if per_item_latencies else 0.0
+        avg_latency_seconds = sum(per_item_latencies) / len(per_item_latencies) if per_item_latencies else 0.0  # noqa: F841
 
         metrics_entries: List[Dict[str, float]] = []
         for evaluator_name in enabled_evaluator_order:
