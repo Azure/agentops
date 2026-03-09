@@ -38,8 +38,8 @@ on:
 
 permissions:
   contents: read
-  id-token: write       # Required for OIDC / Workload Identity Federation
-  pull-requests: write  # Required for optional PR comment step
+  id-token: write # Required for OIDC / Workload Identity Federation
+  pull-requests: write # Required for optional PR comment step
 
 env:
   PYTHON_VERSION: "3.11"
@@ -143,7 +143,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Post report as PR comment
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event.workflow_run.event == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -159,11 +159,26 @@ jobs:
             const marker = '<!-- agentops-eval-report -->';
             const commentBody = `${marker}\n${body}`;
 
+            // Find the PR associated with the workflow_run head branch
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${context.payload.workflow_run.head_branch}`,
+              state: 'open',
+            });
+
+            if (pulls.length === 0) {
+              console.log('No open PR found for this branch — skipping comment.');
+              return;
+            }
+
+            const prNumber = pulls[0].number;
+
             // Find existing comment to update (avoid duplicates)
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number,
+              issue_number: prNumber,
             });
 
             const existing = comments.find(c => c.body.includes(marker));
@@ -180,7 +195,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                issue_number: context.issue.number,
+                issue_number: prNumber,
                 body: commentBody,
               });
               console.log('Created new PR comment with evaluation report.');

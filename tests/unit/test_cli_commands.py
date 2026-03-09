@@ -9,6 +9,7 @@ runner = CliRunner()
 def _strip_ansi(text: str) -> str:
     """Remove ANSI escape sequences for reliable text matching."""
     import re
+
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 

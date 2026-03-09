@@ -10,6 +10,7 @@ Publishes already computed AgentOps backend metrics to the
 3. ``update_evaluation_run``   — marks the run ``Completed`` and links it to the
    result artifact via ``evaluationResultId``
 """
+
 from __future__ import annotations
 
 import ast
@@ -118,7 +119,9 @@ def _parse_project_identity(project_endpoint: str) -> tuple[str, str]:
     return account_name, project_name
 
 
-def _load_backend_metrics_payload(path: Path) -> tuple[Dict[str, float], Dict[int, Dict[str, float]]]:
+def _load_backend_metrics_payload(
+    path: Path,
+) -> tuple[Dict[str, float], Dict[int, Dict[str, float]]]:
     if not path.exists():
         raise FileNotFoundError(f"Backend metrics file not found: {path}")
 
@@ -136,12 +139,18 @@ def _load_backend_metrics_payload(path: Path) -> tuple[Dict[str, float], Dict[in
             continue
         name = item.get("name")
         value = item.get("value")
-        if isinstance(name, str) and isinstance(value, (int, float)) and not isinstance(value, bool):
+        if (
+            isinstance(name, str)
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        ):
             metrics[name] = float(value)
 
     row_metrics_entries = payload.get("row_metrics", [])
     if not isinstance(row_metrics_entries, list):
-        raise ValueError("Invalid backend metrics payload: 'row_metrics' must be a list")
+        raise ValueError(
+            "Invalid backend metrics payload: 'row_metrics' must be a list"
+        )
 
     row_metrics: Dict[int, Dict[str, float]] = {}
     for row in row_metrics_entries:
@@ -149,7 +158,11 @@ def _load_backend_metrics_payload(path: Path) -> tuple[Dict[str, float], Dict[in
             continue
         row_index = row.get("row_index")
         raw_metrics = row.get("metrics", [])
-        if not isinstance(row_index, int) or row_index <= 0 or not isinstance(raw_metrics, list):
+        if (
+            not isinstance(row_index, int)
+            or row_index <= 0
+            or not isinstance(raw_metrics, list)
+        ):
             continue
 
         row_values: Dict[str, float] = {}
@@ -158,7 +171,11 @@ def _load_backend_metrics_payload(path: Path) -> tuple[Dict[str, float], Dict[in
                 continue
             name = metric.get("name")
             value = metric.get("value")
-            if isinstance(name, str) and isinstance(value, (int, float)) and not isinstance(value, bool):
+            if (
+                isinstance(name, str)
+                and isinstance(value, (int, float))
+                and not isinstance(value, bool)
+            ):
                 row_values[name] = float(value)
         row_metrics[row_index] = row_values
 
@@ -171,6 +188,7 @@ def _load_backend_metrics_payload(path: Path) -> tuple[Dict[str, float], Dict[in
 # ---------------------------------------------------------------------------
 # Public entry-point
 # ---------------------------------------------------------------------------
+
 
 def publish_foundry_evaluation(
     *,
@@ -196,8 +214,12 @@ def publish_foundry_evaluation(
         ) from exc
 
     # --- resolve project endpoint ----------------------------------------
-    project_endpoint_env = backend_config.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
-    project_endpoint = backend_config.project_endpoint or os.getenv(project_endpoint_env)
+    project_endpoint_env = (
+        backend_config.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+    )
+    project_endpoint = backend_config.project_endpoint or os.getenv(
+        project_endpoint_env
+    )
     if not project_endpoint:
         raise ValueError(
             "Foundry evaluation publish requires backend.project_endpoint or "
@@ -240,9 +262,7 @@ def publish_foundry_evaluation(
         instance_rows.append(instance_payload)
 
     if not instance_rows:
-        raise ValueError(
-            "Foundry evaluation publish has no content rows to submit"
-        )
+        raise ValueError("Foundry evaluation publish has no content rows to submit")
 
     eval_name = evaluation_name or f"agentops-eval-{uuid.uuid4().hex[:8]}"
     logger = logging.getLogger("agentops.foundry_evals")
@@ -250,8 +270,7 @@ def publish_foundry_evaluation(
 
     # Build the evaluator name map (maps internal metric name -> display name)
     name_map: Dict[str, str] = {
-        metric_name: metric_name
-        for metric_name in metrics.keys()
+        metric_name: metric_name for metric_name in metrics.keys()
     }
 
     instance_results_df = pd.DataFrame(instance_rows)
