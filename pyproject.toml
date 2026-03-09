@@ -35,3 +35,12 @@ where = ["src"]
   "datasets/*.yaml",
   "data/*.jsonl",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.9",
+]
