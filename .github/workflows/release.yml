@@ -72,6 +72,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PIPY_TOKEN }}
+          verbose: true
 
   github-release:
     needs: [publish-pypi]
