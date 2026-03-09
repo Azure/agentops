@@ -59,11 +59,28 @@ def _planned_command(command_name: str) -> None:
 # Global callback — configures logging before any command runs
 # ---------------------------------------------------------------------------
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from agentops import __version__
+
+        typer.echo(f"agentops {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
 def _main(
     verbose: Annotated[
         bool,
         typer.Option("--verbose", "-v", help="Enable DEBUG logging."),
+    ] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Show version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
     ] = False,
 ) -> None:
     setup_logging(verbose=verbose)

@@ -41,6 +41,13 @@ def test_model_list_is_planned_stub() -> None:
     assert "planned but not implemented" in result.stdout.lower()
 
 
+def test_version_flag() -> None:
+    result = runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert "agentops" in result.stdout.lower()
+
+
 def test_report_help_exposes_available_and_planned_commands() -> None:
     result = runner.invoke(app, ["report", "--help"])
 
