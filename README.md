@@ -6,6 +6,7 @@ AgentOps CLI for evaluation, observability, and operational workflows for Micros
 
 <p align="center">
 <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
+<img alt="Status: Preview" src="https://img.shields.io/badge/Status-Preview-orange.svg"/>
 <img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg"/>
 <img alt="CLI" src="https://img.shields.io/badge/CLI-Typer-5A67D8.svg"/>
 <img alt="Built on Microsoft Foundry" src="https://img.shields.io/badge/Built%20on-Microsoft%20Foundry-0078D4.svg"/>
@@ -46,6 +47,10 @@ Exit code contract:
 ## Quickstart
 
 This section is structured for demos and onboarding, so you can present the project flow end-to-end in a few minutes.
+
+<p align="center">
+<img alt="Quickstart demo: agentops init and eval run" src="./media/quickstart.gif"/>
+</p>
 
 ### 1) Install
 
@@ -162,22 +167,22 @@ Starter bundles created by `agentops init`:
 
 | Command | Description | Status |
 |---|---|---|
-| `agentops --version` | Show installed version | Available |
-| `agentops init [--path DIR]` | Scaffold project workspace and starter files | Available |
-| `agentops eval run` | Evaluate a dataset against a bundle | Available |
-| `agentops eval compare --runs ID1,ID2` | Compare two past runs | Planned (stub) |
-| `agentops run list\|show` | List or inspect past runs | Planned (stub) |
-| `agentops run view <id> [--entry N]` | Deep run inspection | Planned (stub) |
-| `agentops report` | Regenerate `report.md` from `results.json` | Available |
-| `agentops report show\|export` | View/export reports | Planned (stub) |
-| `agentops bundle list\|show` | Browse bundle catalog | Planned (stub) |
-| `agentops dataset validate\|describe\|import` | Dataset utilities | Planned (stub) |
-| `agentops config cicd` | Generate GitHub Actions workflow for CI evaluation | Available |
-| `agentops config validate\|show` | Config validation and inspection | Planned (stub) |
-| `agentops trace init` | Tracing setup | Planned (stub) |
-| `agentops monitor setup\|dashboard\|alert` | Monitoring operations | Planned (stub) |
-| `agentops model list` | List Foundry model deployments | Planned (stub) |
-| `agentops agent list` | List Foundry agents | Planned (stub) |
+| `agentops --version` | Show installed version | ✅ |
+| `agentops init [--path DIR]` | Scaffold project workspace and starter files | ✅ |
+| `agentops eval run` | Evaluate a dataset against a bundle | ✅ |
+| `agentops eval compare --runs ID1,ID2` | Compare two past runs | 🚧 |
+| `agentops run list\|show` | List or inspect past runs | 🚧 |
+| `agentops run view <id> [--entry N]` | Deep run inspection | 🚧 |
+| `agentops report` | Regenerate `report.md` from `results.json` | ✅ |
+| `agentops report show\|export` | View/export reports | 🚧 |
+| `agentops bundle list\|show` | Browse bundle catalog | 🚧 |
+| `agentops dataset validate\|describe\|import` | Dataset utilities | 🚧 |
+| `agentops config cicd` | Generate GitHub Actions workflow for CI evaluation | ✅ |
+| `agentops config validate\|show` | Config validation and inspection | 🚧 |
+| `agentops trace init` | Tracing setup | 🚧 |
+| `agentops monitor setup\|dashboard\|alert` | Monitoring operations | 🚧 |
+| `agentops model list` | List Foundry model deployments | 🚧 |
+| `agentops agent list` | List Foundry agents | 🚧 |
 
 Implemented command usage:
 
