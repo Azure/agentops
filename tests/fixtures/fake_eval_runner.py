@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Deterministic fake backend for tests.")
+    parser = argparse.ArgumentParser(
+        description="Deterministic fake backend for tests."
+    )
     parser.add_argument("--bundle", required=True, help="Path to bundle config file")
     parser.add_argument("--dataset", required=True, help="Path to dataset config file")
     parser.add_argument("--output", required=True, help="Output directory path")

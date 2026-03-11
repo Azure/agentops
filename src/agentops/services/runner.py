@@ -1,4 +1,5 @@
 """Evaluation run orchestration service."""
+
 from __future__ import annotations
 
 import json
@@ -6,12 +7,16 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 from agentops.backends.base import BackendRunContext
 from agentops.backends.foundry_backend import FoundryBackend
 from agentops.backends.subprocess_backend import SubprocessBackend
-from agentops.core.config_loader import load_bundle_config, load_dataset_config, load_run_config
+from agentops.core.config_loader import (
+    load_bundle_config,
+    load_dataset_config,
+    load_run_config,
+)
 from agentops.core.models import (
     Artifacts,
     ItemEvaluationResult,
@@ -70,7 +75,9 @@ def _sync_latest_output(source_output_dir: Path, latest_output_dir: Path) -> Non
     shutil.copytree(source_output_dir, latest_output_dir)
 
 
-def _load_backend_metrics(metrics_path: Path) -> Tuple[List[MetricResult], List[RowMetricsResult]]:
+def _load_backend_metrics(
+    metrics_path: Path,
+) -> Tuple[List[MetricResult], List[RowMetricsResult]]:
     if not metrics_path.exists():
         raise FileNotFoundError(f"Backend metrics file not found: {metrics_path}")
 
@@ -85,16 +92,22 @@ def _load_backend_metrics(metrics_path: Path) -> Tuple[List[MetricResult], List[
     metrics: List[MetricResult] = []
     for item in raw_metrics:
         if not isinstance(item, dict):
-            raise ValueError("Invalid backend metrics payload: metric entries must be objects")
+            raise ValueError(
+                "Invalid backend metrics payload: metric entries must be objects"
+            )
         metrics.append(MetricResult.model_validate(item))
     raw_row_metrics = payload.get("row_metrics", [])
     if not isinstance(raw_row_metrics, list):
-        raise ValueError("Invalid backend metrics payload: 'row_metrics' must be a list")
+        raise ValueError(
+            "Invalid backend metrics payload: 'row_metrics' must be a list"
+        )
 
     row_metrics: List[RowMetricsResult] = []
     for item in raw_row_metrics:
         if not isinstance(item, dict):
-            raise ValueError("Invalid backend metrics payload: row_metrics entries must be objects")
+            raise ValueError(
+                "Invalid backend metrics payload: row_metrics entries must be objects"
+            )
         row_metrics.append(RowMetricsResult.model_validate(item))
 
     return metrics, row_metrics
@@ -118,7 +131,9 @@ def _load_cloud_evaluation_metadata(output_dir: Path) -> tuple[str | None, str |
     return report_url, evaluation_name
 
 
-def _summary_from_thresholds(metrics: List[MetricResult], threshold_passes: List[bool]) -> Summary:
+def _summary_from_thresholds(
+    metrics: List[MetricResult], threshold_passes: List[bool]
+) -> Summary:
     thresholds_count = len(threshold_passes)
     thresholds_passed = sum(1 for value in threshold_passes if value)
     thresholds_failed = thresholds_count - thresholds_passed
@@ -165,7 +180,9 @@ def _evaluate_threshold_against_value(
         )
 
     if rule.value is None:
-        raise ValueError(f"Threshold for evaluator '{rule.evaluator}' requires a numeric value")
+        raise ValueError(
+            f"Threshold for evaluator '{rule.evaluator}' requires a numeric value"
+        )
 
     target_value = float(rule.value)
     if rule.criteria == ">=":
@@ -216,7 +233,11 @@ def _evaluate_item_thresholds(
                 )
             )
 
-        passed_all = all(item.passed for item in threshold_results) if threshold_results else True
+        passed_all = (
+            all(item.passed for item in threshold_results)
+            if threshold_results
+            else True
+        )
         results.append(
             ItemEvaluationResult(
                 row_index=row.row_index,
@@ -237,7 +258,9 @@ def _validate_enabled_evaluators_scored(
         return
 
     if not row_metrics:
-        raise ValueError("Enabled evaluators require backend 'row_metrics' with per-item scores")
+        raise ValueError(
+            "Enabled evaluators require backend 'row_metrics' with per-item scores"
+        )
 
     scored_names: set[str] = set()
     for row in row_metrics:
@@ -265,7 +288,10 @@ def _summarize_thresholds_from_items(
         rule_results: List[ItemThresholdEvaluationResult] = []
         for item in item_evaluations:
             for threshold_result in item.thresholds:
-                if threshold_result.evaluator == rule.evaluator and threshold_result.criteria == rule.criteria:
+                if (
+                    threshold_result.evaluator == rule.evaluator
+                    and threshold_result.criteria == rule.criteria
+                ):
                     rule_results.append(threshold_result)
 
         passed_items = sum(1 for result in rule_results if result.passed)
@@ -311,7 +337,9 @@ def _derive_run_metrics(
         passed_items = sum(1 for item in item_evaluations if item.passed_all)
         _append_run_metric("items_total", float(len(item_evaluations)))
         _append_run_metric("items_passed_all", float(passed_items))
-        _append_run_metric("items_failed_any", float(len(item_evaluations) - passed_items))
+        _append_run_metric(
+            "items_failed_any", float(len(item_evaluations) - passed_items)
+        )
         _append_run_metric("items_pass_rate", passed_items / len(item_evaluations))
 
     row_aggregates: Dict[str, List[float]] = {}
@@ -324,7 +352,7 @@ def _derive_run_metrics(
         if values:
             mean_value = sum(values) / len(values)
             variance = sum((value - mean_value) ** 2 for value in values) / len(values)
-            stddev_value = variance ** 0.5
+            stddev_value = variance**0.5
 
             _append_run_metric(f"{metric_name}_avg", mean_value)
             _append_run_metric(f"{metric_name}_stddev", stddev_value)
@@ -338,8 +366,12 @@ def _derive_run_metrics(
     return run_metrics
 
 
-def run_evaluation(config_path: Path | None = None, output_override: Path | None = None) -> EvalRunServiceResult:
-    run_config_path = config_path.resolve() if config_path is not None else _default_run_config_path()
+def run_evaluation(
+    config_path: Path | None = None, output_override: Path | None = None
+) -> EvalRunServiceResult:
+    run_config_path = (
+        config_path.resolve() if config_path is not None else _default_run_config_path()
+    )
     run_config = load_run_config(run_config_path)
 
     run_config_dir = run_config_path.parent
@@ -349,7 +381,11 @@ def run_evaluation(config_path: Path | None = None, output_override: Path | None
     bundle_config = load_bundle_config(bundle_path)
     dataset_config = load_dataset_config(dataset_path)
 
-    output_dir = output_override.resolve() if output_override is not None else _default_output_dir(run_config_path)
+    output_dir = (
+        output_override.resolve()
+        if output_override is not None
+        else _default_output_dir(run_config_path)
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if run_config.backend.type == "subprocess":
@@ -369,16 +405,18 @@ def run_evaluation(config_path: Path | None = None, output_override: Path | None
     )
 
     if backend_result.exit_code != 0:
-        raise RuntimeError(f"Backend execution failed with exit code {backend_result.exit_code}")
+        raise RuntimeError(
+            f"Backend execution failed with exit code {backend_result.exit_code}"
+        )
 
     backend_metrics_path = output_dir / "backend_metrics.json"
     metrics, row_metrics = _load_backend_metrics(backend_metrics_path)
-    metrics_by_name: Dict[str, float] = {metric.name: metric.value for metric in metrics}
+    metrics_by_name: Dict[str, float] = {
+        metric.name: metric.value for metric in metrics
+    }
 
     enabled_evaluator_names = [
-        evaluator.name
-        for evaluator in bundle_config.evaluators
-        if evaluator.enabled
+        evaluator.name for evaluator in bundle_config.evaluators if evaluator.enabled
     ]
     _validate_enabled_evaluators_scored(
         evaluator_names=enabled_evaluator_names,
@@ -388,16 +426,26 @@ def run_evaluation(config_path: Path | None = None, output_override: Path | None
     item_evaluations = _evaluate_item_thresholds(bundle_config.thresholds, row_metrics)
 
     if bundle_config.thresholds and not row_metrics:
-        raise ValueError("Item-level threshold evaluation requires backend 'row_metrics'")
+        raise ValueError(
+            "Item-level threshold evaluation requires backend 'row_metrics'"
+        )
 
-    threshold_results = _summarize_thresholds_from_items(bundle_config.thresholds, item_evaluations)
-    summary = _summary_from_thresholds(metrics, [item.passed for item in threshold_results])
-    run_metrics = _derive_run_metrics(metrics_by_name, row_metrics, item_evaluations, summary)
+    threshold_results = _summarize_thresholds_from_items(
+        bundle_config.thresholds, item_evaluations
+    )
+    summary = _summary_from_thresholds(
+        metrics, [item.passed for item in threshold_results]
+    )
+    run_metrics = _derive_run_metrics(
+        metrics_by_name, row_metrics, item_evaluations, summary
+    )
 
     foundry_eval_studio_url: str | None = None
     foundry_eval_name: str | None = None
 
-    cloud_report_url, cloud_evaluation_name = _load_cloud_evaluation_metadata(output_dir)
+    cloud_report_url, cloud_evaluation_name = _load_cloud_evaluation_metadata(
+        output_dir
+    )
     if cloud_report_url is not None:
         foundry_eval_studio_url = cloud_report_url
     if cloud_evaluation_name is not None:
@@ -456,7 +504,9 @@ def run_evaluation(config_path: Path | None = None, output_override: Path | None
         json.dumps(normalized_result.model_dump(mode="json"), indent=2),
         encoding="utf-8",
     )
-    report_path.write_text(generate_report_markdown(normalized_result), encoding="utf-8")
+    report_path.write_text(
+        generate_report_markdown(normalized_result), encoding="utf-8"
+    )
 
     latest_dir = _latest_output_dir(run_config_path)
     _sync_latest_output(output_dir, latest_dir)

@@ -1,4 +1,5 @@
 """Native Microsoft Foundry Agent Service backend implementation for AgentOps."""
+
 from __future__ import annotations
 
 import json
@@ -108,11 +109,20 @@ def _parse_agent_name_version(agent_id: str) -> tuple[str, str | None]:
 
 
 _NLP_ONLY_EVALUATORS = frozenset({
-    "f1_score", "bleu", "rouge", "meteor", "gleu",
+    "f1_score",
+    "bleu",
+    "rouge",
+    "meteor",
+    "gleu",
 })
 
 _EVALUATORS_NEEDING_GROUND_TRUTH = frozenset({
-    "similarity", "f1_score", "bleu", "rouge", "meteor", "gleu",
+    "similarity",
+    "f1_score",
+    "bleu",
+    "rouge",
+    "meteor",
+    "gleu",
 })
 
 _EVALUATORS_NEEDING_CONTEXT = frozenset({
@@ -362,7 +372,9 @@ def _interpolate_env_values(value: Any) -> Any:
         env_name = match.group(1)
         env_value = os.getenv(env_name)
         if env_value is None:
-            raise ValueError(f"Missing environment variable required by evaluator config: {env_name}")
+            raise ValueError(
+                f"Missing environment variable required by evaluator config: {env_name}"
+            )
         return env_value
     if isinstance(value, dict):
         return {key: _interpolate_env_values(item) for key, item in value.items()}
@@ -429,9 +441,14 @@ def _load_foundry_evaluator_callable(
     if kind == "builtin":
         class_name = str(evaluator_config.get("class_name") or evaluator_name).strip()
         if not class_name:
-            raise ValueError(f"Evaluator '{evaluator_name}' class_name must be non-empty")
+            raise ValueError(
+                f"Evaluator '{evaluator_name}' class_name must be non-empty"
+            )
 
-        if class_name in {"SimilarityEvaluator", "GroundednessEvaluator"} and "model_config" not in init_kwargs:
+        if (
+            class_name in {"SimilarityEvaluator", "GroundednessEvaluator"}
+            and "model_config" not in init_kwargs
+        ):
             init_kwargs["model_config"] = _azure_openai_model_config(
                 fallback_endpoint=fallback_endpoint,
                 fallback_deployment=fallback_deployment,
@@ -455,7 +472,9 @@ def _load_foundry_evaluator_callable(
                 "Install with: pip install azure-ai-evaluation"
             ) from exc
         except AttributeError as exc:
-            raise ValueError(f"Unknown built-in Foundry evaluator class: {class_name}") from exc
+            raise ValueError(
+                f"Unknown built-in Foundry evaluator class: {class_name}"
+            ) from exc
 
         return _instantiate_evaluator_symbol(
             evaluator_symbol,
@@ -511,15 +530,23 @@ def _build_foundry_evaluator_runtimes(
             input_mapping = _default_foundry_input_mapping(evaluator.name)
         else:
             if not isinstance(input_mapping_raw, dict):
-                raise ValueError(f"Evaluator '{evaluator.name}' config.input_mapping must be an object")
-            input_mapping = {str(key): str(value) for key, value in input_mapping_raw.items()}
+                raise ValueError(
+                    f"Evaluator '{evaluator.name}' config.input_mapping must be an object"
+                )
+            input_mapping = {
+                str(key): str(value) for key, value in input_mapping_raw.items()
+            }
 
         score_keys_raw = config.get("score_keys")
         if score_keys_raw is None:
             score_keys = _default_score_keys(evaluator.name)
         else:
-            if not isinstance(score_keys_raw, list) or not all(isinstance(item, str) for item in score_keys_raw):
-                raise ValueError(f"Evaluator '{evaluator.name}' config.score_keys must be a list of strings")
+            if not isinstance(score_keys_raw, list) or not all(
+                isinstance(item, str) for item in score_keys_raw
+            ):
+                raise ValueError(
+                    f"Evaluator '{evaluator.name}' config.score_keys must be a list of strings"
+                )
             score_keys = score_keys_raw
 
         evaluator_callable = _load_foundry_evaluator_callable(
@@ -567,7 +594,9 @@ def _find_numeric_value(payload: Any) -> float | None:
     return None
 
 
-def _extract_evaluator_score(payload: Dict[str, Any], preferred_keys: List[str], evaluator_name: str) -> float:
+def _extract_evaluator_score(
+    payload: Dict[str, Any], preferred_keys: List[str], evaluator_name: str
+) -> float:
     for key in preferred_keys:
         if key in payload:
             numeric = _find_numeric_value(payload[key])
@@ -593,7 +622,9 @@ def _validate_supported_local_evaluators(evaluators: List[EvaluatorConfig]) -> N
     unsupported = sorted(
         evaluator.name
         for evaluator in evaluators
-        if evaluator.enabled and evaluator.source == "local" and evaluator.name not in _SUPPORTED_LOCAL_EVALUATORS
+        if evaluator.enabled
+        and evaluator.source == "local"
+        and evaluator.name not in _SUPPORTED_LOCAL_EVALUATORS
     )
     if unsupported:
         raise ValueError(
@@ -620,13 +651,17 @@ def _resolve_mapping_value(
         env_name = env_match.group(1)
         env_value = os.getenv(env_name)
         if env_value is None:
-            raise ValueError(f"Missing environment variable required by evaluator mapping: {env_name}")
+            raise ValueError(
+                f"Missing environment variable required by evaluator mapping: {env_name}"
+            )
         return env_value
 
     if expression.startswith("$row."):
         row_key = expression[5:]
         if row_key not in row:
-            raise ValueError(f"Missing row field referenced by evaluator mapping: {row_key}")
+            raise ValueError(
+                f"Missing row field referenced by evaluator mapping: {row_key}"
+            )
         return row[row_key]
 
     if expression.startswith("$"):
@@ -748,7 +783,9 @@ def _run_foundry_evaluator(
 class FoundryBackend:
     def _read_settings(self, context: BackendRunContext) -> FoundrySettings:
         backend = context.backend_config
-        project_endpoint_env = backend.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+        project_endpoint_env = (
+            backend.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+        )
 
         project_endpoint = backend.project_endpoint or os.getenv(project_endpoint_env)
         agent_id = backend.agent_id
@@ -764,15 +801,17 @@ class FoundryBackend:
                 f"  2. Environment variable {project_endpoint_env}:\n"
                 f"\n"
                 f"     PowerShell:\n"
-                f"       $env:{project_endpoint_env} = \"https://<account>.services.ai.azure.com/api/projects/<project>\"\n"
+                f'       $env:{project_endpoint_env} = "https://<account>.services.ai.azure.com/api/projects/<project>"\n'
                 f"\n"
                 f"     Bash/zsh:\n"
-                f"       export {project_endpoint_env}=\"https://<account>.services.ai.azure.com/api/projects/<project>\"\n"
+                f'       export {project_endpoint_env}="https://<account>.services.ai.azure.com/api/projects/<project>"\n'
                 f"\n"
                 f"You can find this URL in the Azure AI Foundry portal under your project settings."
             )
         if target == "agent" and not agent_id:
-            raise ValueError("Foundry backend requires backend.agent_id when target=agent")
+            raise ValueError(
+                "Foundry backend requires backend.agent_id when target=agent"
+            )
         if target == "model" and not model:
             raise ValueError(
                 "Foundry backend requires a model deployment name when target=model. "
@@ -820,13 +859,17 @@ class FoundryBackend:
             payload = json.loads(response.read().decode("utf-8"))
 
         if not isinstance(payload, dict):
-            raise ValueError("Invalid Foundry Agent Service response: expected JSON object")
+            raise ValueError(
+                "Invalid Foundry Agent Service response: expected JSON object"
+            )
         return payload
 
     def _extract_agent_message_text(self, messages_payload: Dict[str, Any]) -> str:
         entries = messages_payload.get("data")
         if not isinstance(entries, list):
-            raise ValueError("Invalid Foundry Agent Service response: missing messages data")
+            raise ValueError(
+                "Invalid Foundry Agent Service response: missing messages data"
+            )
 
         for message in entries:
             if not isinstance(message, dict) or message.get("role") != "assistant":
@@ -851,7 +894,9 @@ class FoundryBackend:
                 if parts:
                     return "\n".join(parts).strip()
 
-        raise ValueError("Invalid Foundry Agent Service response: no assistant message found")
+        raise ValueError(
+            "Invalid Foundry Agent Service response: no assistant message found"
+        )
 
     def _extract_response_output_text(self, response_payload: Dict[str, Any]) -> str:
         output = response_payload.get("output")
@@ -870,13 +915,17 @@ class FoundryBackend:
             for part in content:
                 if not isinstance(part, dict):
                     continue
-                if part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                if part.get("type") == "output_text" and isinstance(
+                    part.get("text"), str
+                ):
                     parts.append(part["text"])
 
             if parts:
                 return "\n".join(parts).strip()
 
-        raise ValueError("Invalid Foundry response payload: no assistant output text found")
+        raise ValueError(
+            "Invalid Foundry response payload: no assistant output text found"
+        )
 
     def _invoke_agent_reference(
         self,
@@ -922,7 +971,9 @@ class FoundryBackend:
 
         return self._extract_response_output_text(response_payload)
 
-    def _invoke_agent_service(self, settings: FoundrySettings, prompt: str, timeout_seconds: int | None) -> str:
+    def _invoke_agent_service(
+        self, settings: FoundrySettings, prompt: str, timeout_seconds: int | None
+    ) -> str:
         if not settings.agent_id.startswith("asst_"):
             return self._invoke_agent_reference(settings, prompt, timeout_seconds)
 
@@ -931,7 +982,9 @@ class FoundryBackend:
             "Authorization": f"Bearer {settings.agent_token}",
         }
 
-        thread_url = f"{settings.project_endpoint}/threads?api-version={settings.api_version}"
+        thread_url = (
+            f"{settings.project_endpoint}/threads?api-version={settings.api_version}"
+        )
         thread_payload = self._request_json(
             method="POST",
             url=thread_url,
@@ -941,11 +994,11 @@ class FoundryBackend:
         )
         thread_id = thread_payload.get("id")
         if not isinstance(thread_id, str) or not thread_id:
-            raise ValueError("Invalid Foundry Agent Service response: missing thread id")
+            raise ValueError(
+                "Invalid Foundry Agent Service response: missing thread id"
+            )
 
-        message_url = (
-            f"{settings.project_endpoint}/threads/{thread_id}/messages?api-version={settings.api_version}"
-        )
+        message_url = f"{settings.project_endpoint}/threads/{thread_id}/messages?api-version={settings.api_version}"
         self._request_json(
             method="POST",
             url=message_url,
@@ -986,14 +1039,14 @@ class FoundryBackend:
                 if status in terminal_success:
                     break
                 if status in terminal_failure:
-                    raise RuntimeError(f"Foundry agent run ended with status '{status}'")
+                    raise RuntimeError(
+                        f"Foundry agent run ended with status '{status}'"
+                    )
             time.sleep(settings.poll_interval_seconds)
         else:
             raise TimeoutError("Timed out waiting for Foundry agent run completion")
 
-        messages_url = (
-            f"{settings.project_endpoint}/threads/{thread_id}/messages?api-version={settings.api_version}"
-        )
+        messages_url = f"{settings.project_endpoint}/threads/{thread_id}/messages?api-version={settings.api_version}"
         messages_payload = self._request_json(
             method="GET",
             url=messages_url,
@@ -1076,9 +1129,7 @@ class FoundryBackend:
         expected_field = dataset_config.format.expected_field
 
         enabled_evaluators = [
-            evaluator
-            for evaluator in bundle_config.evaluators
-            if evaluator.enabled
+            evaluator for evaluator in bundle_config.evaluators if evaluator.enabled
         ]
         _validate_supported_local_evaluators(enabled_evaluators)
         enabled_evaluator_order = [evaluator.name for evaluator in enabled_evaluators]
@@ -1112,7 +1163,9 @@ class FoundryBackend:
                 "name": evaluator.name,
                 "evaluator_name": f"builtin.{builtin_name}",
                 "data_mapping": _cloud_evaluator_data_mapping(
-                    builtin_name, input_field, expected_field,
+                    builtin_name,
+                    input_field,
+                    expected_field,
                 ),
             }
             if _cloud_evaluator_needs_model(builtin_name):
@@ -1270,7 +1323,9 @@ class FoundryBackend:
             )
         )
         if not output_items:
-            raise RuntimeError("Foundry cloud evaluation completed with no output items")
+            raise RuntimeError(
+                "Foundry cloud evaluation completed with no output items"
+            )
 
         evaluator_aggregate_values: Dict[str, List[float]] = {
             name: [] for name in enabled_evaluator_order
@@ -1304,7 +1359,7 @@ class FoundryBackend:
                 else {}
             )
 
-            prompt = _normalize_text(row_data.get(input_field))
+            prompt = _normalize_text(row_data.get(input_field))  # noqa: F841
             expected = _normalize_text(row_data.get(expected_field))
 
             # Extract prediction from sample
@@ -1317,10 +1372,14 @@ class FoundryBackend:
             for result in getattr(item, "results", []) or []:
                 metric_name = getattr(result, "name", "")
                 metric_score = getattr(result, "score", None)
-                if isinstance(metric_name, str) and isinstance(metric_score, (int, float)):
+                if isinstance(metric_name, str) and isinstance(
+                    metric_score, (int, float)
+                ):
                     # Normalize names like "SimilarityEvaluator-<uuid>" → "SimilarityEvaluator"
                     for eval_name in enabled_evaluator_order:
-                        if metric_name == eval_name or metric_name.startswith(eval_name + "-"):
+                        if metric_name == eval_name or metric_name.startswith(
+                            eval_name + "-"
+                        ):
                             metric_name = eval_name
                             break
                     value = float(metric_score)
@@ -1329,11 +1388,20 @@ class FoundryBackend:
             # Only emit local evaluator metrics if they are configured in the bundle.
             if "exact_match" in enabled_local_names:
                 passed = prediction.lower() == expected.lower() if expected else False
-                row_metric_entries.append({"name": "exact_match", "value": 1.0 if passed else 0.0})
+                row_metric_entries.append({
+                    "name": "exact_match",
+                    "value": 1.0 if passed else 0.0,
+                })
             if "latency_seconds" in enabled_local_names:
-                row_metric_entries.append({"name": "latency_seconds", "value": approx_latency_per_row})
+                row_metric_entries.append({
+                    "name": "latency_seconds",
+                    "value": approx_latency_per_row,
+                })
             if "avg_latency_seconds" in enabled_local_names:
-                row_metric_entries.append({"name": "avg_latency_seconds", "value": approx_latency_per_row})
+                row_metric_entries.append({
+                    "name": "avg_latency_seconds",
+                    "value": approx_latency_per_row,
+                })
 
             # Update aggregate values for local evaluator metrics.
             for entry in row_metric_entries:
@@ -1346,7 +1414,10 @@ class FoundryBackend:
             if isinstance(datasource_item_id, int) and datasource_item_id >= 0:
                 row_index = datasource_item_id + 1
 
-            row_metrics_payload.append({"row_index": row_index, "metrics": row_metric_entries})
+            row_metrics_payload.append({
+                "row_index": row_index,
+                "metrics": row_metric_entries,
+            })
             stdout_lines.append(
                 f"row={row_index} expected={expected!r} prediction={prediction!r}"
             )
@@ -1359,11 +1430,17 @@ class FoundryBackend:
         for name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(name, [])
             if values:
-                metrics_entries.append({"name": name, "value": sum(values) / len(values)})
+                metrics_entries.append({
+                    "name": name,
+                    "value": sum(values) / len(values),
+                })
         metrics_entries.append({"name": "samples_evaluated", "value": float(total)})
 
         metrics_path.write_text(
-            json.dumps({"metrics": metrics_entries, "row_metrics": row_metrics_payload}, indent=2),
+            json.dumps(
+                {"metrics": metrics_entries, "row_metrics": row_metrics_payload},
+                indent=2,
+            ),
             encoding="utf-8",
         )
         stdout_path.write_text("\n".join(stdout_lines), encoding="utf-8")
@@ -1434,7 +1511,9 @@ class FoundryBackend:
         settings = self._read_settings(context)
         bundle_config = load_bundle_config(context.bundle_path)
         dataset_config = load_dataset_config(context.dataset_path)
-        dataset_source_path = _resolve_dataset_source_path(context.dataset_path, dataset_config.source.path)
+        dataset_source_path = _resolve_dataset_source_path(
+            context.dataset_path, dataset_config.source.path
+        )
         if not dataset_source_path.exists():
             raise FileNotFoundError(f"Dataset file not found: {dataset_source_path}")
 
@@ -1458,13 +1537,13 @@ class FoundryBackend:
         # Derive Azure OpenAI fallbacks from the Foundry project endpoint so
         # AI-assisted evaluators (SimilarityEvaluator, etc.) work without
         # requiring the user to set AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_DEPLOYMENT.
-        fallback_endpoint = _derive_openai_endpoint_from_project(settings.project_endpoint)
+        fallback_endpoint = _derive_openai_endpoint_from_project(
+            settings.project_endpoint
+        )
         fallback_deployment = settings.model
 
         enabled_evaluators = [
-            evaluator
-            for evaluator in bundle_config.evaluators
-            if evaluator.enabled
+            evaluator for evaluator in bundle_config.evaluators if evaluator.enabled
         ]
         _validate_supported_local_evaluators(enabled_evaluators)
         enabled_evaluator_order = [evaluator.name for evaluator in enabled_evaluators]
@@ -1477,7 +1556,9 @@ class FoundryBackend:
 
         rows = _load_jsonl(dataset_source_path)
         total_rows = len(rows)
-        logger.info("Starting local Foundry evaluation for %d dataset row(s)", total_rows)
+        logger.info(
+            "Starting local Foundry evaluation for %d dataset row(s)", total_rows
+        )
         input_field = dataset_config.format.input_field
         expected_field = dataset_config.format.expected_field
         timeout_seconds = context.backend_config.timeout_seconds
@@ -1491,8 +1572,7 @@ class FoundryBackend:
         )
 
         evaluator_aggregate_values: Dict[str, List[float]] = {
-            evaluator_name: []
-            for evaluator_name in enabled_evaluator_order
+            evaluator_name: [] for evaluator_name in enabled_evaluator_order
         }
 
         def _record_row_metrics(
@@ -1524,11 +1604,20 @@ class FoundryBackend:
             # Only emit local evaluator metrics that are configured in the bundle.
             if "exact_match" in enabled_local_names:
                 passed = prediction_normalized.lower() == expected_text.lower()
-                row_metric_entries.append({"name": "exact_match", "value": 1.0 if passed else 0.0})
+                row_metric_entries.append({
+                    "name": "exact_match",
+                    "value": 1.0 if passed else 0.0,
+                })
             if "latency_seconds" in enabled_local_names:
-                row_metric_entries.append({"name": "latency_seconds", "value": row_latency})
+                row_metric_entries.append({
+                    "name": "latency_seconds",
+                    "value": row_latency,
+                })
             if "avg_latency_seconds" in enabled_local_names:
-                row_metric_entries.append({"name": "avg_latency_seconds", "value": row_latency})
+                row_metric_entries.append({
+                    "name": "avg_latency_seconds",
+                    "value": row_latency,
+                })
 
             for metric_entry in row_metric_entries:
                 metric_name = metric_entry["name"]
@@ -1536,12 +1625,10 @@ class FoundryBackend:
                 if metric_name in evaluator_aggregate_values:
                     evaluator_aggregate_values[metric_name].append(metric_value)
 
-            row_metrics_payload.append(
-                {
-                    "row_index": row_index,
-                    "metrics": row_metric_entries,
-                }
-            )
+            row_metrics_payload.append({
+                "row_index": row_index,
+                "metrics": row_metric_entries,
+            })
 
             stdout_lines.append(
                 f"row={row_index} expected={expected_text!r} prediction={prediction_normalized!r}"
@@ -1550,9 +1637,13 @@ class FoundryBackend:
         for index, row in enumerate(rows, start=1):
             logger.info("Processing row %d/%d", index, total_rows)
             if input_field not in row:
-                raise ValueError(f"Dataset row {index} missing input field '{input_field}'")
+                raise ValueError(
+                    f"Dataset row {index} missing input field '{input_field}'"
+                )
             if expected_field not in row:
-                raise ValueError(f"Dataset row {index} missing expected field '{expected_field}'")
+                raise ValueError(
+                    f"Dataset row {index} missing expected field '{expected_field}'"
+                )
 
             prompt = _normalize_text(row.get(input_field))
             expected = _normalize_text(row.get(expected_field))
@@ -1562,13 +1653,18 @@ class FoundryBackend:
                 if settings.target == "model":
                     prediction = self._invoke_model_direct(settings, prompt)
                 else:
-                    prediction = self._invoke_agent_service(settings, prompt, timeout_seconds)
+                    prediction = self._invoke_agent_service(
+                        settings, prompt, timeout_seconds
+                    )
             except urllib.error.HTTPError as exc:
                 details = exc.read().decode("utf-8", errors="replace")
                 if exc.code == 401 and _is_audience_mismatch(details):
                     alternate_scope = _alternate_scope(settings.token_scope)
                     try:
-                        logger.info("Retrying with alternate token audience: %s", alternate_scope)
+                        logger.info(
+                            "Retrying with alternate token audience: %s",
+                            alternate_scope,
+                        )
                         settings = replace(
                             settings,
                             agent_token=_acquire_token(alternate_scope),
@@ -1577,7 +1673,9 @@ class FoundryBackend:
                         if settings.target == "model":
                             prediction = self._invoke_model_direct(settings, prompt)
                         else:
-                            prediction = self._invoke_agent_service(settings, prompt, timeout_seconds)
+                            prediction = self._invoke_agent_service(
+                                settings, prompt, timeout_seconds
+                            )
                     except Exception as retry_exc:  # noqa: BLE001
                         retry_details = str(retry_exc)
                         logger.error(
@@ -1606,13 +1704,17 @@ class FoundryBackend:
                         )
                         continue
 
-                stderr_lines.append(f"row={index} http_error={exc.code} details={details}")
+                stderr_lines.append(
+                    f"row={index} http_error={exc.code} details={details}"
+                )
                 logger.error("Row %d/%d HTTP error %s", index, total_rows, exc.code)
                 exit_code = 1
                 break
             except urllib.error.URLError as exc:
                 stderr_lines.append(f"row={index} network_error={exc.reason}")
-                logger.error("Row %d/%d network error: %s", index, total_rows, exc.reason)
+                logger.error(
+                    "Row %d/%d network error: %s", index, total_rows, exc.reason
+                )
                 exit_code = 1
                 break
             except Exception as exc:  # noqa: BLE001
@@ -1637,18 +1739,20 @@ class FoundryBackend:
         if total == 0 and exit_code == 0:
             raise RuntimeError("Foundry backend did not process any dataset rows")
 
-        avg_latency_seconds = sum(per_item_latencies) / len(per_item_latencies) if per_item_latencies else 0.0
+        _avg_latency_seconds = (
+            sum(per_item_latencies) / len(per_item_latencies)
+            if per_item_latencies
+            else 0.0
+        )
 
         metrics_entries: List[Dict[str, float]] = []
         for evaluator_name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(evaluator_name, [])
             if values:
-                metrics_entries.append(
-                    {
-                        "name": evaluator_name,
-                        "value": sum(values) / len(values),
-                    }
-                )
+                metrics_entries.append({
+                    "name": evaluator_name,
+                    "value": sum(values) / len(values),
+                })
 
         metrics_entries.append({"name": "samples_evaluated", "value": float(total)})
 

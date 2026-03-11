@@ -59,11 +59,28 @@ def _planned_command(command_name: str) -> None:
 # Global callback — configures logging before any command runs
 # ---------------------------------------------------------------------------
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from agentops import __version__
+
+        typer.echo(f"agentops {__version__}")
+        raise typer.Exit()
+
+
 @app.callback()
 def _main(
     verbose: Annotated[
         bool,
         typer.Option("--verbose", "-v", help="Enable DEBUG logging."),
+    ] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Show version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
     ] = False,
 ) -> None:
     setup_logging(verbose=verbose)
@@ -273,9 +290,40 @@ def cmd_config_show() -> None:
 
 
 @config_app.command("cicd")
-def cmd_config_cicd() -> None:
-    """Generate CI/CD pipeline config (planned)."""
-    _planned_command("agentops config cicd")
+def cmd_config_cicd(
+    force: bool = typer.Option(False, "--force", help="Overwrite existing workflow file."),
+    directory: Path = typer.Option(
+        Path("."),
+        "--dir",
+        help="Target repository root directory.",
+    ),
+) -> None:
+    """Generate a GitHub Actions workflow for AgentOps evaluation."""
+    from agentops.services.cicd import generate_cicd_workflow
+
+    log.debug("cmd_config_cicd called force=%s dir=%s", force, directory)
+    try:
+        result = generate_cicd_workflow(directory=directory, force=force)
+    except Exception as exc:
+        typer.echo(f"Error: failed to generate CI/CD workflow: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    for created in result.created_files:
+        typer.echo(f" + created {created}")
+    for overwritten in result.overwritten_files:
+        typer.echo(f" ~ overwritten {overwritten}")
+    for skipped in result.skipped_files:
+        typer.echo(f" - skipped {skipped} (use --force to overwrite)")
+
+    if result.created_files or result.overwritten_files:
+        typer.echo("")
+        typer.echo("Next steps:")
+        typer.echo("  1. Set GitHub repository variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID")
+        typer.echo("  2. Set GitHub repository secret: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+        typer.echo("  3. Configure Azure Workload Identity Federation (see docs/ci-github-actions.md)")
+        typer.echo("  4. Commit and push the workflow file")
+    elif result.skipped_files:
+        typer.echo("No files written. Use --force to overwrite existing workflow.")
 
 
 @trace_app.command("init")

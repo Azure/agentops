@@ -1,0 +1,202 @@
+# AgentOps Evaluation — GitHub Actions Workflow
+#
+# Runs `agentops eval run` after CI passes, or on manual dispatch.
+# Uploads evaluation artifacts (results.json, report.md, logs).
+# Fails the job when thresholds are not met (exit code 2) or on errors (exit code 1).
+#
+# Dependency: This workflow runs AFTER the CI workflow completes successfully.
+# On manual dispatch it runs independently (no CI gate).
+#
+# Authentication:
+#   Uses Workload Identity Federation (OIDC) — no secrets to rotate.
+#   Set AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID as GitHub
+#   repository variables (not secrets). See docs/ci-github-actions.md for setup.
+#
+# Prerequisites:
+#   1. An initialised .agentops/ workspace in your repo (run `agentops init`)
+#   2. A valid .agentops/run.yaml pointing to your bundle and dataset
+#   3. Azure federated credential configured for your GitHub repo (see docs/ci-github-actions.md)
+#
+# Copy this file into your consumer repo at .github/workflows/agentops-eval.yml
+
+name: AgentOps Evaluation
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      config:
+        description: "Path to run.yaml (default: .agentops/run.yaml)"
+        required: false
+        default: ".agentops/run.yaml"
+      output:
+        description: "Output directory for results"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write # Required for OIDC / Workload Identity Federation
+  pull-requests: write # Required for optional PR comment step
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  evaluate:
+    name: Run AgentOps Evaluation
+    runs-on: ubuntu-latest
+    # Skip if CI failed (workflow_run triggers on all completions)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    env:
+      # Foundry project endpoint — set as a GitHub repository secret
+      AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------
+      # Azure login via Workload Identity Federation (OIDC) — recommended
+      # Uses a federated credential; no client secret to manage.
+      # Set AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID as
+      # GitHub repository variables (Settings → Secrets → Variables).
+      # ----------------------------------------------------------------
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install agentops-toolkit
+        run: pip install agentops-toolkit
+
+      - name: Resolve config path
+        id: config
+        run: |
+          CONFIG="${{ github.event.inputs.config || '.agentops/run.yaml' }}"
+          echo "path=$CONFIG" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve output directory
+        id: output
+        run: |
+          OUTPUT="${{ github.event.inputs.output }}"
+          if [ -n "$OUTPUT" ]; then
+            echo "flag=--output $OUTPUT" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run evaluation
+        id: eval
+        run: |
+          set +e
+          agentops eval run --config "${{ steps.config.outputs.path }}" ${{ steps.output.outputs.flag }}
+          EXIT_CODE=$?
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+          # Surface the exit code meaning
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "## ✅ Evaluation Passed" >> "$GITHUB_STEP_SUMMARY"
+            echo "All thresholds met." >> "$GITHUB_STEP_SUMMARY"
+          elif [ $EXIT_CODE -eq 2 ]; then
+            echo "## ❌ Evaluation Failed — Threshold(s) Not Met" >> "$GITHUB_STEP_SUMMARY"
+            echo "One or more evaluation thresholds were not satisfied." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## ⚠️ Evaluation Error" >> "$GITHUB_STEP_SUMMARY"
+            echo "A runtime or configuration error occurred (exit code $EXIT_CODE)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Append report.md to job summary if it exists
+          REPORT=".agentops/results/latest/report.md"
+          if [ -f "$REPORT" ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          exit $EXIT_CODE
+
+      - name: Upload evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentops-eval-results
+          path: |
+            .agentops/results/latest/results.json
+            .agentops/results/latest/report.md
+            .agentops/results/latest/backend_metrics.json
+            .agentops/results/latest/cloud_evaluation.json
+            .agentops/results/latest/backend.stdout.log
+            .agentops/results/latest/backend.stderr.log
+          if-no-files-found: warn
+
+      - name: Post report as PR comment
+        if: always() && github.event.workflow_run.event == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const reportPath = '.agentops/results/latest/report.md';
+
+            if (!fs.existsSync(reportPath)) {
+              console.log('No report.md found — skipping PR comment.');
+              return;
+            }
+
+            const body = fs.readFileSync(reportPath, 'utf8');
+            const marker = '<!-- agentops-eval-report -->';
+            const commentBody = `${marker}\n${body}`;
+
+            // Find the PR associated with the workflow_run head branch
+            const { data: pulls } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${context.payload.workflow_run.head_branch}`,
+              state: 'open',
+            });
+
+            if (pulls.length === 0) {
+              console.log('No open PR found for this branch — skipping comment.');
+              return;
+            }
+
+            const prNumber = pulls[0].number;
+
+            // Find existing comment to update (avoid duplicates)
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: commentBody,
+              });
+              console.log(`Updated existing PR comment #${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: commentBody,
+              });
+              console.log('Created new PR comment with evaluation report.');
+            }

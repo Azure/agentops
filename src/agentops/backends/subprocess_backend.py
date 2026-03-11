@@ -1,11 +1,11 @@
 """Subprocess backend implementation for AgentOps."""
+
 from __future__ import annotations
 
 import os
 import shlex
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
 
 from agentops.backends.base import BackendExecutionResult, BackendRunContext
 

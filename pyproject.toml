@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentops-toolkit"
-version = "0.1.0"
+version = "0.1.2"
 description = "AgentOps CLI for standardized evaluation workflows"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,4 +34,14 @@ where = ["src"]
   "bundles/*.yaml",
   "datasets/*.yaml",
   "data/*.jsonl",
+  "workflows/*.yml",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "ruff>=0.9",
 ]

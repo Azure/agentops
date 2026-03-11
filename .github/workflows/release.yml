@@ -1,0 +1,98 @@
+# Publish to PyPI on version tag push
+#
+# Trigger: push a tag like v0.1.0
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# Uses PyPI API tokens stored as GitHub repository secrets.
+#
+# Setup:
+#   1. Go to https://pypi.org/manage/account/token/ → Create token (scope: project "agentops-toolkit")
+#   2. Go to https://test.pypi.org/manage/account/token/ → Create token
+#   3. In GitHub repo → Settings → Secrets and variables → Actions:
+#      - Add secret PYPI_API_TOKEN      (value: pypi-xxxx...)
+#      - Add secret TESTPYPI_API_TOKEN  (value: pypi-xxxx...)
+
+name: Release to PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # For GitHub Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ">=0.9.0"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short
+
+      - name: Build package
+        run: uv build
+
+      - name: Verify built artifacts
+        run: |
+          ls -la dist/
+          uv run python -m zipfile -l dist/*.whl | head -20
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PIPY_TOKEN }}
+          verbose: true
+
+  github-release:
+    needs: [publish-pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
