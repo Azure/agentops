@@ -364,3 +364,62 @@ class RunResult(BaseModel):
     thresholds: List[ThresholdEvaluationResult] = Field(default_factory=list)
     summary: Summary
     artifacts: Optional[Artifacts] = None
+
+
+# ---------------------------------------------------------------------------
+# Comparison models
+# ---------------------------------------------------------------------------
+
+Direction = Literal["improved", "regressed", "unchanged"]
+
+
+class MetricDelta(BaseModel):
+    name: str
+    baseline_value: float
+    current_value: float
+    delta: float
+    delta_percent: Optional[float] = None
+    direction: Direction
+
+
+class ThresholdDelta(BaseModel):
+    evaluator: str
+    criteria: Criteria
+    baseline_passed: bool
+    current_passed: bool
+    flipped: bool
+
+
+class ItemDelta(BaseModel):
+    row_index: int
+    baseline_passed_all: bool
+    current_passed_all: bool
+    metric_deltas: List[MetricDelta] = Field(default_factory=list)
+
+
+class RunReference(BaseModel):
+    run_id: str
+    bundle_name: str
+    dataset_name: str
+    started_at: str
+
+
+class ComparisonSummary(BaseModel):
+    metrics_improved: int
+    metrics_regressed: int
+    metrics_unchanged: int
+    thresholds_flipped_pass_to_fail: int
+    thresholds_flipped_fail_to_pass: int
+    items_newly_failing: int
+    items_newly_passing: int
+    has_regressions: bool
+
+
+class ComparisonResult(BaseModel):
+    version: int = 1
+    baseline: RunReference
+    current: RunReference
+    metric_deltas: List[MetricDelta] = Field(default_factory=list)
+    threshold_deltas: List[ThresholdDelta] = Field(default_factory=list)
+    item_deltas: List[ItemDelta] = Field(default_factory=list)
+    summary: ComparisonSummary

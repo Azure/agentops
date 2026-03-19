@@ -1,7 +1,7 @@
 """Markdown report generation for AgentOps."""
 from __future__ import annotations
 
-from agentops.core.models import RunResult
+from agentops.core.models import ComparisonResult, RunResult
 
 
 def generate_report_markdown(result: RunResult) -> str:
@@ -87,4 +87,77 @@ def generate_report_markdown(result: RunResult) -> str:
             lines.append(f"- foundry_eval_studio_url: {result.artifacts.foundry_eval_studio_url}")
         if result.artifacts.foundry_eval_name is not None:
             lines.append(f"- foundry_eval_name: {result.artifacts.foundry_eval_name}")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def generate_comparison_markdown(comparison: ComparisonResult) -> str:
+    verdict = "REGRESSIONS DETECTED" if comparison.summary.has_regressions else "NO REGRESSIONS"
+
+    lines: list[str] = []
+    lines.append("# AgentOps Comparison Report")
+    lines.append("")
+    lines.append("## Overview")
+    lines.append("")
+    lines.append(f"- Baseline run: **{comparison.baseline.run_id}** ({comparison.baseline.bundle_name})")
+    lines.append(f"- Current run: **{comparison.current.run_id}** ({comparison.current.bundle_name})")
+    lines.append(f"- Verdict: **{verdict}**")
+    lines.append("")
+
+    lines.append("## Summary")
+    lines.append("")
+    lines.append("| Category | Count |")
+    lines.append("|---|---:|")
+    lines.append(f"| Metrics improved | {comparison.summary.metrics_improved} |")
+    lines.append(f"| Metrics regressed | {comparison.summary.metrics_regressed} |")
+    lines.append(f"| Metrics unchanged | {comparison.summary.metrics_unchanged} |")
+    lines.append(f"| Thresholds flipped pass→fail | {comparison.summary.thresholds_flipped_pass_to_fail} |")
+    lines.append(f"| Thresholds flipped fail→pass | {comparison.summary.thresholds_flipped_fail_to_pass} |")
+    lines.append(f"| Items newly failing | {comparison.summary.items_newly_failing} |")
+    lines.append(f"| Items newly passing | {comparison.summary.items_newly_passing} |")
+    lines.append("")
+
+    lines.append("## Metric Deltas")
+    if comparison.metric_deltas:
+        lines.append("")
+        lines.append("| Metric | Baseline | Current | Delta | Delta % | Direction |")
+        lines.append("|---|---:|---:|---:|---:|---|")
+        for d in comparison.metric_deltas:
+            pct = f"{d.delta_percent:+.2f}%" if d.delta_percent is not None else "N/A"
+            lines.append(
+                f"| {d.name} | {d.baseline_value:.6f} | {d.current_value:.6f} "
+                f"| {d.delta:+.6f} | {pct} | {d.direction} |"
+            )
+    else:
+        lines.append("- No comparable metrics found")
+    lines.append("")
+
+    lines.append("## Threshold Changes")
+    flipped = [d for d in comparison.threshold_deltas if d.flipped]
+    if flipped:
+        lines.append("")
+        lines.append("| Evaluator | Criteria | Baseline | Current | Change |")
+        lines.append("|---|---|---|---|---|")
+        for d in flipped:
+            b_str = "PASS" if d.baseline_passed else "FAIL"
+            c_str = "PASS" if d.current_passed else "FAIL"
+            change = "REGRESSION" if d.baseline_passed and not d.current_passed else "IMPROVEMENT"
+            lines.append(f"| {d.evaluator} | {d.criteria} | {b_str} | {c_str} | {change} |")
+    else:
+        lines.append("- No threshold changes detected")
+    lines.append("")
+
+    lines.append("## Item Changes")
+    changed_items = [d for d in comparison.item_deltas if d.baseline_passed_all != d.current_passed_all]
+    if changed_items:
+        lines.append("")
+        lines.append("| Row | Baseline | Current | Change |")
+        lines.append("|---:|---|---|---|")
+        for d in changed_items:
+            b_str = "PASS" if d.baseline_passed_all else "FAIL"
+            c_str = "PASS" if d.current_passed_all else "FAIL"
+            change = "REGRESSION" if d.baseline_passed_all and not d.current_passed_all else "IMPROVEMENT"
+            lines.append(f"| {d.row_index} | {b_str} | {c_str} | {change} |")
+    else:
+        lines.append("- No item-level changes detected")
+
     return "\n".join(lines).rstrip() + "\n"

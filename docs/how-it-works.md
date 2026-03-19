@@ -109,7 +109,7 @@ When you run `agentops eval run`, the following happens step by step:
 |---|---|---|
 | `agentops init [--path DIR]` | Scaffold `.agentops/` workspace with starter config, bundles, datasets, and data | Available |
 | `agentops eval run` | Execute an evaluation (main command) | Available |
-| `agentops eval compare --runs ID1,ID2` | Compare two past evaluation runs | Planned (stub) |
+| `agentops eval compare --runs ID1,ID2` | Compare two past evaluation runs | Available |
 | `agentops run list\|show` | List or inspect past runs | Planned (stub) |
 | `agentops run view <id> [--entry N]` | Deep-inspect a run | Planned (stub) |
 | `agentops report [--in <path>] [--out <path>]` | Regenerate `report.md` from `results.json` | Available |

@@ -166,10 +166,36 @@ def cmd_eval_compare(
         str,
         typer.Option("--runs", help="Comma-separated run ids (example: ID1,ID2)."),
     ],
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output directory for comparison results.")] = None,
 ) -> None:
-    """Compare two past evaluation runs (planned)."""
-    _ = runs
-    _planned_command("agentops eval compare --runs ID1,ID2")
+    """Compare two past evaluation runs."""
+    from agentops.services.comparison import run_comparison
+
+    parts = [p.strip() for p in runs.split(",")]
+    if len(parts) != 2:
+        typer.echo("Error: --runs must contain exactly two comma-separated run ids.", err=True)
+        raise typer.Exit(code=1)
+
+    baseline_id, current_id = parts
+    log.debug("cmd_eval_compare called baseline=%s current=%s output=%s", baseline_id, current_id, output)
+    try:
+        result = run_comparison(
+            baseline_id=baseline_id,
+            current_id=current_id,
+            output_dir=output,
+        )
+    except Exception as exc:
+        typer.echo(f"Error: comparison failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"comparison.json: {result.comparison_json_path}")
+    typer.echo(f"comparison.md: {result.comparison_md_path}")
+
+    if result.has_regressions:
+        typer.echo("Comparison verdict: REGRESSIONS DETECTED")
+        raise typer.Exit(code=2)
+
+    typer.echo("Comparison verdict: NO REGRESSIONS")
 
 
 # ---------------------------------------------------------------------------

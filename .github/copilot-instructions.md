@@ -36,7 +36,7 @@ Contribution guidelines live in `CONTRIBUTING.md` at the repo root.
   - Local evaluation via `azure-ai-evaluation` SDK (fallback)
 - **Secondary backend**: subprocess-based (generic)
 - **Azure SDK dependencies** (runtime, for Foundry backend):
-  - `azure-ai-projects>=2.0.0b1` — Foundry project client, `get_openai_client()`
+  - `azure-ai-projects>=2.0.1` — Foundry project client, `get_openai_client()`
   - `azure-ai-evaluation` — Local evaluator classes (SimilarityEvaluator, etc.)
   - `azure-identity` — `DefaultAzureCredential` authentication
   - `openai` — Evals API types (`DataSourceConfigCustom`, etc.)
@@ -229,18 +229,11 @@ Do not implement the following unless explicitly discussed:
 
 ## Copilot Guidance
 
-## Workflow Skills
-
-This repository also defines workflow-oriented Copilot skills under `.github/skills/`.
-
-- Use these skills for operational guidance on running evaluations, investigating regressions, and observability triage workflows.
-- Treat the CLI as the source of truth and keep planned/stubbed commands clearly marked as not yet implemented.
-- Do not duplicate architecture or code-structure guidance from this file inside workflow skills.
-
 When generating or modifying code:
 
 - **Read `docs/how-it-works.md` first** — it is the single source of truth for architecture
 - **Read `CONTRIBUTING.md`** for contribution rules and workflow
+- Treat the CLI as the source of truth and keep planned/stubbed commands clearly marked as not yet implemented.
 - Do not invent new concepts or commands
 - Prefer clarity and determinism over cleverness
 - Optimize for maintainability and CI usage
