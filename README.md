@@ -213,6 +213,8 @@ High-level code layout:
 - Foundry agent tutorial: [docs/tutorial-basic-foundry-agent.md](docs/tutorial-basic-foundry-agent.md)
 - Model-direct tutorial: [docs/tutorial-model-direct.md](docs/tutorial-model-direct.md)
 - RAG tutorial: [docs/tutorial-rag.md](docs/tutorial-rag.md)
+- Baseline comparison tutorial: [docs/tutorial-baseline-comparison.md](docs/tutorial-baseline-comparison.md)
+- Copilot skills installation: [docs/tutorial-copilot-skills.md](docs/tutorial-copilot-skills.md)
 - Built-in evaluator notes: [docs/foundry-evaluation-sdk-built-in-evaluators.md](docs/foundry-evaluation-sdk-built-in-evaluators.md)
 - CI/CD setup guide: [docs/ci-github-actions.md](docs/ci-github-actions.md)
 
