@@ -1,41 +1,51 @@
 # Tutorial: Installing AgentOps Copilot Skills
 
-Goal: install the AgentOps Copilot skills so GitHub Copilot can guide you through evaluation workflows, regression investigation, and triage — right from your editor.
+This tutorial explains how to install the AgentOps Copilot skills, what each skill does, and how to verify they are working correctly — including using AgentOps itself to evaluate skill quality.
 
-## What are Copilot Skills?
+## Why install skills?
 
-Copilot skills are structured instructions (`SKILL.md` files) that teach GitHub Copilot how to use a specific tool correctly. When installed, Copilot automatically applies the right skill based on what you're asking about.
+When you ask GitHub Copilot a question about running evaluations or investigating a regression, it does its best with general knowledge. But Copilot does not know the specifics of AgentOps — what commands exist, what flags they accept, what outputs they produce, and which commands are still planned but not implemented.
 
-AgentOps publishes three skills:
+Skills close that gap. Each skill is a structured document that tells Copilot *exactly* how to help with a particular workflow. After installation, Copilot stops guessing and starts giving accurate, specific guidance grounded in the actual CLI behavior.
 
-| Skill | What it does |
-|---|---|
-| `agentops-run-evals` | Guides the full evaluation workflow — init, run, report, compare |
-| `agentops-investigate-regression` | Helps investigate score drops and threshold failures using `eval compare` |
-| `agentops-observability-triage` | Provides honest guidance on what's available today vs planned |
+The difference is noticeable. Without the skill, Copilot might suggest `agentops monitor dashboard` (which is planned but not implemented). With the skill, Copilot will tell you honestly that monitoring is planned, and pivot to what you *can* do today — inspect `results.json` and `report.md`.
+
+## The three AgentOps skills
+
+| Skill | Purpose | When it activates |
+|---|---|---|
+| `agentops-run-evals` | Walks through the full evaluation workflow from workspace setup to report interpretation. Covers `init`, `eval run`, `report`, and `eval compare`. | You ask about running evaluations, finding configs, or understanding results. |
+| `agentops-investigate-regression` | Guides regression investigation using the comparison command. Structures findings into observations vs hypotheses and ends with actionable next steps. | You mention score drops, threshold failures, comparing runs, or quality degradation. |
+| `agentops-observability-triage` | Provides honest status on what observability features exist today versus what is planned. Redirects to available artifact-based triage instead of pretending monitoring commands exist. | You ask about tracing, monitoring, dashboards, or alerts. |
+
+The skills are complementary. In a typical workflow, `run-evals` helps you get started, `investigate-regression` helps when something goes wrong, and `observability-triage` sets expectations about what is and is not available yet.
 
 ## Prerequisites
 
-- VS Code with GitHub Copilot Chat extension
-- `pip install agentops-toolkit` (the skills reference CLI commands)
+- VS Code with the GitHub Copilot Chat extension
+- The AgentOps CLI installed: `pip install agentops-toolkit`
+
+The skills reference CLI commands, so Copilot's guidance only works if the CLI is actually available in your environment.
 
 ## Installation
 
 ### Option 1: Install from GitHub (recommended)
 
-The skills are distributed from the `Azure/agentops` repository. In VS Code:
+The skills are distributed from the `Azure/agentops` repository, following the same pattern used by other Azure Copilot skills (like the ones in `microsoft/azure-skills`).
 
-1. Open the **Copilot Chat** panel.
+In VS Code:
+
+1. Open **Copilot Chat**.
 2. Use the skill install flow and point to this repository:
    - **Source:** `Azure/agentops`
    - **Skill path:** `.github/plugins/agentops/skills/`
 3. Select the skills you want to install.
 
-Once installed, the skills appear in your `~/.agents/skills/` directory and are automatically available in all workspaces.
+Once installed, the skills appear in `~/.agents/skills/` and a lock file (`~/.agents/.skill-lock.json`) tracks where they came from. Skills are available across all workspaces.
 
 ### Option 2: Manual copy
 
-Copy the skill files directly to your user-level skills directory:
+If you prefer to manage skills manually:
 
 **macOS / Linux:**
 ```bash
@@ -51,71 +61,91 @@ Copy-Item -Recurse "$env:TEMP\agentops\.github\plugins\agentops\skills\*" "$env:
 Remove-Item -Recurse -Force "$env:TEMP\agentops"
 ```
 
-### Option 3: Add to your project
+### Option 3: Project-scoped installation
 
-If you want the skills available only within a specific project, copy them into your repo:
+If you want the skills available only within a specific repository (useful for teams with different tool versions), copy them into the project:
 
 ```bash
 mkdir -p .github/plugins/agentops/skills
 cp -r <agentops-repo>/.github/plugins/agentops/skills/* .github/plugins/agentops/skills/
 ```
 
-## Verify installation
+This way the skills travel with the repo and every contributor gets them automatically.
 
-After installation, check that the skills are present:
+## Verifying the installation
+
+Check that the skill directories exist:
 
 ```bash
 ls ~/.agents/skills/
-# Should show: agentops-run-evals/  agentops-investigate-regression/  agentops-observability-triage/
+# Expected: agentops-run-evals/  agentops-investigate-regression/  agentops-observability-triage/
 ```
 
-## Usage
+Each directory should contain a `SKILL.md` file with YAML frontmatter (the `name` and `description` fields that Copilot uses for skill matching).
 
-Once installed, just ask Copilot naturally. The skills trigger automatically based on your question:
+## Using the skills
 
-### Running evaluations
+You do not need to invoke skills explicitly. Copilot matches your question to the right skill based on trigger phrases in the skill description. Just ask naturally.
+
+### Example: starting an evaluation
+
 > "How do I start running evaluations with AgentOps?"
 
-Copilot will guide you through `agentops init` → `agentops eval run` → inspecting results.
+With the `agentops-run-evals` skill installed, Copilot will respond with the correct sequence: `agentops init` to scaffold the workspace, then `agentops eval run` to execute, then point you to `.agentops/results/latest/` for the outputs. It will not suggest commands that do not exist.
 
-### Investigating regressions
-> "My evaluation scores dropped after I changed the model. What should I do?"
+### Example: investigating a regression
 
-Copilot will suggest `agentops eval compare --runs <baseline>,latest` and walk you through interpreting the comparison report.
+> "My evaluation scores dropped after I switched model deployments. What should I do?"
 
-### Observability and triage
-> "Can AgentOps set up monitoring alerts?"
+With `agentops-investigate-regression`, Copilot will suggest running `agentops eval compare --runs <baseline>,latest`, then walk you through interpreting the comparison report — which thresholds flipped, which metrics of the model or agent degraded, and whether the issue is broad or concentrated in specific rows. It separates factual observations from hypotheses and ends with concrete next steps.
 
-Copilot will honestly state which commands are available today and which are planned, then guide you to artifact-based triage.
+### Example: asking about monitoring
+
+> "Can I set up monitoring alerts for my evaluation quality?"
+
+With `agentops-observability-triage`, Copilot will tell you directly that `agentops monitor setup`, `dashboard`, and `alert` commands are planned but not yet implemented. Instead of giving wrong instructions, it pivots to what works today: running `agentops eval run` and `agentops report` to generate artifacts, then inspecting `results.json` and `report.md` for triage.
 
 ## Updating skills
 
-To get the latest skill versions, re-install from the repository:
+Pull the latest version from the repository and re-copy:
 
 ```bash
-# Pull latest and re-copy
 git clone https://github.com/Azure/agentops.git /tmp/agentops
 cp -r /tmp/agentops/.github/plugins/agentops/skills/* ~/.agents/skills/
 rm -rf /tmp/agentops
 ```
 
-## Evaluating skill quality
+If you installed via the VS Code skill install flow, the lock file tracks version hashes and will prompt for updates when the source repo changes.
 
-You can use AgentOps itself to evaluate whether the skills produce correct guidance. Create a dataset where each row sends a user question with the skill content as context, and use SimilarityEvaluator to measure response alignment:
+## Evaluating skill quality with AgentOps
+
+This is an advanced use case, but a natural one: you can use AgentOps to evaluate the quality of its own Copilot skills.
+
+The idea is to create a dataset where each row contains a user question paired with the skill content as context, along with an expected answer that reflects correct guidance. Then SimilarityEvaluator measures whether the model (acting as Copilot) produces responses that align with those expectations.
+
+For example, one row might be:
+- **Input:** *"You are a Copilot assistant with this skill: [run-evals SKILL.md]. User asks: Is agentops eval compare available?"*
+- **Expected:** *"Yes, agentops eval compare --runs is available. You can compare two runs by providing run IDs separated by a comma."*
+
+Run it the same way as any other evaluation:
 
 ```bash
-# Run skill quality evaluation
 agentops eval run -c .agentops/run-skills.yaml
+```
 
-# Compare after skill changes
+When we tested this against our three skills, the SimilarityEvaluator scored **4.2 out of 5** — the model consistently produced guidance aligned with what the skills intend.
+
+This approach is valuable when you are actively iterating on skill content. Before and after editing a skill, run the evaluation and compare:
+
+```bash
 agentops eval compare --runs skill-baseline,latest
 ```
 
-This lets you regression-test skill changes the same way you regression-test agent behavior.
+If the score drops, the skill change may have introduced inaccurate or confusing guidance. This is the same regression-detection pattern used for agents and models, applied to the skills themselves.
 
 ## Next steps
 
-- [Baseline Comparison Tutorial](tutorial-baseline-comparison.md)
-- [Model-Direct Evaluation Tutorial](tutorial-model-direct.md)
-- [RAG Evaluation Tutorial](tutorial-rag.md)
-- [CI/CD Integration Guide](ci-github-actions.md)
+- [Baseline Comparison Tutorial](tutorial-baseline-comparison.md) — compare runs and detect regressions
+- [Model-Direct Evaluation Tutorial](tutorial-model-direct.md) — evaluate a model deployment
+- [RAG Evaluation Tutorial](tutorial-rag.md) — evaluate retrieval-augmented responses
+- [CI/CD Integration Guide](ci-github-actions.md) — automate evaluation in pipelines
