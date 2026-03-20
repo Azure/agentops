@@ -1,4 +1,4 @@
-"""Unit tests for baseline comparison service and models."""
+"""Unit tests for the unified comparison service and models."""
 from __future__ import annotations
 
 import json
@@ -7,25 +7,20 @@ from pathlib import Path
 import pytest
 
 from agentops.core.models import (
+    ComparisonItemRow,
+    ComparisonMetricRow,
     ComparisonResult,
     ComparisonSummary,
-    ItemDelta,
-    MetricDelta,
+    ComparisonThresholdRow,
     RunReference,
     RunResult,
-    ThresholdDelta,
 )
 from agentops.core.reporter import generate_comparison_markdown
 from agentops.services.comparison import (
-    _compute_direction,
     _compute_metric_direction,
-    _compute_item_deltas,
-    _compute_metric_deltas,
-    _compute_threshold_deltas,
-    _build_summary,
     _lower_is_better_metrics,
-    compare_runs,
     _resolve_run_path,
+    compare_runs,
 )
 
 
@@ -40,9 +35,7 @@ def _sample_result(
     relevance: float = 0.83,
     overall_passed: bool = True,
     row1_groundedness: float = 0.90,
-    row1_relevance: float = 0.85,
     row2_groundedness: float = 0.78,
-    row2_relevance: float = 0.81,
 ) -> RunResult:
     return RunResult.model_validate(
         {
@@ -63,20 +56,8 @@ def _sample_result(
                 {"name": "relevance", "value": relevance},
             ],
             "row_metrics": [
-                {
-                    "row_index": 1,
-                    "metrics": [
-                        {"name": "groundedness", "value": row1_groundedness},
-                        {"name": "relevance", "value": row1_relevance},
-                    ],
-                },
-                {
-                    "row_index": 2,
-                    "metrics": [
-                        {"name": "groundedness", "value": row2_groundedness},
-                        {"name": "relevance", "value": row2_relevance},
-                    ],
-                },
+                {"row_index": 1, "metrics": [{"name": "groundedness", "value": row1_groundedness}]},
+                {"row_index": 2, "metrics": [{"name": "groundedness", "value": row2_groundedness}]},
             ],
             "item_evaluations": [
                 {
@@ -109,12 +90,7 @@ def _sample_result(
     )
 
 
-def _sample_result_with_latency(
-    *,
-    similarity: float = 5.0,
-    latency: float = 5.0,
-) -> RunResult:
-    """Sample result with both a higher-is-better (similarity) and lower-is-better (latency) metric."""
+def _sample_result_with_latency(*, similarity: float = 5.0, latency: float = 5.0) -> RunResult:
     return RunResult.model_validate(
         {
             "version": 1,
@@ -134,13 +110,7 @@ def _sample_result_with_latency(
                 {"name": "avg_latency_seconds", "value": latency},
             ],
             "row_metrics": [
-                {
-                    "row_index": 1,
-                    "metrics": [
-                        {"name": "SimilarityEvaluator", "value": similarity},
-                        {"name": "avg_latency_seconds", "value": latency},
-                    ],
-                },
+                {"row_index": 1, "metrics": [{"name": "SimilarityEvaluator", "value": similarity}, {"name": "avg_latency_seconds", "value": latency}]},
             ],
             "item_evaluations": [
                 {
@@ -167,77 +137,40 @@ def _sample_result_with_latency(
     )
 
 
+def _write_result(path: Path, result: RunResult) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(result.model_dump(mode="json"), indent=2))
+    return path
+
+
 # ---------------------------------------------------------------------------
 # Model tests
 # ---------------------------------------------------------------------------
 
 
 class TestComparisonModels:
-    def test_metric_delta_roundtrip(self) -> None:
-        d = MetricDelta(
-            name="groundedness",
-            baseline_value=0.84,
-            current_value=0.90,
-            delta=0.06,
-            delta_percent=7.14,
-            direction="improved",
-        )
-        data = d.model_dump()
-        restored = MetricDelta.model_validate(data)
-        assert restored.name == "groundedness"
-        assert restored.direction == "improved"
-
-    def test_threshold_delta_roundtrip(self) -> None:
-        d = ThresholdDelta(
-            evaluator="groundedness",
-            criteria=">=",
-            baseline_passed=True,
-            current_passed=False,
-            flipped=True,
-        )
-        data = d.model_dump()
-        restored = ThresholdDelta.model_validate(data)
-        assert restored.flipped is True
-
     def test_comparison_result_roundtrip(self) -> None:
         result = ComparisonResult(
             version=1,
-            baseline=RunReference(run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"),
-            current=RunReference(run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"),
-            metric_deltas=[],
-            threshold_deltas=[],
-            item_deltas=[],
-            summary=ComparisonSummary(
-                metrics_improved=0,
-                metrics_regressed=0,
-                metrics_unchanged=0,
-                thresholds_flipped_pass_to_fail=0,
-                thresholds_flipped_fail_to_pass=0,
-                items_newly_failing=0,
-                items_newly_passing=0,
-                has_regressions=False,
-            ),
+            runs=[
+                RunReference(run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"),
+                RunReference(run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"),
+            ],
+            metric_rows=[],
+            threshold_rows=[],
+            item_rows=[],
+            summary=ComparisonSummary(run_count=2, any_regressions=False, runs_with_regressions=[]),
         )
         payload = json.loads(result.model_dump_json())
         restored = ComparisonResult.model_validate(payload)
         assert restored.version == 1
-        assert restored.summary.has_regressions is False
+        assert restored.summary.any_regressions is False
+        assert len(restored.runs) == 2
 
 
 # ---------------------------------------------------------------------------
-# Direction helper
+# Direction helpers
 # ---------------------------------------------------------------------------
-
-
-class TestComputeDirection:
-    def test_positive_delta_is_improved(self) -> None:
-        assert _compute_direction(0.05) == "improved"
-
-    def test_negative_delta_is_regressed(self) -> None:
-        assert _compute_direction(-0.05) == "regressed"
-
-    def test_zero_delta_is_unchanged(self) -> None:
-        assert _compute_direction(0.0) == "unchanged"
 
 
 class TestComputeMetricDirection:
@@ -253,216 +186,105 @@ class TestComputeMetricDirection:
     def test_lower_is_better_positive_delta_is_regressed(self) -> None:
         assert _compute_metric_direction(0.05, lower_is_better=True) == "regressed"
 
-    def test_zero_is_unchanged_regardless_of_polarity(self) -> None:
+    def test_zero_is_unchanged(self) -> None:
         assert _compute_metric_direction(0.0, lower_is_better=False) == "unchanged"
         assert _compute_metric_direction(0.0, lower_is_better=True) == "unchanged"
 
 
 # ---------------------------------------------------------------------------
-# Metric delta computation
+# compare_runs (2 runs)
 # ---------------------------------------------------------------------------
 
 
-class TestComputeMetricDeltas:
-    def test_basic_delta(self) -> None:
-        baseline = _sample_result(groundedness=0.80, relevance=0.80)
-        current = _sample_result(groundedness=0.90, relevance=0.75)
-        deltas = _compute_metric_deltas(baseline, current)
-
-        assert len(deltas) == 2
-        g_delta = next(d for d in deltas if d.name == "groundedness")
-        assert g_delta.direction == "improved"
-        assert g_delta.delta == pytest.approx(0.10, abs=1e-6)
-
-        r_delta = next(d for d in deltas if d.name == "relevance")
-        assert r_delta.direction == "regressed"
-        assert r_delta.delta == pytest.approx(-0.05, abs=1e-6)
-
-    def test_unchanged_metric(self) -> None:
-        baseline = _sample_result(groundedness=0.80)
-        current = _sample_result(groundedness=0.80)
-        deltas = _compute_metric_deltas(baseline, current)
-        g_delta = next(d for d in deltas if d.name == "groundedness")
-        assert g_delta.direction == "unchanged"
-        assert g_delta.delta == 0.0
-
-    def test_delta_percent_when_baseline_nonzero(self) -> None:
-        baseline = _sample_result(groundedness=0.50)
-        current = _sample_result(groundedness=0.75)
-        deltas = _compute_metric_deltas(baseline, current)
-        g_delta = next(d for d in deltas if d.name == "groundedness")
-        assert g_delta.delta_percent == pytest.approx(50.0, abs=1e-6)
-
-    def test_delta_percent_none_when_baseline_zero(self) -> None:
-        baseline = _sample_result(groundedness=0.0)
-        current = _sample_result(groundedness=0.5)
-        deltas = _compute_metric_deltas(baseline, current)
-        g_delta = next(d for d in deltas if d.name == "groundedness")
-        assert g_delta.delta_percent is None
-
-    def test_lower_is_better_latency_decrease_is_improved(self) -> None:
-        baseline = _sample_result_with_latency(similarity=5.0, latency=6.0)
-        current = _sample_result_with_latency(similarity=5.0, latency=4.0)
-        deltas = _compute_metric_deltas(baseline, current)
-
-        lat = next(d for d in deltas if d.name == "avg_latency_seconds")
-        assert lat.delta == pytest.approx(-2.0, abs=1e-6)
-        assert lat.direction == "improved"
-
-    def test_lower_is_better_latency_increase_is_regressed(self) -> None:
-        baseline = _sample_result_with_latency(similarity=5.0, latency=4.0)
-        current = _sample_result_with_latency(similarity=5.0, latency=8.0)
-        deltas = _compute_metric_deltas(baseline, current)
-
-        lat = next(d for d in deltas if d.name == "avg_latency_seconds")
-        assert lat.delta == pytest.approx(4.0, abs=1e-6)
-        assert lat.direction == "regressed"
-
-    def test_higher_is_better_still_works_alongside_lower(self) -> None:
-        baseline = _sample_result_with_latency(similarity=5.0, latency=6.0)
-        current = _sample_result_with_latency(similarity=3.0, latency=4.0)
-        deltas = _compute_metric_deltas(baseline, current)
-
-        sim = next(d for d in deltas if d.name == "SimilarityEvaluator")
-        assert sim.direction == "regressed"
-
-        lat = next(d for d in deltas if d.name == "avg_latency_seconds")
-        assert lat.direction == "improved"
-
-
-# ---------------------------------------------------------------------------
-# Threshold delta computation
-# ---------------------------------------------------------------------------
-
-
-class TestComputeThresholdDeltas:
-    def test_flipped_threshold(self) -> None:
-        baseline = _sample_result(groundedness=0.90, overall_passed=True)
-        current = _sample_result(groundedness=0.70, overall_passed=False)
-        deltas = _compute_threshold_deltas(baseline, current)
-
-        g_delta = next(d for d in deltas if d.evaluator == "groundedness")
-        assert g_delta.flipped is True
-        assert g_delta.baseline_passed is True
-        assert g_delta.current_passed is False
-
-    def test_stable_threshold(self) -> None:
-        baseline = _sample_result(groundedness=0.90)
-        current = _sample_result(groundedness=0.85)
-        deltas = _compute_threshold_deltas(baseline, current)
-
-        g_delta = next(d for d in deltas if d.evaluator == "groundedness")
-        assert g_delta.flipped is False
-
-
-# ---------------------------------------------------------------------------
-# Item delta computation
-# ---------------------------------------------------------------------------
-
-
-class TestComputeItemDeltas:
-    def test_item_regression(self) -> None:
-        baseline = _sample_result(row2_groundedness=0.85, overall_passed=True)
-        current = _sample_result(row2_groundedness=0.70, overall_passed=False)
-        deltas = _compute_item_deltas(baseline, current, ["groundedness", "relevance"])
-
-        row2 = next(d for d in deltas if d.row_index == 2)
-        assert row2.baseline_passed_all is True
-        assert row2.current_passed_all is False
-
-    def test_item_metric_deltas_computed(self) -> None:
-        baseline = _sample_result(row1_groundedness=0.80)
-        current = _sample_result(row1_groundedness=0.90)
-        deltas = _compute_item_deltas(baseline, current, ["groundedness"])
-
-        row1 = next(d for d in deltas if d.row_index == 1)
-        assert len(row1.metric_deltas) >= 1
-        g = next(d for d in row1.metric_deltas if d.name == "groundedness")
-        assert g.delta == pytest.approx(0.10, abs=1e-6)
-
-
-# ---------------------------------------------------------------------------
-# Summary
-# ---------------------------------------------------------------------------
-
-
-class TestBuildSummary:
-    def test_regression_detected(self) -> None:
-        metric_deltas = [
-            MetricDelta(name="g", baseline_value=0.9, current_value=0.7, delta=-0.2, direction="regressed"),
-        ]
-        threshold_deltas = [
-            ThresholdDelta(evaluator="g", criteria=">=", baseline_passed=True, current_passed=False, flipped=True),
-        ]
-        item_deltas = [
-            ItemDelta(row_index=1, baseline_passed_all=True, current_passed_all=False),
-        ]
-
-        summary = _build_summary(metric_deltas, threshold_deltas, item_deltas)
-        assert summary.has_regressions is True
-        assert summary.metrics_regressed == 1
-        assert summary.thresholds_flipped_pass_to_fail == 1
-        assert summary.items_newly_failing == 1
-
-    def test_no_regression(self) -> None:
-        metric_deltas = [
-            MetricDelta(name="g", baseline_value=0.7, current_value=0.9, delta=0.2, direction="improved"),
-        ]
-        threshold_deltas = [
-            ThresholdDelta(evaluator="g", criteria=">=", baseline_passed=False, current_passed=True, flipped=True),
-        ]
-        item_deltas = [
-            ItemDelta(row_index=1, baseline_passed_all=False, current_passed_all=True),
-        ]
-
-        summary = _build_summary(metric_deltas, threshold_deltas, item_deltas)
-        assert summary.has_regressions is False
-        assert summary.metrics_improved == 1
-        assert summary.thresholds_flipped_fail_to_pass == 1
-        assert summary.items_newly_passing == 1
-
-
-# ---------------------------------------------------------------------------
-# End-to-end compare_runs
-# ---------------------------------------------------------------------------
-
-
-class TestCompareRuns:
-    def test_comparison_with_regression(self, tmp_path: Path) -> None:
+class TestCompareRunsTwoRuns:
+    def test_regression_detected(self, tmp_path: Path) -> None:
         baseline = _sample_result(groundedness=0.90, relevance=0.90, overall_passed=True)
         current = _sample_result(groundedness=0.70, relevance=0.95, overall_passed=False)
 
-        baseline_path = tmp_path / "baseline" / "results.json"
-        current_path = tmp_path / "current" / "results.json"
-        baseline_path.parent.mkdir()
-        current_path.parent.mkdir()
-        baseline_path.write_text(json.dumps(baseline.model_dump(mode="json"), indent=2))
-        current_path.write_text(json.dumps(current.model_dump(mode="json"), indent=2))
+        bp = _write_result(tmp_path / "baseline" / "results.json", baseline)
+        cp = _write_result(tmp_path / "current" / "results.json", current)
 
-        result = compare_runs(baseline_path, current_path, "baseline", "current")
+        result = compare_runs([bp, cp], ["baseline", "current"])
 
-        assert result.summary.has_regressions is True
-        assert result.summary.metrics_regressed >= 1
-        g_delta = next(d for d in result.metric_deltas if d.name == "groundedness")
-        assert g_delta.direction == "regressed"
-        r_delta = next(d for d in result.metric_deltas if d.name == "relevance")
-        assert r_delta.direction == "improved"
+        assert result.summary.any_regressions is True
+        assert len(result.summary.runs_with_regressions) >= 1
+        g_row = next(r for r in result.metric_rows if r.name == "groundedness")
+        assert g_row.directions[1] == "regressed"
+        r_row = next(r for r in result.metric_rows if r.name == "relevance")
+        assert r_row.directions[1] == "improved"
 
-    def test_comparison_no_regression(self, tmp_path: Path) -> None:
+    def test_no_regression(self, tmp_path: Path) -> None:
         baseline = _sample_result(groundedness=0.80, relevance=0.80, overall_passed=True)
         current = _sample_result(groundedness=0.90, relevance=0.90, overall_passed=True)
 
-        baseline_path = tmp_path / "baseline" / "results.json"
-        current_path = tmp_path / "current" / "results.json"
-        baseline_path.parent.mkdir()
-        current_path.parent.mkdir()
-        baseline_path.write_text(json.dumps(baseline.model_dump(mode="json"), indent=2))
-        current_path.write_text(json.dumps(current.model_dump(mode="json"), indent=2))
+        bp = _write_result(tmp_path / "baseline" / "results.json", baseline)
+        cp = _write_result(tmp_path / "current" / "results.json", current)
 
-        result = compare_runs(baseline_path, current_path, "baseline", "current")
+        result = compare_runs([bp, cp], ["baseline", "current"])
 
-        assert result.summary.has_regressions is False
-        assert result.summary.metrics_improved == 2
+        assert result.summary.any_regressions is False
+
+    def test_lower_is_better_latency(self, tmp_path: Path) -> None:
+        baseline = _sample_result_with_latency(similarity=5.0, latency=6.0)
+        current = _sample_result_with_latency(similarity=5.0, latency=4.0)
+
+        bp = _write_result(tmp_path / "baseline" / "results.json", baseline)
+        cp = _write_result(tmp_path / "current" / "results.json", current)
+
+        result = compare_runs([bp, cp], ["baseline", "current"])
+
+        lat = next(r for r in result.metric_rows if r.name == "avg_latency_seconds")
+        assert lat.directions[1] == "improved"
+        assert lat.deltas[1] == pytest.approx(-2.0, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# compare_runs (3+ runs)
+# ---------------------------------------------------------------------------
+
+
+class TestCompareRunsMultiple:
+    def test_three_runs(self, tmp_path: Path) -> None:
+        r1 = _sample_result(groundedness=0.80, relevance=0.80, overall_passed=True)
+        r2 = _sample_result(groundedness=0.90, relevance=0.85, overall_passed=True)
+        r3 = _sample_result(groundedness=0.70, relevance=0.95, overall_passed=False)
+
+        p1 = _write_result(tmp_path / "run1" / "results.json", r1)
+        p2 = _write_result(tmp_path / "run2" / "results.json", r2)
+        p3 = _write_result(tmp_path / "run3" / "results.json", r3)
+
+        result = compare_runs([p1, p2, p3], ["run1", "run2", "run3"])
+
+        assert result.summary.run_count == 3
+        assert len(result.runs) == 3
+
+        # run2 improved groundedness, run3 regressed
+        g_row = next(r for r in result.metric_rows if r.name == "groundedness")
+        assert g_row.directions[1] == "improved"
+        assert g_row.directions[2] == "regressed"
+
+        # run3 should be in regressions list
+        assert result.summary.any_regressions is True
+        assert 2 in result.summary.runs_with_regressions
+        # run2 should not have regressions
+        assert 1 not in result.summary.runs_with_regressions
+
+    def test_best_run_index(self, tmp_path: Path) -> None:
+        r1 = _sample_result(groundedness=0.80, relevance=0.80)
+        r2 = _sample_result(groundedness=0.95, relevance=0.70)
+        r3 = _sample_result(groundedness=0.85, relevance=0.90)
+
+        p1 = _write_result(tmp_path / "run1" / "results.json", r1)
+        p2 = _write_result(tmp_path / "run2" / "results.json", r2)
+        p3 = _write_result(tmp_path / "run3" / "results.json", r3)
+
+        result = compare_runs([p1, p2, p3], ["run1", "run2", "run3"])
+
+        g_row = next(r for r in result.metric_rows if r.name == "groundedness")
+        assert g_row.best_run_index == 1  # run2 has 0.95
+
+        r_row = next(r for r in result.metric_rows if r.name == "relevance")
+        assert r_row.best_run_index == 2  # run3 has 0.90
 
 
 # ---------------------------------------------------------------------------
@@ -491,14 +313,6 @@ class TestResolveRunPath:
         resolved = _resolve_run_path("2026-03-01_100000", workspace_dir=tmp_path)
         assert resolved == f.resolve()
 
-    def test_resolve_latest(self, tmp_path: Path) -> None:
-        latest_dir = tmp_path / "results" / "latest"
-        latest_dir.mkdir(parents=True)
-        f = latest_dir / "results.json"
-        f.write_text("{}")
-        resolved = _resolve_run_path("latest", workspace_dir=tmp_path)
-        assert resolved == f.resolve()
-
     def test_resolve_missing_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             _resolve_run_path("nonexistent_run", workspace_dir=tmp_path)
@@ -513,64 +327,56 @@ class TestComparisonReport:
     def test_report_contains_required_sections(self) -> None:
         result = ComparisonResult(
             version=1,
-            baseline=RunReference(run_id="run1", bundle_name="rag_baseline", dataset_name="smoke", started_at="t1"),
-            current=RunReference(run_id="run2", bundle_name="rag_baseline", dataset_name="smoke", started_at="t2"),
-            metric_deltas=[
-                MetricDelta(name="groundedness", baseline_value=0.9, current_value=0.7, delta=-0.2, delta_percent=-22.22, direction="regressed"),
+            runs=[
+                RunReference(run_id="run1", bundle_name="rag_baseline", dataset_name="smoke", started_at="t1"),
+                RunReference(run_id="run2", bundle_name="rag_baseline", dataset_name="smoke", started_at="t2"),
             ],
-            threshold_deltas=[
-                ThresholdDelta(evaluator="groundedness", criteria=">=", baseline_passed=True, current_passed=False, flipped=True),
+            metric_rows=[
+                ComparisonMetricRow(
+                    name="groundedness",
+                    values=[0.9, 0.7],
+                    deltas=[None, -0.2],
+                    delta_percents=[None, -22.22],
+                    directions=["unchanged", "regressed"],
+                    best_run_index=0,
+                ),
             ],
-            item_deltas=[
-                ItemDelta(row_index=1, baseline_passed_all=True, current_passed_all=False),
+            threshold_rows=[
+                ComparisonThresholdRow(evaluator="groundedness", criteria=">=", passed=[True, False]),
             ],
-            summary=ComparisonSummary(
-                metrics_improved=0,
-                metrics_regressed=1,
-                metrics_unchanged=0,
-                thresholds_flipped_pass_to_fail=1,
-                thresholds_flipped_fail_to_pass=0,
-                items_newly_failing=1,
-                items_newly_passing=0,
-                has_regressions=True,
-            ),
+            item_rows=[
+                ComparisonItemRow(row_index=1, passed_all=[True, False]),
+            ],
+            summary=ComparisonSummary(run_count=2, any_regressions=True, runs_with_regressions=[1]),
         )
 
         md = generate_comparison_markdown(result)
 
         assert "# AgentOps Comparison Report" in md
-        assert "## Overview" in md
         assert "REGRESSIONS DETECTED" in md
-        assert "## Metric Deltas" in md
         assert "groundedness" in md
         assert "regressed" in md
-        assert "## Threshold Changes" in md
-        assert "REGRESSION" in md
-        assert "## Item Changes" in md
+        assert "FAIL" in md
 
     def test_report_no_regressions(self) -> None:
         result = ComparisonResult(
             version=1,
-            baseline=RunReference(run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"),
-            current=RunReference(run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"),
-            metric_deltas=[
-                MetricDelta(name="g", baseline_value=0.7, current_value=0.9, delta=0.2, direction="improved"),
+            runs=[
+                RunReference(run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"),
+                RunReference(run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"),
             ],
-            threshold_deltas=[],
-            item_deltas=[],
-            summary=ComparisonSummary(
-                metrics_improved=1,
-                metrics_regressed=0,
-                metrics_unchanged=0,
-                thresholds_flipped_pass_to_fail=0,
-                thresholds_flipped_fail_to_pass=0,
-                items_newly_failing=0,
-                items_newly_passing=0,
-                has_regressions=False,
-            ),
+            metric_rows=[
+                ComparisonMetricRow(
+                    name="g",
+                    values=[0.7, 0.9],
+                    deltas=[None, 0.2],
+                    directions=["unchanged", "improved"],
+                ),
+            ],
+            threshold_rows=[],
+            item_rows=[],
+            summary=ComparisonSummary(run_count=2, any_regressions=False, runs_with_regressions=[]),
         )
 
         md = generate_comparison_markdown(result)
         assert "NO REGRESSIONS" in md
-        assert "No threshold changes detected" in md
-        assert "No item-level changes detected" in md

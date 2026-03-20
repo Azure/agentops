@@ -1499,7 +1499,7 @@ class FoundryBackend:
         else:
             command_display = (
                 "foundry.cloud_evaluation "
-                f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id}"
+                f"project_endpoint={settings.project_endpoint} target=agent agent_id={settings.agent_id} model={settings.model}"
             )
 
         logger.info("Cloud evaluation completed with %d output item(s)", total)
@@ -1793,13 +1793,13 @@ class FoundryBackend:
         if settings.target == "model":
             command_display = (
                 "foundry.model_direct "
-                f"project_endpoint={settings.project_endpoint} model={settings.model}"
+                f"project_endpoint={settings.project_endpoint} target=model model={settings.model}"
             )
         else:
             command_display = (
                 "foundry.agent_service "
-                f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id} "
-                f"api_version={settings.api_version}"
+                f"project_endpoint={settings.project_endpoint} target=agent agent_id={settings.agent_id} "
+                f"model={settings.model} api_version={settings.api_version}"
             )
 
         return BackendExecutionResult(

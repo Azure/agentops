@@ -28,7 +28,7 @@ from agentops.core.models import (
     ThresholdEvaluationResult,
     ThresholdRule,
 )
-from agentops.core.reporter import generate_report_markdown
+from agentops.core.reporter import generate_report_html, generate_report_markdown
 from agentops.services.foundry_evals import publish_foundry_evaluation
 
 
@@ -367,7 +367,7 @@ def _derive_run_metrics(
 
 
 def run_evaluation(
-    config_path: Path | None = None, output_override: Path | None = None
+    config_path: Path | None = None, output_override: Path | None = None, report_format: str = "md",
 ) -> EvalRunServiceResult:
     run_config_path = (
         config_path.resolve() if config_path is not None else _default_run_config_path()
@@ -498,15 +498,26 @@ def run_evaluation(
     )
 
     results_path = output_dir / "results.json"
-    report_path = output_dir / "report.md"
+    report_path: Path
 
     results_path.write_text(
         json.dumps(normalized_result.model_dump(mode="json"), indent=2),
         encoding="utf-8",
     )
-    report_path.write_text(
-        generate_report_markdown(normalized_result), encoding="utf-8"
-    )
+    if report_format in ("md", "all"):
+        md_path = output_dir / "report.md"
+        md_path.write_text(
+            generate_report_markdown(normalized_result), encoding="utf-8"
+        )
+        report_path = md_path
+    if report_format in ("html", "all"):
+        html_path = output_dir / "report.html"
+        html_path.write_text(
+            generate_report_html(normalized_result), encoding="utf-8"
+        )
+        report_path = html_path
+    if report_format == "all":
+        report_path = md_path
 
     latest_dir = _latest_output_dir(run_config_path)
     _sync_latest_output(output_dir, latest_dir)

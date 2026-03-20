@@ -7,20 +7,22 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from agentops.core.models import (
+    ComparisonConditions,
+    ComparisonItemRow,
+    ComparisonMetricRow,
     ComparisonResult,
     ComparisonSummary,
-    ItemDelta,
-    MetricDelta,
+    ComparisonThresholdRow,
     RunReference,
     RunResult,
-    ThresholdDelta,
 )
 
 
 @dataclass(frozen=True)
 class ComparisonServiceResult:
     comparison_json_path: Path
-    comparison_md_path: Path
+    comparison_md_path: Path | None
+    comparison_html_path: Path | None
     has_regressions: bool
 
 
@@ -68,33 +70,51 @@ def _load_run_result(path: Path) -> RunResult:
     return RunResult.model_validate(payload)
 
 
+def _parse_command_field(command: str) -> dict[str, str]:
+    """Extract key=value pairs from the execution command string."""
+    parts = command.split()
+    result: dict[str, str] = {}
+    for part in parts:
+        if "=" in part:
+            key, _, value = part.partition("=")
+            result[key] = value
+    return result
+
+
 def _run_reference(result: RunResult, run_id: str) -> RunReference:
+    cmd = _parse_command_field(result.execution.command)
+    # Infer target from command fields
+    target = cmd.get("target")
+    if not target:
+        if cmd.get("agent_id"):
+            target = "agent"
+        elif cmd.get("model"):
+            target = "model"
     return RunReference(
         run_id=run_id,
         bundle_name=result.bundle.name,
         dataset_name=result.dataset.name,
         started_at=result.execution.started_at,
+        backend=result.execution.backend,
+        target=target,
+        model=cmd.get("model"),
+        agent_id=cmd.get("agent_id"),
+        project_endpoint=cmd.get("project_endpoint"),
+        overall_passed=result.summary.overall_passed,
     )
 
 
-def _compute_direction(delta: float) -> str:
-    if delta > 0:
-        return "improved"
-    elif delta < 0:
-        return "regressed"
-    return "unchanged"
-
-
-def _lower_is_better_metrics(result: RunResult) -> frozenset[str]:
+def _lower_is_better_metrics(*results: RunResult) -> frozenset[str]:
     """Derive which metrics are lower-is-better from threshold criteria.
 
     If a threshold uses ``<=`` or ``<``, the metric is lower-is-better.
     """
-    return frozenset(
-        t.evaluator
-        for t in result.thresholds
-        if t.criteria in {"<=", "<"}
-    )
+    names: set[str] = set()
+    for r in results:
+        for t in r.thresholds:
+            if t.criteria in {"<=", "<"}:
+                names.add(t.evaluator)
+    return frozenset(names)
 
 
 def _compute_metric_direction(delta: float, lower_is_better: bool) -> str:
@@ -105,244 +125,258 @@ def _compute_metric_direction(delta: float, lower_is_better: bool) -> str:
     return "improved" if delta > 0 else "regressed"
 
 
-def _compute_metric_deltas(
-    baseline: RunResult, current: RunResult
-) -> List[MetricDelta]:
-    baseline_map: Dict[str, float] = {m.name: m.value for m in baseline.metrics}
-    current_map: Dict[str, float] = {m.name: m.value for m in current.metrics}
-
-    lib_metrics = _lower_is_better_metrics(baseline) | _lower_is_better_metrics(current)
-
-    all_names = list(dict.fromkeys(
-        [m.name for m in baseline.metrics] + [m.name for m in current.metrics]
-    ))
-
-    deltas: List[MetricDelta] = []
-    for name in all_names:
-        if name not in baseline_map or name not in current_map:
-            continue
-
-        baseline_val = baseline_map[name]
-        current_val = current_map[name]
-        delta = current_val - baseline_val
-        delta_pct: Optional[float] = None
-        if baseline_val != 0:
-            delta_pct = (delta / abs(baseline_val)) * 100
-
-        deltas.append(
-            MetricDelta(
-                name=name,
-                baseline_value=baseline_val,
-                current_value=current_val,
-                delta=delta,
-                delta_percent=delta_pct,
-                direction=_compute_metric_direction(delta, name in lib_metrics),
-            )
-        )
-
-    return deltas
-
-
-def _compute_threshold_deltas(
-    baseline: RunResult, current: RunResult
-) -> List[ThresholdDelta]:
-    baseline_map = {
-        (t.evaluator, t.criteria): t.passed for t in baseline.thresholds
-    }
-    current_map = {
-        (t.evaluator, t.criteria): t.passed for t in current.thresholds
+def _detect_conditions(refs: List[RunReference]) -> ComparisonConditions:
+    """Detect what's fixed vs varying across runs to determine comparison type."""
+    dimensions = {
+        "dataset": [r.dataset_name for r in refs],
+        "agent": [r.agent_id or "-" for r in refs],
+        "model": [r.model or "-" for r in refs],
+        "backend": [r.backend or "-" for r in refs],
+        "target": [r.target or "-" for r in refs],
+        "bundle": [r.bundle_name for r in refs],
+        "project": [r.project_endpoint or "-" for r in refs],
     }
 
-    all_keys = list(dict.fromkeys(
-        list(baseline_map.keys()) + list(current_map.keys())
-    ))
+    fixed: Dict[str, str] = {}
+    varying: List[str] = []
+    # Fields always shown in Run Details — exclude from fixed list
+    always_shown = {"target", "model", "agent"}
+    for key, values in dimensions.items():
+        unique = set(values)
+        if len(unique) == 1:
+            if key not in always_shown:
+                fixed[key] = values[0]
+        else:
+            varying.append(key)
 
-    deltas: List[ThresholdDelta] = []
-    for evaluator, criteria in all_keys:
-        b_passed = baseline_map.get((evaluator, criteria))
-        c_passed = current_map.get((evaluator, criteria))
+    # Determine comparison type
+    if "dataset" not in varying and "agent" in varying:
+        ctype = "agent"
+    elif "dataset" not in varying and "model" in varying:
+        ctype = "model"
+    elif "dataset" in varying and "agent" not in varying and "model" not in varying:
+        ctype = "dataset"
+    else:
+        ctype = "general"
 
-        if b_passed is None or c_passed is None:
-            continue
+    # Row-level comparison is only valid when all runs use the same dataset
+    row_level_valid = "dataset" not in varying
 
-        deltas.append(
-            ThresholdDelta(
-                evaluator=evaluator,
-                criteria=criteria,
-                baseline_passed=b_passed,
-                current_passed=c_passed,
-                flipped=b_passed != c_passed,
-            )
-        )
-
-    return deltas
-
-
-def _compute_item_deltas(
-    baseline: RunResult,
-    current: RunResult,
-    metric_names: List[str],
-) -> List[ItemDelta]:
-    baseline_items = {item.row_index: item for item in baseline.item_evaluations}
-    current_items = {item.row_index: item for item in current.item_evaluations}
-
-    baseline_row_metrics = {row.row_index: row for row in baseline.row_metrics}
-    current_row_metrics = {row.row_index: row for row in current.row_metrics}
-
-    lib_metrics = _lower_is_better_metrics(baseline) | _lower_is_better_metrics(current)
-
-    all_indices = sorted(set(baseline_items.keys()) | set(current_items.keys()))
-
-    deltas: List[ItemDelta] = []
-    for idx in all_indices:
-        b_item = baseline_items.get(idx)
-        c_item = current_items.get(idx)
-
-        if b_item is None or c_item is None:
-            continue
-
-        b_row = baseline_row_metrics.get(idx)
-        c_row = current_row_metrics.get(idx)
-
-        row_metric_deltas: List[MetricDelta] = []
-        if b_row and c_row:
-            b_vals = {m.name: m.value for m in b_row.metrics}
-            c_vals = {m.name: m.value for m in c_row.metrics}
-
-            for name in metric_names:
-                if name in b_vals and name in c_vals:
-                    delta = c_vals[name] - b_vals[name]
-                    delta_pct: Optional[float] = None
-                    if b_vals[name] != 0:
-                        delta_pct = (delta / abs(b_vals[name])) * 100
-                    row_metric_deltas.append(
-                        MetricDelta(
-                            name=name,
-                            baseline_value=b_vals[name],
-                            current_value=c_vals[name],
-                            delta=delta,
-                            delta_percent=delta_pct,
-                            direction=_compute_metric_direction(delta, name in lib_metrics),
-                        )
-                    )
-
-        deltas.append(
-            ItemDelta(
-                row_index=idx,
-                baseline_passed_all=b_item.passed_all,
-                current_passed_all=c_item.passed_all,
-                metric_deltas=row_metric_deltas,
-            )
-        )
-
-    return deltas
-
-
-def _build_summary(
-    metric_deltas: List[MetricDelta],
-    threshold_deltas: List[ThresholdDelta],
-    item_deltas: List[ItemDelta],
-) -> ComparisonSummary:
-    metrics_improved = sum(1 for d in metric_deltas if d.direction == "improved")
-    metrics_regressed = sum(1 for d in metric_deltas if d.direction == "regressed")
-    metrics_unchanged = sum(1 for d in metric_deltas if d.direction == "unchanged")
-
-    pass_to_fail = sum(
-        1 for d in threshold_deltas if d.flipped and d.baseline_passed and not d.current_passed
-    )
-    fail_to_pass = sum(
-        1 for d in threshold_deltas if d.flipped and not d.baseline_passed and d.current_passed
-    )
-
-    items_newly_failing = sum(
-        1 for d in item_deltas if d.baseline_passed_all and not d.current_passed_all
-    )
-    items_newly_passing = sum(
-        1 for d in item_deltas if not d.baseline_passed_all and d.current_passed_all
-    )
-
-    has_regressions = pass_to_fail > 0 or metrics_regressed > 0 or items_newly_failing > 0
-
-    return ComparisonSummary(
-        metrics_improved=metrics_improved,
-        metrics_regressed=metrics_regressed,
-        metrics_unchanged=metrics_unchanged,
-        thresholds_flipped_pass_to_fail=pass_to_fail,
-        thresholds_flipped_fail_to_pass=fail_to_pass,
-        items_newly_failing=items_newly_failing,
-        items_newly_passing=items_newly_passing,
-        has_regressions=has_regressions,
+    return ComparisonConditions(
+        comparison_type=ctype,
+        fixed=fixed,
+        varying=varying,
+        row_level_valid=row_level_valid,
     )
 
 
 def compare_runs(
-    baseline_path: Path,
-    current_path: Path,
-    baseline_id: str = "",
-    current_id: str = "",
+    run_paths: List[Path],
+    run_ids: List[str],
 ) -> ComparisonResult:
-    """Compare two evaluation runs and return a structured comparison."""
-    baseline = _load_run_result(baseline_path)
-    current = _load_run_result(current_path)
+    """Compare N evaluation runs. The first run is the baseline."""
+    results = [_load_run_result(p) for p in run_paths]
+    refs = [_run_reference(r, rid) for r, rid in zip(results, run_ids)]
 
-    b_ref = _run_reference(baseline, baseline_id or baseline_path.parent.name)
-    c_ref = _run_reference(current, current_id or current_path.parent.name)
+    lib_metrics = _lower_is_better_metrics(*results)
 
-    metric_names = list(dict.fromkeys(
-        [m.name for m in baseline.metrics] + [m.name for m in current.metrics]
-    ))
+    # Collect all metric names preserving order
+    all_metric_names: List[str] = []
+    seen_names: set[str] = set()
+    for r in results:
+        for m in r.metrics:
+            if m.name not in seen_names:
+                all_metric_names.append(m.name)
+                seen_names.add(m.name)
 
-    metric_deltas = _compute_metric_deltas(baseline, current)
-    threshold_deltas = _compute_threshold_deltas(baseline, current)
-    item_deltas = _compute_item_deltas(baseline, current, metric_names)
-    summary = _build_summary(metric_deltas, threshold_deltas, item_deltas)
+    # Build metric rows
+    metric_rows: List[ComparisonMetricRow] = []
+    for name in all_metric_names:
+        values: List[float] = []
+        deltas: List[Optional[float]] = []
+        delta_percents: List[Optional[float]] = []
+        directions: List[str] = []
+        baseline_val: Optional[float] = None
+
+        for i, r in enumerate(results):
+            val_map = {m.name: m.value for m in r.metrics}
+            val = val_map.get(name)
+            if val is None:
+                values.append(0.0)
+                deltas.append(None)
+                delta_percents.append(None)
+                directions.append("unchanged")
+                continue
+
+            values.append(val)
+            if i == 0:
+                baseline_val = val
+                deltas.append(None)
+                delta_percents.append(None)
+                directions.append("unchanged")
+            else:
+                if baseline_val is not None:
+                    d = val - baseline_val
+                    dp = (d / abs(baseline_val) * 100) if baseline_val != 0 else None
+                    deltas.append(d)
+                    delta_percents.append(dp)
+                    directions.append(_compute_metric_direction(d, name in lib_metrics))
+                else:
+                    deltas.append(None)
+                    delta_percents.append(None)
+                    directions.append("unchanged")
+
+        # Best run: for lower-is-better pick min, otherwise pick max
+        valid_vals = [
+            (i, v) for i, v in enumerate(values)
+            if any(m.name == name for m in results[i].metrics)
+        ]
+        best_idx: Optional[int] = None
+        if valid_vals:
+            if name in lib_metrics:
+                best_idx = min(valid_vals, key=lambda x: x[1])[0]
+            else:
+                best_idx = max(valid_vals, key=lambda x: x[1])[0]
+
+        metric_rows.append(ComparisonMetricRow(
+            name=name,
+            values=values,
+            deltas=deltas,
+            delta_percents=delta_percents,
+            directions=directions,
+            best_run_index=best_idx,
+        ))
+
+    # Build threshold rows
+    all_thresholds: List[tuple[str, str]] = []
+    seen_thresholds: set[tuple[str, str]] = set()
+    for r in results:
+        for t in r.thresholds:
+            key = (t.evaluator, t.criteria)
+            if key not in seen_thresholds:
+                all_thresholds.append(key)
+                seen_thresholds.add(key)
+
+    threshold_rows: List[ComparisonThresholdRow] = []
+    for evaluator, criteria in all_thresholds:
+        passed_list: List[bool] = []
+        target_val: str | None = None
+        for r in results:
+            t_map = {(t.evaluator, t.criteria): t for t in r.thresholds}
+            t = t_map.get((evaluator, criteria))
+            passed_list.append(t.passed if t else False)
+            if t and target_val is None:
+                target_val = t.expected
+        threshold_rows.append(ComparisonThresholdRow(
+            evaluator=evaluator,
+            criteria=criteria,
+            target=target_val,
+            passed=passed_list,
+        ))
+
+    # Build item rows
+    all_row_indices: set[int] = set()
+    for r in results:
+        for item in r.item_evaluations:
+            all_row_indices.add(item.row_index)
+
+    # Collect evaluator names that have thresholds (for row-level display)
+    threshold_evaluator_names = [tr.evaluator for tr in threshold_rows]
+
+    item_rows: List[ComparisonItemRow] = []
+    for idx in sorted(all_row_indices):
+        passed_list = []
+        # Per-evaluator scores for this row across all runs
+        scores: Dict[str, List[Optional[float]]] = {name: [] for name in threshold_evaluator_names}
+        for r in results:
+            item_map = {item.row_index: item for item in r.item_evaluations}
+            item = item_map.get(idx)
+            passed_list.append(item.passed_all if item else False)
+            # Extract row-level metric scores
+            row_metrics_map = {row.row_index: row for row in r.row_metrics}
+            row_m = row_metrics_map.get(idx)
+            for name in threshold_evaluator_names:
+                if row_m:
+                    val_map = {m.name: m.value for m in row_m.metrics}
+                    scores[name].append(val_map.get(name))
+                else:
+                    scores[name].append(None)
+        item_rows.append(ComparisonItemRow(row_index=idx, passed_all=passed_list, scores=scores))
+
+    # Summary: regression = a run whose status flipped from PASS to FAIL,
+    # or a threshold that was met by baseline but missed by this run.
+    # Minor numeric shifts within passing thresholds are NOT regressions.
+    runs_with_regressions: List[int] = []
+    for i in range(1, len(results)):
+        has_reg = False
+        # Check if overall run status flipped PASS→FAIL
+        if results[0].summary.overall_passed and not results[i].summary.overall_passed:
+            has_reg = True
+        # Check if any row flipped from passing to failing
+        if not has_reg:
+            for ir in item_rows:
+                if ir.passed_all[0] and not ir.passed_all[i]:
+                    has_reg = True
+                    break
+        if has_reg:
+            runs_with_regressions.append(i)
+
+    summary = ComparisonSummary(
+        run_count=len(results),
+        any_regressions=len(runs_with_regressions) > 0,
+        runs_with_regressions=runs_with_regressions,
+    )
 
     return ComparisonResult(
         version=1,
-        baseline=b_ref,
-        current=c_ref,
-        metric_deltas=metric_deltas,
-        threshold_deltas=threshold_deltas,
-        item_deltas=item_deltas,
+        runs=refs,
+        baseline_index=0,
+        conditions=_detect_conditions(refs),
+        metric_rows=metric_rows,
+        threshold_rows=threshold_rows,
+        item_rows=item_rows,
         summary=summary,
     )
 
 
 def run_comparison(
-    baseline_id: str,
-    current_id: str,
+    run_ids: List[str],
     output_dir: Path | None = None,
+    report_format: str = "md",
 ) -> ComparisonServiceResult:
     """Resolve run IDs, compare, and write comparison outputs."""
-    from agentops.core.reporter import generate_comparison_markdown
+    from agentops.core.reporter import generate_comparison_html, generate_comparison_markdown
 
-    baseline_path = _resolve_run_path(baseline_id)
-    current_path = _resolve_run_path(current_id)
+    paths = [_resolve_run_path(rid) for rid in run_ids]
+    result = compare_runs(run_paths=paths, run_ids=run_ids)
 
-    result = compare_runs(
-        baseline_path=baseline_path,
-        current_path=current_path,
-        baseline_id=baseline_id,
-        current_id=current_id,
-    )
-
-    resolved_output = output_dir.resolve() if output_dir else current_path.parent
+    resolved_output = output_dir.resolve() if output_dir else paths[-1].parent
     resolved_output.mkdir(parents=True, exist_ok=True)
 
     comparison_json_path = resolved_output / "comparison.json"
-    comparison_md_path = resolved_output / "comparison.md"
+    comparison_md_path: Path | None = None
+    comparison_html_path: Path | None = None
 
     comparison_json_path.write_text(
         json.dumps(result.model_dump(mode="json"), indent=2),
         encoding="utf-8",
     )
-    comparison_md_path.write_text(
-        generate_comparison_markdown(result),
-        encoding="utf-8",
-    )
+    if report_format in ("md", "all"):
+        comparison_md_path = resolved_output / "comparison.md"
+        comparison_md_path.write_text(
+            generate_comparison_markdown(result),
+            encoding="utf-8",
+        )
+    if report_format in ("html", "all"):
+        comparison_html_path = resolved_output / "comparison.html"
+        comparison_html_path.write_text(
+            generate_comparison_html(result),
+            encoding="utf-8",
+        )
 
     return ComparisonServiceResult(
         comparison_json_path=comparison_json_path,
         comparison_md_path=comparison_md_path,
-        has_regressions=result.summary.has_regressions,
+        comparison_html_path=comparison_html_path,
+        has_regressions=result.summary.any_regressions,
     )
