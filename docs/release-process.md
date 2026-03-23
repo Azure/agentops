@@ -208,7 +208,6 @@ The CI pipeline runs on **every push and PR** to `main` or `develop`.
 | --- | --- | --- | --- |
 | Ubuntu | ✅ | ✅ | ✅ |
 | Windows | ✅ | ✅ | ✅ |
-| macOS | — | ✅ | ✅ |
 
 ### What CI Catches
 
@@ -571,26 +570,31 @@ push tag v0.2.0
 
 ### Step-by-Step: Cutting a Release
 
-#### Step 1: Prepare the Release
+#### Step 1: Cut the Release (One-Click)
 
-Ensure all intended changes are merged to `develop` and the `CHANGELOG.md` is updated:
+1. Go to the **Actions** tab → select **Cut Release** workflow
+2. Click **Run workflow**
+3. Enter the version (e.g. `0.2.0`) — no `v` prefix
+4. Click **Run workflow**
 
-```bash
-git checkout develop
-git pull origin develop
+The workflow automatically:
+- Creates `release/v0.2.0` from `develop`
+- Updates `CHANGELOG.md` (`[Unreleased]` → `[0.2.0] - YYYY-MM-DD`)
+- Pushes the branch (triggers [staging pipeline](#7-staging-pipeline-testpypi))
+- Opens a PR: `release/v0.2.0` → `main`
 
-# Verify CHANGELOG has entries under [Unreleased]
-cat CHANGELOG.md
-```
+> **Alternative (manual)**: If you prefer to create the release branch locally:
+> ```bash
+> git checkout develop && git pull origin develop
+> git checkout -b release/v0.2.0
+> # Edit CHANGELOG.md manually
+> git commit -m "chore: prepare release 0.2.0"
+> git push origin release/v0.2.0
+> ```
 
-#### Step 2: Create the Release Branch
+#### Step 2: Wait for Staging
 
-```bash
-git checkout -b release/v0.2.0
-git push origin release/v0.2.0
-```
-
-This triggers the [staging pipeline](#7-staging-pipeline-testpypi). Wait for it to pass.
+The branch push triggers the staging pipeline automatically. Wait for it to pass.
 
 #### Step 3: Monitor Staging
 
@@ -602,36 +606,16 @@ This triggers the [staging pipeline](#7-staging-pipeline-testpypi). Wait for it 
 
 If any job fails, fix the issue on the release branch and push. The pipeline re-runs automatically.
 
-#### Step 4: Finalize the Changelog
+#### Step 4: Merge to Main
 
-On the release branch, move `[Unreleased]` entries to a versioned section:
-
-```markdown
-## [0.2.0] - 2026-03-23
-
-### Added
-- ...
-
-### Changed
-- ...
-```
-
-```bash
-git add CHANGELOG.md
-git commit -m "chore: finalize changelog for v0.2.0"
-git push origin release/v0.2.0
-```
-
-#### Step 5: Merge to Main
-
-Create a PR from `release/v0.2.0` → `main`:
+Create a PR from `release/v0.2.0` → `main` (or use the one already opened by Cut Release):
 
 1. Go to GitHub → **Pull Requests** → **New Pull Request**
 2. Base: `main` ← Compare: `release/v0.2.0`
 3. Title: `Release v0.2.0`
 4. Get the required reviews and merge
 
-#### Step 6: Tag the Release
+#### Step 5: Tag the Release
 
 ```bash
 git checkout main
@@ -642,7 +626,7 @@ git push origin v0.2.0
 
 This triggers the [production release pipeline](#8-production-release-pipeline-pypi).
 
-#### Step 7: Approve the PyPI Publish
+#### Step 6: Approve the PyPI Publish
 
 1. Go to **Actions** tab → find the **Release** workflow run for `v0.2.0`
 2. The pipeline will run through build → TestPyPI → verify
@@ -651,7 +635,7 @@ This triggers the [production release pipeline](#8-production-release-pipeline-p
 5. The package publishes to PyPI
 6. The `github-release` job creates a GitHub Release with the built artifacts and auto-generated release notes
 
-#### Step 8: Post-Release Cleanup
+#### Step 7: Post-Release Cleanup
 
 ```bash
 # Sync the tag back to develop
@@ -665,7 +649,7 @@ git push origin --delete release/v0.2.0
 git branch -d release/v0.2.0
 ```
 
-#### Step 9: Verify the Published Package
+#### Step 8: Verify the Published Package
 
 ```bash
 # Install from PyPI
@@ -787,6 +771,23 @@ Key details:
 - `github-release` uses `gh release create` with `--generate-notes` for automatic release notes
 - Built artifacts (.whl, .tar.gz) are attached to the GitHub Release
 
+### `cut-release.yml` — Cut Release (Manual Dispatch)
+
+```
+Trigger: workflow_dispatch (manual button in Actions tab)
+Input:   version — semver string (e.g. 0.2.0)
+Flow:    validate → create release branch → update CHANGELOG → push → open PR
+Purpose: One-click release branch creation from develop
+```
+
+Key details:
+- Creates `release/v<version>` branch from `develop`
+- Automatically updates `CHANGELOG.md` — renames `[Unreleased]` to `[<version>] - <date>` and adds a fresh `[Unreleased]` section
+- Opens a PR from `release/v<version>` → `main` with a checklist
+- The branch push triggers `staging.yml` automatically
+- Fails safely if the branch already exists or CHANGELOG is missing `[Unreleased]`
+- Does NOT auto-tag or auto-publish — tagging remains a manual, intentional step
+
 ---
 
 ## 12. Release Checklist
@@ -800,10 +801,10 @@ Use this checklist when cutting a release:
 - [ ] Version from setuptools-scm looks correct: `python -m setuptools_scm`
 
 **Staging**
-- [ ] Release branch created and pushed: `release/v0.X.Y`
+- [ ] Release branch created via **Cut Release** workflow (or manually)
+- [ ] CHANGELOG automatically updated with version and date
 - [ ] Staging pipeline passes: build + TestPyPI + verify (all 3 green)
-- [ ] CHANGELOG finalized with version and date
-- [ ] Release branch change pushed, staging re-runs and passes
+- [ ] PR opened: `release/v0.X.Y` → `main`
 
 **Production**
 - [ ] PR from `release/v0.X.Y` → `main` created and approved
@@ -878,7 +879,10 @@ Use this checklist when cutting a release:
                       ├──→ CI (ci.yml)
                       │    lint + test + coverage
                       │
-                      └──→ release/v0.2.0
+                      └──→ Cut Release (cut-release.yml)
+                           manual dispatch → enter version
+                           │
+                           └──→ release/v0.2.0
                                 │
                                 ├──→ Staging (staging.yml)
                                 │

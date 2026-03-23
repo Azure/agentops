@@ -250,3 +250,21 @@ Remove or comment out the "Post report as PR comment" step in the workflow.
 | Missing artifacts | Ensure `.agentops/results/latest/` is not in `.gitignore` — the workflow reads this path |
 | Authentication errors | Verify the federated credential entity matches your repo/branch; check that `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` are set as repository variables; confirm the app registration has access to the Foundry project |
 | `agentops: command not found` | Ensure `pip install agentops-toolkit` runs before the eval step |
+
+---
+
+## Internal CI/CD Workflows (Contributors)
+
+If you are contributing to the agentops-toolkit repository itself, the project has separate CI/CD workflows for building and releasing the package:
+
+| Workflow | Trigger | Purpose |
+| --- | --- | --- |
+| `ci.yml` | Push to `develop`, PRs to `main`/`develop` | Lint (ruff) + test (matrix) + coverage |
+| `_build.yml` | Called by staging/release | Reusable lint + test + build package |
+| `staging.yml` | Push to `release/**` | Build → TestPyPI → verify install |
+| `release.yml` | Push `v*` tag | TestPyPI → PyPI (with approval) → GitHub Release |
+| `cut-release.yml` | Manual dispatch (Actions tab button) | Create release branch from `develop`, update CHANGELOG, open PR to `main` |
+
+The **Cut Release** workflow provides a one-click way to start a release: enter a version number in the Actions UI, and it creates the release branch, updates the changelog, and opens the PR automatically.
+
+For full details, see [release-process.md](release-process.md).
