@@ -10,7 +10,7 @@ name: CI
 
 on:
   push:
-    branches: [develop, "release/**"]
+    branches: [develop]
   pull_request:
     branches: [main, develop]
 
