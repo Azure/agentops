@@ -1,4 +1,5 @@
 """Pydantic models for AgentOps schemas."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -186,9 +187,8 @@ class BackendConfig(BaseModel):
 
         normalized = value.strip()
         looks_like_placeholder = (
-            (normalized.startswith("<") and normalized.endswith(">"))
-            or "replace-with" in normalized.lower()
-        )
+            normalized.startswith("<") and normalized.endswith(">")
+        ) or "replace-with" in normalized.lower()
         if looks_like_placeholder:
             raise ValueError(
                 "backend.model must be replaced with a real Foundry model deployment name"
@@ -205,17 +205,24 @@ class BackendConfig(BaseModel):
         elif self.type == "foundry":
             target = (self.target or "agent").strip().lower()
             if target not in {"agent", "model"}:
-                raise ValueError("backend.target must be 'agent' or 'model' for foundry")
+                raise ValueError(
+                    "backend.target must be 'agent' or 'model' for foundry"
+                )
 
             self.target = target
             if target == "agent":
                 if not self.agent_id or not self.agent_id.strip():
-                    raise ValueError("backend.agent_id is required for foundry target=agent")
+                    raise ValueError(
+                        "backend.agent_id is required for foundry target=agent"
+                    )
             # target=model does not require agent_id
 
             if self.max_poll_attempts is not None and self.max_poll_attempts <= 0:
                 raise ValueError("backend.max_poll_attempts must be > 0")
-            if self.poll_interval_seconds is not None and self.poll_interval_seconds <= 0:
+            if (
+                self.poll_interval_seconds is not None
+                and self.poll_interval_seconds <= 0
+            ):
                 raise ValueError("backend.poll_interval_seconds must be > 0")
         else:
             raise ValueError(f"Unsupported backend type: {self.type}")

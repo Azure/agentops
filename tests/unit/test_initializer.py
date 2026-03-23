@@ -15,7 +15,9 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
 
     assert (tmp_path / ".agentops" / "config.yaml").is_file()
     assert (tmp_path / ".agentops" / "bundles" / "model_direct_baseline.yaml").is_file()
-    assert (tmp_path / ".agentops" / "bundles" / "rag_retrieval_baseline.yaml").is_file()
+    assert (
+        tmp_path / ".agentops" / "bundles" / "rag_retrieval_baseline.yaml"
+    ).is_file()
     assert (tmp_path / ".agentops" / "bundles" / "agent_tools_baseline.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-model-direct.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-rag.yaml").is_file()

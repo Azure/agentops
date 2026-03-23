@@ -1,4 +1,5 @@
 """Workspace initialization service for `agentops init`."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
