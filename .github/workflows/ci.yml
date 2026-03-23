@@ -1,14 +1,14 @@
 # AgentOps Toolkit — CI/CD Pipelines
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR
+#   1. ci.yml          — Lint + test on push to develop/release and on PRs to main/develop
 #   2. release.yml     — Build + publish to PyPI on tag push
 
 name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [develop, "release/**"]
   pull_request:
     branches: [main, develop]
 

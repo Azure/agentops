@@ -136,6 +136,7 @@ class DatasetFormat(BaseModel):
     type: str
     input_field: str
     expected_field: str
+    context_field: Optional[str] = None
 
 
 class DatasetConfig(BaseModel):
