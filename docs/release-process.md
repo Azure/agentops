@@ -199,8 +199,12 @@ The CI pipeline runs on **every push and PR** to `main` or `develop`.
 | Job | What it does | Runs on |
 | --- | --- | --- |
 | **lint** | `ruff check` (linting) + `mypy` (type checking, soft-fail) | Ubuntu, Python 3.11 |
-| **test** | `pytest tests/` with JUnit XML output | Matrix: 3 OS × 3 Python versions |
+| **test** | `pytest tests/` with JUnit XML output | Matrix: 2 OS × 3 Python versions |
 | **coverage** | `pytest --cov` with XML coverage report | Ubuntu, Python 3.13 (after tests pass) |
+| **publish-dev** | Build package + publish to TestPyPI (develop pushes only) | Ubuntu, Python 3.12 (after lint + test pass) |
+| **verify-dev** | Install from TestPyPI + smoke test (develop pushes only) | Ubuntu, Python 3.12 (after publish-dev) |
+
+The `publish-dev` and `verify-dev` jobs only run on pushes to `develop` (not on PRs). Every merged PR automatically produces an installable dev build on TestPyPI with a version like `0.1.3.dev12`.
 
 ### Test Matrix
 
@@ -730,10 +734,13 @@ All workflow files are in `.github/workflows/`:
 ### `ci.yml` — Continuous Integration
 
 ```
-Trigger: push/PR to main or develop
+Trigger: push to develop, PR to main or develop
 Flow:    lint → test (matrix) → coverage
-Purpose: Quality gate for all code changes
+         + on develop push: publish-dev → verify-dev (TestPyPI)
+Purpose: Quality gate for all code changes; auto-publish dev builds
 ```
+
+Key detail: `publish-dev` and `verify-dev` only run on pushes to `develop` (not PRs). Every merge to develop produces a dev version on TestPyPI (e.g. `0.1.3.dev12`) via setuptools-scm.
 
 ### `_build.yml` — Reusable Build
 
@@ -878,6 +885,7 @@ Use this checklist when cutting a release:
                       │
                       ├──→ CI (ci.yml)
                       │    lint + test + coverage
+                      │    + publish-dev → TestPyPI (dev version)
                       │
                       └──→ Cut Release (cut-release.yml)
                            manual dispatch → enter version
