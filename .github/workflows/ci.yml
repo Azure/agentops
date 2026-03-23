@@ -1,10 +1,11 @@
 # AgentOps Toolkit — CI/CD Pipelines
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR
+#   1. ci.yml          — Lint + test on every push/PR; publish dev builds to TestPyPI on develop
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
 #   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 
 name: CI
 
@@ -97,3 +98,91 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+  # Publish dev build to TestPyPI on every push to develop (not PRs)
+  publish-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for setuptools-scm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ">=0.9.0"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Build package
+        run: uv build
+
+      - name: Show version
+        run: |
+          ls -la dist/
+          uv run python -c "from importlib.metadata import version; print(f'Dev version: {version(\"agentops-toolkit\")}')" 
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TEST_PYPI_TOKEN }}
+          verbose: true
+          skip-existing: true
+
+  # Verify the dev build installs correctly
+  verify-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: publish-dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Determine expected version
+        id: version
+        run: |
+          pip install setuptools-scm
+          VERSION=$(python -m setuptools_scm)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Expected dev version: $VERSION"
+
+      - name: Install from TestPyPI
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "Attempt $i: installing agentops-toolkit==${{ steps.version.outputs.version }}"
+            pip install \
+              "agentops-toolkit==${{ steps.version.outputs.version }}" \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/ \
+              && break
+            echo "Not available yet, waiting 30s..."
+            sleep 30
+          done
+
+      - name: Smoke test
+        run: |
+          agentops --version
+          agentops --help
+
+      - name: Summary
+        run: |
+          echo "## ✅ Dev build published and verified" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- TestPyPI: https://test.pypi.org/project/agentops-toolkit/${{ steps.version.outputs.version }}/" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Install: \`pip install agentops-toolkit==${{ steps.version.outputs.version }} --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/\`" >> "$GITHUB_STEP_SUMMARY"
