@@ -108,32 +108,45 @@ def _parse_agent_name_version(agent_id: str) -> tuple[str, str | None]:
     return agent_id.strip(), None
 
 
-_NLP_ONLY_EVALUATORS = frozenset({
-    "f1_score",
-    "bleu",
-    "rouge",
-    "meteor",
-    "gleu",
-})
+_NLP_ONLY_EVALUATORS = frozenset(
+    {
+        "f1_score",
+        "bleu",
+        "rouge",
+        "meteor",
+        "gleu",
+    }
+)
 
-_EVALUATORS_NEEDING_GROUND_TRUTH = frozenset({
-    "similarity",
-    "f1_score",
-    "bleu",
-    "rouge",
-    "meteor",
-    "gleu",
-})
+_EVALUATORS_NEEDING_GROUND_TRUTH = frozenset(
+    {
+        "similarity",
+        "f1_score",
+        "bleu",
+        "rouge",
+        "meteor",
+        "gleu",
+    }
+)
 
-_EVALUATORS_NEEDING_CONTEXT = frozenset({
-    "groundedness",
-})
+_EVALUATORS_NEEDING_CONTEXT = frozenset(
+    {
+        "groundedness",
+    }
+)
+
+_EVALUATORS_NEEDING_TOOL_CALLS = frozenset(
+    {
+        "tool_call_accuracy",
+    }
+)
 
 
 def _cloud_evaluator_data_mapping(
     builtin_name: str,
     input_field: str,
     expected_field: str,
+    context_field: str | None = None,
 ) -> Dict[str, str]:
     """Build ``data_mapping`` for an ``azure_ai_evaluator`` testing criterion."""
     item_input = "{{item." + input_field + "}}"
@@ -147,7 +160,13 @@ def _cloud_evaluator_data_mapping(
     if builtin_name in _EVALUATORS_NEEDING_GROUND_TRUTH:
         mapping["ground_truth"] = item_expected
     elif builtin_name in _EVALUATORS_NEEDING_CONTEXT:
-        mapping["context"] = item_expected
+        # Use the dedicated context column when declared in dataset format;
+        # fall back to expected_field only when no context_field is configured.
+        context_item = "{{item." + (context_field or expected_field) + "}}"
+        mapping["context"] = context_item
+    elif builtin_name in _EVALUATORS_NEEDING_TOOL_CALLS:
+        mapping["tool_calls"] = "{{sample.tool_calls}}"
+        mapping["tool_definitions"] = "{{item.tool_definitions}}"
     return mapping
 
 
@@ -398,7 +417,22 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
         return {
             "query": "$prompt",
             "response": "$prediction",
-            "context": "$expected",
+            # Use the dedicated 'context' row field (retrieved documents).
+            # Override via evaluators[].config.input_mapping in the bundle
+            # if your dataset column has a different name.
+            "context": "$row.context",
+        }
+    if name == "TaskCompletionEvaluator":
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+        }
+    if name == "ToolCallAccuracyEvaluator":
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+            "tool_calls": "$row.tool_calls",
+            "tool_definitions": "$row.tool_definitions",
         }
     return {}
 
@@ -1161,6 +1195,7 @@ class FoundryBackend:
                     builtin_name,
                     input_field,
                     expected_field,
+                    context_field=dataset_config.format.context_field,
                 ),
             }
             if _cloud_evaluator_needs_model(builtin_name):
@@ -1413,20 +1448,26 @@ class FoundryBackend:
             # Only emit local evaluator metrics if they are configured in the bundle.
             if "exact_match" in enabled_local_names:
                 passed = prediction.lower() == expected.lower() if expected else False
-                row_metric_entries.append({
-                    "name": "exact_match",
-                    "value": 1.0 if passed else 0.0,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "exact_match",
+                        "value": 1.0 if passed else 0.0,
+                    }
+                )
             if "latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "latency_seconds",
-                    "value": approx_latency_per_row,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "latency_seconds",
+                        "value": approx_latency_per_row,
+                    }
+                )
             if "avg_latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "avg_latency_seconds",
-                    "value": approx_latency_per_row,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "avg_latency_seconds",
+                        "value": approx_latency_per_row,
+                    }
+                )
 
             # Update aggregate values for local evaluator metrics.
             for entry in row_metric_entries:
@@ -1439,10 +1480,12 @@ class FoundryBackend:
             if isinstance(datasource_item_id, int) and datasource_item_id >= 0:
                 row_index = datasource_item_id + 1
 
-            row_metrics_payload.append({
-                "row_index": row_index,
-                "metrics": row_metric_entries,
-            })
+            row_metrics_payload.append(
+                {
+                    "row_index": row_index,
+                    "metrics": row_metric_entries,
+                }
+            )
             stdout_lines.append(
                 f"row={row_index} expected={expected!r} prediction={prediction!r}"
             )
@@ -1455,10 +1498,12 @@ class FoundryBackend:
         for name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(name, [])
             if values:
-                metrics_entries.append({
-                    "name": name,
-                    "value": sum(values) / len(values),
-                })
+                metrics_entries.append(
+                    {
+                        "name": name,
+                        "value": sum(values) / len(values),
+                    }
+                )
         metrics_entries.append({"name": "samples_evaluated", "value": float(total)})
 
         metrics_path.write_text(
@@ -1626,20 +1671,26 @@ class FoundryBackend:
             # Only emit local evaluator metrics that are configured in the bundle.
             if "exact_match" in enabled_local_names:
                 passed = prediction_normalized.lower() == expected_text.lower()
-                row_metric_entries.append({
-                    "name": "exact_match",
-                    "value": 1.0 if passed else 0.0,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "exact_match",
+                        "value": 1.0 if passed else 0.0,
+                    }
+                )
             if "latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "latency_seconds",
-                    "value": row_latency,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "latency_seconds",
+                        "value": row_latency,
+                    }
+                )
             if "avg_latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "avg_latency_seconds",
-                    "value": row_latency,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "avg_latency_seconds",
+                        "value": row_latency,
+                    }
+                )
 
             for metric_entry in row_metric_entries:
                 metric_name = metric_entry["name"]
@@ -1647,10 +1698,12 @@ class FoundryBackend:
                 if metric_name in evaluator_aggregate_values:
                     evaluator_aggregate_values[metric_name].append(metric_value)
 
-            row_metrics_payload.append({
-                "row_index": row_index,
-                "metrics": row_metric_entries,
-            })
+            row_metrics_payload.append(
+                {
+                    "row_index": row_index,
+                    "metrics": row_metric_entries,
+                }
+            )
 
             stdout_lines.append(
                 f"row={row_index} expected={expected_text!r} prediction={prediction_normalized!r}"
@@ -1771,10 +1824,12 @@ class FoundryBackend:
         for evaluator_name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(evaluator_name, [])
             if values:
-                metrics_entries.append({
-                    "name": evaluator_name,
-                    "value": sum(values) / len(values),
-                })
+                metrics_entries.append(
+                    {
+                        "name": evaluator_name,
+                        "value": sum(values) / len(values),
+                    }
+                )
 
         metrics_entries.append({"name": "samples_evaluated", "value": float(total)})
 

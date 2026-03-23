@@ -58,7 +58,10 @@ def test_execute_builds_command_and_writes_logs(tmp_path: Path) -> None:
         stderr="ok stderr",
     )
 
-    with patch("agentops.backends.subprocess_backend.subprocess.run", return_value=fake_completed) as run_mock:
+    with patch(
+        "agentops.backends.subprocess_backend.subprocess.run",
+        return_value=fake_completed,
+    ) as run_mock:
         result = backend.execute(context)
 
     run_kwargs = run_mock.call_args.kwargs

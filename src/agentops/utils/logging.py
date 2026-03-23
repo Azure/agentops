@@ -3,6 +3,7 @@
 No side effects at import time — call setup_logging() explicitly from the
 CLI callback before any command runs.
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,7 +35,9 @@ def setup_logging(verbose: bool = False) -> None:
         logging.getLogger("azure.identity").setLevel(logging.WARNING)
         logging.getLogger("azure.core").setLevel(logging.WARNING)
         logging.getLogger("azure.core.pipeline").setLevel(logging.WARNING)
-        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+        logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+            logging.WARNING
+        )
         logging.getLogger("azure.ai.evaluation").setLevel(logging.WARNING)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("openai").setLevel(logging.WARNING)

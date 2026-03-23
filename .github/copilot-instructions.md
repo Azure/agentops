@@ -229,6 +229,14 @@ Do not implement the following unless explicitly discussed:
 
 ## Copilot Guidance
 
+## Workflow Skills
+
+This repository also defines workflow-oriented Copilot skills under `.github/skills/`.
+
+- Use these skills for operational guidance on running evaluations, investigating regressions, observability triage, and release management workflows.
+- Treat the CLI as the source of truth and keep planned/stubbed commands clearly marked as not yet implemented.
+- Do not duplicate architecture or code-structure guidance from this file inside workflow skills.
+
 When generating or modifying code:
 
 - **Read `docs/how-it-works.md` first** — it is the single source of truth for architecture

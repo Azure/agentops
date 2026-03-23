@@ -39,7 +39,11 @@ def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
                 {"name": "fluency", "source": "local", "enabled": True},
             ],
             "thresholds": [
-                {"evaluator": "groundedness", "criteria": ">=", "value": threshold_value},
+                {
+                    "evaluator": "groundedness",
+                    "criteria": ">=",
+                    "value": threshold_value,
+                },
                 {"evaluator": "relevance", "criteria": ">=", "value": threshold_value},
                 {"evaluator": "coherence", "criteria": ">=", "value": threshold_value},
                 {"evaluator": "fluency", "criteria": ">=", "value": threshold_value},
@@ -55,19 +59,23 @@ def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
             "name": "smoke",
             "description": "Integration dataset",
             "source": {"type": "file", "path": "../data/smoke.jsonl"},
-            "format": {"type": "jsonl", "input_field": "input", "expected_field": "expected"},
+            "format": {
+                "type": "jsonl",
+                "input_field": "input",
+                "expected_field": "expected",
+            },
             "metadata": {"owner": "tests"},
         },
     )
 
     (data_dir / "smoke.jsonl").write_text(
-        '\n'.join(
+        "\n".join(
             [
                 '{"id":"1","input":"hello","expected":"hello"}',
                 '{"id":"2","input":"world","expected":"world"}',
             ]
         )
-        + '\n',
+        + "\n",
         encoding="utf-8",
     )
 
@@ -166,7 +174,9 @@ def test_eval_run_integration_threshold_fail(tmp_path: Path, monkeypatch) -> Non
     assert run_metrics["items_pass_rate"] == 0.0
 
 
-def test_eval_run_integration_uses_default_run_yaml_and_updates_latest(tmp_path: Path, monkeypatch) -> None:
+def test_eval_run_integration_uses_default_run_yaml_and_updates_latest(
+    tmp_path: Path, monkeypatch
+) -> None:
     _write_project_files(tmp_path, fail_thresholds=False)
 
     monkeypatch.chdir(tmp_path)
@@ -182,7 +192,9 @@ def test_eval_run_integration_uses_default_run_yaml_and_updates_latest(tmp_path:
     assert (latest_dir / "report.md").is_file()
 
     timestamp_dirs = [
-        path for path in results_root.iterdir() if path.is_dir() and path.name != "latest"
+        path
+        for path in results_root.iterdir()
+        if path.is_dir() and path.name != "latest"
     ]
     assert len(timestamp_dirs) == 1
     assert (timestamp_dirs[0] / "results.json").is_file()

@@ -1,0 +1,57 @@
+# AgentOps Toolkit — Reusable Build Workflow
+#
+# Workflows:
+#   1. ci.yml          — Lint + test on every push/PR
+#   2. _build.yml      — Reusable build (test + package), called by staging and release
+#   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
+#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#
+# Called by staging.yml and release.yml via workflow_call.
+# Runs tests, builds the package (version via setuptools-scm), and uploads
+# the dist/ artifacts for downstream jobs.
+#
+# Usage in caller workflows:
+#   jobs:
+#     build:
+#       uses: ./.github/workflows/_build.yml
+
+name: _build
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history required for setuptools-scm
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ">=0.9.0"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest tests/ -v --tb=short
+
+      - name: Build package
+        run: uv build
+
+      - name: Show build info
+        run: |
+          ls -la dist/
+          uv run python -c "from importlib.metadata import version; print(f'Version: {version(\"agentops-toolkit\")}')"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

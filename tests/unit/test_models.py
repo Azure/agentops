@@ -126,6 +126,24 @@ def test_dataset_config_parses() -> None:
 
     dataset = DatasetConfig.model_validate(data)
     assert dataset.source.path.name == "smoke.jsonl"
+    assert dataset.format.context_field is None
+
+
+def test_dataset_config_parses_context_field() -> None:
+    data = {
+        "version": 1,
+        "name": "smoke-rag",
+        "source": {"type": "file", "path": "./data/smoke-rag.jsonl"},
+        "format": {
+            "type": "jsonl",
+            "input_field": "input",
+            "expected_field": "expected",
+            "context_field": "context",
+        },
+    }
+
+    dataset = DatasetConfig.model_validate(data)
+    assert dataset.format.context_field == "context"
 
 
 def test_backend_requires_command_and_args_for_subprocess() -> None:

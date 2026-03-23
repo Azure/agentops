@@ -1,4 +1,5 @@
 """Unit tests for the unified comparison service and models."""
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,6 @@ from agentops.core.models import (
 from agentops.core.reporter import generate_comparison_markdown
 from agentops.services.comparison import (
     _compute_metric_direction,
-    _lower_is_better_metrics,
     _resolve_run_path,
     compare_runs,
 )
@@ -41,7 +41,10 @@ def _sample_result(
         {
             "version": 1,
             "status": "completed",
-            "bundle": {"name": "rag_baseline", "path": ".agentops/bundles/rag_baseline.yaml"},
+            "bundle": {
+                "name": "rag_baseline",
+                "path": ".agentops/bundles/rag_baseline.yaml",
+            },
             "dataset": {"name": "smoke", "path": ".agentops/datasets/smoke.yaml"},
             "execution": {
                 "backend": "subprocess",
@@ -56,28 +59,60 @@ def _sample_result(
                 {"name": "relevance", "value": relevance},
             ],
             "row_metrics": [
-                {"row_index": 1, "metrics": [{"name": "groundedness", "value": row1_groundedness}]},
-                {"row_index": 2, "metrics": [{"name": "groundedness", "value": row2_groundedness}]},
+                {
+                    "row_index": 1,
+                    "metrics": [{"name": "groundedness", "value": row1_groundedness}],
+                },
+                {
+                    "row_index": 2,
+                    "metrics": [{"name": "groundedness", "value": row2_groundedness}],
+                },
             ],
             "item_evaluations": [
                 {
                     "row_index": 1,
                     "passed_all": True,
                     "thresholds": [
-                        {"row_index": 1, "evaluator": "groundedness", "criteria": ">=", "expected": "0.800000", "actual": str(row1_groundedness), "passed": row1_groundedness >= 0.8},
+                        {
+                            "row_index": 1,
+                            "evaluator": "groundedness",
+                            "criteria": ">=",
+                            "expected": "0.800000",
+                            "actual": str(row1_groundedness),
+                            "passed": row1_groundedness >= 0.8,
+                        },
                     ],
                 },
                 {
                     "row_index": 2,
                     "passed_all": overall_passed,
                     "thresholds": [
-                        {"row_index": 2, "evaluator": "groundedness", "criteria": ">=", "expected": "0.800000", "actual": str(row2_groundedness), "passed": row2_groundedness >= 0.8},
+                        {
+                            "row_index": 2,
+                            "evaluator": "groundedness",
+                            "criteria": ">=",
+                            "expected": "0.800000",
+                            "actual": str(row2_groundedness),
+                            "passed": row2_groundedness >= 0.8,
+                        },
                     ],
                 },
             ],
             "thresholds": [
-                {"evaluator": "groundedness", "criteria": ">=", "expected": "0.800000", "actual": f"{groundedness:.6f}", "passed": groundedness >= 0.8},
-                {"evaluator": "relevance", "criteria": ">=", "expected": "0.800000", "actual": f"{relevance:.6f}", "passed": relevance >= 0.8},
+                {
+                    "evaluator": "groundedness",
+                    "criteria": ">=",
+                    "expected": "0.800000",
+                    "actual": f"{groundedness:.6f}",
+                    "passed": groundedness >= 0.8,
+                },
+                {
+                    "evaluator": "relevance",
+                    "criteria": ">=",
+                    "expected": "0.800000",
+                    "actual": f"{relevance:.6f}",
+                    "passed": relevance >= 0.8,
+                },
             ],
             "summary": {
                 "metrics_count": 2,
@@ -90,12 +125,17 @@ def _sample_result(
     )
 
 
-def _sample_result_with_latency(*, similarity: float = 5.0, latency: float = 5.0) -> RunResult:
+def _sample_result_with_latency(
+    *, similarity: float = 5.0, latency: float = 5.0
+) -> RunResult:
     return RunResult.model_validate(
         {
             "version": 1,
             "status": "completed",
-            "bundle": {"name": "model_direct", "path": ".agentops/bundles/model_direct.yaml"},
+            "bundle": {
+                "name": "model_direct",
+                "path": ".agentops/bundles/model_direct.yaml",
+            },
             "dataset": {"name": "smoke", "path": ".agentops/datasets/smoke.yaml"},
             "execution": {
                 "backend": "foundry",
@@ -110,21 +150,53 @@ def _sample_result_with_latency(*, similarity: float = 5.0, latency: float = 5.0
                 {"name": "avg_latency_seconds", "value": latency},
             ],
             "row_metrics": [
-                {"row_index": 1, "metrics": [{"name": "SimilarityEvaluator", "value": similarity}, {"name": "avg_latency_seconds", "value": latency}]},
+                {
+                    "row_index": 1,
+                    "metrics": [
+                        {"name": "SimilarityEvaluator", "value": similarity},
+                        {"name": "avg_latency_seconds", "value": latency},
+                    ],
+                },
             ],
             "item_evaluations": [
                 {
                     "row_index": 1,
                     "passed_all": True,
                     "thresholds": [
-                        {"row_index": 1, "evaluator": "SimilarityEvaluator", "criteria": ">=", "expected": "3.000000", "actual": str(similarity), "passed": similarity >= 3},
-                        {"row_index": 1, "evaluator": "avg_latency_seconds", "criteria": "<=", "expected": "10.000000", "actual": str(latency), "passed": latency <= 10},
+                        {
+                            "row_index": 1,
+                            "evaluator": "SimilarityEvaluator",
+                            "criteria": ">=",
+                            "expected": "3.000000",
+                            "actual": str(similarity),
+                            "passed": similarity >= 3,
+                        },
+                        {
+                            "row_index": 1,
+                            "evaluator": "avg_latency_seconds",
+                            "criteria": "<=",
+                            "expected": "10.000000",
+                            "actual": str(latency),
+                            "passed": latency <= 10,
+                        },
                     ],
                 },
             ],
             "thresholds": [
-                {"evaluator": "SimilarityEvaluator", "criteria": ">=", "expected": "3.000000", "actual": f"{similarity:.6f}", "passed": similarity >= 3},
-                {"evaluator": "avg_latency_seconds", "criteria": "<=", "expected": "10.000000", "actual": f"{latency:.6f}", "passed": latency <= 10},
+                {
+                    "evaluator": "SimilarityEvaluator",
+                    "criteria": ">=",
+                    "expected": "3.000000",
+                    "actual": f"{similarity:.6f}",
+                    "passed": similarity >= 3,
+                },
+                {
+                    "evaluator": "avg_latency_seconds",
+                    "criteria": "<=",
+                    "expected": "10.000000",
+                    "actual": f"{latency:.6f}",
+                    "passed": latency <= 10,
+                },
             ],
             "summary": {
                 "metrics_count": 2,
@@ -153,13 +225,19 @@ class TestComparisonModels:
         result = ComparisonResult(
             version=1,
             runs=[
-                RunReference(run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"),
-                RunReference(run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"),
+                RunReference(
+                    run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"
+                ),
+                RunReference(
+                    run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"
+                ),
             ],
             metric_rows=[],
             threshold_rows=[],
             item_rows=[],
-            summary=ComparisonSummary(run_count=2, any_regressions=False, runs_with_regressions=[]),
+            summary=ComparisonSummary(
+                run_count=2, any_regressions=False, runs_with_regressions=[]
+            ),
         )
         payload = json.loads(result.model_dump_json())
         restored = ComparisonResult.model_validate(payload)
@@ -198,8 +276,12 @@ class TestComputeMetricDirection:
 
 class TestCompareRunsTwoRuns:
     def test_regression_detected(self, tmp_path: Path) -> None:
-        baseline = _sample_result(groundedness=0.90, relevance=0.90, overall_passed=True)
-        current = _sample_result(groundedness=0.70, relevance=0.95, overall_passed=False)
+        baseline = _sample_result(
+            groundedness=0.90, relevance=0.90, overall_passed=True
+        )
+        current = _sample_result(
+            groundedness=0.70, relevance=0.95, overall_passed=False
+        )
 
         bp = _write_result(tmp_path / "baseline" / "results.json", baseline)
         cp = _write_result(tmp_path / "current" / "results.json", current)
@@ -214,7 +296,9 @@ class TestCompareRunsTwoRuns:
         assert r_row.directions[1] == "improved"
 
     def test_no_regression(self, tmp_path: Path) -> None:
-        baseline = _sample_result(groundedness=0.80, relevance=0.80, overall_passed=True)
+        baseline = _sample_result(
+            groundedness=0.80, relevance=0.80, overall_passed=True
+        )
         current = _sample_result(groundedness=0.90, relevance=0.90, overall_passed=True)
 
         bp = _write_result(tmp_path / "baseline" / "results.json", baseline)
@@ -328,8 +412,18 @@ class TestComparisonReport:
         result = ComparisonResult(
             version=1,
             runs=[
-                RunReference(run_id="run1", bundle_name="rag_baseline", dataset_name="smoke", started_at="t1"),
-                RunReference(run_id="run2", bundle_name="rag_baseline", dataset_name="smoke", started_at="t2"),
+                RunReference(
+                    run_id="run1",
+                    bundle_name="rag_baseline",
+                    dataset_name="smoke",
+                    started_at="t1",
+                ),
+                RunReference(
+                    run_id="run2",
+                    bundle_name="rag_baseline",
+                    dataset_name="smoke",
+                    started_at="t2",
+                ),
             ],
             metric_rows=[
                 ComparisonMetricRow(
@@ -342,12 +436,16 @@ class TestComparisonReport:
                 ),
             ],
             threshold_rows=[
-                ComparisonThresholdRow(evaluator="groundedness", criteria=">=", passed=[True, False]),
+                ComparisonThresholdRow(
+                    evaluator="groundedness", criteria=">=", passed=[True, False]
+                ),
             ],
             item_rows=[
                 ComparisonItemRow(row_index=1, passed_all=[True, False]),
             ],
-            summary=ComparisonSummary(run_count=2, any_regressions=True, runs_with_regressions=[1]),
+            summary=ComparisonSummary(
+                run_count=2, any_regressions=True, runs_with_regressions=[1]
+            ),
         )
 
         md = generate_comparison_markdown(result)
@@ -362,8 +460,12 @@ class TestComparisonReport:
         result = ComparisonResult(
             version=1,
             runs=[
-                RunReference(run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"),
-                RunReference(run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"),
+                RunReference(
+                    run_id="run1", bundle_name="b", dataset_name="d", started_at="t1"
+                ),
+                RunReference(
+                    run_id="run2", bundle_name="b", dataset_name="d", started_at="t2"
+                ),
             ],
             metric_rows=[
                 ComparisonMetricRow(
@@ -375,7 +477,9 @@ class TestComparisonReport:
             ],
             threshold_rows=[],
             item_rows=[],
-            summary=ComparisonSummary(run_count=2, any_regressions=False, runs_with_regressions=[]),
+            summary=ComparisonSummary(
+                run_count=2, any_regressions=False, runs_with_regressions=[]
+            ),
         )
 
         md = generate_comparison_markdown(result)

@@ -1,4 +1,5 @@
 """Report generation for AgentOps (Markdown and HTML)."""
+
 from __future__ import annotations
 
 from agentops.core.models import ComparisonResult, RunResult
@@ -52,7 +53,9 @@ def generate_report_markdown(result: RunResult) -> str:
     lines.append("## Item Verdicts")
     if result.item_evaluations:
         passed_items = sum(1 for item in result.item_evaluations if item.passed_all)
-        lines.append(f"- Items passed all thresholds: {passed_items}/{len(result.item_evaluations)}")
+        lines.append(
+            f"- Items passed all thresholds: {passed_items}/{len(result.item_evaluations)}"
+        )
         lines.append("")
         lines.append("| Row | Passed All | Passed Rules | Total Rules |")
         lines.append("|---:|---|---:|---:|")
@@ -72,7 +75,9 @@ def generate_report_markdown(result: RunResult) -> str:
         lines.append("|---|---|---:|---:|---|")
         for threshold in result.thresholds:
             mark = _threshold_label(threshold.passed)
-            lines.append(f"| {threshold.evaluator} | {threshold.criteria} | {threshold.expected} | {threshold.actual} | {mark} |")
+            lines.append(
+                f"| {threshold.evaluator} | {threshold.criteria} | {threshold.expected} | {threshold.actual} | {mark} |"
+            )
     else:
         lines.append("- No thresholds configured")
 
@@ -84,7 +89,9 @@ def generate_report_markdown(result: RunResult) -> str:
         if result.artifacts.backend_stderr is not None:
             lines.append(f"- backend_stderr: {result.artifacts.backend_stderr}")
         if result.artifacts.foundry_eval_studio_url is not None:
-            lines.append(f"- foundry_eval_studio_url: {result.artifacts.foundry_eval_studio_url}")
+            lines.append(
+                f"- foundry_eval_studio_url: {result.artifacts.foundry_eval_studio_url}"
+            )
         if result.artifacts.foundry_eval_name is not None:
             lines.append(f"- foundry_eval_name: {result.artifacts.foundry_eval_name}")
     return "\n".join(lines).rstrip() + "\n"
@@ -184,7 +191,12 @@ footer { margin-top: 2.5rem; padding-top: .8rem; border-top: 1px solid var(--bor
 
 
 def _html_escape(text: str) -> str:
-    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 def _badge(label: str, kind: str) -> str:
@@ -222,6 +234,7 @@ def _wrap_page(title: str, body: str) -> str:
 # Evaluation run HTML report
 # ---------------------------------------------------------------------------
 
+
 def generate_report_html(result: RunResult) -> str:
     overall = result.summary.overall_passed
     parts: list[str] = []
@@ -242,26 +255,38 @@ def generate_report_html(result: RunResult) -> str:
         ("Started", result.execution.started_at[:19]),
         ("Exit code", str(result.execution.exit_code)),
     ]:
-        parts.append(f'<div class="card"><div class="label">{label}</div><div class="value">{_html_escape(val)}</div></div>')
+        parts.append(
+            f'<div class="card"><div class="label">{label}</div><div class="value">{_html_escape(val)}</div></div>'
+        )
     parts.append("</div>")
 
     if result.metrics:
         parts.append("<h2>Metrics</h2>")
-        parts.append("<table><thead><tr><th>Metric</th><th class=\"num\">Value</th></tr></thead><tbody>")
+        parts.append(
+            '<table><thead><tr><th>Metric</th><th class="num">Value</th></tr></thead><tbody>'
+        )
         for m in result.metrics:
-            parts.append(f'<tr><td>{_html_escape(m.name)}</td><td class="num">{_fmt(m.value)}</td></tr>')
+            parts.append(
+                f'<tr><td>{_html_escape(m.name)}</td><td class="num">{_fmt(m.value)}</td></tr>'
+            )
         parts.append("</tbody></table>")
 
     if result.run_metrics:
         parts.append("<h2>Run Metrics</h2>")
-        parts.append("<table><thead><tr><th>Metric</th><th class=\"num\">Value</th></tr></thead><tbody>")
+        parts.append(
+            '<table><thead><tr><th>Metric</th><th class="num">Value</th></tr></thead><tbody>'
+        )
         for m in result.run_metrics:
-            parts.append(f'<tr><td>{_html_escape(m.name)}</td><td class="num">{_fmt(m.value)}</td></tr>')
+            parts.append(
+                f'<tr><td>{_html_escape(m.name)}</td><td class="num">{_fmt(m.value)}</td></tr>'
+            )
         parts.append("</tbody></table>")
 
     if result.thresholds:
         parts.append("<h2>Threshold Checks</h2>")
-        parts.append("<table><thead><tr><th>Evaluator</th><th>Criteria</th><th class=\"num\">Expected</th><th class=\"num\">Actual</th><th>Status</th></tr></thead><tbody>")
+        parts.append(
+            '<table><thead><tr><th>Evaluator</th><th>Criteria</th><th class="num">Expected</th><th class="num">Actual</th><th>Status</th></tr></thead><tbody>'
+        )
         for t in result.thresholds:
             parts.append(
                 f"<tr><td>{_html_escape(t.evaluator)}</td><td>{_html_escape(t.criteria)}</td>"
@@ -274,7 +299,9 @@ def generate_report_html(result: RunResult) -> str:
         passed_count = sum(1 for i in result.item_evaluations if i.passed_all)
         total = len(result.item_evaluations)
         parts.append(f"<h2>Item Verdicts ({passed_count}/{total} passed)</h2>")
-        parts.append("<table><thead><tr><th class=\"num\">Row</th><th>Status</th><th class=\"num\">Passed Rules</th><th class=\"num\">Total Rules</th></tr></thead><tbody>")
+        parts.append(
+            '<table><thead><tr><th class="num">Row</th><th>Status</th><th class="num">Passed Rules</th><th class="num">Total Rules</th></tr></thead><tbody>'
+        )
         for item in result.item_evaluations:
             pr = sum(1 for th in item.thresholds if th.passed)
             parts.append(
@@ -286,7 +313,9 @@ def generate_report_html(result: RunResult) -> str:
     if result.artifacts:
         urls = []
         if result.artifacts.foundry_eval_studio_url:
-            urls.append(f'<a href="{_html_escape(result.artifacts.foundry_eval_studio_url)}" style="color:var(--accent)">View in Foundry</a>')
+            urls.append(
+                f'<a href="{_html_escape(result.artifacts.foundry_eval_studio_url)}" style="color:var(--accent)">View in Foundry</a>'
+            )
         if urls:
             parts.append("<h2>Artifacts</h2>")
             parts.append("<p>" + " &middot; ".join(urls) + "</p>")
@@ -298,8 +327,11 @@ def generate_report_html(result: RunResult) -> str:
 # Comparison Markdown report (N runs)
 # ---------------------------------------------------------------------------
 
+
 def generate_comparison_markdown(result: ComparisonResult) -> str:
-    verdict = "REGRESSIONS DETECTED" if result.summary.any_regressions else "NO REGRESSIONS"
+    verdict = (
+        "REGRESSIONS DETECTED" if result.summary.any_regressions else "NO REGRESSIONS"
+    )
     run_labels = [r.run_id for r in result.runs]
 
     lines: list[str] = []
@@ -314,17 +346,26 @@ def generate_comparison_markdown(result: ComparisonResult) -> str:
     # Conditions
     cond = result.conditions
     if cond:
-        type_labels = {"agent": "Agent Comparison", "model": "Model Comparison", "dataset": "Dataset Coverage", "general": "General Comparison"}
+        type_labels = {
+            "agent": "Agent Comparison",
+            "model": "Model Comparison",
+            "dataset": "Dataset Coverage",
+            "general": "General Comparison",
+        }
         lines.append("## Conditions")
         lines.append("")
-        lines.append(f"- Comparison type: **{type_labels.get(cond.comparison_type, cond.comparison_type)}**")
+        lines.append(
+            f"- Comparison type: **{type_labels.get(cond.comparison_type, cond.comparison_type)}**"
+        )
         if cond.fixed:
             fixed_items = ", ".join(f"{k}={v}" for k, v in cond.fixed.items())
             lines.append(f"- Fixed: {fixed_items}")
         if cond.varying:
             lines.append(f"- Varying: {', '.join(cond.varying)}")
         if not cond.row_level_valid:
-            lines.append("- Note: Row-level comparison is not meaningful because datasets differ across runs.")
+            lines.append(
+                "- Note: Row-level comparison is not meaningful because datasets differ across runs."
+            )
         lines.append("")
 
     # Run details table — only show varying fields + always-show fields
@@ -337,22 +378,40 @@ def generate_comparison_markdown(result: ComparisonResult) -> str:
         ("Project", "project", lambda r: r.project_endpoint or "-"),
         ("Dataset", "dataset", lambda r: r.dataset_name),
         ("Bundle", "bundle", lambda r: r.bundle_name),
-        ("Status", None, lambda r: "PASS" if r.overall_passed else "FAIL" if r.overall_passed is not None else "-"),
+        (
+            "Status",
+            None,
+            lambda r: "PASS"
+            if r.overall_passed
+            else "FAIL"
+            if r.overall_passed is not None
+            else "-",
+        ),
         ("Started", None, lambda r: r.started_at[:19] if r.started_at else "-"),
     ]
     # Keep fields that are varying or always-show (condition_key is None)
-    visible_fields = [(label, ckey, getter) for label, ckey, getter in detail_fields if ckey is None or ckey in varying_set]
+    visible_fields = [
+        (label, ckey, getter)
+        for label, ckey, getter in detail_fields
+        if ckey is None or ckey in varying_set
+    ]
 
     lines.append("## Run Details")
     lines.append("")
     lines.append("| | " + " | ".join(run_labels) + " |")
     lines.append("|---|" + "|".join("---" for _ in run_labels) + "|")
-    lines.append("| Role | Baseline | " + " | ".join(f"Run {i}" for i in range(1, len(result.runs))) + " |")
+    lines.append(
+        "| Role | Baseline | "
+        + " | ".join(f"Run {i}" for i in range(1, len(result.runs)))
+        + " |"
+    )
     for field, _ckey, getter in visible_fields:
         cells = [getter(r) for r in result.runs]
         lines.append(f"| {field} | " + " | ".join(cells) + " |")
     lines.append("")
-    lines.append("*Status is PASS when all thresholds are met, FAIL when any threshold is missed.*")
+    lines.append(
+        "*Status is PASS when all thresholds are met, FAIL when any threshold is missed.*"
+    )
     lines.append("")
 
     # Unified Evaluators table (metrics + thresholds merged)
@@ -384,8 +443,14 @@ def generate_comparison_markdown(result: ComparisonResult) -> str:
                 met = _check_threshold(v, tr.criteria, tr.target)
                 parts_cell.append(_threshold_label(met))
                 cells.append(" ".join(parts_cell))
-            best = run_labels[mr.best_run_index] if (mr.best_run_index is not None and tr) else "-"
-            lines.append(f"| {mr.name} | {target} | " + " | ".join(cells) + f" | {best} |")
+            best = (
+                run_labels[mr.best_run_index]
+                if (mr.best_run_index is not None and tr)
+                else "-"
+            )
+            lines.append(
+                f"| {mr.name} | {target} | " + " | ".join(cells) + f" | {best} |"
+            )
         lines.append("")
 
     show_items = result.conditions.row_level_valid if result.conditions else True
@@ -408,7 +473,9 @@ def generate_comparison_markdown(result: ComparisonResult) -> str:
                         tr = threshold_map.get(eval_name)
                         if tr:
                             met = _check_threshold(score, tr.criteria, tr.target)
-                            parts_cell.append(f"{eval_name}: {_fmt(score)} {_threshold_label(met)}")
+                            parts_cell.append(
+                                f"{eval_name}: {_fmt(score)} {_threshold_label(met)}"
+                            )
                         else:
                             parts_cell.append(f"{eval_name}: {_fmt(score)}")
                 if not parts_cell:
@@ -418,7 +485,9 @@ def generate_comparison_markdown(result: ComparisonResult) -> str:
     elif result.item_rows and not show_items:
         lines.append("## Item Verdicts")
         lines.append("")
-        lines.append("*Skipped — datasets differ across runs so row-level comparison is not meaningful.*")
+        lines.append(
+            "*Skipped — datasets differ across runs so row-level comparison is not meaningful.*"
+        )
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -427,12 +496,22 @@ def generate_comparison_markdown(result: ComparisonResult) -> str:
 # Comparison HTML report (N runs)
 # ---------------------------------------------------------------------------
 
+
 def generate_comparison_html(result: ComparisonResult) -> str:
     has_reg = result.summary.any_regressions
-    verdict_badge = _badge("REGRESSIONS DETECTED", "regressed") if has_reg else _badge("NO REGRESSIONS", "improved")
+    verdict_badge = (
+        _badge("REGRESSIONS DETECTED", "regressed")
+        if has_reg
+        else _badge("NO REGRESSIONS", "improved")
+    )
     run_labels = [r.run_id for r in result.runs]
     cond = result.conditions
-    type_labels = {"agent": "Agent Comparison", "model": "Model Comparison", "dataset": "Dataset Coverage", "general": "General Comparison"}
+    type_labels = {
+        "agent": "Agent Comparison",
+        "model": "Model Comparison",
+        "dataset": "Dataset Coverage",
+        "general": "General Comparison",
+    }
     threshold_map = {tr.evaluator: tr for tr in result.threshold_rows}
 
     # Pre-compute per-run row pass counts (across all threshold evaluators)
@@ -465,7 +544,9 @@ def generate_comparison_html(result: ComparisonResult) -> str:
     parts.append(f"<h1>AgentOps Comparison Report {verdict_badge}</h1>")
     ctype = type_labels.get(cond.comparison_type, "") if cond else ""
     varying_str = ", ".join(cond.varying) if cond and cond.varying else ""
-    parts.append(f'<div class="meta"><span>{ctype}</span><span>Varying: <strong>{_html_escape(varying_str)}</strong></span><span>{result.summary.run_count} runs</span></div>')
+    parts.append(
+        f'<div class="meta"><span>{ctype}</span><span>Varying: <strong>{_html_escape(varying_str)}</strong></span><span>{result.summary.run_count} runs</span></div>'
+    )
 
     # --- Run Config ---
     varying_set = set(cond.varying) if cond else set()
@@ -477,7 +558,9 @@ def generate_comparison_html(result: ComparisonResult) -> str:
         ("Dataset", "dataset", lambda r: r.dataset_name),
         ("Status", None, lambda r: ""),
     ]
-    visible_fields = [(l, c, g) for l, c, g in detail_fields if c is None or c in varying_set]
+    visible_fields = [
+        (lbl, c, g) for lbl, c, g in detail_fields if c is None or c in varying_set
+    ]
 
     cols = "".join(f"<th>{_html_escape(lbl)}</th>" for lbl in run_labels)
     parts.append(f"<table><thead><tr><th></th>{cols}</tr></thead><tbody>")
@@ -485,14 +568,16 @@ def generate_comparison_html(result: ComparisonResult) -> str:
         cells = ""
         for i, r in enumerate(result.runs):
             if field == "Role":
-                cells += f'<td>{"<strong>Baseline</strong>" if i == 0 else f"Run {i}"}</td>'
+                cells += (
+                    f"<td>{'<strong>Baseline</strong>' if i == 0 else f'Run {i}'}</td>"
+                )
             elif field == "Status":
                 p, t = run_row_pass[i]
                 pct = int(p / t * 100) if t > 0 else 0
                 if r.overall_passed:
-                    cells += f'<td>{_status_badge(True)} <small>({pct}% · {p}/{t})</small></td>'
+                    cells += f"<td>{_status_badge(True)} <small>({pct}% · {p}/{t})</small></td>"
                 else:
-                    cells += f'<td>{_status_badge(False)} <small>({pct}% · {p}/{t})</small></td>'
+                    cells += f"<td>{_status_badge(False)} <small>({pct}% · {p}/{t})</small></td>"
             else:
                 cells += f"<td>{_html_escape(getter(r))}</td>"
         parts.append(f"<tr><td><strong>{field}</strong></td>{cells}</tr>")
@@ -501,8 +586,12 @@ def generate_comparison_html(result: ComparisonResult) -> str:
     # --- Evaluators ---
     if result.metric_rows:
         parts.append("<h2>Evaluators</h2>")
-        cols = "".join(f'<th class="num">{_html_escape(lbl)}</th>' for lbl in run_labels)
-        parts.append(f"<table><thead><tr><th>Evaluator</th><th>Target</th>{cols}</tr></thead><tbody>")
+        cols = "".join(
+            f'<th class="num">{_html_escape(lbl)}</th>' for lbl in run_labels
+        )
+        parts.append(
+            f"<table><thead><tr><th>Evaluator</th><th>Target</th>{cols}</tr></thead><tbody>"
+        )
         for mr in result.metric_rows:
             tr = threshold_map.get(mr.name)
             target = _fmt_target(tr.criteria, tr.target) if tr else "-"
@@ -510,12 +599,18 @@ def generate_comparison_html(result: ComparisonResult) -> str:
             for i, v in enumerate(mr.values):
                 if not tr:
                     # Informational metric — plain value only
-                    cells += f'<td class="num" style="color:var(--muted)">{_fmt(v)}</td>'
+                    cells += (
+                        f'<td class="num" style="color:var(--muted)">{_fmt(v)}</td>'
+                    )
                     continue
-                is_best = (mr.best_run_index == i)
+                is_best = mr.best_run_index == i
                 # Dot indicator
                 met = _check_threshold(v, tr.criteria, tr.target)
-                dot = f'<span style="color:var(--green)">●</span> ' if met else f'<span style="color:var(--red)">●</span> '
+                dot = (
+                    '<span style="color:var(--green)">●</span> '
+                    if met
+                    else '<span style="color:var(--red)">●</span> '
+                )
                 # Value
                 val_str = _fmt(v)
                 # Delta + arrow
@@ -524,23 +619,43 @@ def generate_comparison_html(result: ComparisonResult) -> str:
                     d = mr.deltas[i]
                     direction = mr.directions[i]
                     if d is not None:
-                        arrow = "↑" if direction == "improved" else ("↓" if direction == "regressed" else "→")
-                        color = "var(--green)" if direction == "improved" else ("var(--red)" if direction == "regressed" else "var(--muted)")
+                        arrow = (
+                            "↑"
+                            if direction == "improved"
+                            else ("↓" if direction == "regressed" else "→")
+                        )
+                        color = (
+                            "var(--green)"
+                            if direction == "improved"
+                            else (
+                                "var(--red)"
+                                if direction == "regressed"
+                                else "var(--muted)"
+                            )
+                        )
                         delta_str = f' <small style="color:{color}">{arrow} {_fmt_delta(d)}</small>'
                 # Row pass rate
                 rate_str = ""
                 if mr.name in eval_row_rates:
                     p, t = eval_row_rates[mr.name][i]
                     if t > 0:
-                        rate_str = f' <small style="color:var(--muted)">({p}/{t})</small>'
+                        rate_str = (
+                            f' <small style="color:var(--muted)">({p}/{t})</small>'
+                        )
                 # Best highlight
-                best_style = "background:var(--green-bg);font-weight:600;border-radius:.25rem;padding:.1rem .3rem;" if is_best else ""
+                best_style = (
+                    "background:var(--green-bg);font-weight:600;border-radius:.25rem;padding:.1rem .3rem;"
+                    if is_best
+                    else ""
+                )
                 inner = f"{dot}{val_str}{delta_str}{rate_str}"
                 if is_best:
                     cells += f'<td class="num"><span style="{best_style}">{inner}</span></td>'
                 else:
                     cells += f'<td class="num">{inner}</td>'
-            parts.append(f"<tr><td>{_html_escape(mr.name)}</td><td>{_html_escape(target)}</td>{cells}</tr>")
+            parts.append(
+                f"<tr><td>{_html_escape(mr.name)}</td><td>{_html_escape(target)}</td>{cells}</tr>"
+            )
         parts.append("</tbody></table>")
 
     # --- Row Details ---
@@ -548,7 +663,9 @@ def generate_comparison_html(result: ComparisonResult) -> str:
     if result.item_rows and show_items:
         parts.append("<h2>Row Details</h2>")
         cols = "".join(f"<th>{_html_escape(lbl)}</th>" for lbl in run_labels)
-        parts.append(f'<table><thead><tr><th class="num">Row</th>{cols}</tr></thead><tbody>')
+        parts.append(
+            f'<table><thead><tr><th class="num">Row</th>{cols}</tr></thead><tbody>'
+        )
         for ir in result.item_rows:
             cells = ""
             for run_idx in range(len(result.runs)):
@@ -559,25 +676,39 @@ def generate_comparison_html(result: ComparisonResult) -> str:
                         tr = threshold_map.get(eval_name)
                         if tr:
                             met = _check_threshold(score, tr.criteria, tr.target)
-                            dot = f'<span style="color:var(--green)">●</span>' if met else f'<span style="color:var(--red)">●</span>'
-                            parts_cell.append(f"{dot} {_html_escape(eval_name)}: {_fmt(score)}")
+                            dot = (
+                                '<span style="color:var(--green)">●</span>'
+                                if met
+                                else '<span style="color:var(--red)">●</span>'
+                            )
+                            parts_cell.append(
+                                f"{dot} {_html_escape(eval_name)}: {_fmt(score)}"
+                            )
                         else:
-                            parts_cell.append(f"{_html_escape(eval_name)}: {_fmt(score)}")
+                            parts_cell.append(
+                                f"{_html_escape(eval_name)}: {_fmt(score)}"
+                            )
                 if not parts_cell:
                     parts_cell.append(_status_badge(ir.passed_all[run_idx]))
-                cells += f'<td>{"<br>".join(parts_cell)}</td>'
+                cells += f"<td>{'<br>'.join(parts_cell)}</td>"
             parts.append(f'<tr><td class="num">{ir.row_index}</td>{cells}</tr>')
         parts.append("</tbody></table>")
     elif result.item_rows and not show_items:
         parts.append("<h2>Row Details</h2>")
-        parts.append('<p style="color:var(--yellow);font-size:.85rem">Skipped — datasets differ across runs, row-level comparison not meaningful.</p>')
+        parts.append(
+            '<p style="color:var(--yellow);font-size:.85rem">Skipped — datasets differ across runs, row-level comparison not meaningful.</p>'
+        )
 
     # --- Fixed Parameters ---
     if cond and cond.fixed:
         parts.append("<h2>Fixed Parameters</h2>")
-        parts.append('<table><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody>')
+        parts.append(
+            "<table><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody>"
+        )
         for k, v in cond.fixed.items():
-            parts.append(f'<tr><td>{_html_escape(k)}</td><td>{_html_escape(v)}</td></tr>')
-        parts.append('</tbody></table>')
+            parts.append(
+                f"<tr><td>{_html_escape(k)}</td><td>{_html_escape(v)}</td></tr>"
+            )
+        parts.append("</tbody></table>")
 
     return _wrap_page("AgentOps Comparison Report", "\n".join(parts))
