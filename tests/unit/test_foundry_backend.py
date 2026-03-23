@@ -315,3 +315,72 @@ def test_foundry_backend_model_target_requires_explicit_model(tmp_path: Path) ->
     except ValueError as exc:
         assert "target=model" in str(exc)
         assert "backend.model" in str(exc)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _cloud_evaluator_data_mapping and _default_foundry_input_mapping
+# ---------------------------------------------------------------------------
+
+from agentops.backends.foundry_backend import (
+    _cloud_evaluator_data_mapping,
+    _default_foundry_input_mapping,
+)
+
+
+def test_cloud_evaluator_data_mapping_similarity() -> None:
+    mapping = _cloud_evaluator_data_mapping("similarity", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert mapping["ground_truth"] == "{{item.expected}}"
+    assert "context" not in mapping
+
+
+def test_cloud_evaluator_data_mapping_groundedness_uses_expected_when_no_context_field() -> None:
+    mapping = _cloud_evaluator_data_mapping("groundedness", "input", "expected")
+    assert mapping["context"] == "{{item.expected}}"
+
+
+def test_cloud_evaluator_data_mapping_groundedness_uses_context_field_when_set() -> None:
+    mapping = _cloud_evaluator_data_mapping("groundedness", "input", "expected", context_field="context")
+    assert mapping["context"] == "{{item.context}}"
+    assert "ground_truth" not in mapping
+
+
+def test_cloud_evaluator_data_mapping_task_completion() -> None:
+    mapping = _cloud_evaluator_data_mapping("task_completion", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert "ground_truth" not in mapping
+    assert "context" not in mapping
+    assert "tool_calls" not in mapping
+
+
+def test_cloud_evaluator_data_mapping_tool_call_accuracy() -> None:
+    mapping = _cloud_evaluator_data_mapping("tool_call_accuracy", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert mapping["tool_calls"] == "{{sample.tool_calls}}"
+    assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
+
+
+def test_default_foundry_input_mapping_groundedness_uses_row_context() -> None:
+    mapping = _default_foundry_input_mapping("GroundednessEvaluator")
+    assert mapping["context"] == "$row.context"
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+
+
+def test_default_foundry_input_mapping_task_completion() -> None:
+    mapping = _default_foundry_input_mapping("TaskCompletionEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert "ground_truth" not in mapping
+    assert "context" not in mapping
+
+
+def test_default_foundry_input_mapping_tool_call_accuracy() -> None:
+    mapping = _default_foundry_input_mapping("ToolCallAccuracyEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert mapping["tool_calls"] == "$row.tool_calls"
+    assert mapping["tool_definitions"] == "$row.tool_definitions"

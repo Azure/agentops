@@ -129,11 +129,16 @@ _EVALUATORS_NEEDING_CONTEXT = frozenset({
     "groundedness",
 })
 
+_EVALUATORS_NEEDING_TOOL_CALLS = frozenset({
+    "tool_call_accuracy",
+})
+
 
 def _cloud_evaluator_data_mapping(
     builtin_name: str,
     input_field: str,
     expected_field: str,
+    context_field: str | None = None,
 ) -> Dict[str, str]:
     """Build ``data_mapping`` for an ``azure_ai_evaluator`` testing criterion."""
     item_input = "{{item." + input_field + "}}"
@@ -147,7 +152,13 @@ def _cloud_evaluator_data_mapping(
     if builtin_name in _EVALUATORS_NEEDING_GROUND_TRUTH:
         mapping["ground_truth"] = item_expected
     elif builtin_name in _EVALUATORS_NEEDING_CONTEXT:
-        mapping["context"] = item_expected
+        # Use the dedicated context column when declared in dataset format;
+        # fall back to expected_field only when no context_field is configured.
+        context_item = "{{item." + (context_field or expected_field) + "}}"
+        mapping["context"] = context_item
+    elif builtin_name in _EVALUATORS_NEEDING_TOOL_CALLS:
+        mapping["tool_calls"] = "{{sample.tool_calls}}"
+        mapping["tool_definitions"] = "{{item.tool_definitions}}"
     return mapping
 
 
@@ -398,7 +409,22 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
         return {
             "query": "$prompt",
             "response": "$prediction",
-            "context": "$expected",
+            # Use the dedicated 'context' row field (retrieved documents).
+            # Override via evaluators[].config.input_mapping in the bundle
+            # if your dataset column has a different name.
+            "context": "$row.context",
+        }
+    if name == "TaskCompletionEvaluator":
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+        }
+    if name == "ToolCallAccuracyEvaluator":
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+            "tool_calls": "$row.tool_calls",
+            "tool_definitions": "$row.tool_definitions",
         }
     return {}
 
@@ -1166,6 +1192,7 @@ class FoundryBackend:
                     builtin_name,
                     input_field,
                     expected_field,
+                    context_field=dataset_config.format.context_field,
                 ),
             }
             if _cloud_evaluator_needs_model(builtin_name):
