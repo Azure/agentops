@@ -1,4 +1,5 @@
 """Markdown report generation for AgentOps."""
+
 from __future__ import annotations
 
 from agentops.core.models import RunResult
@@ -52,7 +53,9 @@ def generate_report_markdown(result: RunResult) -> str:
     lines.append("## Item Verdicts")
     if result.item_evaluations:
         passed_items = sum(1 for item in result.item_evaluations if item.passed_all)
-        lines.append(f"- Items passed all thresholds: {passed_items}/{len(result.item_evaluations)}")
+        lines.append(
+            f"- Items passed all thresholds: {passed_items}/{len(result.item_evaluations)}"
+        )
         lines.append("")
         lines.append("| Row | Passed All | Passed Rules | Total Rules |")
         lines.append("|---:|---|---:|---:|")
@@ -72,7 +75,9 @@ def generate_report_markdown(result: RunResult) -> str:
         lines.append("|---|---|---:|---:|---|")
         for threshold in result.thresholds:
             mark = "PASS" if threshold.passed else "FAIL"
-            lines.append(f"| {threshold.evaluator} | {threshold.criteria} | {threshold.expected} | {threshold.actual} | {mark} |")
+            lines.append(
+                f"| {threshold.evaluator} | {threshold.criteria} | {threshold.expected} | {threshold.actual} | {mark} |"
+            )
     else:
         lines.append("- No thresholds configured")
 
@@ -84,7 +89,9 @@ def generate_report_markdown(result: RunResult) -> str:
         if result.artifacts.backend_stderr is not None:
             lines.append(f"- backend_stderr: {result.artifacts.backend_stderr}")
         if result.artifacts.foundry_eval_studio_url is not None:
-            lines.append(f"- foundry_eval_studio_url: {result.artifacts.foundry_eval_studio_url}")
+            lines.append(
+                f"- foundry_eval_studio_url: {result.artifacts.foundry_eval_studio_url}"
+            )
         if result.artifacts.foundry_eval_name is not None:
             lines.append(f"- foundry_eval_name: {result.artifacts.foundry_eval_name}")
     return "\n".join(lines).rstrip() + "\n"

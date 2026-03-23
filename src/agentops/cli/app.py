@@ -59,6 +59,7 @@ def _planned_command(command_name: str) -> None:
 # Global callback — configures logging before any command runs
 # ---------------------------------------------------------------------------
 
+
 def _version_callback(value: bool) -> None:
     if value:
         from agentops import __version__
@@ -90,9 +91,12 @@ def _main(
 # agentops init
 # ---------------------------------------------------------------------------
 
+
 @app.command("init")
 def cmd_init(
-    force: bool = typer.Option(False, "--force", help="Overwrite starter files if they exist."),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite starter files if they exist."
+    ),
     directory: Path = typer.Option(
         Path("."),
         "--dir",
@@ -129,6 +133,7 @@ def cmd_init(
 # agentops eval run
 # ---------------------------------------------------------------------------
 
+
 @eval_app.command("run")
 def cmd_eval_run(
     config: Annotated[
@@ -139,7 +144,10 @@ def cmd_eval_run(
             help="Path to run.yaml (default: .agentops/run.yaml).",
         ),
     ] = None,
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output directory for results.")] = None,
+    output: Annotated[
+        Optional[Path],
+        typer.Option("--output", "-o", help="Output directory for results."),
+    ] = None,
 ) -> None:
     """Run an evaluation defined in a run.yaml file."""
     log.debug("cmd_eval_run called config=%s output=%s", config, output)
@@ -176,6 +184,7 @@ def cmd_eval_compare(
 # agentops report
 # ---------------------------------------------------------------------------
 
+
 @report_app.callback(invoke_without_command=True)
 def cmd_report(
     ctx: typer.Context,
@@ -189,7 +198,9 @@ def cmd_report(
             ),
         ),
     ] = None,
-    report_out: Annotated[Optional[Path], typer.Option("--out", help="Output path for report.md.")] = None,
+    report_out: Annotated[
+        Optional[Path], typer.Option("--out", help="Output path for report.md.")
+    ] = None,
 ) -> None:
     """Regenerate report.md from a results.json file."""
     if ctx.invoked_subcommand is not None:
@@ -291,7 +302,9 @@ def cmd_config_show() -> None:
 
 @config_app.command("cicd")
 def cmd_config_cicd(
-    force: bool = typer.Option(False, "--force", help="Overwrite existing workflow file."),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing workflow file."
+    ),
     directory: Path = typer.Option(
         Path("."),
         "--dir",
@@ -318,9 +331,15 @@ def cmd_config_cicd(
     if result.created_files or result.overwritten_files:
         typer.echo("")
         typer.echo("Next steps:")
-        typer.echo("  1. Set GitHub repository variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID")
-        typer.echo("  2. Set GitHub repository secret: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
-        typer.echo("  3. Configure Azure Workload Identity Federation (see docs/ci-github-actions.md)")
+        typer.echo(
+            "  1. Set GitHub repository variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID"
+        )
+        typer.echo(
+            "  2. Set GitHub repository secret: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+        )
+        typer.echo(
+            "  3. Configure Azure Workload Identity Federation (see docs/ci-github-actions.md)"
+        )
         typer.echo("  4. Commit and push the workflow file")
     elif result.skipped_files:
         typer.echo("No files written. Use --force to overwrite existing workflow.")

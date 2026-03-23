@@ -48,7 +48,11 @@ def _dataset_yaml(tmp_path: Path) -> Path:
             "version": 1,
             "name": "smoke",
             "source": {"type": "file", "path": str(dataset_file)},
-            "format": {"type": "jsonl", "input_field": "input", "expected_field": "expected"},
+            "format": {
+                "type": "jsonl",
+                "input_field": "input",
+                "expected_field": "expected",
+            },
         },
     )
     return config_path
@@ -65,8 +69,17 @@ def _bundle_yaml(tmp_path: Path, *, similarity_source: str | None = None) -> Pat
     ]
 
     if similarity_source is not None:
-        evaluators.insert(0, {"name": "SimilarityEvaluator", "source": similarity_source, "enabled": True})
-        thresholds.insert(0, {"evaluator": "SimilarityEvaluator", "criteria": ">=", "value": 3})
+        evaluators.insert(
+            0,
+            {
+                "name": "SimilarityEvaluator",
+                "source": similarity_source,
+                "enabled": True,
+            },
+        )
+        thresholds.insert(
+            0, {"evaluator": "SimilarityEvaluator", "criteria": ">=", "value": 3}
+        )
 
     bundle_path = tmp_path / "bundle.yaml"
     save_yaml(
@@ -100,7 +113,10 @@ def test_foundry_backend_uses_default_azure_credential(tmp_path: Path) -> None:
     )
 
     # When _acquire_token raises, the error should propagate clearly
-    with patch("agentops.backends.foundry_backend._acquire_token", side_effect=RuntimeError("azure-identity not installed")):
+    with patch(
+        "agentops.backends.foundry_backend._acquire_token",
+        side_effect=RuntimeError("azure-identity not installed"),
+    ):
         try:
             FoundryBackend().execute(context)
             assert False, "expected RuntimeError"
@@ -132,16 +148,26 @@ def test_foundry_backend_agent_service_target(tmp_path: Path) -> None:
         _FakeHttpResponse({"id": "msg_1"}),
         _FakeHttpResponse({"id": "run_1"}),
         _FakeHttpResponse({"status": "completed"}),
-        _FakeHttpResponse({"data": [{"role": "assistant", "content": [{"text": {"value": "4"}}]}]}),
+        _FakeHttpResponse(
+            {"data": [{"role": "assistant", "content": [{"text": {"value": "4"}}]}]}
+        ),
         _FakeHttpResponse({"id": "thread_2"}),
         _FakeHttpResponse({"id": "msg_2"}),
         _FakeHttpResponse({"id": "run_2"}),
         _FakeHttpResponse({"status": "completed"}),
-        _FakeHttpResponse({"data": [{"role": "assistant", "content": [{"text": {"value": "8"}}]}]}),
+        _FakeHttpResponse(
+            {"data": [{"role": "assistant", "content": [{"text": {"value": "8"}}]}]}
+        ),
     ]
 
-    with patch("agentops.backends.foundry_backend._acquire_token", return_value="fake-agent-token"):
-        with patch("agentops.backends.foundry_backend.urllib.request.urlopen", side_effect=responses):
+    with patch(
+        "agentops.backends.foundry_backend._acquire_token",
+        return_value="fake-agent-token",
+    ):
+        with patch(
+            "agentops.backends.foundry_backend.urllib.request.urlopen",
+            side_effect=responses,
+        ):
             result = FoundryBackend().execute(context)
 
     assert result.backend == "foundry"
@@ -157,12 +183,16 @@ def test_foundry_backend_agent_service_target(tmp_path: Path) -> None:
     assert "GroundednessEvaluator" not in metrics_by_name
     assert metrics_by_name["samples_evaluated"] == 2.0
     assert len(payload["row_metrics"]) == 2
-    first_row_metrics = {item["name"]: item["value"] for item in payload["row_metrics"][0]["metrics"]}
+    first_row_metrics = {
+        item["name"]: item["value"] for item in payload["row_metrics"][0]["metrics"]
+    }
     assert "GroundednessEvaluator" not in first_row_metrics
     assert first_row_metrics["exact_match"] == 1.0
 
 
-def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(tmp_path: Path) -> None:
+def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(
+    tmp_path: Path,
+) -> None:
     dataset_path = _dataset_yaml(tmp_path)
     bundle_path = _bundle_yaml(tmp_path, similarity_source="foundry")
     context = BackendRunContext(
@@ -186,12 +216,16 @@ def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(tmp_pa
         _FakeHttpResponse({"id": "msg_1"}),
         _FakeHttpResponse({"id": "run_1"}),
         _FakeHttpResponse({"status": "completed"}),
-        _FakeHttpResponse({"data": [{"role": "assistant", "content": [{"text": {"value": "4"}}]}]}),
+        _FakeHttpResponse(
+            {"data": [{"role": "assistant", "content": [{"text": {"value": "4"}}]}]}
+        ),
         _FakeHttpResponse({"id": "thread_2"}),
         _FakeHttpResponse({"id": "msg_2"}),
         _FakeHttpResponse({"id": "run_2"}),
         _FakeHttpResponse({"status": "completed"}),
-        _FakeHttpResponse({"data": [{"role": "assistant", "content": [{"text": {"value": "8"}}]}]}),
+        _FakeHttpResponse(
+            {"data": [{"role": "assistant", "content": [{"text": {"value": "8"}}]}]}
+        ),
     ]
 
     class _FakeSimilarityEvaluator:
@@ -201,7 +235,10 @@ def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(tmp_pa
             assert "ground_truth" in kwargs
             return {"similarity": 4.0}
 
-    with patch("agentops.backends.foundry_backend._acquire_token", return_value="fake-agent-token"):
+    with patch(
+        "agentops.backends.foundry_backend._acquire_token",
+        return_value="fake-agent-token",
+    ):
         with patch(
             "agentops.backends.foundry_backend._build_foundry_evaluator_runtimes",
             return_value=[
@@ -217,7 +254,10 @@ def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(tmp_pa
                 )
             ],
         ):
-            with patch("agentops.backends.foundry_backend.urllib.request.urlopen", side_effect=responses):
+            with patch(
+                "agentops.backends.foundry_backend.urllib.request.urlopen",
+                side_effect=responses,
+            ):
                 result = FoundryBackend().execute(context)
 
     assert result.backend == "foundry"
@@ -248,7 +288,10 @@ def test_foundry_backend_rejects_unsupported_local_evaluator(tmp_path: Path) -> 
         backend_output_dir=tmp_path / "out-agent-unsupported-local",
     )
 
-    with patch("agentops.backends.foundry_backend._acquire_token", return_value="fake-agent-token"):
+    with patch(
+        "agentops.backends.foundry_backend._acquire_token",
+        return_value="fake-agent-token",
+    ):
         try:
             FoundryBackend().execute(context)
             assert False, "expected ValueError"
@@ -281,8 +324,12 @@ def test_foundry_backend_model_direct_target(tmp_path: Path) -> None:
             return "4"
         return "8"
 
-    with patch("agentops.backends.foundry_backend._acquire_token", return_value="fake-token"):
-        with patch.object(FoundryBackend, "_invoke_model_direct", _fake_invoke_model_direct):
+    with patch(
+        "agentops.backends.foundry_backend._acquire_token", return_value="fake-token"
+    ):
+        with patch.object(
+            FoundryBackend, "_invoke_model_direct", _fake_invoke_model_direct
+        ):
             result = FoundryBackend().execute(context)
 
     assert result.backend == "foundry"
@@ -335,13 +382,19 @@ def test_cloud_evaluator_data_mapping_similarity() -> None:
     assert "context" not in mapping
 
 
-def test_cloud_evaluator_data_mapping_groundedness_uses_expected_when_no_context_field() -> None:
+def test_cloud_evaluator_data_mapping_groundedness_uses_expected_when_no_context_field() -> (
+    None
+):
     mapping = _cloud_evaluator_data_mapping("groundedness", "input", "expected")
     assert mapping["context"] == "{{item.expected}}"
 
 
-def test_cloud_evaluator_data_mapping_groundedness_uses_context_field_when_set() -> None:
-    mapping = _cloud_evaluator_data_mapping("groundedness", "input", "expected", context_field="context")
+def test_cloud_evaluator_data_mapping_groundedness_uses_context_field_when_set() -> (
+    None
+):
+    mapping = _cloud_evaluator_data_mapping(
+        "groundedness", "input", "expected", context_field="context"
+    )
     assert mapping["context"] == "{{item.context}}"
     assert "ground_truth" not in mapping
 
