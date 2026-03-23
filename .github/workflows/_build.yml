@@ -39,6 +39,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
+      - name: Lint with ruff
+        run: uv run ruff check src/ tests/
+
       - name: Run tests
         run: uv run pytest tests/ -v --tb=short
 
