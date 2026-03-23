@@ -18,10 +18,10 @@ Primary capabilities:
 Public CLI contract:
 - `agentops init`
 - `agentops eval run --config <run.yaml> [--output <dir>]`
+- `agentops eval compare --runs <baseline>,<current>`
 - `agentops report --in <results.json> [--out <report.md>]`
 
 Planned CLI stubs (not implemented in this release):
-- `agentops eval compare --runs ID1,ID2`
 - `agentops run list|show`
 - `agentops run view <id> [--entry N]`
 - `agentops report show|export`

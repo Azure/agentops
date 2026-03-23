@@ -5,6 +5,19 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
+  - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
+  - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).
+  - Supports run IDs by timestamped folder name, `latest` keyword, or absolute/relative paths.
+- Add Pydantic models for comparison output: `ComparisonResult`, `MetricDelta`, `ThresholdDelta`, `ItemDelta`, `ComparisonSummary`.
+- Add comparison service (`services/comparison.py`) with run discovery and structured diff logic.
+- Update `investigate-regression` and `run-evals` Copilot skills to reference the new compare command.
+- Add distributable Copilot skills under `.github/plugins/agentops/skills/` for GitHub-based installation (`agentops-run-evals`, `agentops-investigate-regression`, `agentops-observability-triage`).
+- Fix cloud evaluation to use the Foundry Project Evals API (`api-version=2025-11-15-preview`) with `azure_ai_evaluator` testing criteria, replacing the OpenAI SDK-based path that was incompatible.
+- Fix metric polarity in comparison: lower-is-better metrics (e.g. `avg_latency_seconds` with `<=` threshold) now correctly show "improved" when they decrease.
+- Align `azure-ai-projects` version references across all files to `>=2.0.1`.
+
 ### Changed
 - Migrate versioning from static `pyproject.toml` field to `setuptools-scm` — version is now derived automatically from git tags.
 - Redesign release pipeline into three workflow files:

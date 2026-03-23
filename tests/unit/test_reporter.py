@@ -79,14 +79,14 @@ def test_report_markdown_contains_required_sections_and_tables() -> None:
 
     assert "## Metrics" in markdown
     assert "| Metric | Value |" in markdown
-    assert "| groundedness | 0.840000 |" in markdown
+    assert "| groundedness | 0.84 |" in markdown
 
     assert "## Run Metrics" in markdown
-    assert "| run_pass | 0.000000 |" in markdown
+    assert "| run_pass | 0 |" in markdown
 
     assert "## Threshold Checks" in markdown
     assert "| Evaluator | Criteria | Expected | Actual | Status |" in markdown
-    assert "| relevance | >= | 0.950000 | 0.830000 | FAIL |" in markdown
+    assert "| relevance | >= | 0.950000 | 0.830000 | Missed |" in markdown
 
 
 def test_report_markdown_pass_status() -> None:
