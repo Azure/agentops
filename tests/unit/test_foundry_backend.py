@@ -5,7 +5,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agentops.backends.base import BackendRunContext
-from agentops.backends.foundry_backend import FoundryBackend, FoundryEvaluatorRuntime
+from agentops.backends.foundry_backend import (
+    FoundryBackend,
+    FoundryEvaluatorRuntime,
+    _cloud_evaluator_data_mapping,
+    _default_foundry_input_mapping,
+)
 from agentops.core.models import BackendConfig
 from agentops.utils.yaml import save_yaml
 
@@ -320,11 +325,6 @@ def test_foundry_backend_model_target_requires_explicit_model(tmp_path: Path) ->
 # ---------------------------------------------------------------------------
 # Unit tests for _cloud_evaluator_data_mapping and _default_foundry_input_mapping
 # ---------------------------------------------------------------------------
-
-from agentops.backends.foundry_backend import (
-    _cloud_evaluator_data_mapping,
-    _default_foundry_input_mapping,
-)
 
 
 def test_cloud_evaluator_data_mapping_similarity() -> None:
