@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentops-toolkit"
-version = "0.1.2"
+dynamic = ["version"]
 description = "AgentOps CLI for standardized evaluation workflows"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -45,3 +45,6 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.9",
 ]
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"

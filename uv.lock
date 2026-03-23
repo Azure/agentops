@@ -4,7 +4,6 @@ requires-python = ">=3.11"
 
 [[package]]
 name = "agentops-toolkit"
-version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },

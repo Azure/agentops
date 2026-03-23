@@ -1,4 +1,4 @@
-# AgentOps Toolkit — Production Release
+# AgentOps Toolkit — Staging (TestPyPI)
 #
 # Workflows:
 #   1. ci.yml          — Lint + test on every push/PR
@@ -6,39 +6,35 @@
 #   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
 #
-# Triggered by v* tag pushes (e.g. v0.2.0).
-# Calls the reusable _build.yml, then publishes to TestPyPI for final
-# verification, then to PyPI (requires 'release' environment approval),
-# and finally creates a GitHub Release.
+# Triggered by pushes to release/* branches.
+# Calls the reusable _build.yml, publishes to TestPyPI, and verifies the
+# package installs correctly with a CLI smoke test.
+#
+# This workflow lets you iterate on a release branch and validate the
+# built package before tagging for production.
+#
+# Branch flow:
+#   develop → release/v0.2.0 → push → this workflow
+#     → build → TestPyPI → verify install → ✅ ready to merge and tag
 #
 # Versioning:
-#   Uses setuptools-scm — version is derived from the git tag automatically.
-#   Tagged commit v0.2.0 → version 0.2.0. No manual version in pyproject.toml.
+#   Uses setuptools-scm — on a release branch 5 commits after the last tag,
+#   the version will be something like 0.2.0.dev5 (PEP 440 pre-release).
 #
-# Required GitHub secrets (in respective environments):
-#   TEST_PYPI_TOKEN  — TestPyPI API token (environment: staging)
-#   PYPI_TOKEN       — PyPI API token     (environment: release)
-#
-# Required GitHub environments:
-#   staging  — for TestPyPI publish (optional approval)
-#   release  — for PyPI publish (requires approval from designated reviewers)
+# Required GitHub secrets (environment: staging):
+#   TEST_PYPI_TOKEN  — TestPyPI API token
 #
 # Setup:
 #   1. https://test.pypi.org/manage/account/token/  → Create TEST_PYPI_TOKEN
-#   2. https://pypi.org/manage/account/token/        → Create PYPI_TOKEN
-#   3. GitHub repo → Settings → Secrets → Actions    → Add secrets to environments
-#   4. GitHub repo → Settings → Environments         → Create "release" with required reviewers
+#   2. GitHub repo → Settings → Secrets → Actions    → Add to staging environment
 
-name: Release
+name: Staging
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - "release/**"
   workflow_dispatch:
-
-permissions:
-  contents: write  # For GitHub Release
 
 jobs:
 
@@ -46,7 +42,7 @@ jobs:
   build:
     uses: ./.github/workflows/_build.yml
 
-  # Publish to TestPyPI for final pre-release verification
+  # Publish to TestPyPI
   publish-testpypi:
     needs: build
     runs-on: ubuntu-latest
@@ -64,7 +60,7 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
           password: ${{ secrets.TEST_PYPI_TOKEN }}
           verbose: true
-          skip-existing: true
+          skip-existing: true  # Allow re-pushes without failure
 
   # Install from TestPyPI and smoke-test the CLI
   verify-testpypi:
@@ -114,45 +110,3 @@ jobs:
           test -f .agentops/config.yaml
           test -f .agentops/run.yaml
           echo "✅ agentops init succeeded"
-
-  # Publish to PyPI — requires 'release' environment approval
-  publish-pypi:
-    needs: verify-testpypi
-    runs-on: ubuntu-latest
-    environment: release
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_TOKEN }}
-          verbose: true
-
-  # Create GitHub Release with built artifacts
-  github-release:
-    needs: publish-pypi
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "${{ github.ref_name }}" dist/* \
-            --repo "${{ github.repository }}" \
-            --title "${{ github.ref_name }}" \
-            --generate-notes
