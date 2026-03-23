@@ -2,7 +2,9 @@
 #
 # Workflows:
 #   1. ci.yml          — Lint + test on every push/PR
-#   2. release.yml     — Build + publish to PyPI on tag push
+#   2. _build.yml      — Reusable build (test + package), called by staging and release
+#   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
+#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
 
 name: CI
 

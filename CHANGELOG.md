@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Migrate versioning from static `pyproject.toml` field to `setuptools-scm` — version is now derived automatically from git tags.
+- Redesign release pipeline into three workflow files:
+  - `_build.yml` — reusable build workflow (test + package via setuptools-scm)
+  - `staging.yml` — `release/*` branch pushes publish to TestPyPI and verify install
+  - `release.yml` — `v*` tag pushes publish to TestPyPI, then PyPI (with approval gate), then create GitHub Release
+- Add CLI smoke test in staging/release verify step (`agentops --version`, `agentops --help`, `agentops init`).
+- Fix secret reference from `PIPY_TOKEN` to `PYPI_TOKEN`; add `TEST_PYPI_TOKEN` for TestPyPI.
+- Add consistent workflow index header across all CI/CD workflow files.
+
 ## [0.1.0] - 2026-__-__
 
 ### Changed
