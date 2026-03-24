@@ -14,6 +14,7 @@ from agentops.core.reporter import generate_report_html, generate_report_markdow
 class ReportResult:
     input_results_path: Path
     output_report_path: Path
+    html_report_path: Path | None = None
 
 
 def generate_report_from_results(
@@ -35,6 +36,7 @@ def generate_report_from_results(
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
 
     primary_path = resolved_output_path
+    html_report_path: Path | None = None
     if report_format in ("md", "all"):
         md_path = (
             resolved_output_path
@@ -47,10 +49,12 @@ def generate_report_from_results(
         html_path = resolved_output_path.with_suffix(".html")
         html_path.write_text(generate_report_html(result), encoding="utf-8")
         primary_path = html_path
+        html_report_path = html_path
     if report_format == "all":
         primary_path = resolved_output_path.with_suffix(".md")
 
     return ReportResult(
         input_results_path=resolved_results_path,
         output_report_path=primary_path,
+        html_report_path=html_report_path,
     )
