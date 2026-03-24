@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
@@ -198,7 +197,7 @@ def test_execute_posts_to_url_and_writes_metrics(tmp_path: Path) -> None:
 
     with patch("agentops.backends.http_backend.urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.return_value = _fake_urlopen(fake_response)
-        result = HttpBackend().execute(context)
+        HttpBackend().execute(context)
 
     metrics_path = context.backend_output_dir / "backend_metrics.json"
     assert metrics_path.exists()

@@ -24,7 +24,6 @@ import os
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, List, Optional
 
