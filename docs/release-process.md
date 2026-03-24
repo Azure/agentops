@@ -50,12 +50,12 @@ develop           ← integration branch, all feature PRs target here
 
 ### Branch Purposes
 
-| Branch | Purpose | Who creates | Merges into |
-| --- | --- | --- | --- |
-| `main` | Production-ready code. Every commit here should be a tagged release. | Maintainers only | — |
-| `develop` | Integration branch. All feature work flows through here. | — | `main` (via release branches) |
-| `feature/*` | Individual features, bug fixes, or improvements. | Any contributor | `develop` |
-| `release/v0.X.Y` | Release stabilization and staging. Triggers TestPyPI pipeline. | Maintainers | `main` |
+| Branch           | Purpose                                                              | Who creates      | Merges into                   |
+| ---------------- | -------------------------------------------------------------------- | ---------------- | ----------------------------- |
+| `main`           | Production-ready code. Every commit here should be a tagged release. | Maintainers only | —                             |
+| `develop`        | Integration branch. All feature work flows through here.             | —                | `main` (via release branches) |
+| `feature/*`      | Individual features, bug fixes, or improvements.                     | Any contributor  | `develop`                     |
+| `release/v0.X.Y` | Release stabilization and staging. Triggers TestPyPI pipeline.       | Maintainers      | `main`                        |
 
 ### Branch Lifecycle
 
@@ -72,11 +72,11 @@ develop           ← integration branch, all feature PRs target here
 
 Configure these in **Settings → Branches → Branch protection rules**:
 
-| Branch | Rules |
-| --- | --- |
-| `main` | Require PR, require status checks (CI), require approvals, no force push |
-| `develop` | Require PR, require status checks (CI), no force push |
-| `release/*` | Require status checks (Staging pipeline), no force push |
+| Branch      | Rules                                                                    |
+| ----------- | ------------------------------------------------------------------------ |
+| `main`      | Require PR, require status checks (CI), require approvals, no force push |
+| `develop`   | Require PR, require status checks (CI), no force push                    |
+| `release/*` | Require status checks (Staging pipeline), no force push                  |
 
 ---
 
@@ -208,10 +208,10 @@ The `publish-dev` and `verify-dev` jobs only run on pushes to `develop` (not on 
 
 ### Test Matrix
 
-| OS | Python 3.11 | Python 3.12 | Python 3.13 |
-| --- | --- | --- | --- |
-| Ubuntu | ✅ | ✅ | ✅ |
-| Windows | ✅ | ✅ | ✅ |
+| OS      | Python 3.11 | Python 3.12 | Python 3.13 |
+| ------- | ----------- | ----------- | ----------- |
+| Ubuntu  | ✅           | ✅           | ✅           |
+| Windows | ✅           | ✅           | ✅           |
 
 ### What CI Catches
 
@@ -237,11 +237,11 @@ AgentOps uses [setuptools-scm](https://github.com/pypa/setuptools-scm) for **ful
 
 setuptools-scm reads your git history and computes the version:
 
-| Git state | Example version | Explanation |
-| --- | --- | --- |
-| Exactly on tag `v0.2.0` | `0.2.0` | Clean release version |
-| 3 commits after `v0.2.0` | `0.2.1.dev3` | Dev version, 3 commits ahead |
-| 10 commits after `v0.1.2` on `release/v0.2.0` | `0.1.3.dev10` | Dev version on release branch |
+| Git state                                     | Example version | Explanation                   |
+| --------------------------------------------- | --------------- | ----------------------------- |
+| Exactly on tag `v0.2.0`                       | `0.2.0`         | Clean release version         |
+| 3 commits after `v0.2.0`                      | `0.2.1.dev3`    | Dev version, 3 commits ahead  |
+| 10 commits after `v0.1.2` on `release/v0.2.0` | `0.1.3.dev10`   | Dev version on release branch |
 
 ### Configuration
 
@@ -495,13 +495,13 @@ If you approved the PyPI publish, the test version (`0.0.0.test1`) will exist on
 
 ### 8.3 Quick E2E Test Summary
 
-| What to test | Command | What to watch |
-| --- | --- | --- |
-| Staging only | `git push origin release/v0.0.0-test` | 3 jobs: build → TestPyPI → verify |
-| Full release (safe) | `git push origin v0.0.0-test.1` then **reject** at approval | 4 jobs run, approval gate works |
-| Full release (real) | `git push origin v0.0.0-test.1` then **approve** | All 5 jobs, package on PyPI |
-| Cleanup (branch) | `git push origin --delete release/v0.0.0-test` | Branch removed |
-| Cleanup (tag) | `git push origin --delete v0.0.0-test.1 && git tag -d v0.0.0-test.1` | Tag removed |
+| What to test        | Command                                                              | What to watch                     |
+| ------------------- | -------------------------------------------------------------------- | --------------------------------- |
+| Staging only        | `git push origin release/v0.0.0-test`                                | 3 jobs: build → TestPyPI → verify |
+| Full release (safe) | `git push origin v0.0.0-test.1` then **reject** at approval          | 4 jobs run, approval gate works   |
+| Full release (real) | `git push origin v0.0.0-test.1` then **approve**                     | All 5 jobs, package on PyPI       |
+| Cleanup (branch)    | `git push origin --delete release/v0.0.0-test`                       | Branch removed                    |
+| Cleanup (tag)       | `git push origin --delete v0.0.0-test.1 && git tag -d v0.0.0-test.1` | Tag removed                       |
 
 ### 8.4 Testing Workflow Changes on a Feature Branch
 
@@ -684,8 +684,8 @@ Create two environments in **Settings → Environments → New environment**:
 - **Protection rules**: None required (auto-deploys), or add reviewers for extra safety
 - **Secrets**:
 
-  | Secret | Value | How to get it |
-  | --- | --- | --- |
+  | Secret            | Value              | How to get it                                                                     |
+  | ----------------- | ------------------ | --------------------------------------------------------------------------------- |
   | `TEST_PYPI_TOKEN` | TestPyPI API token | [test.pypi.org/manage/account/token](https://test.pypi.org/manage/account/token/) |
 
 #### `release` Environment
@@ -695,8 +695,8 @@ Create two environments in **Settings → Environments → New environment**:
 - **Deployment branches**: Optionally restrict to `main` branch and `v*` tags
 - **Secrets**:
 
-  | Secret | Value | How to get it |
-  | --- | --- | --- |
+  | Secret       | Value                                         | How to get it                                                           |
+  | ------------ | --------------------------------------------- | ----------------------------------------------------------------------- |
   | `PYPI_TOKEN` | PyPI API token (scoped to `agentops-toolkit`) | [pypi.org/manage/account/token](https://pypi.org/manage/account/token/) |
 
 ### 9.2 PyPI and TestPyPI Accounts
@@ -833,45 +833,45 @@ Use this checklist when cutting a release:
 
 ### Build Failures
 
-| Problem | Cause | Solution |
-| --- | --- | --- |
-| `setuptools_scm` can't determine version | Shallow clone (missing git history) | Ensure `fetch-depth: 0` in checkout step |
-| Version shows `0.0.0` locally | Not in a git repo or no tags exist | Run `git tag v0.0.1` to create an initial tag |
-| `ModuleNotFoundError` in tests | Dependencies not installed | Run `uv sync --group dev` |
-| Tests fail on Windows but pass on Linux | Path separator issues | Use `pathlib.Path`, not string concatenation |
+| Problem                                  | Cause                               | Solution                                      |
+| ---------------------------------------- | ----------------------------------- | --------------------------------------------- |
+| `setuptools_scm` can't determine version | Shallow clone (missing git history) | Ensure `fetch-depth: 0` in checkout step      |
+| Version shows `0.0.0` locally            | Not in a git repo or no tags exist  | Run `git tag v0.0.1` to create an initial tag |
+| `ModuleNotFoundError` in tests           | Dependencies not installed          | Run `uv sync --group dev`                     |
+| Tests fail on Windows but pass on Linux  | Path separator issues               | Use `pathlib.Path`, not string concatenation  |
 
 ### TestPyPI Issues
 
-| Problem | Cause | Solution |
-| --- | --- | --- |
-| Upload fails with 403 | Invalid or expired token | Regenerate `TEST_PYPI_TOKEN` and update the GitHub secret |
-| Upload fails with "already exists" | Same version previously uploaded | Normal — `skip-existing: true` handles this. If you need a new upload, push another commit to increment the dev version |
-| Install fails with "no matching distribution" | Package not yet indexed | The verify job retries automatically (5 attempts, 30s apart). If persistent, check TestPyPI status |
-| Install fails with dependency errors | Dependency not on TestPyPI | Verify `--extra-index-url https://pypi.org/simple/` is present |
+| Problem                                       | Cause                            | Solution                                                                                                                |
+| --------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Upload fails with 403                         | Invalid or expired token         | Regenerate `TEST_PYPI_TOKEN` and update the GitHub secret                                                               |
+| Upload fails with "already exists"            | Same version previously uploaded | Normal — `skip-existing: true` handles this. If you need a new upload, push another commit to increment the dev version |
+| Install fails with "no matching distribution" | Package not yet indexed          | The verify job retries automatically (5 attempts, 30s apart). If persistent, check TestPyPI status                      |
+| Install fails with dependency errors          | Dependency not on TestPyPI       | Verify `--extra-index-url https://pypi.org/simple/` is present                                                          |
 
 ### PyPI Issues
 
-| Problem | Cause | Solution |
-| --- | --- | --- |
-| Publish step stuck on "Waiting for review" | Normal — requires approval | A designated reviewer must approve in the Actions UI |
-| Upload fails with 403 | Invalid `PYPI_TOKEN` | Regenerate the token on pypi.org and update the GitHub secret |
-| Version already exists on PyPI | Tag points to an already-released version | PyPI versions are immutable. You must use a new version number |
+| Problem                                    | Cause                                     | Solution                                                       |
+| ------------------------------------------ | ----------------------------------------- | -------------------------------------------------------------- |
+| Publish step stuck on "Waiting for review" | Normal — requires approval                | A designated reviewer must approve in the Actions UI           |
+| Upload fails with 403                      | Invalid `PYPI_TOKEN`                      | Regenerate the token on pypi.org and update the GitHub secret  |
+| Version already exists on PyPI             | Tag points to an already-released version | PyPI versions are immutable. You must use a new version number |
 
 ### Git and Version Issues
 
-| Problem | Cause | Solution |
-| --- | --- | --- |
-| Wrong version in built package | Tag not on the expected commit | Verify with `git log --oneline --decorate` that the tag is where you expect |
-| `pip install -e .` fails | `.git` directory missing | Editable installs need git history for setuptools-scm. Clone the repo, don't just download a zip |
-| Merge conflicts between release and develop | Normal for concurrent work | Resolve conflicts on the release branch before merging to main |
+| Problem                                     | Cause                          | Solution                                                                                         |
+| ------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
+| Wrong version in built package              | Tag not on the expected commit | Verify with `git log --oneline --decorate` that the tag is where you expect                      |
+| `pip install -e .` fails                    | `.git` directory missing       | Editable installs need git history for setuptools-scm. Clone the repo, don't just download a zip |
+| Merge conflicts between release and develop | Normal for concurrent work     | Resolve conflicts on the release branch before merging to main                                   |
 
 ### Environment and Permissions
 
-| Problem | Cause | Solution |
-| --- | --- | --- |
-| "Environment not found" error | GitHub Environment not created | Create `staging` and `release` environments in Settings → Environments |
-| "Secret not found" error | Secret not added to the environment | Add secrets to the specific environment, not repository-level secrets |
-| Reviewer can't approve deployment | Not listed as required reviewer | Update the environment's required reviewers list |
+| Problem                           | Cause                               | Solution                                                               |
+| --------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| "Environment not found" error     | GitHub Environment not created      | Create `staging` and `release` environments in Settings → Environments |
+| "Secret not found" error          | Secret not added to the environment | Add secrets to the specific environment, not repository-level secrets  |
+| Reviewer can't approve deployment | Not listed as required reviewer     | Update the environment's required reviewers list                       |
 
 ---
 

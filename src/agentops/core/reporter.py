@@ -381,11 +381,13 @@ def generate_comparison_markdown(result: ComparisonResult) -> str:
         (
             "Status",
             None,
-            lambda r: "PASS"
-            if r.overall_passed
-            else "FAIL"
-            if r.overall_passed is not None
-            else "-",
+            lambda r: (
+                "PASS"
+                if r.overall_passed
+                else "FAIL"
+                if r.overall_passed is not None
+                else "-"
+            ),
         ),
         ("Started", None, lambda r: r.started_at[:19] if r.started_at else "-"),
     ]

@@ -32,12 +32,12 @@ This guide explains how to add AgentOps evaluation to your CI pipeline using Git
 
 Your repository must contain these files for the workflow to succeed:
 
-| File | Purpose |
-| --- | --- |
-| `.agentops/run.yaml` | Run specification — references the bundle, dataset, and backend |
-| `.agentops/bundles/<name>.yaml` | Evaluation bundle — evaluators + thresholds |
-| `.agentops/datasets/<name>.yaml` | Dataset metadata |
-| `.agentops/datasets/<name>.jsonl` | Dataset rows (JSONL format) |
+| File                              | Purpose                                                         |
+| --------------------------------- | --------------------------------------------------------------- |
+| `.agentops/run.yaml`              | Run specification — references the bundle, dataset, and backend |
+| `.agentops/bundles/<name>.yaml`   | Evaluation bundle — evaluators + thresholds                     |
+| `.agentops/datasets/<name>.yaml`  | Dataset metadata                                                |
+| `.agentops/datasets/<name>.jsonl` | Dataset rows (JSONL format)                                     |
 
 All paths in `run.yaml` are relative to the `.agentops/` directory.
 
@@ -81,16 +81,16 @@ The workflow uses **Workload Identity Federation (OIDC)** — no client secrets 
 
 Set these as **repository variables** (not secrets — they are not confidential):
 
-| Variable | Value |
-| --- | --- |
-| `AZURE_CLIENT_ID` | Application (client) ID |
-| `AZURE_TENANT_ID` | Directory (tenant) ID |
-| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
+| Variable                | Value                   |
+| ----------------------- | ----------------------- |
+| `AZURE_CLIENT_ID`       | Application (client) ID |
+| `AZURE_TENANT_ID`       | Directory (tenant) ID   |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID   |
 
 Set this as a **repository secret**:
 
-| Secret | Value |
-| --- | --- |
+| Secret                              | Value                        |
+| ----------------------------------- | ---------------------------- |
 | `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project endpoint URL |
 
 Go to **Settings** → **Secrets and variables** → **Actions** → **Variables** tab (for variables) or **Secrets** tab (for the endpoint).
@@ -101,9 +101,9 @@ Go to **Settings** → **Secrets and variables** → **Actions** → **Variables
 
 The template workflow triggers on:
 
-| Trigger | When |
-| --- | --- |
-| `pull_request` | Any PR targeting `main` or `develop` |
+| Trigger             | When                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| `pull_request`      | Any PR targeting `main` or `develop`                                               |
 | `workflow_dispatch` | Manual run from the Actions tab (supports custom config path and output directory) |
 
 To change which branches trigger evaluations, edit the `on.pull_request.branches` array in the workflow file.
@@ -114,11 +114,11 @@ To change which branches trigger evaluations, edit the `on.pull_request.branches
 
 AgentOps returns CI-friendly exit codes that GitHub Actions interprets directly:
 
-| Exit Code | Meaning | CI Result |
-| --- | --- | --- |
-| `0` | Evaluation succeeded, all thresholds passed | ✅ Job passes |
-| `2` | Evaluation succeeded, one or more thresholds failed | ❌ Job fails |
-| `1` | Runtime or configuration error | ❌ Job fails |
+| Exit Code | Meaning                                             | CI Result    |
+| --------- | --------------------------------------------------- | ------------ |
+| `0`       | Evaluation succeeded, all thresholds passed         | ✅ Job passes |
+| `2`       | Evaluation succeeded, one or more thresholds failed | ❌ Job fails  |
+| `1`       | Runtime or configuration error                      | ❌ Job fails  |
 
 No special handling is needed — GitHub Actions fails the job on any non-zero exit code.
 
@@ -128,14 +128,14 @@ No special handling is needed — GitHub Actions fails the job on any non-zero e
 
 The workflow uploads the following files as a GitHub Actions artifact named `agentops-eval-results`:
 
-| File | Description |
-| --- | --- |
-| `results.json` | Machine-readable evaluation results (versioned schema) |
-| `report.md` | Human-readable Markdown summary |
-| `backend_metrics.json` | Raw backend scores per row |
+| File                    | Description                                                    |
+| ----------------------- | -------------------------------------------------------------- |
+| `results.json`          | Machine-readable evaluation results (versioned schema)         |
+| `report.md`             | Human-readable Markdown summary                                |
+| `backend_metrics.json`  | Raw backend scores per row                                     |
 | `cloud_evaluation.json` | Cloud eval metadata with Foundry portal link (cloud mode only) |
-| `backend.stdout.log` | Backend stdout capture |
-| `backend.stderr.log` | Backend stderr capture |
+| `backend.stdout.log`    | Backend stdout capture                                         |
+| `backend.stderr.log`    | Backend stderr capture                                         |
 
 Artifacts are uploaded even when the evaluation fails (`if: always()`), so you can always inspect results.
 
@@ -174,10 +174,10 @@ agentops config cicd
 
 Options:
 
-| Flag | Description | Default |
-| --- | --- | --- |
+| Flag         | Description                      | Default                 |
+| ------------ | -------------------------------- | ----------------------- |
 | `--dir PATH` | Target repository root directory | `.` (current directory) |
-| `--force` | Overwrite existing workflow file | `false` |
+| `--force`    | Overwrite existing workflow file | `false`                 |
 
 ### Regenerate (overwrite)
 
@@ -243,13 +243,13 @@ Remove or comment out the "Post report as PR comment" step in the workflow.
 
 ## Troubleshooting
 
-| Problem | Solution |
-| --- | --- |
-| `Error: evaluation failed: ...` (exit 1) | Check that `.agentops/run.yaml` exists, config is valid YAML, and secrets are set |
-| `Threshold status: FAILED` (exit 2) | Review `report.md` — thresholds are too strict or model quality regressed |
-| Missing artifacts | Ensure `.agentops/results/latest/` is not in `.gitignore` — the workflow reads this path |
-| Authentication errors | Verify the federated credential entity matches your repo/branch; check that `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` are set as repository variables; confirm the app registration has access to the Foundry project |
-| `agentops: command not found` | Ensure `pip install agentops-toolkit` runs before the eval step |
+| Problem                                  | Solution                                                                                                                                                                                                                                  |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Error: evaluation failed: ...` (exit 1) | Check that `.agentops/run.yaml` exists, config is valid YAML, and secrets are set                                                                                                                                                         |
+| `Threshold status: FAILED` (exit 2)      | Review `report.md` — thresholds are too strict or model quality regressed                                                                                                                                                                 |
+| Missing artifacts                        | Ensure `.agentops/results/latest/` is not in `.gitignore` — the workflow reads this path                                                                                                                                                  |
+| Authentication errors                    | Verify the federated credential entity matches your repo/branch; check that `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` are set as repository variables; confirm the app registration has access to the Foundry project |
+| `agentops: command not found`            | Ensure `pip install agentops-toolkit` runs before the eval step                                                                                                                                                                           |
 
 ---
 
@@ -257,13 +257,13 @@ Remove or comment out the "Post report as PR comment" step in the workflow.
 
 If you are contributing to the agentops-toolkit repository itself, the project has separate CI/CD workflows for building and releasing the package:
 
-| Workflow | Trigger | Purpose |
-| --- | --- | --- |
-| `ci.yml` | Push to `develop`, PRs to `main`/`develop` | Lint (ruff) + test (matrix) + coverage |
-| `_build.yml` | Called by staging/release | Reusable lint + test + build package |
-| `staging.yml` | Push to `release/**` | Build → TestPyPI → verify install |
-| `release.yml` | Push `v*` tag | TestPyPI → PyPI (with approval) → GitHub Release |
-| `cut-release.yml` | Manual dispatch (Actions tab button) | Create release branch from `develop`, update CHANGELOG, open PR to `main` |
+| Workflow          | Trigger                                    | Purpose                                                                   |
+| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `ci.yml`          | Push to `develop`, PRs to `main`/`develop` | Lint (ruff) + test (matrix) + coverage                                    |
+| `_build.yml`      | Called by staging/release                  | Reusable lint + test + build package                                      |
+| `staging.yml`     | Push to `release/**`                       | Build → TestPyPI → verify install                                         |
+| `release.yml`     | Push `v*` tag                              | TestPyPI → PyPI (with approval) → GitHub Release                          |
+| `cut-release.yml` | Manual dispatch (Actions tab button)       | Create release branch from `develop`, update CHANGELOG, open PR to `main` |
 
 The **Cut Release** workflow provides a one-click way to start a release: enter a version number in the Actions UI, and it creates the release branch, updates the changelog, and opens the PR automatically.
 
