@@ -674,7 +674,7 @@ Check the published package:
 
 This section covers one-time setup required before the pipelines can run.
 
-### 9.1 GitHub Environments
+### 10.1 GitHub Environments
 
 Create two environments in **Settings → Environments → New environment**:
 
@@ -699,7 +699,7 @@ Create two environments in **Settings → Environments → New environment**:
   | ------------ | --------------------------------------------- | ----------------------------------------------------------------------- |
   | `PYPI_TOKEN` | PyPI API token (scoped to `agentops-toolkit`) | [pypi.org/manage/account/token](https://pypi.org/manage/account/token/) |
 
-### 9.2 PyPI and TestPyPI Accounts
+### 10.2 PyPI and TestPyPI Accounts
 
 #### TestPyPI (Staging)
 
@@ -718,7 +718,7 @@ Create two environments in **Settings → Environments → New environment**:
 3. Create an API token scoped to the `agentops-toolkit` project
 4. Add the token as `PYPI_TOKEN` secret in the GitHub `release` environment
 
-### 9.3 First-Time Package Registration
+### 10.3 First-Time Package Registration
 
 The first time you publish to TestPyPI or PyPI, the project name (`agentops-toolkit`) is registered automatically. After the first upload:
 

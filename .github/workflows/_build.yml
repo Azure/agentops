@@ -1,10 +1,11 @@
 # AgentOps Toolkit — Reusable Build Workflow
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR
+#   1. ci.yml          — Lint + test on every push/PR; publish dev builds to TestPyPI on develop
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
 #   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
 # Called by staging.yml and release.yml via workflow_call.
 # Runs tests, builds the package (version via setuptools-scm), and uploads

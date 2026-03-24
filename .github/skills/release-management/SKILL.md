@@ -23,9 +23,9 @@ Guide contributors and maintainers through the AgentOps branching strategy, vers
 
 | Branch | Purpose |
 |---|---|
-| `main` | Always stable and deployment-ready. Only receives merges from `release/x.y.z` branches. |
+| `main` | Always stable and deployment-ready. Only receives merges from `release/vx.y.z` branches. |
 | `develop` | Integration branch. All feature PRs target here. |
-| `release/x.y.z` | Created by maintainers from `develop` when a release is ready to ship. |
+| `release/vx.y.z` | Created by maintainers from `develop` when a release is ready to ship. |
 | `feature/<name>` | Created by contributors from `develop` for all new work. |
 
 **Default rule:** unless explicitly told otherwise, all work starts from `develop`.
@@ -58,53 +58,74 @@ Examples: `feature/conversation-metadata`, `feature/add-evaluation-logging`
 
 ### Release branch naming
 ```
-release/x.y.z
+release/vx.y.z
 ```
-Examples: `release/2.4.2`, `release/0.2.0`
+Examples: `release/v2.4.2`, `release/v0.2.0`
 
 ### Flow
+
+**Preferred: One-click via Cut Release workflow**
 1. Confirm `develop` is green (CI passes) and all intended changes are merged.
+2. Go to **Actions** tab → **Cut Release** → **Run workflow** → enter version (e.g. `0.2.0`, no `v` prefix).
+3. The workflow automatically:
+   - Creates `release/v0.2.0` from `develop`
+   - Updates `CHANGELOG.md` (`[Unreleased]` → `[0.2.0] - YYYY-MM-DD`)
+   - Pushes the branch (triggers staging pipeline automatically)
+   - Opens a PR: `release/v0.2.0` → `main`
+4. Wait for staging pipeline to pass (build → TestPyPI → verify).
+5. Get the PR reviewed and merge into `main`.
+6. Tag the release on `main` — this triggers the production release pipeline:
+   ```bash
+   git checkout main
+   git pull origin main
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+7. Approve the PyPI publish in the GitHub Actions UI when prompted.
+8. Sync `develop` after release:
+   ```bash
+   git checkout develop
+   git pull origin develop
+   git merge main
+   git push origin develop
+   ```
+9. Delete the release branch:
+   ```bash
+   git push origin --delete release/v0.2.0
+   git branch -d release/v0.2.0
+   ```
+
+**Alternative: Manual release branch creation**
+1. Confirm `develop` is green.
 2. Create release branch from `develop`:
    ```bash
    git checkout develop
-   git pull upstream develop
-   git checkout -b release/x.y.z
+   git pull origin develop
+   git checkout -b release/v0.2.0
    ```
-3. **Immediately** update version in `pyproject.toml` — this is the first commit on the release branch, before tagging or opening any PR:
-   ```toml
-   [project]
-   version = "x.y.z"
-   ```
-4. Update `CHANGELOG.md` — see [Changelog Lifecycle](#changelog-lifecycle) below.
-5. Commit and push:
+3. Update `CHANGELOG.md` — see [Changelog Lifecycle](#changelog-lifecycle) below.
+4. Commit and push:
    ```bash
-   git add pyproject.toml CHANGELOG.md
-   git commit -m "chore: prepare release x.y.z"
-   git push upstream release/x.y.z
+   git add CHANGELOG.md
+   git commit -m "chore: prepare release 0.2.0"
+   git push origin release/v0.2.0
    ```
-6. Create and push the version tag (with `v` prefix) — this triggers publication to **TestPyPI**:
+   This triggers the staging pipeline automatically.
+5. Open PR: `release/v0.2.0` → `main`.
+6. After staging passes and review is complete, merge to `main`.
+7. Tag and push (triggers production release pipeline):
    ```bash
-   git tag vx.y.z
-   git push upstream vx.y.z
+   git checkout main
+   git pull origin main
+   git tag v0.2.0
+   git push origin v0.2.0
    ```
-7. Verify the package on TestPyPI before proceeding:
-   ```bash
-   pip install --index-url https://test.pypi.org/simple/ agentops-toolkit==x.y.z
-   agentops --help
-   ```
-8. Open PR: `release/x.y.z` → `main`. Include TestPyPI verification confirmation in the PR description.
-9. After review and CI passes, merge into `main` — this triggers publication to **PyPI** and creates the GitHub Release.
-10. Sync `develop` after release:
-    ```bash
-    git checkout develop
-    git pull upstream main
-    git push upstream develop
-    ```
+8. Approve PyPI publish, sync develop, and delete release branch (same as above).
 
 ### Release PR contract
-- Source: `release/x.y.z`
+- Source: `release/vx.y.z`
 - Target: `main`
-- Do NOT introduce new feature work in a release branch — only version bump and changelog.
+- Do NOT introduce new feature work in a release branch — only changelog updates.
 
 ---
 
@@ -118,27 +139,27 @@ Follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 | `MINOR` | New backward-compatible features |
 | `MAJOR` | Breaking changes to the CLI contract or output schema |
 
-Version numbers follow a consistent pattern across artifacts. Only the git tag (and the GitHub Release it creates) uses a `v` prefix — everything else is bare semver:
+Version numbers follow a consistent pattern across artifacts. The git tag and GitHub Release use a `v` prefix. The release branch also uses the `v` prefix. Versioning is fully automatic via **setuptools-scm** — there is no `version` field in `pyproject.toml`.
 
 | Artifact | Format | Example |
 |---|---|---|
-| Release branch | `release/x.y.z` | `release/2.4.2` |
-| `pyproject.toml` | `version = "x.y.z"` | `version = "2.4.2"` |
+| Release branch | `release/vx.y.z` | `release/v2.4.2` |
+| `pyproject.toml` | `dynamic = ["version"]` | Version derived from git tags via setuptools-scm |
 | Git tag / GitHub Release | `vx.y.z` | `v2.4.2` |
 | Changelog heading | `## [x.y.z] - YYYY-MM-DD` | `## [2.4.2] - 2026-03-22` |
 
-This matches how PyPI displays the package (e.g., `agentops-toolkit 2.4.2`) while GitHub Releases conventionally show the `v` prefix (e.g., `v2.4.2`).
+**Never add `version = "..."` to `pyproject.toml`** — this will conflict with setuptools-scm.
 
 ### Version on `develop`
-- The version in `pyproject.toml` on `develop` reflects the latest shipped or in-progress state.
-- Do NOT preemptively bump the version on `develop` for an upcoming release.
-- Feature branches should not modify `pyproject.toml` version unless explicitly instructed.
+- The version on `develop` is derived automatically by setuptools-scm (e.g., `0.1.3.dev12`).
+- Do NOT preemptively bump any version on `develop` for an upcoming release.
+- Feature branches should not modify `pyproject.toml` version.
 
 ---
 
 ## Changelog Lifecycle
 
-The changelog follows a two-phase lifecycle: development on `develop`, finalization on `release/x.y.z`.
+The changelog follows a two-phase lifecycle: development on `develop`, finalization on `release/vx.y.z`.
 
 ### Development phase (`develop`)
 - Always maintain an `[Unreleased]` section at the top.
@@ -156,7 +177,7 @@ The changelog follows a two-phase lifecycle: development on `develop`, finalizat
 - Corrected resource cleanup order in Foundry backend shutdown.
 ```
 
-### Release phase (`release/x.y.z`)
+### Release phase (`release/vx.y.z`)
 When creating the release branch, convert `[Unreleased]` into the versioned release entry, then add a fresh empty `[Unreleased]` section above it.
 
 **Before:**
@@ -177,12 +198,11 @@ When creating the release branch, convert `[Unreleased]` into the versioned rele
 - New orchestration strategy...
 ```
 
-All four release artifacts must be in sync:
+All release artifacts must be in sync:
 
 | Artifact | Value |
 |---|---|
-| Release branch | `release/2.4.2` |
-| `pyproject.toml` version | `2.4.2` |
+| Release branch | `release/v2.4.2` |
 | Changelog heading | `## [2.4.2] - YYYY-MM-DD` |
 | Git tag / GitHub Release | `v2.4.2` |
 
@@ -199,7 +219,7 @@ Use when applicable: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Secu
 - Never create more than one `[Unreleased]` section.
 - Never assign a release version on `develop`.
 - Never leave a release branch without converting `[Unreleased]` to the versioned entry.
-- Never mismatch version numbers across branch name, `pyproject.toml`, changelog, and tag.
+- Never mismatch version numbers across branch name, changelog, and tag.
 
 ---
 
