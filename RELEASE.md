@@ -11,7 +11,7 @@ How we branch, version, and publish `agentops-toolkit`.
 | `main` | Stable, published versions only |
 | `develop` | Integration branch — all feature work lands here |
 | `feature/<name>` | Created from `develop` for new work |
-| `release/x.y.z` | Created from `develop` to prepare a release |
+| `release/vx.y.z` | Created from `develop` to prepare a release |
 
 ---
 
@@ -24,25 +24,30 @@ feature/<name>
                                │
                            develop (stable, CI green)
                                │
-                           git checkout -b release/x.y.z
+                           cut-release.yml (or manual branch)
                                │
-                               ├─ bump version in pyproject.toml  ← first commit
-                               ├─ finalize CHANGELOG.md
-                               └─ git tag vx.y.z ──► push tag
-                                                          │
-                                                     [release.yml]
-                                                          │
-                                                     TestPyPI publish
-                                                          │
-                                               verify on TestPyPI
-                                                          │
-                               PR: release/x.y.z ──► main ──► merge
-                                                                  │
-                                                          [release.yml]
-                                                                  │
-                                                    PyPI publish + GitHub Release
-                                                                  │
-                                                    sync main ──► develop
+                           git checkout -b release/vx.y.z
+                               │
+                               ├─ finalize CHANGELOG.md          ← automated by cut-release
+                               └─ push branch
+                                       │
+                                  [staging.yml]
+                                       │
+                                  build ──► TestPyPI ──► verify
+                                       │
+                               PR: release/vx.y.z ──► main ──► merge
+                                       │
+                                  git tag vx.y.z ──► push tag
+                                       │
+                                  [release.yml]
+                                       │
+                                  build ──► TestPyPI ──► verify
+                                       │
+                                  ⏸ approval gate (release environment)
+                                       │
+                                  PyPI publish ──► GitHub Release
+                                       │
+                                  sync main ──► develop
 ```
 
 ---
@@ -51,38 +56,43 @@ feature/<name>
 
 | Artifact | Format | Example |
 |---|---|---|
-| Release branch | `release/x.y.z` | `release/0.1.2` |
-| `pyproject.toml` | `x.y.z` | `0.1.2` |
+| Release branch | `release/vx.y.z` | `release/v0.1.2` |
 | Git tag / GitHub Release | `vx.y.z` | `v0.1.2` |
 | Changelog heading | `## [x.y.z] - YYYY-MM-DD` | `## [0.1.2] - 2026-03-23` |
+| PyPI package | `x.y.z` | `agentops-toolkit 0.1.2` |
+| Dev builds (TestPyPI) | `x.y.z.devN` | `0.1.3.dev5` |
 
-Only the git tag and GitHub Release use the `v` prefix. PyPI displays the package as `agentops-toolkit 0.1.2`.
-
-**When to bump the version:** as the very first commit on the `release/x.y.z` branch, before tagging or opening any PR. Never on `develop`.
+Version is **never set manually** — [setuptools-scm](https://github.com/pypa/setuptools-scm) derives it from git tags at build time. There is no `version` field in `pyproject.toml`.
 
 ---
 
 ## Changelog
 
 - On `develop`: all changes go under `## [Unreleased]`.
-- On `release/x.y.z`: convert `[Unreleased]` to `## [x.y.z] - YYYY-MM-DD` and add a fresh empty `[Unreleased]` above it.
+- On `release/vx.y.z`: convert `[Unreleased]` to `## [x.y.z] - YYYY-MM-DD` and add a fresh empty `[Unreleased]` above it.
+- The `cut-release.yml` workflow automates this conversion when creating the release branch.
 
 ---
 
 ## Workflows
 
-- **`ci.yml`** — runs lint + tests on every push to `develop` and `release/**`, and on PRs targeting `develop` or `main`.
-- **`release.yml`** — triggered by a `v*` tag push: builds the package and publishes to TestPyPI; then on merge to `main`, publishes to PyPI and creates the GitHub Release.
-
-> **Note:** The TestPyPI/PyPI split in `release.yml` is planned. Currently the tag push publishes directly to PyPI.
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| `ci.yml` | Push to `develop`, PRs to `main`/`develop` | Lint + tests; publishes dev builds to TestPyPI on `develop` pushes |
+| `staging.yml` | Push to `release/**` | Build → TestPyPI → verify install (staging validation) |
+| `release.yml` | Push of `v*` tag | Build → TestPyPI → verify → **approval gate** → PyPI → GitHub Release |
+| `cut-release.yml` | Manual dispatch | Creates `release/vx.y.z` branch from `develop`, updates CHANGELOG, opens PR to `main` |
+| `_build.yml` | Called by staging and release | Reusable workflow: runs tests and builds the package |
 
 ---
 
-## Required Secrets
+## Required Secrets & Environments
 
-| Secret | Purpose |
-|---|---|
-| `PIPY_TOKEN` | PyPI API token scoped to `agentops-toolkit` |
-| `TESTPYPI_API_TOKEN` | TestPyPI API token for pre-release validation |
+| Secret | Environment | Purpose |
+|---|---|---|
+| `TEST_PYPI_TOKEN` | `staging` | TestPyPI API token for pre-release validation |
+| `PYPI_TOKEN` | `release` | PyPI API token scoped to `agentops-toolkit` |
 
-Set both in GitHub repo → Settings → Secrets and variables → Actions.
+Set secrets in GitHub repo → Settings → Secrets and variables → Actions (scoped to environments).
+
+The `release` environment requires **manual approval** before publishing to PyPI.
