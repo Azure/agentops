@@ -160,15 +160,17 @@ def test_foundry_backend_agent_service_target(tmp_path: Path) -> None:
         ),
     ]
 
-    with patch(
-        "agentops.backends.foundry_backend._acquire_token",
-        return_value="fake-agent-token",
-    ):
-        with patch(
+    with (
+        patch(
+            "agentops.backends.foundry_backend._acquire_token",
+            return_value="fake-agent-token",
+        ),
+        patch(
             "agentops.backends.foundry_backend.urllib.request.urlopen",
             side_effect=responses,
-        ):
-            result = FoundryBackend().execute(context)
+        ),
+    ):
+        result = FoundryBackend().execute(context)
 
     assert result.backend == "foundry"
     assert result.exit_code == 0
@@ -235,11 +237,12 @@ def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(
             assert "ground_truth" in kwargs
             return {"similarity": 4.0}
 
-    with patch(
-        "agentops.backends.foundry_backend._acquire_token",
-        return_value="fake-agent-token",
-    ):
-        with patch(
+    with (
+        patch(
+            "agentops.backends.foundry_backend._acquire_token",
+            return_value="fake-agent-token",
+        ),
+        patch(
             "agentops.backends.foundry_backend._build_foundry_evaluator_runtimes",
             return_value=[
                 FoundryEvaluatorRuntime(
@@ -253,12 +256,13 @@ def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(
                     score_keys=["similarity"],
                 )
             ],
-        ):
-            with patch(
-                "agentops.backends.foundry_backend.urllib.request.urlopen",
-                side_effect=responses,
-            ):
-                result = FoundryBackend().execute(context)
+        ),
+        patch(
+            "agentops.backends.foundry_backend.urllib.request.urlopen",
+            side_effect=responses,
+        ),
+    ):
+        result = FoundryBackend().execute(context)
 
     assert result.backend == "foundry"
     assert result.exit_code == 0
@@ -324,13 +328,14 @@ def test_foundry_backend_model_direct_target(tmp_path: Path) -> None:
             return "4"
         return "8"
 
-    with patch(
-        "agentops.backends.foundry_backend._acquire_token", return_value="fake-token"
+    with (
+        patch(
+            "agentops.backends.foundry_backend._acquire_token",
+            return_value="fake-token",
+        ),
+        patch.object(FoundryBackend, "_invoke_model_direct", _fake_invoke_model_direct),
     ):
-        with patch.object(
-            FoundryBackend, "_invoke_model_direct", _fake_invoke_model_direct
-        ):
-            result = FoundryBackend().execute(context)
+        result = FoundryBackend().execute(context)
 
     assert result.backend == "foundry"
     assert result.exit_code == 0
