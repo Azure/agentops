@@ -108,32 +108,45 @@ def _parse_agent_name_version(agent_id: str) -> tuple[str, str | None]:
     return agent_id.strip(), None
 
 
-_NLP_ONLY_EVALUATORS = frozenset({
-    "f1_score",
-    "bleu",
-    "rouge",
-    "meteor",
-    "gleu",
-})
+_NLP_ONLY_EVALUATORS = frozenset(
+    {
+        "f1_score",
+        "bleu",
+        "rouge",
+        "meteor",
+        "gleu",
+    }
+)
 
-_EVALUATORS_NEEDING_GROUND_TRUTH = frozenset({
-    "similarity",
-    "f1_score",
-    "bleu",
-    "rouge",
-    "meteor",
-    "gleu",
-})
+_EVALUATORS_NEEDING_GROUND_TRUTH = frozenset(
+    {
+        "similarity",
+        "f1_score",
+        "bleu",
+        "rouge",
+        "meteor",
+        "gleu",
+    }
+)
 
-_EVALUATORS_NEEDING_CONTEXT = frozenset({
-    "groundedness",
-})
+_EVALUATORS_NEEDING_CONTEXT = frozenset(
+    {
+        "groundedness",
+    }
+)
+
+_EVALUATORS_NEEDING_TOOL_CALLS = frozenset(
+    {
+        "tool_call_accuracy",
+    }
+)
 
 
 def _cloud_evaluator_data_mapping(
     builtin_name: str,
     input_field: str,
     expected_field: str,
+    context_field: str | None = None,
 ) -> Dict[str, str]:
     """Build ``data_mapping`` for an ``azure_ai_evaluator`` testing criterion."""
     item_input = "{{item." + input_field + "}}"
@@ -147,7 +160,13 @@ def _cloud_evaluator_data_mapping(
     if builtin_name in _EVALUATORS_NEEDING_GROUND_TRUTH:
         mapping["ground_truth"] = item_expected
     elif builtin_name in _EVALUATORS_NEEDING_CONTEXT:
-        mapping["context"] = item_expected
+        # Use the dedicated context column when declared in dataset format;
+        # fall back to expected_field only when no context_field is configured.
+        context_item = "{{item." + (context_field or expected_field) + "}}"
+        mapping["context"] = context_item
+    elif builtin_name in _EVALUATORS_NEEDING_TOOL_CALLS:
+        mapping["tool_calls"] = "{{sample.tool_calls}}"
+        mapping["tool_definitions"] = "{{item.tool_definitions}}"
     return mapping
 
 
@@ -398,7 +417,22 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
         return {
             "query": "$prompt",
             "response": "$prediction",
-            "context": "$expected",
+            # Use the dedicated 'context' row field (retrieved documents).
+            # Override via evaluators[].config.input_mapping in the bundle
+            # if your dataset column has a different name.
+            "context": "$row.context",
+        }
+    if name == "TaskCompletionEvaluator":
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+        }
+    if name == "ToolCallAccuracyEvaluator":
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+            "tool_calls": "$row.tool_calls",
+            "tool_definitions": "$row.tool_definitions",
         }
     return {}
 
@@ -1068,9 +1102,9 @@ class FoundryBackend:
             from azure.identity import DefaultAzureCredential  # noqa: WPS433
         except ImportError as exc:
             raise ImportError(
-                "Model-direct evaluation requires 'azure-ai-projects>=2.0.0b1' "
+                "Model-direct evaluation requires 'azure-ai-projects>=2.0.1' "
                 "and 'azure-identity'. "
-                "Install with: pip install 'azure-ai-projects>=2.0.0b1' azure-identity openai"
+                "Install with: pip install 'azure-ai-projects>=2.0.1' azure-identity openai"
             ) from exc
 
         credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
@@ -1106,22 +1140,17 @@ class FoundryBackend:
         stderr_path: Path,
         metrics_path: Path,
     ) -> BackendExecutionResult:
-        """Run evaluation via the Foundry Cloud Evaluation API (New Experience).
+        """Run evaluation via the Foundry Project Evals API (New Experience).
 
-        Uses ``client.evals.create`` / ``client.evals.runs.create`` with
-        ``azure_ai_evaluator`` testing criteria and ``azure_ai_target_completions``
-        data source so results appear in the Foundry Evaluations page.
+        Uses the Foundry Project REST endpoint
+        ``{project_endpoint}/openai/evals?api-version=2025-11-15-preview``
+        with ``azure_ai_evaluator`` testing criteria so results appear in the
+        Foundry Evaluations page.
 
         Reference: https://learn.microsoft.com/azure/foundry/how-to/develop/cloud-evaluation
         """
-        try:
-            from azure.ai.projects import AIProjectClient  # noqa: WPS433
-            from azure.identity import DefaultAzureCredential  # noqa: WPS433
-        except ImportError as exc:
-            raise ImportError(
-                "Foundry Cloud Evaluation requires 'azure-ai-projects>=2.0.0b1' and 'azure-identity'. "
-                "Install with: pip install 'azure-ai-projects>=2.0.0b1' azure-identity openai"
-            ) from exc
+        # The Foundry Project Evals API version that supports azure_ai_evaluator.
+        _EVALS_API_VERSION = "2025-11-15-preview"
 
         rows = _load_jsonl(dataset_source_path)
         total_rows = len(rows)
@@ -1166,6 +1195,7 @@ class FoundryBackend:
                     builtin_name,
                     input_field,
                     expected_field,
+                    context_field=dataset_config.format.context_field,
                 ),
             }
             if _cloud_evaluator_needs_model(builtin_name):
@@ -1179,18 +1209,41 @@ class FoundryBackend:
                 }
             testing_criteria.append(criterion)
 
-        # --- Create OpenAI client (SDK picks correct api-version) -----------
+        # --- Acquire token for Foundry Project Evals API --------------------
         try:
-            credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
-            project_client = AIProjectClient(
-                endpoint=settings.project_endpoint,
-                credential=credential,
-            )
-            openai_client = project_client.get_openai_client()
-        except ImportError:
-            raise
+            evals_token = _acquire_token("https://ai.azure.com/.default")
         except Exception as exc:
             raise RuntimeError(_CREDENTIAL_HELP_MESSAGE) from exc
+
+        evals_base_url = settings.project_endpoint.rstrip("/")
+        evals_headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {evals_token}",
+        }
+
+        def _evals_post(path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+            url = (
+                f"{evals_base_url}/openai/evals{path}?api-version={_EVALS_API_VERSION}"
+            )
+            return self._request_json(
+                method="POST",
+                url=url,
+                headers=evals_headers,
+                timeout_seconds=60,
+                body=body,
+            )
+
+        def _evals_get(path: str, extra_params: str = "") -> Dict[str, Any]:
+            params = f"api-version={_EVALS_API_VERSION}"
+            if extra_params:
+                params = f"{params}&{extra_params}"
+            url = f"{evals_base_url}/openai/evals{path}?{params}"
+            return self._request_json(
+                method="GET",
+                url=url,
+                headers=evals_headers,
+                timeout_seconds=60,
+            )
 
         # --- Data schema ----------------------------------------------------
         item_schema: Dict[str, Any] = {
@@ -1203,16 +1256,20 @@ class FoundryBackend:
         }
 
         eval_name = f"agentops-eval-{uuid.uuid4().hex[:8]}"
-        eval_object = openai_client.evals.create(
-            name=eval_name,
-            data_source_config={
-                "type": "custom",
-                "item_schema": item_schema,
-                "include_sample_schema": True,
+        eval_object = _evals_post(
+            "",
+            {
+                "name": eval_name,
+                "data_source_config": {
+                    "type": "custom",
+                    "item_schema": item_schema,
+                    "include_sample_schema": True,
+                },
+                "testing_criteria": testing_criteria,
             },
-            testing_criteria=testing_criteria,
         )
-        logger.info("Cloud evaluation created: %s", eval_object.id)
+        eval_id = eval_object["id"]
+        logger.info("Cloud evaluation created: %s", eval_id)
 
         # --- Target + input messages ----------------------------------------
         input_messages: Dict[str, Any] = {
@@ -1233,17 +1290,19 @@ class FoundryBackend:
 
         if settings.target == "model":
             # Model-direct: use completions data source (no agent)
-            eval_run = openai_client.evals.runs.create(
-                eval_id=eval_object.id,
-                name=run_name,
-                data_source={
-                    "type": "completions",
-                    "source": {
-                        "type": "file_content",
-                        "content": [{"item": row} for row in rows],
+            eval_run = _evals_post(
+                f"/{eval_id}/runs",
+                {
+                    "name": run_name,
+                    "data_source": {
+                        "type": "completions",
+                        "source": {
+                            "type": "file_content",
+                            "content": [{"item": row} for row in rows],
+                        },
+                        "input_messages": input_messages,
+                        "model": settings.model,
                     },
-                    "input_messages": input_messages,
-                    "model": settings.model,
                 },
             )
         else:
@@ -1256,22 +1315,26 @@ class FoundryBackend:
             if agent_version:
                 target["version"] = agent_version
 
-            eval_run = openai_client.evals.runs.create(
-                eval_id=eval_object.id,
-                name=run_name,
-                data_source={
-                    "type": "azure_ai_target_completions",
-                    "source": {
-                        "type": "file_content",
-                        "content": [{"item": row} for row in rows],
+            eval_run = _evals_post(
+                f"/{eval_id}/runs",
+                {
+                    "name": run_name,
+                    "data_source": {
+                        "type": "azure_ai_target_completions",
+                        "source": {
+                            "type": "file_content",
+                            "content": [{"item": row} for row in rows],
+                        },
+                        "input_messages": input_messages,
+                        "target": target,
                     },
-                    "input_messages": input_messages,
-                    "target": target,
                 },
             )
+
+        run_id = eval_run["id"]
         logger.info(
             "Cloud evaluation run started: %s  (polling every %.0fs, timeout %.0fs)",
-            eval_run.id,
+            run_id,
             settings.poll_interval_seconds,
             settings.poll_interval_seconds * settings.max_poll_attempts,
         )
@@ -1281,13 +1344,11 @@ class FoundryBackend:
         terminal_failure = {"failed", "cancelled", "canceled", "expired", "error"}
         poll_start = perf_counter()
         last_logged_status: str | None = None
+        latest_run: Dict[str, Any] = eval_run
 
         for attempt in range(1, settings.max_poll_attempts + 1):
-            latest_run = openai_client.evals.runs.retrieve(
-                run_id=eval_run.id,
-                eval_id=eval_object.id,
-            )
-            run_status = str(getattr(latest_run, "status", "unknown")).lower()
+            latest_run = _evals_get(f"/{eval_id}/runs/{run_id}")
+            run_status = str(latest_run.get("status", "unknown")).lower()
 
             # Only log when the status changes to avoid flooding the console.
             if run_status != last_logged_status:
@@ -1314,14 +1375,11 @@ class FoundryBackend:
             )
 
         # --- Collect output items -------------------------------------------
-        output_items = list(
-            openai_client.evals.runs.output_items.list(
-                run_id=eval_run.id,
-                eval_id=eval_object.id,
-                order="asc",
-                limit=100,
-            )
+        output_items_resp = _evals_get(
+            f"/{eval_id}/runs/{run_id}/output_items",
+            extra_params="order=asc&limit=100",
         )
+        output_items: List[Dict[str, Any]] = output_items_resp.get("data", [])
         if not output_items:
             raise RuntimeError(
                 "Foundry cloud evaluation completed with no output items"
@@ -1352,7 +1410,7 @@ class FoundryBackend:
         stderr_lines: List[str] = []
 
         for index, item in enumerate(output_items, start=1):
-            datasource_item = getattr(item, "datasource_item", {}) or {}
+            datasource_item = item.get("datasource_item", {}) or {}
             row_data = (
                 datasource_item.get("item", datasource_item)
                 if isinstance(datasource_item, dict)
@@ -1363,15 +1421,17 @@ class FoundryBackend:
             expected = _normalize_text(row_data.get(expected_field))
 
             # Extract prediction from sample
-            sample = getattr(item, "sample", None)
+            sample = item.get("sample", None)
             prediction = ""
             if isinstance(sample, dict):
                 prediction = _normalize_text(sample.get("output_text", ""))
 
             row_metric_entries: List[Dict[str, float]] = []
-            for result in getattr(item, "results", []) or []:
-                metric_name = getattr(result, "name", "")
-                metric_score = getattr(result, "score", None)
+            for result in item.get("results", []) or []:
+                metric_name = result.get("name", "") if isinstance(result, dict) else ""
+                metric_score = (
+                    result.get("score", None) if isinstance(result, dict) else None
+                )
                 if isinstance(metric_name, str) and isinstance(
                     metric_score, (int, float)
                 ):
@@ -1388,20 +1448,26 @@ class FoundryBackend:
             # Only emit local evaluator metrics if they are configured in the bundle.
             if "exact_match" in enabled_local_names:
                 passed = prediction.lower() == expected.lower() if expected else False
-                row_metric_entries.append({
-                    "name": "exact_match",
-                    "value": 1.0 if passed else 0.0,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "exact_match",
+                        "value": 1.0 if passed else 0.0,
+                    }
+                )
             if "latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "latency_seconds",
-                    "value": approx_latency_per_row,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "latency_seconds",
+                        "value": approx_latency_per_row,
+                    }
+                )
             if "avg_latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "avg_latency_seconds",
-                    "value": approx_latency_per_row,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "avg_latency_seconds",
+                        "value": approx_latency_per_row,
+                    }
+                )
 
             # Update aggregate values for local evaluator metrics.
             for entry in row_metric_entries:
@@ -1410,14 +1476,16 @@ class FoundryBackend:
                     evaluator_aggregate_values[agg_name].append(entry["value"])
 
             row_index = index
-            datasource_item_id = getattr(item, "datasource_item_id", None)
+            datasource_item_id = item.get("datasource_item_id", None)
             if isinstance(datasource_item_id, int) and datasource_item_id >= 0:
                 row_index = datasource_item_id + 1
 
-            row_metrics_payload.append({
-                "row_index": row_index,
-                "metrics": row_metric_entries,
-            })
+            row_metrics_payload.append(
+                {
+                    "row_index": row_index,
+                    "metrics": row_metric_entries,
+                }
+            )
             stdout_lines.append(
                 f"row={row_index} expected={expected!r} prediction={prediction!r}"
             )
@@ -1430,10 +1498,12 @@ class FoundryBackend:
         for name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(name, [])
             if values:
-                metrics_entries.append({
-                    "name": name,
-                    "value": sum(values) / len(values),
-                })
+                metrics_entries.append(
+                    {
+                        "name": name,
+                        "value": sum(values) / len(values),
+                    }
+                )
         metrics_entries.append({"name": "samples_evaluated", "value": float(total)})
 
         metrics_path.write_text(
@@ -1447,17 +1517,14 @@ class FoundryBackend:
         stderr_path.write_text("\n".join(stderr_lines), encoding="utf-8")
 
         # --- Report URL (deep-link to the New Foundry Experience) -----------
-        latest_run = openai_client.evals.runs.retrieve(
-            run_id=eval_run.id, eval_id=eval_object.id
-        )
-        report_url = getattr(latest_run, "report_url", None)
+        report_url = latest_run.get("report_url")
 
         cloud_meta_path = context.backend_output_dir / "cloud_evaluation.json"
         cloud_meta_path.write_text(
             json.dumps(
                 {
-                    "eval_id": eval_object.id,
-                    "run_id": eval_run.id,
+                    "eval_id": eval_id,
+                    "run_id": run_id,
                     "report_url": report_url,
                     "evaluation_name": eval_name,
                     "run_name": run_name,
@@ -1477,7 +1544,7 @@ class FoundryBackend:
         else:
             command_display = (
                 "foundry.cloud_evaluation "
-                f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id}"
+                f"project_endpoint={settings.project_endpoint} target=agent agent_id={settings.agent_id} model={settings.model}"
             )
 
         logger.info("Cloud evaluation completed with %d output item(s)", total)
@@ -1604,20 +1671,26 @@ class FoundryBackend:
             # Only emit local evaluator metrics that are configured in the bundle.
             if "exact_match" in enabled_local_names:
                 passed = prediction_normalized.lower() == expected_text.lower()
-                row_metric_entries.append({
-                    "name": "exact_match",
-                    "value": 1.0 if passed else 0.0,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "exact_match",
+                        "value": 1.0 if passed else 0.0,
+                    }
+                )
             if "latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "latency_seconds",
-                    "value": row_latency,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "latency_seconds",
+                        "value": row_latency,
+                    }
+                )
             if "avg_latency_seconds" in enabled_local_names:
-                row_metric_entries.append({
-                    "name": "avg_latency_seconds",
-                    "value": row_latency,
-                })
+                row_metric_entries.append(
+                    {
+                        "name": "avg_latency_seconds",
+                        "value": row_latency,
+                    }
+                )
 
             for metric_entry in row_metric_entries:
                 metric_name = metric_entry["name"]
@@ -1625,10 +1698,12 @@ class FoundryBackend:
                 if metric_name in evaluator_aggregate_values:
                     evaluator_aggregate_values[metric_name].append(metric_value)
 
-            row_metrics_payload.append({
-                "row_index": row_index,
-                "metrics": row_metric_entries,
-            })
+            row_metrics_payload.append(
+                {
+                    "row_index": row_index,
+                    "metrics": row_metric_entries,
+                }
+            )
 
             stdout_lines.append(
                 f"row={row_index} expected={expected_text!r} prediction={prediction_normalized!r}"
@@ -1749,10 +1824,12 @@ class FoundryBackend:
         for evaluator_name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(evaluator_name, [])
             if values:
-                metrics_entries.append({
-                    "name": evaluator_name,
-                    "value": sum(values) / len(values),
-                })
+                metrics_entries.append(
+                    {
+                        "name": evaluator_name,
+                        "value": sum(values) / len(values),
+                    }
+                )
 
         metrics_entries.append({"name": "samples_evaluated", "value": float(total)})
 
@@ -1771,13 +1848,13 @@ class FoundryBackend:
         if settings.target == "model":
             command_display = (
                 "foundry.model_direct "
-                f"project_endpoint={settings.project_endpoint} model={settings.model}"
+                f"project_endpoint={settings.project_endpoint} target=model model={settings.model}"
             )
         else:
             command_display = (
                 "foundry.agent_service "
-                f"project_endpoint={settings.project_endpoint} agent_id={settings.agent_id} "
-                f"api_version={settings.api_version}"
+                f"project_endpoint={settings.project_endpoint} target=agent agent_id={settings.agent_id} "
+                f"model={settings.model} api_version={settings.api_version}"
             )
 
         return BackendExecutionResult(

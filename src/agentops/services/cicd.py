@@ -1,4 +1,5 @@
 """CI/CD workflow generation service for `agentops config cicd`."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

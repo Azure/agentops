@@ -7,7 +7,10 @@ def _sample_result(overall_passed: bool = True) -> RunResult:
         {
             "version": 1,
             "status": "completed",
-            "bundle": {"name": "rag_baseline", "path": ".agentops/bundles/rag_baseline.yaml"},
+            "bundle": {
+                "name": "rag_baseline",
+                "path": ".agentops/bundles/rag_baseline.yaml",
+            },
             "dataset": {"name": "smoke", "path": ".agentops/datasets/smoke-agent.yaml"},
             "execution": {
                 "backend": "subprocess",
@@ -23,11 +26,20 @@ def _sample_result(overall_passed: bool = True) -> RunResult:
             ],
             "run_metrics": [
                 {"name": "run_pass", "value": 0.0 if not overall_passed else 1.0},
-                {"name": "threshold_pass_rate", "value": 0.5 if not overall_passed else 1.0},
+                {
+                    "name": "threshold_pass_rate",
+                    "value": 0.5 if not overall_passed else 1.0,
+                },
                 {"name": "accuracy", "value": 0.84},
             ],
             "thresholds": [
-                {"evaluator": "groundedness", "criteria": ">=", "expected": "0.800000", "actual": "0.840000", "passed": True},
+                {
+                    "evaluator": "groundedness",
+                    "criteria": ">=",
+                    "expected": "0.800000",
+                    "actual": "0.840000",
+                    "passed": True,
+                },
                 {
                     "evaluator": "relevance",
                     "criteria": ">=",
@@ -67,14 +79,14 @@ def test_report_markdown_contains_required_sections_and_tables() -> None:
 
     assert "## Metrics" in markdown
     assert "| Metric | Value |" in markdown
-    assert "| groundedness | 0.840000 |" in markdown
+    assert "| groundedness | 0.84 |" in markdown
 
     assert "## Run Metrics" in markdown
-    assert "| run_pass | 0.000000 |" in markdown
+    assert "| run_pass | 0 |" in markdown
 
     assert "## Threshold Checks" in markdown
     assert "| Evaluator | Criteria | Expected | Actual | Status |" in markdown
-    assert "| relevance | >= | 0.950000 | 0.830000 | FAIL |" in markdown
+    assert "| relevance | >= | 0.950000 | 0.830000 | Missed |" in markdown
 
 
 def test_report_markdown_pass_status() -> None:

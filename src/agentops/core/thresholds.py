@@ -1,4 +1,5 @@
 """Threshold evaluation logic for AgentOps."""
+
 from __future__ import annotations
 
 from typing import Dict, List
@@ -14,7 +15,9 @@ def evaluate_thresholds(
 
     for rule in threshold_rules:
         if rule.evaluator not in metrics_by_name:
-            raise ValueError(f"Missing evaluator score required by threshold: {rule.evaluator}")
+            raise ValueError(
+                f"Missing evaluator score required by threshold: {rule.evaluator}"
+            )
 
         actual_value = metrics_by_name[rule.evaluator]
 
@@ -41,7 +44,9 @@ def evaluate_thresholds(
             continue
 
         if rule.value is None:
-            raise ValueError(f"Threshold for evaluator '{rule.evaluator}' requires a numeric value")
+            raise ValueError(
+                f"Threshold for evaluator '{rule.evaluator}' requires a numeric value"
+            )
 
         target_value = float(rule.value)
 

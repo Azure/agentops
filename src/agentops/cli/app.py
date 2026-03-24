@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -59,6 +59,7 @@ def _planned_command(command_name: str) -> None:
 # Global callback — configures logging before any command runs
 # ---------------------------------------------------------------------------
 
+
 def _version_callback(value: bool) -> None:
     if value:
         from agentops import __version__
@@ -90,9 +91,12 @@ def _main(
 # agentops init
 # ---------------------------------------------------------------------------
 
+
 @app.command("init")
 def cmd_init(
-    force: bool = typer.Option(False, "--force", help="Overwrite starter files if they exist."),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite starter files if they exist."
+    ),
     directory: Path = typer.Option(
         Path("."),
         "--dir",
@@ -129,29 +133,47 @@ def cmd_init(
 # agentops eval run
 # ---------------------------------------------------------------------------
 
+
 @eval_app.command("run")
 def cmd_eval_run(
     config: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--config",
             "-c",
             help="Path to run.yaml (default: .agentops/run.yaml).",
         ),
     ] = None,
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output directory for results.")] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Output directory for results."),
+    ] = None,
+    report_format: Annotated[
+        str, typer.Option("--format", "-f", help="Report format: md, html, or all.")
+    ] = "md",
 ) -> None:
     """Run an evaluation defined in a run.yaml file."""
-    log.debug("cmd_eval_run called config=%s output=%s", config, output)
+    if report_format not in ("md", "html", "all"):
+        typer.echo("Error: --format must be md, html, or all.", err=True)
+        raise typer.Exit(code=1)
+
+    log.debug(
+        "cmd_eval_run called config=%s output=%s format=%s",
+        config,
+        output,
+        report_format,
+    )
     try:
-        run_result = run_evaluation(config_path=config, output_override=output)
+        run_result = run_evaluation(
+            config_path=config, output_override=output, report_format=report_format
+        )
     except Exception as exc:
         typer.echo(f"Error: evaluation failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     typer.echo(f"Evaluation output directory: {run_result.output_dir}")
     typer.echo(f"results.json: {run_result.results_path}")
-    typer.echo(f"report.md: {run_result.report_path}")
+    typer.echo(f"report: {run_result.report_path}")
 
     if run_result.exit_code == 2:
         typer.echo("Threshold status: FAILED")
@@ -164,23 +186,71 @@ def cmd_eval_run(
 def cmd_eval_compare(
     runs: Annotated[
         str,
-        typer.Option("--runs", help="Comma-separated run ids (example: ID1,ID2)."),
+        typer.Option(
+            "--runs", help="Comma-separated run ids (example: ID1,ID2 or ID1,ID2,ID3)."
+        ),
     ],
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Output directory for comparison results."),
+    ] = None,
+    report_format: Annotated[
+        str, typer.Option("--format", "-f", help="Report format: md, html, or all.")
+    ] = "md",
 ) -> None:
-    """Compare two past evaluation runs (planned)."""
-    _ = runs
-    _planned_command("agentops eval compare --runs ID1,ID2")
+    """Compare two or more past evaluation runs."""
+    from agentops.services.comparison import run_comparison
+
+    if report_format not in ("md", "html", "all"):
+        typer.echo("Error: --format must be md, html, or all.", err=True)
+        raise typer.Exit(code=1)
+
+    parts = [p.strip() for p in runs.split(",")]
+    if len(parts) < 2:
+        typer.echo(
+            "Error: --runs must contain at least two comma-separated run ids.", err=True
+        )
+        raise typer.Exit(code=1)
+
+    log.debug(
+        "cmd_eval_compare called runs=%s output=%s format=%s",
+        parts,
+        output,
+        report_format,
+    )
+    try:
+        result = run_comparison(
+            run_ids=parts,
+            output_dir=output,
+            report_format=report_format,
+        )
+    except Exception as exc:
+        typer.echo(f"Error: comparison failed: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"comparison.json: {result.comparison_json_path}")
+    if result.comparison_md_path:
+        typer.echo(f"comparison.md: {result.comparison_md_path}")
+    if result.comparison_html_path:
+        typer.echo(f"comparison.html: {result.comparison_html_path}")
+
+    if result.has_regressions:
+        typer.echo("Comparison verdict: REGRESSIONS DETECTED")
+        raise typer.Exit(code=2)
+
+    typer.echo("Comparison verdict: NO REGRESSIONS")
 
 
 # ---------------------------------------------------------------------------
 # agentops report
 # ---------------------------------------------------------------------------
 
+
 @report_app.callback(invoke_without_command=True)
 def cmd_report(
     ctx: typer.Context,
     results_in: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--in",
             help=(
@@ -189,18 +259,34 @@ def cmd_report(
             ),
         ),
     ] = None,
-    report_out: Annotated[Optional[Path], typer.Option("--out", help="Output path for report.md.")] = None,
+    report_out: Annotated[
+        Path | None,
+        typer.Option("--out", help="Output path for report."),
+    ] = None,
+    report_format: Annotated[
+        str, typer.Option("--format", "-f", help="Report format: md, html, or all.")
+    ] = "md",
 ) -> None:
-    """Regenerate report.md from a results.json file."""
+    """Regenerate report from a results.json file."""
     if ctx.invoked_subcommand is not None:
         return
 
+    if report_format not in ("md", "html", "all"):
+        typer.echo("Error: --format must be md, html, or all.", err=True)
+        raise typer.Exit(code=1)
+
     resolved_results_in = results_in or DEFAULT_REPORT_INPUT
-    log.debug("cmd_report called in=%s out=%s", resolved_results_in, report_out)
+    log.debug(
+        "cmd_report called in=%s out=%s format=%s",
+        resolved_results_in,
+        report_out,
+        report_format,
+    )
     try:
         report_result = generate_report_from_results(
             results_path=resolved_results_in,
             output_path=report_out,
+            report_format=report_format,
         )
     except Exception as exc:
         typer.echo(f"Error: report generation failed: {exc}", err=True)
@@ -208,6 +294,8 @@ def cmd_report(
 
     typer.echo(f"Loaded results: {report_result.input_results_path}")
     typer.echo(f"Generated report: {report_result.output_report_path}")
+    if report_result.html_report_path:
+        typer.echo(f"Generated report: {report_result.html_report_path}")
 
 
 @report_app.command("show")
@@ -238,7 +326,7 @@ def cmd_run_show() -> None:
 def cmd_run_view(
     run_id: str,
     entry: Annotated[
-        Optional[int],
+        int | None,
         typer.Option("--entry", help="Optional row/entry index for deep inspection."),
     ] = None,
 ) -> None:
@@ -291,7 +379,9 @@ def cmd_config_show() -> None:
 
 @config_app.command("cicd")
 def cmd_config_cicd(
-    force: bool = typer.Option(False, "--force", help="Overwrite existing workflow file."),
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing workflow file."
+    ),
     directory: Path = typer.Option(
         Path("."),
         "--dir",
@@ -318,9 +408,15 @@ def cmd_config_cicd(
     if result.created_files or result.overwritten_files:
         typer.echo("")
         typer.echo("Next steps:")
-        typer.echo("  1. Set GitHub repository variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID")
-        typer.echo("  2. Set GitHub repository secret: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
-        typer.echo("  3. Configure Azure Workload Identity Federation (see docs/ci-github-actions.md)")
+        typer.echo(
+            "  1. Set GitHub repository variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID"
+        )
+        typer.echo(
+            "  2. Set GitHub repository secret: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+        )
+        typer.echo(
+            "  3. Configure Azure Workload Identity Federation (see docs/ci-github-actions.md)"
+        )
         typer.echo("  4. Commit and push the workflow file")
     elif result.skipped_files:
         typer.echo("No files written. Use --force to overwrite existing workflow.")

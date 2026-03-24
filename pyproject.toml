@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentops-toolkit"
-version = "0.1.2"
+dynamic = ["version"]
 description = "AgentOps CLI for standardized evaluation workflows"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -12,6 +12,7 @@ dependencies = [
   "typer>=0.12,<1.0",
   "pydantic>=2,<3",
   "ruamel.yaml>=0.18,<1.0",
+  "azure-ai-projects>=2.0.1",
 ]
 license = { file = "LICENSE" }
 
@@ -40,8 +41,12 @@ where = ["src"]
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
+    "pre-commit>=4.0",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
     "ruff>=0.9",
 ]
+
+[tool.setuptools_scm]
+local_scheme = "no-local-version"

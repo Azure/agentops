@@ -1,18 +1,24 @@
 version: 1
 name: agent_tools_baseline
 description: >
-  Placeholder evaluation bundle for Agent with Tools scenarios.
-  This bundle will be expanded in a future release to include tool-call accuracy
-  and task-completion evaluators. For now it validates basic response quality.
+  Evaluation bundle for Agent with Tools scenarios.
+  Measures task completion quality and tool call accuracy using
+  AI-assisted evaluators from the Foundry evaluation suite.
 evaluators:
-  - name: SimilarityEvaluator
+  - name: TaskCompletionEvaluator
+    source: foundry
+    enabled: true
+  - name: ToolCallAccuracyEvaluator
     source: foundry
     enabled: true
   - name: avg_latency_seconds
     source: local
     enabled: true
 thresholds:
-  - evaluator: SimilarityEvaluator
+  - evaluator: TaskCompletionEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: ToolCallAccuracyEvaluator
     criteria: ">="
     value: 3
   - evaluator: avg_latency_seconds
@@ -25,4 +31,5 @@ metadata:
     - baseline
     - agent
     - tools
-    - placeholder
+    - task-completion
+    - tool-call-accuracy

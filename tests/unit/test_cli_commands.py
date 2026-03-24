@@ -20,11 +20,11 @@ def test_init_help_exposes_path_alias() -> None:
     assert "--path" in _strip_ansi(result.stdout)
 
 
-def test_eval_compare_is_planned_stub() -> None:
-    result = runner.invoke(app, ["eval", "compare", "--runs", "r1,r2"])
+def test_eval_compare_rejects_wrong_run_count() -> None:
+    result = runner.invoke(app, ["eval", "compare", "--runs", "only_one"])
 
     assert result.exit_code == 1
-    assert "planned but not implemented" in result.stdout.lower()
+    assert "at least two" in result.stdout.lower() or "at least two" in (result.stderr or "").lower()
 
 
 def test_trace_init_is_planned_stub() -> None:

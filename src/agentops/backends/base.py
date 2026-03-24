@@ -1,4 +1,5 @@
 """Backend protocol and shared execution models."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

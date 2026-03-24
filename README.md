@@ -170,7 +170,7 @@ Starter bundles created by `agentops init`:
 | `agentops --version` | Show installed version | ✅ |
 | `agentops init [--path DIR]` | Scaffold project workspace and starter files | ✅ |
 | `agentops eval run` | Evaluate a dataset against a bundle | ✅ |
-| `agentops eval compare --runs ID1,ID2` | Compare two past runs | 🚧 |
+| `agentops eval compare --runs ID1,ID2` | Compare two past runs | ✅ |
 | `agentops run list\|show` | List or inspect past runs | 🚧 |
 | `agentops run view <id> [--entry N]` | Deep run inspection | 🚧 |
 | `agentops report` | Regenerate `report.md` from `results.json` | ✅ |
@@ -213,8 +213,42 @@ High-level code layout:
 - Foundry agent tutorial: [docs/tutorial-basic-foundry-agent.md](docs/tutorial-basic-foundry-agent.md)
 - Model-direct tutorial: [docs/tutorial-model-direct.md](docs/tutorial-model-direct.md)
 - RAG tutorial: [docs/tutorial-rag.md](docs/tutorial-rag.md)
+- Baseline comparison tutorial: [docs/tutorial-baseline-comparison.md](docs/tutorial-baseline-comparison.md)
+- Copilot skills installation: [docs/tutorial-copilot-skills.md](docs/tutorial-copilot-skills.md)
 - Built-in evaluator notes: [docs/foundry-evaluation-sdk-built-in-evaluators.md](docs/foundry-evaluation-sdk-built-in-evaluators.md)
 - CI/CD setup guide: [docs/ci-github-actions.md](docs/ci-github-actions.md)
+
+## GitHub Copilot Skills
+
+AgentOps publishes Copilot skills that teach GitHub Copilot how to use the evaluation CLI correctly. Install them from this repository to get AI-assisted guidance for running evaluations, investigating regressions, and triage workflows.
+
+### Available Skills
+
+| Skill | Description |
+|---|---|
+| `agentops-run-evals` | Guides evaluation workflow — init, run, report, compare |
+| `agentops-investigate-regression` | Regression investigation — metric deltas, threshold flips, actionable checks |
+| `agentops-observability-triage` | Observability and triage — current capabilities vs planned features |
+
+### Installation
+
+Skills are distributed from this GitHub repository. Install them in VS Code:
+
+1. Open **VS Code** with **GitHub Copilot Chat** enabled.
+2. Use the Copilot skill install command and point to this repository:
+   - Source: `Azure/agentops`
+   - Skills are located under `.github/plugins/agentops/skills/`
+3. Once installed, Copilot will automatically use the skills when you ask about AgentOps evaluation, regressions, or observability.
+
+Alternatively, you can copy the skill files manually:
+```bash
+# Copy skills to your user-level skills directory
+cp -r .github/plugins/agentops/skills/* ~/.agents/skills/
+```
+
+### For Repository Contributors
+
+If you're working inside this repo, the skills under `.github/skills/` are automatically available to Copilot when the repository is your active workspace.
 
 ## Contributing
 

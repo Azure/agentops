@@ -8,6 +8,7 @@ format:
   type: jsonl
   input_field: input
   expected_field: expected
+  context_field: context
 metadata:
   scenario: rag_retrieval
   size_hint: 5

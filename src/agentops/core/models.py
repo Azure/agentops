@@ -1,4 +1,5 @@
 """Pydantic models for AgentOps schemas."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -136,6 +137,7 @@ class DatasetFormat(BaseModel):
     type: str
     input_field: str
     expected_field: str
+    context_field: Optional[str] = None
 
 
 class DatasetConfig(BaseModel):
@@ -185,9 +187,8 @@ class BackendConfig(BaseModel):
 
         normalized = value.strip()
         looks_like_placeholder = (
-            (normalized.startswith("<") and normalized.endswith(">"))
-            or "replace-with" in normalized.lower()
-        )
+            normalized.startswith("<") and normalized.endswith(">")
+        ) or "replace-with" in normalized.lower()
         if looks_like_placeholder:
             raise ValueError(
                 "backend.model must be replaced with a real Foundry model deployment name"
@@ -204,17 +205,24 @@ class BackendConfig(BaseModel):
         elif self.type == "foundry":
             target = (self.target or "agent").strip().lower()
             if target not in {"agent", "model"}:
-                raise ValueError("backend.target must be 'agent' or 'model' for foundry")
+                raise ValueError(
+                    "backend.target must be 'agent' or 'model' for foundry"
+                )
 
             self.target = target
             if target == "agent":
                 if not self.agent_id or not self.agent_id.strip():
-                    raise ValueError("backend.agent_id is required for foundry target=agent")
+                    raise ValueError(
+                        "backend.agent_id is required for foundry target=agent"
+                    )
             # target=model does not require agent_id
 
             if self.max_poll_attempts is not None and self.max_poll_attempts <= 0:
                 raise ValueError("backend.max_poll_attempts must be > 0")
-            if self.poll_interval_seconds is not None and self.poll_interval_seconds <= 0:
+            if (
+                self.poll_interval_seconds is not None
+                and self.poll_interval_seconds <= 0
+            ):
                 raise ValueError("backend.poll_interval_seconds must be > 0")
         else:
             raise ValueError(f"Unsupported backend type: {self.type}")
@@ -364,3 +372,90 @@ class RunResult(BaseModel):
     thresholds: List[ThresholdEvaluationResult] = Field(default_factory=list)
     summary: Summary
     artifacts: Optional[Artifacts] = None
+
+
+# ---------------------------------------------------------------------------
+# Comparison models
+# ---------------------------------------------------------------------------
+
+Direction = Literal["improved", "regressed", "unchanged"]
+
+
+class RunReference(BaseModel):
+    run_id: str
+    bundle_name: str
+    dataset_name: str
+    started_at: str
+    backend: Optional[str] = None
+    target: Optional[str] = None
+    model: Optional[str] = None
+    agent_id: Optional[str] = None
+    project_endpoint: Optional[str] = None
+    overall_passed: Optional[bool] = None
+
+
+class ComparisonMetricRow(BaseModel):
+    """One metric across all compared runs."""
+
+    name: str
+    values: List[float] = Field(default_factory=list)
+    deltas: List[Optional[float]] = Field(default_factory=list)
+    delta_percents: List[Optional[float]] = Field(default_factory=list)
+    directions: List[Direction] = Field(default_factory=list)
+    best_run_index: Optional[int] = None
+
+
+class ComparisonThresholdRow(BaseModel):
+    """One threshold across all compared runs."""
+
+    evaluator: str
+    criteria: Criteria
+    target: Optional[str] = None
+    passed: List[bool] = Field(default_factory=list)
+
+
+class ComparisonItemRow(BaseModel):
+    """One dataset item across all compared runs."""
+
+    row_index: int
+    passed_all: List[bool] = Field(default_factory=list)
+    scores: Dict[str, List[Optional[float]]] = Field(default_factory=dict)
+
+
+ComparisonType = Literal[
+    "agent",  # Same dataset, different agent/agent version
+    "model",  # Same dataset, different model
+    "dataset",  # Same agent/model, different datasets
+    "general",  # Multiple things differ
+]
+
+
+class ComparisonConditions(BaseModel):
+    """What's fixed vs varying across compared runs."""
+
+    comparison_type: ComparisonType
+    fixed: Dict[str, str] = Field(default_factory=dict)
+    varying: List[str] = Field(default_factory=list)
+    row_level_valid: bool = True
+
+
+class ComparisonSummary(BaseModel):
+    run_count: int
+    any_regressions: bool
+    runs_with_regressions: List[int] = Field(default_factory=list)
+
+
+class ComparisonResult(BaseModel):
+    """Unified comparison of 2 or more evaluation runs.
+
+    The first entry in ``runs`` is always the baseline.
+    """
+
+    version: int = 1
+    runs: List[RunReference] = Field(default_factory=list)
+    baseline_index: int = 0
+    conditions: Optional[ComparisonConditions] = None
+    metric_rows: List[ComparisonMetricRow] = Field(default_factory=list)
+    threshold_rows: List[ComparisonThresholdRow] = Field(default_factory=list)
+    item_rows: List[ComparisonItemRow] = Field(default_factory=list)
+    summary: ComparisonSummary
