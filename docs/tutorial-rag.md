@@ -130,7 +130,7 @@ agentops eval run --config .agentops/run-rag.yaml
 This will:
 1. Send each `input` to the Foundry agent
 2. Evaluate groundedness of the response against the provided context
-3. Check the threshold: `GroundednessEvaluator >= 3` (ordinal scale 1–5)
+3. Check the threshold: `GroundednessEvaluator >= 3` (ordinal scale 1-5)
 
 ### Check results
 

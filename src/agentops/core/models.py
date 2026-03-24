@@ -178,6 +178,13 @@ class BackendConfig(BaseModel):
     poll_interval_seconds: Optional[float] = None
     max_poll_attempts: Optional[int] = None
     model: Optional[str] = None
+    # HTTP backend fields
+    url: Optional[str] = None
+    url_env: Optional[str] = None
+    request_field: Optional[str] = None
+    response_field: Optional[str] = None
+    auth_header_env: Optional[str] = None
+    headers: Dict[str, str] = Field(default_factory=dict)
 
     @field_validator("model")
     @classmethod
@@ -224,6 +231,11 @@ class BackendConfig(BaseModel):
                 and self.poll_interval_seconds <= 0
             ):
                 raise ValueError("backend.poll_interval_seconds must be > 0")
+        elif self.type == "http":
+            if not self.url and not self.url_env:
+                raise ValueError(
+                    "backend.url or backend.url_env is required for http backend"
+                )
         else:
             raise ValueError(f"Unsupported backend type: {self.type}")
         return self

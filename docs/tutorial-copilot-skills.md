@@ -22,70 +22,108 @@ The skills are complementary. In a typical workflow, `run-evals` helps you get s
 
 ## Prerequisites
 
-- VS Code with the GitHub Copilot Chat extension
-- The AgentOps CLI installed: `pip install agentops-toolkit`
+- VS Code with the [GitHub Copilot Chat](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot-chat) extension
 
-The skills reference CLI commands, so Copilot's guidance only works if the CLI is actually available in your environment.
+The skills reference AgentOps CLI commands, so Copilot's guidance only works if you also have the CLI installed in your project:
+
+```bash
+pip install agentops-toolkit
+```
 
 ## Installation
 
-### Option 1: Install from GitHub (recommended)
+### Install in VS Code (recommended)
 
-The skills are distributed from the `Azure/agentops` repository, following the same pattern used by other Azure Copilot skills (like the ones in `microsoft/azure-skills`).
+Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **Chat: Install Plugin From Source**. When prompted, enter:
 
-In VS Code:
+```
+https://github.com/Azure/agentops
+```
 
-1. Open **Copilot Chat**.
-2. Use the skill install flow and point to this repository:
-   - **Source:** `Azure/agentops`
-   - **Skill path:** `.github/plugins/agentops/skills/`
-3. Select the skills you want to install.
+Done. VS Code installs all three skills automatically, keeps them up to date, and makes them available across all your workspaces.
 
-Once installed, the skills appear in `~/.agents/skills/` and a lock file (`~/.agents/.skill-lock.json`) tracks where they came from. Skills are available across all workspaces.
+> **Command not found?** Agent plugins are in preview. Add `"chat.plugins.enabled": true` to your VS Code `settings.json` and reload.
 
-### Option 2: Manual copy
+### Other environments
 
-If you prefer to manage skills manually:
+> **Two different "Copilot CLI" tools:** The old `gh copilot suggest` / `gh copilot explain` extension runs in the terminal and does **not** support skill plugins. The **new standalone `copilot` CLI** (the agentic coding assistant) does — it uses `copilot plugin install`. If you run `copilot --version` and see a version number, you have the new one.
 
-**macOS / Linux:**
+**GitHub Copilot CLI (standalone `copilot` command):**
+
 ```bash
-git clone https://github.com/Azure/agentops.git /tmp/agentops
-cp -r /tmp/agentops/.github/plugins/agentops/skills/* ~/.agents/skills/
+# Register the agentops plugin marketplace once (per machine)
+copilot plugin marketplace add Azure/agentops
+
+# Then install the plugin
+copilot plugin install agentops@Azure/agentops
+```
+
+The plugin stays in sync automatically. To update: `copilot plugin update agentops@Azure/agentops`
+
+**Claude Code** and VS Code without the plugin both load skills from `~/.agents/skills/`. **Project-scoped installs** load from `.github/skills/` inside the repository.
+
+**Global (Claude Code or manual VS Code):**
+
+```bash
+# macOS / Linux
+git clone --depth 1 https://github.com/Azure/agentops.git /tmp/agentops
+cp -r /tmp/agentops/skills/* ~/.agents/skills/
 rm -rf /tmp/agentops
 ```
 
-**Windows (PowerShell):**
 ```powershell
-git clone https://github.com/Azure/agentops.git $env:TEMP\agentops
-Copy-Item -Recurse "$env:TEMP\agentops\.github\plugins\agentops\skills\*" "$env:USERPROFILE\.agents\skills\"
+# Windows
+git clone --depth 1 https://github.com/Azure/agentops.git $env:TEMP\agentops
+Copy-Item -Recurse "$env:TEMP\agentops\skills\*" "$env:USERPROFILE\.agents\skills\"
 Remove-Item -Recurse -Force "$env:TEMP\agentops"
 ```
 
-### Option 3: Project-scoped installation
-
-If you want the skills available only within a specific repository (useful for teams with different tool versions), copy them into the project:
+**Project-scoped (team repo, pinned version):**
 
 ```bash
-mkdir -p .github/plugins/agentops/skills
-cp -r <agentops-repo>/.github/plugins/agentops/skills/* .github/plugins/agentops/skills/
+# macOS / Linux
+git clone --depth 1 https://github.com/Azure/agentops.git /tmp/agentops
+cp -r /tmp/agentops/skills/* .github/skills/
+rm -rf /tmp/agentops
 ```
 
-This way the skills travel with the repo and every contributor gets them automatically.
+Skills in `.github/skills/` are picked up automatically by VS Code Copilot Chat for everyone who opens the repository — no install step required for team members.
 
 ## Verifying the installation
 
-Check that the skill directories exist:
+**Plugin install (VS Code):** Open the Extensions view (`Ctrl+Shift+X`) and look for **AgentOps Evaluation Toolkit** under **Agent Plugins – Installed**. Or open Copilot Chat and type `@agentops` — the plugin appears in the agent picker.
+
+**Copilot CLI:** Run `copilot plugin list` and confirm `agentops` appears in the output.
+
+**Manual install:** Confirm the skill directories are present:
 
 ```bash
-ls ~/.agents/skills/
-# Expected: agentops-run-evals/  agentops-investigate-regression/  agentops-observability-triage/
+ls ~/.agents/skills/agentops-*
 ```
-
-Each directory should contain a `SKILL.md` file with YAML frontmatter (the `name` and `description` fields that Copilot uses for skill matching).
 
 ## Using the skills
 
-You do not need to invoke skills explicitly. Copilot matches your question to the right skill based on trigger phrases in the skill description. Just ask naturally.
+### With the VS Code plugin → `@agentops`
+
+Type `@agentops` in Copilot Chat to target the plugin directly. The plugin routes your question to the right skill automatically:
+
+```
+@agentops how do I run my first evaluation?
+@agentops my scores dropped after a model update, what should I do?
+@agentops is agentops monitor available yet?
+```
+
+### Manual / project-scoped / Claude Code → just ask
+
+Skills activate automatically based on the topic of your question. No `@` prefix needed. Just open Copilot Chat or Claude Code and ask:
+
+```
+How do I start running evaluations with AgentOps?
+My evaluation scores dropped. What should I do?
+Can I set up monitoring alerts?
+```
+
+> **Tip:** You don't need to mention "AgentOps." Phrases like "run evaluations", "score dropped", or "compare runs" are enough to trigger the right skill.
 
 ### Example: starting an evaluation
 
@@ -107,15 +145,11 @@ With `agentops-observability-triage`, Copilot will tell you directly that `agent
 
 ## Updating skills
 
-Pull the latest version from the repository and re-copy:
+**Plugin install (VS Code):** VS Code checks for updates automatically every 24 hours. To trigger manually: Command Palette → **Extensions: Check for Extension Updates**.
 
-```bash
-git clone https://github.com/Azure/agentops.git /tmp/agentops
-cp -r /tmp/agentops/.github/plugins/agentops/skills/* ~/.agents/skills/
-rm -rf /tmp/agentops
-```
+**Copilot CLI:** `copilot plugin update agentops@Azure/agentops`
 
-If you installed via the VS Code skill install flow, the lock file tracks version hashes and will prompt for updates when the source repo changes.
+**Manual install:** Re-run the same `git clone` + `cp` commands to overwrite with the latest version.
 
 ## Evaluating skill quality with AgentOps
 

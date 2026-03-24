@@ -1,0 +1,14 @@
+{
+  "name": "agentops",
+  "displayName": "AgentOps Evaluation Toolkit",
+  "description": "Copilot skills for running evaluations, investigating regressions, and observability triage with the agentops-toolkit CLI.",
+  "version": "1.0.0",
+  "publisher": "Azure",
+  "license": "MIT",
+  "repository": "https://github.com/Azure/agentops",
+  "skills": [
+    "skills/agentops-run-evals",
+    "skills/agentops-investigate-regression",
+    "skills/agentops-observability-triage"
+  ]
+}

@@ -19,18 +19,22 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
         tmp_path / ".agentops" / "bundles" / "rag_retrieval_baseline.yaml"
     ).is_file()
     assert (tmp_path / ".agentops" / "bundles" / "agent_tools_baseline.yaml").is_file()
+    assert (tmp_path / ".agentops" / "bundles" / "agent_http_baseline.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-model-direct.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-rag.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-agent-tools.yaml").is_file()
+    assert (tmp_path / ".agentops" / "datasets" / "smoke-http.yaml").is_file()
     assert (tmp_path / ".agentops" / "data" / "smoke-model-direct.jsonl").is_file()
     assert (tmp_path / ".agentops" / "data" / "smoke-rag.jsonl").is_file()
     assert (tmp_path / ".agentops" / "data" / "smoke-agent-tools.jsonl").is_file()
+    assert (tmp_path / ".agentops" / "data" / "smoke-http.jsonl").is_file()
     assert (tmp_path / ".agentops" / "run.yaml").is_file()
     assert (tmp_path / ".agentops" / "run-rag.yaml").is_file()
     assert (tmp_path / ".agentops" / "run-agent.yaml").is_file()
+    assert (tmp_path / ".agentops" / "run-http.yaml").is_file()
     assert (tmp_path / ".agentops" / ".gitignore").is_file()
 
-    assert len(result.created_files) == 14
+    assert len(result.created_files) == 18
     assert len(result.overwritten_files) == 0
 
     run_config = load_yaml(tmp_path / ".agentops" / "run.yaml")

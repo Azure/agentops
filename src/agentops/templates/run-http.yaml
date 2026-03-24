@@ -1,0 +1,25 @@
+version: 1
+bundle:
+  path: bundles/agent_http_baseline.yaml
+dataset:
+  path: datasets/smoke-http.yaml
+backend:
+  type: http
+  # URL of the HTTP agent endpoint. Set via environment variable (recommended):
+  url_env: AGENT_HTTP_URL
+  # Or set the URL inline (not recommended for production):
+  # url: https://your-agent.region.azurecontainerapps.io/chat
+  #
+  # JSON field name to send the prompt in (default: message):
+  request_field: message
+  # JSON field to extract the response from (supports dot-path like "output.text"):
+  response_field: text
+  #
+  # Optional: Bearer token for authentication via environment variable:
+  # auth_header_env: AGENT_TOKEN
+  #
+  # Required by AI-assisted evaluators (judge model). Set via environment:
+  # AZURE_OPENAI_ENDPOINT and AZURE_AI_MODEL_DEPLOYMENT_NAME
+  timeout_seconds: 60
+output:
+  write_report: true

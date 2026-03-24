@@ -1,0 +1,63 @@
+version: 1
+name: agent_http_baseline
+description: >
+  Evaluation bundle for HTTP-deployed agents (Microsoft Agent Framework,
+  Azure Container Apps, or any custom REST endpoint). Ships with three
+  reference-free evaluators enabled by default:
+    1. IntentResolutionEvaluator — did the agent understand and resolve the
+       user's intent? (score 1-5)
+    2. TaskCompletionEvaluator — did the agent successfully complete the
+       requested task? (score 1-5)
+    3. CoherenceEvaluator — is the response logically sound and
+       well-structured? (score 1-5)
+    4. avg_latency_seconds — end-to-end response time monitoring.
+  ToolCallAccuracyEvaluator is included but disabled by default. Enable it
+  when your dataset JSONL rows carry 'tool_calls' and 'tool_definitions'
+  fields — the HTTP backend forwards them through _build_evaluator_kwargs
+  from the row automatically. Ideal for transactional agents (banking,
+  booking, e-commerce) that exercise multiple tools per turn.
+evaluators:
+  - name: IntentResolutionEvaluator
+    source: foundry
+    enabled: true
+  - name: TaskCompletionEvaluator
+    source: foundry
+    enabled: true
+  - name: CoherenceEvaluator
+    source: foundry
+    enabled: true
+  - name: ToolCallAccuracyEvaluator
+    source: foundry
+    enabled: false
+    # Set enabled: true when dataset rows include:
+    #   tool_calls: [{"name": "...", "arguments": {...}}, ...]
+    #   tool_definitions: [{"name": "...", "description": "...", "parameters": {...}}, ...]
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: IntentResolutionEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: TaskCompletionEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: CoherenceEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: ToolCallAccuracyEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 15.0
+metadata:
+  category: http-agent
+  scenario: agent_http
+  tags:
+    - baseline
+    - http
+    - agent-framework
+    - aca
+    - reference-free
+    - tool-calls

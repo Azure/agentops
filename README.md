@@ -59,6 +59,9 @@ python -m venv .venv
 # activate your venv in the current shell
 python -m pip install -U pip
 python -m pip install agentops-toolkit
+
+# For Foundry evaluations (runtime dependencies)
+python -m pip install azure-ai-projects azure-ai-evaluation azure-identity
 ```
 
 ### 2) Initialize Workspace
@@ -202,7 +205,7 @@ High-level code layout:
 
 - `src/agentops/cli/` command entrypoints (Typer)
 - `src/agentops/services/` orchestration workflows
-- `src/agentops/backends/` execution engines (`foundry`, `subprocess`)
+- `src/agentops/backends/` execution engines (`foundry`, `subprocess`, `http`)
 - `src/agentops/core/` schemas, thresholds, and report generation
 - `src/agentops/templates/` starter workspace assets
 - `tests/unit/` and `tests/integration/` automated tests
@@ -232,18 +235,20 @@ AgentOps publishes Copilot skills that teach GitHub Copilot how to use the evalu
 
 ### Installation
 
-Skills are distributed from this GitHub repository. Install them in VS Code:
+Skills are distributed from this GitHub repository as a VS Code agent plugin. Install in one step:
 
-1. Open **VS Code** with **GitHub Copilot Chat** enabled.
-2. Use the Copilot skill install command and point to this repository:
-   - Source: `Azure/agentops`
-   - Skills are located under `.github/plugins/agentops/skills/`
-3. Once installed, Copilot will automatically use the skills when you ask about AgentOps evaluation, regressions, or observability.
+1. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
+2. Run **Chat: Install Plugin From Source**.
+3. Enter: `https://github.com/Azure/agentops`
 
-Alternatively, you can copy the skill files manually:
+VS Code clones the repo and installs all three skills automatically. They appear in the **Agent Plugins – Installed** section and are available across all workspaces.
+
+> **Note:** Agent plugins require VS Code with `"chat.plugins.enabled": true` (preview feature).
+
+Alternatively, copy the skill files manually:
 ```bash
 # Copy skills to your user-level skills directory
-cp -r .github/plugins/agentops/skills/* ~/.agents/skills/
+cp -r skills/* ~/.agents/skills/
 ```
 
 ### For Repository Contributors

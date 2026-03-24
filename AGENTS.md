@@ -119,6 +119,7 @@ src/
     ├── backends/
     │   ├── base.py                    # Backend protocol and shared types
     │   ├── foundry_backend.py         # Foundry cloud/local execution
+    │   ├── http_backend.py            # HTTP agent endpoint execution
     │   └── subprocess_backend.py      # Generic subprocess integration
     │
     ├── utils/
@@ -350,7 +351,14 @@ Common derived run metrics:
 ### Agent with Tools
 - Target: Foundry agent
 - Bundle: `agent_tools_baseline.yaml`
-- Current status: placeholder baseline ready for expansion
+- Typical row fields: `input`, optional `tool_calls` and `tool_definitions` for ToolCallAccuracyEvaluator
+- Primary evaluator pattern: task completion + tool call accuracy + latency
+
+### HTTP Agent
+- Target: any agent exposed over HTTP (non-Foundry)
+- Bundle: `agent_http_baseline.yaml`
+- Typical row fields: `input`, optional `expected`; extra fields forwarded to the endpoint
+- Primary evaluator pattern: intent resolution + task completion + coherence + latency
 
 ---
 

@@ -1,0 +1,14 @@
+version: 1
+name: smoke_http
+description: Small smoke dataset for HTTP agent evaluation (generic Q&A rows suitable for any HTTP endpoint).
+source:
+  type: file
+  path: ../data/smoke-http.jsonl
+format:
+  type: jsonl
+  input_field: input
+  expected_field: expected
+metadata:
+  scenario: agent_http
+  size_hint: 5
+  owner: local

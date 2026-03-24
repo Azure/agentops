@@ -172,17 +172,17 @@ Agent evaluations take longer than model-direct because each prompt involves:
 - Agent processing (may include tool calls)
 - Response collection
 
-A 5-row agent evaluation typically takes 30–60 seconds in local mode, compared to 10–20 seconds for model-direct.
+A 5-row agent evaluation typically takes 30-60 seconds in local mode, compared to 10-20 seconds for model-direct.
 
 ### Reading the results
 
 Open `.agentops/results/latest/report.md`. For an agent with the simple QA instructions above, expect:
 
-- **SimilarityEvaluator** around 3–4 (the agent captures meaning but rephrases)
-- **avg_latency_seconds** around 5–15s per row (agent orchestration overhead)
+- **SimilarityEvaluator** around 3-4 (the agent captures meaning but rephrases)
+- **avg_latency_seconds** around 5-15s per row (agent orchestration overhead)
 - Some rows may fail the ≥ 3 threshold if the agent's response diverges significantly
 
-If most rows score 4–5, your agent is working well. If most score 1–2, check the agent's instructions, verify it has access to the right tools, and look at the actual responses in `backend.stdout.log`.
+If most rows score 4-5, your agent is working well. If most score 1-2, check the agent's instructions, verify it has access to the right tools, and look at the actual responses in `backend.stdout.log`.
 
 ## Part 6: Compare with a baseline
 

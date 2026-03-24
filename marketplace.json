@@ -1,0 +1,11 @@
+[
+  {
+    "name": "agentops",
+    "description": "Copilot skills for running evaluations, investigating regressions, and observability triage with the agentops-toolkit CLI.",
+    "version": "1.0.0",
+    "source": {
+      "source": "github",
+      "repo": "Azure/agentops"
+    }
+  }
+]

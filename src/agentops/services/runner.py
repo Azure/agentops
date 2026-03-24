@@ -11,6 +11,7 @@ from typing import Dict, List, Tuple
 
 from agentops.backends.base import BackendRunContext
 from agentops.backends.foundry_backend import FoundryBackend
+from agentops.backends.http_backend import HttpBackend
 from agentops.backends.subprocess_backend import SubprocessBackend
 from agentops.core.config_loader import (
     load_bundle_config,
@@ -392,6 +393,8 @@ def run_evaluation(
         backend = SubprocessBackend()
     elif run_config.backend.type == "foundry":
         backend = FoundryBackend()
+    elif run_config.backend.type == "http":
+        backend = HttpBackend()
     else:
         raise ValueError(f"Unsupported backend type: {run_config.backend.type}")
 

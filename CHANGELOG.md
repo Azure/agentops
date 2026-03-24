@@ -6,6 +6,21 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- **HTTP backend** (`type: http`) — new evaluation backend for agents deployed outside Microsoft Foundry Agent Service, such as Microsoft Agent Framework applications on Azure Container Apps (ACA) or any custom REST endpoint.
+  - Calls the agent endpoint row by row via HTTP POST.
+  - Configurable via `url` (inline) or `url_env` (env var, recommended for CI).
+  - Supports `request_field` (prompt key, default `message`), `response_field` (response key with dot-path support, default `text`), `auth_header_env` (Bearer token), and `headers` (static headers).
+  - Runs local evaluators (`exact_match`, `latency_seconds`, `avg_latency_seconds`) and AI-assisted foundry evaluators (via `AZURE_OPENAI_ENDPOINT` / `AZURE_AI_MODEL_DEPLOYMENT_NAME`).
+  - No Foundry Agent Service dependency — works for multi-agent scenarios where the orchestrator exposes an HTTP endpoint.
+- Add `BackendConfig` fields: `url`, `url_env`, `request_field`, `response_field`, `auth_header_env`, `headers`.
+- `agentops init` now scaffolds HTTP scenario starter files:
+  - `bundles/agent_http_baseline.yaml` — `IntentResolutionEvaluator`, `TaskCompletionEvaluator`, `CoherenceEvaluator`, `avg_latency_seconds` (reference-free); `ToolCallAccuracyEvaluator` included but disabled by default — enable when dataset rows carry `tool_calls` + `tool_definitions`.
+  - `run-http.yaml` — run config wired to `url_env: AGENT_HTTP_URL`.
+  - `datasets/smoke-http.yaml` + `data/smoke-http.jsonl` — generic Q&A smoke dataset.
+- Add `docs/tutorial-http-agent.md` — end-to-end tutorial for the Agent Framework / ACA scenario.
+- Add unit tests for `HttpBackend` (`tests/unit/test_http_backend.py`): URL resolution, request field, dot-path response extraction, latency metrics, auth header, `backend_metrics.json` schema.
+
+### Added
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).
@@ -13,7 +28,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Add Pydantic models for comparison output: `ComparisonResult`, `MetricDelta`, `ThresholdDelta`, `ItemDelta`, `ComparisonSummary`.
 - Add comparison service (`services/comparison.py`) with run discovery and structured diff logic.
 - Update `investigate-regression` and `run-evals` Copilot skills to reference the new compare command.
-- Add distributable Copilot skills under `.github/plugins/agentops/skills/` for GitHub-based installation (`agentops-run-evals`, `agentops-investigate-regression`, `agentops-observability-triage`).
+- Add distributable Copilot skills under `skills/` for GitHub-based installation (`agentops-run-evals`, `agentops-investigate-regression`, `agentops-observability-triage`).
+- Add `plugin.json` at repo root — enables one-click **Chat: Install Plugin From Source** install flow in VS Code (agent plugins preview).
 - Fix cloud evaluation to use the Foundry Project Evals API (`api-version=2025-11-15-preview`) with `azure_ai_evaluator` testing criteria, replacing the OpenAI SDK-based path that was incompatible.
 - Fix metric polarity in comparison: lower-is-better metrics (e.g. `avg_latency_seconds` with `<=` threshold) now correctly show "improved" when they decrease.
 - Align `azure-ai-projects` version references across all files to `>=2.0.1`.

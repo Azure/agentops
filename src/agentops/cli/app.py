@@ -50,7 +50,7 @@ def _planned_command(command_name: str) -> None:
     typer.echo(
         "This command is planned but not implemented in this release:\n"
         f"  {command_name}\n"
-        "Please use the currently available commands (`init`, `eval run`, `report`) for now."
+        "Please use the currently available commands (`init`, `eval run`, `eval compare`, `report`) for now."
     )
     raise typer.Exit(code=1)
 

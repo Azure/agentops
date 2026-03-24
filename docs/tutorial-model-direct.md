@@ -96,7 +96,7 @@ The key fields:
 ### What the bundle evaluates
 
 The `model_direct_baseline` bundle uses two evaluators:
-- **SimilarityEvaluator** (source: foundry) — AI-assisted comparison of the model's response against the expected answer. Scores 1–5, threshold ≥ 3.
+- **SimilarityEvaluator** (source: foundry) — AI-assisted comparison of the model's response against the expected answer. Scores 1-5, threshold ≥ 3.
 - **avg_latency_seconds** (source: local) — average response time per row, threshold ≤ 10 seconds.
 
 ## Part 3: Review the dataset
@@ -145,7 +145,7 @@ Open `.agentops/results/latest/report.md` for the human-readable summary. You wi
 - **Item verdicts** — per-row pass/fail showing which specific questions the model handled well or poorly
 - **Threshold checks** — which thresholds passed and which failed, with item counts
 
-A SimilarityEvaluator score of 5.0 means the model's response is semantically equivalent to the expected answer. Scores of 3–4 mean the response captures the core meaning but may differ in phrasing or detail. Below 3 indicates a meaningful divergence — the model may have missed the point, hallucinated, or provided an unrelated answer.
+A SimilarityEvaluator score of 5.0 means the model's response is semantically equivalent to the expected answer. Scores of 3-4 mean the response captures the core meaning but may differ in phrasing or detail. Below 3 indicates a meaningful divergence — the model may have missed the point, hallucinated, or provided an unrelated answer.
 
 ## Part 5: Compare against a future run
 

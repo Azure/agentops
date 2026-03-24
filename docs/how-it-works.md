@@ -244,7 +244,8 @@ For built-in Foundry evaluators, AgentOps uses `DefaultAzureCredential` by defau
 - Recommended evaluation scenario bundles:
   - `model_direct_baseline`: Model-Only — SimilarityEvaluator (no retrieval, no tools)
   - `rag_retrieval_baseline`: RAG — GroundednessEvaluator (retrieval-augmented)
-  - `agent_tools_baseline`: Agent with Tools — placeholder (to be expanded)
+  - `agent_tools_baseline`: Agent with Tools — TaskCompletionEvaluator + ToolCallAccuracyEvaluator
+  - `agent_http_baseline`: HTTP Agent — IntentResolutionEvaluator + TaskCompletionEvaluator + CoherenceEvaluator
 
 - Threshold criteria:
   - Numeric: `>=`, `>`, `<=`, `<`, `==` (requires `value`)
@@ -332,11 +333,19 @@ AgentOps supports three evaluation scenarios:
 - Dataset: rows with `input`, `expected`, and `context` fields
 - Backend config: `target: agent` (agent with knowledge base / retrieval)
 
-### Agent with Tools (placeholder)
+### Agent with Tools
 
 - Evaluates agents that use tool calls (function calling)
-- Bundle: `agent_tools_baseline.yaml` (placeholder — will be expanded with tool-call evaluators)
+- Bundle: `agent_tools_baseline.yaml` — enabled evaluators: `TaskCompletionEvaluator`, `ToolCallAccuracyEvaluator`, `avg_latency_seconds`
+- Typical row fields: `input`, `tool_calls` (optional, for ToolCallAccuracy), `tool_definitions` (optional)
 - Backend config: `target: agent`
+
+### HTTP Agent
+
+- Evaluates agents exposed over HTTP (any endpoint, not Foundry-hosted)
+- Bundle: `agent_http_baseline.yaml` — enabled evaluators: `IntentResolutionEvaluator`, `TaskCompletionEvaluator`, `CoherenceEvaluator`, `avg_latency_seconds`
+- Typical row fields: `input`, `expected` (optional); extra fields are forwarded to the HTTP endpoint
+- Backend config: `type: http`
 
 ## Backend behavior
 

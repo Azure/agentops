@@ -23,16 +23,20 @@ _TEMPLATE_FILES: tuple[str, ...] = (
     "run.yaml",
     "run-rag.yaml",
     "run-agent.yaml",
+    "run-http.yaml",
     ".gitignore",
     "bundles/model_direct_baseline.yaml",
     "bundles/rag_retrieval_baseline.yaml",
     "bundles/agent_tools_baseline.yaml",
+    "bundles/agent_http_baseline.yaml",
     "datasets/smoke-model-direct.yaml",
     "datasets/smoke-rag.yaml",
     "datasets/smoke-agent-tools.yaml",
+    "datasets/smoke-http.yaml",
     "data/smoke-model-direct.jsonl",
     "data/smoke-rag.jsonl",
     "data/smoke-agent-tools.jsonl",
+    "data/smoke-http.jsonl",
 )
 
 
