@@ -26,13 +26,15 @@ def generate_report_from_results(
     payload = json.loads(resolved_results_path.read_text(encoding="utf-8"))
     result = RunResult.model_validate(payload)
 
+    default_suffix = ".html" if report_format == "html" else ".md"
     resolved_output_path = (
         output_path.resolve()
         if output_path is not None
-        else resolved_results_path.with_name("report.md")
+        else resolved_results_path.with_name(f"report{default_suffix}")
     )
     resolved_output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    primary_path = resolved_output_path
     if report_format in ("md", "all"):
         md_path = (
             resolved_output_path
@@ -40,11 +42,15 @@ def generate_report_from_results(
             else resolved_output_path.with_suffix(".md")
         )
         md_path.write_text(generate_report_markdown(result), encoding="utf-8")
+        primary_path = md_path
     if report_format in ("html", "all"):
         html_path = resolved_output_path.with_suffix(".html")
         html_path.write_text(generate_report_html(result), encoding="utf-8")
+        primary_path = html_path
+    if report_format == "all":
+        primary_path = resolved_output_path.with_suffix(".md")
 
     return ReportResult(
         input_results_path=resolved_results_path,
-        output_report_path=resolved_output_path,
+        output_report_path=primary_path,
     )
