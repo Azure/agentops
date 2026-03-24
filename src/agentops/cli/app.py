@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
@@ -137,7 +137,7 @@ def cmd_init(
 @eval_app.command("run")
 def cmd_eval_run(
     config: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--config",
             "-c",
@@ -145,7 +145,7 @@ def cmd_eval_run(
         ),
     ] = None,
     output: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option("--output", "-o", help="Output directory for results."),
     ] = None,
     report_format: Annotated[
@@ -191,7 +191,7 @@ def cmd_eval_compare(
         ),
     ],
     output: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option("--output", "-o", help="Output directory for comparison results."),
     ] = None,
     report_format: Annotated[
@@ -250,7 +250,7 @@ def cmd_eval_compare(
 def cmd_report(
     ctx: typer.Context,
     results_in: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option(
             "--in",
             help=(
@@ -260,7 +260,7 @@ def cmd_report(
         ),
     ] = None,
     report_out: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option("--out", help="Output path for report."),
     ] = None,
     report_format: Annotated[
@@ -294,6 +294,8 @@ def cmd_report(
 
     typer.echo(f"Loaded results: {report_result.input_results_path}")
     typer.echo(f"Generated report: {report_result.output_report_path}")
+    if report_result.html_report_path:
+        typer.echo(f"Generated report: {report_result.html_report_path}")
 
 
 @report_app.command("show")
@@ -324,7 +326,7 @@ def cmd_run_show() -> None:
 def cmd_run_view(
     run_id: str,
     entry: Annotated[
-        Optional[int],
+        int | None,
         typer.Option("--entry", help="Optional row/entry index for deep inspection."),
     ] = None,
 ) -> None:
