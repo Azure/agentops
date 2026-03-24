@@ -734,13 +734,13 @@ All workflow files are in `.github/workflows/`:
 ### `ci.yml` — Continuous Integration
 
 ```
-Trigger: push to develop, PR to main or develop
+Trigger: push to develop, PR to develop
 Flow:    lint → test (matrix) → coverage
          + on develop push: publish-dev → verify-dev (TestPyPI)
 Purpose: Quality gate for all code changes; auto-publish dev builds
 ```
 
-Key detail: `publish-dev` and `verify-dev` only run on pushes to `develop` (not PRs). Every merge to develop produces a dev version on TestPyPI (e.g. `0.1.3.dev12`) via setuptools-scm.
+Key detail: `publish-dev` and `verify-dev` only run on pushes to `develop` (not PRs). Every merge to develop produces a dev version on TestPyPI (e.g. `0.1.3.dev12`) via setuptools-scm. PRs to `main` are not covered by CI because they come from `release/*` branches which are already validated by the staging pipeline.
 
 ### `_build.yml` — Reusable Build
 
