@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-03-23
+
 ### Added
 - **HTTP backend** (`type: http`) — new evaluation backend for agents deployed outside Microsoft Foundry Agent Service, such as Microsoft Agent Framework applications on Azure Container Apps (ACA) or any custom REST endpoint.
   - Calls the agent endpoint row by row via HTTP POST.
@@ -19,20 +21,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   - `datasets/smoke-http.yaml` + `data/smoke-http.jsonl` — generic Q&A smoke dataset.
 - Add `docs/tutorial-http-agent.md` — end-to-end tutorial for the Agent Framework / ACA scenario.
 - Add unit tests for `HttpBackend` (`tests/unit/test_http_backend.py`): URL resolution, request field, dot-path response extraction, latency metrics, auth header, `backend_metrics.json` schema.
-
-### Added
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).
   - Supports run IDs by timestamped folder name, `latest` keyword, or absolute/relative paths.
 - Add Pydantic models for comparison output: `ComparisonResult`, `MetricDelta`, `ThresholdDelta`, `ItemDelta`, `ComparisonSummary`.
 - Add comparison service (`services/comparison.py`) with run discovery and structured diff logic.
-- Update `investigate-regression` and `run-evals` Copilot skills to reference the new compare command.
 - Add distributable Copilot skills under `skills/` for GitHub-based installation (`agentops-run-evals`, `agentops-investigate-regression`, `agentops-observability-triage`).
 - Add `plugin.json` at repo root — enables one-click **Chat: Install Plugin From Source** install flow in VS Code (agent plugins preview).
-- Fix cloud evaluation to use the Foundry Project Evals API (`api-version=2025-11-15-preview`) with `azure_ai_evaluator` testing criteria, replacing the OpenAI SDK-based path that was incompatible.
-- Fix metric polarity in comparison: lower-is-better metrics (e.g. `avg_latency_seconds` with `<=` threshold) now correctly show "improved" when they decrease.
-- Align `azure-ai-projects` version references across all files to `>=2.0.1`.
+- Add `marketplace.json` at repo root — enables `copilot plugin install agentops@Azure/agentops` via the standalone Copilot CLI plugin marketplace.
 
 ### Changed
 - Migrate versioning from static `pyproject.toml` field to `setuptools-scm` — version is now derived automatically from git tags.
@@ -41,8 +38,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   - `staging.yml` — `release/*` branch pushes publish to TestPyPI and verify install
   - `release.yml` — `v*` tag pushes publish to TestPyPI, then PyPI (with approval gate), then create GitHub Release
 - Add CLI smoke test in staging/release verify step (`agentops --version`, `agentops --help`, `agentops init`).
-- Fix secret reference from `PIPY_TOKEN` to `PYPI_TOKEN`; add `TEST_PYPI_TOKEN` for TestPyPI.
 - Add consistent workflow index header across all CI/CD workflow files.
+- Align `azure-ai-projects` version references across all files to `>=2.0.1`.
+
+### Fixed
+- Fix cloud evaluation to use the Foundry Project Evals API (`api-version=2025-11-15-preview`) with `azure_ai_evaluator` testing criteria, replacing the OpenAI SDK-based path that was incompatible.
+- Fix metric polarity in comparison: lower-is-better metrics (e.g. `avg_latency_seconds` with `<=` threshold) now correctly show "improved" when they decrease.
+- Fix `report` command: `--format html` parameter was silently ignored when `--out` was omitted; report now respects the format flag in all cases.
+- Fix `eval run` and `report` with `-f all`: now correctly generates both `report.md` and `report.html` in the same run instead of only one format.
+- Fix CI secret reference: rename `PIPY_TOKEN` to `PYPI_TOKEN`; add `TEST_PYPI_TOKEN` for TestPyPI publishing.
 
 ## [0.1.0] - 2026-__-__
 
