@@ -5,7 +5,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-03-23
+## [0.1.3] - 2026-03-23
 
 ### Added
 - **HTTP backend** (`type: http`) — new evaluation backend for agents deployed outside Microsoft Foundry Agent Service, such as Microsoft Agent Framework applications on Azure Container Apps (ACA) or any custom REST endpoint.
