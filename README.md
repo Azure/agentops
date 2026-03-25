@@ -49,7 +49,7 @@ Exit code contract:
 This section is structured for demos and onboarding, so you can present the project flow end-to-end in a few minutes.
 
 <p align="center">
-<img alt="Quickstart demo: agentops init and eval run" src="./media/quickstart.gif"/>
+<img alt="Quickstart demo: agentops init and eval run" src="https://github.com/user-attachments/assets/ab00f6dd-7aff-4d0e-ae24-e2dae48a6fe4"/>
 </p>
 
 ### 1) Install
