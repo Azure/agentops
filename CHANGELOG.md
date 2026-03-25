@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-03-24
+
 ### Added
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
