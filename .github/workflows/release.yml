@@ -18,19 +18,21 @@
 #   When using workflow_dispatch with the 'tag' input, the version is derived
 #   from the tag name directly (strips the 'v' prefix).
 #
-# Required GitHub secrets (in respective environments):
-#   TEST_PYPI_TOKEN  — TestPyPI API token (environment: staging)
-#   PYPI_TOKEN       — PyPI API token     (environment: release)
+# Trusted Publishing (OIDC):
+#   This workflow uses PyPI Trusted Publishing — no API tokens required.
+#   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
+#   and PyPI/TestPyPI.
 #
 # Required GitHub environments:
 #   staging  — for TestPyPI publish (optional approval)
 #   release  — for PyPI publish (requires approval from designated reviewers)
 #
-# Setup:
-#   1. https://test.pypi.org/manage/account/token/  → Create TEST_PYPI_TOKEN
-#   2. https://pypi.org/manage/account/token/        → Create PYPI_TOKEN
-#   3. GitHub repo → Settings → Secrets → Actions    → Add secrets to environments
-#   4. GitHub repo → Settings → Environments         → Create "release" with required reviewers
+# Setup (Trusted Publishing):
+#   1. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=staging
+#   2. https://pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=release
+#   3. GitHub repo → Settings → Environments → Create "release" with required reviewers
 #
 # Re-triggering a failed release:
 #   Option A (recommended): Delete and re-push the tag (triggers this workflow automatically).
@@ -63,6 +65,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      id-token: write  # Required for PyPI Trusted Publishing (OIDC)
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -74,7 +78,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
           verbose: true
           skip-existing: true
 
@@ -149,7 +152,6 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_TOKEN }}
           verbose: true
 
   # Create GitHub Release with built artifacts
