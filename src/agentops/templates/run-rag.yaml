@@ -1,19 +1,24 @@
 version: 1
+target:
+  type: agent
+  hosting: foundry
+  execution_mode: remote
+  agent_mode: hosted
+  endpoint:
+    kind: foundry_agent
+    # Replace with your Foundry agent id, for example my-agent:3.
+    agent_id: <replace-with-your-foundry-agent-id>
+    # Required by AI-assisted evaluators (judge model).
+    model: <replace-with-your-foundry-model-deployment-name>
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+    api_version: "2025-05-01"
+    poll_interval_seconds: 2
+    max_poll_attempts: 120
 bundle:
-  path: bundles/rag_retrieval_baseline.yaml
+  name: rag_quality_baseline
 dataset:
-  path: datasets/smoke-rag.yaml
-backend:
-  type: foundry
-  target: agent
-  # Replace with your Foundry agent id, for example my-agent:3.
-  agent_id: <replace-with-your-foundry-agent-id>
-  # Required by AI-assisted evaluators (judge model).
-  model: <replace-with-your-foundry-model-deployment-name>
-  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-  api_version: "2025-05-01"
-  poll_interval_seconds: 2
-  max_poll_attempts: 120
+  name: smoke-rag
+execution:
   timeout_seconds: 1800
 output:
   write_report: true

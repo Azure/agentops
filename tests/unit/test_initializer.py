@@ -14,11 +14,15 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ".agentops" / "results").is_dir()
 
     assert (tmp_path / ".agentops" / "config.yaml").is_file()
-    assert (tmp_path / ".agentops" / "bundles" / "model_direct_baseline.yaml").is_file()
+    assert (tmp_path / ".agentops" / "bundles" / "model_quality_baseline.yaml").is_file()
     assert (
-        tmp_path / ".agentops" / "bundles" / "rag_retrieval_baseline.yaml"
+        tmp_path / ".agentops" / "bundles" / "rag_quality_baseline.yaml"
     ).is_file()
-    assert (tmp_path / ".agentops" / "bundles" / "agent_tools_baseline.yaml").is_file()
+    assert (
+        tmp_path / ".agentops" / "bundles" / "conversational_agent_baseline.yaml"
+    ).is_file()
+    assert (tmp_path / ".agentops" / "bundles" / "agent_workflow_baseline.yaml").is_file()
+    assert (tmp_path / ".agentops" / "bundles" / "safe_agent_baseline.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-model-direct.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-rag.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-agent-tools.yaml").is_file()
@@ -28,16 +32,26 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ".agentops" / "run.yaml").is_file()
     assert (tmp_path / ".agentops" / "run-rag.yaml").is_file()
     assert (tmp_path / ".agentops" / "run-agent.yaml").is_file()
+    assert (tmp_path / ".agentops" / "run-http-model.yaml").is_file()
+    assert (tmp_path / ".agentops" / "run-http-rag.yaml").is_file()
+    assert (tmp_path / ".agentops" / "run-http-agent-tools.yaml").is_file()
+    assert (tmp_path / ".agentops" / "run-callable.yaml").is_file()
+    assert (tmp_path / ".agentops" / "callable_adapter.py").is_file()
     assert (tmp_path / ".agentops" / ".gitignore").is_file()
+    assert (tmp_path / ".agentops" / "datasets" / "smoke-conversational.yaml").is_file()
+    assert (tmp_path / ".agentops" / "data" / "smoke-conversational.jsonl").is_file()
+    assert (tmp_path / ".agentops" / "workflows" / "agentops-eval.yml").is_file()
 
-    assert len(result.created_files) == 14
+    assert len(result.created_files) == 24
     assert len(result.overwritten_files) == 0
 
     run_config = load_yaml(tmp_path / ".agentops" / "run.yaml")
-    assert run_config["backend"]["type"] == "foundry"
-    assert run_config["backend"]["target"] == "model"
-    assert "agent_id" not in run_config["backend"]
-    assert run_config["dataset"]["path"] == "datasets/smoke-model-direct.yaml"
+    assert run_config["version"] == 1
+    assert run_config["target"]["type"] == "model"
+    assert run_config["target"]["hosting"] == "foundry"
+    assert run_config["target"]["execution_mode"] == "remote"
+    assert run_config["bundle"]["name"] == "model_quality_baseline"
+    assert run_config["dataset"]["name"] == "smoke-model-direct"
 
 
 def test_init_does_not_overwrite_without_force(tmp_path: Path) -> None:

@@ -6,12 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from agentops.core.models import BackendConfig
+from agentops.core.models import RunConfig
 
 
 @dataclass(frozen=True)
 class BackendRunContext:
-    backend_config: BackendConfig
+    run_config: RunConfig
     bundle_path: Path
     dataset_path: Path
     backend_output_dir: Path

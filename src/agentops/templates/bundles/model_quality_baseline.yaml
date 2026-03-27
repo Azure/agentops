@@ -1,0 +1,76 @@
+version: 1
+name: model_quality_baseline
+description: >
+  Baseline evaluation bundle for model quality assessment.
+  Evaluates response quality across semantic similarity, coherence,
+  fluency, and text overlap for any model deployment (Foundry, HTTP, or local).
+evaluators:
+  - name: SimilarityEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: SimilarityEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        ground_truth: "$expected"
+      score_keys: ["similarity"]
+  - name: CoherenceEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: CoherenceEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["coherence"]
+  - name: FluencyEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: FluencyEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["fluency"]
+  - name: F1ScoreEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: F1ScoreEvaluator
+      input_mapping:
+        response: "$prediction"
+        ground_truth: "$expected"
+      score_keys: ["f1_score"]
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: SimilarityEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: CoherenceEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: FluencyEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: F1ScoreEvaluator
+    criteria: ">="
+    value: 0.4
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 10.0
+metadata:
+  category: model-quality
+  scenario: model_direct
+  tags:
+    - baseline
+    - model-quality
+    - similarity
+    - coherence
+    - fluency

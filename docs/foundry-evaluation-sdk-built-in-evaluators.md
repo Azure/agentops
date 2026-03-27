@@ -213,8 +213,6 @@ AgentOps provides sensible defaults so you don't need to configure extra environ
 - Not all preview evaluators have stable Python API docs with full constructor/call signatures at any given time.
 - When a signature changes, update only evaluator `config` in bundle (no code change needed in AgentOps core, due to generic runtime).
 
----
-
 **Last updated:** 2026-03-02 (UTC)
 
 Because Foundry Evaluation SDK and evaluator signatures evolve (especially preview features), review official docs before production rollout.

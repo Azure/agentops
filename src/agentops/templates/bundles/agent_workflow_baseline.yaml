@@ -1,0 +1,112 @@
+version: 1
+name: agent_workflow_baseline
+description: >
+  Baseline evaluation bundle for agent workflow scenarios involving tool calling.
+  Measures task completion, tool call accuracy, intent resolution,
+  task adherence, tool selection, and tool input accuracy using
+  AI-assisted evaluators from the Foundry evaluation suite.
+evaluators:
+  - name: TaskCompletionEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: TaskCompletionEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        ground_truth: "$expected"
+      score_keys: ["task_completion"]
+  - name: ToolCallAccuracyEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: ToolCallAccuracyEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        tool_calls: "$tool_calls"
+        tool_definitions: "$tool_definitions"
+      score_keys: ["tool_call_accuracy"]
+  - name: IntentResolutionEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: IntentResolutionEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["intent_resolution"]
+  - name: TaskAdherenceEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: TaskAdherenceEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["task_adherence"]
+  - name: ToolSelectionEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: ToolSelectionEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        tool_calls: "$tool_calls"
+        tool_definitions: "$tool_definitions"
+      score_keys: ["tool_selection"]
+  - name: ToolInputAccuracyEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: ToolInputAccuracyEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        tool_calls: "$tool_calls"
+        tool_definitions: "$tool_definitions"
+      score_keys: ["tool_input_accuracy"]
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: TaskCompletionEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: ToolCallAccuracyEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: IntentResolutionEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: TaskAdherenceEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: ToolSelectionEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: ToolInputAccuracyEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 15.0
+metadata:
+  category: agent-workflow
+  scenario: agent_with_tools
+  tags:
+    - baseline
+    - agent
+    - tools
+    - task-completion
+    - tool-call-accuracy
+    - intent-resolution
+    - task-adherence
+    - tool-selection

@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from agentops.backends.base import BackendRunContext
-from agentops.backends.foundry_backend import FoundryBackend
-from agentops.backends.subprocess_backend import SubprocessBackend
 from agentops.core.config_loader import (
     load_bundle_config,
     load_dataset_config,
     load_run_config,
+    resolve_bundle_ref,
+    resolve_dataset_ref,
 )
 from agentops.core.models import (
     Artifacts,
@@ -42,20 +42,6 @@ class EvalRunServiceResult:
 
 def _default_run_config_path() -> Path:
     return (Path.cwd() / ".agentops" / "run.yaml").resolve()
-
-
-def _resolve_path(path_value: Path, base_dir: Path) -> Path:
-    if path_value.is_absolute():
-        return path_value
-    candidate = (base_dir / path_value).resolve()
-    if candidate.exists():
-        return candidate
-
-    fallback = (Path.cwd() / path_value).resolve()
-    if fallback.exists():
-        return fallback
-
-    return candidate
 
 
 def _default_output_dir(run_config_path: Path) -> Path:
@@ -375,8 +361,9 @@ def run_evaluation(
     run_config = load_run_config(run_config_path)
 
     run_config_dir = run_config_path.parent
-    bundle_path = _resolve_path(run_config.bundle.path, run_config_dir)
-    dataset_path = _resolve_path(run_config.dataset.path, run_config_dir)
+    workspace_dir = run_config_dir  # .agentops/ is the workspace root
+    bundle_path = resolve_bundle_ref(run_config.bundle, run_config_dir, workspace_dir)
+    dataset_path = resolve_dataset_ref(run_config.dataset, run_config_dir, workspace_dir)
 
     bundle_config = load_bundle_config(bundle_path)
     dataset_config = load_dataset_config(dataset_path)
@@ -388,16 +375,31 @@ def run_evaluation(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    if run_config.backend.type == "subprocess":
-        backend = SubprocessBackend()
-    elif run_config.backend.type == "foundry":
-        backend = FoundryBackend()
+    if run_config.target.execution_mode == "local":
+        from agentops.backends.local_adapter_backend import LocalAdapterBackend
+
+        backend = LocalAdapterBackend()
+    elif run_config.target.execution_mode == "remote":
+        endpoint = run_config.target.endpoint
+        assert endpoint is not None  # guaranteed by TargetConfig validator
+        if endpoint.kind == "foundry_agent":
+            from agentops.backends.foundry_backend import FoundryBackend
+
+            backend = FoundryBackend()
+        elif endpoint.kind == "http":
+            from agentops.backends.http_backend import HttpBackend
+
+            backend = HttpBackend()
+        else:
+            raise ValueError(f"Unsupported endpoint kind: {endpoint.kind}")
     else:
-        raise ValueError(f"Unsupported backend type: {run_config.backend.type}")
+        raise ValueError(
+            f"Unsupported execution_mode: {run_config.target.execution_mode}"
+        )
 
     backend_result = backend.execute(
         BackendRunContext(
-            backend_config=run_config.backend,
+            run_config=run_config,
             bundle_path=bundle_path,
             dataset_path=dataset_path,
             backend_output_dir=output_dir,
@@ -453,12 +455,13 @@ def run_evaluation(
 
     if (
         run_config.output.publish_foundry_evaluation
-        and run_config.backend.type == "foundry"
+        and run_config.target.endpoint is not None
+        and run_config.target.endpoint.kind == "foundry_agent"
         and cloud_report_url is None
     ):
         try:
             foundry_publish = publish_foundry_evaluation(
-                backend_config=run_config.backend,
+                endpoint_config=run_config.target.endpoint,
                 dataset_config_path=dataset_path,
                 backend_stdout_path=backend_result.stdout_file,
             )

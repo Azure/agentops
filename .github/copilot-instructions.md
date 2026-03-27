@@ -23,18 +23,16 @@ Design documentation lives in `docs/`:
 
 Contribution guidelines live in `CONTRIBUTING.md` at the repo root.
 
----
-
 ## Technology Choices
 
 - **Language**: Python 3.11+
 - **CLI framework**: Typer
 - **Config & schema validation**: Pydantic v2
 - **Configuration format**: YAML
-- **Primary backend**: Microsoft Foundry Agent Service (native)
+- **Primary execution**: Microsoft Foundry Agent Service (native)
   - Cloud evaluation via OpenAI Evals API (New Foundry Experience)
   - Local evaluation via `azure-ai-evaluation` SDK (fallback)
-- **Secondary backend**: subprocess-based (generic)
+- **Local adapter execution**: stdin/stdout JSON protocol for custom targets
 - **Azure SDK dependencies** (runtime, for Foundry backend):
   - `azure-ai-projects>=2.0.1` — Foundry project client, `get_openai_client()`
   - `azure-ai-evaluation` — Local evaluator classes (SimilarityEvaluator, etc.)
@@ -43,8 +41,6 @@ Contribution guidelines live in `CONTRIBUTING.md` at the repo root.
 - **Installation**: agentops is intended to be installed within the project's virtual environment, following the same usage pattern as tools like pytest or MkDocs. This ensures versions are pinned to the project and runs are fully reproducible. Once installed via pip in the project environment, it can be executed either through the `agentops` command or using `python -m agentops`, and all commands (`init`, `run`) are expected to be run from the project root.
 
 Azure SDK dependencies are **not** declared in `pyproject.toml` — they are runtime dependencies that users install separately (documented in the tutorial).
-
----
 
 ## CLI Command Surface (fixed contract)
 
@@ -58,8 +54,6 @@ Only the following commands are in scope:
 
 Do not add new commands or flags unless explicitly discussed.
 
----
-
 ## Exit Code Contract (critical)
 
 Exit codes are part of the public API and **must be respected everywhere**:
@@ -70,8 +64,6 @@ Exit codes are part of the public API and **must be respected everywhere**:
 
 Do not overload or reinterpret these codes.
 
----
-
 ## Architecture Rules
 
 See `docs/how-it-works.md` for the full source-code map and architecture diagrams.
@@ -81,7 +73,7 @@ See `docs/how-it-works.md` for the full source-code map and architecture diagram
 - Place business logic in:
   - `core/` — config loading, Pydantic models, thresholds, report generation. **Must have zero Azure SDK imports and zero network calls.**
   - `services/` — orchestration (runner), Foundry publishing, workspace init, report regen
-  - `backends/` — execution backends (Foundry, subprocess). Each implements the `Backend` protocol from `base.py`.
+  - `backends/` — execution backends (Foundry, HTTP, local adapter). Each implements the `Backend` protocol from `base.py`.
 - Use `pathlib.Path` everywhere (no raw string paths)
 - No side effects at import time
 - No hidden global state
@@ -95,17 +87,16 @@ See `docs/how-it-works.md` for the full source-code map and architecture diagram
 |---|---|
 | Add a new Pydantic model or schema field | `core/models.py` |
 | Add a new config file type | `core/config_loader.py` + `core/models.py` |
-| Add a new local evaluator | `backends/foundry_backend.py` (local eval path) |
+| Add a new local evaluator | `backends/eval_engine.py` (shared evaluation engine) |
 | Add a new execution backend | `backends/` (new file implementing `Backend` protocol) + register in `services/runner.py` |
+| Support a new endpoint kind | `core/models.py` (`EndpointKind` literal) + `services/runner.py` (resolution) + `backends/` |
 | Add a new CLI command | `cli/app.py` (thin handler) + `services/` (logic) |
 | Add a new workflow/service | `services/` (new file) |
 | Add starter templates | `templates/` + update `pyproject.toml` package-data |
 
----
-
 ## Foundry Backend Architecture (critical)
 
-The Foundry backend (`backends/foundry_backend.py`) is the largest and most complex module. Key architecture:
+The Foundry backend (`backends/foundry_backend.py`) is the largest and most complex module. It is selected when `execution_mode: remote` and `endpoint.kind: foundry_agent`.
 
 ### Execution Modes
 
@@ -130,6 +121,7 @@ The Foundry backend (`backends/foundry_backend.py`) is the largest and most comp
 - Auto-derive Azure OpenAI endpoint from the project endpoint via `_derive_openai_endpoint_from_project()` — users should not need to set `AZURE_OPENAI_ENDPOINT` manually.
 - Agent invocation supports both reference-based and threads-based API calls.
 - Evaluator names map from class names to builtins: `SimilarityEvaluator` → `builtin.similarity`.
+- Foundry-specific config fields are read from `target.endpoint.*` (e.g., `target.endpoint.agent_id`, `target.endpoint.project_endpoint`).
 
 ### Environment Variables
 
@@ -142,8 +134,6 @@ The Foundry backend (`backends/foundry_backend.py`) is the largest and most comp
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | Explicit model deployment name override | No project-universal default deployment |
 | `AZURE_OPENAI_API_VERSION` | OpenAI API version for local evaluators | SDK default |
 
----
-
 ## Configuration Model
 
 Configuration is **YAML-first** and layered:
@@ -152,7 +142,7 @@ Configuration is **YAML-first** and layered:
 - bundle YAML → evaluators + thresholds (see `docs/how-it-works.md` for schema)
 - dataset YAML config (`.yaml`) → dataset reference and metadata, including the path to JSONL rows
 - dataset JSONL → evaluation rows, typically stored separately under `.agentops/data/`
-- run YAML → concrete run specification (backend, agent, model, dataset, bundle)
+- run YAML → concrete run specification (target, endpoint, execution mode, dataset, bundle)
 - CLI flags override YAML
 
 By default, `agentops init` keeps dataset YAML configs in `.agentops/datasets/` and dataset rows in `.agentops/data/`.
@@ -161,23 +151,99 @@ Schemas are validated using **Pydantic v2 models** (`core/models.py`).
 
 Both config files and results files must include a `version` field.
 
-### Foundry-specific run.yaml fields
+### run.yaml schema
 
-The `backend` section for Foundry runs uses `type: foundry` (not `name`). Fields:
-- `type: foundry` — Backend type selector (must be `foundry` or `subprocess`)
-- `target` — `agent` (default) or `model`
-- `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version); required when `target: agent`
-- `model` — Deployment name that already exists in the Foundry project; used when `target: model` or for evaluators
+The run config uses `version: 1`.
+
+#### Top-level structure
+
+- `version: 1` — Required
+- `run` — Optional metadata (`name`, `description`)
+- `target` — What is being evaluated and how (required)
+- `bundle` — Evaluator bundle reference (required)
+- `dataset` — Dataset reference (required)
+- `execution` — Execution settings (optional, defaults provided)
+- `output` — Output settings (optional, defaults provided)
+
+#### `target` section
+
+- `type` — `agent` or `model`
+- `hosting` — `local`, `foundry`, `aks`, or `containerapps`
+- `execution_mode` — `local` or `remote`
+- `agent_mode` — `prompt` or `hosted` (Foundry-only, optional)
+- `framework` — `agent_framework`, `langgraph`, or `custom` (agent-only, optional)
+- `endpoint` — Remote endpoint config (required when `execution_mode: remote`)
+- `local` — Local adapter config (required when `execution_mode: local`)
+
+#### `target.endpoint` fields (remote execution)
+
+- `kind` — `foundry_agent` or `http`
+
+Foundry agent endpoint fields:
+- `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version)
 - `project_endpoint` — Foundry project URL (inline value)
 - `project_endpoint_env` — Env var name holding the project URL (default: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`)
-- `api_version` — Agent Service API version (default: `2025-05-01`)
-- `poll_interval_seconds` — Polling interval for cloud eval (default: 2.0)
-- `max_poll_attempts` — Max polling attempts (default: 120)
-- `timeout_seconds` — Overall timeout for the backend execution
+- `api_version` — Agent Service API version
+- `poll_interval_seconds` — Polling interval for cloud eval
+- `max_poll_attempts` — Max polling attempts
+- `model` — Deployment name for evaluators
 
-The backend resolves the project endpoint by checking `project_endpoint` first, then falling back to `os.getenv(project_endpoint_env)`.
+HTTP endpoint fields:
+- `url` — Direct URL to the agent endpoint
+- `url_env` — Environment variable name holding the URL (default: `AGENT_HTTP_URL`)
+- `request_field` — JSON key for the user prompt (default: `message`)
+- `response_field` — Dot-path to extract response text (default: `text`)
+- `headers` — Static extra HTTP headers
+- `auth_header_env` — Environment variable for Bearer token
+- `tool_calls_field` — Dot-path to extract tool calls from response
+- `extra_fields` — JSONL row field names to forward in the request body
 
----
+#### `target.local` fields (local execution)
+
+- `adapter` — Command string to spawn the local adapter process (subprocess mode)
+- `callable` — Python function path as `module:function` (callable mode)
+
+Exactly one of `adapter` or `callable` must be provided.
+
+Adapter protocol: subprocess receives JSON on stdin per row, emits JSON on stdout.
+Callable protocol: `fn(input_text: str, context: dict) -> dict` returning `{"response": "..."}`.
+
+#### `bundle` and `dataset` references
+
+Both support two resolution modes (at least one required):
+- `name` — Convention-based: resolves to `<workspace>/bundles/<name>.yaml` or `<workspace>/datasets/<name>.yaml`
+- `path` — Explicit path (relative to config file directory)
+
+#### `execution` section
+
+- `concurrency` — Max parallel evaluations (default: `1`; schema-only, executes sequentially for now)
+- `timeout_seconds` — Overall timeout (default: `300`)
+
+#### `output` section
+
+- `path` — Output directory
+- `write_report` — Generate `report.md` (default: `true`)
+- `publish_foundry_evaluation` — Publish results to Foundry (default: `false`)
+- `fail_on_foundry_publish_error` — Fail if Foundry publish fails (default: `false`)
+
+#### Validation rules
+
+- `agent_mode` is only valid when `hosting == "foundry"`
+- `framework` is only valid when `type == "agent"`
+- `endpoint` is required when `execution_mode == "remote"`
+- `local.adapter` is required when `execution_mode == "local"`
+- Thresholds are **exclusively in bundles** — no run-level threshold overrides
+
+### Backend resolution
+
+The runner resolves the execution backend from the run config:
+- `execution_mode: local` → `LocalAdapterBackend`
+- `execution_mode: remote` + `endpoint.kind: foundry_agent` → `FoundryBackend`
+- `execution_mode: remote` + `endpoint.kind: http` → `HttpBackend`
+
+### Config validation
+
+Configs missing a `version` field or containing a legacy `backend` key are **rejected** with an actionable error message.
 
 ## Outputs
 
@@ -196,8 +262,6 @@ When cloud evaluation is used, a `cloud_evaluation.json` is also produced contai
 - `eval_id`, `run_id` — OpenAI Evals API identifiers
 - `report_url` — Deep-link to the New Foundry Experience Evaluations page
 
----
-
 ## Testing Expectations
 
 - Unit tests for:
@@ -206,15 +270,13 @@ When cloud evaluation is used, a `cloud_evaluation.json` is also produced contai
   - YAML loading (`test_yaml_loader.py`)
   - report generation
   - Foundry backend helpers (`test_foundry_backend.py`)
-  - Subprocess backend (`test_subprocess_backend.py`)
+  - HTTP backend (`test_http_backend.py`)
   - Initializer (`test_initializer.py`)
 - Integration test for:
-  - `agentops eval run` end-to-end using a fake subprocess backend (`test_eval_run_integration.py`)
+  - `agentops eval run` end-to-end using a fake local adapter (`test_eval_run_integration.py`)
 - Tests must assert correct **exit codes**
 - Azure SDK calls in tests should be **mocked** — tests must run without Azure credentials
 - Run all tests: `python -m pytest tests/ -x -q`
-
----
 
 ## Out of Scope
 
@@ -224,8 +286,6 @@ Do not implement the following unless explicitly discussed:
 - Dataset ingestion pipelines
 - Interactive prompts
 - Web UI or dashboards
-
----
 
 ## Copilot Guidance
 
@@ -253,4 +313,8 @@ When generating or modifying code:
 - Always mock Azure SDK calls in tests — tests must run without credentials
 - The `core/` package must remain free of Azure imports and I/O
 - Follow the request flow: CLI → Services → Backends → Core (never skip layers)
+- Use the current config models — `RunConfig` with `TargetConfig`, `BundleRef`, `DatasetRef`, `ExecutionConfig`, `OutputConfig`
+- `BackendRunContext.run_config` carries the full `RunConfig` — backends extract the fields they need
+- `publish_foundry_evaluation()` takes `endpoint_config: TargetEndpointConfig`
+- Backend resolution is based on `execution_mode` + `endpoint.kind`
 - If a change is user-visible, add an entry to `CHANGELOG.md` under `[Unreleased]` (Keep a Changelog format)

@@ -2,8 +2,6 @@
 
 This guide is a comprehensive instruction manual for engineers working on the **agentops-toolkit** project. It covers the full GitOps lifecycle — from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.
 
----
-
 ## Table of Contents
 
 - [1. GitOps Principles](#1-gitops-principles)
@@ -20,8 +18,6 @@ This guide is a comprehensive instruction manual for engineers working on the **
 - [12. Release Checklist](#12-release-checklist)
 - [13. Troubleshooting](#13-troubleshooting)
 
----
-
 ## 1. GitOps Principles
 
 AgentOps follows GitOps practices where **git is the single source of truth** for both code and operational state:
@@ -31,8 +27,6 @@ AgentOps follows GitOps practices where **git is the single source of truth** fo
 - **Automated pipelines** — Pushing branches or tags triggers the corresponding workflow automatically.
 - **Environment gates** — Production deployment requires explicit human approval via GitHub Environments.
 - **Immutable artifacts** — Built packages are uploaded once and reused across pipeline stages (no rebuilds between TestPyPI and PyPI).
-
----
 
 ## 2. Branching Model
 
@@ -77,8 +71,6 @@ Configure these in **Settings → Branches → Branch protection rules**:
 | `main`      | Require PR, require status checks (CI), require approvals, no force push |
 | `develop`   | Require PR, require status checks (CI), no force push                    |
 | `release/*` | Require status checks (Staging pipeline), no force push                  |
-
----
 
 ## 3. Development Environment Setup
 
@@ -140,8 +132,6 @@ uv run pytest tests/ -x -q  # All tests should pass
 python -m setuptools_scm    # Shows version derived from git tags
 ```
 
----
-
 ## 4. Development Workflow
 
 ### Creating a Feature
@@ -186,8 +176,6 @@ git pull origin develop
 git branch -d feature/my-new-feature
 ```
 
----
-
 ## 5. CI Pipeline (Continuous Integration)
 
 The CI pipeline runs on **every push and PR** to `main` or `develop`.
@@ -226,8 +214,6 @@ The `publish-dev` and `verify-dev` jobs only run on pushes to `develop` (not on 
 1. Go to the **Actions** tab → find the CI run for your PR
 2. Click into a failing job to see the error
 3. Download test result artifacts if needed
-
----
 
 ## 6. Versioning with setuptools-scm
 
@@ -277,8 +263,6 @@ python -c "from agentops import __version__; print(__version__)"
 - **Tags must follow PEP 440** — use `v0.2.0`, not `release-0.2.0` or `0.2.0`.
 - **`fetch-depth: 0`** is required in CI checkout steps — setuptools-scm needs the full git history.
 - **`pip install -e .` requires `.git`** — editable installs need the git directory present (standard for development).
-
----
 
 ## 7. Staging Pipeline (TestPyPI)
 
@@ -356,8 +340,6 @@ ls .agentops/
 ```
 
 > **Note**: `--extra-index-url https://pypi.org/simple/` is required so that dependencies (typer, pydantic, ruamel.yaml) resolve from the real PyPI.
-
----
 
 ## 8. End-to-End Pipeline Testing
 
@@ -530,8 +512,6 @@ git checkout feature/my-ci-changes
 git branch -d release/v0.0.0-test
 ```
 
----
-
 ## 9. Production Release Pipeline (PyPI)
 
 The production pipeline publishes a final release to PyPI and creates a GitHub Release.
@@ -668,8 +648,6 @@ Check the published package:
 - PyPI: https://pypi.org/project/agentops-toolkit/0.2.0/
 - GitHub Release: https://github.com/Azure/agentops/releases/tag/v0.2.0
 
----
-
 ## 10. Infrastructure Setup
 
 This section covers one-time setup required before the pipelines can run.
@@ -724,8 +702,6 @@ The first time you publish to TestPyPI or PyPI, the project name (`agentops-tool
 
 - Scope your API tokens to the specific project for better security
 - Add collaborators/maintainers on the PyPI/TestPyPI project page if needed
-
----
 
 ## 11. Workflow File Reference
 
@@ -795,8 +771,6 @@ Key details:
 - Fails safely if the branch already exists or CHANGELOG is missing `[Unreleased]`
 - Does NOT auto-tag or auto-publish — tagging remains a manual, intentional step
 
----
-
 ## 12. Release Checklist
 
 Use this checklist when cutting a release:
@@ -826,8 +800,6 @@ Use this checklist when cutting a release:
 - [ ] `main` merged back to `develop`
 - [ ] Release branch deleted (remote and local)
 - [ ] `[Unreleased]` section in CHANGELOG ready for new entries
-
----
 
 ## 13. Troubleshooting
 
@@ -872,8 +844,6 @@ Use this checklist when cutting a release:
 | "Environment not found" error     | GitHub Environment not created      | Create `staging` and `release` environments in Settings → Environments |
 | "Secret not found" error          | Secret not added to the environment | Add secrets to the specific environment, not repository-level secrets  |
 | Reviewer can't approve deployment | Not listed as required reviewer     | Update the environment's required reviewers list                       |
-
----
 
 ## Architecture Diagram
 

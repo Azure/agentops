@@ -2,8 +2,6 @@
 
 This guide explains how to add AgentOps evaluation to your CI pipeline using GitHub Actions.
 
----
-
 ## Quick Start
 
 1. **Initialise your workspace** (if you haven't already):
@@ -26,8 +24,6 @@ This guide explains how to add AgentOps evaluation to your CI pipeline using Git
 
 4. **Push a PR** — the evaluation runs automatically.
 
----
-
 ## Required Files
 
 Your repository must contain these files for the workflow to succeed:
@@ -45,21 +41,23 @@ All paths in `run.yaml` are relative to the `.agentops/` directory.
 
 ```yaml
 version: 1
+target:
+  type: model
+  hosting: foundry
+  execution_mode: remote
+  endpoint:
+    kind: foundry_agent
+    model: gpt-4o
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
 bundle:
-  path: bundles/model_direct_baseline.yaml
+  name: model_quality_baseline
 dataset:
-  path: datasets/smoke-model-direct.yaml
-backend:
-  type: foundry
-  target: model
-  model: gpt-5-mini
-  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+  name: smoke-model-direct
+execution:
   timeout_seconds: 1800
 output:
   write_report: true
 ```
-
----
 
 ## Authentication
 
@@ -95,8 +93,6 @@ Set this as a **repository secret**:
 
 Go to **Settings** → **Secrets and variables** → **Actions** → **Variables** tab (for variables) or **Secrets** tab (for the endpoint).
 
----
-
 ## Workflow Triggers
 
 The template workflow triggers on:
@@ -107,8 +103,6 @@ The template workflow triggers on:
 | `workflow_dispatch` | Manual run from the Actions tab (supports custom config path and output directory) |
 
 To change which branches trigger evaluations, edit the `on.pull_request.branches` array in the workflow file.
-
----
 
 ## Exit Codes and CI Behaviour
 
@@ -121,8 +115,6 @@ AgentOps returns CI-friendly exit codes that GitHub Actions interprets directly:
 | `1`       | Runtime or configuration error                      | ❌ Job fails  |
 
 No special handling is needed — GitHub Actions fails the job on any non-zero exit code.
-
----
 
 ## Artifacts
 
@@ -143,15 +135,11 @@ Artifacts are uploaded even when the evaluation fails (`if: always()`), so you c
 
 From the **Actions** tab → select the workflow run → scroll to **Artifacts** → click to download.
 
----
-
 ## PR Comments
 
 When triggered by a pull request, the workflow automatically posts (or updates) a PR comment containing the full `report.md` content. This gives reviewers immediate visibility into evaluation results without downloading artifacts.
 
 The comment is identified by a hidden HTML marker (`<!-- agentops-eval-report -->`) so subsequent pushes to the same PR update the existing comment rather than creating duplicates.
-
----
 
 ## Job Summary
 
@@ -161,8 +149,6 @@ The workflow writes a [GitHub Actions Job Summary](https://docs.github.com/en/ac
 - Full `report.md` content (when available)
 
 This is visible on the workflow run page without downloading artifacts.
-
----
 
 ## CLI Command Reference
 
@@ -184,8 +170,6 @@ Options:
 ```bash
 agentops config cicd --force
 ```
-
----
 
 ## Customisation
 
@@ -239,8 +223,6 @@ jobs:
 
 Remove or comment out the "Post report as PR comment" step in the workflow.
 
----
-
 ## Troubleshooting
 
 | Problem                                  | Solution                                                                                                                                                                                                                                  |
@@ -250,8 +232,6 @@ Remove or comment out the "Post report as PR comment" step in the workflow.
 | Missing artifacts                        | Ensure `.agentops/results/latest/` is not in `.gitignore` — the workflow reads this path                                                                                                                                                  |
 | Authentication errors                    | Verify the federated credential entity matches your repo/branch; check that `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` are set as repository variables; confirm the app registration has access to the Foundry project |
 | `agentops: command not found`            | Ensure `pip install agentops-toolkit` runs before the eval step                                                                                                                                                                           |
-
----
 
 ## Internal CI/CD Workflows (Contributors)
 

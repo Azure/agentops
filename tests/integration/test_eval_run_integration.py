@@ -10,8 +10,11 @@ from agentops.cli.app import app
 from agentops.utils.yaml import save_yaml
 
 
-def _fixture_backend_script() -> Path:
-    return Path(__file__).resolve().parents[1] / "fixtures" / "fake_eval_runner.py"
+def _fixture_adapter_script() -> Path:
+    return Path(__file__).resolve().parents[1] / "fixtures" / "fake_adapter.py"
+
+
+_CALLABLE_PATH = "tests.fixtures.fake_adapter:main_callable"
 
 
 def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
@@ -26,6 +29,18 @@ def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
 
     threshold_value = 0.95 if fail_thresholds else 0.8
 
+    # For the fail case, use data where adapter response (= input) won't match expected
+    if fail_thresholds:
+        dataset_rows = [
+            '{"id":"1","input":"hello","expected":"goodbye"}',
+            '{"id":"2","input":"world","expected":"earth"}',
+        ]
+    else:
+        dataset_rows = [
+            '{"id":"1","input":"hello","expected":"hello"}',
+            '{"id":"2","input":"world","expected":"world"}',
+        ]
+
     save_yaml(
         bundles_dir / "rag_baseline.yaml",
         {
@@ -33,20 +48,14 @@ def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
             "name": "rag_baseline",
             "description": "Integration test bundle",
             "evaluators": [
-                {"name": "groundedness", "source": "local", "enabled": True},
-                {"name": "relevance", "source": "local", "enabled": True},
-                {"name": "coherence", "source": "local", "enabled": True},
-                {"name": "fluency", "source": "local", "enabled": True},
+                {"name": "exact_match", "source": "local", "enabled": True},
             ],
             "thresholds": [
                 {
-                    "evaluator": "groundedness",
+                    "evaluator": "exact_match",
                     "criteria": ">=",
                     "value": threshold_value,
                 },
-                {"evaluator": "relevance", "criteria": ">=", "value": threshold_value},
-                {"evaluator": "coherence", "criteria": ">=", "value": threshold_value},
-                {"evaluator": "fluency", "criteria": ">=", "value": threshold_value},
             ],
             "metadata": {"category": "integration"},
         },
@@ -69,35 +78,23 @@ def _write_project_files(tmp_path: Path, *, fail_thresholds: bool) -> Path:
     )
 
     (data_dir / "smoke.jsonl").write_text(
-        "\n".join(
-            [
-                '{"id":"1","input":"hello","expected":"hello"}',
-                '{"id":"2","input":"world","expected":"world"}',
-            ]
-        )
-        + "\n",
+        "\n".join(dataset_rows) + "\n",
         encoding="utf-8",
     )
 
+    adapter_cmd = f"{sys.executable} {_fixture_adapter_script()}"
+
     run_payload = {
         "version": 1,
+        "target": {
+            "type": "model",
+            "hosting": "local",
+            "execution_mode": "local",
+            "local": {"adapter": adapter_cmd},
+        },
         "bundle": {"path": ".agentops/bundles/rag_baseline.yaml"},
         "dataset": {"path": ".agentops/datasets/smoke-agent.yaml"},
-        "backend": {
-            "type": "subprocess",
-            "command": sys.executable,
-            "args": [
-                str(_fixture_backend_script()),
-                "--bundle",
-                "{bundle_path}",
-                "--dataset",
-                "{dataset_path}",
-                "--output",
-                "{backend_output_dir}",
-            ],
-            "timeout_seconds": 30,
-            "env": {},
-        },
+        "execution": {"timeout_seconds": 30},
         "output": {"write_report": True},
     }
 
@@ -142,8 +139,8 @@ def test_eval_run_integration_success(tmp_path: Path, monkeypatch) -> None:
     assert run_metrics["items_total"] == 2.0
     assert run_metrics["items_passed_all"] == 2.0
     assert run_metrics["items_pass_rate"] == 1.0
-    assert "groundedness_avg" in run_metrics
-    assert "groundedness_stddev" in run_metrics
+    assert "exact_match_avg" in run_metrics
+    assert "exact_match_stddev" in run_metrics
 
 
 def test_eval_run_integration_threshold_fail(tmp_path: Path, monkeypatch) -> None:
@@ -199,3 +196,100 @@ def test_eval_run_integration_uses_default_run_yaml_and_updates_latest(
     assert len(timestamp_dirs) == 1
     assert (timestamp_dirs[0] / "results.json").is_file()
     assert (timestamp_dirs[0] / "report.md").is_file()
+
+
+def _write_callable_project_files(tmp_path: Path) -> Path:
+    """Write project files that use callable mode instead of subprocess."""
+    agentops_dir = tmp_path / ".agentops"
+    bundles_dir = agentops_dir / "bundles"
+    datasets_dir = agentops_dir / "datasets"
+    data_dir = agentops_dir / "data"
+
+    bundles_dir.mkdir(parents=True, exist_ok=True)
+    datasets_dir.mkdir(parents=True, exist_ok=True)
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    save_yaml(
+        bundles_dir / "rag_baseline.yaml",
+        {
+            "version": 1,
+            "name": "rag_baseline",
+            "description": "Callable integration test bundle",
+            "evaluators": [
+                {"name": "exact_match", "source": "local", "enabled": True},
+            ],
+            "thresholds": [
+                {"evaluator": "exact_match", "criteria": ">=", "value": 0.8},
+            ],
+            "metadata": {"category": "integration"},
+        },
+    )
+
+    save_yaml(
+        datasets_dir / "smoke-agent.yaml",
+        {
+            "version": 1,
+            "name": "smoke",
+            "description": "Integration dataset",
+            "source": {"type": "file", "path": "../data/smoke.jsonl"},
+            "format": {
+                "type": "jsonl",
+                "input_field": "input",
+                "expected_field": "expected",
+            },
+            "metadata": {"owner": "tests"},
+        },
+    )
+
+    (data_dir / "smoke.jsonl").write_text(
+        '{"id":"1","input":"hello","expected":"hello"}\n'
+        '{"id":"2","input":"world","expected":"world"}\n',
+        encoding="utf-8",
+    )
+
+    run_path = tmp_path / "run-callable.yaml"
+    save_yaml(
+        run_path,
+        {
+            "version": 1,
+            "target": {
+                "type": "model",
+                "hosting": "local",
+                "execution_mode": "local",
+                "local": {"callable": _CALLABLE_PATH},
+            },
+            "bundle": {"path": ".agentops/bundles/rag_baseline.yaml"},
+            "dataset": {"path": ".agentops/datasets/smoke-agent.yaml"},
+            "execution": {"timeout_seconds": 30},
+            "output": {"write_report": True},
+        },
+    )
+    return run_path
+
+
+def test_eval_run_integration_callable_success(
+    tmp_path: Path, monkeypatch
+) -> None:
+    run_path = _write_callable_project_files(tmp_path)
+    output_dir = tmp_path / "out-callable"
+
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["eval", "run", "--config", str(run_path), "--output", str(output_dir)],
+    )
+
+    assert result.exit_code == 0, f"Unexpected failure:\n{result.output}"
+    assert (output_dir / "results.json").is_file()
+    assert (output_dir / "report.md").is_file()
+
+    payload = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+    assert payload["summary"]["overall_passed"] is True
+    assert payload["execution"]["exit_code"] == 0
+    assert len(payload["row_metrics"]) == 2
+    assert len(payload["item_evaluations"]) == 2
+    run_metrics = {item["name"]: item["value"] for item in payload["run_metrics"]}
+    assert run_metrics["run_pass"] == 1.0
+    assert run_metrics["items_total"] == 2.0
+    assert run_metrics["items_pass_rate"] == 1.0
