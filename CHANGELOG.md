@@ -5,6 +5,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **`agentops skills install` command** — Installs packaged coding agent skills into consumer projects. Supports GitHub Copilot (`.github/skills/`) and Claude Code (`.claude/commands/`). Auto-detects platforms; falls back to GitHub Copilot silently. Pass `--prompt` to ask before installing when no platform is detected. Pass `--platform` for explicit platform selection.
+- **Skills integrated into `agentops init`** — Running `agentops init` now also installs coding agent skills using the same auto-detection logic. Added `--prompt` flag to `init` for interactive platform selection.
+- Packaged skill templates under `src/agentops/templates/skills/` for distribution via `pip install`.
+
 ### Changed
 - **README restructured** — Simplified Quickstart from 6 steps to 3. Moved evaluation scenarios, configuration model, and run config examples to new `docs/concepts.md` page with ASCII architecture diagram. Removed Project Structure and Copilot Skills sections from README (available in CONTRIBUTING.md and tutorial-copilot-skills.md respectively).
 
@@ -12,6 +17,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - `docs/concepts.md` — new conceptual overview page with ASCII evaluation flow diagram, core concept definitions (workspace, run config, bundle, dataset, evaluator, backend), evaluation scenarios table, and configuration model summary.
 
 ### Changed
+- **CLI refactored to entity-verb pattern** — All CLI commands now follow a consistent `<entity> <verb>` structure:
+  - `agentops report` → `agentops report generate`
+  - `agentops config cicd` → `agentops workflow generate` (new `workflow` entity)
+  - `agentops monitor dashboard` → `agentops monitor show`
+  - `agentops monitor alert` → `agentops monitor configure`
+- **Skills renamed to short names** — `/evals`, `/regression`, `/trace`, `/monitor`, `/workflows`. Split `observability-triage` into `trace` + `monitor` (honest stubs). Added `workflows` skill for CI/CD setup. Added codebase-first analysis to the `evals` skill so the agent auto-detects bundles, endpoints, and generates custom datasets instead of asking.
 - **Run config model** — The configuration model uses an orthogonal `target`/`hosting`/`execution_mode` model. Configs missing a `version` field or containing a legacy `backend` key are rejected with an actionable error message.
   - `target` section with `type` (agent|model), `hosting` (local|foundry|aks|containerapps), `execution_mode` (local|remote).
   - Remote endpoints configured via `target.endpoint` with `kind: foundry_agent` or `kind: http`.
@@ -85,8 +96,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   - Supports run IDs by timestamped folder name, `latest` keyword, or absolute/relative paths.
 - Add Pydantic models for comparison output: `ComparisonResult`, `MetricDelta`, `ThresholdDelta`, `ItemDelta`, `ComparisonSummary`.
 - Add comparison service (`services/comparison.py`) with run discovery and structured diff logic.
-- Update `investigate-regression` and `run-evals` Copilot skills to reference the new compare command.
-- Add distributable Copilot skills under `.github/plugins/agentops/skills/` for GitHub-based installation (`agentops-run-evals`, `agentops-investigate-regression`, `agentops-observability-triage`).
+- Update `regression` and `evals` Copilot skills to reference the new compare command.
+- Add distributable Copilot skills under `.github/plugins/agentops/skills/` for GitHub-based installation (`evals`, `regression`, `trace`, `monitor`, `workflows`).
 - Fix cloud evaluation to use the Foundry Project Evals API (`api-version=2025-11-15-preview`) with `azure_ai_evaluator` testing criteria, replacing the OpenAI SDK-based path that was incompatible.
 - Fix metric polarity in comparison: lower-is-better metrics (e.g. `avg_latency_seconds` with `<=` threshold) now correctly show "improved" when they decrease.
 - Align `azure-ai-projects` version references across all files to `>=2.0.1`.

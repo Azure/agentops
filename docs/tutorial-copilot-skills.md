@@ -10,15 +10,17 @@ Skills close that gap. Each skill is a structured document that tells Copilot *e
 
 The difference is noticeable. Without the skill, Copilot might suggest `agentops monitor dashboard` (which is planned but not implemented). With the skill, Copilot will tell you honestly that monitoring is planned, and pivot to what you *can* do today — inspect `results.json` and `report.md`.
 
-## The three AgentOps skills
+## The five AgentOps skills
 
 | Skill | Purpose | When it activates |
 |---|---|---|
-| `agentops-run-evals` | Walks through the full evaluation workflow from workspace setup to report interpretation. Covers `init`, `eval run`, `report`, and `eval compare`. | You ask about running evaluations, finding configs, or understanding results. |
-| `agentops-investigate-regression` | Guides regression investigation using the comparison command. Structures findings into observations vs hypotheses and ends with actionable next steps. | You mention score drops, threshold failures, comparing runs, or quality degradation. |
-| `agentops-observability-triage` | Provides honest status on what observability features exist today versus what is planned. Redirects to available artifact-based triage instead of pretending monitoring commands exist. | You ask about tracing, monitoring, dashboards, or alerts. |
+| `evals` | Walks through the full evaluation workflow from workspace setup to report interpretation. Covers `init`, `eval run`, `report`, and `eval compare`. | You ask about running evaluations, finding configs, or understanding results. |
+| `regression` | Guides regression investigation using the comparison command. Structures findings into observations vs hypotheses and ends with actionable next steps. | You mention score drops, threshold failures, comparing runs, or quality degradation. |
+| `trace` | Provides guidance on inspecting evaluation execution details. Redirects to available artifacts (`results.json`, `report.html`, logs) while `trace init` is planned. | You ask about tracing, spans, telemetry, or understanding what happened during a run. |
+| `monitor` | Provides guidance on tracking quality over time. Redirects to multi-run comparison and CI gating while `monitor show`/`configure` are planned. | You ask about monitoring, dashboards, alerts, or quality trending. |
+| `workflows` | Helps set up CI/CD pipelines with GitHub Actions for automated evaluations, PR gating, and OIDC authentication. | You ask about CI/CD, GitHub Actions, pipelines, or `agentops workflow generate`. |
 
-The skills are complementary. In a typical workflow, `run-evals` helps you get started, `investigate-regression` helps when something goes wrong, and `observability-triage` sets expectations about what is and is not available yet.
+The skills are complementary. In a typical workflow, `evals` helps you get started, `regression` helps when something goes wrong, `trace` and `monitor` set expectations about current vs planned capabilities, and `workflows` automates the pipeline.
 
 ## Prerequisites
 
@@ -29,7 +31,33 @@ The skills reference CLI commands, so Copilot's guidance only works if the CLI i
 
 ## Installation
 
-### Option 1: Install from GitHub (recommended)
+### Option 1: Install via CLI (recommended)
+
+The simplest way to install skills is via the AgentOps CLI:
+
+```bash
+pip install agentops-toolkit
+agentops skills install
+```
+
+This auto-detects your coding agent platform (GitHub Copilot, Claude Code) and copies the skills into the correct directory. If no platform is detected, it defaults to GitHub Copilot (`.github/skills/`).
+
+To install for a specific platform:
+
+```bash
+agentops skills install --platform claude
+agentops skills install --platform copilot --platform claude  # both
+```
+
+To ask before installing when no platform is detected:
+
+```bash
+agentops skills install --prompt
+```
+
+Skills are also installed automatically when you run `agentops init`.
+
+### Option 2: Install from GitHub
 
 The skills are distributed from the `Azure/agentops` repository, following the same pattern used by other Azure Copilot skills (like the ones in `microsoft/azure-skills`).
 
@@ -43,7 +71,7 @@ In VS Code:
 
 Once installed, the skills appear in `~/.agents/skills/` and a lock file (`~/.agents/.skill-lock.json`) tracks where they came from. Skills are available across all workspaces.
 
-### Option 2: Manual copy
+### Option 3: Manual copy
 
 If you prefer to manage skills manually:
 
@@ -61,7 +89,7 @@ Copy-Item -Recurse "$env:TEMP\agentops\.github\plugins\agentops\skills\*" "$env:
 Remove-Item -Recurse -Force "$env:TEMP\agentops"
 ```
 
-### Option 3: Project-scoped installation
+### Option 4: Project-scoped installation
 
 If you want the skills available only within a specific repository (useful for teams with different tool versions), copy them into the project:
 
@@ -78,7 +106,7 @@ Check that the skill directories exist:
 
 ```bash
 ls ~/.agents/skills/
-# Expected: agentops-run-evals/  agentops-investigate-regression/  agentops-observability-triage/
+# Expected: evals/  regression/  trace/  monitor/  workflows/
 ```
 
 Each directory should contain a `SKILL.md` file with YAML frontmatter (the `name` and `description` fields that Copilot uses for skill matching).
@@ -91,19 +119,25 @@ You do not need to invoke skills explicitly. Copilot matches your question to th
 
 > "How do I start running evaluations with AgentOps?"
 
-With the `agentops-run-evals` skill installed, Copilot will respond with the correct sequence: `agentops init` to scaffold the workspace, then `agentops eval run` to execute, then point you to `.agentops/results/latest/` for the outputs. It will not suggest commands that do not exist.
+With the `evals` skill installed, Copilot will respond with the correct sequence: `agentops init` to scaffold the workspace, then `agentops eval run` to execute, then point you to `.agentops/results/latest/` for the outputs. It will not suggest commands that do not exist.
 
 ### Example: investigating a regression
 
 > "My evaluation scores dropped after I switched model deployments. What should I do?"
 
-With `agentops-investigate-regression`, Copilot will suggest running `agentops eval compare --runs <baseline>,latest`, then walk you through interpreting the comparison report — which thresholds flipped, which metrics of the model or agent degraded, and whether the issue is broad or concentrated in specific rows. It separates factual observations from hypotheses and ends with concrete next steps.
+With `regression`, Copilot will suggest running `agentops eval compare --runs <baseline>,latest`, then walk you through interpreting the comparison report — which thresholds flipped, which metrics of the model or agent degraded, and whether the issue is broad or concentrated in specific rows. It separates factual observations from hypotheses and ends with concrete next steps.
 
 ### Example: asking about monitoring
 
 > "Can I set up monitoring alerts for my evaluation quality?"
 
-With `agentops-observability-triage`, Copilot will tell you directly that `agentops monitor setup`, `dashboard`, and `alert` commands are planned but not yet implemented. Instead of giving wrong instructions, it pivots to what works today: running `agentops eval run` and `agentops report` to generate artifacts, then inspecting `results.json` and `report.md` for triage.
+With `monitor`, Copilot will tell you directly that `agentops monitor show` and `configure` commands are planned but not yet implemented. Instead of giving wrong instructions, it pivots to what works today: running evaluations periodically and comparing with `agentops eval compare --runs <old>,<mid>,<new> -f html` to see quality trends.
+
+### Example: setting up CI/CD
+
+> "How do I run evals automatically on every PR?"
+
+With `workflows`, Copilot will guide you through `agentops workflow generate` to scaffold a GitHub Actions workflow, then help configure OIDC authentication and GitHub secrets. The workflow gates PRs on threshold pass/fail and posts the report as a PR comment.
 
 ## Updating skills
 

@@ -16,10 +16,12 @@ Primary capabilities:
 - Support a local adapter backend for custom evaluator pipelines via stdin/stdout JSON protocol
 
 Public CLI contract:
-- `agentops init`
+- `agentops init [--prompt]`
 - `agentops eval run --config <run.yaml> [--output <dir>]`
 - `agentops eval compare --runs <baseline>,<current>`
-- `agentops report --in <results.json> [--out <report.md>]`
+- `agentops report generate --in <results.json> [--out <report.md>]`
+- `agentops workflow generate [--force] [--dir <path>]`
+- `agentops skills install [--platform <p>] [--prompt] [--force]`
 
 Planned CLI stubs (not implemented in this release):
 - `agentops run list|show`
@@ -27,9 +29,9 @@ Planned CLI stubs (not implemented in this release):
 - `agentops report show|export`
 - `agentops bundle list|show`
 - `agentops dataset validate|describe|import`
-- `agentops config validate|show|cicd`
+- `agentops config validate|show`
 - `agentops trace init`
-- `agentops monitor setup|dashboard|alert`
+- `agentops monitor setup|show|configure`
 - `agentops model list`
 - `agentops agent list`
 
@@ -111,6 +113,7 @@ src/
     │   ├── runner.py                  # Main evaluation orchestration
     │   ├── initializer.py             # `.agentops/` workspace scaffolding
     │   ├── reporting.py               # `results.json` -> `report.md`
+    │   ├── skills.py                  # Coding agent skills installation
     │   └── foundry_evals.py           # Foundry evaluation publishing helpers
     │
     ├── backends/
@@ -138,6 +141,7 @@ src/
         ├── bundles/                   # Starter bundle YAML files
         ├── datasets/                  # Starter dataset YAML configs
         ├── data/                      # Starter dataset JSONL rows
+        ├── skills/                    # Coding agent skill templates
         └── workflows/                 # CI/CD workflow templates
             └── agentops-eval.yml      # GitHub Actions evaluation workflow
 ```
@@ -162,6 +166,7 @@ tests/
     ├── test_cicd.py                   # CI/CD generation tests
     ├── test_cli_commands.py           # CLI command surface tests
     ├── test_comparison.py             # Run comparison tests
+    ├── test_skills.py                 # Skills installation tests
     └── test_subprocess_backend.py     # Subprocess backend tests
 ```
 
@@ -187,7 +192,9 @@ docs/
 
 ## Workspace Layout
 
-Running `agentops init` creates the project-local evaluation workspace:
+Running `agentops init` creates the project-local evaluation workspace and installs coding agent skills.
+
+The `.agentops/` directory:
 
 ```
 .agentops/
@@ -199,6 +206,26 @@ Running `agentops init` creates the project-local evaluation workspace:
 ├── data/                       # Dataset JSONL rows
 └── results/                    # Timestamped history + latest pointer
 ```
+
+Coding agent skills (installed by `init` and `skills install`):
+
+```
+.github/skills/                 # GitHub Copilot (default platform)
+├── evals/SKILL.md
+├── regression/SKILL.md
+├── trace/SKILL.md
+├── monitor/SKILL.md
+└── workflows/SKILL.md
+
+.claude/commands/               # Claude Code (when detected or explicit)
+├── evals.md
+├── regression.md
+├── trace.md
+├── monitor.md
+└── workflows.md
+```
+
+Platform auto-detection: `init` checks for `.github/copilot-instructions.md`, `.github/skills/`, `.claude/`, or `CLAUDE.md`. If no platform is detected, GitHub Copilot is used as the silent default. Pass `--prompt` to ask before installing.
 
 Layout conventions:
 - `bundles/` defines evaluation policy and enabled evaluators
@@ -541,6 +568,6 @@ python -m pip install -e .
 python -m pip install pytest
 agentops init
 agentops eval run
-agentops report
+agentops report generate
 python -m pytest tests/ -x -q
 ```

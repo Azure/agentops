@@ -96,7 +96,7 @@ agentops eval run --config .agentops/run-rag.yaml
 To regenerate the report from existing results:
 
 ```bash
-agentops report
+agentops report generate
 ```
 
 See [docs/concepts.md](docs/concepts.md) for an overview of bundles, datasets, evaluators, backends, and the configuration model.
@@ -106,16 +106,17 @@ See [docs/concepts.md](docs/concepts.md) for an overview of bundles, datasets, e
 | Command | Description | Status |
 |---|---|---|
 | `agentops --version` | Show installed version | ✅ |
-| `agentops init [--path DIR]` | Scaffold project workspace and starter files | ✅ |
+| `agentops init [--path DIR]` | Scaffold project workspace, starter files, and coding agent skills | ✅ |
 | `agentops eval run [--config PATH]` | Evaluate a dataset against a bundle | ✅ |
 | `agentops eval compare --runs ID1,ID2` | Compare two past runs | ✅ |
-| `agentops report [--in FILE]` | Regenerate `report.md` from `results.json` | ✅ |
-| `agentops config cicd` | Generate GitHub Actions workflow | ✅ |
+| `agentops report generate [--in FILE]` | Regenerate `report.md` from `results.json` | ✅ |
+| `agentops workflow generate` | Generate GitHub Actions workflow | ✅ |
+| `agentops skills install [--platform <p>]` | Install coding agent skills (Copilot, Claude) | ✅ |
 | `agentops run list\|show` | List or inspect past runs | 🚧 |
 | `agentops bundle list\|show` | Browse bundle catalog | 🚧 |
 | `agentops dataset validate\|describe` | Dataset utilities | 🚧 |
 | `agentops trace init` | Tracing setup | 🚧 |
-| `agentops monitor setup\|dashboard` | Monitoring operations | 🚧 |
+| `agentops monitor setup\|show\|configure` | Monitoring operations | 🚧 |
 
 Planned commands return a friendly message indicating they are not yet implemented.
 

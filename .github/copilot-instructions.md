@@ -48,9 +48,11 @@ The CLI command name is `agentops`.
 
 Only the following commands are in scope:
 
-- `agentops init`
+- `agentops init [--prompt]`
 - `agentops eval run --config <run.yaml> [--output <dir>]`
-- `agentops report --in <results.json> [--out <report.md>]`
+- `agentops report generate --in <results.json> [--out <report.md>]`
+- `agentops workflow generate [--force] [--dir <path>]`
+- `agentops skills install [--platform <p>] [--prompt] [--force]`
 
 Do not add new commands or flags unless explicitly discussed.
 
@@ -93,6 +95,7 @@ See `docs/how-it-works.md` for the full source-code map and architecture diagram
 | Add a new CLI command | `cli/app.py` (thin handler) + `services/` (logic) |
 | Add a new workflow/service | `services/` (new file) |
 | Add starter templates | `templates/` + update `pyproject.toml` package-data |
+| Add a new coding agent skill | `templates/skills/<name>/SKILL.md` + update `_SKILLS` in `services/skills.py` |
 
 ## Foundry Backend Architecture (critical)
 
@@ -256,7 +259,7 @@ Every evaluation run must produce:
   - human-readable summary
   - suitable for PR reviews
 
-`agentops report` must be able to regenerate `report.md` from `results.json`.
+`agentops report generate` must be able to regenerate `report.md` from `results.json`.
 
 When cloud evaluation is used, a `cloud_evaluation.json` is also produced containing:
 - `eval_id`, `run_id` — OpenAI Evals API identifiers
@@ -292,6 +295,7 @@ Do not implement the following unless explicitly discussed:
 ## Workflow Skills
 
 This repository also defines workflow-oriented Copilot skills under `.github/skills/`.
+Skills are packaged with the CLI and can be installed into consumer projects via `agentops skills install`.
 
 - Use these skills for operational guidance on running evaluations, investigating regressions, observability triage, and release management workflows.
 - Treat the CLI as the source of truth and keep planned/stubbed commands clearly marked as not yet implemented.

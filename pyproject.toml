@@ -41,6 +41,7 @@ where = ["src"]
   "datasets/*.yaml",
   "data/*.jsonl",
   "workflows/*.yml",
+  "skills/*/SKILL.md",
 ]
 
 [dependency-groups]

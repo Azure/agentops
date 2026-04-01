@@ -15,7 +15,7 @@ This guide explains how to add AgentOps evaluation to your CI pipeline using Git
 2. **Generate the workflow file**:
 
    ```bash
-   agentops config cicd
+   agentops workflow generate
    ```
 
    This creates `.github/workflows/agentops-eval.yml` in your repository.
@@ -155,7 +155,7 @@ This is visible on the workflow run page without downloading artifacts.
 ### Generate the workflow
 
 ```bash
-agentops config cicd
+agentops workflow generate
 ```
 
 Options:
@@ -168,7 +168,7 @@ Options:
 ### Regenerate (overwrite)
 
 ```bash
-agentops config cicd --force
+agentops workflow generate --force
 ```
 
 ## Customisation

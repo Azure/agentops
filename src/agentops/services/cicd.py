@@ -1,4 +1,4 @@
-"""CI/CD workflow generation service for `agentops config cicd`."""
+"""CI/CD workflow generation service for `agentops workflow generate`."""
 
 from __future__ import annotations
 

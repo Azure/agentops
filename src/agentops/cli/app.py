@@ -26,31 +26,75 @@ run_app = typer.Typer(help="Run history and inspection commands.")
 bundle_app = typer.Typer(help="Bundle browsing commands.")
 dataset_app = typer.Typer(help="Dataset utility commands.")
 config_app = typer.Typer(help="Configuration utility commands.")
-report_app = typer.Typer(help="Reporting commands.", invoke_without_command=True)
+report_app = typer.Typer(help="Reporting commands.")
+workflow_app = typer.Typer(help="CI/CD workflow commands.")
 monitor_app = typer.Typer(help="Monitoring setup and operations.")
 trace_app = typer.Typer(help="Tracing commands.")
 model_app = typer.Typer(help="Model discovery commands.")
 agent_app = typer.Typer(help="Agent discovery commands.")
+skills_app = typer.Typer(help="Coding agent skills management.")
 app.add_typer(eval_app, name="eval")
 app.add_typer(run_app, name="run")
 app.add_typer(bundle_app, name="bundle")
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(config_app, name="config")
 app.add_typer(report_app, name="report")
+app.add_typer(workflow_app, name="workflow")
 app.add_typer(monitor_app, name="monitor")
 app.add_typer(trace_app, name="trace")
 app.add_typer(model_app, name="model")
 app.add_typer(agent_app, name="agent")
+app.add_typer(skills_app, name="skills")
 
 log = get_logger(__name__)
 DEFAULT_REPORT_INPUT = Path(".agentops/results/latest/results.json")
+
+
+def _resolve_platforms(
+    directory: Path,
+    explicit: list[str] | None,
+    prompt: bool,
+) -> list[str]:
+    """Resolve target platforms: explicit > auto-detect > fallback."""
+    from agentops.services.skills import detect_platforms
+
+    if explicit:
+        return explicit
+
+    detected = detect_platforms(directory)
+    if detected:
+        typer.echo(f"Detected coding agent platform(s): {', '.join(detected)}")
+        return detected
+
+    if prompt:
+        install = typer.confirm(
+            "No coding agent platform detected. "
+            "Install skills for GitHub Copilot?",
+            default=True,
+        )
+        return ["copilot"] if install else []
+
+    return ["copilot"]
+
+
+def _print_skills_result(result: object) -> None:
+    """Print skills installation summary."""
+    platforms = getattr(result, "platforms", [])
+    if platforms:
+        typer.echo(f"Skills platforms: {', '.join(platforms)}")
+    for created in result.created_files:  # type: ignore[attr-defined]
+        typer.echo(f" + created {created}")
+    for overwritten in result.overwritten_files:  # type: ignore[attr-defined]
+        typer.echo(f" ~ overwritten {overwritten}")
+    for skipped in result.skipped_files:  # type: ignore[attr-defined]
+        typer.echo(f" - skipped {skipped} (use --force to overwrite)")
 
 
 def _planned_command(command_name: str) -> None:
     typer.echo(
         "This command is planned but not implemented in this release:\n"
         f"  {command_name}\n"
-        "Please use the currently available commands (`init`, `eval run`, `report`) for now."
+        "Please use the currently available commands (`init`, `eval run`, `report generate`) for now."
     )
     raise typer.Exit(code=1)
 
@@ -103,9 +147,14 @@ def cmd_init(
         "--path",
         help="Workspace directory to initialise.",
     ),
+    prompt: bool = typer.Option(
+        False,
+        "--prompt",
+        help="Ask before installing skills when no coding agent platform is detected.",
+    ),
 ) -> None:
-    """Initialise an AgentOps workspace (creates .agentops/config.yaml)."""
-    log.debug("cmd_init called force=%s dir=%s", force, directory)
+    """Initialise an AgentOps workspace (creates .agentops/ and installs skills)."""
+    log.debug("cmd_init called force=%s dir=%s prompt=%s", force, directory, prompt)
     try:
         result = initialize_workspace(directory=directory, force=force)
     except Exception as exc:
@@ -127,6 +176,23 @@ def cmd_init(
         typer.echo(f" ~ overwritten {overwritten}")
     for skipped in result.skipped_files:
         typer.echo(f" - skipped {skipped}")
+
+    # Install coding agent skills
+    typer.echo("")
+    resolved_platforms = _resolve_platforms(
+        directory=directory, explicit=None, prompt=prompt
+    )
+    if resolved_platforms:
+        from agentops.services.skills import install_skills
+
+        try:
+            skills_result = install_skills(
+                directory=directory, platforms=resolved_platforms, force=force
+            )
+        except Exception as exc:
+            typer.echo(f"Warning: failed to install skills: {exc}", err=True)
+        else:
+            _print_skills_result(skills_result)
 
 
 # ---------------------------------------------------------------------------
@@ -242,13 +308,12 @@ def cmd_eval_compare(
 
 
 # ---------------------------------------------------------------------------
-# agentops report
+# agentops report generate
 # ---------------------------------------------------------------------------
 
 
-@report_app.callback(invoke_without_command=True)
-def cmd_report(
-    ctx: typer.Context,
+@report_app.command("generate")
+def cmd_report_generate(
     results_in: Annotated[
         Path | None,
         typer.Option(
@@ -268,16 +333,13 @@ def cmd_report(
     ] = "md",
 ) -> None:
     """Regenerate report from a results.json file."""
-    if ctx.invoked_subcommand is not None:
-        return
-
     if report_format not in ("md", "html", "all"):
         typer.echo("Error: --format must be md, html, or all.", err=True)
         raise typer.Exit(code=1)
 
     resolved_results_in = results_in or DEFAULT_REPORT_INPUT
     log.debug(
-        "cmd_report called in=%s out=%s format=%s",
+        "cmd_report_generate called in=%s out=%s format=%s",
         resolved_results_in,
         report_out,
         report_format,
@@ -377,8 +439,13 @@ def cmd_config_show() -> None:
     _planned_command("agentops config show")
 
 
-@config_app.command("cicd")
-def cmd_config_cicd(
+# ---------------------------------------------------------------------------
+# agentops workflow generate
+# ---------------------------------------------------------------------------
+
+
+@workflow_app.command("generate")
+def cmd_workflow_generate(
     force: bool = typer.Option(
         False, "--force", help="Overwrite existing workflow file."
     ),
@@ -391,7 +458,7 @@ def cmd_config_cicd(
     """Generate a GitHub Actions workflow for AgentOps evaluation."""
     from agentops.services.cicd import generate_cicd_workflow
 
-    log.debug("cmd_config_cicd called force=%s dir=%s", force, directory)
+    log.debug("cmd_workflow_generate called force=%s dir=%s", force, directory)
     try:
         result = generate_cicd_workflow(directory=directory, force=force)
     except Exception as exc:
@@ -434,16 +501,16 @@ def cmd_monitor_setup() -> None:
     _planned_command("agentops monitor setup")
 
 
-@monitor_app.command("dashboard")
-def cmd_monitor_dashboard() -> None:
+@monitor_app.command("show")
+def cmd_monitor_show() -> None:
     """Show monitoring dashboard setup instructions (planned)."""
-    _planned_command("agentops monitor dashboard")
+    _planned_command("agentops monitor show")
 
 
-@monitor_app.command("alert")
-def cmd_monitor_alert() -> None:
+@monitor_app.command("configure")
+def cmd_monitor_configure() -> None:
     """Configure monitoring alerts (planned)."""
-    _planned_command("agentops monitor alert")
+    _planned_command("agentops monitor configure")
 
 
 @model_app.command("list")
@@ -456,6 +523,63 @@ def cmd_model_list() -> None:
 def cmd_agent_list() -> None:
     """List agents in Foundry project (planned)."""
     _planned_command("agentops agent list")
+
+
+# ---------------------------------------------------------------------------
+# agentops skills install
+# ---------------------------------------------------------------------------
+
+
+@skills_app.command("install")
+def cmd_skills_install(
+    platform: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--platform",
+            "-p",
+            help="Target platform(s): copilot, claude.",
+        ),
+    ] = None,
+    force: bool = typer.Option(
+        False, "--force", help="Overwrite existing skill files."
+    ),
+    prompt: bool = typer.Option(
+        False,
+        "--prompt",
+        help="Ask before installing skills when no coding agent platform is detected.",
+    ),
+    directory: Path = typer.Option(
+        Path("."),
+        "--dir",
+        help="Target repository root directory.",
+    ),
+) -> None:
+    """Install AgentOps coding agent skills into the target project."""
+    from agentops.services.skills import install_skills
+
+    log.debug(
+        "cmd_skills_install called platform=%s force=%s prompt=%s dir=%s",
+        platform,
+        force,
+        prompt,
+        directory,
+    )
+    resolved_platforms = _resolve_platforms(
+        directory=directory, explicit=platform, prompt=prompt
+    )
+    if not resolved_platforms:
+        typer.echo("No platforms selected. Skipping skill installation.")
+        return
+
+    try:
+        result = install_skills(
+            directory=directory, platforms=resolved_platforms, force=force
+        )
+    except Exception as exc:
+        typer.echo(f"Error: failed to install skills: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    _print_skills_result(result)
 
 
 def main() -> None:

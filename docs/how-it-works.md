@@ -43,6 +43,7 @@ src/
     │   ├── runner.py          # Main evaluation orchestrator
     │   ├── reporting.py       # Report regeneration service
     │   ├── initializer.py     # Workspace scaffolding (agentops init)
+    │   ├── skills.py          # Coding agent skills installation
     │   └── foundry_evals.py   # Foundry Evaluations panel publishing
     │
     ├── backends/              # Execution engines — ADD new backends here
@@ -68,7 +69,8 @@ src/
         ├── callable_adapter.py
         ├── bundles/           # Pre-built evaluation bundles
         ├── datasets/         # Dataset definitions (.yaml)
-        └── data/             # Sample dataset rows (.jsonl)
+        ├── data/             # Sample dataset rows (.jsonl)
+        └── skills/           # Coding agent skill templates
 ```
 
 ### Where to Add New Code
@@ -83,6 +85,7 @@ src/
 | Add a new CLI command | `cli/app.py` (keep it thin — delegate to `services/`) |
 | Add a new workflow/service | `services/` (new file) |
 | Add a starter template | `templates/` + update `pyproject.toml` package-data |
+| Add a new coding agent skill | `templates/skills/<name>/SKILL.md` + update `_SKILLS` in `services/skills.py` |
 
 ## Request Flow (eval run)
 
@@ -107,18 +110,20 @@ When you run `agentops eval run`, the following happens step by step:
 
 | Command | Purpose | Status |
 |---|---|---|
-| `agentops init [--path DIR]` | Scaffold `.agentops/` workspace with starter config, bundles, datasets, and data | Available |
+| `agentops init [--path DIR]` | Scaffold `.agentops/` workspace with starter config, bundles, datasets, and data. Also installs coding agent skills. | Available |
 | `agentops eval run` | Execute an evaluation (main command) | Available |
 | `agentops eval compare --runs ID1,ID2` | Compare two past evaluation runs | Available |
+| `agentops skills install` | Install AgentOps coding agent skills (Copilot, Claude) into the target project | Available |
 | `agentops run list\|show` | List or inspect past runs | Planned (stub) |
 | `agentops run view <id> [--entry N]` | Deep-inspect a run | Planned (stub) |
-| `agentops report [--in <path>] [--out <path>]` | Regenerate `report.md` from `results.json` | Available |
+| `agentops report generate [--in <path>] [--out <path>]` | Regenerate `report.md` from `results.json` | Available |
 | `agentops report show\|export` | View or export reports | Planned (stub) |
 | `agentops bundle list\|show` | Browse bundle definitions | Planned (stub) |
 | `agentops dataset validate\|describe\|import` | Validate, describe, and import datasets | Planned (stub) |
-| `agentops config validate\|show\|cicd` | Validate config and CI/CD scaffolding | Planned (stub) |
+| `agentops config validate\|show` | Validate and inspect configuration | Planned (stub) |
+| `agentops workflow generate` | Generate CI/CD workflow file | Available |
 | `agentops trace init` | Initialize tracing setup | Planned (stub) |
-| `agentops monitor setup\|dashboard\|alert` | Monitoring setup and operations | Planned (stub) |
+| `agentops monitor setup\|show\|configure` | Monitoring setup and operations | Planned (stub) |
 | `agentops model list` | List model deployments from Foundry project | Planned (stub) |
 | `agentops agent list` | List agent deployments from Foundry project | Planned (stub) |
 

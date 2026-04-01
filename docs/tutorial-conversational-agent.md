@@ -211,7 +211,7 @@ Open `.agentops/results/latest/report.md` to see per-row scores and threshold re
 To regenerate the report from existing results:
 
 ```bash
-agentops report --in .agentops/results/latest/results.json
+agentops report generate --in .agentops/results/latest/results.json
 ```
 
 ## Part 8: Compare Runs

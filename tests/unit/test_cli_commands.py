@@ -53,6 +53,6 @@ def test_report_help_exposes_available_and_planned_commands() -> None:
 
     assert result.exit_code == 0
     stripped = _strip_ansi(result.stdout)
-    assert "--in" in stripped
+    assert "generate" in stripped
     assert "show" in stripped
     assert "export" in stripped

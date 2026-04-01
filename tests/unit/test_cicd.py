@@ -51,8 +51,8 @@ def test_generate_cicd_overwrites_with_force(tmp_path: Path) -> None:
     assert content != "old content"
 
 
-def test_cli_config_cicd_creates_workflow(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["config", "cicd", "--dir", str(tmp_path)])
+def test_cli_workflow_generate_creates_workflow(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["workflow", "generate", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0
     assert "created" in result.stdout
@@ -61,23 +61,23 @@ def test_cli_config_cicd_creates_workflow(tmp_path: Path) -> None:
     assert workflow.exists()
 
 
-def test_cli_config_cicd_skips_existing(tmp_path: Path) -> None:
+def test_cli_workflow_generate_skips_existing(tmp_path: Path) -> None:
     workflow = tmp_path / _WORKFLOW_PATH
     workflow.parent.mkdir(parents=True, exist_ok=True)
     workflow.write_text("existing", encoding="utf-8")
 
-    result = runner.invoke(app, ["config", "cicd", "--dir", str(tmp_path)])
+    result = runner.invoke(app, ["workflow", "generate", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0
     assert "skipped" in result.stdout
 
 
-def test_cli_config_cicd_force_overwrites(tmp_path: Path) -> None:
+def test_cli_workflow_generate_force_overwrites(tmp_path: Path) -> None:
     workflow = tmp_path / _WORKFLOW_PATH
     workflow.parent.mkdir(parents=True, exist_ok=True)
     workflow.write_text("old", encoding="utf-8")
 
-    result = runner.invoke(app, ["config", "cicd", "--force", "--dir", str(tmp_path)])
+    result = runner.invoke(app, ["workflow", "generate", "--force", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0
     assert "overwritten" in result.stdout
