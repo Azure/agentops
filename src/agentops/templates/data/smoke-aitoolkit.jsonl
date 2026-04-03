@@ -1,0 +1,5 @@
+{"id":"1","query":"What is the capital of France?","ground_truth":"Paris is the capital of France."}
+{"id":"2","query":"Which planet is known as the Red Planet?","ground_truth":"Mars is known as the Red Planet."}
+{"id":"3","query":"What is the chemical symbol for water?","ground_truth":"The chemical symbol for water is H2O."}
+{"id":"4","query":"Who wrote Romeo and Juliet?","ground_truth":"William Shakespeare wrote Romeo and Juliet."}
+{"id":"5","query":"What is the largest ocean on Earth?","ground_truth":"The Pacific Ocean is the largest ocean on Earth."}

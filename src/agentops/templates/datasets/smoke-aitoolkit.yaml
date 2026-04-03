@@ -1,0 +1,19 @@
+version: 1
+name: smoke_aitoolkit
+description: >
+  Smoke dataset using AI Toolkit field naming conventions (query, ground_truth).
+  Use this template when importing datasets from VS Code AI Toolkit's Agent Builder
+  Evaluation tab or Bulk Run feature. The format.input_field and format.expected_field
+  mappings translate AI Toolkit's field names to AgentOps' normalized schema.
+source:
+  type: file
+  path: ../data/smoke-aitoolkit.jsonl
+format:
+  type: jsonl
+  input_field: query
+  expected_field: ground_truth
+metadata:
+  scenario: model_direct
+  size_hint: 5
+  owner: local
+  source_tool: ai-toolkit

@@ -159,6 +159,7 @@ docs/
 ├── tutorial-basic-foundry-agent.md           # Foundry agent tutorial
 ├── tutorial-model-direct.md                  # Model-direct tutorial
 ├── tutorial-rag.md                           # RAG tutorial
+├── tutorial-ai-toolkit-integration.md        # AI Toolkit integration guide
 └── foundry-evaluation-sdk-built-in-evaluators.md
 ```
 
@@ -396,6 +397,33 @@ Recommended default behavior:
 - Avoid passing explicit `api_version` into `get_openai_client()`
 - Keep Azure imports lazy
 - Preserve support for both cloud evaluation and local fallback
+
+---
+
+## VS Code AI Toolkit Integration
+
+AgentOps is designed to complement VS Code AI Toolkit. AI Toolkit handles interactive prototyping; AgentOps handles automated CI evaluation.
+
+### Integration points
+
+| Integration | Description |
+|---|---|
+| Dataset field mapping | AI Toolkit uses `query`/`ground_truth`; AgentOps maps these via `input_field`/`expected_field` in dataset YAML configs |
+| Starter template | `agentops init` scaffolds `smoke-aitoolkit.yaml` and `smoke-aitoolkit.jsonl` with AI Toolkit-compatible field names |
+| OTLP tracing (planned) | AI Toolkit's OTLP collector on `localhost:4318` will visualize AgentOps traces when `agentops trace init` ships |
+| Copilot skills | All three AgentOps skills include "Working with VS Code AI Toolkit" guidance for the prototype-to-CI handoff |
+
+### Workflow
+
+1. **Prototype** in AI Toolkit's Agent Builder — iterate on prompts, evaluators, datasets
+2. **Export** dataset from AI Toolkit as JSONL
+3. **Codify** evaluators and thresholds in an AgentOps bundle YAML
+4. **Run** `agentops eval run` in CI with exit code gating
+5. **Investigate** regressions using `agentops eval compare` + AI Toolkit interactive drill-down
+
+### Documentation
+
+See `docs/tutorial-ai-toolkit-integration.md` for the full integration guide.
 
 ---
 

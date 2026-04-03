@@ -6,6 +6,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- Add VS Code AI Toolkit integration:
+  - `smoke-aitoolkit.yaml` dataset template with `input_field: query` / `expected_field: ground_truth` field mapping for AI Toolkit compatibility.
+  - `smoke-aitoolkit.jsonl` starter data file using AI Toolkit field naming conventions.
+  - "Working with VS Code AI Toolkit" guidance sections added to all three Copilot skills (`agentops-run-evals`, `agentops-investigate-regression`, `agentops-observability-triage`).
+  - `docs/tutorial-ai-toolkit-integration.md` — full integration guide covering dataset interop, recommended workflow, tracing, and custom evaluators.
+  - AI Toolkit integration section added to `AGENTS.md` and `.github/copilot-instructions.md`.
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).

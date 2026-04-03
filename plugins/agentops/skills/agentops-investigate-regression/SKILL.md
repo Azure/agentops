@@ -102,6 +102,30 @@ When you find regressions:
 - "Why is CI failing now?"
   → `agentops eval compare --runs <last_pass>,latest -f html`. The Status line shows `FAIL (80% · 4/5)` — one row regressed. Row Details shows which.
 
+## Working with VS Code AI Toolkit
+
+When investigating regressions, AI Toolkit provides complementary interactive analysis:
+
+### Drill into failing rows interactively
+1. Run `agentops eval compare --runs <baseline>,latest -f html` to identify which rows regressed.
+2. Export the dataset with scores to JSONL/CSV.
+3. Open in AI Toolkit's Data Wrangler for interactive filtering, sorting, and visualization of score distributions.
+
+### Re-evaluate in Agent Builder
+If a regression appears prompt-related:
+1. Open AI Toolkit's Agent Builder with the same model and prompt.
+2. Test the failing rows individually in the interactive Playground.
+3. Iterate on prompt changes, then re-export and re-run with `agentops eval run`.
+
+### Dataset compatibility
+AI Toolkit uses `query`/`ground_truth` fields; AgentOps maps them via dataset config:
+```yaml
+format:
+  input_field: query
+  expected_field: ground_truth
+```
+This lets the same JSONL file work in both tools without conversion.
+
 ## Learn More
 - Documentation: https://github.com/Azure/agentops
 - PyPI: https://pypi.org/project/agentops-toolkit/

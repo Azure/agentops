@@ -30,9 +30,11 @@ _TEMPLATE_FILES: tuple[str, ...] = (
     "datasets/smoke-model-direct.yaml",
     "datasets/smoke-rag.yaml",
     "datasets/smoke-agent-tools.yaml",
+    "datasets/smoke-aitoolkit.yaml",
     "data/smoke-model-direct.jsonl",
     "data/smoke-rag.jsonl",
     "data/smoke-agent-tools.jsonl",
+    "data/smoke-aitoolkit.jsonl",
 )
 
 

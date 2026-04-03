@@ -138,6 +138,33 @@ az login  # local development
 - "Why did my eval fail?"
   → Check the Row Details section — it shows per-row scores with ● Met/Missed so you can see exactly which rows scored below threshold
 
+## Working with VS Code AI Toolkit
+
+AI Toolkit and AgentOps are complementary — **AI Toolkit is the interactive workbench, AgentOps is the CI gate.**
+
+### Importing AI Toolkit datasets
+AI Toolkit's Evaluation tab and Bulk Run use JSONL with `query` and `ground_truth` fields. AgentOps supports this natively via dataset field mapping:
+
+```yaml
+# .agentops/datasets/smoke-aitoolkit.yaml
+format:
+  type: jsonl
+  input_field: query           # maps AI Toolkit's "query" → AgentOps input
+  expected_field: ground_truth  # maps AI Toolkit's "ground_truth" → AgentOps expected
+```
+
+Run `agentops init` to get a starter `smoke-aitoolkit.yaml` template with this mapping pre-configured.
+
+### Recommended workflow
+1. **Prototype in AI Toolkit** — use Agent Builder's Evaluation tab to explore evaluators, tune prompts, and generate synthetic datasets.
+2. **Export the dataset** — export from AI Toolkit as CSV/JSONL.
+3. **Create an AgentOps dataset config** — use `input_field: query` and `expected_field: ground_truth` to map fields.
+4. **Lock evaluators in a bundle** — codify the evaluators and thresholds you validated interactively.
+5. **Run in CI** — `agentops eval run` executes the same evaluation headlessly with exit code gating.
+
+### Tracing
+AI Toolkit hosts a local OTLP collector on `http://localhost:4318`. When AgentOps tracing ships (`agentops trace init` — planned), evaluation traces will be viewable in AI Toolkit's Tracing UI.
+
 ## Learn More
 - Documentation: https://github.com/Azure/agentops
 - PyPI: https://pypi.org/project/agentops-toolkit/

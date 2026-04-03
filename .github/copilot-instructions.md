@@ -254,3 +254,16 @@ When generating or modifying code:
 - The `core/` package must remain free of Azure imports and I/O
 - Follow the request flow: CLI → Services → Backends → Core (never skip layers)
 - If a change is user-visible, add an entry to `CHANGELOG.md` under `[Unreleased]` (Keep a Changelog format)
+
+### VS Code AI Toolkit Integration
+
+AgentOps is designed to complement VS Code AI Toolkit:
+- **AI Toolkit** is the interactive workbench (prototyping, prompt iteration, interactive evaluation)
+- **AgentOps** is the CI gate (automated evaluation, threshold enforcement, trend analysis)
+
+When working with AI Toolkit-related features:
+- AI Toolkit uses `query`/`ground_truth` as dataset field names; AgentOps maps these via `input_field`/`expected_field` in dataset YAML configs
+- `agentops init` scaffolds `smoke-aitoolkit.yaml` and `smoke-aitoolkit.jsonl` as an AI Toolkit-compatible starter template
+- All three Copilot skills include "Working with VS Code AI Toolkit" guidance sections
+- See `docs/tutorial-ai-toolkit-integration.md` for the full integration guide
+- AI Toolkit's OTLP collector on `localhost:4318` is the planned trace visualization target for `agentops trace init`

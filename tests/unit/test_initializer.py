@@ -22,15 +22,17 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ".agentops" / "datasets" / "smoke-model-direct.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-rag.yaml").is_file()
     assert (tmp_path / ".agentops" / "datasets" / "smoke-agent-tools.yaml").is_file()
+    assert (tmp_path / ".agentops" / "datasets" / "smoke-aitoolkit.yaml").is_file()
     assert (tmp_path / ".agentops" / "data" / "smoke-model-direct.jsonl").is_file()
     assert (tmp_path / ".agentops" / "data" / "smoke-rag.jsonl").is_file()
     assert (tmp_path / ".agentops" / "data" / "smoke-agent-tools.jsonl").is_file()
+    assert (tmp_path / ".agentops" / "data" / "smoke-aitoolkit.jsonl").is_file()
     assert (tmp_path / ".agentops" / "run.yaml").is_file()
     assert (tmp_path / ".agentops" / "run-rag.yaml").is_file()
     assert (tmp_path / ".agentops" / "run-agent.yaml").is_file()
     assert (tmp_path / ".agentops" / ".gitignore").is_file()
 
-    assert len(result.created_files) == 14
+    assert len(result.created_files) == 16
     assert len(result.overwritten_files) == 0
 
     run_config = load_yaml(tmp_path / ".agentops" / "run.yaml")
@@ -69,3 +71,21 @@ def test_init_overwrites_with_force(tmp_path: Path) -> None:
 
     assert after["defaults"]["timeout_seconds"] == 1800
     assert config_path in result.overwritten_files
+
+
+def test_init_aitoolkit_dataset_uses_query_field_mapping(tmp_path: Path) -> None:
+    initialize_workspace(tmp_path, force=False)
+
+    ds_config = load_yaml(tmp_path / ".agentops" / "datasets" / "smoke-aitoolkit.yaml")
+    assert ds_config["format"]["input_field"] == "query"
+    assert ds_config["format"]["expected_field"] == "ground_truth"
+    assert ds_config["name"] == "smoke_aitoolkit"
+
+    data_path = tmp_path / ".agentops" / "data" / "smoke-aitoolkit.jsonl"
+    assert data_path.is_file()
+    import json
+
+    rows = [json.loads(line) for line in data_path.read_text().strip().splitlines()]
+    assert len(rows) == 5
+    assert "query" in rows[0]
+    assert "ground_truth" in rows[0]

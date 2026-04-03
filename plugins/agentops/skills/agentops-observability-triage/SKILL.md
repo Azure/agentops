@@ -108,6 +108,27 @@ agentops monitor alert          # Configure alerts
 - "What do the colored dots mean?"
   → Green ● = score met the threshold target, Red ● = missed. In the Evaluators table, this is the aggregate score; in Row Details, it's per-row.
 
+## Working with VS Code AI Toolkit
+
+AI Toolkit provides interactive observability features that complement AgentOps' CLI-based approach:
+
+### Tracing with AI Toolkit
+AI Toolkit hosts a local OTLP trace collector on `http://localhost:4318` that supports OpenTelemetry semantic conventions for GenAI. When AgentOps tracing ships (`agentops trace init` — planned), it will emit OTLP traces viewable in AI Toolkit's trace visualization UI. Until then:
+- Use AI Toolkit's tracing to instrument your agent code directly.
+- Use AgentOps HTML reports (`-f html`) for evaluation-specific observability.
+
+### Using Data Wrangler for results analysis
+After an evaluation run, the results can be explored interactively:
+1. Generate results: `agentops eval run -f html`
+2. Open `results.json` in VS Code with Data Wrangler for interactive filtering and visualization.
+3. Compare across runs: `agentops eval compare --runs <id1>,<id2> -f html` for trend analysis.
+
+### AI Toolkit as the interactive dashboard
+AI Toolkit's Agent Builder Evaluation tab serves as a design-time dashboard:
+- **AI Toolkit** handles interactive prototyping and prompt iteration.
+- **AgentOps** handles automated CI trending via periodic runs and multi-run comparison.
+- Together they cover the full observability lifecycle from development through production.
+
 ## Learn More
 - Documentation: https://github.com/Azure/agentops
 - PyPI: https://pypi.org/project/agentops-toolkit/
