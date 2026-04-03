@@ -6,6 +6,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- Add optional OTLP tracing for evaluation runs — set `AGENTOPS_OTLP_ENDPOINT` to emit OpenTelemetry spans.
+  - Three-layer schema: CICD semconv (pipeline run/task), GenAI semconv (agent invocation), and `agentops.eval.*` (evaluator scores/thresholds).
+  - Per-row item spans with evaluator child spans showing score, threshold, and pass/fail.
+  - Zero overhead when `AGENTOPS_OTLP_ENDPOINT` is unset; graceful no-op when `opentelemetry-sdk` is not installed.
+  - Compatible with AI Toolkit (localhost:4318), Azure Monitor, Jaeger, Grafana Tempo, and any OTLP-compatible collector.
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).
