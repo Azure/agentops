@@ -254,3 +254,12 @@ When generating or modifying code:
 - The `core/` package must remain free of Azure imports and I/O
 - Follow the request flow: CLI → Services → Backends → Core (never skip layers)
 - If a change is user-visible, add an entry to `CHANGELOG.md` under `[Unreleased]` (Keep a Changelog format)
+
+### OTLP Telemetry
+
+- `utils/telemetry.py` provides optional OTLP trace emission for evaluation runs
+- Activated by `AGENTOPS_OTLP_ENDPOINT` env var — zero overhead when unset
+- All OpenTelemetry imports must be **lazy** (inside functions in `utils/telemetry.py`)
+- `opentelemetry-sdk` is an optional runtime dependency — not declared in `pyproject.toml`
+- Span schema: CICD semconv (`cicd.pipeline.*`) for pipeline structure, GenAI semconv (`gen_ai.*`) for agent calls, `agentops.eval.*` for evaluator scores
+- When adding new spans, follow the three-layer pattern in `telemetry.py`
