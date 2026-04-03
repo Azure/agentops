@@ -163,7 +163,7 @@ Run `agentops init` to get a starter `smoke-aitoolkit.yaml` template with this m
 5. **Run in CI** — `agentops eval run` executes the same evaluation headlessly with exit code gating.
 
 ### Tracing
-AI Toolkit hosts a local OTLP collector on `http://localhost:4318`. When AgentOps tracing ships (`agentops trace init` — planned), evaluation traces will be viewable in AI Toolkit's Tracing UI.
+AgentOps emits OTLP traces during evaluation runs when `AGENTOPS_OTLP_ENDPOINT` is set. AI Toolkit's collector on `http://localhost:4318` can visualize these traces — start the collector in AI Toolkit, set the env var, and run your eval.
 
 ## Learn More
 - Documentation: https://github.com/Azure/agentops

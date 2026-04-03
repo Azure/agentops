@@ -143,11 +143,53 @@ When CI fails:
 
 ## Tracing
 
-AI Toolkit hosts a local OTLP trace collector on `http://localhost:4318` that visualizes GenAI traces following OpenTelemetry semantic conventions.
+AgentOps emits OpenTelemetry (OTLP) spans during evaluation runs when the `AGENTOPS_OTLP_ENDPOINT` environment variable is set. This is compatible with any OTLP collector, including AI Toolkit's built-in trace viewer.
 
-AgentOps tracing (`agentops trace init`) is planned for a future release. When available, it will emit OTLP-compatible traces that can be visualized in AI Toolkit's tracing UI — no additional configuration needed.
+### Using with AI Toolkit
 
-In the meantime, you can instrument your agent code directly using AI Toolkit's tracing setup (see [AI Toolkit tracing documentation](https://github.com/microsoft/vscode-ai-toolkit/blob/main/doc/tracing.md)) and use AgentOps' HTML reports for evaluation-specific observability.
+AI Toolkit hosts a local OTLP collector on `http://localhost:4318`. To send AgentOps evaluation traces there:
+
+```bash
+# 1. Start collector: AI Toolkit view → Monitor → Tracing → Start Collector
+# 2. Set the endpoint
+export AGENTOPS_OTLP_ENDPOINT=http://localhost:4318
+
+# 3. Run evaluation — spans are emitted automatically
+agentops eval run
+```
+
+Click **Refresh** in AI Toolkit's Tracing view to see the trace. The span tree shows the eval run as a pipeline, each dataset row as a task, and each evaluator as a child span with score and pass/fail attributes.
+
+### Using with other OTLP backends
+
+The same env var works with any OTLP-compatible collector:
+
+```bash
+# Azure Monitor
+export AGENTOPS_OTLP_ENDPOINT=https://<endpoint>.monitor.azure.com
+
+# Jaeger
+export AGENTOPS_OTLP_ENDPOINT=http://localhost:4318
+
+# Grafana Tempo
+export AGENTOPS_OTLP_ENDPOINT=http://localhost:4318
+```
+
+### Span schema
+
+AgentOps uses a three-layer semantic convention schema:
+
+| Layer | Namespace | Purpose |
+|---|---|---|
+| CICD | `cicd.pipeline.*` | Eval run as pipeline, items as tasks |
+| GenAI | `gen_ai.*` | Agent/model invocation (future) |
+| AgentOps | `agentops.eval.*` | Evaluator scores, thresholds, pass/fail |
+
+### Requirements
+
+- `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` must be installed separately (`pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-http`)
+- When `AGENTOPS_OTLP_ENDPOINT` is unset, tracing is completely disabled with zero overhead
+- When `opentelemetry-sdk` is not installed, tracing degrades gracefully
 
 ---
 
@@ -175,4 +217,4 @@ AgentOps bundles currently reference evaluator classes from the Azure Evaluation
 | Gate merges | AgentOps | `agentops eval run` in CI pipeline |
 | Investigate regressions | Both | AgentOps comparison + AI Toolkit interactive drill-down |
 | Monitor trends | AgentOps | `agentops eval compare` across periodic runs |
-| Trace execution | AI Toolkit | OTLP collector + tracing UI |
+| Trace evaluation | AgentOps + AI Toolkit | `AGENTOPS_OTLP_ENDPOINT` → AI Toolkit trace viewer or any OTLP backend |

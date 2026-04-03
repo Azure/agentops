@@ -93,14 +93,14 @@ agentops monitor alert          # Configure alerts
 - `-f all` — generates both
 
 ## Guardrails
-- Do not present tracing or monitoring commands as available today.
+- OTLP tracing is available via `AGENTOPS_OTLP_ENDPOINT` env var. Monitoring commands (`agentops monitor setup/dashboard/alert`) are NOT available yet.
 - Do not imply real-time dashboards or alerts currently exist.
 - Always pivot to concrete available outputs when asked about unimplemented features.
 - The HTML report IS the current dashboard — it's self-contained, no server needed.
 
 ## Examples
 - "How do I set up tracing?"
-  → Tracing (`agentops trace init`) is planned. For now, use `-f html` to generate visual reports with per-row score breakdowns.
+  → Set `AGENTOPS_OTLP_ENDPOINT=http://localhost:4318` and run `agentops eval run`. Spans are emitted to any OTLP collector (AI Toolkit, Azure Monitor, Jaeger). Also use `-f html` for visual reports.
 - "Can I monitor eval quality over time?"
   → Run evals periodically and compare: `agentops eval compare --runs <old>,<mid>,<new> -f html`. The trend arrows show quality direction.
 - "What does FAIL (80% · 4/5) mean?"
@@ -113,9 +113,12 @@ agentops monitor alert          # Configure alerts
 AI Toolkit provides interactive observability features that complement AgentOps' CLI-based approach:
 
 ### Tracing with AI Toolkit
-AI Toolkit hosts a local OTLP trace collector on `http://localhost:4318` that supports OpenTelemetry semantic conventions for GenAI. When AgentOps tracing ships (`agentops trace init` — planned), it will emit OTLP traces viewable in AI Toolkit's trace visualization UI. Until then:
-- Use AI Toolkit's tracing to instrument your agent code directly.
-- Use AgentOps HTML reports (`-f html`) for evaluation-specific observability.
+AgentOps emits OTLP traces during evaluation runs when `AGENTOPS_OTLP_ENDPOINT` is set. AI Toolkit hosts a local OTLP collector on `http://localhost:4318`:
+1. Start the collector in AI Toolkit → Monitor → Tracing → Start Collector.
+2. Set the env var: `export AGENTOPS_OTLP_ENDPOINT=http://localhost:4318`
+3. Run `agentops eval run` — spans appear in AI Toolkit's trace viewer after clicking Refresh.
+
+The same env var works with Azure Monitor, Jaeger, Grafana Tempo, or any OTLP-compatible backend.
 
 ### Using Data Wrangler for results analysis
 After an evaluation run, the results can be explored interactively:
