@@ -24,17 +24,57 @@ from agentops.utils.logging import get_logger, setup_logging
 # ---------------------------------------------------------------------------
 # Import sub-command apps from their modules
 # ---------------------------------------------------------------------------
-from agentops.cli.eval_commands import eval_app
-from agentops.cli.report_commands import report_app
+from agentops.cli._planned import _planned_command
 from agentops.cli.browse_commands import bundle_app, run_app
 from agentops.cli.config_commands import config_app
-from agentops.cli.planned import (
-    agent_app,
-    dataset_app,
-    model_app,
-    monitor_app,
-    trace_app,
-)
+from agentops.cli.dataset_commands import dataset_app
+from agentops.cli.eval_commands import eval_app
+from agentops.cli.report_commands import report_app
+
+# ---------------------------------------------------------------------------
+# Stub sub-apps for future command groups (1-2 commands each)
+# ---------------------------------------------------------------------------
+monitor_app = typer.Typer(help="Monitoring setup and operations.")
+trace_app = typer.Typer(help="Tracing commands.")
+model_app = typer.Typer(help="Model discovery commands.")
+agent_app = typer.Typer(help="Agent discovery commands.")
+
+
+@monitor_app.command("setup")
+def cmd_monitor_setup() -> None:
+    """Set up monitoring resources (planned)."""
+    _planned_command("agentops monitor setup")
+
+
+@monitor_app.command("dashboard")
+def cmd_monitor_dashboard() -> None:
+    """Show monitoring dashboard setup instructions (planned)."""
+    _planned_command("agentops monitor dashboard")
+
+
+@monitor_app.command("alert")
+def cmd_monitor_alert() -> None:
+    """Configure monitoring alerts (planned)."""
+    _planned_command("agentops monitor alert")
+
+
+@trace_app.command("init")
+def cmd_trace_init() -> None:
+    """Set up tracing integration (planned)."""
+    _planned_command("agentops trace init")
+
+
+@model_app.command("list")
+def cmd_model_list() -> None:
+    """List chat-capable models in Foundry project (planned)."""
+    _planned_command("agentops model list")
+
+
+@agent_app.command("list")
+def cmd_agent_list() -> None:
+    """List agents in Foundry project (planned)."""
+    _planned_command("agentops agent list")
+
 
 # ---------------------------------------------------------------------------
 # Root app
