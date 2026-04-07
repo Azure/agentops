@@ -9,23 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from agentops.core.config_loader import load_bundle_config
 from agentops.core.models import RunResult
-
-
-# ---------------------------------------------------------------------------
-# Workspace resolution
-# ---------------------------------------------------------------------------
-
-_DEFAULT_AGENTOPS_DIR = ".agentops"
-
-
-def _resolve_workspace(directory: Path) -> Path:
-    """Resolve the .agentops workspace directory."""
-    workspace = (directory / _DEFAULT_AGENTOPS_DIR).resolve()
-    if not workspace.is_dir():
-        raise FileNotFoundError(
-            f"No .agentops workspace found at {workspace}. Run 'agentops init' first."
-        )
-    return workspace
+from agentops.services._workspace import resolve_workspace
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +38,7 @@ class BundleListResult:
 
 def list_bundles(directory: Path = Path(".")) -> BundleListResult:
     """List all bundle YAML files in the workspace."""
-    workspace = _resolve_workspace(directory)
+    workspace = resolve_workspace(directory)
     bundles_dir = workspace / "bundles"
 
     if not bundles_dir.is_dir():
@@ -103,7 +87,7 @@ class BundleDetail:
 
 def show_bundle(bundle_name: str, directory: Path = Path(".")) -> BundleDetail:
     """Load and return full details of a bundle by name."""
-    workspace = _resolve_workspace(directory)
+    workspace = resolve_workspace(directory)
     bundles_dir = workspace / "bundles"
 
     # Try exact filename first, then search by bundle name
@@ -190,7 +174,7 @@ class RunListResult:
 
 def list_runs(directory: Path = Path(".")) -> RunListResult:
     """List all past evaluation runs in the workspace."""
-    workspace = _resolve_workspace(directory)
+    workspace = resolve_workspace(directory)
     results_dir = workspace / "results"
 
     if not results_dir.is_dir():
@@ -266,7 +250,7 @@ class RunDetail:
 
 def show_run(run_id: str, directory: Path = Path(".")) -> RunDetail:
     """Load and return full details of a past run."""
-    workspace = _resolve_workspace(directory)
+    workspace = resolve_workspace(directory)
     results_dir = workspace / "results"
 
     run_dir = (results_dir / run_id).resolve()
