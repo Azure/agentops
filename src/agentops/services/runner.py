@@ -270,7 +270,10 @@ def _validate_enabled_evaluators_scored(
     missing = [name for name in evaluator_names if name not in scored_names]
     if missing:
         raise ValueError(
-            "Missing scores for enabled evaluators: " + ", ".join(sorted(missing))
+            "Missing scores for enabled evaluators: "
+            + ", ".join(sorted(missing))
+            + ". These evaluators returned no score from the cloud evaluation. "
+            "Run with --verbose to see details (e.g. region restrictions for safety evaluators)."
         )
 
 
@@ -367,7 +370,9 @@ def _derive_run_metrics(
 
 
 def run_evaluation(
-    config_path: Path | None = None, output_override: Path | None = None, report_format: str = "md",
+    config_path: Path | None = None,
+    output_override: Path | None = None,
+    report_format: str = "md",
 ) -> EvalRunServiceResult:
     run_config_path = (
         config_path.resolve() if config_path is not None else _default_run_config_path()
@@ -512,9 +517,7 @@ def run_evaluation(
         report_path = md_path
     if report_format in ("html", "all"):
         html_path = output_dir / "report.html"
-        html_path.write_text(
-            generate_report_html(normalized_result), encoding="utf-8"
-        )
+        html_path.write_text(generate_report_html(normalized_result), encoding="utf-8")
         report_path = html_path
     if report_format == "all":
         report_path = md_path

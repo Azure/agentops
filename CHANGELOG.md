@@ -6,6 +6,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- Extend Foundry cloud evaluation to support 22 built-in evaluators (up from 8), covering quality, agent, safety, RAG, tool, and NLP evaluator categories. Verified end-to-end with live Foundry cloud evaluation.
+  - Quality: `CoherenceEvaluator`, `FluencyEvaluator`, `RelevanceEvaluator`
+  - Agent: `IntentResolutionEvaluator`, `TaskCompletionEvaluator`, `TaskAdherenceEvaluator`
+  - Similarity: `ResponseCompletenessEvaluator`
+  - RAG: `GroundednessProEvaluator`, `RetrievalEvaluator`
+  - Safety: `ViolenceEvaluator`, `SexualEvaluator`, `SelfHarmEvaluator`, `HateUnfairnessEvaluator`
+  - Tool: `ToolSelectionEvaluator`, `ToolInputAccuracyEvaluator`, `ToolOutputUtilizationEvaluator`, `ToolCallSuccessEvaluator`
+- Add dynamic `item_schema` building — automatically includes `tool_definitions` and `context` fields when the enabled evaluators require them.
+- Add CI/CD integration models documentation: PR quality gate, scheduled regression, post-deployment validation, multi-environment promotion, Azure DevOps pipeline.
+- Add gating best practices: threshold design, scenario-specific evaluator selection, comparison-based regression detection.
+- Add supported evaluators reference table to CI/CD documentation.
+- Improve error messages when evaluators return no score (e.g. safety evaluators in unsupported regions) — surface the service error and suggest `--verbose`.
+- Fix NLP evaluator names in frozensets to match `_to_builtin_evaluator_name` conversion (`bleu_score`, `rouge_score`, `gleu_score`, `meteor_score` instead of `bleu`, `rouge`, `gleu`, `meteor`).
+- Add default `initialization_parameters` for `RougeScoreEvaluator` (`rouge_type: rouge1`).
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).

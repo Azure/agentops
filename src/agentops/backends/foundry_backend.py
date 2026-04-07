@@ -111,33 +111,51 @@ def _parse_agent_name_version(agent_id: str) -> tuple[str, str | None]:
 _NLP_ONLY_EVALUATORS = frozenset(
     {
         "f1_score",
-        "bleu",
-        "rouge",
-        "meteor",
-        "gleu",
+        "bleu_score",
+        "rouge_score",
+        "meteor_score",
+        "gleu_score",
     }
 )
 
 _EVALUATORS_NEEDING_GROUND_TRUTH = frozenset(
     {
         "similarity",
+        "response_completeness",
         "f1_score",
-        "bleu",
-        "rouge",
-        "meteor",
-        "gleu",
+        "bleu_score",
+        "rouge_score",
+        "meteor_score",
+        "gleu_score",
     }
 )
 
 _EVALUATORS_NEEDING_CONTEXT = frozenset(
     {
         "groundedness",
+        "groundedness_pro",
+        "retrieval",
     }
 )
 
 _EVALUATORS_NEEDING_TOOL_CALLS = frozenset(
     {
         "tool_call_accuracy",
+        "tool_selection",
+    }
+)
+
+_EVALUATORS_NEEDING_TOOL_DEFS_ONLY = frozenset(
+    {
+        "tool_input_accuracy",
+        "tool_output_utilization",
+        "tool_call_success",
+    }
+)
+
+_EVALUATORS_NEEDING_OUTPUT_ITEMS = frozenset(
+    {
+        "task_adherence",
     }
 )
 
@@ -156,7 +174,10 @@ def _cloud_evaluator_data_mapping(
     mapping: Dict[str, str] = {}
     if builtin_name not in _NLP_ONLY_EVALUATORS:
         mapping["query"] = item_input
-    mapping["response"] = sample_response
+    if builtin_name in _EVALUATORS_NEEDING_OUTPUT_ITEMS:
+        mapping["response"] = "{{sample.output_items}}"
+    else:
+        mapping["response"] = sample_response
     if builtin_name in _EVALUATORS_NEEDING_GROUND_TRUTH:
         mapping["ground_truth"] = item_expected
     elif builtin_name in _EVALUATORS_NEEDING_CONTEXT:
@@ -167,12 +188,21 @@ def _cloud_evaluator_data_mapping(
     elif builtin_name in _EVALUATORS_NEEDING_TOOL_CALLS:
         mapping["tool_calls"] = "{{sample.tool_calls}}"
         mapping["tool_definitions"] = "{{item.tool_definitions}}"
+    elif builtin_name in _EVALUATORS_NEEDING_TOOL_DEFS_ONLY:
+        mapping["tool_definitions"] = "{{item.tool_definitions}}"
     return mapping
 
 
 def _cloud_evaluator_needs_model(builtin_name: str) -> bool:
     """Return True if the evaluator is AI-assisted and needs a deployment_name."""
     return builtin_name not in _NLP_ONLY_EVALUATORS
+
+
+# Default initialization_parameters for evaluators that require them but are
+# not AI-assisted (so they don't get deployment_name automatically).
+_NLP_DEFAULT_INIT_PARAMS: Dict[str, Dict[str, Any]] = {
+    "rouge_score": {"rouge_type": "rouge1"},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -407,13 +437,14 @@ def _to_snake_case(value: str) -> str:
 
 
 def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
-    if name == "SimilarityEvaluator":
+    builtin = _to_builtin_evaluator_name(name)
+    if builtin in _EVALUATORS_NEEDING_GROUND_TRUTH:
         return {
             "query": "$prompt",
             "response": "$prediction",
             "ground_truth": "$expected",
         }
-    if name == "GroundednessEvaluator":
+    if builtin in _EVALUATORS_NEEDING_CONTEXT:
         return {
             "query": "$prompt",
             "response": "$prediction",
@@ -422,19 +453,35 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
             # if your dataset column has a different name.
             "context": "$row.context",
         }
-    if name == "TaskCompletionEvaluator":
-        return {
-            "query": "$prompt",
-            "response": "$prediction",
-        }
-    if name == "ToolCallAccuracyEvaluator":
+    if builtin in _EVALUATORS_NEEDING_TOOL_CALLS:
         return {
             "query": "$prompt",
             "response": "$prediction",
             "tool_calls": "$row.tool_calls",
             "tool_definitions": "$row.tool_definitions",
         }
-    return {}
+    if builtin in _EVALUATORS_NEEDING_TOOL_DEFS_ONLY:
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+            "tool_definitions": "$row.tool_definitions",
+        }
+    if builtin in _EVALUATORS_NEEDING_OUTPUT_ITEMS:
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
+        }
+    if builtin in _NLP_ONLY_EVALUATORS:
+        return {
+            "response": "$prediction",
+            "ground_truth": "$expected",
+        }
+    # Default: query + response (works for coherence, fluency, relevance,
+    # intent_resolution, task_completion, safety evaluators, etc.)
+    return {
+        "query": "$prompt",
+        "response": "$prediction",
+    }
 
 
 def _default_score_keys(name: str) -> List[str]:
@@ -1207,6 +1254,10 @@ class FoundryBackend:
                 criterion["initialization_parameters"] = {
                     "deployment_name": settings.model,
                 }
+            elif builtin_name in _NLP_DEFAULT_INIT_PARAMS:
+                criterion["initialization_parameters"] = dict(
+                    _NLP_DEFAULT_INIT_PARAMS[builtin_name]
+                )
             testing_criteria.append(criterion)
 
         # --- Acquire token for Foundry Project Evals API --------------------
@@ -1246,12 +1297,35 @@ class FoundryBackend:
             )
 
         # --- Data schema ----------------------------------------------------
+        # Determine which extra fields the enabled evaluators need so that
+        # the item_schema declares them and the Foundry service validates
+        # dataset rows correctly.
+        builtin_names = frozenset(
+            _to_builtin_evaluator_name(e.name) for e in foundry_evaluators
+        )
+        needs_tool_defs = bool(
+            builtin_names
+            & (_EVALUATORS_NEEDING_TOOL_CALLS | _EVALUATORS_NEEDING_TOOL_DEFS_ONLY)
+        )
+        needs_context = bool(builtin_names & _EVALUATORS_NEEDING_CONTEXT)
+
+        schema_properties: Dict[str, Any] = {
+            input_field: {"type": "string"},
+            expected_field: {"type": "string"},
+        }
+        if needs_context and dataset_config.format.context_field:
+            schema_properties[dataset_config.format.context_field] = {"type": "string"}
+        if needs_tool_defs:
+            schema_properties["tool_definitions"] = {
+                "anyOf": [
+                    {"type": "array", "items": {"type": "object"}},
+                    {"type": "object"},
+                ]
+            }
+
         item_schema: Dict[str, Any] = {
             "type": "object",
-            "properties": {
-                input_field: {"type": "string"},
-                expected_field: {"type": "string"},
-            },
+            "properties": schema_properties,
             "required": [input_field, expected_field],
         }
 
@@ -1444,6 +1518,24 @@ class FoundryBackend:
                             break
                     value = float(metric_score)
                     row_metric_entries.append({"name": metric_name, "value": value})
+                elif isinstance(metric_name, str) and metric_score is None:
+                    # Evaluator returned null score — check for error details.
+                    sample_data = result.get("sample", {}) or {}
+                    error_info = sample_data.get("error", {}) or {}
+                    error_msg = error_info.get("message", "")
+                    if error_msg:
+                        logger.warning(
+                            "Evaluator '%s' returned no score (row %d): %s",
+                            metric_name,
+                            index,
+                            error_msg,
+                        )
+                    else:
+                        logger.warning(
+                            "Evaluator '%s' returned no score for row %d",
+                            metric_name,
+                            index,
+                        )
 
             # Only emit local evaluator metrics if they are configured in the bundle.
             if "exact_match" in enabled_local_names:
