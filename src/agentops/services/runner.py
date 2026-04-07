@@ -380,12 +380,15 @@ def _emit_item_spans(
     item_evaluations: List[ItemEvaluationResult],
     row_metrics: List[RowMetricsResult],
     bundle_config,
+    dataset_rows: Dict[int, Dict[str, str]] | None = None,
 ) -> None:
     """Emit OTLP spans for each evaluated item with evaluator child spans."""
     from agentops.utils.telemetry import is_enabled
 
     if not is_enabled():
         return
+
+    rows = dataset_rows or {}
 
     # Build lookup: row_index → {metric_name: value}
     row_values_by_index: Dict[int, Dict[str, float]] = {}
@@ -407,7 +410,14 @@ def _emit_item_spans(
         evaluator_info[ev.name] = (ev.source, threshold_value, criteria)
 
     for item in item_evaluations:
-        with eval_item_span(row_index=item.row_index) as item_span:
+        row_data = rows.get(item.row_index, {})
+        input_text = row_data.get("input", "")
+        expected_text = row_data.get("expected", "")
+        with eval_item_span(
+            row_index=item.row_index,
+            input_text=input_text,
+            expected_text=expected_text,
+        ) as item_span:
             set_eval_item_result(item_span, passed=item.passed_all)
 
             # Emit evaluator child spans
@@ -539,11 +549,38 @@ def _run_evaluation_inner(
 
     item_evaluations = _evaluate_item_thresholds(bundle_config.thresholds, row_metrics)
 
+    # Load dataset rows for telemetry span context (no-op when tracing disabled)
+    dataset_rows: Dict[int, Dict[str, str]] = {}
+    from agentops.utils.telemetry import is_enabled as _tracing_enabled
+
+    if _tracing_enabled():
+        input_field = dataset_config.format.input_field
+        expected_field = dataset_config.format.expected_field
+        dataset_source_path = _resolve_path(
+            Path(dataset_config.source.path), dataset_path.parent
+        )
+        if dataset_source_path.exists():
+            try:
+                for idx, line in enumerate(
+                    dataset_source_path.read_text(encoding="utf-8")
+                    .strip()
+                    .splitlines(),
+                    start=1,
+                ):
+                    row = json.loads(line)
+                    dataset_rows[idx] = {
+                        "input": str(row.get(input_field, "")),
+                        "expected": str(row.get(expected_field, "")),
+                    }
+            except Exception:  # noqa: BLE001
+                pass  # Best-effort — don't fail eval for telemetry
+
     # Emit OTLP spans for each evaluated item (no-op when tracing is disabled)
     _emit_item_spans(
         item_evaluations=item_evaluations,
         row_metrics=row_metrics,
         bundle_config=bundle_config,
+        dataset_rows=dataset_rows,
     )
 
     if bundle_config.thresholds and not row_metrics:

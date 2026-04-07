@@ -171,6 +171,10 @@ class TestSpanAttributesWhenEnabled:
         ) as span:
             assert span is self.mock_span
 
+        # Verify span name includes input text
+        span_name = self.mock_tracer.start_as_current_span.call_args.args[0]
+        assert span_name == "eval_item 3: What is 2+2?"
+
         calls = {
             call.args[0]: call.args[1]
             for call in self.mock_span.set_attribute.call_args_list
@@ -180,6 +184,13 @@ class TestSpanAttributesWhenEnabled:
         assert calls["agentops.eval.item.index"] == 3
         assert calls["agentops.eval.item.input"] == "What is 2+2?"
         assert calls["agentops.eval.item.expected"] == "4"
+
+    def test_eval_item_span_name_without_input(self) -> None:
+        with eval_item_span(row_index=5) as span:
+            assert span is self.mock_span
+
+        span_name = self.mock_tracer.start_as_current_span.call_args.args[0]
+        assert span_name == "eval_item 5"
 
     def test_set_eval_run_result_pass(self) -> None:
         set_eval_run_result(

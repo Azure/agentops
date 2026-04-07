@@ -174,8 +174,14 @@ def eval_item_span(
 
     from opentelemetry.trace import SpanKind
 
+    # Build a descriptive span name: "eval_item 1: What is the weather..."
+    span_name = f"eval_item {row_index}"
+    if input_text:
+        truncated = input_text[:80] + ("..." if len(input_text) > 80 else "")
+        span_name = f"eval_item {row_index}: {truncated}"
+
     with _tracer.start_as_current_span(
-        f"eval_item {row_index}",
+        span_name,
         kind=SpanKind.INTERNAL,
     ) as span:
         # CICD task attributes
