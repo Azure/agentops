@@ -44,7 +44,7 @@ evaluators:
 | `F1ScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | none beyond class init defaults | `input_mapping(response,ground_truth)` |
 | `BleuScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | none beyond class init defaults | `input_mapping(response,ground_truth)` |
 | `GleuScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | none beyond class init defaults | `input_mapping(response,ground_truth)` |
-| `RougeScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | optional `rouge_type` in `init` | `input_mapping(response,ground_truth)` |
+| `RougeScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | `rouge_type` in `init` (AgentOps defaults to `rouge1`) | `input_mapping(response,ground_truth)` |
 | `MeteorScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | optional `alpha/beta/gamma/threshold` in `init` | `input_mapping(response,ground_truth)` |
 | `RetrievalEvaluator` | RAG | usually `query`, `response`, `context` | `model_config` (AI-assisted) | `input_mapping(query,response,context)` |
 | `DocumentRetrievalEvaluator` | RAG | retrieval outputs + `ground_truth` | check SDK class contract | explicit `input_mapping` recommended |
@@ -215,6 +215,6 @@ AgentOps provides sensible defaults so you don't need to configure extra environ
 
 ---
 
-**Last updated:** 2026-03-02 (UTC)
+**Last updated:** 2026-04-07 (UTC)
 
 Because Foundry Evaluation SDK and evaluator signatures evolve (especially preview features), review official docs before production rollout.

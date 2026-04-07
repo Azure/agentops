@@ -36,8 +36,7 @@ Your repository must contain these files for the workflow to succeed:
 | --------------------------------- | --------------------------------------------------------------- |
 | `.agentops/run.yaml`              | Run specification — references the bundle, dataset, and backend |
 | `.agentops/bundles/<name>.yaml`   | Evaluation bundle — evaluators + thresholds                     |
-| `.agentops/datasets/<name>.yaml`  | Dataset metadata                                                |
-| `.agentops/datasets/<name>.jsonl` | Dataset rows (JSONL format)                                     |
+| `.agentops/datasets/<name>.yaml`  | Dataset metadata                                                |\n| `.agentops/data/<name>.jsonl`     | Dataset rows (JSONL format)                                     |", "oldString": "| `.agentops/datasets/<name>.yaml`  | Dataset metadata                                                |\n| `.agentops/datasets/<name>.jsonl` | Dataset rows (JSONL format)                                     |
 
 All paths in `run.yaml` are relative to the `.agentops/` directory.
 
