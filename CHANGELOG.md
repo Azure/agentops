@@ -20,6 +20,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Improve error messages when evaluators return no score (e.g. safety evaluators in unsupported regions) — surface the service error and suggest `--verbose`.
 - Fix NLP evaluator names in frozensets to match `_to_builtin_evaluator_name` conversion (`bleu_score`, `rouge_score`, `gleu_score`, `meteor_score` instead of `bleu`, `rouge`, `gleu`, `meteor`).
 - Add default `initialization_parameters` for `RougeScoreEvaluator` (`rouge_type: rouge1`).
+- Add optional OTLP tracing for evaluation runs — set `AGENTOPS_OTLP_ENDPOINT` to emit OpenTelemetry spans.
+  - Three-layer schema: CICD semconv (pipeline run/task), GenAI semconv (agent invocation), and `agentops.eval.*` (evaluator scores/thresholds).
+  - Per-row item spans with evaluator child spans showing score, threshold, and pass/fail.
+  - Zero overhead when `AGENTOPS_OTLP_ENDPOINT` is unset; graceful no-op when `opentelemetry-sdk` is not installed.
+  - Compatible with AI Toolkit (localhost:4318), Azure Monitor, Jaeger, Grafana Tempo, and any OTLP-compatible collector.
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).

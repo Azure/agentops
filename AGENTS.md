@@ -123,7 +123,8 @@ src/
     │
     ├── utils/
     │   ├── yaml.py                    # YAML IO and interpolation helpers
-    │   └── logging.py                 # Logging setup
+    │   ├── logging.py                 # Logging setup
+    │   └── telemetry.py               # Optional OTLP tracing (lazy imports)
     │
     └── templates/
         ├── config.yaml                # Seed workspace config
@@ -368,12 +369,39 @@ Important environment variables:
 - `AZURE_OPENAI_DEPLOYMENT`
 - `AZURE_AI_MODEL_DEPLOYMENT_NAME`
 - `AZURE_OPENAI_API_VERSION`
+- `AGENTOPS_OTLP_ENDPOINT` — OTLP collector URL for evaluation tracing (opt-in, e.g. `http://localhost:4318`)
 
 Recommended default behavior:
 - Keep Foundry cloud mode as the default path
 - Install Azure runtime dependencies separately from the base package
 - Keep Azure SDK imports inside functions in `backends/` and `services/`
 - Configure model deployments explicitly per project; do not assume a universally available default deployment name in Foundry
+
+---
+
+## OTLP Telemetry
+
+AgentOps can optionally emit OpenTelemetry (OTLP) traces during evaluation runs. Set `AGENTOPS_OTLP_ENDPOINT` to enable.
+
+```bash
+# Enable tracing (e.g. AI Toolkit collector, Azure Monitor, Jaeger)
+export AGENTOPS_OTLP_ENDPOINT=http://localhost:4318
+agentops eval run
+```
+
+Span schema uses three OTel semantic convention layers:
+
+| Layer | Namespace | Purpose |
+|---|---|---|
+| CICD | `cicd.pipeline.*` | Eval run as pipeline, items as tasks |
+| GenAI | `gen_ai.*` | Agent/model invocation (future Layer 2) |
+| AgentOps | `agentops.eval.*` | Evaluator scores, thresholds, pass/fail |
+
+Design rules:
+- All OpenTelemetry imports are **lazy** (inside `utils/telemetry.py` functions)
+- Zero overhead when `AGENTOPS_OTLP_ENDPOINT` is unset
+- Graceful no-op when `opentelemetry-sdk` is not installed
+- `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` are optional runtime dependencies (not in `pyproject.toml`)
 
 ---
 

@@ -30,6 +30,15 @@ from agentops.core.models import (
 )
 from agentops.core.reporter import generate_report_html, generate_report_markdown
 from agentops.services.foundry_evals import publish_foundry_evaluation
+from agentops.utils.telemetry import (
+    eval_item_span,
+    eval_run_span,
+    init_tracing,
+    record_evaluator_span,
+    set_eval_item_result,
+    set_eval_run_result,
+    shutdown as shutdown_tracing,
+)
 
 
 @dataclass(frozen=True)
@@ -369,6 +378,68 @@ def _derive_run_metrics(
     return run_metrics
 
 
+def _emit_item_spans(
+    *,
+    item_evaluations: List[ItemEvaluationResult],
+    row_metrics: List[RowMetricsResult],
+    bundle_config,
+) -> None:
+    """Emit OTLP spans for each evaluated item with evaluator child spans."""
+    from agentops.utils.telemetry import is_enabled
+
+    if not is_enabled():
+        return
+
+    # Build lookup: row_index → {metric_name: value}
+    row_values_by_index: Dict[int, Dict[str, float]] = {}
+    for row in row_metrics:
+        row_values_by_index[row.row_index] = {m.name: m.value for m in row.metrics}
+
+    # Build lookup: evaluator_name → (source, threshold_value, criteria)
+    evaluator_info: Dict[str, tuple] = {}
+    for ev in bundle_config.evaluators:
+        if not ev.enabled:
+            continue
+        threshold_value = None
+        criteria = None
+        for thr in bundle_config.thresholds:
+            if thr.evaluator == ev.name:
+                threshold_value = thr.value
+                criteria = thr.criteria
+                break
+        evaluator_info[ev.name] = (ev.source, threshold_value, criteria)
+
+    for item in item_evaluations:
+        with eval_item_span(row_index=item.row_index) as item_span:
+            set_eval_item_result(item_span, passed=item.passed_all)
+
+            # Emit evaluator child spans
+            row_scores = row_values_by_index.get(item.row_index, {})
+            for thr_result in item.thresholds:
+                ev_name = thr_result.evaluator
+                source, threshold_val, criteria = evaluator_info.get(
+                    ev_name, ("local", None, None)
+                )
+                score = row_scores.get(ev_name, 0.0)
+
+                import re
+
+                builtin = ev_name.strip()
+                if builtin.endswith("Evaluator"):
+                    builtin = builtin[:-9]
+                builtin = re.sub(r"(?<!^)(?=[A-Z])", "_", builtin).lower()
+
+                record_evaluator_span(
+                    evaluator_name=ev_name,
+                    builtin_name=builtin,
+                    source=source,
+                    score=score,
+                    threshold=threshold_val,
+                    criteria=criteria,
+                    passed=thr_result.passed,
+                )
+
+
 def run_evaluation(
     config_path: Path | None = None,
     output_override: Path | None = None,
@@ -386,6 +457,47 @@ def run_evaluation(
     bundle_config = load_bundle_config(bundle_path)
     dataset_config = load_dataset_config(dataset_path)
 
+    # Initialise OTLP tracing (no-op when AGENTOPS_OTLP_ENDPOINT is unset)
+    init_tracing()
+
+    target = (run_config.backend.target or "agent").strip().lower()
+
+    with eval_run_span(
+        bundle_name=bundle_config.name,
+        dataset_name=dataset_config.name,
+        backend_type=run_config.backend.type,
+        target=target,
+        model=run_config.backend.model,
+        agent_id=run_config.backend.agent_id,
+    ) as run_span:
+        result = _run_evaluation_inner(
+            run_config=run_config,
+            run_config_path=run_config_path,
+            bundle_config=bundle_config,
+            bundle_path=bundle_path,
+            dataset_config=dataset_config,
+            dataset_path=dataset_path,
+            output_override=output_override,
+            report_format=report_format,
+            run_span=run_span,
+        )
+
+    shutdown_tracing()
+    return result
+
+
+def _run_evaluation_inner(
+    *,
+    run_config,
+    run_config_path: Path,
+    bundle_config,
+    bundle_path: Path,
+    dataset_config,
+    dataset_path: Path,
+    output_override: Path | None,
+    report_format: str,
+    run_span,
+) -> EvalRunServiceResult:
     output_dir = (
         output_override.resolve()
         if output_override is not None
@@ -429,6 +541,13 @@ def run_evaluation(
     )
 
     item_evaluations = _evaluate_item_thresholds(bundle_config.thresholds, row_metrics)
+
+    # Emit OTLP spans for each evaluated item (no-op when tracing is disabled)
+    _emit_item_spans(
+        item_evaluations=item_evaluations,
+        row_metrics=row_metrics,
+        bundle_config=bundle_config,
+    )
 
     if bundle_config.thresholds and not row_metrics:
         raise ValueError(
@@ -526,6 +645,15 @@ def run_evaluation(
     _sync_latest_output(output_dir, latest_dir)
 
     exit_code = 0 if summary.overall_passed else 2
+
+    # Set final result on the root OTLP span
+    set_eval_run_result(
+        run_span,
+        passed=summary.overall_passed,
+        items_total=len(item_evaluations),
+        items_passed=sum(1 for item in item_evaluations if item.passed_all),
+    )
+
     return EvalRunServiceResult(
         output_dir=output_dir,
         results_path=results_path,
