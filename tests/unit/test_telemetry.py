@@ -96,7 +96,13 @@ class TestInitTracingWithoutOtelInstalled:
 
 
 class TestSpanAttributesWhenEnabled:
-    """Test that span context managers set correct attributes when tracing is enabled."""
+    """Test that span context managers set correct attributes when tracing is enabled.
+
+    These tests require opentelemetry to be installed because the code paths
+    import SpanKind/StatusCode when tracing is enabled.
+    """
+
+    otel = pytest.importorskip("opentelemetry")
 
     def setup_method(self) -> None:
         """Mock the tracing module to simulate enabled state."""
