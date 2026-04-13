@@ -59,9 +59,6 @@ The skills are invoked automatically when your request matches their domain.
 > Validate my dataset before running an eval
 ```
 
-> **Note:** To run evaluations, install the AgentOps CLI in your project's virtual
-> environment: `pip install agentops-toolkit`
-
 ## Links
 
 - [AgentOps Toolkit](https://github.com/Azure/agentops) — CLI and documentation
