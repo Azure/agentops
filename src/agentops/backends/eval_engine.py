@@ -539,7 +539,7 @@ def _load_foundry_evaluator_callable(
             )
 
         if (
-            class_name in {"SimilarityEvaluator", "GroundednessEvaluator"}
+            class_name in _AI_ASSISTED_EVALUATORS
             and "model_config" not in init_kwargs
         ):
             init_kwargs["model_config"] = _azure_openai_model_config(

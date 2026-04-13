@@ -209,6 +209,14 @@ def _write_callable_project_files(tmp_path: Path) -> Path:
     datasets_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
 
+    # Write a local callable adapter into the tmp project directory so it is
+    # importable after chdir(tmp_path) without relying on the repo root.
+    (tmp_path / "fake_callable.py").write_text(
+        "def main_callable(input_text: str, context: dict) -> dict:\n"
+        '    return {"response": input_text}\n',
+        encoding="utf-8",
+    )
+
     save_yaml(
         bundles_dir / "rag_baseline.yaml",
         {
@@ -256,7 +264,7 @@ def _write_callable_project_files(tmp_path: Path) -> Path:
                 "type": "model",
                 "hosting": "local",
                 "execution_mode": "local",
-                "local": {"callable": _CALLABLE_PATH},
+                "local": {"callable": "fake_callable:main_callable"},
             },
             "bundle": {"path": ".agentops/bundles/rag_baseline.yaml"},
             "dataset": {"path": ".agentops/datasets/smoke-agent.yaml"},

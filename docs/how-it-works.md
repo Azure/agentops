@@ -395,7 +395,62 @@ The runner resolves the execution backend from the run config:
 
 ### Config validation
 
-Configs missing a `version` field or containing a legacy `backend` key are **rejected** with an actionable error message.
+Configs missing a `version` field or containing a legacy `backend` key are **rejected** with an actionable error message. The error includes a migration hint suggesting `target.hosting` as the replacement.
+
+> **Note:** Do NOT include a `backend:` key at the top level of `run.yaml`. The backend is determined by `target.hosting` and `target.execution_mode`. See [docs/run-yaml-schema.md](run-yaml-schema.md) for the complete schema reference.
+
+### Evaluator model configuration
+
+AI-assisted evaluators (GroundednessEvaluator, RelevanceEvaluator, CoherenceEvaluator, FluencyEvaluator, SimilarityEvaluator, RetrievalEvaluator, ResponseCompletenessEvaluator, etc.) use an LLM as a judge. They require an Azure OpenAI model deployment to run.
+
+**For Foundry remote execution:** Set `target.endpoint.model` in `run.yaml` to a deployment name that exists in your Foundry project.
+
+**For local/callable execution:** Set these environment variables before running:
+```bash
+export AZURE_OPENAI_ENDPOINT="https://<account>.openai.azure.com/"
+export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
+```
+
+The toolkit auto-injects `model_config` for all AI-assisted evaluators. You do not need to configure `model_config` manually in bundle YAML unless you want to override the defaults.
+
+**Recommended models for evaluation judges:** Use instruction-following models like `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-4.1-mini`. Avoid reasoning models (`o1`, `o3`, `o4`, `gpt-5`, `gpt-5-nano`) — they are slower, more expensive, and may not follow the evaluator prompt format reliably.
+
+### Callable adapter import requirements
+
+The callable adapter module must be importable from your project root directory or from the `.agentops/` directory. Both locations are automatically added to the Python path when the CLI runs.
+
+- Place the file at the project root (`callable_adapter.py`) or inside `.agentops/callable_adapter.py`.
+- Use `callable_adapter:run_evaluation` as the callable path in `run.yaml` — no directory prefix needed.
+- Do **not** use dotted paths like `.agentops.callable_adapter` — relative imports do not work.
+
+After generating an adapter, verify importability:
+```bash
+python -c "from callable_adapter import run_evaluation; print('OK')"
+```
+
+### Callable adapter authentication patterns
+
+If your agent endpoint requires authentication, include the appropriate headers in the callable adapter. Use environment variables for token values — never hardcode credentials.
+
+**Dapr token (Azure Container Apps):**
+```python
+API_TOKEN = os.environ.get("APP_API_TOKEN", "")
+if API_TOKEN:
+    headers["dapr-api-token"] = API_TOKEN
+```
+
+**API Key:**
+```python
+API_KEY = os.environ.get("API_KEY", "")
+if API_KEY:
+    headers["X-API-KEY"] = API_KEY
+```
+
+**Bearer token (Entra ID / OAuth):** For Bearer token authentication, consider using the HTTP backend with `auth_header_env` instead of a callable adapter, as the HTTP backend handles this natively.
+
+### azd integration
+
+If you deployed your Azure resources with `azd` (Azure Developer CLI), your `.azure/<env>/.env` file contains resource metadata (subscription ID, resource group, resource names) that can be used to auto-configure endpoints. The evaluation skills (`/agentops-config`, `/agentops-eval`) can auto-discover these values via Azure CLI queries.
 
 ### Minimal run.yaml example (Foundry agent)
 
@@ -610,6 +665,8 @@ output:
   "row_metrics": [
     {
       "row_index": 1,
+      "input": "What is the refund policy?",
+      "response": "Refunds are available within 30 days.",
       "metrics": [
         { "name": "exact_match", "value": 1.0 },
         { "name": "avg_latency_seconds", "value": 1.21 }
@@ -617,6 +674,8 @@ output:
     },
     {
       "row_index": 2,
+      "input": "How do I reset my password?",
+      "response": "Go to Settings > Security > Reset.",
       "metrics": [
         { "name": "exact_match", "value": 0.0 },
         { "name": "avg_latency_seconds", "value": 0.98 }
@@ -634,6 +693,8 @@ output:
 - when present, each row entry must include:
   - `row_index` (1-based)
   - `metrics` list with `{name, value}` entries
+  - `input` (string, optional) — the user prompt sent to the agent/model
+  - `response` (string, optional) — the agent/model output text
 - Each metric `name` must match the evaluator `name` referenced in bundle thresholds.
 - AgentOps applies thresholds per item and then consolidates item verdicts into run-level outputs.
 - AgentOps validates that every enabled evaluator in the bundle has produced scores in `row_metrics`.
@@ -649,7 +710,7 @@ output:
   - run-level threshold status is consolidated from item verdicts.
 - Metrics have three levels in `results.json`:
   - `metrics`: backend/global metrics (already aggregated by backend)
-  - `row_metrics`: per-row evaluator outputs (`row_index` + metric list)
+  - `row_metrics`: per-row evaluator outputs (`row_index` + metric list + optional `input`/`response` text)
   - `item_evaluations`: per-row threshold verdicts (per evaluator + final row PASS/FAIL)
   - `run_metrics`: consolidated execution metrics derived by AgentOps
 

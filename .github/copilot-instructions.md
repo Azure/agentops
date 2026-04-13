@@ -290,35 +290,124 @@ Do not implement the following unless explicitly discussed:
 - Interactive prompts
 - Web UI or dashboards
 
-## Copilot Guidance
+## Skills Creation Guidance
 
-## Workflow Skills
+### AgentOps Skills (Design Principles)
 
-This repository also defines workflow-oriented Copilot skills under `.github/skills/`.
-Skills are packaged with the CLI and can be installed into consumer projects via `agentops skills install`.
+AgentOps provides workflow-oriented Copilot skills that guide users through evaluation workflows. These skills must prioritize **developer experience, clarity, and minimal friction**.
 
-- Use these skills for operational guidance on running evaluations, investigating regressions, observability triage, and release management workflows.
-- Treat the CLI as the source of truth and keep planned/stubbed commands clearly marked as not yet implemented.
-- Do not duplicate architecture or code-structure guidance from this file inside workflow skills.
+#### Naming Convention
 
-When generating or modifying code:
+* All skills must follow:
 
-- **Read `docs/how-it-works.md` first** — it is the single source of truth for architecture
-- **Read `CONTRIBUTING.md`** for contribution rules and workflow
-- Treat the CLI as the source of truth and keep planned/stubbed commands clearly marked as not yet implemented.
-- Do not invent new concepts or commands
-- Prefer clarity and determinism over cleverness
-- Optimize for maintainability and CI usage
-- Azure SDK imports must be **lazy** (inside functions, not top-level)
-- Never hardcode Azure API versions — let the SDK handle versioning
-- Keep user-facing log output clean — no warning cascades or retry noise
-- When adding evaluator support, update both cloud (`_cloud_evaluator_data_mapping` + `_cloud_evaluator_needs_model`) and local paths
-- All new logic must have corresponding unit tests in `tests/unit/`
-- Always mock Azure SDK calls in tests — tests must run without credentials
-- The `core/` package must remain free of Azure imports and I/O
-- Follow the request flow: CLI → Services → Backends → Core (never skip layers)
-- Use the current config models — `RunConfig` with `TargetConfig`, `BundleRef`, `DatasetRef`, `ExecutionConfig`, `OutputConfig`
-- `BackendRunContext.run_config` carries the full `RunConfig` — backends extract the fields they need
-- `publish_foundry_evaluation()` takes `endpoint_config: TargetEndpointConfig`
-- Backend resolution is based on `execution_mode` + `endpoint.kind`
-- If a change is user-visible, add an entry to `CHANGELOG.md` under `[Unreleased]` (Keep a Changelog format)
+  * Prefix: `agentops-`
+  * Single word name
+* Examples:
+
+  * `/agentops-eval`
+  * `/agentops-config`
+  * `/agentops-dataset`
+  * `/agentops-report`
+
+Do not use multi-word or ambiguous names.
+
+---
+
+#### Single Responsibility Principle
+
+Each skill must have a clearly defined responsibility:
+
+| Skill              | Responsibility                           |
+| ------------------ | ---------------------------------------- |
+| `agentops-eval`    | Run evaluations and compare runs         |
+| `agentops-config`  | Generate `run.yaml` from project context |
+| `agentops-dataset` | Create evaluation datasets               |
+| `agentops-report`  | Interpret and regenerate reports         |
+
+Skills must NOT mix responsibilities.
+
+---
+
+#### Core Behavior
+
+All skills must:
+
+* Inspect the workspace (code, configs, env files)
+* Infer as much as possible from existing context
+* Ask only for critical missing values
+* Provide ready-to-use outputs (files, commands)
+
+The agent should feel proactive and context-aware.
+
+---
+
+#### Assumptions Policy
+
+* Never fabricate:
+
+  * agent IDs
+  * model deployment names
+  * endpoint URLs
+* If making assumptions:
+
+  * clearly label them
+* Prefer asking over guessing when critical
+
+---
+
+#### Dataset Strategy
+
+* If project intent is clear:
+
+  * generate realistic, domain-specific datasets
+* If unclear:
+
+  * generate a small draft dataset
+  * explicitly state assumptions
+
+---
+
+#### Output Expectations
+
+Skills must produce:
+
+* Concrete artifacts (JSONL, YAML, run.yaml)
+* Exact CLI commands to execute
+* Clear explanation of outputs:
+
+  * `results.json`
+  * `report.md` / `report.html`
+
+Avoid generic explanations.
+
+---
+
+#### Developer Experience Guidelines
+
+* Minimize back-and-forth
+* Avoid unnecessary questions
+* Be concise and actionable
+* Focus on helping the user move forward quickly
+
+---
+
+#### Guardrails
+
+* Do not invent CLI commands or flags
+* Do not ask users to choose:
+
+  * bundle
+  * dataset
+  * scenario
+    if it can be inferred
+* Do not overcomplicate workflows
+
+---
+
+#### Composition
+
+Skills should be composable:
+
+* `agentops-config` → `agentops-dataset` → `agentops-eval` → `agentops-report`
+
+Each skill should work independently but also integrate naturally in a workflow.

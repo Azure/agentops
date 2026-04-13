@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from agentops.backends.base import BackendRunContext
@@ -669,3 +670,71 @@ def test_default_foundry_input_mapping_content_safety() -> None:
 def test_default_foundry_input_mapping_groundedness_pro() -> None:
     mapping = _default_foundry_input_mapping("GroundednessProEvaluator")
     assert mapping == {"query": "$prompt", "response": "$prediction"}
+
+
+# ---------------------------------------------------------------------------
+# model_config auto-injection tests
+# ---------------------------------------------------------------------------
+
+
+def test_model_config_injected_for_all_ai_assisted_evaluators() -> None:
+    """Verify model_config is auto-injected for ALL AI-assisted evaluators, not just 2."""
+    from agentops.backends.eval_engine import (
+        _AI_ASSISTED_EVALUATORS,
+        _load_foundry_evaluator_callable,
+    )
+    import importlib as _real_importlib
+
+    # Capture a direct reference to the real import_module BEFORE patching
+    _orig_import_module = _real_importlib.import_module
+
+    # Create a fake evaluator class that captures its kwargs
+    class FakeEvaluator:
+        def __init__(self, **kwargs):
+            self.init_kwargs = kwargs
+
+        def __call__(self, **kwargs):
+            return {}
+
+    # Create a fake module with all AI-assisted evaluator classes
+    fake_module = SimpleNamespace(
+        **{name: type(name, (FakeEvaluator,), {}) for name in _AI_ASSISTED_EVALUATORS}
+    )
+
+    # Only intercept "azure.ai.evaluation" imports, let everything else through
+    def _selective_import(name, *args, **kwargs):
+        if name == "azure.ai.evaluation":
+            return fake_module
+        return _orig_import_module(name, *args, **kwargs)
+
+    for evaluator_name in _AI_ASSISTED_EVALUATORS:
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
+                    "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
+                },
+            ),
+            patch(
+                "agentops.backends.eval_engine.importlib.import_module",
+                side_effect=_selective_import,
+            ),
+            patch(
+                "agentops.backends.eval_engine._default_credential",
+                return_value="fake-cred",
+            ),
+        ):
+            evaluator = _load_foundry_evaluator_callable(
+                evaluator_name=evaluator_name,
+                evaluator_config={"kind": "builtin", "class_name": evaluator_name},
+            )
+            assert hasattr(evaluator, "init_kwargs"), (
+                f"{evaluator_name}: expected FakeEvaluator instance"
+            )
+            assert "model_config" in evaluator.init_kwargs, (
+                f"{evaluator_name}: model_config was NOT auto-injected"
+            )
+            mc = evaluator.init_kwargs["model_config"]
+            assert mc["azure_endpoint"] == "https://test.openai.azure.com/"
+            assert mc["azure_deployment"] == "gpt-4o-mini"

@@ -6,11 +6,18 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
-- **`agentops skills install` command** — Installs packaged coding agent skills into consumer projects. Supports GitHub Copilot (`.github/skills/`) and Claude Code (`.claude/commands/`). Auto-detects platforms; falls back to GitHub Copilot silently. Pass `--prompt` to ask before installing when no platform is detected. Pass `--platform` for explicit platform selection.
+- **Auto-registration of skills in coding agent instruction files** — `agentops init` and `agentops skills install` now register installed skills in the coding agent's instruction file so AI assistants discover them automatically. For Copilot: appends an idempotent marker-delimited block to `.github/copilot-instructions.md` with a skill discovery table. For Cursor: writes a managed `.cursor/rules/agentops.mdc` file with `alwaysApply: true`. Repeated runs update the block in place (no duplicates).
+- **Cursor platform detection** — `detect_platforms()` now recognises `.cursor/rules/` directory or `.cursorrules` file as Cursor indicators. Cursor skills are installed to `.github/skills/` (shared with Copilot) and registered via `.cursor/rules/agentops.mdc`.
+- **Underscore Copilot filename detection** — `detect_platforms()` now silently accepts `copilot_instructions.md` (underscore variant) as a valid Copilot signal alongside the standard `copilot-instructions.md`.
+- **`agentops skills install` command** — Installs packaged coding agent skills into consumer projects. Supports GitHub Copilot (`.github/skills/`), Cursor (`.github/skills/`), and Claude Code (`.claude/commands/`). Auto-detects platforms; falls back to GitHub Copilot silently. Pass `--prompt` to ask before installing when no platform is detected. Pass `--platform` for explicit platform selection.
 - **Skills integrated into `agentops init`** — Running `agentops init` now also installs coding agent skills using the same auto-detection logic. Added `--prompt` flag to `init` for interactive platform selection.
 - Packaged skill templates under `src/agentops/templates/skills/` for distribution via `pip install`.
 
 ### Changed
+- **Skills optimized for weaker models** — Rewrote all 8 SKILL.md files to reduce cognitive load and token usage. Key changes: replaced prose paragraphs with numbered single-action steps and tables, removed boilerplate ("Before You Start", "When to Use", "Purpose" sections), inlined decision logic into steps (no disconnected decision trees), provided one copy-paste callable adapter template instead of multiple variants, consolidated rules into a single section per skill. Size reductions: `agentops-eval` 613→275 lines (−55%), `agentops-config` 229→170 (−26%), `agentops-report` −35%, `agentops-regression` −35%, `agentops-monitor` −53%, `agentops-trace` −55%, `agentops-workflow` −38%, `agentops-dataset` −11%.
+- **Skills discovery improvements** — `agentops-eval` and `agentops-config` skills now auto-discover container app URLs (`az containerapp list`) and webapp URLs (`az webapp list`), detect auth patterns from codebase (Dapr, API key, Bearer), pre-warm Azure CLI tokens to prevent intermittent `AzureCliCredential.get_token failed` errors, and present all discovered values as a confirmation table instead of asking each one separately.
+- **Report readability improvements** — `report.md` and HTML reports now include: evaluator descriptions ("What It Measures" column), human-readable metric names (CamelCase split, `_` → spaces), ✅/❌ visual indicators for pass/fail, merged threshold columns (`>= 0.80` instead of separate Criteria/Expected), clean number formatting (drop unnecessary decimal zeros), per-row score tables in Row Details, retrieved context display for RAG evaluations (truncated at 500 chars), "How Pass/Fail Is Determined" section, and one-sentence descriptions after each section heading.
+- **`RowMetricsResult` model updated** — Added optional `context` field to `RowMetricsResult` for RAG evaluation context display. All three backends (Foundry, HTTP, local adapter) now populate this field from dataset rows.
 - **README restructured** — Simplified Quickstart from 6 steps to 3. Moved evaluation scenarios, configuration model, and run config examples to new `docs/concepts.md` page with ASCII architecture diagram. Removed Project Structure and Copilot Skills sections from README (available in CONTRIBUTING.md and tutorial-copilot-skills.md respectively).
 
 ### Added
@@ -22,7 +29,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   - `agentops config cicd` → `agentops workflow generate` (new `workflow` entity)
   - `agentops monitor dashboard` → `agentops monitor show`
   - `agentops monitor alert` → `agentops monitor configure`
-- **Skills renamed to short names** — `/evals`, `/regression`, `/trace`, `/monitor`, `/workflows`. Split `observability-triage` into `trace` + `monitor` (honest stubs). Added `workflows` skill for CI/CD setup. Added codebase-first analysis to the `evals` skill so the agent auto-detects bundles, endpoints, and generates custom datasets instead of asking.
+- **Skills refactored into modular skills** — 8 single-responsibility skills with `agentops-` prefix: `/agentops-eval` (run evaluations), `/agentops-config` (infer scenario + generate run.yaml), `/agentops-dataset` (generate JSONL + YAML datasets), `/agentops-report` (interpret and regenerate reports), `/agentops-regression` (investigate score drops), `/agentops-trace` (tracing stub), `/agentops-monitor` (monitoring stub), `/agentops-workflow` (CI/CD setup). Decomposed the monolithic `evals` skill into 4 focused skills. Each follows a standardized structure: Purpose, When to Use, Before You Start, Steps, Guardrails, Outputs.
 - **Run config model** — The configuration model uses an orthogonal `target`/`hosting`/`execution_mode` model. Configs missing a `version` field or containing a legacy `backend` key are rejected with an actionable error message.
   - `target` section with `type` (agent|model), `hosting` (local|foundry|aks|containerapps), `execution_mode` (local|remote).
   - Remote endpoints configured via `target.endpoint` with `kind: foundry_agent` or `kind: http`.
@@ -96,8 +103,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   - Supports run IDs by timestamped folder name, `latest` keyword, or absolute/relative paths.
 - Add Pydantic models for comparison output: `ComparisonResult`, `MetricDelta`, `ThresholdDelta`, `ItemDelta`, `ComparisonSummary`.
 - Add comparison service (`services/comparison.py`) with run discovery and structured diff logic.
-- Update `regression` and `evals` Copilot skills to reference the new compare command.
-- Add distributable Copilot skills under `.github/plugins/agentops/skills/` for GitHub-based installation (`evals`, `regression`, `trace`, `monitor`, `workflows`).
+- Update `agentops-regression` and `agentops-eval` Copilot skills to reference the new compare command.
+- Add distributable Copilot skills under `.github/plugins/agentops/skills/` for GitHub-based installation (`agentops-eval`, `agentops-config`, `agentops-dataset`, `agentops-report`, `agentops-regression`, `agentops-trace`, `agentops-monitor`, `agentops-workflow`).
 - Fix cloud evaluation to use the Foundry Project Evals API (`api-version=2025-11-15-preview`) with `azure_ai_evaluator` testing criteria, replacing the OpenAI SDK-based path that was incompatible.
 - Fix metric polarity in comparison: lower-is-better metrics (e.g. `avg_latency_seconds` with `<=` threshold) now correctly show "improved" when they decrease.
 - Align `azure-ai-projects` version references across all files to `>=2.0.1`.

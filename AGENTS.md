@@ -211,18 +211,24 @@ Coding agent skills (installed by `init` and `skills install`):
 
 ```
 .github/skills/                 # GitHub Copilot (default platform)
-├── evals/SKILL.md
-├── regression/SKILL.md
-├── trace/SKILL.md
-├── monitor/SKILL.md
-└── workflows/SKILL.md
+├── agentops-eval/SKILL.md
+├── agentops-config/SKILL.md
+├── agentops-dataset/SKILL.md
+├── agentops-report/SKILL.md
+├── agentops-regression/SKILL.md
+├── agentops-trace/SKILL.md
+├── agentops-monitor/SKILL.md
+└── agentops-workflow/SKILL.md
 
 .claude/commands/               # Claude Code (when detected or explicit)
-├── evals.md
-├── regression.md
-├── trace.md
-├── monitor.md
-└── workflows.md
+├── agentops-eval.md
+├── agentops-config.md
+├── agentops-dataset.md
+├── agentops-report.md
+├── agentops-regression.md
+├── agentops-trace.md
+├── agentops-monitor.md
+└── agentops-workflow.md
 ```
 
 Platform auto-detection: `init` checks for `.github/copilot-instructions.md`, `.github/skills/`, `.claude/`, or `CLAUDE.md`. If no platform is detected, GitHub Copilot is used as the silent default. Pass `--prompt` to ask before installing.

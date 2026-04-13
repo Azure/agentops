@@ -47,9 +47,11 @@ def load_run_config(path: Path) -> RunConfig:
     data = load_yaml(path)
     if isinstance(data, dict) and "backend" in data:
         raise ValueError(
-            "Invalid run config: the 'backend' key is not supported. "
-            "Use the 'target' section with type/hosting/execution_mode dimensions. "
-            "See docs/how-it-works.md for the configuration format."
+            "Invalid run config: the top-level 'backend' key is not supported. "
+            "Did you mean 'target.hosting'? The backend is now determined by the "
+            "'target' section (type, hosting, execution_mode). Remove the 'backend' "
+            "key and configure 'target.hosting' and 'target.execution_mode' instead. "
+            "See docs/how-it-works.md for the current schema."
         )
     try:
         return RunConfig.model_validate(data)

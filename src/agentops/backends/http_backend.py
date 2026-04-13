@@ -293,7 +293,7 @@ class HttpBackend:
                     if name in evaluator_aggregate_values:
                         evaluator_aggregate_values[name].append(entry["value"])
 
-                row_metrics_payload.append({"row_index": index, "metrics": row_metric_entries})
+                row_metrics_payload.append({"row_index": index, "input": prompt_text, "response": prediction_text, "context": row.get("context"), "metrics": row_metric_entries})
                 stdout_lines.append(
                     f"row={index} expected={expected_text!r} prediction={prediction_text!r}"
                 )

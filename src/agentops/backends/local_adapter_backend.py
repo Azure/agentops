@@ -70,12 +70,19 @@ def _load_callable(callable_path: str) -> Callable[[str, Dict[str, Any]], Dict[s
     if cwd not in sys.path:
         sys.path.insert(0, cwd)
 
+    # Also add .agentops/ to sys.path so callable adapters placed there
+    # by ``agentops init`` are importable without manual path hacking.
+    agentops_dir = str(Path.cwd() / ".agentops")
+    if agentops_dir not in sys.path and Path(agentops_dir).is_dir():
+        sys.path.insert(1, agentops_dir)
+
     try:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError as exc:
         raise ValueError(
             f"Could not import module '{module_name}' from local.callable '{callable_path}'. "
-            f"Make sure the module is importable from your project root ({cwd})."
+            f"Make sure the module is importable from your project root ({cwd}) "
+            f"or from the .agentops/ directory."
         ) from exc
 
     func = getattr(module, func_name, None)
@@ -306,7 +313,7 @@ class LocalAdapterBackend:
                         evaluator_aggregate_values[name].append(entry["value"])
 
                 row_metrics_payload.append(
-                    {"row_index": index, "metrics": row_metric_entries}
+                    {"row_index": index, "input": prompt_text, "response": prediction_text, "context": row.get("context"), "metrics": row_metric_entries}
                 )
                 stdout_lines.append(
                     f"row={index} expected={expected_text!r} prediction={prediction_text!r}"

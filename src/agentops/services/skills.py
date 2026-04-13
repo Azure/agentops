@@ -1,4 +1,4 @@
-"""Coding agent skills installation service for `agentops skills install`."""
+"""Coding agent skills installation and registration service."""
 
 from __future__ import annotations
 
@@ -11,11 +11,14 @@ from typing import Dict, List
 _TEMPLATE_PACKAGE = "agentops.templates"
 
 _SKILLS: tuple[str, ...] = (
-    "skills/evals/SKILL.md",
-    "skills/regression/SKILL.md",
-    "skills/trace/SKILL.md",
-    "skills/monitor/SKILL.md",
-    "skills/workflows/SKILL.md",
+    "skills/agentops-eval/SKILL.md",
+    "skills/agentops-config/SKILL.md",
+    "skills/agentops-dataset/SKILL.md",
+    "skills/agentops-report/SKILL.md",
+    "skills/agentops-regression/SKILL.md",
+    "skills/agentops-trace/SKILL.md",
+    "skills/agentops-monitor/SKILL.md",
+    "skills/agentops-workflow/SKILL.md",
 )
 
 _PLATFORM_CONFIGS: Dict[str, Dict[str, str]] = {
@@ -27,9 +30,61 @@ _PLATFORM_CONFIGS: Dict[str, Dict[str, str]] = {
         "target_dir": ".claude/commands",
         "file_pattern": "{skill_name}.md",
     },
+    "cursor": {
+        "target_dir": ".github/skills",
+        "file_pattern": "{skill_name}/SKILL.md",
+    },
 }
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*\n", re.DOTALL)
+
+# ---------------------------------------------------------------------------
+# Registration markers and content blocks
+# ---------------------------------------------------------------------------
+
+_COPILOT_MARKER_START = "<!-- agentops-skills-start -->"
+_COPILOT_MARKER_END = "<!-- agentops-skills-end -->"
+
+_COPILOT_BLOCK = f"""{_COPILOT_MARKER_START}
+## AgentOps Evaluation & Operations
+
+This project uses AgentOps for agent evaluation, monitoring, and benchmarking.
+When the user asks about any of the topics below, read the corresponding skill
+file **before** responding and follow its workflow step by step.
+
+| Topic | Skill File | Trigger phrases |
+|---|---|---|
+| Run evaluations, benchmark, compare models | `.github/skills/agentops-eval/SKILL.md` | "run eval", "evaluate", "benchmark", "compare models" |
+| Generate run.yaml configuration | `.github/skills/agentops-config/SKILL.md` | "configure", "run.yaml", "set up eval", "which bundle" |
+| Generate evaluation datasets | `.github/skills/agentops-dataset/SKILL.md` | "create dataset", "generate test data", "JSONL" |
+| Interpret and regenerate reports | `.github/skills/agentops-report/SKILL.md` | "report", "results", "explain scores" |
+| Investigate regressions | `.github/skills/agentops-regression/SKILL.md` | "regression", "score dropped", "why worse" |
+| Tracing and observability | `.github/skills/agentops-trace/SKILL.md` | "trace", "tracing", "spans", "telemetry" |
+| Monitoring and alerts | `.github/skills/agentops-monitor/SKILL.md` | "monitor", "alerts", "dashboard" |
+| CI/CD workflow setup | `.github/skills/agentops-workflow/SKILL.md` | "CI", "workflow", "pipeline", "GitHub Actions" |
+{_COPILOT_MARKER_END}"""
+
+_CURSOR_MDC = """\
+---
+description: AgentOps evaluation, monitoring, and benchmarking tools
+globs: "**"
+alwaysApply: true
+---
+
+When the user asks about evaluations, benchmarks, tracing, or monitoring,
+read the corresponding skill file and follow its workflow step by step.
+
+| Topic | Skill File |
+|---|---|
+| Run evaluations, benchmark, compare models | `.github/skills/agentops-eval/SKILL.md` |
+| Generate run.yaml configuration | `.github/skills/agentops-config/SKILL.md` |
+| Generate evaluation datasets | `.github/skills/agentops-dataset/SKILL.md` |
+| Interpret and regenerate reports | `.github/skills/agentops-report/SKILL.md` |
+| Investigate regressions | `.github/skills/agentops-regression/SKILL.md` |
+| Tracing and observability | `.github/skills/agentops-trace/SKILL.md` |
+| Monitoring and alerts | `.github/skills/agentops-monitor/SKILL.md` |
+| CI/CD workflow setup | `.github/skills/agentops-workflow/SKILL.md` |
+"""
 
 
 @dataclass
@@ -64,9 +119,16 @@ def detect_platforms(directory: Path) -> list[str]:
 
     if (
         (resolved / ".github" / "copilot-instructions.md").exists()
+        or (resolved / ".github" / "copilot_instructions.md").exists()
         or (resolved / ".github" / "skills").exists()
     ):
         platforms.append("copilot")
+
+    if (
+        (resolved / ".cursor" / "rules").exists()
+        or (resolved / ".cursorrules").exists()
+    ):
+        platforms.append("cursor")
 
     return platforms
 
@@ -113,7 +175,7 @@ def install_skills(
         target_dir = resolved / config["target_dir"]
 
         for skill_path in _SKILLS:
-            # "skills/evals/SKILL.md" → "evals"
+            # "skills/agentops-eval/SKILL.md" → "agentops-eval"
             skill_name = Path(skill_path).parent.name
 
             dest_relative = config["file_pattern"].format(skill_name=skill_name)
@@ -133,5 +195,102 @@ def install_skills(
                 result.overwritten_files.append(dest)
             else:
                 result.created_files.append(dest)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Registration — add skill discovery entries to instruction files
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RegistrationResult:
+    """Result of registering skills in coding agent instruction files.
+
+    Attributes:
+        registered_files: Instruction files that were created or updated.
+    """
+
+    registered_files: List[Path] = field(default_factory=list)
+
+
+def _register_copilot(resolved: Path) -> Path | None:
+    """Register skills in `.github/copilot-instructions.md`.
+
+    - File absent → create with just the AgentOps block.
+    - File exists, no marker → append block at end.
+    - File exists, has marker → replace existing block (idempotent).
+    """
+    dest = resolved / ".github" / "copilot-instructions.md"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    if not dest.exists():
+        dest.write_text(_COPILOT_BLOCK + "\n", encoding="utf-8")
+        return dest
+
+    content = dest.read_text(encoding="utf-8")
+
+    if _COPILOT_MARKER_START in content:
+        # Replace existing block
+        pattern = re.compile(
+            re.escape(_COPILOT_MARKER_START) + r".*?" + re.escape(_COPILOT_MARKER_END),
+            re.DOTALL,
+        )
+        new_content = pattern.sub(_COPILOT_BLOCK, content)
+        if new_content != content:
+            dest.write_text(new_content, encoding="utf-8")
+        return dest
+
+    # Append to end
+    separator = "\n" if content.endswith("\n") else "\n\n"
+    dest.write_text(content + separator + _COPILOT_BLOCK + "\n", encoding="utf-8")
+    return dest
+
+
+def _register_cursor(resolved: Path) -> Path | None:
+    """Register skills in `.cursor/rules/agentops.mdc`.
+
+    Always overwrites — this is a fully managed file.
+    """
+    dest = resolved / ".cursor" / "rules" / "agentops.mdc"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(_CURSOR_MDC, encoding="utf-8")
+    return dest
+
+
+# Map platform names to their registration functions.
+_PLATFORM_REGISTRARS: Dict[str, object] = {
+    "copilot": _register_copilot,
+    "cursor": _register_cursor,
+}
+
+
+def register_skills(
+    directory: Path,
+    platforms: list[str],
+) -> RegistrationResult:
+    """Register installed skills in coding agent instruction files.
+
+    For each detected platform, writes or updates the appropriate
+    instruction file so the AI assistant discovers the skill files.
+
+    Args:
+        directory: Root directory of the consumer repository.
+        platforms: List of platform identifiers (e.g. ``["copilot"]``).
+
+    Returns:
+        RegistrationResult with paths of instruction files that were updated.
+    """
+    result = RegistrationResult()
+    resolved = directory.resolve()
+
+    for platform in platforms:
+        registrar = _PLATFORM_REGISTRARS.get(platform)
+        if registrar is None:
+            continue
+        path = registrar(resolved)  # type: ignore[operator]
+        if path is not None:
+            result.registered_files.append(path)
 
     return result

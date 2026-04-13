@@ -142,6 +142,27 @@ output:
         load_run_config(path)
 
 
+def test_load_run_config_backend_error_suggests_target_hosting(tmp_path: Path) -> None:
+    """Verify the error message includes the migration hint about target.hosting."""
+    path = tmp_path / "run.yaml"
+    path.write_text(
+        """
+version: 1
+bundle:
+  path: ".agentops/bundles/rag_baseline.yaml"
+dataset:
+  path: ".agentops/datasets/smoke-agent.yaml"
+backend: foundry
+output:
+  write_report: true
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="target.hosting"):
+        load_run_config(path)
+
+
 def test_load_run_config_parses(tmp_path: Path) -> None:
     path = tmp_path / "run.yaml"
     path.write_text(

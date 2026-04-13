@@ -401,6 +401,9 @@ class MetricResult(BaseModel):
 
 class RowMetricsResult(BaseModel):
     row_index: int
+    input: Optional[str] = None
+    response: Optional[str] = None
+    context: Optional[str] = None
     metrics: List[MetricResult] = Field(default_factory=list)
 
     @field_validator("row_index")

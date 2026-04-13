@@ -20,7 +20,7 @@ name: AgentOps Evaluation
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       config:

@@ -90,6 +90,13 @@ def _print_skills_result(result: object) -> None:
         typer.echo(f" - skipped {skipped} (use --force to overwrite)")
 
 
+def _print_registration_result(result: object) -> None:
+    """Print skill registration summary."""
+    registered = getattr(result, "registered_files", [])
+    for path in registered:
+        typer.echo(f" * registered skills in {path}")
+
+
 def _planned_command(command_name: str) -> None:
     typer.echo(
         "This command is planned but not implemented in this release:\n"
@@ -183,16 +190,25 @@ def cmd_init(
         directory=directory, explicit=None, prompt=prompt
     )
     if resolved_platforms:
-        from agentops.services.skills import install_skills
+        from agentops.services.skills import install_skills, register_skills
 
         try:
             skills_result = install_skills(
-                directory=directory, platforms=resolved_platforms, force=force
+                directory=directory, platforms=resolved_platforms, force=True
             )
         except Exception as exc:
             typer.echo(f"Warning: failed to install skills: {exc}", err=True)
         else:
             _print_skills_result(skills_result)
+
+        try:
+            reg_result = register_skills(
+                directory=directory, platforms=resolved_platforms
+            )
+        except Exception as exc:
+            typer.echo(f"Warning: failed to register skills: {exc}", err=True)
+        else:
+            _print_registration_result(reg_result)
 
 
 # ---------------------------------------------------------------------------
@@ -447,7 +463,7 @@ def cmd_config_show() -> None:
 @workflow_app.command("generate")
 def cmd_workflow_generate(
     force: bool = typer.Option(
-        False, "--force", help="Overwrite existing workflow file."
+        False, "--force", help="Overwrite existing workflow files."
     ),
     directory: Path = typer.Option(
         Path("."),
@@ -455,14 +471,19 @@ def cmd_workflow_generate(
         help="Target repository root directory.",
     ),
 ) -> None:
-    """Generate a GitHub Actions workflow for AgentOps evaluation."""
-    from agentops.services.cicd import generate_cicd_workflow
+    """Generate GitHub Actions workflows for AgentOps evaluation.
+
+    Auto-detects which pipelines to create based on the .agentops/ workspace:
+    PR evaluation (always), CI evaluation (multiple configs), and CD pipeline
+    with safety QA gate + deploy placeholder (multiple configs).
+    """
+    from agentops.services.cicd import generate_cicd_workflows
 
     log.debug("cmd_workflow_generate called force=%s dir=%s", force, directory)
     try:
-        result = generate_cicd_workflow(directory=directory, force=force)
+        result = generate_cicd_workflows(directory=directory, force=force)
     except Exception as exc:
-        typer.echo(f"Error: failed to generate CI/CD workflow: {exc}", err=True)
+        typer.echo(f"Error: failed to generate CI/CD workflows: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     for created in result.created_files:
@@ -484,9 +505,9 @@ def cmd_workflow_generate(
         typer.echo(
             "  3. Configure Azure Workload Identity Federation (see docs/ci-github-actions.md)"
         )
-        typer.echo("  4. Commit and push the workflow file")
+        typer.echo("  4. Commit and push the workflow files")
     elif result.skipped_files:
-        typer.echo("No files written. Use --force to overwrite existing workflow.")
+        typer.echo("No files written. Use --force to overwrite existing workflows.")
 
 
 @trace_app.command("init")
@@ -541,7 +562,7 @@ def cmd_skills_install(
         ),
     ] = None,
     force: bool = typer.Option(
-        False, "--force", help="Overwrite existing skill files."
+        False, "--force", help="Deprecated — skills are always overwritten with the latest version."
     ),
     prompt: bool = typer.Option(
         False,
@@ -573,13 +594,24 @@ def cmd_skills_install(
 
     try:
         result = install_skills(
-            directory=directory, platforms=resolved_platforms, force=force
+            directory=directory, platforms=resolved_platforms, force=True
         )
     except Exception as exc:
         typer.echo(f"Error: failed to install skills: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
     _print_skills_result(result)
+
+    from agentops.services.skills import register_skills
+
+    try:
+        reg_result = register_skills(
+            directory=directory, platforms=resolved_platforms
+        )
+    except Exception as exc:
+        typer.echo(f"Warning: failed to register skills: {exc}", err=True)
+    else:
+        _print_registration_result(reg_result)
 
 
 def main() -> None:

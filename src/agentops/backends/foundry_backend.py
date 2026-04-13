@@ -808,6 +808,9 @@ class FoundryBackend:
             row_metrics_payload.append(
                 {
                     "row_index": row_index,
+                    "input": prompt,
+                    "response": prediction,
+                    "context": row_data.get("context"),
                     "metrics": row_metric_entries,
                 }
             )
@@ -1026,6 +1029,9 @@ class FoundryBackend:
             row_metrics_payload.append(
                 {
                     "row_index": row_index,
+                    "input": prompt_text,
+                    "response": prediction_normalized,
+                    "context": row_data.get("context"),
                     "metrics": row_metric_entries,
                 }
             )
