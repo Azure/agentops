@@ -192,6 +192,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version derivation
+
+      - name: Sync VSIX version from git tag
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LAST_VERSION=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+            BASE_VERSION="$LAST_VERSION"
+          else
+            BASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+          jq --arg v "$BASE_VERSION" '.version = $v' \
+            plugins/agentops/package.json > plugins/agentops/package.json.tmp
+          mv plugins/agentops/package.json.tmp plugins/agentops/package.json
+          echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -224,6 +241,23 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version derivation
+
+      - name: Sync VSIX version from git tag
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LAST_VERSION=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+            BASE_VERSION="$LAST_VERSION"
+          else
+            BASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+          jq --arg v "$BASE_VERSION" '.version = $v' \
+            plugins/agentops/package.json > plugins/agentops/package.json.tmp
+          mv plugins/agentops/package.json.tmp plugins/agentops/package.json
+          echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
