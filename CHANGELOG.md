@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-03-24
+
 ### Added
 - Extend Foundry cloud evaluation to support 22 built-in evaluators (up from 8), covering quality, agent, safety, RAG, tool, and NLP evaluator categories. Verified end-to-end with live Foundry cloud evaluation.
   - Quality: `CoherenceEvaluator`, `FluencyEvaluator`, `RelevanceEvaluator`
