@@ -279,7 +279,10 @@ def _validate_enabled_evaluators_scored(
     missing = [name for name in evaluator_names if name not in scored_names]
     if missing:
         raise ValueError(
-            "Missing scores for enabled evaluators: " + ", ".join(sorted(missing))
+            "Missing scores for enabled evaluators: "
+            + ", ".join(sorted(missing))
+            + ". These evaluators returned no score from the cloud evaluation. "
+            "Run with --verbose to see details (e.g. region restrictions for safety evaluators)."
         )
 
 

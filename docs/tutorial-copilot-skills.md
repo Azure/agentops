@@ -38,7 +38,7 @@ In VS Code:
 1. Open **Copilot Chat**.
 2. Use the skill install flow and point to this repository:
    - **Source:** `Azure/agentops`
-   - **Skill path:** `.github/plugins/agentops/skills/`
+   - **Skill path:** `plugins/agentops/skills/`
 3. Select the skills you want to install.
 
 Once installed, the skills appear in `~/.agents/skills/` and a lock file (`~/.agents/.skill-lock.json`) tracks where they came from. Skills are available across all workspaces.
@@ -50,14 +50,14 @@ If you prefer to manage skills manually:
 **macOS / Linux:**
 ```bash
 git clone https://github.com/Azure/agentops.git /tmp/agentops
-cp -r /tmp/agentops/.github/plugins/agentops/skills/* ~/.agents/skills/
+cp -r /tmp/agentops/plugins/agentops/skills/* ~/.agents/skills/
 rm -rf /tmp/agentops
 ```
 
 **Windows (PowerShell):**
 ```powershell
 git clone https://github.com/Azure/agentops.git $env:TEMP\agentops
-Copy-Item -Recurse "$env:TEMP\agentops\.github\plugins\agentops\skills\*" "$env:USERPROFILE\.agents\skills\"
+Copy-Item -Recurse "$env:TEMP\agentops\plugins\agentops\skills\*" "$env:USERPROFILE\.agents\skills\"
 Remove-Item -Recurse -Force "$env:TEMP\agentops"
 ```
 
@@ -66,8 +66,8 @@ Remove-Item -Recurse -Force "$env:TEMP\agentops"
 If you want the skills available only within a specific repository (useful for teams with different tool versions), copy them into the project:
 
 ```bash
-mkdir -p .github/plugins/agentops/skills
-cp -r <agentops-repo>/.github/plugins/agentops/skills/* .github/plugins/agentops/skills/
+mkdir -p plugins/agentops/skills
+cp -r <agentops-repo>/plugins/agentops/skills/* plugins/agentops/skills/
 ```
 
 This way the skills travel with the repo and every contributor gets them automatically.
@@ -111,7 +111,7 @@ Pull the latest version from the repository and re-copy:
 
 ```bash
 git clone https://github.com/Azure/agentops.git /tmp/agentops
-cp -r /tmp/agentops/.github/plugins/agentops/skills/* ~/.agents/skills/
+cp -r /tmp/agentops/plugins/agentops/skills/* ~/.agents/skills/
 rm -rf /tmp/agentops
 ```
 

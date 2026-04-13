@@ -47,6 +47,8 @@ src/
     │   ├── runner.py          # Main evaluation orchestrator
     │   ├── reporting.py       # Report regeneration service
     │   ├── initializer.py     # Workspace scaffolding (agentops init)
+    │   ├── comparison.py      # Eval comparison (agentops eval compare)
+    │   ├── cicd.py            # CI/CD workflow generation
     │   └── foundry_evals.py   # Foundry Evaluations panel publishing
     │
     ├── backends/              # Execution engines — ADD new backends here
@@ -56,16 +58,19 @@ src/
     │
     ├── utils/                 # Shared helpers
     │   ├── yaml.py            # YAML load + env-var interpolation
-    │   └── logging.py         # Logger factory and setup
+    │   ├── logging.py         # Logger factory and setup
+    │   └── telemetry.py       # Optional OTLP tracing (lazy imports)
     │
     └── templates/             # Starter files for `agentops init`
         ├── config.yaml
         ├── run.yaml
         ├── run-rag.yaml
         ├── run-agent.yaml
+        ├── .gitignore
         ├── bundles/           # Pre-built evaluation bundles
         ├── datasets/         # Dataset definitions (.yaml)
-        └── data/             # Sample dataset rows (.jsonl)
+        ├── data/             # Sample dataset rows (.jsonl)
+        └── workflows/        # CI/CD workflow templates
 ```
 
 ### Where to Add New Code
@@ -116,7 +121,8 @@ When you run `agentops eval run`, the following happens step by step:
 | `agentops report show\|export` | View or export reports | Planned (stub) |
 | `agentops bundle list\|show` | Browse bundle definitions | Planned (stub) |
 | `agentops dataset validate\|describe\|import` | Validate, describe, and import datasets | Planned (stub) |
-| `agentops config validate\|show\|cicd` | Validate config and CI/CD scaffolding | Planned (stub) |
+| `agentops config cicd [--force] [--dir <path>]` | Generate CI/CD workflow file | Available |
+| `agentops config validate\|show` | Validate config and show merged config | Planned (stub) |
 | `agentops trace init` | Initialize tracing setup | Planned (stub) |
 | `agentops monitor setup\|dashboard\|alert` | Monitoring setup and operations | Planned (stub) |
 | `agentops model list` | List model deployments from Foundry project | Planned (stub) |
@@ -174,7 +180,7 @@ The `.agentops/` directory lives in your project root and stores all evaluation 
   - `source: local` for AgentOps-native evaluators (for example `exact_match`, `avg_latency_seconds`)
   - `source: foundry` for Foundry SDK evaluators (name must match evaluator class name, for example `GroundednessEvaluator`)
 - Supported local evaluators are explicit: `exact_match`, `latency_seconds`, `avg_latency_seconds`.
-- AgentOps does not emulate Foundry evaluators locally; if you configure `SimilarityEvaluator`/`GroundednessEvaluator`, use `source: foundry`.
+- AgentOps does not emulate Foundry evaluators locally; if you configure Foundry SDK evaluators (e.g. `SimilarityEvaluator`, `CoherenceEvaluator`, `ToolCallAccuracyEvaluator`, etc.), use `source: foundry`.
 - Foundry evaluators support generic configuration via `evaluators[].config`:
   - `kind`: `builtin` (default) or `custom`
   - `class_name`: built-in class name from `azure.ai.evaluation` (optional; defaults to evaluator `name`)
@@ -244,7 +250,7 @@ For built-in Foundry evaluators, AgentOps uses `DefaultAzureCredential` by defau
 - Recommended evaluation scenario bundles:
   - `model_direct_baseline`: Model-Only — SimilarityEvaluator (no retrieval, no tools)
   - `rag_retrieval_baseline`: RAG — GroundednessEvaluator (retrieval-augmented)
-  - `agent_tools_baseline`: Agent with Tools — placeholder (to be expanded)
+  - `agent_tools_baseline`: Agent with Tools — TaskCompletionEvaluator + ToolCallAccuracyEvaluator
 
 - Threshold criteria:
   - Numeric: `>=`, `>`, `<=`, `<`, `==` (requires `value`)
@@ -332,10 +338,10 @@ AgentOps supports three evaluation scenarios:
 - Dataset: rows with `input`, `expected`, and `context` fields
 - Backend config: `target: agent` (agent with knowledge base / retrieval)
 
-### Agent with Tools (placeholder)
+### Agent with Tools
 
 - Evaluates agents that use tool calls (function calling)
-- Bundle: `agent_tools_baseline.yaml` (placeholder — will be expanded with tool-call evaluators)
+- Bundle: `agent_tools_baseline.yaml` — `TaskCompletionEvaluator` + `ToolCallAccuracyEvaluator` + `avg_latency_seconds`
 - Backend config: `target: agent`
 
 ## Backend behavior
@@ -545,7 +551,11 @@ tests/
     ├── test_yaml_loader.py          # YAML loading + env-var interpolation
     ├── test_foundry_backend.py      # Foundry backend helpers (mocked)
     ├── test_subprocess_backend.py   # Subprocess backend
-    └── test_initializer.py          # Workspace scaffolding
+    ├── test_initializer.py          # Workspace scaffolding
+    ├── test_cicd.py                 # CI/CD workflow generation
+    ├── test_cli_commands.py         # CLI command behavior
+    ├── test_comparison.py           # Eval comparison logic
+    └── test_telemetry.py            # OTLP telemetry instrumentation
 ```
 
 Run all tests:

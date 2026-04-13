@@ -156,7 +156,7 @@ Starter bundles created by `agentops init`:
 |---|---|---|
 | `model_direct_baseline` (default) | `SimilarityEvaluator` + `avg_latency_seconds` | Model-direct QA checks |
 | `rag_retrieval_baseline` | `GroundednessEvaluator` + `avg_latency_seconds` | RAG groundedness checks |
-| `agent_tools_baseline` | `SimilarityEvaluator` + `avg_latency_seconds` | Agent-with-tools baseline (placeholder) |
+| `agent_tools_baseline` | `TaskCompletionEvaluator` + `ToolCallAccuracyEvaluator` + `avg_latency_seconds` | Agent-with-tools baseline |
 
 `datasets/` stores YAML dataset definitions.
 `data/` stores JSONL rows referenced by dataset definitions.
@@ -168,7 +168,7 @@ Starter bundles created by `agentops init`:
 | Command | Description | Status |
 |---|---|---|
 | `agentops --version` | Show installed version | ✅ |
-| `agentops init [--path DIR]` | Scaffold project workspace and starter files | ✅ |
+| `agentops init [--dir DIR]` | Scaffold project workspace and starter files | ✅ |
 | `agentops eval run` | Evaluate a dataset against a bundle | ✅ |
 | `agentops eval compare --runs ID1,ID2` | Compare two past runs | ✅ |
 | `agentops run list\|show` | List or inspect past runs | 🚧 |
@@ -188,9 +188,10 @@ Implemented command usage:
 
 ```bash
 agentops --version
-agentops init [--path <dir>]
-agentops eval run [--config <path>] [--output <dir>]
-agentops report [--in <results.json>] [--out <report.md>]
+agentops init [--dir <dir>]
+agentops eval run [--config <path>] [--output <dir>] [--format md|html|all]
+agentops eval compare --runs ID1,ID2 [--output <dir>] [--format md|html|all]
+agentops report [--in <results.json>] [--out <report.md>] [--format md|html|all]
 agentops config cicd [--force] [--dir <path>]
 ```
 
@@ -237,13 +238,13 @@ Skills are distributed from this GitHub repository. Install them in VS Code:
 1. Open **VS Code** with **GitHub Copilot Chat** enabled.
 2. Use the Copilot skill install command and point to this repository:
    - Source: `Azure/agentops`
-   - Skills are located under `.github/plugins/agentops/skills/`
+     - Skills are located under `plugins/agentops/skills/`
 3. Once installed, Copilot will automatically use the skills when you ask about AgentOps evaluation, regressions, or observability.
 
 Alternatively, you can copy the skill files manually:
 ```bash
 # Copy skills to your user-level skills directory
-cp -r .github/plugins/agentops/skills/* ~/.agents/skills/
+cp -r plugins/agentops/skills/* ~/.agents/skills/
 ```
 
 ### For Repository Contributors
