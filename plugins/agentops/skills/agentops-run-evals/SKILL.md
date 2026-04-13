@@ -7,6 +7,14 @@ description: Guide users through running AgentOps evaluations end to end — sin
 
 > **Prerequisite:** Install the AgentOps CLI with `pip install agentops-toolkit`.
 
+## Before You Start
+
+**IMPORTANT:** Before running any commands below, verify the workspace exists:
+
+1. Check if `.agentops/` directory exists in the project root.
+2. If it does **not** exist, run `agentops init` first (see the **agentops-workspace-setup** skill).
+3. Do not proceed until `.agentops/` is confirmed.
+
 ## Purpose
 Guide users through the full AgentOps evaluation workflow — workspace setup, running evaluations, comparing N runs, benchmarking models/agents, and interpreting reports.
 

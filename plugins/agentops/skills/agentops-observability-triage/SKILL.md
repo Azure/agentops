@@ -7,6 +7,14 @@ description: Guide users on observability and triage workflows for AgentOps eval
 
 > **Prerequisite:** Install the AgentOps CLI with `pip install agentops-toolkit`.
 
+## Before You Start
+
+**IMPORTANT:** Before running any commands below, verify the workspace exists:
+
+1. Check if `.agentops/` directory exists in the project root.
+2. If it does **not** exist, run `agentops init` first (see the **agentops-workspace-setup** skill).
+3. Do not proceed until `.agentops/` is confirmed.
+
 ## Purpose
 Provide practical observability guidance using current reporting artifacts. Frame tracing/monitoring as planned future features while showing what's available today — including HTML reports with visual indicators and N-run comparison dashboards.
 

@@ -6,7 +6,14 @@ description: Guide users through creating, validating, and managing evaluation d
 # AgentOps Dataset Management
 
 > **Prerequisite:** Install the AgentOps CLI with `pip install agentops-toolkit`.
-> An initialized workspace (`.agentops/`) is required. Run `agentops init` if needed.
+
+## Before You Start
+
+**IMPORTANT:** Before running any commands below, verify the workspace exists:
+
+1. Check if `.agentops/` directory exists in the project root.
+2. If it does **not** exist, run `agentops init` first (see the **agentops-workspace-setup** skill).
+3. Do not proceed until `.agentops/` is confirmed.
 
 ## Purpose
 
