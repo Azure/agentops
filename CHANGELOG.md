@@ -6,6 +6,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- Extend Foundry cloud evaluation to support 22 built-in evaluators (up from 8), covering quality, agent, safety, RAG, tool, and NLP evaluator categories. Verified end-to-end with live Foundry cloud evaluation.
+  - Quality: `CoherenceEvaluator`, `FluencyEvaluator`, `RelevanceEvaluator`
+  - Agent: `IntentResolutionEvaluator`, `TaskCompletionEvaluator`, `TaskAdherenceEvaluator`
+  - Similarity: `ResponseCompletenessEvaluator`
+  - RAG: `GroundednessProEvaluator`, `RetrievalEvaluator`
+  - Safety: `ViolenceEvaluator`, `SexualEvaluator`, `SelfHarmEvaluator`, `HateUnfairnessEvaluator`
+  - Tool: `ToolSelectionEvaluator`, `ToolInputAccuracyEvaluator`, `ToolOutputUtilizationEvaluator`, `ToolCallSuccessEvaluator`
+- Add dynamic `item_schema` building — automatically includes `tool_definitions` and `context` fields when the enabled evaluators require them.
+- Add CI/CD integration models documentation: PR quality gate, scheduled regression, post-deployment validation, multi-environment promotion, Azure DevOps pipeline.
+- Add gating best practices: threshold design, scenario-specific evaluator selection, comparison-based regression detection.
+- Add supported evaluators reference table to CI/CD documentation.
+- Improve error messages when evaluators return no score (e.g. safety evaluators in unsupported regions) — surface the service error and suggest `--verbose`.
+- Fix NLP evaluator names in frozensets to match `_to_builtin_evaluator_name` conversion (`bleu_score`, `rouge_score`, `gleu_score`, `meteor_score` instead of `bleu`, `rouge`, `gleu`, `meteor`).
+- Add default `initialization_parameters` for `RougeScoreEvaluator` (`rouge_type: rouge1`).
 - Add optional OTLP tracing for evaluation runs — set `AGENTOPS_OTLP_ENDPOINT` to emit OpenTelemetry spans.
   - Three-layer schema: CICD semconv (pipeline run/task), GenAI semconv (agent invocation), and `agentops.eval.*` (evaluator scores/thresholds).
   - Per-row item spans with evaluator child spans showing score, threshold, and pass/fail.

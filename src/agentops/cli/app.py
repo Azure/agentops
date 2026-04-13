@@ -99,6 +99,17 @@ app.add_typer(model_app, name="model")
 app.add_typer(agent_app, name="agent")
 
 log = get_logger(__name__)
+DEFAULT_REPORT_INPUT = Path(".agentops/results/latest/results.json")
+
+
+def _planned_command(command_name: str) -> None:
+    typer.echo(
+        "This command is planned but not implemented in this release:\n"
+        f"  {command_name}\n"
+        "Please use the currently available commands"
+        " (`init`, `eval run`, `eval compare`, `report`, `config cicd`) for now."
+    )
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
