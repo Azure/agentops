@@ -209,3 +209,40 @@ jobs:
         run: |
           ls -la plugins/agentops/*.vsix
           echo "✅ VSIX packaging validated"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: plugins/agentops/*.vsix
+
+  # Publish VSIX pre-release to Marketplace on every push to develop (not PRs)
+  publish-vsix-dev:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    needs: [lint, test, build-vsix]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package VSIX (pre-release)
+        working-directory: plugins/agentops
+        run: vsce package --pre-release -o agentops-skills.vsix
+
+      - name: Publish pre-release to VS Code Marketplace
+        working-directory: plugins/agentops
+        run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
+
+      - name: Summary
+        run: |
+          echo "## ✅ VSIX pre-release published to Marketplace" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Extension: [AgentOps Toolkit](https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit)" >> "$GITHUB_STEP_SUMMARY"
