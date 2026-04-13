@@ -1,9 +1,9 @@
 {
-  "name": "agentops-skills",
+  "name": "agentops-toolkit",
   "displayName": "AgentOps Skills for GitHub Copilot",
   "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Toolkit and Microsoft Foundry agents.",
   "version": "0.1.0",
-  "publisher": "PUBLISHER_ID",
+  "publisher": "AgentOpsToolkit",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -29,12 +29,24 @@
   ],
   "contributes": {
     "chatSkills": [
-      { "path": "./skills/agentops-workspace-setup/SKILL.md" },
-      { "path": "./skills/agentops-run-evals/SKILL.md" },
-      { "path": "./skills/agentops-investigate-regression/SKILL.md" },
-      { "path": "./skills/agentops-observability-triage/SKILL.md" },
-      { "path": "./skills/agentops-browse-inspect/SKILL.md" },
-      { "path": "./skills/agentops-dataset-management/SKILL.md" }
+      {
+        "path": "./skills/agentops-workspace-setup/SKILL.md"
+      },
+      {
+        "path": "./skills/agentops-run-evals/SKILL.md"
+      },
+      {
+        "path": "./skills/agentops-investigate-regression/SKILL.md"
+      },
+      {
+        "path": "./skills/agentops-observability-triage/SKILL.md"
+      },
+      {
+        "path": "./skills/agentops-browse-inspect/SKILL.md"
+      },
+      {
+        "path": "./skills/agentops-dataset-management/SKILL.md"
+      }
     ]
   },
   "scripts": {
