@@ -1,32 +1,36 @@
-# AgentOps Toolkit — Staging (TestPyPI)
+# AgentOps Toolkit — Staging (TestPyPI + VSIX Pre-release)
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR
+#   1. ci.yml          — Lint + test on every push/PR; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
-#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX pre-release → Marketplace
+#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
+#   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
 # Triggered by pushes to release/* branches.
-# Calls the reusable _build.yml, publishes to TestPyPI, and verifies the
-# package installs correctly with a CLI smoke test.
-#
-# This workflow lets you iterate on a release branch and validate the
-# built package before tagging for production.
+# Calls the reusable _build.yml, publishes to TestPyPI, verifies the
+# package installs correctly with a CLI smoke test, and publishes the
+# VS Code extension as a pre-release to the Marketplace.
 #
 # Branch flow:
 #   develop → release/v0.2.0 → push → this workflow
 #     → build → TestPyPI → verify install → ✅ ready to merge and tag
+#     → VSIX pre-release → Marketplace (early access channel)
 #
 # Versioning:
 #   Uses setuptools-scm — on a release branch 5 commits after the last tag,
 #   the version will be something like 0.2.0.dev5 (PEP 440 pre-release).
+#   VSIX version is managed in plugins/agentops/package.json.
 #
 # Required GitHub secrets (environment: staging):
 #   TEST_PYPI_TOKEN  — TestPyPI API token
+#   VSCE_PAT         — VS Code Marketplace Personal Access Token
 #
 # Setup:
 #   1. https://test.pypi.org/manage/account/token/  → Create TEST_PYPI_TOKEN
 #   2. GitHub repo → Settings → Secrets → Actions    → Add to staging environment
+#   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
+#   4. Add VSCE_PAT to staging environment
 
 name: Staging
 
@@ -110,3 +114,35 @@ jobs:
           test -f .agentops/config.yaml
           test -f .agentops/run.yaml
           echo "✅ agentops init succeeded"
+
+  # ── VSIX Pre-release ─────────────────────────────────────────────────
+  # Publish the VS Code extension as a pre-release to the Marketplace.
+  # Runs in parallel with the TestPyPI flow (only needs source checkout).
+  publish-vsix-prerelease:
+    needs: build        # gate on successful lint + test
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package VSIX (pre-release)
+        working-directory: plugins/agentops
+        run: vsce package --pre-release -o agentops-skills.vsix
+
+      - name: Publish pre-release to VS Code Marketplace
+        working-directory: plugins/agentops
+        run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
+
+      - name: Show VSIX info
+        working-directory: plugins/agentops
+        run: |
+          ls -lh agentops-skills.vsix
+          echo "✅ VSIX pre-release published to Marketplace"

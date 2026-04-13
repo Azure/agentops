@@ -1,14 +1,15 @@
 # AgentOps Toolkit — Cut Release
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR
+#   1. ci.yml          — Lint + test on every push/PR; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
-#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX pre-release → Marketplace
+#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
 #   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
 # One-click release branch creation. Triggered manually from the Actions tab.
-# Creates a release branch from develop, updates CHANGELOG.md, and opens a PR to main.
+# Creates a release branch from develop, updates CHANGELOG.md, syncs the
+# VS Code extension version in package.json, and opens a PR to main.
 # The branch push then triggers staging.yml automatically.
 #
 # Usage:
@@ -72,6 +73,13 @@ jobs:
           # Replace [Unreleased] with versioned section, add fresh Unreleased above
           sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [${{ env.version }}] - $DATE/" CHANGELOG.md
 
+      - name: Sync VS Code extension version
+        run: |
+          jq --arg v "${{ env.version }}" '.version = $v' \
+            plugins/agentops/package.json > plugins/agentops/package.json.tmp
+          mv plugins/agentops/package.json.tmp plugins/agentops/package.json
+          echo "VSIX version set to ${{ env.version }}"
+
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -79,7 +87,7 @@ jobs:
 
       - name: Commit and push
         run: |
-          git add CHANGELOG.md
+          git add CHANGELOG.md plugins/agentops/package.json
           git commit -m "chore: prepare release ${{ env.version }}"
           git push origin "release/v${{ env.version }}"
 
@@ -98,22 +106,24 @@ jobs:
           ### What happened
           - Branch \`release/v${{ env.version }}\` created from \`develop\`
           - \`CHANGELOG.md\` updated: \`[Unreleased]\` → \`[${{ env.version }}]\`
-          - Staging pipeline triggered automatically (build → TestPyPI → verify)
+          - \`plugins/agentops/package.json\` version synced to \`${{ env.version }}\`
+          - Staging pipeline triggered automatically (build → TestPyPI + VSIX pre-release → verify)
 
           ### Next steps
           1. Wait for the **Staging** pipeline to pass
           2. Review and approve this PR
           3. Merge to \`main\`
           4. Tag and push: \`git tag v${{ env.version }} && git push origin v${{ env.version }}\`
-          5. Approve the PyPI publish in the **Release** workflow
+          5. Approve the PyPI publish and VSIX stable publish in the **Release** workflow
           6. Sync develop: \`git checkout develop && git merge main && git push origin develop\`
 
           ### Checklist
-          - [ ] Staging pipeline passes (build + TestPyPI + verify)
+          - [ ] Staging pipeline passes (build + TestPyPI + VSIX pre-release + verify)
           - [ ] CHANGELOG entries reviewed
           - [ ] PR approved and merged to main
           - [ ] Tag \`v${{ env.version }}\` pushed
           - [ ] PyPI publish approved
+          - [ ] VSIX stable publish approved
           - [ ] develop synced from main"
 
       - name: Summary
@@ -122,6 +132,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: \`release/v${{ env.version }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- CHANGELOG updated with version **${{ env.version }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- VS Code extension version synced to **${{ env.version }}**" >> "$GITHUB_STEP_SUMMARY"
           echo "- PR opened: \`release/v${{ env.version }}\` → \`main\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Staging pipeline triggered automatically" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

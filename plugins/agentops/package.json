@@ -1,0 +1,47 @@
+{
+  "name": "agentops-skills",
+  "displayName": "AgentOps Skills for GitHub Copilot",
+  "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Toolkit and Microsoft Foundry agents.",
+  "version": "0.1.0",
+  "publisher": "PUBLISHER_ID",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Azure/agentops"
+  },
+  "bugs": {
+    "url": "https://github.com/Azure/agentops/issues"
+  },
+  "engines": {
+    "vscode": "^1.99.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "agentops",
+    "evaluation",
+    "foundry",
+    "copilot",
+    "agent-skills",
+    "ai-evaluation"
+  ],
+  "contributes": {
+    "chatSkills": [
+      { "path": "./skills/agentops-workspace-setup/SKILL.md" },
+      { "path": "./skills/agentops-run-evals/SKILL.md" },
+      { "path": "./skills/agentops-investigate-regression/SKILL.md" },
+      { "path": "./skills/agentops-observability-triage/SKILL.md" },
+      { "path": "./skills/agentops-browse-inspect/SKILL.md" },
+      { "path": "./skills/agentops-dataset-management/SKILL.md" }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "echo 'Declarative extension — no build step required'",
+    "package": "vsce package",
+    "package:prerelease": "vsce package --pre-release",
+    "publish": "vsce publish",
+    "publish:prerelease": "vsce publish --pre-release"
+  }
+}
