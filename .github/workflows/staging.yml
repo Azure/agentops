@@ -146,3 +146,9 @@ jobs:
         run: |
           ls -lh agentops-skills.vsix
           echo "✅ VSIX pre-release published to Marketplace"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: plugins/agentops/agentops-skills.vsix

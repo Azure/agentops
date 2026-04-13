@@ -209,3 +209,9 @@ jobs:
         run: |
           ls -la plugins/agentops/*.vsix
           echo "✅ VSIX packaging validated"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: plugins/agentops/*.vsix
