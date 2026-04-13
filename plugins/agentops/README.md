@@ -25,7 +25,7 @@ pip install agentops-toolkit
 ## Installation
 
 Install from the
-[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=PUBLISHER_ID.agentops-skills)
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit)
 or search **"AgentOps Skills"** in the VS Code Extensions view.
 
 A **pre-release** channel is available for early access to new skills and updates —
