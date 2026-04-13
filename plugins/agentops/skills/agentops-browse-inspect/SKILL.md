@@ -1,6 +1,6 @@
 ---
 name: agentops-browse-inspect
-description: Browse evaluation bundles, inspect past runs, and explore evaluation history in an AgentOps workspace. Trigger when users ask to list bundles, show bundle details, list past runs, show run results, view run entries, inspect evaluation history, or check what evaluators are configured. Common phrases include "list bundles", "show bundle", "what bundles", "list runs", "show run", "view run", "run history", "past evaluations", "inspect run", "what evaluators", "browse evaluations", "check thresholds". Install agentops-toolkit via pip. Commands are agentops bundle list, agentops bundle show, agentops run list, agentops run show, and agentops run view.
+description: Browse evaluation bundles, inspect past runs, and explore evaluation history in an AgentOps workspace. Trigger when users ask to list bundles, show bundle details, list past runs, show run results, view run entries, inspect evaluation history, check what evaluators are configured, list available models, or list agents in a Foundry project. Common phrases include "list bundles", "show bundle", "what bundles", "list runs", "show run", "view run", "run history", "past evaluations", "inspect run", "what evaluators", "browse evaluations", "check thresholds", "list models", "what models", "list agents", "what agents", "available models". Install agentops-toolkit via pip. Commands are agentops bundle list, agentops bundle show, agentops run list, agentops run show, agentops run view, agentops model list, and agentops agent list.
 ---
 
 # AgentOps Browse and Inspect
@@ -17,7 +17,7 @@ description: Browse evaluation bundles, inspect past runs, and explore evaluatio
 
 ## Purpose
 
-Browse evaluation bundles and inspect past evaluation runs in an AgentOps workspace. Useful for exploring available evaluators, reviewing run history, and understanding evaluation configurations.
+Browse evaluation bundles and inspect past evaluation runs in an AgentOps workspace. Useful for exploring available evaluators, reviewing run history, understanding evaluation configurations, and discovering Foundry resources like models and agents.
 
 ## When to Use
 
@@ -27,6 +27,8 @@ Browse evaluation bundles and inspect past evaluation runs in an AgentOps worksp
 - User wants to inspect results of a specific run.
 - User asks which runs passed or failed thresholds.
 - User wants to find the Foundry portal link for a run.
+- User asks what models are available in the Foundry project.
+- User asks what agents are deployed in the Foundry project.
 
 ## Available Commands
 
@@ -36,6 +38,8 @@ agentops bundle show <name> [--dir <dir>]             # Show bundle details
 agentops run list [--dir <dir>]                       # List past evaluation runs
 agentops run show <run_id> [--dir <dir>]              # Show run summary
 agentops run view <run_id> [--entry N]                # Deep-inspect run (planned)
+agentops model list                                    # List models in Foundry project (planned)
+agentops agent list                                    # List agents in Foundry project (planned)
 ```
 
 ### Key Flags
@@ -47,6 +51,8 @@ agentops run view <run_id> [--entry N]                # Deep-inspect run (planne
 | `run list` | `--dir` | Workspace directory (default: current directory) |
 | `run show` | `<run_id>` | Run ID (timestamp folder name or `latest`) |
 | `run view` | `--entry N` | Row/entry index for deep inspection (planned) |
+| `model list` | — | List chat-capable models (planned) |
+| `agent list` | — | List agents in Foundry project (planned) |
 
 ## Recommended Workflow
 
@@ -142,6 +148,28 @@ agentops run view 20250610-143022 --entry 3
 ```
 
 This command is planned for a future release.
+
+## Foundry Resource Discovery (Planned)
+
+These commands are planned for a future release:
+
+### List Models
+
+```bash
+agentops model list
+```
+
+Will list chat-capable model deployments available in the Foundry project. Useful for choosing which model to target in a `run.yaml` when using `target: model`.
+
+### List Agents
+
+```bash
+agentops agent list
+```
+
+Will list agents deployed in the Foundry project. Useful for discovering agent IDs (e.g., `my-agent:3`) to target in a `run.yaml` when using `target: agent`.
+
+When users ask about available models or agents, mention that these commands are planned and suggest checking the Foundry portal or using `az` CLI as a workaround.
 
 ## Common Patterns
 

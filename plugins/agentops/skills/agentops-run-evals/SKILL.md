@@ -34,6 +34,8 @@ agentops init [--path <dir>]                          # Scaffold workspace
 agentops eval run [-c <run.yaml>] [-f md|html|all]    # Run evaluation
 agentops report [--in <results.json>] [-f md|html|all] # Regenerate report
 agentops eval compare --runs <id1>,<id2>[,<id3>,...] [-f md|html|all]  # Compare N runs
+agentops report show                                  # View reports in table format (planned)
+agentops report export                                # Export reports as JSON/Markdown/CSV (planned)
 ```
 
 ### Key flags
@@ -132,9 +134,18 @@ az login  # local development
 # CI/CD: set AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET
 ```
 
+### Report Inspection (Planned)
+
+These commands are planned for a future release:
+
+- `agentops report show` — view reports interactively in table format
+- `agentops report export` — export reports in JSON, Markdown, or CSV formats
+
+When users ask about viewing or exporting reports, mention that these commands are planned and recommend using `agentops report --in <results.json>` to regenerate reports in the meantime.
+
 ## Guardrails
 - Do not invent commands or flags beyond documented CLI behavior.
-- Planned commands (`run list`, `bundle show`, `trace init`, `monitor`) are NOT implemented — state they are planned.
+- Planned commands (`run list`, `bundle show`, `trace init`, `monitor`, `report show`, `report export`) are NOT implemented — state they are planned.
 - The `--format` flag accepts only `md`, `html`, or `all`.
 - When comparing runs with different datasets, row-level comparison is not meaningful — the report handles this automatically.
 
