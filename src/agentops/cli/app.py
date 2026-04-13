@@ -65,15 +65,63 @@ def cmd_trace_init() -> None:
 
 
 @model_app.command("list")
-def cmd_model_list() -> None:
-    """List chat-capable models in Foundry project (planned)."""
-    _planned_command("agentops model list")
+def cmd_model_list(
+    endpoint: str | None = typer.Option(
+        None,
+        "--endpoint",
+        help="Foundry project endpoint (default: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT).",
+    ),
+) -> None:
+    """List model deployments in the Foundry project."""
+    from agentops.services.discovery import list_models
+
+    try:
+        models = list_models(endpoint=endpoint)
+    except (ImportError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        typer.echo(f"Error: failed to list models: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not models:
+        typer.echo("No model deployments found.")
+        return
+
+    typer.echo(f"Model deployments ({len(models)}):\n")
+    for m in models:
+        ver = f"  version={m.model_version}" if m.model_version else ""
+        typer.echo(f"  {m.name:<30} model={m.model_name}{ver}")
 
 
 @agent_app.command("list")
-def cmd_agent_list() -> None:
-    """List agents in Foundry project (planned)."""
-    _planned_command("agentops agent list")
+def cmd_agent_list(
+    endpoint: str | None = typer.Option(
+        None,
+        "--endpoint",
+        help="Foundry project endpoint (default: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT).",
+    ),
+) -> None:
+    """List agents in the Foundry project."""
+    from agentops.services.discovery import list_agents
+
+    try:
+        agents = list_agents(endpoint=endpoint)
+    except (ImportError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:
+        typer.echo(f"Error: failed to list agents: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if not agents:
+        typer.echo("No agents found.")
+        return
+
+    typer.echo(f"Agents ({len(agents)}):\n")
+    for a in agents:
+        model = f"  model={a.model}" if a.model else ""
+        typer.echo(f"  {a.name:<30} id={a.agent_id}{model}")
 
 
 # ---------------------------------------------------------------------------

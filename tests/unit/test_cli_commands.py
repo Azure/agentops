@@ -24,7 +24,10 @@ def test_eval_compare_rejects_wrong_run_count() -> None:
     result = runner.invoke(app, ["eval", "compare", "--runs", "only_one"])
 
     assert result.exit_code == 1
-    assert "at least two" in result.stdout.lower() or "at least two" in (result.stderr or "").lower()
+    assert (
+        "at least two" in result.stdout.lower()
+        or "at least two" in (result.stderr or "").lower()
+    )
 
 
 def test_trace_init_is_planned_stub() -> None:
@@ -34,11 +37,14 @@ def test_trace_init_is_planned_stub() -> None:
     assert "planned but not implemented" in result.stdout.lower()
 
 
-def test_model_list_is_planned_stub() -> None:
-    result = runner.invoke(app, ["model", "list"])
+def test_model_list_without_endpoint_fails() -> None:
+    """model list requires an endpoint — fails gracefully without one."""
+    import os
+    from unittest.mock import patch
 
-    assert result.exit_code == 1
-    assert "planned but not implemented" in result.stdout.lower()
+    with patch.dict(os.environ, {}, clear=True):
+        result = runner.invoke(app, ["model", "list"])
+        assert result.exit_code == 1
 
 
 def test_version_flag() -> None:
