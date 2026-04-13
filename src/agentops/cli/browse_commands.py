@@ -7,8 +7,6 @@ from typing import Annotated
 
 import typer
 
-from agentops.cli._planned import _planned_command
-
 run_app = typer.Typer(help="Run history and inspection commands.")
 bundle_app = typer.Typer(help="Bundle browsing commands.")
 
@@ -170,12 +168,76 @@ def cmd_run_show(
 
 @run_app.command("view")
 def cmd_run_view(
-    run_id: str,
+    run_id: str = typer.Argument(help="Run ID (timestamp folder name or 'latest')."),
     entry: Annotated[
         int | None,
-        typer.Option("--entry", help="Optional row/entry index for deep inspection."),
+        typer.Option("--entry", help="Show detail for a specific row index."),
     ] = None,
+    directory: Path = typer.Option(
+        Path("."),
+        "--dir",
+        help="Workspace directory.",
+    ),
 ) -> None:
-    """Deep-inspect run details (planned)."""
-    _ = run_id, entry
-    _planned_command("agentops run view <id> [--entry N]")
+    """View per-row metrics for an evaluation run."""
+    from agentops.services.browse import view_run
+
+    try:
+        result = view_run(run_id=run_id, directory=directory, entry=entry)
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    status = "PASS" if result.overall_passed else "FAIL"
+    typer.echo(
+        f"Run: {result.run_id} ({status})  "
+        f"bundle={result.bundle_name}  dataset={result.dataset_name}"
+    )
+
+    if entry is not None:
+        # Detail view for a single row
+        row = result.rows[0]
+        row_status = "PASS" if row.passed_all else "FAIL"
+        typer.echo(f"\nRow {row.row_index}: {row_status}")
+        typer.echo("")
+        typer.echo("Scores:")
+        for name, value in row.scores.items():
+            typer.echo(f"  {name:<40} {value:.4f}")
+        if row.threshold_results:
+            typer.echo("")
+            typer.echo("Thresholds:")
+            for t in row.threshold_results:
+                mark = "PASS" if t["passed"] else "FAIL"
+                typer.echo(
+                    f"  {t['evaluator']:<40} {t['criteria']} {t['expected']:<10} "
+                    f"actual={t['actual']:<10} {mark}"
+                )
+    else:
+        # Table view for all rows
+        if not result.rows:
+            typer.echo("\nNo per-row metrics available.")
+            return
+
+        # Collect metric names (excluding samples_evaluated)
+        metric_names = [n for n in result.evaluator_names if n != "samples_evaluated"]
+
+        # Header
+        typer.echo("")
+        header = f"{'Row':>4}  {'Pass':4}"
+        for name in metric_names:
+            short = name.replace("Evaluator", "")
+            header += f"  {short:>10}"
+        typer.echo(header)
+        typer.echo("-" * len(header))
+
+        # Rows
+        for row in result.rows:
+            row_status = "PASS" if row.passed_all else "FAIL"
+            line = f"{row.row_index:>4}  {row_status:4}"
+            for name in metric_names:
+                val = row.scores.get(name)
+                if val is not None:
+                    line += f"  {val:>10.2f}"
+                else:
+                    line += f"  {'—':>10}"
+            typer.echo(line)

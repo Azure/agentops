@@ -314,3 +314,119 @@ def show_run(run_id: str, directory: Path = Path(".")) -> RunDetail:
         report_path=report_path,
         foundry_url=foundry_url,
     )
+
+
+# ---------------------------------------------------------------------------
+# Run view (row-level detail)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RowView:
+    """Per-row metrics and threshold results."""
+
+    row_index: int
+    passed_all: bool
+    scores: Dict[str, float]
+    threshold_results: List[Dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class RunViewResult:
+    """Result of viewing a run with row-level detail."""
+
+    run_id: str
+    bundle_name: str
+    dataset_name: str
+    overall_passed: bool
+    rows: List[RowView]
+    evaluator_names: List[str]
+
+
+def view_run(
+    run_id: str,
+    directory: Path = Path("."),
+    entry: Optional[int] = None,
+) -> RunViewResult:
+    """Load run results with per-row metric breakdown.
+
+    If ``entry`` is provided, only that row is included.
+    """
+    workspace = resolve_workspace(directory)
+    results_dir = workspace / "results"
+
+    run_dir = (results_dir / run_id).resolve()
+    if not run_dir.is_dir():
+        available = [
+            d.name
+            for d in sorted(results_dir.iterdir(), reverse=True)
+            if d.is_dir() and d.name != "latest" and (d / "results.json").exists()
+        ]
+        hint = ", ".join(available[:5]) if available else "(none)"
+        raise FileNotFoundError(
+            f"Run '{run_id}' not found in {results_dir}. Recent runs: {hint}"
+        )
+
+    results_file = run_dir / "results.json"
+    if not results_file.exists():
+        raise FileNotFoundError(f"No results.json in {run_dir}")
+
+    data = json.loads(results_file.read_text(encoding="utf-8"))
+    result = RunResult.model_validate(data)
+
+    # Build per-row scores lookup
+    row_scores: Dict[int, Dict[str, float]] = {}
+    evaluator_names_set: dict[str, None] = {}
+    for row in result.row_metrics:
+        scores = {}
+        for m in row.metrics:
+            scores[m.name] = m.value
+            evaluator_names_set[m.name] = None
+        row_scores[row.row_index] = scores
+
+    # Build per-row threshold results
+    row_thresholds: Dict[int, List[Dict[str, Any]]] = {}
+    row_passed: Dict[int, bool] = {}
+    for item in result.item_evaluations:
+        row_passed[item.row_index] = item.passed_all
+        row_thresholds[item.row_index] = [
+            {
+                "evaluator": t.evaluator,
+                "criteria": t.criteria,
+                "expected": t.expected,
+                "actual": t.actual,
+                "passed": t.passed,
+            }
+            for t in item.thresholds
+        ]
+
+    # Build row views
+    all_row_indices = sorted(set(row_scores.keys()) | set(row_passed.keys()))
+
+    if entry is not None:
+        if entry not in all_row_indices:
+            raise ValueError(
+                f"Entry {entry} not found. Available rows: "
+                + ", ".join(str(i) for i in all_row_indices)
+            )
+        all_row_indices = [entry]
+
+    rows: List[RowView] = []
+    for idx in all_row_indices:
+        rows.append(
+            RowView(
+                row_index=idx,
+                passed_all=row_passed.get(idx, True),
+                scores=row_scores.get(idx, {}),
+                threshold_results=row_thresholds.get(idx, []),
+            )
+        )
+
+    return RunViewResult(
+        run_id=run_id,
+        bundle_name=result.bundle.name,
+        dataset_name=result.dataset.name,
+        overall_passed=result.summary.overall_passed,
+        rows=rows,
+        evaluator_names=list(evaluator_names_set.keys()),
+    )

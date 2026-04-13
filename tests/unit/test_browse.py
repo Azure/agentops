@@ -14,6 +14,7 @@ from agentops.services.browse import (
     list_runs,
     show_bundle,
     show_run,
+    view_run,
 )
 from agentops.utils.yaml import save_yaml
 
@@ -65,10 +66,51 @@ def _write_run(ws: Path, run_id: str, *, passed: bool = True) -> Path:
             {"name": "CoherenceEvaluator", "value": 4.5},
             {"name": "samples_evaluated", "value": 3.0},
         ],
-        "row_metrics": [],
+        "row_metrics": [
+            {
+                "row_index": 1,
+                "metrics": [
+                    {"name": "CoherenceEvaluator", "value": 5.0},
+                    {"name": "RelevanceEvaluator", "value": 4.0},
+                ],
+            },
+            {
+                "row_index": 2,
+                "metrics": [
+                    {"name": "CoherenceEvaluator", "value": 4.0},
+                    {"name": "RelevanceEvaluator", "value": 5.0},
+                ],
+            },
+        ],
         "item_evaluations": [
-            {"row_index": 1, "passed_all": True, "thresholds": []},
-            {"row_index": 2, "passed_all": passed, "thresholds": []},
+            {
+                "row_index": 1,
+                "passed_all": True,
+                "thresholds": [
+                    {
+                        "row_index": 1,
+                        "evaluator": "CoherenceEvaluator",
+                        "criteria": ">=",
+                        "expected": "3.000000",
+                        "actual": "5.000000",
+                        "passed": True,
+                    }
+                ],
+            },
+            {
+                "row_index": 2,
+                "passed_all": passed,
+                "thresholds": [
+                    {
+                        "row_index": 2,
+                        "evaluator": "CoherenceEvaluator",
+                        "criteria": ">=",
+                        "expected": "3.000000",
+                        "actual": "4.000000",
+                        "passed": passed,
+                    }
+                ],
+            },
         ],
         "thresholds": [
             {
@@ -257,3 +299,95 @@ class TestRunShowCLI:
         )
         assert result.exit_code == 1
         assert "not found" in (result.stdout + result.stderr)
+
+
+# ---------------------------------------------------------------------------
+# view_run service tests
+# ---------------------------------------------------------------------------
+
+
+class TestViewRun:
+    def test_table_view(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "2026-04-07_100000", passed=True)
+        result = view_run("2026-04-07_100000", directory=tmp_path)
+        assert result.run_id == "2026-04-07_100000"
+        assert len(result.rows) == 2
+        assert result.rows[0].row_index == 1
+        assert result.rows[0].scores["CoherenceEvaluator"] == 5.0
+        assert result.rows[1].scores["RelevanceEvaluator"] == 5.0
+
+    def test_entry_filter(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "2026-04-07_100000")
+        result = view_run("2026-04-07_100000", directory=tmp_path, entry=2)
+        assert len(result.rows) == 1
+        assert result.rows[0].row_index == 2
+
+    def test_entry_not_found(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "2026-04-07_100000")
+        with pytest.raises(ValueError, match="Entry 99 not found"):
+            view_run("2026-04-07_100000", directory=tmp_path, entry=99)
+
+    def test_entry_has_thresholds(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "2026-04-07_100000")
+        result = view_run("2026-04-07_100000", directory=tmp_path, entry=1)
+        row = result.rows[0]
+        assert len(row.threshold_results) == 1
+        assert row.threshold_results[0]["evaluator"] == "CoherenceEvaluator"
+        assert row.threshold_results[0]["passed"] is True
+
+
+# ---------------------------------------------------------------------------
+# run view CLI tests
+# ---------------------------------------------------------------------------
+
+
+class TestRunViewCLI:
+    def test_table_view(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "2026-04-07_100000")
+        result = runner.invoke(
+            app, ["run", "view", "2026-04-07_100000", "--dir", str(tmp_path)]
+        )
+        assert result.exit_code == 0
+        assert "Coherence" in result.stdout
+        assert "Relevance" in result.stdout
+
+    def test_entry_view(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "2026-04-07_100000")
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "view",
+                "2026-04-07_100000",
+                "--entry",
+                "1",
+                "--dir",
+                str(tmp_path),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "Row 1: PASS" in result.stdout
+        assert "CoherenceEvaluator" in result.stdout
+
+    def test_entry_not_found(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "2026-04-07_100000")
+        result = runner.invoke(
+            app,
+            [
+                "run",
+                "view",
+                "2026-04-07_100000",
+                "--entry",
+                "99",
+                "--dir",
+                str(tmp_path),
+            ],
+        )
+        assert result.exit_code == 1
