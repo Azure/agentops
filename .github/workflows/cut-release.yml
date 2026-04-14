@@ -12,6 +12,11 @@
 # VS Code extension version in package.json, and opens a PR to main.
 # The branch push then triggers staging.yml automatically.
 #
+# Required GitHub secrets:
+#   RELEASE_PAT — A Personal Access Token (classic or fine-grained) with `repo` scope.
+#                 Needed because the org policy blocks GITHUB_TOKEN from creating PRs.
+#                 Setup: Settings → Secrets → Actions → New secret → Name: RELEASE_PAT
+#
 # Usage:
 #   Actions tab → "Cut Release" → "Run workflow" → enter version (e.g. 0.2.0)
 
@@ -47,7 +52,7 @@ jobs:
         with:
           ref: develop
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PAT }}
 
       - name: Check release branch does not exist
         run: |
@@ -93,7 +98,7 @@ jobs:
 
       - name: Create PR to main
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
         run: |
           gh pr create \
             --base main \
