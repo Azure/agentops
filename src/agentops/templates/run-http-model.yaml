@@ -1,0 +1,46 @@
+# HTTP Model-Direct evaluation — any HTTP endpoint returning text responses.
+#
+# Supported targets:
+#   - OpenAI-compatible API  (request_field: prompt, response_field: choices.0.text)
+#   - LangServe / LangChain  (request_field: input, response_field: output)
+#   - LangGraph Cloud        (request_field: input, response_field: output)
+#   - Custom REST endpoint   (adjust request_field / response_field to match your API)
+#
+# Set the agent URL via environment variable or inline:
+#   PowerShell:  $env:AGENT_HTTP_URL = "https://your-agent.region.azurecontainerapps.io/chat"
+#   Bash/zsh:    export AGENT_HTTP_URL="https://your-agent.region.azurecontainerapps.io/chat"
+
+version: 1
+target:
+  type: model
+  hosting: local                       # change to aks or containerapps if deployed
+  execution_mode: remote
+  endpoint:
+    kind: http
+    url_env: AGENT_HTTP_URL
+    # url: https://your-agent.region.azurecontainerapps.io/chat  # or set inline
+
+    # Map your endpoint's request/response JSON fields.
+    request_field: message             # JSON key for the user prompt
+    response_field: text               # dot-path to extract the response text
+
+    # Authentication (optional):
+    # auth_header_env: AGENT_TOKEN     # env var holding Bearer token
+
+    # Extra headers (optional):
+    # headers:
+    #   X-Custom-Header: my-value
+
+    # Forward extra JSONL row fields in the request body (optional):
+    # extra_fields:
+    #   - session_id
+    #   - user_id
+
+bundle:
+  name: model_quality_baseline
+dataset:
+  name: smoke-model-direct
+execution:
+  timeout_seconds: 30
+output:
+  write_report: true

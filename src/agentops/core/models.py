@@ -156,21 +156,24 @@ class DatasetConfig(BaseModel):
         return value
 
 
-class BundleRef(BaseModel):
-    path: Path
+# ---------------------------------------------------------------------------
+# Run configuration — orthogonal target / hosting / execution_mode model
+# ---------------------------------------------------------------------------
+
+TargetType = Literal["agent", "model"]
+Hosting = Literal["local", "foundry", "aks", "containerapps"]
+ExecutionMode = Literal["local", "remote"]
+AgentMode = Literal["prompt", "hosted"]
+Framework = Literal["agent_framework", "langgraph", "custom"]
+EndpointKind = Literal["foundry_agent", "http"]
 
 
-class DatasetRef(BaseModel):
-    path: Path
+class TargetEndpointConfig(BaseModel):
+    """Remote endpoint configuration for the evaluation target."""
 
+    kind: EndpointKind
 
-class BackendConfig(BaseModel):
-    type: str
-    command: Optional[str] = None
-    args: List[str] = Field(default_factory=list)
-    env: Dict[str, str] = Field(default_factory=dict)
-    timeout_seconds: Optional[int] = None
-    target: Optional[str] = None
+    # Foundry agent fields
     agent_id: Optional[str] = None
     project_endpoint: Optional[str] = None
     project_endpoint_env: Optional[str] = None
@@ -179,57 +182,170 @@ class BackendConfig(BaseModel):
     max_poll_attempts: Optional[int] = None
     model: Optional[str] = None
 
+    # HTTP fields
+    url: Optional[str] = None
+    url_env: Optional[str] = None
+    request_field: Optional[str] = None
+    response_field: Optional[str] = None
+    headers: Dict[str, str] = Field(default_factory=dict)
+    auth_header_env: Optional[str] = None
+    tool_calls_field: Optional[str] = None
+    extra_fields: Optional[List[str]] = None
+
     @field_validator("model")
     @classmethod
     def _reject_placeholder_model(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return value
-
         normalized = value.strip()
         looks_like_placeholder = (
             normalized.startswith("<") and normalized.endswith(">")
         ) or "replace-with" in normalized.lower()
         if looks_like_placeholder:
             raise ValueError(
-                "backend.model must be replaced with a real Foundry model deployment name"
+                "endpoint.model must be replaced with a real Foundry model deployment name"
             )
         return normalized
 
     @model_validator(mode="after")
-    def _validate_subprocess_requirements(self) -> "BackendConfig":
-        if self.type == "subprocess":
-            if not self.command or not self.command.strip():
-                raise ValueError("backend.command is required for subprocess")
-            if not self.args:
-                raise ValueError("backend.args is required for subprocess")
-        elif self.type == "foundry":
-            target = (self.target or "agent").strip().lower()
-            if target not in {"agent", "model"}:
-                raise ValueError(
-                    "backend.target must be 'agent' or 'model' for foundry"
-                )
-
-            self.target = target
-            if target == "agent":
-                if not self.agent_id or not self.agent_id.strip():
-                    raise ValueError(
-                        "backend.agent_id is required for foundry target=agent"
-                    )
-            # target=model does not require agent_id
-
+    def _validate_endpoint_fields(self) -> "TargetEndpointConfig":
+        if self.kind == "foundry_agent":
             if self.max_poll_attempts is not None and self.max_poll_attempts <= 0:
-                raise ValueError("backend.max_poll_attempts must be > 0")
+                raise ValueError("endpoint.max_poll_attempts must be > 0")
             if (
                 self.poll_interval_seconds is not None
                 and self.poll_interval_seconds <= 0
             ):
-                raise ValueError("backend.poll_interval_seconds must be > 0")
-        else:
-            raise ValueError(f"Unsupported backend type: {self.type}")
+                raise ValueError("endpoint.poll_interval_seconds must be > 0")
+        elif self.kind == "http":
+            if not self.url and not self.url_env:
+                raise ValueError(
+                    "HTTP endpoint requires 'endpoint.url' or 'endpoint.url_env'"
+                )
         return self
 
 
+class LocalAdapterConfig(BaseModel):
+    """Configuration for local adapter execution.
+
+    Exactly one of ``adapter`` (subprocess command) or ``callable``
+    (``module:function`` path) must be provided.
+    """
+
+    adapter: Optional[str] = None
+    callable: Optional[str] = None
+
+    @field_validator("adapter")
+    @classmethod
+    def _adapter_non_empty(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and not value.strip():
+            raise ValueError("local.adapter must be non-empty")
+        return value
+
+    @field_validator("callable")
+    @classmethod
+    def _callable_format(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        if not value.strip():
+            raise ValueError("local.callable must be non-empty")
+        if ":" not in value:
+            raise ValueError(
+                "local.callable must use 'module:function' format "
+                "(e.g. 'my_workflow:run_evaluation')"
+            )
+        module_part, _, func_part = value.partition(":")
+        if not module_part.strip() or not func_part.strip():
+            raise ValueError(
+                "local.callable must use 'module:function' format "
+                "(e.g. 'my_workflow:run_evaluation')"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _require_adapter_xor_callable(self) -> "LocalAdapterConfig":
+        has_adapter = self.adapter is not None
+        has_callable = self.callable is not None
+        if has_adapter and has_callable:
+            raise ValueError(
+                "local config must specify either 'adapter' or 'callable', not both"
+            )
+        if not has_adapter and not has_callable:
+            raise ValueError(
+                "local config must specify either 'adapter' (subprocess command) "
+                "or 'callable' (module:function path)"
+            )
+        return self
+
+
+class TargetConfig(BaseModel):
+    """Defines what is being evaluated and how the toolkit interacts with it."""
+
+    type: TargetType
+    hosting: Hosting
+    execution_mode: ExecutionMode
+    agent_mode: Optional[AgentMode] = None
+    framework: Optional[Framework] = None
+    endpoint: Optional[TargetEndpointConfig] = None
+    local: Optional[LocalAdapterConfig] = None
+
+    @model_validator(mode="after")
+    def _validate_target(self) -> "TargetConfig":
+        if self.agent_mode is not None and self.hosting != "foundry":
+            raise ValueError(
+                "target.agent_mode is only valid when hosting is 'foundry'"
+            )
+        if self.framework is not None and self.type != "agent":
+            raise ValueError(
+                "target.framework is only valid when type is 'agent'"
+            )
+        if self.execution_mode == "remote":
+            if self.endpoint is None:
+                raise ValueError(
+                    "target.endpoint is required when execution_mode is 'remote'"
+                )
+        if self.execution_mode == "local":
+            if self.local is None:
+                raise ValueError(
+                    "target.local is required when execution_mode is 'local'"
+                )
+        return self
+
+
+class BundleRef(BaseModel):
+    name: Optional[str] = None
+    path: Optional[Path] = None
+
+    @model_validator(mode="after")
+    def _require_name_or_path(self) -> "BundleRef":
+        if not self.name and not self.path:
+            raise ValueError("bundle requires 'name' or 'path'")
+        return self
+
+
+class DatasetRef(BaseModel):
+    name: Optional[str] = None
+    path: Optional[Path] = None
+
+    @model_validator(mode="after")
+    def _require_name_or_path(self) -> "DatasetRef":
+        if not self.name and not self.path:
+            raise ValueError("dataset requires 'name' or 'path'")
+        return self
+
+
+class ExecutionConfig(BaseModel):
+    concurrency: int = 1
+    timeout_seconds: int = 300
+
+
+class RunMetadata(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
 class OutputConfig(BaseModel):
+    path: Optional[Path] = None
     write_report: bool = True
     publish_foundry_evaluation: bool = False
     fail_on_foundry_publish_error: bool = False
@@ -237,10 +353,12 @@ class OutputConfig(BaseModel):
 
 class RunConfig(BaseModel):
     version: int
+    run: Optional[RunMetadata] = None
+    target: TargetConfig
     bundle: BundleRef
     dataset: DatasetRef
-    backend: BackendConfig
-    output: OutputConfig
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    output: OutputConfig = Field(default_factory=OutputConfig)
 
 
 class BundleInfo(BaseModel):
@@ -283,6 +401,9 @@ class MetricResult(BaseModel):
 
 class RowMetricsResult(BaseModel):
     row_index: int
+    input: Optional[str] = None
+    response: Optional[str] = None
+    context: Optional[str] = None
     metrics: List[MetricResult] = Field(default_factory=list)
 
     @field_validator("row_index")

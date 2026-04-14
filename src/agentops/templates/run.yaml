@@ -1,17 +1,21 @@
 version: 1
+target:
+  type: model
+  hosting: foundry
+  execution_mode: remote
+  endpoint:
+    kind: foundry_agent
+    # Replace with a model deployment that exists in your Foundry project.
+    model: <replace-with-your-foundry-model-deployment-name>
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+    api_version: "2025-05-01"
+    poll_interval_seconds: 2
+    max_poll_attempts: 120
 bundle:
-  path: bundles/model_direct_baseline.yaml
+  name: model_quality_baseline
 dataset:
-  path: datasets/smoke-model-direct.yaml
-backend:
-  type: foundry
-  target: model
-  # Replace with a model deployment that exists in your Foundry project.
-  model: <replace-with-your-foundry-model-deployment-name>
-  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-  api_version: "2025-05-01"
-  poll_interval_seconds: 2
-  max_poll_attempts: 120
+  name: smoke-model-direct
+execution:
   timeout_seconds: 1800
 output:
   write_report: true

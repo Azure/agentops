@@ -1,0 +1,37 @@
+# HTTP RAG evaluation — evaluate retrieval-augmented generation via any HTTP endpoint.
+#
+# Supported targets:
+#   - LangChain RAG chain via LangServe  (request_field: question, response_field: answer)
+#   - LangGraph RAG workflow              (request_field: input, response_field: output)
+#   - Microsoft Agent Framework on ACA    (request_field: message, response_field: text)
+#   - Custom REST endpoint                (adjust fields to match your API)
+#
+# Set the agent URL via environment variable or inline:
+#   PowerShell:  $env:AGENT_HTTP_URL = "https://your-agent.region.azurecontainerapps.io/chat"
+#   Bash/zsh:    export AGENT_HTTP_URL="https://your-agent.region.azurecontainerapps.io/chat"
+
+version: 1
+target:
+  type: agent
+  hosting: local                       # change to aks or containerapps if deployed
+  execution_mode: remote
+  endpoint:
+    kind: http
+    url_env: AGENT_HTTP_URL
+
+    request_field: message
+    response_field: text
+
+    # Forward extra JSONL row fields in the request body (optional):
+    # extra_fields:
+    #   - session_id
+    #   - context         # some RAG endpoints accept context as input
+
+bundle:
+  name: rag_quality_baseline
+dataset:
+  name: smoke-rag
+execution:
+  timeout_seconds: 30
+output:
+  write_report: true

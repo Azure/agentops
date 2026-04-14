@@ -11,8 +11,6 @@ We appreciate contributions and suggestions for this project!
 - **Tests:** Strengthen reliability through unit and integration tests.
 - **Code:** Submit fixes, enhancements, or new modules via pull requests.
 
----
-
 ## Before You Start
 
 1. Read [`docs/how-it-works.md`](docs/how-it-works.md) — it explains the architecture, directory structure, and data flow.
@@ -38,8 +36,6 @@ pip install pytest
 # Run tests to verify everything works
 python -m pytest tests/ -x -q
 ```
-
----
 
 ## Contribution Guidelines
 
@@ -79,8 +75,9 @@ These rules are critical to maintaining the project's architecture. PRs that vio
 |---|---|
 | Add a new Pydantic model or schema field | `core/models.py` |
 | Add a new config file type | `core/config_loader.py` + `core/models.py` |
-| Add a new local evaluator | `backends/foundry_backend.py` (local eval path) |
+| Add a new local evaluator | `backends/eval_engine.py` (shared evaluation engine) |
 | Add a new execution backend | `backends/` (new file implementing `Backend` protocol) + register in `services/runner.py` |
+| Support a new endpoint kind | `core/models.py` (`EndpointKind` literal) + `services/runner.py` (resolution) + `backends/` |
 | Add a new CLI command | `cli/app.py` (keep it thin — delegate to `services/`) |
 | Add a new workflow/service | `services/` (new file) |
 | Add starter templates | `templates/` + update `pyproject.toml` package-data |
@@ -103,8 +100,6 @@ When contributing to documentation:
 
 - **Use AI Tools Wisely:** GitHub Copilot and similar tools can help generate documentation, but always review and refine the output. Avoid excessive use of emojis, dashes, and images. Keep documentation clean, clear, and professional.
 
----
-
 ## Changelog Convention
 
 We maintain [CHANGELOG.md](CHANGELOG.md) using the **Keep a Changelog** format and **Semantic Versioning**.
@@ -120,8 +115,6 @@ Release process (maintainers):
 
 - When cutting a release (e.g. `0.1.0`), move the relevant items from `[Unreleased]` into a new version section like `## [0.1.0] - YYYY-MM-DD`.
 - After release, `[Unreleased]` should be left ready for new entries.
-
----
 
 ## Code Update Workflow
 
@@ -222,8 +215,6 @@ Here is an example of implementing a feature called `custom-evaluator` in the Ag
     git merge upstream/main
     git push origin main
     ```
-
----
 
 ## Legal and Code of Conduct
 

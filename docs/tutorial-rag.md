@@ -77,28 +77,32 @@ Update `.agentops/run-rag.yaml` for RAG evaluation:
 
 ```yaml
 version: 1
+target:
+  type: agent
+  hosting: foundry
+  execution_mode: remote
+  endpoint:
+    kind: foundry_agent
+    agent_id: <your-agent-id>
+    model: <replace-with-your-foundry-model-deployment-name>
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+    api_version: "2025-05-01"
+    poll_interval_seconds: 2
+    max_poll_attempts: 120
 bundle:
-  path: bundles/rag_retrieval_baseline.yaml
+  name: rag_quality_baseline
 dataset:
-  path: datasets/smoke-rag.yaml
-backend:
-  type: foundry
-  target: agent
-  agent_id: <your-agent-id>
-  model: <replace-with-your-foundry-model-deployment-name>
-  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-  api_version: "2025-05-01"
-  poll_interval_seconds: 2
-  max_poll_attempts: 120
+  name: smoke-rag
+execution:
   timeout_seconds: 1800
 output:
   write_report: true
 ```
 
 Key settings:
-- `bundle: bundles/rag_retrieval_baseline.yaml` — uses `GroundednessEvaluator`
-- `target: agent` — sends prompts to the Foundry agent
-- `agent_id` — your agent's ID
+- `bundle.name: rag_quality_baseline` — uses `GroundednessEvaluator`
+- `target.type: agent` — sends prompts to the Foundry agent
+- `target.endpoint.agent_id` — your agent's ID
 
 ## Part 4: Verify the dataset
 

@@ -1,0 +1,11 @@
+.git
+node_modules
+*.vsix
+
+# Keep these (explicit include after exclude)
+!README.md
+!CHANGELOG.md
+!skills/**/SKILL.md
+!package.json
+!LICENSE
+!icon.png

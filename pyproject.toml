@@ -31,11 +31,17 @@ where = ["src"]
   "run.yaml",
   "run-rag.yaml",
   "run-agent.yaml",
+  "run-http-model.yaml",
+  "run-http-rag.yaml",
+  "run-http-agent-tools.yaml",
+  "run-callable.yaml",
+  "callable_adapter.py",
   ".gitignore",
   "bundles/*.yaml",
   "datasets/*.yaml",
   "data/*.jsonl",
   "workflows/*.yml",
+  "skills/*/SKILL.md",
 ]
 
 [dependency-groups]

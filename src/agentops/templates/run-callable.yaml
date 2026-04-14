@@ -1,0 +1,24 @@
+version: 1
+
+# Callable adapter run configuration
+# Evaluates a local Python function instead of spawning a subprocess or
+# calling a remote endpoint.  Point "callable" to a module:function path
+# that is importable from the project root.
+
+target:
+  type: model
+  hosting: local
+  execution_mode: local
+  local:
+    # Format: module_path:function_name
+    # The function must accept (input_text: str, context: dict) -> dict
+    # and return at least {"response": "..."}.
+    callable: callable_adapter:run_evaluation
+bundle:
+  name: model_quality_baseline
+dataset:
+  name: smoke-model-direct
+execution:
+  timeout_seconds: 300
+output:
+  write_report: true

@@ -1,0 +1,17 @@
+version: 1
+name: smoke_conversational
+description: >
+  Small smoke dataset for conversational agent evaluation.
+  Each row contains a user message and the expected agent response.
+  Suitable for chatbots, Q&A assistants, and general-purpose agents.
+source:
+  type: file
+  path: ../data/smoke-conversational.jsonl
+format:
+  type: jsonl
+  input_field: input
+  expected_field: expected
+metadata:
+  scenario: conversational_agent
+  size_hint: 5
+  owner: local

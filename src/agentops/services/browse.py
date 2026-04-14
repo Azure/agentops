@@ -288,9 +288,8 @@ def show_run(run_id: str, directory: Path = Path(".")) -> RunDetail:
     data = json.loads(results_file.read_text(encoding="utf-8"))
     result = RunResult.model_validate(data)
 
-    report_path = run_dir / "report.md"
-    if not report_path.exists():
-        report_path = None
+    _rp = run_dir / "report.md"
+    report_path: Path | None = _rp if _rp.exists() else None
 
     foundry_url = None
     if result.artifacts and result.artifacts.foundry_eval_studio_url:

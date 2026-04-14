@@ -108,28 +108,32 @@ Open `.agentops/run-agent.yaml` and fill in your agent details:
 
 ```yaml
 version: 1
+target:
+  type: agent
+  hosting: foundry
+  execution_mode: remote
+  endpoint:
+    kind: foundry_agent
+    agent_id: my-agent:1                # ← your agent name or asst_ ID
+    model: gpt-5.1                      # ← used as judge model for evaluators
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+    api_version: "2025-05-01"
+    poll_interval_seconds: 2
+    max_poll_attempts: 120
 bundle:
-  path: bundles/agent_tools_baseline.yaml
+  name: agent_workflow_baseline
 dataset:
-  path: datasets/smoke-agent-tools.yaml
-backend:
-  type: foundry
-  target: agent
-  agent_id: my-agent:1                # ← your agent name or asst_ ID
-  model: gpt-5.1                      # ← used as judge model for evaluators
-  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-  api_version: "2025-05-01"
-  poll_interval_seconds: 2
-  max_poll_attempts: 120
+  name: smoke-agent-tools
+execution:
   timeout_seconds: 1800
 output:
   write_report: true
 ```
 
 Key differences from model-direct:
-- `target: agent` — routes prompts through the agent instead of calling the model directly
-- `agent_id` — identifies which agent to invoke. Required for agent target.
-- `model` — still needed as the judge model for AI-assisted evaluators like SimilarityEvaluator. This is the model that *evaluates* the agent's responses, not the model the agent uses internally.
+- `target.type: agent` — routes prompts through the agent instead of calling the model directly
+- `target.endpoint.agent_id` — identifies which agent to invoke. Required for agent target.
+- `target.endpoint.model` — still needed as the judge model for AI-assisted evaluators like SimilarityEvaluator. This is the model that *evaluates* the agent's responses, not the model the agent uses internally.
 
 ### Why both `agent_id` and `model`?
 
@@ -212,13 +216,14 @@ This comparison is useful for diagnostics but should not be used as a CI gate. G
 
 ## Evaluation scenarios
 
-AgentOps supports three scenarios, each with a different bundle:
+AgentOps supports multiple scenarios, each with a different bundle:
 
-| Scenario | Bundle | Target | Evaluator | Use case |
+| Scenario | Bundle | Target | Evaluators | Use case |
 |---|---|---|---|---|
-| **Model-Only** | `model_direct_baseline` | `model` | SimilarityEvaluator | Benchmark raw model quality |
-| **RAG** | `rag_retrieval_baseline` | `agent` | GroundednessEvaluator | Evaluate grounding against context |
-| **Agent with Tools** | `agent_tools_baseline` | `agent` | SimilarityEvaluator | Evaluate full agent behavior |
+| **Model Quality** | `model_quality_baseline` | `model` | SimilarityEvaluator, CoherenceEvaluator, FluencyEvaluator, F1ScoreEvaluator | Benchmark raw model quality |
+| **RAG Quality** | `rag_quality_baseline` | `agent` | GroundednessEvaluator, RelevanceEvaluator, RetrievalEvaluator | Evaluate grounding against context |
+| **Conversational** | `conversational_agent_baseline` | `agent` | CoherenceEvaluator, FluencyEvaluator, RelevanceEvaluator, SimilarityEvaluator | Chatbots and Q&A agents |
+| **Agent Workflow** | `agent_workflow_baseline` | `agent` | TaskCompletionEvaluator, ToolCallAccuracyEvaluator | Agents with tool calling |
 
 The RAG scenario uses GroundednessEvaluator instead of SimilarityEvaluator because the key question is whether the agent's response is grounded in the retrieved context, not whether it matches a specific expected answer.
 

@@ -1,4 +1,4 @@
-"""Foundry v2 cloud evaluation publishing service.
+"""Foundry cloud evaluation publishing service.
 
 Publishes already computed AgentOps backend metrics to the
 **New Foundry Evaluations** panel using the same 3-step OneDP upload flow:
@@ -25,12 +25,12 @@ from typing import Any, Dict, List
 from urllib.parse import urlparse
 
 from agentops.core.config_loader import load_dataset_config
-from agentops.core.models import BackendConfig
+from agentops.core.models import TargetEndpointConfig
 
 
 @dataclass(frozen=True)
 class FoundryEvalPublishResult:
-    """Result of publishing an evaluation to the Foundry v2 panel."""
+    """Result of publishing an evaluation to the Foundry panel."""
 
     studio_url: str
     evaluation_name: str
@@ -192,7 +192,7 @@ def _load_backend_metrics_payload(
 
 def publish_foundry_evaluation(
     *,
-    backend_config: BackendConfig,
+    endpoint_config: TargetEndpointConfig,
     dataset_config_path: Path,
     backend_stdout_path: Path,
     evaluation_name: str | None = None,
@@ -215,14 +215,14 @@ def publish_foundry_evaluation(
 
     # --- resolve project endpoint ----------------------------------------
     project_endpoint_env = (
-        backend_config.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+        endpoint_config.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
     )
-    project_endpoint = backend_config.project_endpoint or os.getenv(
+    project_endpoint = endpoint_config.project_endpoint or os.getenv(
         project_endpoint_env
     )
     if not project_endpoint:
         raise ValueError(
-            "Foundry evaluation publish requires backend.project_endpoint or "
+            "Foundry evaluation publish requires target.endpoint.project_endpoint or "
             f"environment variable {project_endpoint_env}"
         )
 

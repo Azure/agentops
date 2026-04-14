@@ -17,8 +17,6 @@ Guide contributors and maintainers through the AgentOps branching strategy, vers
 - User asks how to sync their fork after a release.
 - Instructions about branching or versioning are ambiguous.
 
----
-
 ## Branching Model
 
 | Branch | Purpose |
@@ -29,8 +27,6 @@ Guide contributors and maintainers through the AgentOps branching strategy, vers
 | `feature/<name>` | Created by contributors from `develop` for all new work. |
 
 **Default rule:** unless explicitly told otherwise, all work starts from `develop`.
-
----
 
 ## Feature Development Workflow
 
@@ -51,8 +47,6 @@ Examples: `feature/conversation-metadata`, `feature/add-evaluation-logging`
 - Source: `feature/*`
 - Target: `develop`
 - Never open a feature PR directly to `main`
-
----
 
 ## Release Workflow (Maintainers)
 
@@ -127,8 +121,6 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
 - Target: `main`
 - Do NOT introduce new feature work in a release branch — only changelog updates.
 
----
-
 ## Versioning Rules
 
 Follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
@@ -154,8 +146,6 @@ Version numbers follow a consistent pattern across artifacts. The git tag and Gi
 - The version on `develop` is derived automatically by setuptools-scm (e.g., `0.1.3.dev12`).
 - Do NOT preemptively bump any version on `develop` for an upcoming release.
 - Feature branches should not modify `pyproject.toml` version.
-
----
 
 ## Changelog Lifecycle
 
@@ -221,8 +211,6 @@ Use when applicable: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Secu
 - Never leave a release branch without converting `[Unreleased]` to the versioned entry.
 - Never mismatch version numbers across branch name, changelog, and tag.
 
----
-
 ## Commit Guidelines
 
 Use conventional commit format:
@@ -234,8 +222,6 @@ docs: update changelog for 2.4.2
 chore: prepare release 2.4.2
 ```
 
----
-
 ## Required Secrets
 
 Set in GitHub repo Settings → Secrets and variables → Actions:
@@ -245,8 +231,6 @@ Set in GitHub repo Settings → Secrets and variables → Actions:
 | `PIPY_TOKEN` | PyPI API token scoped to `agentops-toolkit` — used on merge to `main` |
 | `TESTPYPI_API_TOKEN` | TestPyPI API token — used on tag push for pre-release validation |
 
----
-
 ## Default Decision Logic
 
 | Situation | Action |
@@ -254,8 +238,6 @@ Set in GitHub repo Settings → Secrets and variables → Actions:
 | Feature or code change | Base on `develop`, create `feature/*`, PR to `develop` |
 | Release preparation | Base on `develop`, create `release/x.y.z`, update `pyproject.toml` + `CHANGELOG.md`, PR to `main` |
 | Ambiguous instructions | Default to feature workflow on `develop`; do not assume a release unless explicitly requested |
-
----
 
 ## Guardrails
 - Never create feature branches from `main`.

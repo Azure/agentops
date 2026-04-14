@@ -71,31 +71,35 @@ Open `.agentops/run.yaml`. The only thing you need to change is the model deploy
 
 ```yaml
 version: 1
+target:
+  type: model
+  hosting: foundry
+  execution_mode: remote
+  endpoint:
+    kind: foundry_agent
+    model: gpt-5.1    # ← replace with your actual deployment name
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+    api_version: "2025-05-01"
+    poll_interval_seconds: 2
+    max_poll_attempts: 120
 bundle:
-  path: bundles/model_direct_baseline.yaml
+  name: model_quality_baseline
 dataset:
-  path: datasets/smoke-model-direct.yaml
-backend:
-  type: foundry
-  target: model
-  model: gpt-5.1    # ← replace with your actual deployment name
-  project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-  api_version: "2025-05-01"
-  poll_interval_seconds: 2
-  max_poll_attempts: 120
+  name: smoke-model-direct
+execution:
   timeout_seconds: 1800
 output:
   write_report: true
 ```
 
 The key fields:
-- `target: model` — this is what makes it model-direct (as opposed to `target: agent`)
-- `model` — must match an existing deployment in your Foundry project. AgentOps will fail with a clear error if the deployment does not exist.
+- `target.type: model` — this is what makes it model-direct (as opposed to `target.type: agent`)
+- `target.endpoint.model` — must match an existing deployment in your Foundry project. AgentOps will fail with a clear error if the deployment does not exist.
 - No `agent_id` — not needed for model-direct
 
 ### What the bundle evaluates
 
-The `model_direct_baseline` bundle uses two evaluators:
+The `model_quality_baseline` bundle uses two evaluators:
 - **SimilarityEvaluator** (source: foundry) — AI-assisted comparison of the model's response against the expected answer. Scores 1–5, threshold ≥ 3.
 - **avg_latency_seconds** (source: local) — average response time per row, threshold ≤ 10 seconds.
 

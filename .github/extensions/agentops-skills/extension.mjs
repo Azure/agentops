@@ -7,7 +7,7 @@ const SKILLS = {
     "run-evals": {
         keywords: [
             "run eval", "start agentops", "run.yaml", "regenerate report",
-            "evaluation results", "agentops init", "agentops eval", "agentops report",
+            "evaluation results", "agentops init", "agentops eval", "agentops report generate",
             "run an evaluation", "initialize agentops", "results.json", "report.md",
             "eval run", "run config", "evaluation output",
         ],
@@ -19,13 +19,13 @@ Guide through the implemented AgentOps evaluation workflow from workspace setup 
 ### Available Commands
 - agentops init [--path <dir>] — Initialize workspace
 - agentops eval run — Execute evaluation
-- agentops report — Regenerate report from results.json
+- agentops report generate — Regenerate report from results.json
 
 ### Typical Workflow
 1. Initialize workspace: agentops init
 2. Confirm run config exists (.agentops/run.yaml)
 3. Execute evaluation: agentops eval run
-4. Regenerate markdown report: agentops report
+4. Regenerate markdown report: agentops report generate
 5. Inspect outputs under .agentops/results/latest/
 
 ### Outputs
@@ -58,14 +58,14 @@ Guide through regression investigation using currently available AgentOps output
 
 ### Available Commands
 - agentops eval run — Generate fresh artifacts
-- agentops report — Regenerate report
+- agentops report generate — Regenerate report
 
 ### Planned (not implemented)
 - agentops eval compare --runs ID1,ID2
 
 ### Investigation Steps
 1. Run fresh evaluation: agentops eval run
-2. Regenerate report: agentops report
+2. Regenerate report: agentops report generate
 3. Compare current artifacts to baseline manually
 4. Report factual deltas, then propose controlled next steps
 
@@ -99,13 +99,13 @@ Provide honest observability guidance: use current reporting artifacts today, fr
 
 ### Available Commands (for triage today)
 - agentops eval run
-- agentops report
+- agentops report generate
 
 ### Planned/Stubbed (NOT implemented)
 - agentops trace init
 - agentops monitor setup
-- agentops monitor dashboard
-- agentops monitor alert
+- agentops monitor show
+- agentops monitor configure
 
 ### Current Triage Approach
 - Use report.md for quick operational triage (what failed, severity).
