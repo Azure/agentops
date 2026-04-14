@@ -14,8 +14,13 @@ from agentops.core.models import (
     ComparisonResult,
     ComparisonSummary,
     ComparisonThresholdRow,
+    ComparisonType,
+    Criteria,
+    Direction,
+    ItemEvaluationResult,
     RunReference,
     RunResult,
+    ThresholdEvaluationResult,
 )
 
 
@@ -120,7 +125,7 @@ def _lower_is_better_metrics(*results: RunResult) -> frozenset[str]:
     return frozenset(names)
 
 
-def _compute_metric_direction(delta: float, lower_is_better: bool) -> str:
+def _compute_metric_direction(delta: float, lower_is_better: bool) -> Direction:
     if delta == 0:
         return "unchanged"
     if lower_is_better:
@@ -153,6 +158,7 @@ def _detect_conditions(refs: List[RunReference]) -> ComparisonConditions:
             varying.append(key)
 
     # Determine comparison type
+    ctype: ComparisonType
     if "dataset" not in varying and "agent" in varying:
         ctype = "agent"
     elif "dataset" not in varying and "model" in varying:
@@ -198,7 +204,7 @@ def compare_runs(
         values: List[float] = []
         deltas: List[Optional[float]] = []
         delta_percents: List[Optional[float]] = []
-        directions: List[str] = []
+        directions: List[Direction] = []
         baseline_val: Optional[float] = None
 
         for i, r in enumerate(results):
@@ -254,11 +260,11 @@ def compare_runs(
         )
 
     # Build threshold rows
-    all_thresholds: List[tuple[str, str]] = []
-    seen_thresholds: set[tuple[str, str]] = set()
+    all_thresholds: List[tuple[str, Criteria]] = []
+    seen_thresholds: set[tuple[str, Criteria]] = set()
     for r in results:
-        for t in r.thresholds:
-            key = (t.evaluator, t.criteria)
+        for th in r.thresholds:
+            key = (th.evaluator, th.criteria)
             if key not in seen_thresholds:
                 all_thresholds.append(key)
                 seen_thresholds.add(key)
@@ -269,7 +275,7 @@ def compare_runs(
         target_val: str | None = None
         for r in results:
             t_map = {(t.evaluator, t.criteria): t for t in r.thresholds}
-            t = t_map.get((evaluator, criteria))
+            t: ThresholdEvaluationResult | None = t_map.get((evaluator, criteria))
             passed_list.append(t.passed if t else False)
             if t and target_val is None:
                 target_val = t.expected
@@ -285,8 +291,8 @@ def compare_runs(
     # Build item rows
     all_row_indices: set[int] = set()
     for r in results:
-        for item in r.item_evaluations:
-            all_row_indices.add(item.row_index)
+        for ie in r.item_evaluations:
+            all_row_indices.add(ie.row_index)
 
     # Collect evaluator names that have thresholds (for row-level display)
     threshold_evaluator_names = [tr.evaluator for tr in threshold_rows]
@@ -300,7 +306,7 @@ def compare_runs(
         }
         for r in results:
             item_map = {item.row_index: item for item in r.item_evaluations}
-            item = item_map.get(idx)
+            item: ItemEvaluationResult | None = item_map.get(idx)
             passed_list.append(item.passed_all if item else False)
             # Extract row-level metric scores
             row_metrics_map = {row.row_index: row for row in r.row_metrics}
