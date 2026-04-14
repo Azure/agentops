@@ -7,7 +7,8 @@
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
 #   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
-# Triggered by v* tag pushes (e.g. v0.2.0).
+# Triggered by v* tag pushes (e.g. v0.2.0), or via workflow_dispatch for re-triggering
+# a failed release (select the v* tag ref, or supply the 'tag' input).
 # Calls the reusable _build.yml, then publishes to TestPyPI for final
 # verification, then to PyPI (requires 'release' environment approval),
 # publishes the VS Code extension as stable to the Marketplace,
@@ -17,22 +18,32 @@
 #   Uses setuptools-scm — version is derived from the git tag automatically.
 #   Tagged commit v0.2.0 → version 0.2.0. No manual version in pyproject.toml.
 #   VSIX version is managed in plugins/agentops/package.json (synced by cut-release).
+#   When using workflow_dispatch with the 'tag' input, the version is derived
+#   from the tag name directly (strips the 'v' prefix).
 #
-# Required GitHub secrets (in respective environments):
-#   TEST_PYPI_TOKEN  — TestPyPI API token (environment: staging)
-#   PYPI_TOKEN       — PyPI API token     (environment: release)
-#   VSCE_PAT         — VS Code Marketplace PAT (environment: release)
+# Trusted Publishing (OIDC):
+#   This workflow uses PyPI Trusted Publishing — no API tokens required.
+#   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
+#   and PyPI/TestPyPI.
+#
+# Required GitHub secrets:
+#   VSCE_PAT — VS Code Marketplace PAT (environment: release)
 #
 # Required GitHub environments:
 #   staging  — for TestPyPI publish (optional approval)
 #   release  — for PyPI + VSIX publish (requires approval from designated reviewers)
 #
-# Setup:
-#   1. https://test.pypi.org/manage/account/token/  → Create TEST_PYPI_TOKEN
-#   2. https://pypi.org/manage/account/token/        → Create PYPI_TOKEN
+# Setup (Trusted Publishing + VSCE):
+#   1. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=staging
+#   2. https://pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=release
 #   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
-#   4. GitHub repo → Settings → Secrets → Actions    → Add secrets to environments
-#   5. GitHub repo → Settings → Environments         → Create "release" with required reviewers
+#   4. GitHub repo → Settings → Environments → Create "release" with required reviewers
+#
+# Re-triggering a failed release:
+#   Option A (recommended): Delete and re-push the tag (triggers this workflow automatically).
+#   Option B: Actions → Release → Run workflow → select the v* tag ref → optionally set 'tag' input.
 
 name: Release
 
@@ -41,6 +52,11 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.3) — required when re-triggering a failed release via workflow_dispatch"
+        required: false
+        type: string
 
 permissions:
   contents: write  # For GitHub Release
@@ -56,6 +72,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      id-token: write  # Required for PyPI Trusted Publishing (OIDC)
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -67,7 +85,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
           verbose: true
           skip-existing: true
 
@@ -88,8 +105,13 @@ jobs:
       - name: Determine expected version
         id: version
         run: |
-          pip install setuptools-scm
-          VERSION=$(python -m setuptools_scm)
+          if [ -n "${{ inputs.tag }}" ]; then
+            VERSION="${{ inputs.tag }}"
+            VERSION="${VERSION#v}"
+          else
+            pip install setuptools-scm
+            VERSION=$(python -m setuptools_scm)
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Expected version: $VERSION"
 
@@ -125,6 +147,8 @@ jobs:
     needs: verify-testpypi
     runs-on: ubuntu-latest
     environment: release
+    permissions:
+      id-token: write  # Required for PyPI trusted publishing (OIDC)
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v4
@@ -135,7 +159,6 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.PYPI_TOKEN }}
           verbose: true
 
   # ── VSIX Stable Publish ──────────────────────────────────────────────
@@ -217,7 +240,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/* vsix/* \
+          TAG="${{ inputs.tag || github.ref_name }}"
+          gh release create "$TAG" dist/* vsix/* \
             --repo "${{ github.repository }}" \
-            --title "${{ github.ref_name }}" \
+            --title "$TAG" \
             --generate-notes
