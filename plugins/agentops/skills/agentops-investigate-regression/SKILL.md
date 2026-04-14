@@ -7,6 +7,14 @@ description: Help users investigate evaluation regressions in AgentOps by compar
 
 > **Prerequisite:** Install the AgentOps CLI with `pip install agentops-toolkit`.
 
+## Before You Start
+
+**IMPORTANT:** Before running any commands below, verify the workspace exists:
+
+1. Check if `.agentops/` directory exists in the project root.
+2. If it does **not** exist, run `agentops init` first (see the **agentops-workspace-setup** skill).
+3. Do not proceed until `.agentops/` is confirmed.
+
 ## Purpose
 Guide users through regression investigation using N-run comparison, row-level score analysis, and structured root cause identification.
 

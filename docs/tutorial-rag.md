@@ -117,7 +117,7 @@ Each row has:
 - `expected` — the reference answer
 - `context` — the retrieved document context used by `GroundednessEvaluator`
 
-The `GroundednessEvaluator` checks whether the agent's response is grounded in the `context` (mapped via `expected_field` → `context` in the evaluator's data mapping).
+The `GroundednessEvaluator` checks whether the agent's response is grounded in the `context` column. Set `format.context_field: context` in your dataset YAML so the evaluator maps it correctly. If `context_field` is not set, the evaluator falls back to `expected_field`.
 
 > **Tip**: For a real RAG scenario, populate the `context` field with actual retrieved passages from your knowledge base.
 

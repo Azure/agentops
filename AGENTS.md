@@ -17,9 +17,10 @@ Primary capabilities:
 
 Public CLI contract:
 - `agentops init`
-- `agentops eval run --config <run.yaml> [--output <dir>]`
-- `agentops eval compare --runs <baseline>,<current>`
-- `agentops report --in <results.json> [--out <report.md>]`
+- `agentops eval run --config <run.yaml> [--output <dir>] [--format md|html|all]`
+- `agentops eval compare --runs <ID1>,<ID2>[,ID3,...] [--output <dir>]`
+- `agentops report --in <results.json> [--out <report.md>] [--format md|html|all]`
+- `agentops config cicd [--force] [--dir <path>]`
 
 Planned CLI stubs (not implemented in this release):
 - `agentops run list|show`
@@ -27,7 +28,7 @@ Planned CLI stubs (not implemented in this release):
 - `agentops report show|export`
 - `agentops bundle list|show`
 - `agentops dataset validate|describe|import`
-- `agentops config validate|show|cicd`
+- `agentops config validate|show`
 - `agentops trace init`
 - `agentops monitor setup|dashboard|alert`
 - `agentops model list`
@@ -114,6 +115,8 @@ src/
     │   ├── runner.py                  # Main evaluation orchestration
     │   ├── initializer.py             # `.agentops/` workspace scaffolding
     │   ├── reporting.py               # `results.json` -> `report.md`
+    │   ├── comparison.py              # `agentops eval compare` logic
+    │   ├── cicd.py                    # CI/CD workflow generation
     │   └── foundry_evals.py           # Foundry evaluation publishing helpers
     │
     ├── backends/
@@ -123,15 +126,19 @@ src/
     │
     ├── utils/
     │   ├── yaml.py                    # YAML IO and interpolation helpers
-    │   └── logging.py                 # Logging setup
+    │   ├── logging.py                 # Logging setup
+    │   └── telemetry.py               # Optional OTLP tracing (lazy imports)
     │
     └── templates/
         ├── config.yaml                # Seed workspace config
         ├── run.yaml                   # Seed run config
+        ├── run-agent.yaml             # Seed agent run config
+        ├── run-rag.yaml               # Seed RAG run config
         ├── .gitignore                 # Seed `.agentops/.gitignore`
         ├── bundles/                   # Starter bundle YAML files
         ├── datasets/                  # Starter dataset YAML configs
-        └── data/                      # Starter dataset JSONL rows
+        ├── data/                      # Starter dataset JSONL rows
+        └── workflows/                 # CI/CD workflow templates
 ```
 
 ### Tests
@@ -148,7 +155,11 @@ tests/
     ├── test_reporter.py               # Report generation and threshold output
     ├── test_foundry_backend.py        # Foundry backend helpers
     ├── test_subprocess_backend.py     # Subprocess backend behavior
-    └── test_initializer.py            # `.agentops/` scaffold behavior
+    ├── test_initializer.py            # `.agentops/` scaffold behavior
+    ├── test_cicd.py                   # CI/CD workflow generation
+    ├── test_cli_commands.py           # CLI command behavior
+    ├── test_comparison.py             # Eval comparison logic
+    └── test_telemetry.py              # OTLP telemetry instrumentation
 ```
 
 ### Documentation
@@ -241,6 +252,7 @@ Key sections:
 - `format.type`
 - `format.input_field`
 - `format.expected_field`
+- `format.context_field`
 
 Dataset rows live separately in `.agentops/data/*.jsonl`.
 
@@ -350,7 +362,9 @@ Common derived run metrics:
 ### Agent with Tools
 - Target: Foundry agent
 - Bundle: `agent_tools_baseline.yaml`
-- Current status: placeholder baseline ready for expansion
+- Evaluators: `TaskCompletionEvaluator`, `ToolCallAccuracyEvaluator`, `avg_latency_seconds`
+- Typical row fields: `input`, `expected`, `tool_definitions`
+- Primary evaluator pattern: task completion + tool accuracy + latency
 
 ---
 
@@ -368,12 +382,39 @@ Important environment variables:
 - `AZURE_OPENAI_DEPLOYMENT`
 - `AZURE_AI_MODEL_DEPLOYMENT_NAME`
 - `AZURE_OPENAI_API_VERSION`
+- `AGENTOPS_OTLP_ENDPOINT` — OTLP collector URL for evaluation tracing (opt-in, e.g. `http://localhost:4318`)
 
 Recommended default behavior:
 - Keep Foundry cloud mode as the default path
 - Install Azure runtime dependencies separately from the base package
 - Keep Azure SDK imports inside functions in `backends/` and `services/`
 - Configure model deployments explicitly per project; do not assume a universally available default deployment name in Foundry
+
+---
+
+## OTLP Telemetry
+
+AgentOps can optionally emit OpenTelemetry (OTLP) traces during evaluation runs. Set `AGENTOPS_OTLP_ENDPOINT` to enable.
+
+```bash
+# Enable tracing (e.g. AI Toolkit collector, Azure Monitor, Jaeger)
+export AGENTOPS_OTLP_ENDPOINT=http://localhost:4318
+agentops eval run
+```
+
+Span schema uses three OTel semantic convention layers:
+
+| Layer | Namespace | Purpose |
+|---|---|---|
+| CICD | `cicd.pipeline.*` | Eval run as pipeline, items as tasks |
+| GenAI | `gen_ai.*` | Agent/model invocation (future Layer 2) |
+| AgentOps | `agentops.eval.*` | Evaluator scores, thresholds, pass/fail |
+
+Design rules:
+- All OpenTelemetry imports are **lazy** (inside `utils/telemetry.py` functions)
+- Zero overhead when `AGENTOPS_OTLP_ENDPOINT` is unset
+- Graceful no-op when `opentelemetry-sdk` is not installed
+- `opentelemetry-sdk` and `opentelemetry-exporter-otlp-proto-http` are optional runtime dependencies (not in `pyproject.toml`)
 
 ---
 

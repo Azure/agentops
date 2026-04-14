@@ -54,7 +54,9 @@ Only the following commands are in scope:
 
 - `agentops init`
 - `agentops eval run --config <run.yaml> [--output <dir>]`
+- `agentops eval compare --runs <ID1>,<ID2>[,ID3,...] [--output <dir>]`
 - `agentops report --in <results.json> [--out <report.md>]`
+- `agentops config cicd [--force] [--dir <path>]`
 
 Do not add new commands or flags unless explicitly discussed.
 
@@ -80,7 +82,7 @@ See `docs/how-it-works.md` for the full source-code map and architecture diagram
 - Keep CLI command handlers **thin** (`cli/app.py`) — only parse args and call `services/`
 - Place business logic in:
   - `core/` — config loading, Pydantic models, thresholds, report generation. **Must have zero Azure SDK imports and zero network calls.**
-  - `services/` — orchestration (runner), Foundry publishing, workspace init, report regen
+  - `services/` — orchestration (runner), comparison, CI/CD workflow generation, Foundry publishing, workspace init, report regen
   - `backends/` — execution backends (Foundry, subprocess). Each implements the `Backend` protocol from `base.py`.
 - Use `pathlib.Path` everywhere (no raw string paths)
 - No side effects at import time
@@ -130,6 +132,7 @@ The Foundry backend (`backends/foundry_backend.py`) is the largest and most comp
 - Auto-derive Azure OpenAI endpoint from the project endpoint via `_derive_openai_endpoint_from_project()` — users should not need to set `AZURE_OPENAI_ENDPOINT` manually.
 - Agent invocation supports both reference-based and threads-based API calls.
 - Evaluator names map from class names to builtins: `SimilarityEvaluator` → `builtin.similarity`.
+- Cloud evaluator routing uses frozensets: `_EVALUATORS_NEEDING_GROUND_TRUTH`, `_EVALUATORS_NEEDING_CONTEXT`, `_EVALUATORS_NEEDING_TOOL_CALLS`, `_EVALUATORS_NEEDING_TOOL_DEFS_ONLY`, `_EVALUATORS_NEEDING_OUTPUT_ITEMS`. NLP evaluators with required init params use `_NLP_DEFAULT_INIT_PARAMS`.
 
 ### Environment Variables
 
@@ -208,6 +211,10 @@ When cloud evaluation is used, a `cloud_evaluation.json` is also produced contai
   - Foundry backend helpers (`test_foundry_backend.py`)
   - Subprocess backend (`test_subprocess_backend.py`)
   - Initializer (`test_initializer.py`)
+  - CI/CD workflow generation (`test_cicd.py`)
+  - CLI command behavior (`test_cli_commands.py`)
+  - Eval comparison logic (`test_comparison.py`)
+  - OTLP telemetry instrumentation (`test_telemetry.py`)
 - Integration test for:
   - `agentops eval run` end-to-end using a fake subprocess backend (`test_eval_run_integration.py`)
 - Tests must assert correct **exit codes**
@@ -248,9 +255,18 @@ When generating or modifying code:
 - Azure SDK imports must be **lazy** (inside functions, not top-level)
 - Never hardcode Azure API versions — let the SDK handle versioning
 - Keep user-facing log output clean — no warning cascades or retry noise
-- When adding evaluator support, update both cloud (`_cloud_evaluator_data_mapping` + `_cloud_evaluator_needs_model`) and local paths
+- When adding evaluator support, add the builtin name to the correct frozenset in `foundry_backend.py` (`_EVALUATORS_NEEDING_GROUND_TRUTH`, `_EVALUATORS_NEEDING_CONTEXT`, `_EVALUATORS_NEEDING_TOOL_CALLS`, `_EVALUATORS_NEEDING_TOOL_DEFS_ONLY`, or `_EVALUATORS_NEEDING_OUTPUT_ITEMS`), update `_NLP_DEFAULT_INIT_PARAMS` if init params are required, and update both cloud (`_cloud_evaluator_data_mapping` + `_cloud_evaluator_needs_model`) and local paths
 - All new logic must have corresponding unit tests in `tests/unit/`
 - Always mock Azure SDK calls in tests — tests must run without credentials
 - The `core/` package must remain free of Azure imports and I/O
 - Follow the request flow: CLI → Services → Backends → Core (never skip layers)
 - If a change is user-visible, add an entry to `CHANGELOG.md` under `[Unreleased]` (Keep a Changelog format)
+
+### OTLP Telemetry
+
+- `utils/telemetry.py` provides optional OTLP trace emission for evaluation runs
+- Activated by `AGENTOPS_OTLP_ENDPOINT` env var — zero overhead when unset
+- All OpenTelemetry imports must be **lazy** (inside functions in `utils/telemetry.py`)
+- `opentelemetry-sdk` is an optional runtime dependency — not declared in `pyproject.toml`
+- Span schema: CICD semconv (`cicd.pipeline.*`) for pipeline structure, GenAI semconv (`gen_ai.*`) for agent calls, `agentops.eval.*` for evaluator scores
+- When adding new spans, follow the three-layer pattern in `telemetry.py`

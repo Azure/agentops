@@ -1,35 +1,41 @@
-# AgentOps Toolkit — Staging (TestPyPI)
+# AgentOps Toolkit — Staging (TestPyPI + VSIX Pre-release)
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR
+#   1. ci.yml          — Lint + test on every push/PR; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
-#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX pre-release → Marketplace
+#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
+#   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
 # Triggered by pushes to release/* branches.
-# Calls the reusable _build.yml, publishes to TestPyPI, and verifies the
-# package installs correctly with a CLI smoke test.
-#
-# This workflow lets you iterate on a release branch and validate the
-# built package before tagging for production.
+# Calls the reusable _build.yml, publishes to TestPyPI, verifies the
+# package installs correctly with a CLI smoke test, and publishes the
+# VS Code extension as a pre-release to the Marketplace.
 #
 # Branch flow:
 #   develop → release/v0.2.0 → push → this workflow
 #     → build → TestPyPI → verify install → ✅ ready to merge and tag
+#     → VSIX pre-release → Marketplace (early access channel)
 #
 # Versioning:
 #   Uses setuptools-scm — on a release branch 5 commits after the last tag,
 #   the version will be something like 0.2.0.dev5 (PEP 440 pre-release).
+#   VSIX version is managed in plugins/agentops/package.json.
 #
 # Trusted Publishing (OIDC):
 #   This workflow uses PyPI Trusted Publishing — no API tokens required.
 #   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
 #   and TestPyPI.
 #
-# Setup (Trusted Publishing):
+# Required GitHub secrets (environment: staging):
+#   VSCE_PAT — VS Code Marketplace Personal Access Token
+#
+# Setup (Trusted Publishing + VSCE):
 #   1. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
 #   2. GitHub repo → Settings → Environments → Create "staging" environment (optional approval)
+#   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
+#   4. Add VSCE_PAT to staging environment
 
 name: Staging
 
@@ -114,3 +120,62 @@ jobs:
           test -f .agentops/config.yaml
           test -f .agentops/run.yaml
           echo "✅ agentops init succeeded"
+
+  # ── VSIX Pre-release ─────────────────────────────────────────────────
+  # Publish the VS Code extension as a pre-release to the Marketplace.
+  # Runs in parallel with the TestPyPI flow (only needs source checkout).
+  publish-vsix-prerelease:
+    needs: build        # gate on successful lint + test
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version derivation
+
+      - name: Sync VSIX version from git tag
+        run: |
+          # Use global tag sort (not git describe) to find the latest tag
+          # across ALL branches, not just reachable ones from HEAD.
+          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          LAST_TAG=${LAST_TAG:-v0.0.0}
+          LAST_VERSION=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+            BASE_VERSION="$LAST_VERSION"
+          else
+            BASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+          jq --arg v "$BASE_VERSION" '.version = $v' \
+            plugins/agentops/package.json > plugins/agentops/package.json.tmp
+          mv plugins/agentops/package.json.tmp plugins/agentops/package.json
+          echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package VSIX (pre-release)
+        working-directory: plugins/agentops
+        run: vsce package --pre-release -o agentops-skills.vsix
+
+      - name: Publish pre-release to VS Code Marketplace
+        continue-on-error: true  # Tolerate "already exists" for pre-release builds
+        working-directory: plugins/agentops
+        run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
+
+      - name: Show VSIX info
+        working-directory: plugins/agentops
+        run: |
+          ls -lh agentops-skills.vsix
+          echo "✅ VSIX pre-release published to Marketplace"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: plugins/agentops/agentops-skills.vsix

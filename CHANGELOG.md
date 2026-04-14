@@ -5,9 +5,34 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-04-14
+
+### Fixed
+- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
+- Fix VSIX version derivation in CI/CD workflows — use global tag sort (`git tag -l --sort=-v:refname`) instead of `git describe` which misses tags not reachable from the current branch.
+
 ## [0.1.3] - 2026-03-24
 
 ### Added
+- Extend Foundry cloud evaluation to support 22 built-in evaluators (up from 8), covering quality, agent, safety, RAG, tool, and NLP evaluator categories. Verified end-to-end with live Foundry cloud evaluation.
+  - Quality: `CoherenceEvaluator`, `FluencyEvaluator`, `RelevanceEvaluator`
+  - Agent: `IntentResolutionEvaluator`, `TaskCompletionEvaluator`, `TaskAdherenceEvaluator`
+  - Similarity: `ResponseCompletenessEvaluator`
+  - RAG: `GroundednessProEvaluator`, `RetrievalEvaluator`
+  - Safety: `ViolenceEvaluator`, `SexualEvaluator`, `SelfHarmEvaluator`, `HateUnfairnessEvaluator`
+  - Tool: `ToolSelectionEvaluator`, `ToolInputAccuracyEvaluator`, `ToolOutputUtilizationEvaluator`, `ToolCallSuccessEvaluator`
+- Add dynamic `item_schema` building — automatically includes `tool_definitions` and `context` fields when the enabled evaluators require them.
+- Add CI/CD integration models documentation: PR quality gate, scheduled regression, post-deployment validation, multi-environment promotion, Azure DevOps pipeline.
+- Add gating best practices: threshold design, scenario-specific evaluator selection, comparison-based regression detection.
+- Add supported evaluators reference table to CI/CD documentation.
+- Improve error messages when evaluators return no score (e.g. safety evaluators in unsupported regions) — surface the service error and suggest `--verbose`.
+- Fix NLP evaluator names in frozensets to match `_to_builtin_evaluator_name` conversion (`bleu_score`, `rouge_score`, `gleu_score`, `meteor_score` instead of `bleu`, `rouge`, `gleu`, `meteor`).
+- Add default `initialization_parameters` for `RougeScoreEvaluator` (`rouge_type: rouge1`).
+- Add optional OTLP tracing for evaluation runs — set `AGENTOPS_OTLP_ENDPOINT` to emit OpenTelemetry spans.
+  - Three-layer schema: CICD semconv (pipeline run/task), GenAI semconv (agent invocation), and `agentops.eval.*` (evaluator scores/thresholds).
+  - Per-row item spans with evaluator child spans showing score, threshold, and pass/fail.
+  - Zero overhead when `AGENTOPS_OTLP_ENDPOINT` is unset; graceful no-op when `opentelemetry-sdk` is not installed.
+  - Compatible with AI Toolkit (localhost:4318), Azure Monitor, Jaeger, Grafana Tempo, and any OTLP-compatible collector.
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).
@@ -29,6 +54,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Add CLI smoke test in staging/release verify step (`agentops --version`, `agentops --help`, `agentops init`).
 - Fix secret reference from `PIPY_TOKEN` to `PYPI_TOKEN`; add `TEST_PYPI_TOKEN` for TestPyPI.
 - Add consistent workflow index header across all CI/CD workflow files.
+- Add VSIX extension packaging and publishing to CI/CD pipeline; include Copilot skills in the VS Code Marketplace extension.
 
 ## [0.1.0] - 2026-__-__
 

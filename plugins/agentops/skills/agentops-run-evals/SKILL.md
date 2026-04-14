@@ -7,6 +7,14 @@ description: Guide users through running AgentOps evaluations end to end — sin
 
 > **Prerequisite:** Install the AgentOps CLI with `pip install agentops-toolkit`.
 
+## Before You Start
+
+**IMPORTANT:** Before running any commands below, verify the workspace exists:
+
+1. Check if `.agentops/` directory exists in the project root.
+2. If it does **not** exist, run `agentops init` first (see the **agentops-workspace-setup** skill).
+3. Do not proceed until `.agentops/` is confirmed.
+
 ## Purpose
 Guide users through the full AgentOps evaluation workflow — workspace setup, running evaluations, comparing N runs, benchmarking models/agents, and interpreting reports.
 
@@ -26,6 +34,8 @@ agentops init [--path <dir>]                          # Scaffold workspace
 agentops eval run [-c <run.yaml>] [-f md|html|all]    # Run evaluation
 agentops report [--in <results.json>] [-f md|html|all] # Regenerate report
 agentops eval compare --runs <id1>,<id2>[,<id3>,...] [-f md|html|all]  # Compare N runs
+agentops report show                                  # View reports in table format (planned)
+agentops report export                                # Export reports as JSON/Markdown/CSV (planned)
 ```
 
 ### Key flags
@@ -124,9 +134,18 @@ az login  # local development
 # CI/CD: set AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET
 ```
 
+### Report Inspection (Planned)
+
+These commands are planned for a future release:
+
+- `agentops report show` — view reports interactively in table format
+- `agentops report export` — export reports in JSON, Markdown, or CSV formats
+
+When users ask about viewing or exporting reports, mention that these commands are planned and recommend using `agentops report --in <results.json>` to regenerate reports in the meantime.
+
 ## Guardrails
 - Do not invent commands or flags beyond documented CLI behavior.
-- Planned commands (`run list`, `bundle show`, `trace init`, `monitor`) are NOT implemented — state they are planned.
+- Planned commands (`run list`, `bundle show`, `trace init`, `monitor`, `report show`, `report export`) are NOT implemented — state they are planned.
 - The `--format` flag accepts only `md`, `html`, or `all`.
 - When comparing runs with different datasets, row-level comparison is not meaningful — the report handles this automatically.
 

@@ -1,15 +1,18 @@
 # AgentOps Toolkit — Reusable Build Workflow
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR; publish dev builds to TestPyPI on develop
-#   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
-#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#   1. ci.yml          — Lint + test on every push/PR; build VSIX validation
+#   2. _build.yml      — Reusable Python build (test + package), called by staging and release
+#   3. staging.yml     — Staging: release/* → TestPyPI + VSIX pre-release
+#   4. release.yml     — Production: v* tag → PyPI + VSIX stable + GitHub Release
 #   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
 # Called by staging.yml and release.yml via workflow_call.
-# Runs tests, builds the package (version via setuptools-scm), and uploads
+# Runs tests, builds the Python package (version via setuptools-scm), and uploads
 # the dist/ artifacts for downstream jobs.
+#
+# Note: VSIX packaging is handled directly in ci/staging/release workflows
+# (requires Node.js + @vscode/vsce), not in this Python-focused reusable build.
 #
 # Usage in caller workflows:
 #   jobs:
