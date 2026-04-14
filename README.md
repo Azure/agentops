@@ -7,7 +7,7 @@ AgentOps CLI for evaluation, observability, and operational workflows for Micros
 <p align="center">
 <a href="https://github.com/Azure/agentops/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Azure/agentops/actions/workflows/ci.yml/badge.svg?branch=develop"/></a>
 <a href="https://github.com/Azure/agentops/actions/workflows/release.yml"><img alt="Release" src="https://github.com/Azure/agentops/actions/workflows/release.yml/badge.svg"/></a>
-<a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
+<a href="https://github.com/Azure/agentops/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
 <img alt="Status: Preview" src="https://img.shields.io/badge/Status-Preview-orange.svg"/>
 <img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg"/>
 <img alt="CLI" src="https://img.shields.io/badge/CLI-Typer-5A67D8.svg"/>
@@ -49,7 +49,7 @@ Exit code contract:
 ## Quickstart
 
 <p align="center">
-<img alt="Quickstart demo: agentops init and eval run" src="./media/quickstart.gif"/>
+<img alt="Quickstart demo: agentops init and eval run" src="https://raw.githubusercontent.com/Azure/agentops/main/media/quickstart.gif"/>
 </p>
 
 ### 1) Install
@@ -101,7 +101,7 @@ To regenerate the report from existing results:
 agentops report generate
 ```
 
-See [docs/concepts.md](docs/concepts.md) for an overview of bundles, datasets, evaluators, backends, and the configuration model.
+See [Concepts](https://github.com/Azure/agentops/blob/main/docs/concepts.md) for an overview of bundles, datasets, evaluators, backends, and the configuration model.
 
 ## Commands
 
@@ -126,27 +126,27 @@ Planned commands return a friendly message indicating they are not yet implement
 
 ### Concepts and Architecture
 
-- [Concepts](docs/concepts.md) — bundles, datasets, evaluators, backends, configuration model
-- [How It Works](docs/how-it-works.md) — architecture, request flow, full schema reference
-- [Bundles](docs/bundles.md) — bundle authoring and evaluator configuration
+- [Concepts](https://github.com/Azure/agentops/blob/main/docs/concepts.md) — bundles, datasets, evaluators, backends, configuration model
+- [How It Works](https://github.com/Azure/agentops/blob/main/docs/how-it-works.md) — architecture, request flow, full schema reference
+- [Bundles](https://github.com/Azure/agentops/blob/main/docs/bundles.md) — bundle authoring and evaluator configuration
 
 ### Tutorials
 
-- [Model-direct evaluation](docs/tutorial-model-direct.md)
-- [Foundry agent evaluation](docs/tutorial-basic-foundry-agent.md)
-- [RAG evaluation](docs/tutorial-rag.md)
-- [HTTP-deployed agent evaluation](docs/tutorial-http-agent.md)
-- [Conversational agent evaluation](docs/tutorial-conversational-agent.md)
-- [Agent workflow evaluation](docs/tutorial-agent-workflow.md)
-- [Baseline comparison](docs/tutorial-baseline-comparison.md)
+- [Model-direct evaluation](https://github.com/Azure/agentops/blob/main/docs/tutorial-model-direct.md)
+- [Foundry agent evaluation](https://github.com/Azure/agentops/blob/main/docs/tutorial-basic-foundry-agent.md)
+- [RAG evaluation](https://github.com/Azure/agentops/blob/main/docs/tutorial-rag.md)
+- [HTTP-deployed agent evaluation](https://github.com/Azure/agentops/blob/main/docs/tutorial-http-agent.md)
+- [Conversational agent evaluation](https://github.com/Azure/agentops/blob/main/docs/tutorial-conversational-agent.md)
+- [Agent workflow evaluation](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-workflow.md)
+- [Baseline comparison](https://github.com/Azure/agentops/blob/main/docs/tutorial-baseline-comparison.md)
 
 ### Operations
 
-- [CI/CD with GitHub Actions](docs/ci-github-actions.md)
-- [Copilot skills installation](docs/tutorial-copilot-skills.md)
-- [Release process](docs/release-process.md)
-- [Built-in evaluator reference](docs/foundry-evaluation-sdk-built-in-evaluators.md)
+- [CI/CD with GitHub Actions](https://github.com/Azure/agentops/blob/main/docs/ci-github-actions.md)
+- [Copilot skills installation](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md)
+- [Release process](https://github.com/Azure/agentops/blob/main/docs/release-process.md)
+- [Built-in evaluator reference](https://github.com/Azure/agentops/blob/main/docs/foundry-evaluation-sdk-built-in-evaluators.md)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture rules, testing expectations, and contribution workflow.
+See [CONTRIBUTING.md](https://github.com/Azure/agentops/blob/main/CONTRIBUTING.md) for architecture rules, testing expectations, and contribution workflow.
