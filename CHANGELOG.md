@@ -5,8 +5,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-04-13
+
 ### Fixed
-- Make release pipeline resilient to VSIX "already exists" failures from staging pre-release — add `continue-on-error` on VSIX publish and decouple GitHub Release from VSIX publish result.
+- **Make release pipeline resilient to VSIX version conflicts** — add `continue-on-error` on VSIX publish and decouple GitHub Release from VSIX publish result, preventing staging pre-release "already exists" failures from blocking the release.
+- **Resolve 31 mypy type errors and enforce mypy in CI** — strict type checking added to the `lint` job (`mypy --strict src/`), fixing errors across `foundry_backend.py`, `eval_engine.py`, `reporter.py`, `runner.py`, `comparison.py`, and `browse.py`.
+- **Resolve 18 ruff lint errors** (F401 unused imports, F811 redefinition, F841 unused variables) across 6 source and test files.
+- **Fix UV cache race condition in CI** — disable UV cache on non-matrix jobs (lint, coverage, publish-dev) that shared cache keys with the test matrix, eliminating `Failed to save: Unable to reserve cache` warnings.
+
+### Changed
+- **Upgrade GitHub Actions to Node.js 24 runtimes** — update `actions/checkout` to v6, `actions/setup-python` to v5, `astral-sh/setup-uv` to v7, `actions/upload-artifact` and `download-artifact` to v7 across all CI/CD workflows.
+- **Apply ruff-format across source and workflows** — normalize code style and whitespace across backends, services, CLI, tests, and workflow YAML files.
 
 ## [0.1.4] - 2026-04-14
 
