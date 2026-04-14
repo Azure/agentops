@@ -5,6 +5,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- Make release pipeline resilient to VSIX "already exists" failures from staging pre-release — add `continue-on-error` on VSIX publish and decouple GitHub Release from VSIX publish result.
+
+## [0.1.4] - 2026-04-14
+
+### Fixed
+- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
+- Fix VSIX version derivation in CI/CD workflows — use global tag sort (`git tag -l --sort=-v:refname`) instead of `git describe` which misses tags not reachable from the current branch.
+
 ## [0.1.3] - 2026-03-24
 
 ### Added
@@ -129,8 +138,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Add consistent workflow index header across all CI/CD workflow files.
 - Add VSIX extension packaging and publishing to CI/CD pipeline; include Copilot skills in the VS Code Marketplace extension.
 
-### Fixed
-- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
 
 ## [0.1.0] - 2026-__-__
 
