@@ -63,8 +63,13 @@ jobs:
       - name: Update CHANGELOG
         run: |
           DATE=$(date +%Y-%m-%d)
-          # Insert versioned section after the preamble (line 4: Semantic Versioning link)
-          sed -i "/adheres to \[Semantic Versioning\]/a \\\n## [${{ env.version }}] - $DATE" CHANGELOG.md
+          # Only insert versioned section if it doesn't already exist
+          if grep -q "## \[${{ env.version }}\]" CHANGELOG.md; then
+            echo "CHANGELOG already has [${{ env.version }}] entry — skipping insertion"
+          else
+            sed -i "/adheres to \[Semantic Versioning\]/a \\\n## [${{ env.version }}] - $DATE" CHANGELOG.md
+            echo "CHANGELOG updated with [${{ env.version }}] - $DATE"
+          fi
 
       - name: Sync VS Code extension version
         run: |
