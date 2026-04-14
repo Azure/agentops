@@ -46,6 +46,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Add CLI smoke test in staging/release verify step (`agentops --version`, `agentops --help`, `agentops init`).
 - Fix secret reference from `PIPY_TOKEN` to `PYPI_TOKEN`; add `TEST_PYPI_TOKEN` for TestPyPI.
 - Add consistent workflow index header across all CI/CD workflow files.
+- Add VSIX extension packaging and publishing to CI/CD pipeline; include Copilot skills in the VS Code Marketplace extension.
+
+### Fixed
+- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
 
 ## [0.1.0] - 2026-__-__
 
