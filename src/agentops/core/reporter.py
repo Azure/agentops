@@ -6,7 +6,6 @@ import re
 
 from agentops.core.models import ComparisonResult, RunResult
 
-
 # ---------------------------------------------------------------------------
 # Evaluator descriptions — one-line explanation of what each metric measures
 # ---------------------------------------------------------------------------

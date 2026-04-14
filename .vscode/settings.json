@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^python -m agentops eval run --config \\.agentops/run-safety-test\\.yaml --output \\.agentops/results/safety-test 2>&1 \\| Select-String -Pattern \"INFO:\\|Error:\\|PASSED\\|FAILED\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

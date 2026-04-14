@@ -7,14 +7,14 @@ import logging
 import os
 import re
 import time
-import uuid
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Dict, List
+from typing import Any
 
 from agentops.backends.base import BackendExecutionResult, BackendRunContext
 from agentops.backends.eval_engine import (
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 def _to_utc_timestamp(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
@@ -198,10 +198,10 @@ class FoundryBackend:
         *,
         method: str,
         url: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         timeout_seconds: int | None,
-        body: Dict[str, Any] | None = None,
-    ) -> Dict[str, Any]:
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         request_body = json.dumps(body).encode("utf-8") if body is not None else None
         request = urllib.request.Request(
             url=url,
@@ -219,7 +219,7 @@ class FoundryBackend:
             )
         return payload
 
-    def _extract_agent_message_text(self, messages_payload: Dict[str, Any]) -> str:
+    def _extract_agent_message_text(self, messages_payload: dict[str, Any]) -> str:
         entries = messages_payload.get("data")
         if not isinstance(entries, list):
             raise ValueError(
@@ -235,7 +235,7 @@ class FoundryBackend:
                 return content.strip()
 
             if isinstance(content, list):
-                parts: List[str] = []
+                parts: list[str] = []
                 for item in content:
                     if not isinstance(item, dict):
                         continue
@@ -253,7 +253,7 @@ class FoundryBackend:
             "Invalid Foundry Agent Service response: no assistant message found"
         )
 
-    def _extract_response_output_text(self, response_payload: Dict[str, Any]) -> str:
+    def _extract_response_output_text(self, response_payload: dict[str, Any]) -> str:
         output = response_payload.get("output")
         if not isinstance(output, list):
             raise ValueError("Invalid Foundry response payload: missing output array")
@@ -266,7 +266,7 @@ class FoundryBackend:
             if not isinstance(content, list):
                 continue
 
-            parts: List[str] = []
+            parts: list[str] = []
             for part in content:
                 if not isinstance(part, dict):
                     continue
@@ -306,7 +306,7 @@ class FoundryBackend:
             agent_name = split_name.strip()
             agent_version = split_version.strip() or None
 
-        agent_reference: Dict[str, Any] = {
+        agent_reference: dict[str, Any] = {
             "type": "agent_reference",
             "name": agent_name,
         }
@@ -508,10 +508,10 @@ class FoundryBackend:
         )
 
         # --- Build testing criteria (azure_ai_evaluator) ---------------------
-        testing_criteria: List[Dict[str, Any]] = []
+        testing_criteria: list[dict[str, Any]] = []
         for evaluator in foundry_evaluators:
             builtin_name = _to_builtin_evaluator_name(evaluator.name)
-            criterion: Dict[str, Any] = {
+            criterion: dict[str, Any] = {
                 "type": "azure_ai_evaluator",
                 "name": evaluator.name,
                 "evaluator_name": f"builtin.{builtin_name}",
@@ -549,7 +549,7 @@ class FoundryBackend:
             "Authorization": f"Bearer {evals_token}",
         }
 
-        def _evals_post(path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        def _evals_post(path: str, body: dict[str, Any]) -> dict[str, Any]:
             url = (
                 f"{evals_base_url}/openai/evals{path}?api-version={_EVALS_API_VERSION}"
             )
@@ -561,7 +561,7 @@ class FoundryBackend:
                 body=body,
             )
 
-        def _evals_get(path: str, extra_params: str = "") -> Dict[str, Any]:
+        def _evals_get(path: str, extra_params: str = "") -> dict[str, Any]:
             params = f"api-version={_EVALS_API_VERSION}"
             if extra_params:
                 params = f"{params}&{extra_params}"
@@ -574,7 +574,7 @@ class FoundryBackend:
             )
 
         # --- Data schema ----------------------------------------------------
-        item_schema: Dict[str, Any] = {
+        item_schema: dict[str, Any] = {
             "type": "object",
             "properties": {
                 input_field: {"type": "string"},
@@ -600,7 +600,7 @@ class FoundryBackend:
         logger.info("Cloud evaluation created: %s", eval_id)
 
         # --- Target + input messages ----------------------------------------
-        input_messages: Dict[str, Any] = {
+        input_messages: dict[str, Any] = {
             "type": "template",
             "template": [
                 {
@@ -637,7 +637,7 @@ class FoundryBackend:
             # Agent target
             assert settings.agent_id is not None
             agent_name, agent_version = _parse_agent_name_version(settings.agent_id)
-            target: Dict[str, Any] = {
+            target: dict[str, Any] = {
                 "type": "azure_ai_agent",
                 "name": agent_name,
             }
@@ -673,7 +673,7 @@ class FoundryBackend:
         terminal_failure = {"failed", "cancelled", "canceled", "expired", "error"}
         poll_start = perf_counter()
         last_logged_status: str | None = None
-        latest_run: Dict[str, Any] = eval_run
+        latest_run: dict[str, Any] = eval_run
 
         for attempt in range(1, settings.max_poll_attempts + 1):
             latest_run = _evals_get(f"/{eval_id}/runs/{run_id}")
@@ -708,13 +708,13 @@ class FoundryBackend:
             f"/{eval_id}/runs/{run_id}/output_items",
             extra_params="order=asc&limit=100",
         )
-        output_items: List[Dict[str, Any]] = output_items_resp.get("data", [])
+        output_items: list[dict[str, Any]] = output_items_resp.get("data", [])
         if not output_items:
             raise RuntimeError(
                 "Foundry cloud evaluation completed with no output items"
             )
 
-        evaluator_aggregate_values: Dict[str, List[float]] = {
+        evaluator_aggregate_values: dict[str, list[float]] = {
             name: [] for name in enabled_evaluator_order
         }
         # Track which local evaluators the bundle actually requests.
@@ -734,9 +734,9 @@ class FoundryBackend:
                 approx_latency_per_row,
             )
 
-        row_metrics_payload: List[Dict[str, Any]] = []
-        stdout_lines: List[str] = []
-        stderr_lines: List[str] = []
+        row_metrics_payload: list[dict[str, Any]] = []
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
 
         for index, item in enumerate(output_items, start=1):
             datasource_item = item.get("datasource_item", {}) or {}
@@ -746,7 +746,7 @@ class FoundryBackend:
                 else {}
             )
 
-            prompt = _normalize_text(row_data.get(input_field))  # noqa: F841
+            prompt = _normalize_text(row_data.get(input_field))
             expected = _normalize_text(row_data.get(expected_field))
 
             # Extract prediction from sample
@@ -755,7 +755,7 @@ class FoundryBackend:
             if isinstance(sample, dict):
                 prediction = _normalize_text(sample.get("output_text", ""))
 
-            row_metric_entries: List[Dict[str, Any]] = []
+            row_metric_entries: list[dict[str, Any]] = []
             for result in item.get("results", []) or []:
                 metric_name = result.get("name", "") if isinstance(result, dict) else ""
                 metric_score = (
@@ -826,7 +826,7 @@ class FoundryBackend:
         total = len(output_items)
 
         # --- Aggregate metrics ----------------------------------------------
-        metrics_entries: List[Dict[str, Any]] = []
+        metrics_entries: list[dict[str, Any]] = []
         for name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(name, [])
             if values:
@@ -866,7 +866,7 @@ class FoundryBackend:
             encoding="utf-8",
         )
 
-        finished = datetime.now(timezone.utc)
+        finished = datetime.now(UTC)
         duration = perf_counter() - started_perf
         if settings.target == "model":
             command_display = (
@@ -900,11 +900,11 @@ class FoundryBackend:
         stderr_path = context.backend_output_dir / "backend.stderr.log"
         metrics_path = context.backend_output_dir / "backend_metrics.json"
 
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         started_perf = perf_counter()
 
-        stdout_lines: List[str] = []
-        stderr_lines: List[str] = []
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
         exit_code = 0
 
         settings = self._read_settings(context)
@@ -963,21 +963,21 @@ class FoundryBackend:
         timeout_seconds = context.run_config.execution.timeout_seconds
 
         total = 0
-        per_item_latencies: List[float] = []
-        row_metrics_payload: List[Dict[str, Any]] = []
+        per_item_latencies: list[float] = []
+        row_metrics_payload: list[dict[str, Any]] = []
         # Track which local evaluators the bundle actually requests.
         enabled_local_names = frozenset(
             e.name for e in enabled_evaluators if e.source == "local"
         )
 
-        evaluator_aggregate_values: Dict[str, List[float]] = {
+        evaluator_aggregate_values: dict[str, list[float]] = {
             evaluator_name: [] for evaluator_name in enabled_evaluator_order
         }
 
         def _record_row_metrics(
             *,
             row_index: int,
-            row_data: Dict[str, Any],
+            row_data: dict[str, Any],
             prompt_text: str,
             expected_text: str,
             prediction_text: str,
@@ -988,7 +988,7 @@ class FoundryBackend:
             prediction_normalized = _normalize_text(prediction_text)
             total += 1
 
-            row_metric_entries: List[Dict[str, Any]] = []
+            row_metric_entries: list[dict[str, Any]] = []
 
             for runtime in foundry_evaluator_runtimes:
                 score = _run_foundry_evaluator(
@@ -1155,7 +1155,7 @@ class FoundryBackend:
             else 0.0
         )
 
-        metrics_entries: List[Dict[str, Any]] = []
+        metrics_entries: list[dict[str, Any]] = []
         for evaluator_name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(evaluator_name, [])
             if values:
@@ -1178,7 +1178,7 @@ class FoundryBackend:
         stdout_path.write_text("\n".join(stdout_lines), encoding="utf-8")
         stderr_path.write_text("\n".join(stderr_lines), encoding="utf-8")
 
-        finished = datetime.now(timezone.utc)
+        finished = datetime.now(UTC)
         duration = perf_counter() - started_perf
         if settings.target == "model":
             command_display = (

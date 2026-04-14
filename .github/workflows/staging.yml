@@ -46,7 +46,6 @@ on:
   workflow_dispatch:
 
 jobs:
-
   # Reusable build: test + package
   build:
     uses: ./.github/workflows/_build.yml
@@ -57,7 +56,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     permissions:
-      id-token: write  # Required for PyPI Trusted Publishing (OIDC)
+      id-token: write # Required for PyPI Trusted Publishing (OIDC)
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v7
@@ -70,7 +69,7 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           verbose: true
-          skip-existing: true  # Allow re-pushes without failure
+          skip-existing: true # Allow re-pushes without failure
 
   # Install from TestPyPI and smoke-test the CLI
   verify-testpypi:
@@ -125,13 +124,13 @@ jobs:
   # Publish the VS Code extension as a pre-release to the Marketplace.
   # Runs in parallel with the TestPyPI flow (only needs source checkout).
   publish-vsix-prerelease:
-    needs: build        # gate on successful lint + test
+    needs: build # gate on successful lint + test
     runs-on: ubuntu-latest
     environment: staging
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Full history for version derivation
+          fetch-depth: 0 # Full history for version derivation
 
       - name: Sync VSIX version from git tag
         run: |
@@ -164,7 +163,7 @@ jobs:
         run: vsce package --pre-release -o agentops-skills.vsix
 
       - name: Publish pre-release to VS Code Marketplace
-        continue-on-error: true  # Tolerate "already exists" for pre-release builds
+        continue-on-error: true # Tolerate "already exists" for pre-release builds
         working-directory: plugins/agentops
         run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
 

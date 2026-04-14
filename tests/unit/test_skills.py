@@ -4,11 +4,11 @@ from typer.testing import CliRunner
 
 from agentops.cli.app import app
 from agentops.services.skills import (
+    _COPILOT_MARKER_END,
+    _COPILOT_MARKER_START,
     detect_platforms,
     install_skills,
     register_skills,
-    _COPILOT_MARKER_START,
-    _COPILOT_MARKER_END,
 )
 
 runner = CliRunner()

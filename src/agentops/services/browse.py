@@ -5,11 +5,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agentops.core.config_loader import load_bundle_config
 from agentops.core.models import RunResult
-
 
 # ---------------------------------------------------------------------------
 # Workspace resolution
@@ -40,7 +39,7 @@ class BundleSummary:
     name: str
     path: Path
     description: str
-    evaluators: List[str]
+    evaluators: list[str]
     thresholds: int
 
 
@@ -48,7 +47,7 @@ class BundleSummary:
 class BundleListResult:
     """Result of listing bundles."""
 
-    bundles: List[BundleSummary]
+    bundles: list[BundleSummary]
     bundles_dir: Path
 
 
@@ -60,7 +59,7 @@ def list_bundles(directory: Path = Path(".")) -> BundleListResult:
     if not bundles_dir.is_dir():
         return BundleListResult(bundles=[], bundles_dir=bundles_dir)
 
-    summaries: List[BundleSummary] = []
+    summaries: list[BundleSummary] = []
     for yaml_file in sorted(bundles_dir.glob("*.yaml")):
         try:
             bundle = load_bundle_config(yaml_file)
@@ -96,9 +95,9 @@ class BundleDetail:
     name: str
     path: Path
     description: str
-    evaluators: List[Dict[str, Any]]
-    thresholds: List[Dict[str, Any]]
-    metadata: Dict[str, Any]
+    evaluators: list[dict[str, Any]]
+    thresholds: list[dict[str, Any]]
+    metadata: dict[str, Any]
 
 
 def show_bundle(bundle_name: str, directory: Path = Path(".")) -> BundleDetail:
@@ -112,7 +111,7 @@ def show_bundle(bundle_name: str, directory: Path = Path(".")) -> BundleDetail:
         bundles_dir / f"{bundle_name}",
     ]
 
-    bundle_path: Optional[Path] = None
+    bundle_path: Path | None = None
     for candidate in candidates:
         if candidate.is_file():
             bundle_path = candidate
@@ -184,7 +183,7 @@ class RunSummary:
 class RunListResult:
     """Result of listing runs."""
 
-    runs: List[RunSummary]
+    runs: list[RunSummary]
     results_dir: Path
 
 
@@ -196,7 +195,7 @@ def list_runs(directory: Path = Path(".")) -> RunListResult:
     if not results_dir.is_dir():
         return RunListResult(runs=[], results_dir=results_dir)
 
-    summaries: List[RunSummary] = []
+    summaries: list[RunSummary] = []
     for run_dir in sorted(results_dir.iterdir(), reverse=True):
         if not run_dir.is_dir():
             continue
@@ -256,12 +255,12 @@ class RunDetail:
     finished_at: str
     duration_seconds: float
     overall_passed: bool
-    metrics: List[Dict[str, Any]]
-    thresholds: List[Dict[str, Any]]
+    metrics: list[dict[str, Any]]
+    thresholds: list[dict[str, Any]]
     items_total: int
     items_passed: int
-    report_path: Optional[Path]
-    foundry_url: Optional[str]
+    report_path: Path | None
+    foundry_url: str | None
 
 
 def show_run(run_id: str, directory: Path = Path(".")) -> RunDetail:

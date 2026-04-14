@@ -7,7 +7,6 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 from agentops.backends.base import Backend, BackendRunContext
 from agentops.core.config_loader import (
@@ -66,7 +65,7 @@ def _sync_latest_output(source_output_dir: Path, latest_output_dir: Path) -> Non
 
 def _load_backend_metrics(
     metrics_path: Path,
-) -> Tuple[List[MetricResult], List[RowMetricsResult]]:
+) -> tuple[list[MetricResult], list[RowMetricsResult]]:
     if not metrics_path.exists():
         raise FileNotFoundError(f"Backend metrics file not found: {metrics_path}")
 
@@ -78,7 +77,7 @@ def _load_backend_metrics(
     if not isinstance(raw_metrics, list):
         raise ValueError("Invalid backend metrics payload: 'metrics' must be a list")
 
-    metrics: List[MetricResult] = []
+    metrics: list[MetricResult] = []
     for item in raw_metrics:
         if not isinstance(item, dict):
             raise ValueError(
@@ -91,7 +90,7 @@ def _load_backend_metrics(
             "Invalid backend metrics payload: 'row_metrics' must be a list"
         )
 
-    row_metrics: List[RowMetricsResult] = []
+    row_metrics: list[RowMetricsResult] = []
     for item in raw_row_metrics:
         if not isinstance(item, dict):
             raise ValueError(
@@ -121,7 +120,7 @@ def _load_cloud_evaluation_metadata(output_dir: Path) -> tuple[str | None, str |
 
 
 def _summary_from_thresholds(
-    metrics: List[MetricResult], threshold_passes: List[bool]
+    metrics: list[MetricResult], threshold_passes: list[bool]
 ) -> Summary:
     thresholds_count = len(threshold_passes)
     thresholds_passed = sum(1 for value in threshold_passes if value)
@@ -198,16 +197,16 @@ def _evaluate_threshold_against_value(
 
 
 def _evaluate_item_thresholds(
-    threshold_rules: List[ThresholdRule],
-    row_metrics: List[RowMetricsResult],
-) -> List[ItemEvaluationResult]:
+    threshold_rules: list[ThresholdRule],
+    row_metrics: list[RowMetricsResult],
+) -> list[ItemEvaluationResult]:
     if not row_metrics:
         return []
 
-    results: List[ItemEvaluationResult] = []
+    results: list[ItemEvaluationResult] = []
     for row in sorted(row_metrics, key=lambda value: value.row_index):
         row_values = {metric.name: metric.value for metric in row.metrics}
-        threshold_results: List[ItemThresholdEvaluationResult] = []
+        threshold_results: list[ItemThresholdEvaluationResult] = []
         for rule in threshold_rules:
             if rule.evaluator not in row_values:
                 raise ValueError(
@@ -240,8 +239,8 @@ def _evaluate_item_thresholds(
 
 def _validate_enabled_evaluators_scored(
     *,
-    evaluator_names: List[str],
-    row_metrics: List[RowMetricsResult],
+    evaluator_names: list[str],
+    row_metrics: list[RowMetricsResult],
 ) -> None:
     if not evaluator_names:
         return
@@ -264,17 +263,17 @@ def _validate_enabled_evaluators_scored(
 
 
 def _summarize_thresholds_from_items(
-    threshold_rules: List[ThresholdRule],
-    item_evaluations: List[ItemEvaluationResult],
-) -> List[ThresholdEvaluationResult]:
+    threshold_rules: list[ThresholdRule],
+    item_evaluations: list[ItemEvaluationResult],
+) -> list[ThresholdEvaluationResult]:
     if not threshold_rules:
         return []
 
-    summary: List[ThresholdEvaluationResult] = []
+    summary: list[ThresholdEvaluationResult] = []
     total_items = len(item_evaluations)
 
     for rule in threshold_rules:
-        rule_results: List[ItemThresholdEvaluationResult] = []
+        rule_results: list[ItemThresholdEvaluationResult] = []
         for item in item_evaluations:
             for threshold_result in item.thresholds:
                 if (
@@ -300,12 +299,12 @@ def _summarize_thresholds_from_items(
 
 
 def _derive_run_metrics(
-    metrics_by_name: Dict[str, float],
-    row_metrics: List[RowMetricsResult],
-    item_evaluations: List[ItemEvaluationResult],
+    metrics_by_name: dict[str, float],
+    row_metrics: list[RowMetricsResult],
+    item_evaluations: list[ItemEvaluationResult],
     summary: Summary,
-) -> List[MetricResult]:
-    run_metrics: List[MetricResult] = []
+) -> list[MetricResult]:
+    run_metrics: list[MetricResult] = []
     seen_run_metric_names: set[str] = set()
 
     def _append_run_metric(name: str, value: float) -> None:
@@ -331,7 +330,7 @@ def _derive_run_metrics(
         )
         _append_run_metric("items_pass_rate", passed_items / len(item_evaluations))
 
-    row_aggregates: Dict[str, List[float]] = {}
+    row_aggregates: dict[str, list[float]] = {}
     for row in row_metrics:
         for metric in row.metrics:
             row_aggregates.setdefault(metric.name, []).append(metric.value)
@@ -421,7 +420,7 @@ def run_evaluation(
 
     backend_metrics_path = output_dir / "backend_metrics.json"
     metrics, row_metrics = _load_backend_metrics(backend_metrics_path)
-    metrics_by_name: Dict[str, float] = {
+    metrics_by_name: dict[str, float] = {
         metric.name: metric.value for metric in metrics
     }
 
@@ -475,7 +474,7 @@ def run_evaluation(
             )
             foundry_eval_studio_url = foundry_publish.studio_url
             foundry_eval_name = foundry_publish.evaluation_name
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             if run_config.output.fail_on_foundry_publish_error:
                 raise RuntimeError(f"Foundry evaluation publish failed: {exc}") from exc
             publish_error_path = output_dir / "foundry_eval_publish_error.log"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -20,7 +20,6 @@ from agentops.core.models import (
     TargetConfig,
     TargetEndpointConfig,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -81,7 +80,7 @@ def _build_context(
     request_field: str = "message",
     response_field: str = "text",
     auth_header_env: str | None = None,
-    headers: Dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,
     tool_calls_field: str | None = None,
     extra_fields: list[str] | None = None,
     bundle_yaml: str | None = None,
@@ -131,7 +130,7 @@ def _build_context(
     )
 
 
-def _fake_urlopen(response_body: Dict[str, Any]):
+def _fake_urlopen(response_body: dict[str, Any]):
     """Return a context-manager mock that yields a fake HTTP response."""
     mock_response = MagicMock()
     mock_response.read.return_value = json.dumps(response_body).encode("utf-8")
@@ -170,7 +169,10 @@ def test_extract_dot_path_non_dict_intermediate_raises() -> None:
 
 def test_endpoint_config_accepts_http_with_url() -> None:
     config = TargetEndpointConfig.model_validate(
-        {"kind": "http", "url": "http://localhost/chat"}
+        {
+            "kind": "http",
+            "url": "http://localhost/chat",
+        }
     )
     assert config.kind == "http"
     assert config.url == "http://localhost/chat"
@@ -178,7 +180,10 @@ def test_endpoint_config_accepts_http_with_url() -> None:
 
 def test_endpoint_config_accepts_http_with_url_env() -> None:
     config = TargetEndpointConfig.model_validate(
-        {"kind": "http", "url_env": "AGENT_HTTP_URL"}
+        {
+            "kind": "http",
+            "url_env": "AGENT_HTTP_URL",
+        }
     )
     assert config.kind == "http"
     assert config.url_env == "AGENT_HTTP_URL"

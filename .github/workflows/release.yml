@@ -59,10 +59,9 @@ on:
         type: string
 
 permissions:
-  contents: write  # For GitHub Release
+  contents: write # For GitHub Release
 
 jobs:
-
   # Reusable build: test + package
   build:
     uses: ./.github/workflows/_build.yml
@@ -73,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     permissions:
-      id-token: write  # Required for PyPI Trusted Publishing (OIDC)
+      id-token: write # Required for PyPI Trusted Publishing (OIDC)
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v7
@@ -148,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      id-token: write  # Required for PyPI trusted publishing (OIDC)
+      id-token: write # Required for PyPI trusted publishing (OIDC)
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v7
@@ -165,13 +164,13 @@ jobs:
   # Publish the VS Code extension as a stable release to the Marketplace.
   # Runs in parallel with the TestPyPI→PyPI flow (only needs source checkout).
   publish-vsix:
-    needs: build          # gate on successful lint + test
+    needs: build # gate on successful lint + test
     runs-on: ubuntu-latest
-    environment: release  # same approval gate as PyPI
+    environment: release # same approval gate as PyPI
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Full history for version derivation
+          fetch-depth: 0 # Full history for version derivation
 
       - name: Sync VSIX version from git tag
         run: |
@@ -204,7 +203,7 @@ jobs:
         run: vsce package -o agentops-skills.vsix
 
       - name: Publish stable to VS Code Marketplace
-        continue-on-error: true  # Tolerate "already exists" if staging pre-release published this version
+        continue-on-error: true # Tolerate "already exists" if staging pre-release published this version
         working-directory: plugins/agentops
         run: vsce publish --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
 

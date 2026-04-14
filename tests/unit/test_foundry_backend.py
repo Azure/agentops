@@ -758,11 +758,12 @@ def test_default_foundry_input_mapping_groundedness_pro() -> None:
 
 def test_model_config_injected_for_all_ai_assisted_evaluators() -> None:
     """Verify model_config is auto-injected for ALL AI-assisted evaluators, not just 2."""
+    import importlib as _real_importlib
+
     from agentops.backends.eval_engine import (
         _AI_ASSISTED_EVALUATORS,
         _load_foundry_evaluator_callable,
     )
-    import importlib as _real_importlib
 
     # Capture a direct reference to the real import_module BEFORE patching
     _orig_import_module = _real_importlib.import_module

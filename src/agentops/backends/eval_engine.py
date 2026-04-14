@@ -14,9 +14,10 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List
+from typing import Any
 
 from agentops.core.models import EvaluatorConfig
 
@@ -156,9 +157,9 @@ _SUPPORTED_LOCAL_EVALUATORS = {
 @dataclass(frozen=True)
 class FoundryEvaluatorRuntime:
     name: str
-    evaluator: Callable[..., Dict[str, Any]]
-    input_mapping: Dict[str, str]
-    score_keys: List[str]
+    evaluator: Callable[..., dict[str, Any]]
+    input_mapping: dict[str, str]
+    score_keys: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +182,8 @@ def _resolve_dataset_source_path(dataset_config_path: Path, source_path: Path) -
     return candidate
 
 
-def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
+def _load_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         if not stripped:
@@ -210,8 +211,7 @@ def _normalize_text(value: Any) -> str:
 def _to_builtin_evaluator_name(evaluator_name: str) -> str:
     """Convert 'SimilarityEvaluator' → 'similarity'."""
     normalized = evaluator_name.strip()
-    if normalized.endswith("Evaluator"):
-        normalized = normalized[:-9]
+    normalized = normalized.removesuffix("Evaluator")
     snake = re.sub(r"(?<!^)(?=[A-Z])", "_", normalized).lower()
     return snake
 
@@ -225,13 +225,13 @@ def _cloud_evaluator_data_mapping(
     input_field: str,
     expected_field: str,
     context_field: str | None = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Build ``data_mapping`` for an ``azure_ai_evaluator`` testing criterion."""
     item_input = "{{item." + input_field + "}}"
     item_expected = "{{item." + expected_field + "}}"
     sample_response = "{{sample.output_text}}"
 
-    mapping: Dict[str, str] = {}
+    mapping: dict[str, str] = {}
     if builtin_name in _SAFETY_EVALUATORS:
         mapping["query"] = item_input
         mapping["response"] = sample_response
@@ -264,7 +264,7 @@ def _cloud_evaluator_needs_model(builtin_name: str) -> bool:
 
 # Default initialization_parameters for evaluators that require them but are
 # not AI-assisted (so they don't get deployment_name automatically).
-_NLP_DEFAULT_INIT_PARAMS: Dict[str, Dict[str, Any]] = {
+_NLP_DEFAULT_INIT_PARAMS: dict[str, dict[str, Any]] = {
     "rouge_score": {"rouge_type": "rouge1"},
 }
 
@@ -282,7 +282,7 @@ def _parse_agent_name_version(agent_id: str) -> tuple[str, str | None]:
 # ---------------------------------------------------------------------------
 
 
-def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
+def _default_foundry_input_mapping(name: str) -> dict[str, str]:
     if name == "SimilarityEvaluator":
         return {
             "query": "$prompt",
@@ -368,7 +368,7 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
     return {}
 
 
-def _default_score_keys(name: str) -> List[str]:
+def _default_score_keys(name: str) -> list[str]:
     snake_name = _to_snake_case(name)
     bare_name = snake_name.replace("_evaluator", "")
     keys = [
@@ -380,7 +380,7 @@ def _default_score_keys(name: str) -> List[str]:
         "value",
     ]
     seen: set[str] = set()
-    ordered: List[str] = []
+    ordered: list[str] = []
     for key in keys:
         if key not in seen:
             seen.add(key)
@@ -393,7 +393,7 @@ def _default_score_keys(name: str) -> List[str]:
 # ---------------------------------------------------------------------------
 
 
-def _validate_supported_local_evaluators(evaluators: List[EvaluatorConfig]) -> None:
+def _validate_supported_local_evaluators(evaluators: list[EvaluatorConfig]) -> None:
     unsupported = sorted(
         evaluator.name
         for evaluator in evaluators
@@ -446,12 +446,12 @@ def _azure_openai_model_config(
     *,
     fallback_endpoint: str | None = None,
     fallback_deployment: str | None = None,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT") or fallback_endpoint
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or fallback_deployment
     api_version = os.getenv("AZURE_OPENAI_API_VERSION")
 
-    missing: List[str] = []
+    missing: list[str] = []
     if not endpoint:
         missing.append("AZURE_OPENAI_ENDPOINT")
     if not deployment:
@@ -466,7 +466,7 @@ def _azure_openai_model_config(
     assert endpoint is not None
     assert deployment is not None
 
-    model_config: Dict[str, str] = {
+    model_config: dict[str, str] = {
         "azure_endpoint": endpoint,
         "azure_deployment": deployment,
     }
@@ -495,7 +495,7 @@ def _is_reasoning_like_deployment_name(name: str) -> bool:
 def _should_enable_reasoning_mode(
     *,
     evaluator_name: str,
-    init_kwargs: Dict[str, Any],
+    init_kwargs: dict[str, Any],
 ) -> bool:
     if evaluator_name not in _AI_ASSISTED_EVALUATORS:
         return False
@@ -517,8 +517,8 @@ def _instantiate_evaluator_symbol(
     evaluator_symbol: Any,
     *,
     evaluator_name: str,
-    init_kwargs: Dict[str, Any],
-) -> Callable[..., Dict[str, Any]]:
+    init_kwargs: dict[str, Any],
+) -> Callable[..., dict[str, Any]]:
     if not inspect.isclass(evaluator_symbol):
         if callable(evaluator_symbol):
             if init_kwargs:
@@ -560,10 +560,10 @@ def _interpolate_env_values(value: Any) -> Any:
 def _load_foundry_evaluator_callable(
     *,
     evaluator_name: str,
-    evaluator_config: Dict[str, Any],
+    evaluator_config: dict[str, Any],
     fallback_endpoint: str | None = None,
     fallback_deployment: str | None = None,
-) -> Callable[..., Dict[str, Any]]:
+) -> Callable[..., dict[str, Any]]:
     kind = str(evaluator_config.get("kind", "builtin")).strip().lower()
     init_kwargs_raw = evaluator_config.get("init", {})
     if init_kwargs_raw is None:
@@ -653,12 +653,12 @@ def _load_foundry_evaluator_callable(
 
 
 def _build_foundry_evaluator_runtimes(
-    evaluators: List[EvaluatorConfig],
+    evaluators: list[EvaluatorConfig],
     *,
     fallback_endpoint: str | None = None,
     fallback_deployment: str | None = None,
-) -> List[FoundryEvaluatorRuntime]:
-    runtimes: List[FoundryEvaluatorRuntime] = []
+) -> list[FoundryEvaluatorRuntime]:
+    runtimes: list[FoundryEvaluatorRuntime] = []
     for evaluator in evaluators:
         if not evaluator.enabled or evaluator.source != "foundry":
             continue
@@ -742,7 +742,7 @@ def _find_numeric_value(payload: Any) -> float | None:
 
 
 def _extract_evaluator_score(
-    payload: Dict[str, Any], preferred_keys: List[str], evaluator_name: str
+    payload: dict[str, Any], preferred_keys: list[str], evaluator_name: str
 ) -> float:
     for key in preferred_keys:
         if key in payload:
@@ -769,7 +769,7 @@ def _resolve_mapping_value(
     prompt: str,
     prediction: str,
     expected: str,
-    row: Dict[str, Any],
+    row: dict[str, Any],
 ) -> Any:
     if not isinstance(expression, str):
         return expression
@@ -794,7 +794,7 @@ def _resolve_mapping_value(
 
     if expression.startswith("$"):
         token = expression[1:]
-        aliases: Dict[str, Any] = {
+        aliases: dict[str, Any] = {
             "prompt": prompt,
             "query": prompt,
             "input": prompt,
@@ -821,8 +821,8 @@ def _build_evaluator_kwargs(
     prompt: str,
     prediction: str,
     expected: str,
-    row: Dict[str, Any],
-) -> Dict[str, Any]:
+    row: dict[str, Any],
+) -> dict[str, Any]:
     if runtime.input_mapping:
         return {
             key: _resolve_mapping_value(
@@ -835,7 +835,7 @@ def _build_evaluator_kwargs(
             for key, value in runtime.input_mapping.items()
         }
 
-    base_context: Dict[str, Any] = {
+    base_context: dict[str, Any] = {
         "prompt": prompt,
         "query": prompt,
         "input": prompt,
@@ -859,7 +859,7 @@ def _build_evaluator_kwargs(
         merged.update(row)
         return merged
 
-    kwargs: Dict[str, Any] = {}
+    kwargs: dict[str, Any] = {}
     for name, param in signature.parameters.items():
         if param.kind not in {
             inspect.Parameter.POSITIONAL_ONLY,
@@ -887,7 +887,7 @@ def _run_foundry_evaluator(
     prompt: str,
     prediction: str,
     expected: str,
-    row: Dict[str, Any],
+    row: dict[str, Any],
 ) -> float:
     kwargs = _build_evaluator_kwargs(
         runtime,
