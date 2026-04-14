@@ -442,6 +442,9 @@ FodyWeavers.xsd
 # Built Visual Studio Code Extensions
 *.vsix
 
+# Plugin CHANGELOG is auto-copied from root during VSIX build
+plugins/agentops/CHANGELOG.md
+
 # Windows Installer files from build outputs
 *.cab
 *.msi

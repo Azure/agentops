@@ -198,6 +198,9 @@ jobs:
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
+      - name: Copy root CHANGELOG for VSIX
+        run: cp CHANGELOG.md plugins/agentops/CHANGELOG.md
+
       - name: Package VSIX
         working-directory: plugins/agentops
         run: vsce package -o agentops-skills.vsix
