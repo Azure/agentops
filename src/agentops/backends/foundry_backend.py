@@ -176,6 +176,7 @@ class FoundryBackend:
             # Model-direct: use cognitive services scope
             token_scope = "https://cognitiveservices.azure.com/.default"
         else:
+            assert agent_id is not None
             token_scope = _preferred_scope_for_agent_id(agent_id)
         logger.info("Acquiring token via DefaultAzureCredential…")
         agent_token = _acquire_token(token_scope)
@@ -298,6 +299,7 @@ class FoundryBackend:
             "Authorization": f"Bearer {settings.agent_token}",
         }
 
+        assert settings.agent_id is not None
         agent_name, agent_version = (settings.agent_id, None)
         if ":" in settings.agent_id:
             split_name, split_version = settings.agent_id.split(":", 1)
@@ -328,6 +330,7 @@ class FoundryBackend:
     def _invoke_agent_service(
         self, settings: FoundrySettings, prompt: str, timeout_seconds: int | None
     ) -> str:
+        assert settings.agent_id is not None
         if not settings.agent_id.startswith("asst_"):
             return self._invoke_agent_reference(settings, prompt, timeout_seconds)
 
@@ -434,6 +437,7 @@ class FoundryBackend:
         )
         openai_client = project_client.get_openai_client()
 
+        assert settings.model is not None
         response = openai_client.chat.completions.create(
             model=settings.model,
             messages=[{"role": "user", "content": prompt}],
@@ -631,6 +635,7 @@ class FoundryBackend:
             )
         else:
             # Agent target
+            assert settings.agent_id is not None
             agent_name, agent_version = _parse_agent_name_version(settings.agent_id)
             target: Dict[str, Any] = {
                 "type": "azure_ai_agent",
@@ -750,7 +755,7 @@ class FoundryBackend:
             if isinstance(sample, dict):
                 prediction = _normalize_text(sample.get("output_text", ""))
 
-            row_metric_entries: List[Dict[str, float]] = []
+            row_metric_entries: List[Dict[str, Any]] = []
             for result in item.get("results", []) or []:
                 metric_name = result.get("name", "") if isinstance(result, dict) else ""
                 metric_score = (
@@ -821,7 +826,7 @@ class FoundryBackend:
         total = len(output_items)
 
         # --- Aggregate metrics ----------------------------------------------
-        metrics_entries: List[Dict[str, float]] = []
+        metrics_entries: List[Dict[str, Any]] = []
         for name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(name, [])
             if values:
@@ -983,7 +988,7 @@ class FoundryBackend:
             prediction_normalized = _normalize_text(prediction_text)
             total += 1
 
-            row_metric_entries: List[Dict[str, float]] = []
+            row_metric_entries: List[Dict[str, Any]] = []
 
             for runtime in foundry_evaluator_runtimes:
                 score = _run_foundry_evaluator(
@@ -1150,7 +1155,7 @@ class FoundryBackend:
             else 0.0
         )
 
-        metrics_entries: List[Dict[str, float]] = []
+        metrics_entries: List[Dict[str, Any]] = []
         for evaluator_name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(evaluator_name, [])
             if values:

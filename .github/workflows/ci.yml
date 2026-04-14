@@ -40,7 +40,6 @@ jobs:
 
       - name: Type check with mypy
         run: uv run mypy src/agentops/ --ignore-missing-imports
-        continue-on-error: true # Strict mode may need incremental adoption
 
   test:
     runs-on: ${{ matrix.os }}

@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from agentops.backends.base import BackendRunContext
+from agentops.backends.base import Backend, BackendRunContext
 from agentops.core.config_loader import (
     load_bundle_config,
     load_dataset_config,
@@ -19,6 +19,9 @@ from agentops.core.config_loader import (
 )
 from agentops.core.models import (
     Artifacts,
+    BundleInfo,
+    DatasetInfo,
+    ExecutionInfo,
     ItemEvaluationResult,
     ItemThresholdEvaluationResult,
     MetricResult,
@@ -353,7 +356,9 @@ def _derive_run_metrics(
 
 
 def run_evaluation(
-    config_path: Path | None = None, output_override: Path | None = None, report_format: str = "md",
+    config_path: Path | None = None,
+    output_override: Path | None = None,
+    report_format: str = "md",
 ) -> EvalRunServiceResult:
     run_config_path = (
         config_path.resolve() if config_path is not None else _default_run_config_path()
@@ -363,7 +368,9 @@ def run_evaluation(
     run_config_dir = run_config_path.parent
     workspace_dir = run_config_dir  # .agentops/ is the workspace root
     bundle_path = resolve_bundle_ref(run_config.bundle, run_config_dir, workspace_dir)
-    dataset_path = resolve_dataset_ref(run_config.dataset, run_config_dir, workspace_dir)
+    dataset_path = resolve_dataset_ref(
+        run_config.dataset, run_config_dir, workspace_dir
+    )
 
     bundle_config = load_bundle_config(bundle_path)
     dataset_config = load_dataset_config(dataset_path)
@@ -375,6 +382,7 @@ def run_evaluation(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    backend: Backend
     if run_config.target.execution_mode == "local":
         from agentops.backends.local_adapter_backend import LocalAdapterBackend
 
@@ -476,16 +484,16 @@ def run_evaluation(
     normalized_result = RunResult(
         version=1,
         status="completed",
-        bundle={"name": bundle_config.name, "path": bundle_path},
-        dataset={"name": dataset_config.name, "path": dataset_path},
-        execution={
-            "backend": backend_result.backend,
-            "command": backend_result.command,
-            "started_at": backend_result.started_at,
-            "finished_at": backend_result.finished_at,
-            "duration_seconds": backend_result.duration_seconds,
-            "exit_code": backend_result.exit_code,
-        },
+        bundle=BundleInfo(name=bundle_config.name, path=bundle_path),
+        dataset=DatasetInfo(name=dataset_config.name, path=dataset_path),
+        execution=ExecutionInfo(
+            backend=backend_result.backend,
+            command=backend_result.command,
+            started_at=backend_result.started_at,
+            finished_at=backend_result.finished_at,
+            duration_seconds=backend_result.duration_seconds,
+            exit_code=backend_result.exit_code,
+        ),
         metrics=metrics,
         row_metrics=row_metrics,
         item_evaluations=item_evaluations,
@@ -515,9 +523,7 @@ def run_evaluation(
         report_path = md_path
     if report_format in ("html", "all"):
         html_path = output_dir / "report.html"
-        html_path.write_text(
-            generate_report_html(normalized_result), encoding="utf-8"
-        )
+        html_path.write_text(generate_report_html(normalized_result), encoding="utf-8")
         report_path = html_path
     if report_format == "all":
         report_path = md_path

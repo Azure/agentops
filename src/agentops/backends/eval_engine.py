@@ -316,7 +316,11 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
             "response": "$prediction",
             "ground_truth": "$expected",
         }
-    if name in ("TaskCompletionEvaluator", "IntentResolutionEvaluator", "TaskAdherenceEvaluator"):
+    if name in (
+        "TaskCompletionEvaluator",
+        "IntentResolutionEvaluator",
+        "TaskAdherenceEvaluator",
+    ):
         return {
             "query": "$prompt",
             "response": "$prediction",
@@ -335,7 +339,11 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
             "tool_calls": "$row.tool_calls",
             "tool_definitions": "$row.tool_definitions",
         }
-    if name in ("ToolInputAccuracyEvaluator", "ToolOutputUtilizationEvaluator", "ToolCallSuccessEvaluator"):
+    if name in (
+        "ToolInputAccuracyEvaluator",
+        "ToolOutputUtilizationEvaluator",
+        "ToolCallSuccessEvaluator",
+    ):
         return {
             "query": "$prompt",
             "response": "$prediction",
@@ -455,6 +463,9 @@ def _azure_openai_model_config(
             "Missing: " + ", ".join(missing)
         )
 
+    assert endpoint is not None
+    assert deployment is not None
+
     model_config: Dict[str, str] = {
         "azure_endpoint": endpoint,
         "azure_deployment": deployment,
@@ -568,10 +579,7 @@ def _load_foundry_evaluator_callable(
                 f"Evaluator '{evaluator_name}' class_name must be non-empty"
             )
 
-        if (
-            class_name in _AI_ASSISTED_EVALUATORS
-            and "model_config" not in init_kwargs
-        ):
+        if class_name in _AI_ASSISTED_EVALUATORS and "model_config" not in init_kwargs:
             init_kwargs["model_config"] = _azure_openai_model_config(
                 fallback_endpoint=fallback_endpoint,
                 fallback_deployment=fallback_deployment,

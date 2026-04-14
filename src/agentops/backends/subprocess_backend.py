@@ -24,7 +24,7 @@ def _safe_text(value: str | bytes | None) -> str:
 
 class SubprocessBackend:
     def build_command(self, context: BackendRunContext) -> list[str]:
-        backend = context.backend_config
+        backend = context.backend_config  # type: ignore[attr-defined]
         if backend.command is None:
             raise ValueError("backend.command is required")
 
@@ -52,10 +52,10 @@ class SubprocessBackend:
         command_display = shlex.join(command)
 
         env = os.environ.copy()
-        env.update(context.backend_config.env)
+        env.update(context.backend_config.env)  # type: ignore[attr-defined]
 
         started = datetime.now(timezone.utc)
-        timeout_seconds = context.backend_config.timeout_seconds
+        timeout_seconds = context.backend_config.timeout_seconds  # type: ignore[attr-defined]
 
         try:
             completed = subprocess.run(
@@ -80,7 +80,7 @@ class SubprocessBackend:
         stderr_path.write_text(stderr_text, encoding="utf-8")
 
         return BackendExecutionResult(
-            backend=context.backend_config.type,
+            backend=context.backend_config.type,  # type: ignore[attr-defined]
             command=command_display,
             started_at=_to_utc_timestamp(started),
             finished_at=_to_utc_timestamp(finished),
