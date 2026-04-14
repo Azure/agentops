@@ -223,8 +223,10 @@ jobs:
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
-      - name: Copy root CHANGELOG for VSIX
-        run: cp CHANGELOG.md plugins/agentops/CHANGELOG.md
+      - name: Copy root assets for VSIX
+        run: |
+          cp CHANGELOG.md plugins/agentops/CHANGELOG.md
+          cp icon.png plugins/agentops/icon.png
 
       - name: Package VSIX (dry run)
         working-directory: plugins/agentops
@@ -278,8 +280,10 @@ jobs:
       - name: Install vsce
         run: npm install -g @vscode/vsce
 
-      - name: Copy root CHANGELOG for VSIX
-        run: cp CHANGELOG.md plugins/agentops/CHANGELOG.md
+      - name: Copy root assets for VSIX
+        run: |
+          cp CHANGELOG.md plugins/agentops/CHANGELOG.md
+          cp icon.png plugins/agentops/icon.png
 
       - name: Package VSIX (pre-release)
         working-directory: plugins/agentops

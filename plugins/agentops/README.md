@@ -22,9 +22,6 @@ Install from the
 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit)
 or search **"AgentOps Skills"** in the VS Code Extensions view.
 
-A **pre-release** channel is available for early access to new skills and updates —
-enable it from the extension's Marketplace page or the Extensions view.
-
 ## Usage
 
 Open **Copilot Chat** in VS Code and describe what you want to do.

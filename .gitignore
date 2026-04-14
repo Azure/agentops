@@ -444,6 +444,7 @@ FodyWeavers.xsd
 
 # Plugin CHANGELOG is auto-copied from root during VSIX build
 plugins/agentops/CHANGELOG.md
+plugins/agentops/icon.png
 
 # Windows Installer files from build outputs
 *.cab
