@@ -22,13 +22,18 @@
 #   the version will be something like 0.2.0.dev5 (PEP 440 pre-release).
 #   VSIX version is managed in plugins/agentops/package.json.
 #
-# Required GitHub secrets (environment: staging):
-#   TEST_PYPI_TOKEN  — TestPyPI API token
-#   VSCE_PAT         — VS Code Marketplace Personal Access Token
+# Trusted Publishing (OIDC):
+#   This workflow uses PyPI Trusted Publishing — no API tokens required.
+#   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
+#   and TestPyPI.
 #
-# Setup:
-#   1. https://test.pypi.org/manage/account/token/  → Create TEST_PYPI_TOKEN
-#   2. GitHub repo → Settings → Secrets → Actions    → Add to staging environment
+# Required GitHub secrets (environment: staging):
+#   VSCE_PAT — VS Code Marketplace Personal Access Token
+#
+# Setup (Trusted Publishing + VSCE):
+#   1. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
+#   2. GitHub repo → Settings → Environments → Create "staging" environment (optional approval)
 #   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
 #   4. Add VSCE_PAT to staging environment
 
@@ -41,7 +46,6 @@ on:
   workflow_dispatch:
 
 jobs:
-
   # Reusable build: test + package
   build:
     uses: ./.github/workflows/_build.yml
@@ -51,9 +55,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      id-token: write # Required for PyPI Trusted Publishing (OIDC)
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: dist
           path: dist/
@@ -62,21 +68,20 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
           verbose: true
-          skip-existing: true  # Allow re-pushes without failure
+          skip-existing: true # Allow re-pushes without failure
 
   # Install from TestPyPI and smoke-test the CLI
   verify-testpypi:
     needs: publish-testpypi
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -119,17 +124,20 @@ jobs:
   # Publish the VS Code extension as a pre-release to the Marketplace.
   # Runs in parallel with the TestPyPI flow (only needs source checkout).
   publish-vsix-prerelease:
-    needs: build        # gate on successful lint + test
+    needs: build # gate on successful lint + test
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Full history for version derivation
+          fetch-depth: 0 # Full history for version derivation
 
       - name: Sync VSIX version from git tag
         run: |
-          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          # Use global tag sort (not git describe) to find the latest tag
+          # across ALL branches, not just reachable ones from HEAD.
+          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
+          LAST_TAG=${LAST_TAG:-v0.0.0}
           LAST_VERSION=${LAST_TAG#v}
           IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
           if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
@@ -143,9 +151,9 @@ jobs:
           echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install vsce
         run: npm install -g @vscode/vsce
@@ -155,6 +163,7 @@ jobs:
         run: vsce package --pre-release -o agentops-skills.vsix
 
       - name: Publish pre-release to VS Code Marketplace
+        continue-on-error: true # Tolerate "already exists" for pre-release builds
         working-directory: plugins/agentops
         run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
 
@@ -165,7 +174,7 @@ jobs:
           echo "✅ VSIX pre-release published to Marketplace"
 
       - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vsix
           path: plugins/agentops/agentops-skills.vsix

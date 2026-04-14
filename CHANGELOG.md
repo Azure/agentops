@@ -5,6 +5,26 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-04-13
+
+### Fixed
+- **Make release pipeline resilient to VSIX version conflicts** — add `continue-on-error` on VSIX publish and decouple GitHub Release from VSIX publish result, preventing staging pre-release "already exists" failures from blocking the release.
+- **Resolve 31 mypy type errors and enforce mypy in CI** — strict type checking added to the `lint` job (`mypy --strict src/`), fixing errors across `foundry_backend.py`, `eval_engine.py`, `reporter.py`, `runner.py`, `comparison.py`, and `browse.py`.
+- **Resolve 18 ruff lint errors** (F401 unused imports, F811 redefinition, F841 unused variables) across 6 source and test files.
+- **Fix UV cache race condition in CI** — disable UV cache on non-matrix jobs (lint, coverage, publish-dev) that shared cache keys with the test matrix, eliminating `Failed to save: Unable to reserve cache` warnings.
+
+### Changed
+- **Upgrade GitHub Actions to Node.js 24 runtimes** — update `actions/checkout` to v6, `actions/setup-python` to v5, `astral-sh/setup-uv` to v7, `actions/upload-artifact` and `download-artifact` to v7 across all CI/CD workflows.
+- **Apply ruff-format across source and workflows** — normalize code style and whitespace across backends, services, CLI, tests, and workflow YAML files.
+
+## [0.1.4] - 2026-04-14
+
+### Fixed
+- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
+- Fix VSIX version derivation in CI/CD workflows — use global tag sort (`git tag -l --sort=-v:refname`) instead of `git describe` which misses tags not reachable from the current branch.
+
+## [0.1.3] - 2026-03-24
+
 ### Added
 - **Auto-registration of skills in coding agent instruction files** — `agentops skills install` now registers installed skills in the coding agent's instruction file so AI assistants discover them automatically. For Copilot: appends an idempotent marker-delimited block to `.github/copilot-instructions.md` with a skill discovery table. For Cursor: writes a managed `.cursor/rules/agentops.mdc` file with `alwaysApply: true`. Repeated runs update the block in place (no duplicates).
 - **Cursor platform detection** — `detect_platforms()` now recognises `.cursor/rules/` directory or `.cursorrules` file as Cursor indicators. Cursor skills are installed to `.github/skills/` (shared with Copilot) and registered via `.cursor/rules/agentops.mdc`.
@@ -127,8 +147,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Add consistent workflow index header across all CI/CD workflow files.
 - Add VSIX extension packaging and publishing to CI/CD pipeline; include Copilot skills in the VS Code Marketplace extension.
 
-### Fixed
-- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
 
 ## [0.1.0] - 2026-__-__
 

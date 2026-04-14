@@ -4,13 +4,11 @@ from typer.testing import CliRunner
 
 from agentops.cli.app import app
 from agentops.services.skills import (
-    SkillsInstallResult,
-    RegistrationResult,
+    _COPILOT_MARKER_END,
+    _COPILOT_MARKER_START,
     detect_platforms,
     install_skills,
     register_skills,
-    _COPILOT_MARKER_START,
-    _COPILOT_MARKER_END,
 )
 
 runner = CliRunner()
@@ -97,9 +95,9 @@ def test_install_creates_copilot_files(tmp_path: Path) -> None:
 
 def test_copilot_files_have_frontmatter(tmp_path: Path) -> None:
     install_skills(directory=tmp_path, platforms=["copilot"])
-    content = (
-        tmp_path / ".github/skills/agentops-eval/SKILL.md"
-    ).read_text(encoding="utf-8")
+    content = (tmp_path / ".github/skills/agentops-eval/SKILL.md").read_text(
+        encoding="utf-8"
+    )
     assert content.startswith("---")
 
 
@@ -121,9 +119,9 @@ def test_install_creates_claude_files(tmp_path: Path) -> None:
 
 def test_claude_files_strip_frontmatter(tmp_path: Path) -> None:
     install_skills(directory=tmp_path, platforms=["claude"])
-    content = (
-        tmp_path / ".claude/commands/agentops-eval.md"
-    ).read_text(encoding="utf-8")
+    content = (tmp_path / ".claude/commands/agentops-eval.md").read_text(
+        encoding="utf-8"
+    )
     assert not content.startswith("---")
     assert "AgentOps" in content
 
@@ -134,9 +132,7 @@ def test_claude_files_strip_frontmatter(tmp_path: Path) -> None:
 
 
 def test_install_multi_platform(tmp_path: Path) -> None:
-    result = install_skills(
-        directory=tmp_path, platforms=["copilot", "claude"]
-    )
+    result = install_skills(directory=tmp_path, platforms=["copilot", "claude"])
     assert len(result.created_files) == 16  # 8 per platform
     assert result.platforms == ["copilot", "claude"]
 
@@ -190,9 +186,7 @@ def test_install_unknown_platform(tmp_path: Path) -> None:
 
 
 def test_cli_skills_install_default_copilot(tmp_path: Path) -> None:
-    result = runner.invoke(
-        app, ["skills", "install", "--dir", str(tmp_path)]
-    )
+    result = runner.invoke(app, ["skills", "install", "--dir", str(tmp_path)])
     assert result.exit_code == 0
     assert "created" in result.stdout
 
@@ -214,9 +208,7 @@ def test_cli_skills_install_explicit_claude(tmp_path: Path) -> None:
 def test_cli_skills_install_skips_existing(tmp_path: Path) -> None:
     install_skills(directory=tmp_path, platforms=["copilot"])
 
-    result = runner.invoke(
-        app, ["skills", "install", "--dir", str(tmp_path)]
-    )
+    result = runner.invoke(app, ["skills", "install", "--dir", str(tmp_path)])
     assert result.exit_code == 0
     assert "overwritten" in result.stdout
 
@@ -395,9 +387,7 @@ def test_cli_init_does_not_register_skills(tmp_path: Path) -> None:
 
 
 def test_cli_skills_install_registers_skills(tmp_path: Path) -> None:
-    result = runner.invoke(
-        app, ["skills", "install", "--dir", str(tmp_path)]
-    )
+    result = runner.invoke(app, ["skills", "install", "--dir", str(tmp_path)])
     assert result.exit_code == 0
     assert "registered skills in" in result.stdout
 

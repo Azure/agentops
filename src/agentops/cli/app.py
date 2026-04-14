@@ -5,13 +5,12 @@ from typing import Annotated
 
 import typer
 
-from agentops.services.reporting import generate_report_from_results
-from agentops.utils.logging import get_logger, setup_logging
-
 from agentops.cli.browse_commands import (
     bundle_app,
     run_app,
 )
+from agentops.services.reporting import generate_report_from_results
+from agentops.utils.logging import get_logger, setup_logging
 
 app = typer.Typer(
     name="agentops",
@@ -69,8 +68,7 @@ def _resolve_platforms(
 
     if prompt:
         install = typer.confirm(
-            "No coding agent platform detected. "
-            "Install skills for GitHub Copilot?",
+            "No coding agent platform detected. Install skills for GitHub Copilot?",
             default=True,
         )
         return ["copilot"] if install else []
@@ -183,9 +181,7 @@ def cmd_init(
         typer.echo(f" - skipped {skipped}")
 
     typer.echo("")
-    typer.echo(
-        "To install coding agent skills, run: agentops skills install"
-    )
+    typer.echo("To install coding agent skills, run: agentops skills install")
 
 
 # ---------------------------------------------------------------------------
@@ -504,7 +500,9 @@ def cmd_skills_install(
         ),
     ] = None,
     force: bool = typer.Option(
-        False, "--force", help="Deprecated — skills are always overwritten with the latest version."
+        False,
+        "--force",
+        help="Deprecated — skills are always overwritten with the latest version.",
     ),
     prompt: bool = typer.Option(
         False,
@@ -547,9 +545,7 @@ def cmd_skills_install(
     from agentops.services.skills import register_skills
 
     try:
-        reg_result = register_skills(
-            directory=directory, platforms=resolved_platforms
-        )
+        reg_result = register_skills(directory=directory, platforms=resolved_platforms)
     except Exception as exc:
         typer.echo(f"Warning: failed to register skills: {exc}", err=True)
     else:

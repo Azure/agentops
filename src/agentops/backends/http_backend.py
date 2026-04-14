@@ -20,10 +20,9 @@ import logging
 import os
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 from time import perf_counter
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from agentops.backends.base import BackendExecutionResult, BackendRunContext
 from agentops.backends.eval_engine import (
@@ -43,7 +42,7 @@ _DEFAULT_RESPONSE_FIELD = "text"
 
 
 def _to_utc_timestamp(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _extract_dot_path(payload: Any, dot_path: str) -> Any:
@@ -72,19 +71,24 @@ def _extract_dot_path(payload: Any, dot_path: str) -> Any:
 def _post_json(
     *,
     url: str,
-    body: Dict[str, Any],
-    extra_headers: Dict[str, str],
-    auth_token: Optional[str],
-    timeout_seconds: Optional[int],
-) -> Dict[str, Any]:
+    body: dict[str, Any],
+    extra_headers: dict[str, str],
+    auth_token: str | None,
+    timeout_seconds: int | None,
+) -> dict[str, Any]:
     """POST a JSON body to the given URL and return the parsed response."""
-    headers: Dict[str, str] = {"Content-Type": "application/json", "Accept": "application/json"}
+    headers: dict[str, str] = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
     headers.update(extra_headers)
 
     request_body = json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(url=url, method="POST", data=request_body, headers=headers)
+    request = urllib.request.Request(
+        url=url, method="POST", data=request_body, headers=headers
+    )
 
     with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         payload = json.loads(response.read().decode("utf-8"))
@@ -138,11 +142,11 @@ class HttpBackend:
         endpoint = context.run_config.target.endpoint
         assert endpoint is not None, "HTTP backend requires target.endpoint"
 
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         started_perf = perf_counter()
 
-        stdout_lines: List[str] = []
-        stderr_lines: List[str] = []
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
 
         exit_code = 0
 
@@ -155,7 +159,7 @@ class HttpBackend:
             tool_calls_field = endpoint.tool_calls_field
             extra_field_names = endpoint.extra_fields or []
 
-            auth_token: Optional[str] = None
+            auth_token: str | None = None
             if endpoint.auth_header_env:
                 auth_token = os.getenv(endpoint.auth_header_env)
                 if not auth_token:
@@ -178,10 +182,10 @@ class HttpBackend:
             enabled_evaluator_order = [e.name for e in enabled_evaluators]
 
             # AI-assisted evaluators require Azure OpenAI — read from environment.
-            fallback_endpoint: Optional[str] = os.getenv("AZURE_OPENAI_ENDPOINT")
-            fallback_deployment: Optional[str] = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME") or os.getenv(
-                "AZURE_OPENAI_DEPLOYMENT"
-            )
+            fallback_endpoint: str | None = os.getenv("AZURE_OPENAI_ENDPOINT")
+            fallback_deployment: str | None = os.getenv(
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME"
+            ) or os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
             foundry_evaluator_runtimes = _build_foundry_evaluator_runtimes(
                 enabled_evaluators,
@@ -195,13 +199,15 @@ class HttpBackend:
             enabled_local_names = frozenset(
                 e.name for e in enabled_evaluators if e.source == "local"
             )
-            evaluator_aggregate_values: Dict[str, List[float]] = {
+            evaluator_aggregate_values: dict[str, list[float]] = {
                 name: [] for name in enabled_evaluator_order
             }
 
-            row_metrics_payload: List[Dict[str, Any]] = []
+            row_metrics_payload: list[dict[str, Any]] = []
 
-            logger.info("HTTP backend: evaluating %d row(s) against %s", total_rows, url)
+            logger.info(
+                "HTTP backend: evaluating %d row(s) against %s", total_rows, url
+            )
 
             for index, row in enumerate(rows, start=1):
                 logger.info("Processing row %d/%d", index, total_rows)
@@ -218,7 +224,7 @@ class HttpBackend:
                 prompt_text = _normalize_text(row[input_field])
                 expected_text = _normalize_text(row[expected_field])
 
-                request_body: Dict[str, Any] = {request_field: prompt_text}
+                request_body: dict[str, Any] = {request_field: prompt_text}
 
                 # Forward extra JSONL row fields in the request body.
                 for field_name in extra_field_names:
@@ -246,7 +252,11 @@ class HttpBackend:
                             row["tool_calls"] = extracted_tool_calls
                         except ValueError:
                             pass  # Field not present in this response; skip silently.
-                except (urllib.error.URLError, urllib.error.HTTPError, ValueError) as exc:
+                except (
+                    urllib.error.URLError,
+                    urllib.error.HTTPError,
+                    ValueError,
+                ) as exc:
                     stderr_lines.append(f"row={index} error={exc!s}")
                     logger.error("HTTP request failed for row %d: %s", index, exc)
                     exit_code = 1
@@ -254,7 +264,7 @@ class HttpBackend:
 
                 row_latency = perf_counter() - row_start
 
-                row_metric_entries: List[Dict[str, Any]] = []
+                row_metric_entries: list[dict[str, Any]] = []
 
                 for runtime in foundry_evaluator_runtimes:
                     try:
@@ -265,27 +275,44 @@ class HttpBackend:
                             expected=expected_text,
                             row=row,
                         )
-                        row_metric_entries.append({"name": runtime.name, "value": score})
+                        row_metric_entries.append(
+                            {
+                                "name": runtime.name,
+                                "value": score,
+                            }
+                        )
                     except Exception as exc:  # noqa: BLE001
                         stderr_lines.append(
                             f"row={index} evaluator={runtime.name} error={exc!s}"
                         )
                         logger.error(
-                            "Evaluator '%s' failed for row %d: %s", runtime.name, index, exc
+                            "Evaluator '%s' failed for row %d: %s",
+                            runtime.name,
+                            index,
+                            exc,
                         )
 
                 if "exact_match" in enabled_local_names:
                     passed = prediction_text.lower() == expected_text.lower()
                     row_metric_entries.append(
-                        {"name": "exact_match", "value": 1.0 if passed else 0.0}
+                        {
+                            "name": "exact_match",
+                            "value": 1.0 if passed else 0.0,
+                        }
                     )
                 if "latency_seconds" in enabled_local_names:
                     row_metric_entries.append(
-                        {"name": "latency_seconds", "value": row_latency}
+                        {
+                            "name": "latency_seconds",
+                            "value": row_latency,
+                        }
                     )
                 if "avg_latency_seconds" in enabled_local_names:
                     row_metric_entries.append(
-                        {"name": "avg_latency_seconds", "value": row_latency}
+                        {
+                            "name": "avg_latency_seconds",
+                            "value": row_latency,
+                        }
                     )
 
                 for entry in row_metric_entries:
@@ -293,17 +320,28 @@ class HttpBackend:
                     if name in evaluator_aggregate_values:
                         evaluator_aggregate_values[name].append(entry["value"])
 
-                row_metrics_payload.append({"row_index": index, "input": prompt_text, "response": prediction_text, "context": row.get("context"), "metrics": row_metric_entries})
+                row_metrics_payload.append(
+                    {
+                        "row_index": index,
+                        "input": prompt_text,
+                        "response": prediction_text,
+                        "context": row.get("context"),
+                        "metrics": row_metric_entries,
+                    }
+                )
                 stdout_lines.append(
                     f"row={index} expected={expected_text!r} prediction={prediction_text!r}"
                 )
 
             # Aggregate overall metrics
-            aggregate_metrics: List[Dict[str, Any]] = []
+            aggregate_metrics: list[dict[str, Any]] = []
             for name, values in evaluator_aggregate_values.items():
                 if values:
                     aggregate_metrics.append(
-                        {"name": name, "value": sum(values) / len(values)}
+                        {
+                            "name": name,
+                            "value": sum(values) / len(values),
+                        }
                     )
 
             metrics_path.write_text(
@@ -319,7 +357,7 @@ class HttpBackend:
             logger.error("HTTP backend failed: %s", exc)
             exit_code = 1
 
-        finished = datetime.now(timezone.utc)
+        finished = datetime.now(UTC)
         duration = perf_counter() - started_perf
 
         stdout_path.write_text("\n".join(stdout_lines), encoding="utf-8")

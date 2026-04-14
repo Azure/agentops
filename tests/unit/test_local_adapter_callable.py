@@ -1,4 +1,5 @@
 """Unit tests for callable adapter support in LocalAdapterBackend."""
+
 from __future__ import annotations
 
 import sys
@@ -9,7 +10,9 @@ import pytest
 from agentops.backends.local_adapter_backend import _load_callable
 
 
-def test_load_callable_resolves_valid_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_callable_resolves_valid_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Write a small callable module in a temp dir and import from there.
     (tmp_path / "echo_adapter.py").write_text(
         "def echo(input_text: str, context: dict) -> dict:\n"
@@ -28,7 +31,9 @@ def test_load_callable_bad_module() -> None:
         _load_callable("nonexistent_module_xyz:func")
 
 
-def test_load_callable_bad_function(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_callable_bad_function(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     (tmp_path / "echo_adapter2.py").write_text(
         "def echo(input_text, context):\n    return {}\n",
         encoding="utf-8",
@@ -44,7 +49,9 @@ def test_load_callable_non_callable() -> None:
         _load_callable("json:__file__")
 
 
-def test_load_callable_from_agentops_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_callable_from_agentops_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Verify _load_callable can import a module placed inside .agentops/ directory."""
     # Create a .agentops/ directory with a callable module
     agentops_dir = tmp_path / ".agentops"
@@ -58,7 +65,6 @@ def test_load_callable_from_agentops_dir(tmp_path: Path, monkeypatch: pytest.Mon
 
     # Change cwd to tmp_path (the project root) and clean sys.path / modules
     monkeypatch.chdir(tmp_path)
-    original_path = sys.path.copy()
     # Remove any stale entries that might interfere
     monkeypatch.setattr("sys.path", [p for p in sys.path if str(tmp_path) not in p])
 

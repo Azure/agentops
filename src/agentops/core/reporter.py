@@ -6,7 +6,6 @@ import re
 
 from agentops.core.models import ComparisonResult, RunResult
 
-
 # ---------------------------------------------------------------------------
 # Evaluator descriptions — one-line explanation of what each metric measures
 # ---------------------------------------------------------------------------
@@ -167,7 +166,9 @@ def generate_report_markdown(result: RunResult) -> str:
     lines.append("")
     lines.append("## Item Verdicts")
     lines.append("")
-    lines.append("Per-row pass/fail summary. A row passes only if all its evaluator scores meet thresholds.")
+    lines.append(
+        "Per-row pass/fail summary. A row passes only if all its evaluator scores meet thresholds."
+    )
     if result.item_evaluations:
         passed_items = sum(1 for item in result.item_evaluations if item.passed_all)
         lines.append("")
@@ -193,14 +194,18 @@ def generate_report_markdown(result: RunResult) -> str:
     lines.append("")
     lines.append("## Threshold Checks")
     lines.append("")
-    lines.append("Aggregate threshold evaluation — each evaluator's average score vs. its threshold.")
+    lines.append(
+        "Aggregate threshold evaluation — each evaluator's average score vs. its threshold."
+    )
     if result.thresholds:
         lines.append("")
         lines.append("| Evaluator | Threshold | Actual | Status |")
         lines.append("|---|---|---:|---|")
         for threshold in result.thresholds:
             name = _format_metric_name(threshold.evaluator)
-            threshold_val = f"{threshold.criteria} {_fmt_threshold_value(threshold.expected)}"
+            threshold_val = (
+                f"{threshold.criteria} {_fmt_threshold_value(threshold.expected)}"
+            )
             actual_val = _fmt_threshold_value(threshold.actual)
             icon = "✅" if threshold.passed else "❌"
             label = "Met" if threshold.passed else "Missed"
@@ -215,9 +220,13 @@ def generate_report_markdown(result: RunResult) -> str:
     lines.append("")
     lines.append("## Row Details")
     lines.append("")
-    lines.append("Input, response, per-row scores, and retrieved context for each dataset row.")
+    lines.append(
+        "Input, response, per-row scores, and retrieved context for each dataset row."
+    )
     _rows_with_text = [
-        rm for rm in result.row_metrics if rm.input is not None or rm.response is not None
+        rm
+        for rm in result.row_metrics
+        if rm.input is not None or rm.response is not None
     ]
     if _rows_with_text:
         item_map = {ie.row_index: ie for ie in result.item_evaluations}
@@ -479,7 +488,9 @@ def generate_report_html(result: RunResult) -> str:
 
     if result.thresholds:
         parts.append("<h2>Threshold Checks</h2>")
-        parts.append("<p>Aggregate threshold evaluation — each evaluator's average score vs. its threshold.</p>")
+        parts.append(
+            "<p>Aggregate threshold evaluation — each evaluator's average score vs. its threshold.</p>"
+        )
         parts.append(
             '<table><thead><tr><th>Evaluator</th><th>Threshold</th><th class="num">Actual</th><th>Status</th></tr></thead><tbody>'
         )
@@ -511,12 +522,16 @@ def generate_report_html(result: RunResult) -> str:
         parts.append("</tbody></table>")
 
     _html_rows_with_text = [
-        rm for rm in result.row_metrics if rm.input is not None or rm.response is not None
+        rm
+        for rm in result.row_metrics
+        if rm.input is not None or rm.response is not None
     ]
     if _html_rows_with_text:
         item_map = {ie.row_index: ie for ie in result.item_evaluations}
         parts.append("<h2>Row Details</h2>")
-        parts.append("<p>Input, response, per-row scores, and retrieved context for each dataset row.</p>")
+        parts.append(
+            "<p>Input, response, per-row scores, and retrieved context for each dataset row.</p>"
+        )
         for rm in _html_rows_with_text:
             ie = item_map.get(rm.row_index)
             status_html = _status_badge(ie.passed_all) if ie else "—"
@@ -524,27 +539,31 @@ def generate_report_html(result: RunResult) -> str:
             if rm.input:
                 parts.append(f"<p><strong>Input:</strong> {_html_escape(rm.input)}</p>")
             if rm.response:
-                parts.append(f"<p><strong>Response:</strong> {_html_escape(rm.response)}</p>")
+                parts.append(
+                    f"<p><strong>Response:</strong> {_html_escape(rm.response)}</p>"
+                )
             if rm.context:
                 context_display = rm.context
                 if len(context_display) > _MAX_CONTEXT_DISPLAY:
                     context_display = context_display[:_MAX_CONTEXT_DISPLAY] + "…"
-                parts.append(f"<p><strong>Retrieved Context:</strong> {_html_escape(context_display)}</p>")
+                parts.append(
+                    f"<p><strong>Retrieved Context:</strong> {_html_escape(context_display)}</p>"
+                )
             # Per-row score table
             if ie and ie.thresholds:
                 parts.append(
                     '<table><thead><tr><th>Evaluator</th><th class="num">Score</th>'
                     "<th>Threshold</th><th>Status</th></tr></thead><tbody>"
                 )
-                for t in ie.thresholds:
-                    t_name = _format_metric_name(t.evaluator)
-                    t_actual = _fmt_threshold_value(t.actual)
-                    t_threshold = f"{t.criteria} {_fmt_threshold_value(t.expected)}"
+                for it in ie.thresholds:
+                    t_name = _format_metric_name(it.evaluator)
+                    t_actual = _fmt_threshold_value(it.actual)
+                    t_threshold = f"{it.criteria} {_fmt_threshold_value(it.expected)}"
                     parts.append(
                         f"<tr><td>{_html_escape(t_name)}</td>"
                         f'<td class="num">{_html_escape(t_actual)}</td>'
                         f"<td>{_html_escape(t_threshold)}</td>"
-                        f"<td>{_threshold_badge(t.passed)}</td></tr>"
+                        f"<td>{_threshold_badge(it.passed)}</td></tr>"
                     )
                 parts.append("</tbody></table>")
 
