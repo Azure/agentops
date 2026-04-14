@@ -619,8 +619,8 @@ def test_default_foundry_input_mapping_tool_input_accuracy() -> None:
     mapping = _default_foundry_input_mapping("ToolInputAccuracyEvaluator")
     assert mapping["query"] == "$prompt"
     assert mapping["response"] == "$prediction"
-    assert mapping["tool_calls"] == "$row.tool_calls"
     assert mapping["tool_definitions"] == "$row.tool_definitions"
+    assert "tool_calls" not in mapping
 
 
 def test_cloud_evaluator_data_mapping_relevance_uses_context() -> None:
@@ -648,8 +648,9 @@ def test_cloud_evaluator_data_mapping_tool_selection() -> None:
 
 def test_cloud_evaluator_data_mapping_tool_input_accuracy() -> None:
     mapping = _cloud_evaluator_data_mapping("tool_input_accuracy", "input", "expected")
-    assert mapping["tool_calls"] == "{{sample.tool_calls}}"
+    assert mapping["query"] == "{{item.input}}"
     assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
+    assert "tool_calls" not in mapping
 
 
 # ---------------------------------------------------------------------------
@@ -713,7 +714,6 @@ def test_cloud_evaluator_needs_model_safety_evaluators() -> None:
         "code_vulnerability",
         "ungrounded_attributes",
         "indirect_attack",
-        "groundedness_pro",
     ]
     for name in safety_builtins:
         assert not _cloud_evaluator_needs_model(name), f"{name} should not need a model"
@@ -728,7 +728,7 @@ def test_cloud_evaluator_needs_model_quality_evaluators() -> None:
 
 def test_cloud_evaluator_needs_model_nlp_evaluators() -> None:
     """NLP evaluators do not need a model."""
-    nlp_builtins = ["f1_score", "bleu", "rouge", "meteor", "gleu"]
+    nlp_builtins = ["f1_score", "bleu_score", "rouge_score", "meteor_score", "gleu_score"]
     for name in nlp_builtins:
         assert not _cloud_evaluator_needs_model(name), f"{name} should not need a model"
 

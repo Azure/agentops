@@ -8,6 +8,11 @@ import typer
 from agentops.services.reporting import generate_report_from_results
 from agentops.utils.logging import get_logger, setup_logging
 
+from agentops.cli.browse_commands import (
+    bundle_app,
+    run_app,
+)
+
 app = typer.Typer(
     name="agentops",
     help="AgentOps — standardized evaluation workflows for AI projects.",
@@ -20,8 +25,6 @@ eval_app = typer.Typer(
         "`--config` (`-c`) and `--output` (`-o`)."
     )
 )
-run_app = typer.Typer(help="Run history and inspection commands.")
-bundle_app = typer.Typer(help="Bundle browsing commands.")
 dataset_app = typer.Typer(help="Dataset utility commands.")
 config_app = typer.Typer(help="Configuration utility commands.")
 report_app = typer.Typer(help="Reporting commands.")
@@ -362,43 +365,6 @@ def cmd_report_show() -> None:
 def cmd_report_export() -> None:
     """Export reports in JSON/Markdown/CSV formats (planned)."""
     _planned_command("agentops report export")
-
-
-@run_app.command("list")
-def cmd_run_list() -> None:
-    """List past evaluation runs (planned)."""
-    _planned_command("agentops run list")
-
-
-@run_app.command("show")
-def cmd_run_show() -> None:
-    """Show summary of a past run (planned)."""
-    _planned_command("agentops run show")
-
-
-@run_app.command("view")
-def cmd_run_view(
-    run_id: str,
-    entry: Annotated[
-        int | None,
-        typer.Option("--entry", help="Optional row/entry index for deep inspection."),
-    ] = None,
-) -> None:
-    """Deep-inspect run details (planned)."""
-    _ = run_id, entry
-    _planned_command("agentops run view <id> [--entry N]")
-
-
-@bundle_app.command("list")
-def cmd_bundle_list() -> None:
-    """List available bundles (planned)."""
-    _planned_command("agentops bundle list")
-
-
-@bundle_app.command("show")
-def cmd_bundle_show() -> None:
-    """Show bundle details (planned)."""
-    _planned_command("agentops bundle show")
 
 
 @dataset_app.command("validate")

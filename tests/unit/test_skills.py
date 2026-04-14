@@ -386,10 +386,12 @@ def test_register_unknown_platform(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_init_registers_skills(tmp_path: Path) -> None:
+def test_cli_init_does_not_register_skills(tmp_path: Path) -> None:
+    """After decoupling, `init` no longer registers skills."""
     result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
     assert result.exit_code == 0
-    assert "registered skills in" in result.stdout
+    assert "registered skills in" not in result.stdout
+    assert "agentops skills install" in result.stdout
 
 
 def test_cli_skills_install_registers_skills(tmp_path: Path) -> None:
@@ -400,13 +402,14 @@ def test_cli_skills_install_registers_skills(tmp_path: Path) -> None:
     assert "registered skills in" in result.stdout
 
 
-def test_cli_init_detects_claude(tmp_path: Path) -> None:
+def test_cli_init_does_not_install_skills_claude(tmp_path: Path) -> None:
+    """After decoupling, `init` no longer detects platforms or installs skills."""
     (tmp_path / ".claude").mkdir()
 
     result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0
-    assert "Detected coding agent platform(s): claude" in result.stdout
+    assert "agentops skills install" in result.stdout
 
     for rel in _CLAUDE_SKILL_PATHS:
-        assert (tmp_path / rel).exists(), f"Missing after init: {rel}"
+        assert not (tmp_path / rel).exists(), f"Should not exist after init: {rel}"

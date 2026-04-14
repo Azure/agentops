@@ -104,7 +104,6 @@ _SAFETY_EVALUATORS = frozenset(
         "code_vulnerability",
         "ungrounded_attributes",
         "indirect_attack",
-        "groundedness_pro",
     }
 )
 
