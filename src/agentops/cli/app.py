@@ -5,9 +5,7 @@ from typing import Annotated
 
 import typer
 
-from agentops.services.initializer import initialize_workspace
 from agentops.services.reporting import generate_report_from_results
-from agentops.services.runner import run_evaluation
 from agentops.utils.logging import get_logger, setup_logging
 
 app = typer.Typer(
@@ -156,6 +154,8 @@ def cmd_init(
     ),
 ) -> None:
     """Initialise an AgentOps workspace (creates .agentops/)."""
+    from agentops.services.initializer import initialize_workspace
+
     log.debug("cmd_init called force=%s dir=%s", force, directory)
     try:
         result = initialize_workspace(directory=directory, force=force)
@@ -209,6 +209,8 @@ def cmd_eval_run(
     ] = "md",
 ) -> None:
     """Run an evaluation defined in a run.yaml file."""
+    from agentops.services.runner import run_evaluation
+
     if report_format not in ("md", "html", "all"):
         typer.echo("Error: --format must be md, html, or all.", err=True)
         raise typer.Exit(code=1)

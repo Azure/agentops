@@ -6,12 +6,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
-- **Auto-registration of skills in coding agent instruction files** — `agentops init` and `agentops skills install` now register installed skills in the coding agent's instruction file so AI assistants discover them automatically. For Copilot: appends an idempotent marker-delimited block to `.github/copilot-instructions.md` with a skill discovery table. For Cursor: writes a managed `.cursor/rules/agentops.mdc` file with `alwaysApply: true`. Repeated runs update the block in place (no duplicates).
+- **Auto-registration of skills in coding agent instruction files** — `agentops skills install` now registers installed skills in the coding agent's instruction file so AI assistants discover them automatically. For Copilot: appends an idempotent marker-delimited block to `.github/copilot-instructions.md` with a skill discovery table. For Cursor: writes a managed `.cursor/rules/agentops.mdc` file with `alwaysApply: true`. Repeated runs update the block in place (no duplicates).
 - **Cursor platform detection** — `detect_platforms()` now recognises `.cursor/rules/` directory or `.cursorrules` file as Cursor indicators. Cursor skills are installed to `.github/skills/` (shared with Copilot) and registered via `.cursor/rules/agentops.mdc`.
 - **Underscore Copilot filename detection** — `detect_platforms()` now silently accepts `copilot_instructions.md` (underscore variant) as a valid Copilot signal alongside the standard `copilot-instructions.md`.
 - **`agentops skills install` command** — Installs packaged coding agent skills into consumer projects. Supports GitHub Copilot (`.github/skills/`), Cursor (`.github/skills/`), and Claude Code (`.claude/commands/`). Auto-detects platforms; falls back to GitHub Copilot silently. Pass `--prompt` to ask before installing when no platform is detected. Pass `--platform` for explicit platform selection.
-- **Skills integrated into `agentops init`** — Running `agentops init` now also installs coding agent skills using the same auto-detection logic. Added `--prompt` flag to `init` for interactive platform selection.
 - Packaged skill templates under `src/agentops/templates/skills/` for distribution via `pip install`.
+- Extend Foundry cloud evaluation to support 22 built-in evaluators (up from 8), covering quality, agent, safety, RAG, tool, and NLP evaluator categories.
+- Add dynamic `item_schema` building — automatically includes `tool_definitions` and `context` fields when the enabled evaluators require them.
+- Fix NLP evaluator names in frozensets to match `_to_builtin_evaluator_name` conversion (`bleu_score`, `rouge_score`, `gleu_score`, `meteor_score` instead of `bleu`, `rouge`, `gleu`, `meteor`).
+- Add default `initialization_parameters` for `RougeScoreEvaluator` (`rouge_type: rouge1`).
+- Add optional OTLP tracing for evaluation runs — set `AGENTOPS_OTLP_ENDPOINT` to emit OpenTelemetry spans.
+  - Three-layer schema: CICD semconv (pipeline run/task), GenAI semconv (agent invocation), and `agentops.eval.*` (evaluator scores/thresholds).
+  - Per-row item spans with evaluator child spans showing score, threshold, and pass/fail.
+  - Zero overhead when `AGENTOPS_OTLP_ENDPOINT` is unset; graceful no-op when `opentelemetry-sdk` is not installed.
+- Browse commands: `agentops bundle list`, `agentops bundle show`, `agentops run list`, `agentops run show` for workspace inspection.
 
 ### Changed
 - **Skills optimized for weaker models** — Rewrote all 8 SKILL.md files to reduce cognitive load and token usage. Key changes: replaced prose paragraphs with numbered single-action steps and tables, removed boilerplate ("Before You Start", "When to Use", "Purpose" sections), inlined decision logic into steps (no disconnected decision trees), provided one copy-paste callable adapter template instead of multiple variants, consolidated rules into a single section per skill. Size reductions: `agentops-eval` 613→275 lines (−55%), `agentops-config` 229→170 (−26%), `agentops-report` −35%, `agentops-regression` −35%, `agentops-monitor` −53%, `agentops-trace` −55%, `agentops-workflow` −38%, `agentops-dataset` −11%.
@@ -96,7 +104,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Add `docs/tutorial-http-agent.md` — end-to-end tutorial for the Agent Framework / ACA scenario.
 - Add unit tests for `HttpBackend` (`tests/unit/test_http_backend.py`): URL resolution, request field, dot-path response extraction, latency metrics, auth header, `backend_metrics.json` schema.
 
-### Added
 - Implement `agentops eval compare --runs <baseline>,<current>` for baseline comparison of evaluation runs.
   - Produces `comparison.json` (structured metric deltas, threshold flips, item-level changes) and `comparison.md` (human-readable report).
   - Exits with code `0` (no regressions), `2` (regressions detected), or `1` (error).
@@ -118,6 +125,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Add CLI smoke test in staging/release verify step (`agentops --version`, `agentops --help`, `agentops init`).
 - Fix secret reference from `PIPY_TOKEN` to `PYPI_TOKEN`; add `TEST_PYPI_TOKEN` for TestPyPI.
 - Add consistent workflow index header across all CI/CD workflow files.
+- Add VSIX extension packaging and publishing to CI/CD pipeline; include Copilot skills in the VS Code Marketplace extension.
+
+### Fixed
+- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
 
 ## [0.1.0] - 2026-__-__
 

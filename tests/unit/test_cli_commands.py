@@ -24,7 +24,10 @@ def test_eval_compare_rejects_wrong_run_count() -> None:
     result = runner.invoke(app, ["eval", "compare", "--runs", "only_one"])
 
     assert result.exit_code == 1
-    assert "at least two" in result.stdout.lower() or "at least two" in (result.stderr or "").lower()
+    assert (
+        "at least two" in result.stdout.lower()
+        or "at least two" in (result.stderr or "").lower()
+    )
 
 
 def test_trace_init_is_planned_stub() -> None:

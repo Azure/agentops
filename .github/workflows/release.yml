@@ -1,33 +1,38 @@
-# AgentOps Toolkit — Production Release
+# AgentOps Toolkit — Production Release (PyPI + VSIX Stable)
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR
+#   1. ci.yml          — Lint + test on every push/PR; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* branch → TestPyPI → verify
-#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release
+#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX pre-release → Marketplace
+#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
+#   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
 # Triggered by v* tag pushes (e.g. v0.2.0).
 # Calls the reusable _build.yml, then publishes to TestPyPI for final
 # verification, then to PyPI (requires 'release' environment approval),
-# and finally creates a GitHub Release.
+# publishes the VS Code extension as stable to the Marketplace,
+# and finally creates a GitHub Release (with both dist and VSIX attached).
 #
 # Versioning:
 #   Uses setuptools-scm — version is derived from the git tag automatically.
 #   Tagged commit v0.2.0 → version 0.2.0. No manual version in pyproject.toml.
+#   VSIX version is managed in plugins/agentops/package.json (synced by cut-release).
 #
 # Required GitHub secrets (in respective environments):
 #   TEST_PYPI_TOKEN  — TestPyPI API token (environment: staging)
 #   PYPI_TOKEN       — PyPI API token     (environment: release)
+#   VSCE_PAT         — VS Code Marketplace PAT (environment: release)
 #
 # Required GitHub environments:
 #   staging  — for TestPyPI publish (optional approval)
-#   release  — for PyPI publish (requires approval from designated reviewers)
+#   release  — for PyPI + VSIX publish (requires approval from designated reviewers)
 #
 # Setup:
 #   1. https://test.pypi.org/manage/account/token/  → Create TEST_PYPI_TOKEN
 #   2. https://pypi.org/manage/account/token/        → Create PYPI_TOKEN
-#   3. GitHub repo → Settings → Secrets → Actions    → Add secrets to environments
-#   4. GitHub repo → Settings → Environments         → Create "release" with required reviewers
+#   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
+#   4. GitHub repo → Settings → Secrets → Actions    → Add secrets to environments
+#   5. GitHub repo → Settings → Environments         → Create "release" with required reviewers
 
 name: Release
 
@@ -133,26 +138,81 @@ jobs:
           password: ${{ secrets.PYPI_TOKEN }}
           verbose: true
 
-  # Create GitHub Release with built artifacts
+  # ── VSIX Stable Publish ──────────────────────────────────────────────
+  # Publish the VS Code extension as a stable release to the Marketplace.
+  # Runs in parallel with the TestPyPI→PyPI flow (only needs source checkout).
+  publish-vsix:
+    needs: build          # gate on successful lint + test
+    runs-on: ubuntu-latest
+    environment: release  # same approval gate as PyPI
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version derivation
+
+      - name: Sync VSIX version from git tag
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LAST_VERSION=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
+            BASE_VERSION="$LAST_VERSION"
+          else
+            BASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          fi
+          jq --arg v "$BASE_VERSION" '.version = $v' \
+            plugins/agentops/package.json > plugins/agentops/package.json.tmp
+          mv plugins/agentops/package.json.tmp plugins/agentops/package.json
+          echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Package VSIX
+        working-directory: plugins/agentops
+        run: vsce package -o agentops-skills.vsix
+
+      - name: Publish stable to VS Code Marketplace
+        working-directory: plugins/agentops
+        run: vsce publish --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix
+          path: plugins/agentops/agentops-skills.vsix
+
+  # Create GitHub Release with built artifacts (Python dist + VSIX)
   github-release:
-    needs: publish-pypi
+    needs: [publish-pypi, publish-vsix]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download build artifacts
+      - name: Download Python dist artifacts
         uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
 
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vsix
+          path: vsix/
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" dist/* \
+          gh release create "${{ github.ref_name }}" dist/* vsix/* \
             --repo "${{ github.repository }}" \
             --title "${{ github.ref_name }}" \
             --generate-notes

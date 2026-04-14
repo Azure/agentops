@@ -5,61 +5,74 @@ description: Investigate evaluation regressions — compare runs, analyze per-ro
 
 # AgentOps Regression
 
-Investigate score drops and threshold failures between evaluation runs.
+## Purpose
 
-## Step 1 — Find the runs
+Investigate evaluation score drops and threshold failures. Compare runs side-by-side, identify which rows regressed, and guide root-cause analysis.
 
-Check `.agentops/results/` for timestamped directories. Need at least two runs (baseline + current). If missing, delegate to `/agentops-eval`.
+## When to Use
 
-## Step 2 — Compare
+- Exit code `2` — thresholds failed.
+- Scores dropped between two runs.
+- User asks "why did this eval get worse" or "which rows failed".
+
+## Before You Start
+
+1. **AgentOps installed?** Check if `agentops` CLI is available. If not: `pip install agentops-toolkit`.
+2. **Workspace exists?** Check for `.agentops/`. If missing: `agentops init`.
+3. **Foundry endpoint configured?** Search for `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` in environment variables, `.env`, `.env.local`. If not found, ask the user for the endpoint URL and instruct them to set it.
+4. **Two runs available?** Need a baseline and a current run. Check `.agentops/results/` for timestamped directories.
+5. **Results exist?** Each run must have `results.json`.
+
+## Steps
+
+### Step 1 — Identify the regression
 
 ```bash
 agentops eval compare --runs <baseline>,<current>
 ```
 
-Look for `↓` indicators and negative deltas. A regression is confirmed when:
-- A run's status flips from PASS → FAIL
-- A previously-passing row now fails
+Review the comparison output for ↓ indicators and delta values.
 
-Minor numeric shifts within passing thresholds are NOT regressions.
+### Step 2 — Analyze per-row scores
 
-## Step 3 — Find failing rows
-
-Open `results.json` for both runs. Compare `row_metrics`:
+Open `results.json` for both runs. Compare `row_metrics` to find rows where scores dropped. Look for:
 - Rows with the largest negative delta
-- Rows that went pass → fail
-- Clusters of failures in one evaluator
+- Rows that went from pass → fail
+- Clusters of failures in specific evaluators
 
-## Step 4 — Diagnose root cause
+### Step 3 — Check what changed
 
+Common regression causes:
 | Cause | What to check |
 |---|---|
-| Model update | Deployment version changed |
-| Prompt drift | System prompt or instructions modified |
-| Data drift | New/different dataset rows |
+| Model update | Deployment version, model name change |
+| Prompt drift | System prompt or instructions changed |
+| Data drift | New dataset rows, different distribution |
 | Tool schema change | Tool definitions modified |
 | Context quality | RAG retriever returning different passages |
 | Threshold tightened | Bundle threshold values changed |
 
-## Step 5 — Fix and verify
+### Step 4 — Act on findings
 
 | Finding | Action |
 |---|---|
 | Model regression | Pin model version or switch deployment |
-| Prompt issue | Revert or iterate on prompt |
-| Bad test rows | Fix dataset, re-run |
-| Threshold too strict | Adjust in bundle (`/agentops-config`) |
+| Prompt issue | Revert or iterate on prompt changes |
+| Bad test rows | Fix dataset and re-run |
+| Threshold too strict | Adjust thresholds in bundle (use `/agentops-config`) |
 | Retriever degraded | Debug retrieval pipeline separately |
 
-After fixing:
+### Step 5 — Verify fix
+
+Re-run the evaluation after the fix:
 ```bash
 agentops eval run
 agentops eval compare --runs <baseline>,latest
 ```
 
-## Rules
+## Guardrails
 
-- Work with actual scores — never guess root causes.
+- Work with actual scores — never guess what caused a regression.
 - Do not modify `results.json` — it is immutable.
 - Do not adjust thresholds to hide real regressions.
-- Delegate execution to `/agentops-eval`, config to `/agentops-config`.
+- Delegate execution to `/agentops-eval` and config changes to `/agentops-config`.

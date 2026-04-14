@@ -1,4 +1,5 @@
 """Comparison service for evaluating baseline vs current run results."""
+
 from __future__ import annotations
 
 import json
@@ -13,8 +14,13 @@ from agentops.core.models import (
     ComparisonResult,
     ComparisonSummary,
     ComparisonThresholdRow,
+    ComparisonType,
+    Criteria,
+    Direction,
+    ItemEvaluationResult,
     RunReference,
     RunResult,
+    ThresholdEvaluationResult,
 )
 
 
@@ -53,7 +59,9 @@ def _resolve_run_path(run_id: str, workspace_dir: Path | None = None) -> Path:
             return results_in_dir.resolve()
 
     results_base = workspace_dir or (Path.cwd() / ".agentops")
-    results_dir = results_base / "results" if results_base.name != "results" else results_base
+    results_dir = (
+        results_base / "results" if results_base.name != "results" else results_base
+    )
     run_dir = results_dir / run_id
     results_file = run_dir / "results.json"
     if results_file.is_file():
@@ -117,7 +125,7 @@ def _lower_is_better_metrics(*results: RunResult) -> frozenset[str]:
     return frozenset(names)
 
 
-def _compute_metric_direction(delta: float, lower_is_better: bool) -> str:
+def _compute_metric_direction(delta: float, lower_is_better: bool) -> Direction:
     if delta == 0:
         return "unchanged"
     if lower_is_better:
@@ -150,6 +158,7 @@ def _detect_conditions(refs: List[RunReference]) -> ComparisonConditions:
             varying.append(key)
 
     # Determine comparison type
+    ctype: ComparisonType
     if "dataset" not in varying and "agent" in varying:
         ctype = "agent"
     elif "dataset" not in varying and "model" in varying:
@@ -195,7 +204,7 @@ def compare_runs(
         values: List[float] = []
         deltas: List[Optional[float]] = []
         delta_percents: List[Optional[float]] = []
-        directions: List[str] = []
+        directions: List[Direction] = []
         baseline_val: Optional[float] = None
 
         for i, r in enumerate(results):
@@ -228,7 +237,8 @@ def compare_runs(
 
         # Best run: for lower-is-better pick min, otherwise pick max
         valid_vals = [
-            (i, v) for i, v in enumerate(values)
+            (i, v)
+            for i, v in enumerate(values)
             if any(m.name == name for m in results[i].metrics)
         ]
         best_idx: Optional[int] = None
@@ -238,21 +248,23 @@ def compare_runs(
             else:
                 best_idx = max(valid_vals, key=lambda x: x[1])[0]
 
-        metric_rows.append(ComparisonMetricRow(
-            name=name,
-            values=values,
-            deltas=deltas,
-            delta_percents=delta_percents,
-            directions=directions,
-            best_run_index=best_idx,
-        ))
+        metric_rows.append(
+            ComparisonMetricRow(
+                name=name,
+                values=values,
+                deltas=deltas,
+                delta_percents=delta_percents,
+                directions=directions,
+                best_run_index=best_idx,
+            )
+        )
 
     # Build threshold rows
-    all_thresholds: List[tuple[str, str]] = []
-    seen_thresholds: set[tuple[str, str]] = set()
+    all_thresholds: List[tuple[str, Criteria]] = []
+    seen_thresholds: set[tuple[str, Criteria]] = set()
     for r in results:
-        for t in r.thresholds:
-            key = (t.evaluator, t.criteria)
+        for th in r.thresholds:
+            key = (th.evaluator, th.criteria)
             if key not in seen_thresholds:
                 all_thresholds.append(key)
                 seen_thresholds.add(key)
@@ -263,22 +275,24 @@ def compare_runs(
         target_val: str | None = None
         for r in results:
             t_map = {(t.evaluator, t.criteria): t for t in r.thresholds}
-            t = t_map.get((evaluator, criteria))
+            t: ThresholdEvaluationResult | None = t_map.get((evaluator, criteria))
             passed_list.append(t.passed if t else False)
             if t and target_val is None:
                 target_val = t.expected
-        threshold_rows.append(ComparisonThresholdRow(
-            evaluator=evaluator,
-            criteria=criteria,
-            target=target_val,
-            passed=passed_list,
-        ))
+        threshold_rows.append(
+            ComparisonThresholdRow(
+                evaluator=evaluator,
+                criteria=criteria,
+                target=target_val,
+                passed=passed_list,
+            )
+        )
 
     # Build item rows
     all_row_indices: set[int] = set()
     for r in results:
-        for item in r.item_evaluations:
-            all_row_indices.add(item.row_index)
+        for ie in r.item_evaluations:
+            all_row_indices.add(ie.row_index)
 
     # Collect evaluator names that have thresholds (for row-level display)
     threshold_evaluator_names = [tr.evaluator for tr in threshold_rows]
@@ -287,10 +301,12 @@ def compare_runs(
     for idx in sorted(all_row_indices):
         passed_list = []
         # Per-evaluator scores for this row across all runs
-        scores: Dict[str, List[Optional[float]]] = {name: [] for name in threshold_evaluator_names}
+        scores: Dict[str, List[Optional[float]]] = {
+            name: [] for name in threshold_evaluator_names
+        }
         for r in results:
             item_map = {item.row_index: item for item in r.item_evaluations}
-            item = item_map.get(idx)
+            item: ItemEvaluationResult | None = item_map.get(idx)
             passed_list.append(item.passed_all if item else False)
             # Extract row-level metric scores
             row_metrics_map = {row.row_index: row for row in r.row_metrics}
@@ -301,7 +317,9 @@ def compare_runs(
                     scores[name].append(val_map.get(name))
                 else:
                     scores[name].append(None)
-        item_rows.append(ComparisonItemRow(row_index=idx, passed_all=passed_list, scores=scores))
+        item_rows.append(
+            ComparisonItemRow(row_index=idx, passed_all=passed_list, scores=scores)
+        )
 
     # Summary: regression = a run whose status flipped from PASS to FAIL,
     # or a threshold that was met by baseline but missed by this run.
@@ -345,7 +363,10 @@ def run_comparison(
     report_format: str = "md",
 ) -> ComparisonServiceResult:
     """Resolve run IDs, compare, and write comparison outputs."""
-    from agentops.core.reporter import generate_comparison_html, generate_comparison_markdown
+    from agentops.core.reporter import (
+        generate_comparison_html,
+        generate_comparison_markdown,
+    )
 
     paths = [_resolve_run_path(rid) for rid in run_ids]
     result = compare_runs(run_paths=paths, run_ids=run_ids)

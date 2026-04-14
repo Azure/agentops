@@ -5,61 +5,88 @@ description: Interpret evaluation reports, explain indicators, and regenerate re
 
 # AgentOps Report
 
-Interpret evaluation results and regenerate reports from `results.json`.
+## Purpose
 
-## Step 1 — Find the results
+Help users understand evaluation results, explain report indicators, and regenerate reports from existing `results.json` files.
 
-Check `.agentops/results/latest/results.json`. If missing, delegate to `/agentops-eval`.
+## When to Use
 
-## Step 2 — Interpret the report
+- User asks what an evaluation result means.
+- User wants to regenerate a report after manual edits.
+- User needs to compare report sections between runs.
+- User asks about pass rates, thresholds, or score meanings.
 
-Open `.agentops/results/latest/report.md` (or `report.html`).
+## Before You Start
 
-1. Check `run_pass` — `true` means all thresholds passed.
-2. If `false`, find which evaluators failed (red `●` dots).
-3. Check per-row scores to identify weak rows.
+1. **AgentOps installed?** Check if `agentops` CLI is available. If not: `pip install agentops-toolkit`.
+2. **Workspace exists?** Check for `.agentops/`. If missing: `agentops init`.
+3. **Results exist?** Check for `.agentops/results/latest/results.json`. If missing, run `/agentops-eval` first.
+4. **Foundry endpoint configured?** Search for `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` in environment variables, `.env`, `.env.local`. If not found, ask the user for the endpoint URL and instruct them to set it.
 
-**Score scales:**
-- AI evaluators (coherence, groundedness, fluency, similarity): 1–5 (higher = better)
-- Content safety evaluators: 0–7 (lower = safer, 0 = safe)
-- `avg_latency_seconds`: seconds (lower = better)
+## Commands
 
-**Report indicators:**
+| Command | Purpose |
+|---|---|
+| `agentops report generate --in <results.json> [--out <report.md>]` | Regenerate report from results |
+
+## Report Indicators
 
 | Symbol | Meaning |
 |---|---|
-| `●` green | Meets or exceeds threshold |
-| `●` red | Below threshold |
-| `↑` | Improved vs. baseline |
-| `↓` | Regressed vs. baseline |
+| `●` (green) | Score meets or exceeds threshold |
+| `●` (red) | Score below threshold |
+| `↑` | Score improved vs. baseline |
+| `↓` | Score regressed vs. baseline |
+| `—` | No baseline available |
 
-**Key metrics:**
+## Key Metrics
 
-| Metric | Meaning |
+| Metric | Description |
 |---|---|
-| `run_pass` | All thresholds passed? |
+| `run_pass` | `true` if all thresholds passed |
 | `threshold_pass_rate` | Fraction of thresholds met |
 | `items_pass_rate` | Fraction of rows passing all evaluators |
-| per-evaluator avg | Mean score across rows |
-| per-evaluator stddev | High stddev = inconsistent quality |
+| per-evaluator avg | Mean score across all rows for one evaluator |
+| per-evaluator stddev | Standard deviation (high = inconsistent) |
 
-## Step 3 — Regenerate (if needed)
+## Report Sections
 
+### Single Run (`report.md`)
+- **Summary**: overall pass/fail, item counts
+- **Threshold Results**: per-evaluator threshold vs. actual score
+- **Row Details**: per-row scores for each evaluator
+
+### Comparison (`agentops eval compare`)
+- **Side-by-side**: baseline vs. current scores
+- **Delta**: absolute change per evaluator
+- **Direction**: ↑ improved, ↓ regressed, — unchanged
+
+## Steps
+
+### Interpreting results
+1. Open `.agentops/results/latest/report.md`.
+2. Check the summary — is `run_pass: true`?
+3. If false, find which thresholds failed (red dots).
+4. Look at per-row scores to identify weak rows.
+5. For AI evaluators (coherence, groundedness), scores are 1–5.
+6. For content safety evaluators, lower is better (0 = safe).
+
+### Regenerating a report
 ```bash
 agentops report generate --in .agentops/results/latest/results.json
 ```
 
-Add `-f html` for HTML format, or `-f all` for both.
-
 ## Exit Codes
 
-- `0` — all thresholds passed
-- `2` — threshold(s) failed
-- `1` — runtime error
+| Code | Meaning |
+|---|---|
+| `0` | Success and all thresholds passed |
+| `2` | Success but threshold(s) failed |
+| `1` | Runtime or configuration error |
 
-## Rules
+## Guardrails
 
-- Use actual scores from `results.json` — never guess.
-- Do not modify `results.json` — it is immutable.
+- Use actual scores from `results.json` — never guess or estimate.
 - Do not run evaluations — delegate to `/agentops-eval`.
-- For threshold changes, delegate to `/agentops-config`.
+- Do not modify `results.json` — it is an immutable run artifact.
+- If the user needs different thresholds, delegate to `/agentops-config` to update the bundle.

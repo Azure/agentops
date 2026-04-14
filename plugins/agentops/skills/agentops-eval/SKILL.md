@@ -335,7 +335,8 @@ def run_evaluation(input_text: str, context: dict) -> dict:
                     chunks.append(line)                # raw text line
     except Exception as e:
         return {"response": f"ERROR: {e}"}
-    return {"response": "".join(chunks).strip()}
+    response_text = "".join(chunks).strip()
+    return {"response": response_text}
 ```
 
 Customize the adapter:
@@ -344,6 +345,31 @@ Customize the adapter:
 - **Bearer token** (`Authorization: Bearer` found in code) → recommend using `http` backend with `auth_header_env` instead of callable.
 - **No auth found** → remove the `AUTH_TOKEN` lines entirely.
 - **Choose the right template:** If the agent code uses `yield`, `StreamingResponse`, `EventSourceResponse`, or `text/event-stream` content type, use the **SSE/streaming adapter** template. Otherwise use the **standard JSON adapter**.
+
+### Context sanitization (RAG scenarios)
+
+If the dataset has a `context` field populated from Azure AI Search or similar document stores, the raw content often includes HTML comments (`<!-- PageNumber: 122 -->`), document source tags (`[Copy 002 ...]`), and OCR artifacts. Add this helper to the adapter and call it when enriching context:
+
+```python
+import re
+
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
+_MULTI_BLANK_RE = re.compile(r"\n{3,}")
+
+def _sanitize_context(text: str) -> str:
+    """Strip HTML comments, document metadata, and collapse blank lines."""
+    text = _HTML_COMMENT_RE.sub("", text)
+    text = re.sub(r"^\[.*?\]\s*$", "", text, flags=re.MULTILINE)
+    text = _MULTI_BLANK_RE.sub("\n\n", text)
+    return text.strip()
+```
+
+Apply it to the `context` field in JSONL rows before writing or in the adapter before returning:
+```python
+ctx = context.get("context", "")
+if ctx:
+    context["context"] = _sanitize_context(ctx)
+```
 
 After writing the file: `python -c "import sys; sys.path.insert(0, '.agentops'); from callable_adapter import run_evaluation; print('OK')"`
 
@@ -362,6 +388,7 @@ Check **all** of these **before** running. Fix any failures first. Do NOT run-fa
 - [ ] If callable: `python -c "import sys; sys.path.insert(0, '.agentops'); from callable_adapter import run_evaluation; print('OK')"` succeeds
 - [ ] If callable: `AGENT_HTTP_URL` env var is set
 - [ ] If callable with auth: auth token env var is set (`APP_API_TOKEN`, `API_KEY`, etc.)
+- [ ] **Callable smoke test**: one real call succeeds (see subsection below)
 - [ ] If Foundry: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` env var is set
 - [ ] If bundle has `source: foundry` evaluators: evaluator model is configured (`endpoint.model` or `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_DEPLOYMENT`)
 - [ ] Azure auth: `az account show` succeeds OR `AZURE_OPENAI_API_KEY` is set
@@ -386,6 +413,30 @@ Present a **confirmation table** with all discovered values (do not ask each one
 ```
 
 Ask: *"Everything look correct? (yes / edit)"*
+
+### Callable smoke test
+
+A single real end-to-end call catches auth issues (401), wrong request body fields (400/422), and response parsing problems BEFORE wasting an entire evaluation run.
+
+```bash
+python -c "
+import sys; sys.path.insert(0, '.agentops')
+from callable_adapter import run_evaluation
+result = run_evaluation('hello', {})
+assert 'response' in result, f'Missing response key: {result}'
+assert not result['response'].startswith('ERROR:'), f'Adapter error: {result[\"response\"]}'
+print('Smoke test PASSED')
+print('Response preview:', result['response'][:120])
+"
+```
+
+If the smoke test fails:
+- **Connection refused** → the agent endpoint is not running. Start it first.
+- **401 Unauthorized** → auth token is missing or wrong. Check the env var.
+- **400/422** → the request body format doesn't match the endpoint. Check `request_field`.
+- **Response starts with `ERROR:`** → the adapter caught an exception. Read the error message.
+
+Do NOT proceed to Step 7 until the smoke test passes.
 
 ## Step 7 — Execute
 

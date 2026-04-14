@@ -21,9 +21,12 @@ from agentops.backends.eval_engine import (
     FoundryEvaluatorRuntime,
     _CREDENTIAL_HELP_MESSAGE,
     _NLP_ONLY_EVALUATORS,
+    _NLP_DEFAULT_INIT_PARAMS,
     _EVALUATORS_NEEDING_GROUND_TRUTH,
     _EVALUATORS_NEEDING_CONTEXT,
     _EVALUATORS_NEEDING_TOOL_CALLS,
+    _EVALUATORS_NEEDING_TOOL_DEFS_ONLY,
+    _EVALUATORS_NEEDING_OUTPUT_ITEMS,
     _SAFETY_EVALUATORS,
     _build_foundry_evaluator_runtimes,
     _cloud_evaluator_data_mapping,
@@ -532,6 +535,10 @@ class FoundryBackend:
                 criterion["initialization_parameters"] = {
                     "deployment_name": settings.model,
                 }
+            elif builtin_name in _NLP_DEFAULT_INIT_PARAMS:
+                criterion["initialization_parameters"] = dict(
+                    _NLP_DEFAULT_INIT_PARAMS[builtin_name]
+                )
             testing_criteria.append(criterion)
 
         # --- Acquire token for Foundry Project Evals API --------------------

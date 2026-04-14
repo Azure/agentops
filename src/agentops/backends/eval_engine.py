@@ -44,27 +44,29 @@ _CREDENTIAL_HELP_MESSAGE = (
 _NLP_ONLY_EVALUATORS = frozenset(
     {
         "f1_score",
-        "bleu",
-        "rouge",
-        "meteor",
-        "gleu",
+        "bleu_score",
+        "rouge_score",
+        "meteor_score",
+        "gleu_score",
     }
 )
 
 _EVALUATORS_NEEDING_GROUND_TRUTH = frozenset(
     {
         "similarity",
+        "response_completeness",
         "f1_score",
-        "bleu",
-        "rouge",
-        "meteor",
-        "gleu",
+        "bleu_score",
+        "rouge_score",
+        "meteor_score",
+        "gleu_score",
     }
 )
 
 _EVALUATORS_NEEDING_CONTEXT = frozenset(
     {
         "groundedness",
+        "groundedness_pro",
         "relevance",
         "retrieval",
     }
@@ -74,9 +76,20 @@ _EVALUATORS_NEEDING_TOOL_CALLS = frozenset(
     {
         "tool_call_accuracy",
         "tool_selection",
+    }
+)
+
+_EVALUATORS_NEEDING_TOOL_DEFS_ONLY = frozenset(
+    {
         "tool_input_accuracy",
         "tool_output_utilization",
         "tool_call_success",
+    }
+)
+
+_EVALUATORS_NEEDING_OUTPUT_ITEMS = frozenset(
+    {
+        "task_adherence",
     }
 )
 
@@ -226,7 +239,10 @@ def _cloud_evaluator_data_mapping(
         return mapping
     if builtin_name not in _NLP_ONLY_EVALUATORS:
         mapping["query"] = item_input
-    mapping["response"] = sample_response
+    if builtin_name in _EVALUATORS_NEEDING_OUTPUT_ITEMS:
+        mapping["response"] = "{{sample.output_items}}"
+    else:
+        mapping["response"] = sample_response
     if builtin_name in _EVALUATORS_NEEDING_GROUND_TRUTH:
         mapping["ground_truth"] = item_expected
     elif builtin_name in _EVALUATORS_NEEDING_CONTEXT:
@@ -234,6 +250,8 @@ def _cloud_evaluator_data_mapping(
         mapping["context"] = context_item
     elif builtin_name in _EVALUATORS_NEEDING_TOOL_CALLS:
         mapping["tool_calls"] = "{{sample.tool_calls}}"
+        mapping["tool_definitions"] = "{{item.tool_definitions}}"
+    elif builtin_name in _EVALUATORS_NEEDING_TOOL_DEFS_ONLY:
         mapping["tool_definitions"] = "{{item.tool_definitions}}"
     return mapping
 
@@ -243,6 +261,13 @@ def _cloud_evaluator_needs_model(builtin_name: str) -> bool:
     if builtin_name in _SAFETY_EVALUATORS:
         return False
     return builtin_name not in _NLP_ONLY_EVALUATORS
+
+
+# Default initialization_parameters for evaluators that require them but are
+# not AI-assisted (so they don't get deployment_name automatically).
+_NLP_DEFAULT_INIT_PARAMS: Dict[str, Dict[str, Any]] = {
+    "rouge_score": {"rouge_type": "rouge1"},
+}
 
 
 def _parse_agent_name_version(agent_id: str) -> tuple[str, str | None]:
@@ -304,11 +329,17 @@ def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
             "tool_calls": "$row.tool_calls",
             "tool_definitions": "$row.tool_definitions",
         }
-    if name in ("ToolSelectionEvaluator", "ToolInputAccuracyEvaluator"):
+    if name in ("ToolSelectionEvaluator",):
         return {
             "query": "$prompt",
             "response": "$prediction",
             "tool_calls": "$row.tool_calls",
+            "tool_definitions": "$row.tool_definitions",
+        }
+    if name in ("ToolInputAccuracyEvaluator", "ToolOutputUtilizationEvaluator", "ToolCallSuccessEvaluator"):
+        return {
+            "query": "$prompt",
+            "response": "$prediction",
             "tool_definitions": "$row.tool_definitions",
         }
     if name in (

@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Type, TypeVar
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from agentops.core.models import (
     BundleConfig,
@@ -20,7 +20,7 @@ from agentops.utils.yaml import load_yaml
 
 logger = logging.getLogger(__name__)
 
-TModel = TypeVar("TModel")
+TModel = TypeVar("TModel", bound=BaseModel)
 
 
 def _load_model(path: Path, model_cls: Type[TModel], label: str) -> TModel:
