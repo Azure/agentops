@@ -67,7 +67,7 @@ jobs:
           if grep -q "## \[${{ env.version }}\]" CHANGELOG.md; then
             echo "CHANGELOG already has [${{ env.version }}] entry — skipping insertion"
           else
-            sed -i "/adheres to \[Semantic Versioning\]/a \\\n## [${{ env.version }}] - $DATE" CHANGELOG.md
+            sed -i "/adheres to \[Semantic Versioning\]/a \\\n## [${{ env.version }}] - $DATE\n" CHANGELOG.md
             echo "CHANGELOG updated with [${{ env.version }}] - $DATE"
           fi
 
