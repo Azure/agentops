@@ -154,14 +154,9 @@ def cmd_init(
         "--path",
         help="Workspace directory to initialise.",
     ),
-    prompt: bool = typer.Option(
-        False,
-        "--prompt",
-        help="Ask before installing skills when no coding agent platform is detected.",
-    ),
 ) -> None:
-    """Initialise an AgentOps workspace (creates .agentops/ and installs skills)."""
-    log.debug("cmd_init called force=%s dir=%s prompt=%s", force, directory, prompt)
+    """Initialise an AgentOps workspace (creates .agentops/)."""
+    log.debug("cmd_init called force=%s dir=%s", force, directory)
     try:
         result = initialize_workspace(directory=directory, force=force)
     except Exception as exc:
@@ -184,31 +179,10 @@ def cmd_init(
     for skipped in result.skipped_files:
         typer.echo(f" - skipped {skipped}")
 
-    # Install coding agent skills
     typer.echo("")
-    resolved_platforms = _resolve_platforms(
-        directory=directory, explicit=None, prompt=prompt
+    typer.echo(
+        "To install coding agent skills, run: agentops skills install"
     )
-    if resolved_platforms:
-        from agentops.services.skills import install_skills, register_skills
-
-        try:
-            skills_result = install_skills(
-                directory=directory, platforms=resolved_platforms, force=True
-            )
-        except Exception as exc:
-            typer.echo(f"Warning: failed to install skills: {exc}", err=True)
-        else:
-            _print_skills_result(skills_result)
-
-        try:
-            reg_result = register_skills(
-                directory=directory, platforms=resolved_platforms
-            )
-        except Exception as exc:
-            typer.echo(f"Warning: failed to register skills: {exc}", err=True)
-        else:
-            _print_registration_result(reg_result)
 
 
 # ---------------------------------------------------------------------------

@@ -232,20 +232,20 @@ def test_cli_skills_install_force_overwrites(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI — agentops init includes skills
+# CLI — agentops init does NOT install skills (skills install is separate)
 # ---------------------------------------------------------------------------
 
 
-def test_cli_init_installs_skills(tmp_path: Path) -> None:
+def test_cli_init_does_not_install_skills(tmp_path: Path) -> None:
     result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0
     assert "Initialized workspace" in result.stdout
-    assert "Skills platforms" in result.stdout
+    assert "agentops skills install" in result.stdout
 
-    # Skills should be created (copilot default since no platform detected)
+    # Skills should NOT be created during init
     for rel in _COPILOT_SKILL_PATHS:
-        assert (tmp_path / rel).exists(), f"Missing after init: {rel}"
+        assert not (tmp_path / rel).exists(), f"Should not exist after init: {rel}"
 
 
 # ---------------------------------------------------------------------------
