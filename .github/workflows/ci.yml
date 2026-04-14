@@ -28,6 +28,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           version: ">=0.9.0"
+          enable-cache: false  # test matrix saves this cache key
 
       - name: Set up Python
         run: uv python install 3.11
@@ -82,6 +83,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           version: ">=0.9.0"
+          enable-cache: false  # test matrix saves this cache key
 
       - name: Set up Python
         run: uv python install 3.13
@@ -107,12 +109,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Full history for setuptools-scm
+          fetch-depth: 0 # Full history for setuptools-scm
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
           version: ">=0.9.0"
+          enable-cache: false  # test matrix saves this cache key
 
       - name: Set up Python
         run: uv python install 3.12
@@ -126,7 +129,7 @@ jobs:
       - name: Show version
         run: |
           ls -la dist/
-          uv run python -c "from importlib.metadata import version; print(f'Dev version: {version(\"agentops-toolkit\")}')" 
+          uv run python -c "from importlib.metadata import version; print(f'Dev version: {version(\"agentops-toolkit\")}')"
 
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -192,7 +195,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Full history for version derivation
+          fetch-depth: 0 # Full history for version derivation
 
       - name: Sync VSIX version from git tag
         run: |
@@ -244,7 +247,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Full history for version derivation
+          fetch-depth: 0 # Full history for version derivation
 
       - name: Sync VSIX version from git tag
         run: |
@@ -277,7 +280,7 @@ jobs:
         run: vsce package --pre-release -o agentops-skills.vsix
 
       - name: Publish pre-release to VS Code Marketplace
-        continue-on-error: true  # Tolerate "already exists" for dev builds
+        continue-on-error: true # Tolerate "already exists" for dev builds
         working-directory: plugins/agentops
         run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
 
