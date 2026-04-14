@@ -7,6 +7,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [0.1.4] - 2026-04-14
 
+### Fixed
+- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
+- Fix VSIX version derivation in CI/CD workflows — use global tag sort (`git tag -l --sort=-v:refname`) instead of `git describe` which misses tags not reachable from the current branch.
+
+## [0.1.3] - 2026-03-24
+
 ### Added
 - Extend Foundry cloud evaluation to support 22 built-in evaluators (up from 8), covering quality, agent, safety, RAG, tool, and NLP evaluator categories. Verified end-to-end with live Foundry cloud evaluation.
   - Quality: `CoherenceEvaluator`, `FluencyEvaluator`, `RelevanceEvaluator`
@@ -49,9 +55,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Fix secret reference from `PIPY_TOKEN` to `PYPI_TOKEN`; add `TEST_PYPI_TOKEN` for TestPyPI.
 - Add consistent workflow index header across all CI/CD workflow files.
 - Add VSIX extension packaging and publishing to CI/CD pipeline; include Copilot skills in the VS Code Marketplace extension.
-
-### Fixed
-- Resolve all 37 mypy type errors across 6 source files (`foundry_backend.py`, `config_loader.py`, `reporter.py`, `browse.py`, `comparison.py`, `runner.py`).
 
 ## [0.1.0] - 2026-__-__
 
