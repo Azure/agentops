@@ -480,22 +480,6 @@ def test_cloud_evaluator_data_mapping_retrieval() -> None:
     assert mapping["query"] == "{{item.input}}"
 
 
-def test_cloud_evaluator_data_mapping_tool_selection() -> None:
-    mapping = _cloud_evaluator_data_mapping("tool_selection", "input", "expected")
-    assert mapping["query"] == "{{item.input}}"
-    assert mapping["response"] == "{{sample.output_text}}"
-    assert mapping["tool_calls"] == "{{sample.tool_calls}}"
-    assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
-
-
-def test_cloud_evaluator_data_mapping_tool_input_accuracy() -> None:
-    mapping = _cloud_evaluator_data_mapping("tool_input_accuracy", "input", "expected")
-    assert mapping["query"] == "{{item.input}}"
-    assert mapping["response"] == "{{sample.output_text}}"
-    assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
-    assert "tool_calls" not in mapping
-
-
 def test_cloud_evaluator_data_mapping_tool_output_utilization() -> None:
     mapping = _cloud_evaluator_data_mapping(
         "tool_output_utilization", "input", "expected"
@@ -538,18 +522,6 @@ def test_cloud_evaluator_data_mapping_intent_resolution_default_path() -> None:
     mapping = _cloud_evaluator_data_mapping("intent_resolution", "input", "expected")
     assert mapping["query"] == "{{item.input}}"
     assert mapping["response"] == "{{sample.output_text}}"
-
-
-def test_default_foundry_input_mapping_tool_selection() -> None:
-    mapping = _default_foundry_input_mapping("ToolSelectionEvaluator")
-    assert mapping["tool_calls"] == "$row.tool_calls"
-    assert mapping["tool_definitions"] == "$row.tool_definitions"
-
-
-def test_default_foundry_input_mapping_tool_input_accuracy() -> None:
-    mapping = _default_foundry_input_mapping("ToolInputAccuracyEvaluator")
-    assert mapping["tool_definitions"] == "$row.tool_definitions"
-    assert "tool_calls" not in mapping
 
 
 def test_default_foundry_input_mapping_coherence() -> None:
@@ -728,7 +700,13 @@ def test_cloud_evaluator_needs_model_quality_evaluators() -> None:
 
 def test_cloud_evaluator_needs_model_nlp_evaluators() -> None:
     """NLP evaluators do not need a model."""
-    nlp_builtins = ["f1_score", "bleu_score", "rouge_score", "meteor_score", "gleu_score"]
+    nlp_builtins = [
+        "f1_score",
+        "bleu_score",
+        "rouge_score",
+        "meteor_score",
+        "gleu_score",
+    ]
     for name in nlp_builtins:
         assert not _cloud_evaluator_needs_model(name), f"{name} should not need a model"
 

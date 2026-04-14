@@ -21,7 +21,6 @@ import os
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
-from pathlib import Path
 from time import perf_counter
 from typing import Any, Dict, List, Optional
 
@@ -78,13 +77,18 @@ def _post_json(
     timeout_seconds: Optional[int],
 ) -> Dict[str, Any]:
     """POST a JSON body to the given URL and return the parsed response."""
-    headers: Dict[str, str] = {"Content-Type": "application/json", "Accept": "application/json"}
+    headers: Dict[str, str] = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
     if auth_token:
         headers["Authorization"] = f"Bearer {auth_token}"
     headers.update(extra_headers)
 
     request_body = json.dumps(body).encode("utf-8")
-    request = urllib.request.Request(url=url, method="POST", data=request_body, headers=headers)
+    request = urllib.request.Request(
+        url=url, method="POST", data=request_body, headers=headers
+    )
 
     with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
         payload = json.loads(response.read().decode("utf-8"))
@@ -179,9 +183,9 @@ class HttpBackend:
 
             # AI-assisted evaluators require Azure OpenAI — read from environment.
             fallback_endpoint: Optional[str] = os.getenv("AZURE_OPENAI_ENDPOINT")
-            fallback_deployment: Optional[str] = os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME") or os.getenv(
-                "AZURE_OPENAI_DEPLOYMENT"
-            )
+            fallback_deployment: Optional[str] = os.getenv(
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME"
+            ) or os.getenv("AZURE_OPENAI_DEPLOYMENT")
 
             foundry_evaluator_runtimes = _build_foundry_evaluator_runtimes(
                 enabled_evaluators,
@@ -201,7 +205,9 @@ class HttpBackend:
 
             row_metrics_payload: List[Dict[str, Any]] = []
 
-            logger.info("HTTP backend: evaluating %d row(s) against %s", total_rows, url)
+            logger.info(
+                "HTTP backend: evaluating %d row(s) against %s", total_rows, url
+            )
 
             for index, row in enumerate(rows, start=1):
                 logger.info("Processing row %d/%d", index, total_rows)
@@ -246,7 +252,11 @@ class HttpBackend:
                             row["tool_calls"] = extracted_tool_calls
                         except ValueError:
                             pass  # Field not present in this response; skip silently.
-                except (urllib.error.URLError, urllib.error.HTTPError, ValueError) as exc:
+                except (
+                    urllib.error.URLError,
+                    urllib.error.HTTPError,
+                    ValueError,
+                ) as exc:
                     stderr_lines.append(f"row={index} error={exc!s}")
                     logger.error("HTTP request failed for row %d: %s", index, exc)
                     exit_code = 1
@@ -265,13 +275,18 @@ class HttpBackend:
                             expected=expected_text,
                             row=row,
                         )
-                        row_metric_entries.append({"name": runtime.name, "value": score})
+                        row_metric_entries.append(
+                            {"name": runtime.name, "value": score}
+                        )
                     except Exception as exc:  # noqa: BLE001
                         stderr_lines.append(
                             f"row={index} evaluator={runtime.name} error={exc!s}"
                         )
                         logger.error(
-                            "Evaluator '%s' failed for row %d: %s", runtime.name, index, exc
+                            "Evaluator '%s' failed for row %d: %s",
+                            runtime.name,
+                            index,
+                            exc,
                         )
 
                 if "exact_match" in enabled_local_names:
@@ -293,7 +308,15 @@ class HttpBackend:
                     if name in evaluator_aggregate_values:
                         evaluator_aggregate_values[name].append(entry["value"])
 
-                row_metrics_payload.append({"row_index": index, "input": prompt_text, "response": prediction_text, "context": row.get("context"), "metrics": row_metric_entries})
+                row_metrics_payload.append(
+                    {
+                        "row_index": index,
+                        "input": prompt_text,
+                        "response": prediction_text,
+                        "context": row.get("context"),
+                        "metrics": row_metric_entries,
+                    }
+                )
                 stdout_lines.append(
                     f"row={index} expected={expected_text!r} prediction={prediction_text!r}"
                 )

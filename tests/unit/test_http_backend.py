@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
@@ -170,13 +169,17 @@ def test_extract_dot_path_non_dict_intermediate_raises() -> None:
 
 
 def test_endpoint_config_accepts_http_with_url() -> None:
-    config = TargetEndpointConfig.model_validate({"kind": "http", "url": "http://localhost/chat"})
+    config = TargetEndpointConfig.model_validate(
+        {"kind": "http", "url": "http://localhost/chat"}
+    )
     assert config.kind == "http"
     assert config.url == "http://localhost/chat"
 
 
 def test_endpoint_config_accepts_http_with_url_env() -> None:
-    config = TargetEndpointConfig.model_validate({"kind": "http", "url_env": "AGENT_HTTP_URL"})
+    config = TargetEndpointConfig.model_validate(
+        {"kind": "http", "url_env": "AGENT_HTTP_URL"}
+    )
     assert config.kind == "http"
     assert config.url_env == "AGENT_HTTP_URL"
 
@@ -197,7 +200,9 @@ def test_resolve_url_from_config(tmp_path: Path) -> None:
     assert backend._resolve_url(context) == "http://example.com/api"
 
 
-def test_resolve_url_from_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_url_from_env_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("MY_AGENT_URL", "http://agent.example.com/chat")
     bundle_path, dataset_path = _write_fixtures(tmp_path)
     endpoint = TargetEndpointConfig(kind="http", url_env="MY_AGENT_URL")
@@ -224,7 +229,9 @@ def test_resolve_url_from_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert backend._resolve_url(context) == "http://agent.example.com/chat"
 
 
-def test_resolve_url_env_missing_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_url_env_missing_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.delenv("MISSING_URL_VAR", raising=False)
     bundle_path, dataset_path = _write_fixtures(tmp_path)
     endpoint = TargetEndpointConfig(kind="http", url_env="MISSING_URL_VAR")
@@ -263,7 +270,7 @@ def test_execute_posts_to_url_and_writes_metrics(tmp_path: Path) -> None:
 
     with patch("agentops.backends.http_backend.urllib.request.urlopen") as mock_urlopen:
         mock_urlopen.return_value = _fake_urlopen(fake_response)
-        result = HttpBackend().execute(context)
+        HttpBackend().execute(context)
 
     metrics_path = context.backend_output_dir / "backend_metrics.json"
     assert metrics_path.exists()
@@ -283,7 +290,10 @@ def test_execute_uses_correct_request_field(tmp_path: Path) -> None:
         mock = _fake_urlopen({"answer": "some answer"})
         return mock
 
-    with patch("agentops.backends.http_backend.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch(
+        "agentops.backends.http_backend.urllib.request.urlopen",
+        side_effect=fake_urlopen,
+    ):
         HttpBackend().execute(context)
 
     assert len(calls) == len(_DATASET_ROWS)
@@ -303,7 +313,9 @@ def test_execute_dot_path_response_extraction(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     payload = json.loads(
-        (context.backend_output_dir / "backend_metrics.json").read_text(encoding="utf-8")
+        (context.backend_output_dir / "backend_metrics.json").read_text(
+            encoding="utf-8"
+        )
     )
     assert len(payload["row_metrics"]) == len(_DATASET_ROWS)
 
@@ -320,11 +332,16 @@ def test_execute_exact_match_scores(tmp_path: Path) -> None:
         return mock
 
     context = _build_context(tmp_path)
-    with patch("agentops.backends.http_backend.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch(
+        "agentops.backends.http_backend.urllib.request.urlopen",
+        side_effect=fake_urlopen,
+    ):
         HttpBackend().execute(context)
 
     payload = json.loads(
-        (context.backend_output_dir / "backend_metrics.json").read_text(encoding="utf-8")
+        (context.backend_output_dir / "backend_metrics.json").read_text(
+            encoding="utf-8"
+        )
     )
     row_metrics = payload["row_metrics"]
     assert len(row_metrics) == 2
@@ -335,7 +352,9 @@ def test_execute_exact_match_scores(tmp_path: Path) -> None:
         assert "avg_latency_seconds" in names
 
 
-def test_execute_sets_auth_header(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_execute_sets_auth_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("MY_TOKEN", "secret-token-123")
     context = _build_context(tmp_path, auth_header_env="MY_TOKEN")
     captured_headers: list[dict] = []
@@ -344,7 +363,10 @@ def test_execute_sets_auth_header(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         captured_headers.append(dict(request.headers))
         return _fake_urlopen({"text": "4"})
 
-    with patch("agentops.backends.http_backend.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch(
+        "agentops.backends.http_backend.urllib.request.urlopen",
+        side_effect=fake_urlopen,
+    ):
         HttpBackend().execute(context)
 
     for headers in captured_headers:
@@ -361,7 +383,10 @@ def test_execute_includes_extra_headers(tmp_path: Path) -> None:
         captured_headers.append(dict(request.headers))
         return _fake_urlopen({"text": "4"})
 
-    with patch("agentops.backends.http_backend.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch(
+        "agentops.backends.http_backend.urllib.request.urlopen",
+        side_effect=fake_urlopen,
+    ):
         HttpBackend().execute(context)
 
     for headers in captured_headers:
@@ -386,7 +411,9 @@ def test_execute_returns_nonzero_exit_code_on_http_error(tmp_path: Path) -> None
         result = HttpBackend().execute(context)
 
     assert result.exit_code == 1
-    stderr = (context.backend_output_dir / "backend.stderr.log").read_text(encoding="utf-8")
+    stderr = (context.backend_output_dir / "backend.stderr.log").read_text(
+        encoding="utf-8"
+    )
     assert "connection refused" in stderr.lower() or "row=1" in stderr
 
 
@@ -396,7 +423,9 @@ def test_execute_writes_stdout_log(tmp_path: Path) -> None:
         mock_urlopen.return_value = _fake_urlopen({"text": "4"})
         HttpBackend().execute(context)
 
-    stdout = (context.backend_output_dir / "backend.stdout.log").read_text(encoding="utf-8")
+    stdout = (context.backend_output_dir / "backend.stdout.log").read_text(
+        encoding="utf-8"
+    )
     assert "row=1" in stdout
 
 
@@ -420,7 +449,13 @@ def test_execute_result_backend_label(tmp_path: Path) -> None:
 def test_execute_forwards_extra_fields_in_request(tmp_path: Path) -> None:
     """When extra_fields is configured, those JSONL row fields appear in the request body."""
     dataset_rows = [
-        {"id": "1", "input": "Hello", "expected": "Hi", "session_id": "s1", "user_id": "u1"},
+        {
+            "id": "1",
+            "input": "Hello",
+            "expected": "Hi",
+            "session_id": "s1",
+            "user_id": "u1",
+        },
     ]
     dataset_yaml = """\
 version: 1
@@ -447,7 +482,10 @@ format:
         calls.append(body)
         return _fake_urlopen({"text": "Hi"})
 
-    with patch("agentops.backends.http_backend.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch(
+        "agentops.backends.http_backend.urllib.request.urlopen",
+        side_effect=fake_urlopen,
+    ):
         HttpBackend().execute(context)
 
     assert len(calls) == 1
@@ -486,7 +524,10 @@ format:
         calls.append(body)
         return _fake_urlopen({"text": "Hi"})
 
-    with patch("agentops.backends.http_backend.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch(
+        "agentops.backends.http_backend.urllib.request.urlopen",
+        side_effect=fake_urlopen,
+    ):
         HttpBackend().execute(context)
 
     assert "session_id" not in calls[0]
@@ -523,7 +564,9 @@ def test_execute_tool_calls_field_nested_dot_path(tmp_path: Path) -> None:
     assert result.exit_code == 0
 
 
-def test_execute_tool_calls_field_missing_in_response_is_silently_skipped(tmp_path: Path) -> None:
+def test_execute_tool_calls_field_missing_in_response_is_silently_skipped(
+    tmp_path: Path,
+) -> None:
     """If tool_calls_field is configured but not in the response, execution continues."""
     context = _build_context(tmp_path, tool_calls_field="tool_calls")
     fake_response = {"text": "No tools used"}
