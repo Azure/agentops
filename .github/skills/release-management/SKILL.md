@@ -63,7 +63,7 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
 2. Go to **Actions** tab → **Cut Release** → **Run workflow** → enter version (e.g. `0.2.0`, no `v` prefix).
 3. The workflow automatically:
    - Creates `release/v0.2.0` from `develop`
-   - Updates `CHANGELOG.md` (`[Unreleased]` → `[0.2.0] - YYYY-MM-DD`)
+   - Updates `CHANGELOG.md` (adds versioned section `[0.2.0] - YYYY-MM-DD`)
    - Pushes the branch (triggers staging pipeline automatically)
    - Opens a PR: `release/v0.2.0` → `main`
 4. Wait for staging pipeline to pass (build → TestPyPI → verify).
@@ -152,13 +152,12 @@ Version numbers follow a consistent pattern across artifacts. The git tag and Gi
 The changelog follows a two-phase lifecycle: development on `develop`, finalization on `release/vx.y.z`.
 
 ### Development phase (`develop`)
-- Always maintain an `[Unreleased]` section at the top.
-- Add all user-visible changes under `[Unreleased]`.
-- Do NOT assign a version number on `develop`.
-- Do NOT create future version sections on `develop`.
+- Add all user-visible changes under the next versioned section at the top of the changelog.
+- Do NOT preemptively assign a future version number on `develop`.
+- Do NOT create empty version sections.
 
 ```markdown
-## [Unreleased]
+## [0.2.0] - 2026-04-20
 
 ### Added
 - New orchestration strategy for multi-turn evaluations.
@@ -168,25 +167,7 @@ The changelog follows a two-phase lifecycle: development on `develop`, finalizat
 ```
 
 ### Release phase (`release/vx.y.z`)
-When creating the release branch, convert `[Unreleased]` into the versioned release entry, then add a fresh empty `[Unreleased]` section above it.
-
-**Before:**
-```markdown
-## [Unreleased]
-
-### Added
-- New orchestration strategy...
-```
-
-**After:**
-```markdown
-## [Unreleased]
-
-## [2.4.2] - 2026-03-22
-
-### Added
-- New orchestration strategy...
-```
+When creating the release branch, the cut-release workflow inserts a versioned section header with the release date. Verify the changelog entries are correct and complete.
 
 All release artifacts must be in sync:
 
@@ -205,10 +186,8 @@ Use when applicable: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Secu
 - Avoid vague wording: no "minor updates", "improvements", or "fixes" as standalone entries.
 
 ### Safety rules
-- Never remove the `[Unreleased]` section.
-- Never create more than one `[Unreleased]` section.
-- Never assign a release version on `develop`.
-- Never leave a release branch without converting `[Unreleased]` to the versioned entry.
+- Never assign a release version on `develop` prematurely.
+- Never leave a release branch without a properly dated versioned entry.
 - Never mismatch version numbers across branch name, changelog, and tag.
 
 ## Commit Guidelines

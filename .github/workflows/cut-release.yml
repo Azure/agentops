@@ -56,13 +56,6 @@ jobs:
             exit 1
           fi
 
-      - name: Check CHANGELOG has Unreleased section
-        run: |
-          if ! grep -q '## \[Unreleased\]' CHANGELOG.md; then
-            echo "::error::CHANGELOG.md is missing the [Unreleased] section."
-            exit 1
-          fi
-
       - name: Create release branch
         run: |
           git checkout -b "release/v${{ env.version }}"
@@ -70,8 +63,8 @@ jobs:
       - name: Update CHANGELOG
         run: |
           DATE=$(date +%Y-%m-%d)
-          # Replace [Unreleased] with versioned section, add fresh Unreleased above
-          sed -i "s/## \[Unreleased\]/## [Unreleased]\n\n## [${{ env.version }}] - $DATE/" CHANGELOG.md
+          # Insert versioned section after the preamble (line 4: Semantic Versioning link)
+          sed -i "/adheres to \[Semantic Versioning\]/a \\\n## [${{ env.version }}] - $DATE" CHANGELOG.md
 
       - name: Sync VS Code extension version
         run: |
@@ -105,7 +98,7 @@ jobs:
 
           ### What happened
           - Branch \`release/v${{ env.version }}\` created from \`develop\`
-          - \`CHANGELOG.md\` updated: \`[Unreleased]\` → \`[${{ env.version }}]\`
+          - \`CHANGELOG.md\` updated: versioned section \`[${{ env.version }}]\` added
           - \`plugins/agentops/package.json\` version synced to \`${{ env.version }}\`
           - Staging pipeline triggered automatically (build → TestPyPI + VSIX pre-release → verify)
 
