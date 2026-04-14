@@ -181,6 +181,7 @@ jobs:
         run: vsce package -o agentops-skills.vsix
 
       - name: Publish stable to VS Code Marketplace
+        continue-on-error: true  # Tolerate "already exists" if staging pre-release published this version
         working-directory: plugins/agentops
         run: vsce publish --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
 
@@ -193,6 +194,7 @@ jobs:
   # Create GitHub Release with built artifacts (Python dist + VSIX)
   github-release:
     needs: [publish-pypi, publish-vsix]
+    if: always() && needs.publish-pypi.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
