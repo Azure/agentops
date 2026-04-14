@@ -1,0 +1,92 @@
+version: 1
+name: rag_quality_baseline
+description: >
+  Baseline evaluation bundle for RAG (Retrieval-Augmented Generation) quality.
+  Evaluates grounding, relevance, retrieval quality, response completeness,
+  and coherence of agent responses against the retrieved context.
+evaluators:
+  - name: GroundednessEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: GroundednessEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        context: "$context"
+      score_keys: ["groundedness"]
+  - name: RelevanceEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: RelevanceEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        context: "$context"
+      score_keys: ["relevance"]
+  - name: RetrievalEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: RetrievalEvaluator
+      input_mapping:
+        query: "$prompt"
+        context: "$context"
+      score_keys: ["retrieval"]
+  - name: ResponseCompletenessEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: ResponseCompletenessEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        ground_truth: "$expected"
+      score_keys: ["response_completeness"]
+  - name: CoherenceEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: CoherenceEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["coherence"]
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: GroundednessEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: RelevanceEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: RetrievalEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: ResponseCompletenessEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: CoherenceEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 10.0
+metadata:
+  category: rag-quality
+  scenario: rag_retrieval
+  tags:
+    - baseline
+    - rag
+    - groundedness
+    - relevance
+    - retrieval
+    - completeness

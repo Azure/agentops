@@ -1,0 +1,46 @@
+# HTTP Agent-with-Tools evaluation — evaluate agents that use tool calling via HTTP.
+#
+# Supported targets:
+#   - LangGraph agent with tools      (request_field: input, response_field: output)
+#   - LangChain agent via LangServe   (request_field: input, response_field: output)
+#   - Microsoft Agent Framework on ACA (request_field: message, response_field: text)
+#   - OpenAI Assistants via proxy      (adjust fields for your adapter)
+#   - Custom REST endpoint             (adjust fields to match your API)
+#
+# For tool-call evaluation, the HTTP response must include tool call data.
+# Set tool_calls_field to the dot-path where tool calls appear in the response JSON.
+#
+# Set the agent URL via environment variable or inline:
+#   PowerShell:  $env:AGENT_HTTP_URL = "https://your-agent.region.azurecontainerapps.io/chat"
+#   Bash/zsh:    export AGENT_HTTP_URL="https://your-agent.region.azurecontainerapps.io/chat"
+
+version: 1
+target:
+  type: agent
+  hosting: local                       # change to aks or containerapps if deployed
+  execution_mode: remote
+  endpoint:
+    kind: http
+    url_env: AGENT_HTTP_URL
+
+    request_field: message
+    response_field: text
+
+    # Extract tool_calls from the HTTP response for agent evaluators.
+    # The endpoint must return tool call data in its response JSON.
+    # Use dot-path notation for nested fields (e.g., "metadata.tool_calls").
+    tool_calls_field: tool_calls
+
+    # Forward extra JSONL row fields in the request body (optional):
+    # extra_fields:
+    #   - session_id
+    #   - tool_definitions   # some agents need tool definitions in the request
+
+bundle:
+  name: agent_workflow_baseline
+dataset:
+  name: smoke-agent-tools
+execution:
+  timeout_seconds: 60
+output:
+  write_report: true

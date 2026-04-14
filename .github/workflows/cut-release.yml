@@ -43,7 +43,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_ENV"
 
       - name: Checkout develop
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: develop
           fetch-depth: 0

@@ -5,14 +5,14 @@ Copilot agent skills for running standardized evaluation workflows with
 
 ## Skills
 
-| Skill | What it does |
-|---|---|
-| **Workspace Setup** | Initialize an `.agentops/` workspace, create configs, manage bundles and datasets |
-| **Run Evals** | Execute evaluations, multi-model benchmarks, N-run comparisons, and generate reports |
-| **Investigate Regression** | Compare runs, analyze row-level scores, and identify root causes of regressions |
-| **Observability & Triage** | Set up OTLP tracing, interpret evaluation outputs, triage failed runs |
-| **Browse & Inspect** | List and inspect evaluation runs, view per-row scores, browse run history |
-| **Dataset Management** | Validate, describe, and import datasets for evaluation workflows |
+| Skill                      | What it does                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------ |
+| **Workspace Setup**        | Initialize an `.agentops/` workspace, create configs, manage bundles and datasets    |
+| **Run Evals**              | Execute evaluations, multi-model benchmarks, N-run comparisons, and generate reports |
+| **Investigate Regression** | Compare runs, analyze row-level scores, and identify root causes of regressions      |
+| **Observability & Triage** | Set up OTLP tracing, interpret evaluation outputs, triage failed runs                |
+| **Browse & Inspect**       | List and inspect evaluation runs, view per-row scores, browse run history            |
+| **Dataset Management**     | Validate, describe, and import datasets for evaluation workflows                     |
 
 ## Installation
 

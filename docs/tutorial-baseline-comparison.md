@@ -24,7 +24,7 @@ Without comparison, you're looking at absolute scores and hoping you remember wh
 
 Before you compare, you need to decide what you're evaluating. AgentOps supports two targets, and they produce meaningfully different results.
 
-### Model-direct (`target: model`)
+### Model-direct (`target.type: model`)
 
 Sends your dataset prompts straight to a model deployment and evaluates the raw completions. There is no agent layer — no system instructions, no tools, no retrieval. The model sees each prompt in isolation and responds.
 
@@ -38,13 +38,16 @@ In practice, model-direct evaluations tend to produce **higher similarity scores
 
 Run configuration:
 ```yaml
-backend:
-  type: foundry
-  target: model
-  model: gpt-5.1
+target:
+  type: model
+  hosting: foundry
+  execution_mode: remote
+  endpoint:
+    kind: foundry_agent
+    model: gpt-5.1
 ```
 
-### Agent (`target: agent`)
+### Agent (`target.type: agent`)
 
 Routes each prompt through a deployed Foundry agent. The agent applies its system instructions, may call tools, may consult a knowledge base, and produces a response shaped by its configuration.
 
@@ -58,11 +61,14 @@ Agent evaluations typically produce **lower similarity scores** than model-direc
 
 Run configuration:
 ```yaml
-backend:
-  type: foundry
-  target: agent
-  agent_id: my-agent:1
-  model: gpt-5.1
+target:
+  type: agent
+  hosting: foundry
+  execution_mode: remote
+  endpoint:
+    kind: foundry_agent
+    agent_id: my-agent:1
+    model: gpt-5.1
 ```
 
 ### When to compare model-direct vs agent

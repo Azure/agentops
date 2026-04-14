@@ -2,8 +2,6 @@
 
 This guide is a comprehensive instruction manual for engineers working on the **agentops-toolkit** project. It covers the full GitOps lifecycle — from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.
 
----
-
 ## Table of Contents
 
 - [1. GitOps Principles](#1-gitops-principles)
@@ -17,11 +15,8 @@ This guide is a comprehensive instruction manual for engineers working on the **
 - [9. Production Release Pipeline (PyPI)](#9-production-release-pipeline-pypi)
 - [10. Infrastructure Setup](#10-infrastructure-setup)
 - [11. Workflow File Reference](#11-workflow-file-reference)
-- [12. Recovering from a Failed or Stalled Release](#12-recovering-from-a-failed-or-stalled-release)
-- [13. Release Checklist](#13-release-checklist)
-- [14. Troubleshooting](#14-troubleshooting)
-
----
+- [12. Release Checklist](#12-release-checklist)
+- [13. Troubleshooting](#13-troubleshooting)
 
 ## 1. GitOps Principles
 
@@ -32,8 +27,6 @@ AgentOps follows GitOps practices where **git is the single source of truth** fo
 - **Automated pipelines** — Pushing branches or tags triggers the corresponding workflow automatically.
 - **Environment gates** — Production deployment requires explicit human approval via GitHub Environments.
 - **Immutable artifacts** — Built packages are uploaded once and reused across pipeline stages (no rebuilds between TestPyPI and PyPI).
-
----
 
 ## 2. Branching Model
 
@@ -78,8 +71,6 @@ Configure these in **Settings → Branches → Branch protection rules**:
 | `main`      | Require PR, require status checks (CI), require approvals, no force push |
 | `develop`   | Require PR, require status checks (CI), no force push                    |
 | `release/*` | Require status checks (Staging pipeline), no force push                  |
-
----
 
 ## 3. Development Environment Setup
 
@@ -141,8 +132,6 @@ uv run pytest tests/ -x -q  # All tests should pass
 python -m setuptools_scm    # Shows version derived from git tags
 ```
 
----
-
 ## 4. Development Workflow
 
 ### Creating a Feature
@@ -187,8 +176,6 @@ git pull origin develop
 git branch -d feature/my-new-feature
 ```
 
----
-
 ## 5. CI Pipeline (Continuous Integration)
 
 The CI pipeline runs on **every push and PR** to `main` or `develop`.
@@ -227,8 +214,6 @@ The `publish-dev` and `verify-dev` jobs only run on pushes to `develop` (not on 
 1. Go to the **Actions** tab → find the CI run for your PR
 2. Click into a failing job to see the error
 3. Download test result artifacts if needed
-
----
 
 ## 6. Versioning with setuptools-scm
 
@@ -278,8 +263,6 @@ python -c "from agentops import __version__; print(__version__)"
 - **Tags must follow PEP 440** — use `v0.2.0`, not `release-0.2.0` or `0.2.0`.
 - **`fetch-depth: 0`** is required in CI checkout steps — setuptools-scm needs the full git history.
 - **`pip install -e .` requires `.git`** — editable installs need the git directory present (standard for development).
-
----
 
 ## 7. Staging Pipeline (TestPyPI)
 
@@ -357,8 +340,6 @@ ls .agentops/
 ```
 
 > **Note**: `--extra-index-url https://pypi.org/simple/` is required so that dependencies (typer, pydantic, ruamel.yaml) resolve from the real PyPI.
-
----
 
 ## 8. End-to-End Pipeline Testing
 
@@ -531,8 +512,6 @@ git checkout feature/my-ci-changes
 git branch -d release/v0.0.0-test
 ```
 
----
-
 ## 9. Production Release Pipeline (PyPI)
 
 The production pipeline publishes a final release to PyPI and creates a GitHub Release.
@@ -669,8 +648,6 @@ Check the published package:
 - PyPI: https://pypi.org/project/agentops-toolkit/0.2.0/
 - GitHub Release: https://github.com/Azure/agentops/releases/tag/v0.2.0
 
----
-
 ## 10. Infrastructure Setup
 
 This section covers one-time setup required before the pipelines can run.
@@ -725,8 +702,6 @@ The first time you publish to TestPyPI or PyPI, the project name (`agentops-tool
 
 - Scope your API tokens to the specific project for better security
 - Add collaborators/maintainers on the PyPI/TestPyPI project page if needed
-
----
 
 ## 11. Workflow File Reference
 
@@ -796,124 +771,7 @@ Key details:
 - Fails safely if the branch already exists or CHANGELOG is missing `[Unreleased]`
 - Does NOT auto-tag or auto-publish — tagging remains a manual, intentional step
 
----
-
-## 12. Recovering from a Failed or Stalled Release
-
-### Scenario A — Release workflow failed at the build step
-
-**Symptom**: The `release.yml` run triggered by a `v*` tag push shows a failed build job (e.g. lint errors, test failures). TestPyPI does not have the new version. PyPI still has the previous version.
-
-**Root cause**: The build job runs before any publish step. If it fails, nothing is published.
-
-**Recovery steps**:
-
-1. Identify the failing checks on the failed workflow run (Actions → Release → select the failed run → expand the failed job).
-2. Fix the errors on the release branch (or directly on a hotfix branch off `main`).
-3. Merge the fix to `main`.
-4. Delete and re-push the tag to re-trigger the release workflow:
-
-   ```bash
-   git tag -d v0.X.Y
-   git push origin :v0.X.Y   # delete from remote
-   git tag v0.X.Y            # recreate on the fixed commit
-   git push origin v0.X.Y    # triggers release.yml again
-   ```
-
-   > **Note**: Re-creating a tag is safe as long as the version is not already on PyPI. TestPyPI uses `skip-existing: true` so duplicate uploads are silently skipped.
-
-5. Monitor the new workflow run. Approve the PyPI publish step when prompted.
-
-**Alternative** (if you do not want to delete and re-push the tag):
-
-Use **Actions → Release → Run workflow** (manual dispatch), select the `v0.X.Y` tag ref in the "Use workflow from" dropdown, and optionally fill in the `tag` input. The `skip-existing: true` flag on the TestPyPI publish step ensures no conflict if that version was already staged.
-
----
-
-### Scenario B — Release workflow passed build and TestPyPI but is stuck waiting for PyPI approval
-
-**Symptom**: TestPyPI has the new version (`pip install -i https://test.pypi.org/simple/ agentops-toolkit==0.X.Y` works). The `release.yml` run is in "Waiting for review" state on the `publish-pypi` job. PyPI still has the previous version.
-
-**Root cause**: The `release` GitHub Environment requires approval from a designated reviewer before the PyPI publish step runs. This is a deliberate gate.
-
-**Recovery steps**:
-
-1. Go to **Actions → Release** and open the in-progress workflow run.
-2. The `publish-pypi` job shows a yellow "Waiting for review" badge.
-3. A designated reviewer must click **Review deployments → Approve**.
-4. The job then runs automatically and publishes to PyPI.
-5. After PyPI publish succeeds, the `github-release` job creates the GitHub Release with the built artifacts.
-
-**If the approval window expired** (default is 30 days, but the run may have been cancelled):
-
-Follow the recovery steps from Scenario A (delete and re-push the tag) to create a fresh workflow run that will again wait for approval.
-
----
-
-### Scenario C — Tag exists and TestPyPI has the version, but no GitHub Release
-
-**Symptom**: `git tag` shows `v0.X.Y`. TestPyPI has the version. PyPI does not have the version (or has it). No GitHub Release entry for `v0.X.Y` exists in the Releases page.
-
-**Root cause**: This can happen if:
-- The release workflow failed after the PyPI publish step but before the `github-release` step.
-- The `github-release` step failed (e.g., a release for that tag already existed as a draft).
-
-**Recovery steps**:
-
-1. If PyPI does **not** yet have the version: follow Scenario B to approve the release pipeline or re-trigger via tag re-push.
-2. If PyPI **already has** the version (you just need the GitHub Release):
-
-   ```bash
-   # Download the artifacts from TestPyPI or build locally
-   uv build
-   # Create the GitHub Release manually
-   gh release create v0.X.Y dist/* \
-     --title "v0.X.Y" \
-     --generate-notes \
-     --repo Azure/agentops
-   ```
-
-   Or use the Actions UI: trigger `release.yml` manually (workflow_dispatch) from the `v0.X.Y` tag ref. The TestPyPI publish step uses `skip-existing: true` (no failure), the verify step re-validates the install, PyPI publish uses `--skip-existing` behaviour from the action, and the GitHub Release is created at the end.
-
----
-
-### v0.1.3 Specific Remediation
-
-**Observed state** (as of the time this PR was merged):
-- Tag `v0.1.3` exists at commit `91d8d18b` ✅
-- TestPyPI has `agentops-toolkit==0.1.3` ✅ (published by the staging pipeline from `release/0.1.3`)
-- PyPI still shows `agentops-toolkit==0.1.2` ❌ (release workflow failed at build due to lint errors, then was not re-triggered after the fix)
-- No GitHub Release for `v0.1.3` ❌
-
-**Cause**: The initial `v0.1.3` tag was pushed to a commit with ruff lint errors (`F401` unused imports, `F841` unused variable in `http_backend.py` and its tests). The release workflow failed at the build step. The errors were fixed on the `release/0.1.3` branch (commit `91d8d18b`), the tag was updated to that commit, but the release workflow was never re-triggered for the corrected commit.
-
-**Steps for maintainers to complete the v0.1.3 release**:
-
-```bash
-# Option 1: Re-push the tag (simplest)
-git fetch --tags
-git tag -d v0.1.3
-git push origin :v0.1.3
-git tag v0.1.3 91d8d18b1bc44f41ca84318a604aaefa3a04f9c0
-git push origin v0.1.3
-```
-
-This triggers a new `release.yml` run. Monitor in **Actions → Release**:
-1. Build passes ✅ (lint errors are fixed in `91d8d18b`)
-2. TestPyPI publish — `skip-existing: true` skips silently ✅
-3. TestPyPI verify — installs `0.1.3` from TestPyPI ✅
-4. **Approve the PyPI publish** step when it reaches "Waiting for review"
-5. GitHub Release is created automatically
-
-```bash
-# Verify after completion
-pip install agentops-toolkit==0.1.3
-agentops --version  # should print 0.1.3
-```
-
----
-
-## 13. Release Checklist
+## 12. Release Checklist
 
 Use this checklist when cutting a release:
 
@@ -943,9 +801,7 @@ Use this checklist when cutting a release:
 - [ ] Release branch deleted (remote and local)
 - [ ] `[Unreleased]` section in CHANGELOG ready for new entries
 
----
-
-## 14. Troubleshooting
+## 13. Troubleshooting
 
 ### Build Failures
 
@@ -988,8 +844,6 @@ Use this checklist when cutting a release:
 | "Environment not found" error     | GitHub Environment not created      | Create `staging` and `release` environments in Settings → Environments |
 | "Secret not found" error          | Secret not added to the environment | Add secrets to the specific environment, not repository-level secrets  |
 | Reviewer can't approve deployment | Not listed as required reviewer     | Update the environment's required reviewers list                       |
-
----
 
 ## Architecture Diagram
 

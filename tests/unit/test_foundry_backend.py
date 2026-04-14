@@ -2,17 +2,74 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from agentops.backends.base import BackendRunContext
-from agentops.backends.foundry_backend import (
-    FoundryBackend,
+from agentops.backends.eval_engine import (
     FoundryEvaluatorRuntime,
     _cloud_evaluator_data_mapping,
+    _cloud_evaluator_needs_model,
     _default_foundry_input_mapping,
 )
-from agentops.core.models import BackendConfig
+from agentops.backends.foundry_backend import (
+    FoundryBackend,
+)
+from agentops.core.models import (
+    BundleRef,
+    DatasetRef,
+    ExecutionConfig,
+    OutputConfig,
+    RunConfig,
+    TargetConfig,
+    TargetEndpointConfig,
+)
 from agentops.utils.yaml import save_yaml
+
+
+def _foundry_context(
+    *,
+    bundle_path: Path,
+    dataset_path: Path,
+    output_dir: Path,
+    target_type: str = "agent",
+    agent_id: str | None = "asst_abc123",
+    model: str | None = None,
+    project_endpoint: str = "https://example.services.ai.azure.com/api/projects/proj-a",
+    api_version: str | None = "2025-05-01",
+    poll_interval_seconds: float | None = 0.01,
+    max_poll_attempts: int | None = 5,
+    timeout_seconds: int = 15,
+) -> BackendRunContext:
+    endpoint = TargetEndpointConfig(
+        kind="foundry_agent",
+        agent_id=agent_id,
+        model=model,
+        project_endpoint=project_endpoint,
+        project_endpoint_env="AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        api_version=api_version,
+        poll_interval_seconds=poll_interval_seconds,
+        max_poll_attempts=max_poll_attempts,
+    )
+    run_config = RunConfig(
+        version=2,
+        target=TargetConfig(
+            type=target_type,
+            hosting="foundry",
+            execution_mode="remote",
+            endpoint=endpoint,
+        ),
+        bundle=BundleRef(path=bundle_path),
+        dataset=DatasetRef(path=dataset_path),
+        execution=ExecutionConfig(timeout_seconds=timeout_seconds),
+        output=OutputConfig(),
+    )
+    return BackendRunContext(
+        run_config=run_config,
+        bundle_path=bundle_path,
+        dataset_path=dataset_path,
+        backend_output_dir=output_dir,
+    )
 
 
 class _FakeHttpResponse:
@@ -100,16 +157,10 @@ def test_foundry_backend_uses_default_azure_credential(tmp_path: Path) -> None:
     """Verify the backend acquires a token via _acquire_token (DefaultAzureCredential)."""
     dataset_path = _dataset_yaml(tmp_path)
     bundle_path = _bundle_yaml(tmp_path)
-    context = BackendRunContext(
-        backend_config=BackendConfig(
-            type="foundry",
-            target="agent",
-            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
-            agent_id="asst_abc123",
-        ),
+    context = _foundry_context(
         bundle_path=bundle_path,
         dataset_path=dataset_path,
-        backend_output_dir=tmp_path / "out",
+        output_dir=tmp_path / "out",
     )
 
     # When _acquire_token raises, the error should propagate clearly
@@ -127,20 +178,10 @@ def test_foundry_backend_uses_default_azure_credential(tmp_path: Path) -> None:
 def test_foundry_backend_agent_service_target(tmp_path: Path) -> None:
     dataset_path = _dataset_yaml(tmp_path)
     bundle_path = _bundle_yaml(tmp_path)
-    context = BackendRunContext(
-        backend_config=BackendConfig(
-            type="foundry",
-            target="agent",
-            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
-            agent_id="asst_abc123",
-            api_version="2025-05-01",
-            timeout_seconds=15,
-            poll_interval_seconds=0.01,
-            max_poll_attempts=5,
-        ),
+    context = _foundry_context(
         bundle_path=bundle_path,
         dataset_path=dataset_path,
-        backend_output_dir=tmp_path / "out-agent",
+        output_dir=tmp_path / "out-agent",
     )
 
     responses = [
@@ -197,20 +238,10 @@ def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(
 ) -> None:
     dataset_path = _dataset_yaml(tmp_path)
     bundle_path = _bundle_yaml(tmp_path, similarity_source="foundry")
-    context = BackendRunContext(
-        backend_config=BackendConfig(
-            type="foundry",
-            target="agent",
-            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
-            agent_id="asst_abc123",
-            api_version="2025-05-01",
-            timeout_seconds=15,
-            poll_interval_seconds=0.01,
-            max_poll_attempts=5,
-        ),
+    context = _foundry_context(
         bundle_path=bundle_path,
         dataset_path=dataset_path,
-        backend_output_dir=tmp_path / "out-agent-foundry-sim",
+        output_dir=tmp_path / "out-agent-foundry-sim",
     )
 
     responses = [
@@ -276,20 +307,10 @@ def test_foundry_backend_uses_similarity_evaluator_when_source_is_foundry(
 def test_foundry_backend_rejects_unsupported_local_evaluator(tmp_path: Path) -> None:
     dataset_path = _dataset_yaml(tmp_path)
     bundle_path = _bundle_yaml(tmp_path, similarity_source="local")
-    context = BackendRunContext(
-        backend_config=BackendConfig(
-            type="foundry",
-            target="agent",
-            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
-            agent_id="asst_abc123",
-            api_version="2025-05-01",
-            timeout_seconds=15,
-            poll_interval_seconds=0.01,
-            max_poll_attempts=5,
-        ),
+    context = _foundry_context(
         bundle_path=bundle_path,
         dataset_path=dataset_path,
-        backend_output_dir=tmp_path / "out-agent-unsupported-local",
+        output_dir=tmp_path / "out-agent-unsupported-local",
     )
 
     with patch(
@@ -307,20 +328,13 @@ def test_foundry_backend_model_direct_target(tmp_path: Path) -> None:
     """Verify model-direct target calls the model via chat completions."""
     dataset_path = _dataset_yaml(tmp_path)
     bundle_path = _bundle_yaml(tmp_path)
-    context = BackendRunContext(
-        backend_config=BackendConfig(
-            type="foundry",
-            target="model",
-            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
-            model="gpt-5-mini",
-            api_version="2025-05-01",
-            timeout_seconds=15,
-            poll_interval_seconds=0.01,
-            max_poll_attempts=5,
-        ),
+    context = _foundry_context(
         bundle_path=bundle_path,
         dataset_path=dataset_path,
-        backend_output_dir=tmp_path / "out-model-direct",
+        output_dir=tmp_path / "out-model-direct",
+        target_type="model",
+        agent_id=None,
+        model="gpt-5-mini",
     )
 
     def _fake_invoke_model_direct(self_backend, settings, prompt):
@@ -351,27 +365,20 @@ def test_foundry_backend_model_direct_target(tmp_path: Path) -> None:
 def test_foundry_backend_model_target_requires_explicit_model(tmp_path: Path) -> None:
     dataset_path = _dataset_yaml(tmp_path)
     bundle_path = _bundle_yaml(tmp_path)
-    context = BackendRunContext(
-        backend_config=BackendConfig(
-            type="foundry",
-            target="model",
-            project_endpoint="https://example.services.ai.azure.com/api/projects/proj-a",
-            api_version="2025-05-01",
-            timeout_seconds=15,
-            poll_interval_seconds=0.01,
-            max_poll_attempts=5,
-        ),
+    context = _foundry_context(
         bundle_path=bundle_path,
         dataset_path=dataset_path,
-        backend_output_dir=tmp_path / "out-model-missing",
+        output_dir=tmp_path / "out-model-missing",
+        target_type="model",
+        agent_id=None,
     )
 
     try:
         FoundryBackend().execute(context)
         assert False, "expected ValueError"
     except ValueError as exc:
-        assert "target=model" in str(exc)
-        assert "backend.model" in str(exc)
+        assert "model" in str(exc).lower()
+        assert "endpoint.model" in str(exc) or "deployment" in str(exc)
 
 
 # ---------------------------------------------------------------------------
@@ -473,22 +480,6 @@ def test_cloud_evaluator_data_mapping_retrieval() -> None:
     assert mapping["query"] == "{{item.input}}"
 
 
-def test_cloud_evaluator_data_mapping_tool_selection() -> None:
-    mapping = _cloud_evaluator_data_mapping("tool_selection", "input", "expected")
-    assert mapping["query"] == "{{item.input}}"
-    assert mapping["response"] == "{{sample.output_text}}"
-    assert mapping["tool_calls"] == "{{sample.tool_calls}}"
-    assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
-
-
-def test_cloud_evaluator_data_mapping_tool_input_accuracy() -> None:
-    mapping = _cloud_evaluator_data_mapping("tool_input_accuracy", "input", "expected")
-    assert mapping["query"] == "{{item.input}}"
-    assert mapping["response"] == "{{sample.output_text}}"
-    assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
-    assert "tool_calls" not in mapping
-
-
 def test_cloud_evaluator_data_mapping_tool_output_utilization() -> None:
     mapping = _cloud_evaluator_data_mapping(
         "tool_output_utilization", "input", "expected"
@@ -533,30 +524,297 @@ def test_cloud_evaluator_data_mapping_intent_resolution_default_path() -> None:
     assert mapping["response"] == "{{sample.output_text}}"
 
 
+def test_default_foundry_input_mapping_coherence() -> None:
+    mapping = _default_foundry_input_mapping("CoherenceEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert "ground_truth" not in mapping
+    assert "context" not in mapping
+
+
+def test_default_foundry_input_mapping_fluency() -> None:
+    mapping = _default_foundry_input_mapping("FluencyEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+
+
+def test_default_foundry_input_mapping_f1_score() -> None:
+    mapping = _default_foundry_input_mapping("F1ScoreEvaluator")
+    assert mapping["response"] == "$prediction"
+    assert mapping["ground_truth"] == "$expected"
+    assert "query" not in mapping
+
+
+def test_default_foundry_input_mapping_relevance() -> None:
+    mapping = _default_foundry_input_mapping("RelevanceEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert mapping["context"] == "$row.context"
+
+
+def test_default_foundry_input_mapping_retrieval() -> None:
+    mapping = _default_foundry_input_mapping("RetrievalEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert mapping["context"] == "$row.context"
+
+
+def test_default_foundry_input_mapping_response_completeness() -> None:
+    mapping = _default_foundry_input_mapping("ResponseCompletenessEvaluator")
+    assert mapping["response"] == "$prediction"
+    assert mapping["ground_truth"] == "$expected"
+    assert "query" not in mapping
+
+
+def test_default_foundry_input_mapping_intent_resolution() -> None:
+    mapping = _default_foundry_input_mapping("IntentResolutionEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert "tool_calls" not in mapping
+
+
+def test_default_foundry_input_mapping_task_adherence() -> None:
+    mapping = _default_foundry_input_mapping("TaskAdherenceEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+
+
 def test_default_foundry_input_mapping_tool_selection() -> None:
     mapping = _default_foundry_input_mapping("ToolSelectionEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
     assert mapping["tool_calls"] == "$row.tool_calls"
     assert mapping["tool_definitions"] == "$row.tool_definitions"
 
 
 def test_default_foundry_input_mapping_tool_input_accuracy() -> None:
     mapping = _default_foundry_input_mapping("ToolInputAccuracyEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
     assert mapping["tool_definitions"] == "$row.tool_definitions"
     assert "tool_calls" not in mapping
 
 
-def test_default_foundry_input_mapping_coherence() -> None:
-    mapping = _default_foundry_input_mapping("CoherenceEvaluator")
-    assert mapping["query"] == "$prompt"
-    assert mapping["response"] == "$prediction"
+def test_cloud_evaluator_data_mapping_relevance_uses_context() -> None:
+    mapping = _cloud_evaluator_data_mapping(
+        "relevance", "input", "expected", context_field="context"
+    )
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert mapping["context"] == "{{item.context}}"
     assert "ground_truth" not in mapping
 
 
-def test_default_foundry_input_mapping_response_completeness() -> None:
-    mapping = _default_foundry_input_mapping("ResponseCompletenessEvaluator")
-    assert mapping["ground_truth"] == "$expected"
+def test_cloud_evaluator_data_mapping_retrieval_uses_context() -> None:
+    mapping = _cloud_evaluator_data_mapping(
+        "retrieval", "input", "expected", context_field="context"
+    )
+    assert mapping["context"] == "{{item.context}}"
+
+
+def test_cloud_evaluator_data_mapping_tool_selection() -> None:
+    mapping = _cloud_evaluator_data_mapping("tool_selection", "input", "expected")
+    assert mapping["tool_calls"] == "{{sample.tool_calls}}"
+    assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
+
+
+def test_cloud_evaluator_data_mapping_tool_input_accuracy() -> None:
+    mapping = _cloud_evaluator_data_mapping("tool_input_accuracy", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["tool_definitions"] == "{{item.tool_definitions}}"
+    assert "tool_calls" not in mapping
+
+
+# ---------------------------------------------------------------------------
+# Safety evaluator tests
+# ---------------------------------------------------------------------------
+
+
+def test_cloud_evaluator_data_mapping_violence() -> None:
+    mapping = _cloud_evaluator_data_mapping("violence", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert "ground_truth" not in mapping
+    assert "context" not in mapping
+    assert "tool_calls" not in mapping
+
+
+def test_cloud_evaluator_data_mapping_sexual() -> None:
+    mapping = _cloud_evaluator_data_mapping("sexual", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert len(mapping) == 2
+
+
+def test_cloud_evaluator_data_mapping_self_harm() -> None:
+    mapping = _cloud_evaluator_data_mapping("self_harm", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert len(mapping) == 2
+
+
+def test_cloud_evaluator_data_mapping_hate_unfairness() -> None:
+    mapping = _cloud_evaluator_data_mapping("hate_unfairness", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert len(mapping) == 2
+
+
+def test_cloud_evaluator_data_mapping_protected_material() -> None:
+    mapping = _cloud_evaluator_data_mapping("protected_material", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert len(mapping) == 2
+
+
+def test_cloud_evaluator_data_mapping_content_safety() -> None:
+    mapping = _cloud_evaluator_data_mapping("content_safety", "input", "expected")
+    assert mapping["query"] == "{{item.input}}"
+    assert mapping["response"] == "{{sample.output_text}}"
+    assert len(mapping) == 2
+
+
+def test_cloud_evaluator_needs_model_safety_evaluators() -> None:
+    """Safety evaluators use azure_ai_project, not a judge model."""
+    safety_builtins = [
+        "violence",
+        "sexual",
+        "self_harm",
+        "hate_unfairness",
+        "content_safety",
+        "protected_material",
+        "code_vulnerability",
+        "ungrounded_attributes",
+        "indirect_attack",
+    ]
+    for name in safety_builtins:
+        assert not _cloud_evaluator_needs_model(name), f"{name} should not need a model"
+
+
+def test_cloud_evaluator_needs_model_quality_evaluators() -> None:
+    """Quality evaluators still need a model."""
+    quality_builtins = ["similarity", "coherence", "fluency", "groundedness"]
+    for name in quality_builtins:
+        assert _cloud_evaluator_needs_model(name), f"{name} should need a model"
+
+
+def test_cloud_evaluator_needs_model_nlp_evaluators() -> None:
+    """NLP evaluators do not need a model."""
+    nlp_builtins = [
+        "f1_score",
+        "bleu_score",
+        "rouge_score",
+        "meteor_score",
+        "gleu_score",
+    ]
+    for name in nlp_builtins:
+        assert not _cloud_evaluator_needs_model(name), f"{name} should not need a model"
+
+
+def test_default_foundry_input_mapping_violence() -> None:
+    mapping = _default_foundry_input_mapping("ViolenceEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert "ground_truth" not in mapping
+    assert "context" not in mapping
+
+
+def test_default_foundry_input_mapping_sexual() -> None:
+    mapping = _default_foundry_input_mapping("SexualEvaluator")
+    assert mapping["query"] == "$prompt"
+    assert mapping["response"] == "$prediction"
+    assert len(mapping) == 2
+
+
+def test_default_foundry_input_mapping_self_harm() -> None:
+    mapping = _default_foundry_input_mapping("SelfHarmEvaluator")
+    assert mapping == {"query": "$prompt", "response": "$prediction"}
+
+
+def test_default_foundry_input_mapping_hate_unfairness() -> None:
+    mapping = _default_foundry_input_mapping("HateUnfairnessEvaluator")
+    assert mapping == {"query": "$prompt", "response": "$prediction"}
+
+
+def test_default_foundry_input_mapping_protected_material() -> None:
+    mapping = _default_foundry_input_mapping("ProtectedMaterialEvaluator")
+    assert mapping == {"query": "$prompt", "response": "$prediction"}
+
+
+def test_default_foundry_input_mapping_content_safety() -> None:
+    mapping = _default_foundry_input_mapping("ContentSafetyEvaluator")
+    assert mapping == {"query": "$prompt", "response": "$prediction"}
 
 
 def test_default_foundry_input_mapping_groundedness_pro() -> None:
     mapping = _default_foundry_input_mapping("GroundednessProEvaluator")
-    assert mapping["context"] == "$row.context"
+    assert mapping == {"query": "$prompt", "response": "$prediction"}
+
+
+# ---------------------------------------------------------------------------
+# model_config auto-injection tests
+# ---------------------------------------------------------------------------
+
+
+def test_model_config_injected_for_all_ai_assisted_evaluators() -> None:
+    """Verify model_config is auto-injected for ALL AI-assisted evaluators, not just 2."""
+    import importlib as _real_importlib
+
+    from agentops.backends.eval_engine import (
+        _AI_ASSISTED_EVALUATORS,
+        _load_foundry_evaluator_callable,
+    )
+
+    # Capture a direct reference to the real import_module BEFORE patching
+    _orig_import_module = _real_importlib.import_module
+
+    # Create a fake evaluator class that captures its kwargs
+    class FakeEvaluator:
+        def __init__(self, **kwargs):
+            self.init_kwargs = kwargs
+
+        def __call__(self, **kwargs):
+            return {}
+
+    # Create a fake module with all AI-assisted evaluator classes
+    fake_module = SimpleNamespace(
+        **{name: type(name, (FakeEvaluator,), {}) for name in _AI_ASSISTED_EVALUATORS}
+    )
+
+    # Only intercept "azure.ai.evaluation" imports, let everything else through
+    def _selective_import(name, *args, **kwargs):
+        if name == "azure.ai.evaluation":
+            return fake_module
+        return _orig_import_module(name, *args, **kwargs)
+
+    for evaluator_name in _AI_ASSISTED_EVALUATORS:
+        with (
+            patch.dict(
+                "os.environ",
+                {
+                    "AZURE_OPENAI_ENDPOINT": "https://test.openai.azure.com/",
+                    "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
+                },
+            ),
+            patch(
+                "agentops.backends.eval_engine.importlib.import_module",
+                side_effect=_selective_import,
+            ),
+            patch(
+                "agentops.backends.eval_engine._default_credential",
+                return_value="fake-cred",
+            ),
+        ):
+            evaluator = _load_foundry_evaluator_callable(
+                evaluator_name=evaluator_name,
+                evaluator_config={"kind": "builtin", "class_name": evaluator_name},
+            )
+            assert hasattr(evaluator, "init_kwargs"), (
+                f"{evaluator_name}: expected FakeEvaluator instance"
+            )
+            assert "model_config" in evaluator.init_kwargs, (
+                f"{evaluator_name}: model_config was NOT auto-injected"
+            )
+            mc = evaluator.init_kwargs["model_config"]
+            assert mc["azure_endpoint"] == "https://test.openai.azure.com/"
+            assert mc["azure_deployment"] == "gpt-4o-mini"

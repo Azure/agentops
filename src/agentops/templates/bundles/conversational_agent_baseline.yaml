@@ -1,0 +1,76 @@
+version: 1
+name: conversational_agent_baseline
+description: >
+  Baseline evaluation bundle for conversational agents (chatbots, assistants,
+  Q&A bots). Evaluates response quality, coherence, fluency, and relevance
+  without requiring tool-call data or retrieval context.
+evaluators:
+  - name: CoherenceEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: CoherenceEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["coherence"]
+  - name: FluencyEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: FluencyEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["fluency"]
+  - name: RelevanceEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: RelevanceEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+      score_keys: ["relevance"]
+  - name: SimilarityEvaluator
+    source: foundry
+    enabled: true
+    config:
+      kind: builtin
+      class_name: SimilarityEvaluator
+      input_mapping:
+        query: "$prompt"
+        response: "$prediction"
+        ground_truth: "$expected"
+      score_keys: ["similarity"]
+  - name: avg_latency_seconds
+    source: local
+    enabled: true
+thresholds:
+  - evaluator: CoherenceEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: FluencyEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: RelevanceEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: SimilarityEvaluator
+    criteria: ">="
+    value: 3
+  - evaluator: avg_latency_seconds
+    criteria: "<="
+    value: 10.0
+metadata:
+  category: conversational
+  scenario: conversational_agent
+  tags:
+    - baseline
+    - conversational
+    - coherence
+    - fluency
+    - relevance

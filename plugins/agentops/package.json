@@ -30,22 +30,28 @@
   "contributes": {
     "chatSkills": [
       {
-        "path": "./skills/agentops-workspace-setup/SKILL.md"
+        "path": "./skills/agentops-eval/SKILL.md"
       },
       {
-        "path": "./skills/agentops-run-evals/SKILL.md"
+        "path": "./skills/agentops-config/SKILL.md"
       },
       {
-        "path": "./skills/agentops-investigate-regression/SKILL.md"
+        "path": "./skills/agentops-dataset/SKILL.md"
       },
       {
-        "path": "./skills/agentops-observability-triage/SKILL.md"
+        "path": "./skills/agentops-report/SKILL.md"
       },
       {
-        "path": "./skills/agentops-browse-inspect/SKILL.md"
+        "path": "./skills/agentops-regression/SKILL.md"
       },
       {
-        "path": "./skills/agentops-dataset-management/SKILL.md"
+        "path": "./skills/agentops-trace/SKILL.md"
+      },
+      {
+        "path": "./skills/agentops-monitor/SKILL.md"
+      },
+      {
+        "path": "./skills/agentops-workflow/SKILL.md"
       }
     ]
   },

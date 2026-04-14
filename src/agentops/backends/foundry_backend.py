@@ -5,75 +5,39 @@ from __future__ import annotations
 import json
 import logging
 import os
-import time
 import re
-import inspect
-import importlib
-import uuid
+import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Callable, Dict, List
+from typing import Any
 
 from agentops.backends.base import BackendExecutionResult, BackendRunContext
+from agentops.backends.eval_engine import (
+    _CREDENTIAL_HELP_MESSAGE,
+    _NLP_DEFAULT_INIT_PARAMS,
+    _build_foundry_evaluator_runtimes,
+    _cloud_evaluator_data_mapping,
+    _cloud_evaluator_needs_model,
+    _load_jsonl,
+    _normalize_text,
+    _parse_agent_name_version,
+    _resolve_dataset_source_path,
+    _run_foundry_evaluator,
+    _to_builtin_evaluator_name,
+    _validate_supported_local_evaluators,
+)
 from agentops.core.config_loader import load_bundle_config, load_dataset_config
-from agentops.core.models import EvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
-_CREDENTIAL_HELP_MESSAGE = (
-    "Azure authentication failed. To fix this, do one of the following:\n"
-    "\n"
-    "  1. Run 'az login' (Azure CLI) to authenticate interactively.\n"
-    "  2. Set AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_CLIENT_SECRET \n"
-    "     environment variables for service-principal authentication.\n"
-    "  3. If running on Azure, ensure a managed identity is configured.\n"
-    "\n"
-    "Docs: https://aka.ms/azsdk/python/identity/defaultazurecredential/troubleshoot"
-)
-
 
 def _to_utc_timestamp(value: datetime) -> str:
-    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _resolve_dataset_source_path(dataset_config_path: Path, source_path: Path) -> Path:
-    if source_path.is_absolute():
-        return source_path
-
-    candidate = (dataset_config_path.parent / source_path).resolve()
-    if candidate.exists():
-        return candidate
-
-    fallback = (Path.cwd() / source_path).resolve()
-    if fallback.exists():
-        return fallback
-
-    return candidate
-
-
-def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        payload = json.loads(stripped)
-        if not isinstance(payload, dict):
-            raise ValueError("Dataset JSONL rows must be objects")
-        rows.append(payload)
-    if not rows:
-        raise ValueError(f"Dataset is empty: {path}")
-    return rows
-
-
-def _normalize_text(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 # ---------------------------------------------------------------------------
@@ -89,120 +53,6 @@ def _should_use_cloud_evaluation(project_endpoint: str) -> bool:
     if "example.services.ai.azure.com" in project_endpoint:
         return False
     return True
-
-
-def _to_builtin_evaluator_name(evaluator_name: str) -> str:
-    """Convert 'SimilarityEvaluator' → 'similarity'."""
-    normalized = evaluator_name.strip()
-    if normalized.endswith("Evaluator"):
-        normalized = normalized[:-9]
-    snake = re.sub(r"(?<!^)(?=[A-Z])", "_", normalized).lower()
-    return snake
-
-
-def _parse_agent_name_version(agent_id: str) -> tuple[str, str | None]:
-    """Parse 'my-agent:3' into ('my-agent', '3')."""
-    if ":" in agent_id:
-        name, version = agent_id.split(":", 1)
-        return name.strip(), version.strip() or None
-    return agent_id.strip(), None
-
-
-_NLP_ONLY_EVALUATORS = frozenset(
-    {
-        "f1_score",
-        "bleu_score",
-        "rouge_score",
-        "meteor_score",
-        "gleu_score",
-    }
-)
-
-_EVALUATORS_NEEDING_GROUND_TRUTH = frozenset(
-    {
-        "similarity",
-        "response_completeness",
-        "f1_score",
-        "bleu_score",
-        "rouge_score",
-        "meteor_score",
-        "gleu_score",
-    }
-)
-
-_EVALUATORS_NEEDING_CONTEXT = frozenset(
-    {
-        "groundedness",
-        "groundedness_pro",
-        "retrieval",
-    }
-)
-
-_EVALUATORS_NEEDING_TOOL_CALLS = frozenset(
-    {
-        "tool_call_accuracy",
-        "tool_selection",
-    }
-)
-
-_EVALUATORS_NEEDING_TOOL_DEFS_ONLY = frozenset(
-    {
-        "tool_input_accuracy",
-        "tool_output_utilization",
-        "tool_call_success",
-    }
-)
-
-_EVALUATORS_NEEDING_OUTPUT_ITEMS = frozenset(
-    {
-        "task_adherence",
-    }
-)
-
-
-def _cloud_evaluator_data_mapping(
-    builtin_name: str,
-    input_field: str,
-    expected_field: str,
-    context_field: str | None = None,
-) -> Dict[str, str]:
-    """Build ``data_mapping`` for an ``azure_ai_evaluator`` testing criterion."""
-    item_input = "{{item." + input_field + "}}"
-    item_expected = "{{item." + expected_field + "}}"
-    sample_response = "{{sample.output_text}}"
-
-    mapping: Dict[str, str] = {}
-    if builtin_name not in _NLP_ONLY_EVALUATORS:
-        mapping["query"] = item_input
-    if builtin_name in _EVALUATORS_NEEDING_OUTPUT_ITEMS:
-        mapping["response"] = "{{sample.output_items}}"
-    else:
-        mapping["response"] = sample_response
-    if builtin_name in _EVALUATORS_NEEDING_GROUND_TRUTH:
-        mapping["ground_truth"] = item_expected
-    elif builtin_name in _EVALUATORS_NEEDING_CONTEXT:
-        # Use the dedicated context column when declared in dataset format;
-        # fall back to expected_field only when no context_field is configured.
-        context_item = "{{item." + (context_field or expected_field) + "}}"
-        mapping["context"] = context_item
-    elif builtin_name in _EVALUATORS_NEEDING_TOOL_CALLS:
-        mapping["tool_calls"] = "{{sample.tool_calls}}"
-        mapping["tool_definitions"] = "{{item.tool_definitions}}"
-    elif builtin_name in _EVALUATORS_NEEDING_TOOL_DEFS_ONLY:
-        mapping["tool_definitions"] = "{{item.tool_definitions}}"
-    return mapping
-
-
-def _cloud_evaluator_needs_model(builtin_name: str) -> bool:
-    """Return True if the evaluator is AI-assisted and needs a deployment_name."""
-    return builtin_name not in _NLP_ONLY_EVALUATORS
-
-
-# Default initialization_parameters for evaluators that require them but are
-# not AI-assisted (so they don't get deployment_name automatically).
-_NLP_DEFAULT_INIT_PARAMS: Dict[str, Dict[str, Any]] = {
-    "rouge_score": {"rouge_type": "rouge1"},
-}
 
 
 # ---------------------------------------------------------------------------
@@ -269,14 +119,6 @@ class FoundrySettings:
     target: str = "agent"  # 'agent' or 'model'
 
 
-@dataclass(frozen=True)
-class FoundryEvaluatorRuntime:
-    name: str
-    evaluator: Callable[..., Dict[str, Any]]
-    input_mapping: Dict[str, str]
-    score_keys: List[str]
-
-
 def _derive_openai_endpoint_from_project(project_endpoint: str) -> str:
     """Derive the Azure OpenAI base endpoint from a Foundry project endpoint.
 
@@ -289,598 +131,27 @@ def _derive_openai_endpoint_from_project(project_endpoint: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}/"
 
 
-def _azure_openai_model_config(
-    *,
-    fallback_endpoint: str | None = None,
-    fallback_deployment: str | None = None,
-) -> Dict[str, str]:
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT") or fallback_endpoint
-    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or fallback_deployment
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-
-    missing: List[str] = []
-    if not endpoint:
-        missing.append("AZURE_OPENAI_ENDPOINT")
-    if not deployment:
-        missing.append("AZURE_OPENAI_DEPLOYMENT")
-
-    if missing:
-        raise ValueError(
-            "Foundry evaluator requires Azure OpenAI evaluator model settings. "
-            "Missing: " + ", ".join(missing)
-        )
-
-    assert endpoint is not None
-    assert deployment is not None
-    model_config: Dict[str, str] = {
-        "azure_endpoint": endpoint,
-        "azure_deployment": deployment,
-    }
-    if api_version:
-        model_config["api_version"] = api_version
-    return model_config
-
-
-def _default_credential() -> Any:
-    try:
-        from azure.identity import DefaultAzureCredential  # noqa: WPS433
-    except ImportError as exc:
-        raise ImportError(
-            "Foundry evaluators require 'azure-identity'. "
-            "Install with: pip install azure-identity"
-        ) from exc
-
-    try:
-        return DefaultAzureCredential(exclude_developer_cli_credential=True)
-    except Exception as exc:
-        raise RuntimeError(_CREDENTIAL_HELP_MESSAGE) from exc
-
-
-_AI_ASSISTED_EVALUATORS = {
-    "GroundednessEvaluator",
-    "RelevanceEvaluator",
-    "CoherenceEvaluator",
-    "FluencyEvaluator",
-    "SimilarityEvaluator",
-    "RetrievalEvaluator",
-    "ResponseCompletenessEvaluator",
-    "QAEvaluator",
-    "IntentResolutionEvaluator",
-    "TaskAdherenceEvaluator",
-    "ToolCallAccuracyEvaluator",
-    "TaskCompletionEvaluator",
-    "TaskNavigationEfficiencyEvaluator",
-    "ToolSelectionEvaluator",
-    "ToolInputAccuracyEvaluator",
-    "ToolOutputUtilizationEvaluator",
-    "ToolCallSuccessEvaluator",
-}
-
-
-def _is_reasoning_like_deployment_name(name: str) -> bool:
-    normalized = name.strip().lower()
-    if not normalized:
-        return False
-    return (
-        normalized.startswith("o1")
-        or normalized.startswith("o3")
-        or normalized.startswith("o4")
-        or normalized.startswith("gpt-5")
-    )
-
-
-def _should_enable_reasoning_mode(
-    *,
-    evaluator_name: str,
-    init_kwargs: Dict[str, Any],
-) -> bool:
-    if evaluator_name not in _AI_ASSISTED_EVALUATORS:
-        return False
-    if "is_reasoning_model" in init_kwargs:
-        return False
-
-    model_config = init_kwargs.get("model_config")
-    if not isinstance(model_config, dict):
-        return False
-
-    deployment = model_config.get("azure_deployment") or model_config.get("model")
-    if not isinstance(deployment, str):
-        return False
-
-    return _is_reasoning_like_deployment_name(deployment)
-
-
-def _instantiate_evaluator_symbol(
-    evaluator_symbol: Any,
-    *,
-    evaluator_name: str,
-    init_kwargs: Dict[str, Any],
-) -> Callable[..., Dict[str, Any]]:
-    if not inspect.isclass(evaluator_symbol):
-        if callable(evaluator_symbol):
-            if init_kwargs:
-                raise ValueError(
-                    f"Evaluator '{evaluator_name}' resolved to callable and does not support config.init"
-                )
-            return evaluator_symbol
-        raise ValueError(f"Evaluator '{evaluator_name}' is not callable")
-
-    try:
-        return evaluator_symbol(**init_kwargs)
-    except TypeError as exc:
-        if "is_reasoning_model" in init_kwargs:
-            fallback_kwargs = dict(init_kwargs)
-            fallback_kwargs.pop("is_reasoning_model", None)
-            return evaluator_symbol(**fallback_kwargs)
-        raise exc
-
-
-def _interpolate_env_values(value: Any) -> Any:
-    if isinstance(value, str):
-        match = re.fullmatch(r"\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}", value)
-        if not match:
-            return value
-        env_name = match.group(1)
-        env_value = os.getenv(env_name)
-        if env_value is None:
-            raise ValueError(
-                f"Missing environment variable required by evaluator config: {env_name}"
-            )
-        return env_value
-    if isinstance(value, dict):
-        return {key: _interpolate_env_values(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_interpolate_env_values(item) for item in value]
-    return value
-
-
-def _to_snake_case(value: str) -> str:
-    return re.sub(r"(?<!^)(?=[A-Z])", "_", value).lower()
-
-
-def _default_foundry_input_mapping(name: str) -> Dict[str, str]:
-    builtin = _to_builtin_evaluator_name(name)
-    if builtin in _EVALUATORS_NEEDING_GROUND_TRUTH:
-        return {
-            "query": "$prompt",
-            "response": "$prediction",
-            "ground_truth": "$expected",
-        }
-    if builtin in _EVALUATORS_NEEDING_CONTEXT:
-        return {
-            "query": "$prompt",
-            "response": "$prediction",
-            # Use the dedicated 'context' row field (retrieved documents).
-            # Override via evaluators[].config.input_mapping in the bundle
-            # if your dataset column has a different name.
-            "context": "$row.context",
-        }
-    if builtin in _EVALUATORS_NEEDING_TOOL_CALLS:
-        return {
-            "query": "$prompt",
-            "response": "$prediction",
-            "tool_calls": "$row.tool_calls",
-            "tool_definitions": "$row.tool_definitions",
-        }
-    if builtin in _EVALUATORS_NEEDING_TOOL_DEFS_ONLY:
-        return {
-            "query": "$prompt",
-            "response": "$prediction",
-            "tool_definitions": "$row.tool_definitions",
-        }
-    if builtin in _EVALUATORS_NEEDING_OUTPUT_ITEMS:
-        return {
-            "query": "$prompt",
-            "response": "$prediction",
-        }
-    if builtin in _NLP_ONLY_EVALUATORS:
-        return {
-            "response": "$prediction",
-            "ground_truth": "$expected",
-        }
-    # Default: query + response (works for coherence, fluency, relevance,
-    # intent_resolution, task_completion, safety evaluators, etc.)
-    return {
-        "query": "$prompt",
-        "response": "$prediction",
-    }
-
-
-def _default_score_keys(name: str) -> List[str]:
-    snake_name = _to_snake_case(name)
-    bare_name = snake_name.replace("_evaluator", "")
-    keys = [
-        bare_name,
-        snake_name,
-        f"{bare_name}_score",
-        f"gpt_{bare_name}",
-        "score",
-        "value",
-    ]
-    seen: set[str] = set()
-    ordered: List[str] = []
-    for key in keys:
-        if key not in seen:
-            seen.add(key)
-            ordered.append(key)
-    return ordered
-
-
-def _load_foundry_evaluator_callable(
-    *,
-    evaluator_name: str,
-    evaluator_config: Dict[str, Any],
-    fallback_endpoint: str | None = None,
-    fallback_deployment: str | None = None,
-) -> Callable[..., Dict[str, Any]]:
-    kind = str(evaluator_config.get("kind", "builtin")).strip().lower()
-    init_kwargs_raw = evaluator_config.get("init", {})
-    if init_kwargs_raw is None:
-        init_kwargs_raw = {}
-    if not isinstance(init_kwargs_raw, dict):
-        raise ValueError(f"Evaluator '{evaluator_name}' config.init must be an object")
-    init_kwargs = _interpolate_env_values(init_kwargs_raw)
-
-    if kind == "builtin":
-        class_name = str(evaluator_config.get("class_name") or evaluator_name).strip()
-        if not class_name:
-            raise ValueError(
-                f"Evaluator '{evaluator_name}' class_name must be non-empty"
-            )
-
-        if (
-            class_name in {"SimilarityEvaluator", "GroundednessEvaluator"}
-            and "model_config" not in init_kwargs
-        ):
-            init_kwargs["model_config"] = _azure_openai_model_config(
-                fallback_endpoint=fallback_endpoint,
-                fallback_deployment=fallback_deployment,
-            )
-
-        if "credential" not in init_kwargs:
-            init_kwargs["credential"] = _default_credential()
-
-        if _should_enable_reasoning_mode(
-            evaluator_name=class_name,
-            init_kwargs=init_kwargs,
-        ):
-            init_kwargs["is_reasoning_model"] = True
-
-        try:
-            module = importlib.import_module("azure.ai.evaluation")
-            evaluator_symbol = getattr(module, class_name)
-        except ImportError as exc:
-            raise ImportError(
-                "Foundry evaluators require 'azure-ai-evaluation'. "
-                "Install with: pip install azure-ai-evaluation"
-            ) from exc
-        except AttributeError as exc:
-            raise ValueError(
-                f"Unknown built-in Foundry evaluator class: {class_name}"
-            ) from exc
-
-        return _instantiate_evaluator_symbol(
-            evaluator_symbol,
-            evaluator_name=evaluator_name,
-            init_kwargs=init_kwargs,
-        )
-
-    if kind == "custom":
-        callable_path = evaluator_config.get("callable_path")
-        if not isinstance(callable_path, str) or not callable_path.strip():
-            raise ValueError(
-                f"Evaluator '{evaluator_name}' with kind=custom requires config.callable_path"
-            )
-
-        module_name, separator, symbol_name = callable_path.partition(":")
-        if not separator or not module_name.strip() or not symbol_name.strip():
-            raise ValueError(
-                f"Evaluator '{evaluator_name}' callable_path must be '<module>:<symbol>'"
-            )
-
-        module = importlib.import_module(module_name.strip())
-        evaluator_symbol = getattr(module, symbol_name.strip())
-
-        return _instantiate_evaluator_symbol(
-            evaluator_symbol,
-            evaluator_name=evaluator_name,
-            init_kwargs=init_kwargs,
-        )
-
-    raise ValueError(
-        f"Evaluator '{evaluator_name}' has unsupported config.kind '{kind}'. "
-        "Use 'builtin' or 'custom'."
-    )
-
-
-def _build_foundry_evaluator_runtimes(
-    evaluators: List[EvaluatorConfig],
-    *,
-    fallback_endpoint: str | None = None,
-    fallback_deployment: str | None = None,
-) -> List[FoundryEvaluatorRuntime]:
-    runtimes: List[FoundryEvaluatorRuntime] = []
-    for evaluator in evaluators:
-        if not evaluator.enabled or evaluator.source != "foundry":
-            continue
-
-        config = evaluator.config or {}
-        if not isinstance(config, dict):
-            raise ValueError(f"Evaluator '{evaluator.name}' config must be an object")
-
-        input_mapping_raw = config.get("input_mapping")
-        if input_mapping_raw is None:
-            input_mapping = _default_foundry_input_mapping(evaluator.name)
-        else:
-            if not isinstance(input_mapping_raw, dict):
-                raise ValueError(
-                    f"Evaluator '{evaluator.name}' config.input_mapping must be an object"
-                )
-            input_mapping = {
-                str(key): str(value) for key, value in input_mapping_raw.items()
-            }
-
-        score_keys_raw = config.get("score_keys")
-        if score_keys_raw is None:
-            score_keys = _default_score_keys(evaluator.name)
-        else:
-            if not isinstance(score_keys_raw, list) or not all(
-                isinstance(item, str) for item in score_keys_raw
-            ):
-                raise ValueError(
-                    f"Evaluator '{evaluator.name}' config.score_keys must be a list of strings"
-                )
-            score_keys = score_keys_raw
-
-        evaluator_callable = _load_foundry_evaluator_callable(
-            evaluator_name=evaluator.name,
-            evaluator_config=config,
-            fallback_endpoint=fallback_endpoint,
-            fallback_deployment=fallback_deployment,
-        )
-
-        runtimes.append(
-            FoundryEvaluatorRuntime(
-                name=evaluator.name,
-                evaluator=evaluator_callable,
-                input_mapping=input_mapping,
-                score_keys=score_keys,
-            )
-        )
-    return runtimes
-
-
-def _as_number(value: Any) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    return None
-
-
-def _find_numeric_value(payload: Any) -> float | None:
-    direct = _as_number(payload)
-    if direct is not None:
-        return direct
-
-    if isinstance(payload, dict):
-        for item in payload.values():
-            found = _find_numeric_value(item)
-            if found is not None:
-                return found
-    elif isinstance(payload, list):
-        for item in payload:
-            found = _find_numeric_value(item)
-            if found is not None:
-                return found
-
-    return None
-
-
-def _extract_evaluator_score(
-    payload: Dict[str, Any], preferred_keys: List[str], evaluator_name: str
-) -> float:
-    for key in preferred_keys:
-        if key in payload:
-            numeric = _find_numeric_value(payload[key])
-            if numeric is not None:
-                return numeric
-
-    for value in payload.values():
-        numeric = _find_numeric_value(value)
-        if numeric is not None:
-            return numeric
-
-    raise ValueError(f"Foundry evaluator '{evaluator_name}' returned no numeric score")
-
-
-_SUPPORTED_LOCAL_EVALUATORS = {
-    "exact_match",
-    "latency_seconds",
-    "avg_latency_seconds",
-}
-
-
-def _validate_supported_local_evaluators(evaluators: List[EvaluatorConfig]) -> None:
-    unsupported = sorted(
-        evaluator.name
-        for evaluator in evaluators
-        if evaluator.enabled
-        and evaluator.source == "local"
-        and evaluator.name not in _SUPPORTED_LOCAL_EVALUATORS
-    )
-    if unsupported:
-        raise ValueError(
-            "Unsupported local evaluator(s): "
-            + ", ".join(unsupported)
-            + ". Supported local evaluators are: "
-            + ", ".join(sorted(_SUPPORTED_LOCAL_EVALUATORS))
-        )
-
-
-def _resolve_mapping_value(
-    expression: Any,
-    *,
-    prompt: str,
-    prediction: str,
-    expected: str,
-    row: Dict[str, Any],
-) -> Any:
-    if not isinstance(expression, str):
-        return expression
-
-    env_match = re.fullmatch(r"\$\{env:([A-Za-z_][A-Za-z0-9_]*)\}", expression)
-    if env_match:
-        env_name = env_match.group(1)
-        env_value = os.getenv(env_name)
-        if env_value is None:
-            raise ValueError(
-                f"Missing environment variable required by evaluator mapping: {env_name}"
-            )
-        return env_value
-
-    if expression.startswith("$row."):
-        row_key = expression[5:]
-        if row_key not in row:
-            raise ValueError(
-                f"Missing row field referenced by evaluator mapping: {row_key}"
-            )
-        return row[row_key]
-
-    if expression.startswith("$"):
-        token = expression[1:]
-        aliases: Dict[str, Any] = {
-            "prompt": prompt,
-            "query": prompt,
-            "input": prompt,
-            "prediction": prediction,
-            "response": prediction,
-            "output_text": prediction,
-            "expected": expected,
-            "ground_truth": expected,
-            "reference": expected,
-            "context": expected,
-        }
-        if token in aliases:
-            return aliases[token]
-        if token in row:
-            return row[token]
-        raise ValueError(f"Unknown evaluator mapping token: {expression}")
-
-    return expression
-
-
-def _build_evaluator_kwargs(
-    runtime: FoundryEvaluatorRuntime,
-    *,
-    prompt: str,
-    prediction: str,
-    expected: str,
-    row: Dict[str, Any],
-) -> Dict[str, Any]:
-    if runtime.input_mapping:
-        return {
-            key: _resolve_mapping_value(
-                value,
-                prompt=prompt,
-                prediction=prediction,
-                expected=expected,
-                row=row,
-            )
-            for key, value in runtime.input_mapping.items()
-        }
-
-    base_context: Dict[str, Any] = {
-        "prompt": prompt,
-        "query": prompt,
-        "input": prompt,
-        "response": prediction,
-        "prediction": prediction,
-        "output_text": prediction,
-        "expected": expected,
-        "ground_truth": expected,
-        "reference": expected,
-        "context": expected,
-    }
-
-    signature = inspect.signature(runtime.evaluator)
-    accepts_kwargs = any(
-        param.kind == inspect.Parameter.VAR_KEYWORD
-        for param in signature.parameters.values()
-    )
-
-    if accepts_kwargs:
-        merged = dict(base_context)
-        merged.update(row)
-        return merged
-
-    kwargs: Dict[str, Any] = {}
-    for name, param in signature.parameters.items():
-        if param.kind not in {
-            inspect.Parameter.POSITIONAL_ONLY,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            inspect.Parameter.KEYWORD_ONLY,
-        }:
-            continue
-        if name in row:
-            kwargs[name] = row[name]
-            continue
-        if name in base_context:
-            kwargs[name] = base_context[name]
-            continue
-        if param.default is inspect.Parameter.empty:
-            raise ValueError(
-                f"Evaluator '{runtime.name}' requires argument '{name}'. "
-                "Provide evaluators[].config.input_mapping in bundle config."
-            )
-    return kwargs
-
-
-def _run_foundry_evaluator(
-    runtime: FoundryEvaluatorRuntime,
-    *,
-    prompt: str,
-    prediction: str,
-    expected: str,
-    row: Dict[str, Any],
-) -> float:
-    kwargs = _build_evaluator_kwargs(
-        runtime,
-        prompt=prompt,
-        prediction=prediction,
-        expected=expected,
-        row=row,
-    )
-    payload = runtime.evaluator(**kwargs)
-    if not isinstance(payload, dict):
-        raise ValueError(f"Evaluator '{runtime.name}' returned invalid payload")
-
-    score = _extract_evaluator_score(
-        payload,
-        preferred_keys=runtime.score_keys,
-        evaluator_name=runtime.name,
-    )
-    return round(score, 6)
-
-
 class FoundryBackend:
     def _read_settings(self, context: BackendRunContext) -> FoundrySettings:
-        backend = context.backend_config
+        target_cfg = context.run_config.target
+        endpoint = target_cfg.endpoint
+        assert endpoint is not None, "Foundry backend requires target.endpoint"
+
         project_endpoint_env = (
-            backend.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+            endpoint.project_endpoint_env or "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
         )
 
-        project_endpoint = backend.project_endpoint or os.getenv(project_endpoint_env)
-        agent_id = backend.agent_id
-        target = (backend.target or "agent").strip().lower()
-        model = backend.model or os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
-        api_version = backend.api_version or "2025-05-01"
+        project_endpoint = endpoint.project_endpoint or os.getenv(project_endpoint_env)
+        agent_id = endpoint.agent_id
+        target = target_cfg.type  # "agent" or "model"
+        model = endpoint.model or os.getenv("AZURE_AI_MODEL_DEPLOYMENT_NAME")
+        api_version = endpoint.api_version or "2025-05-01"
 
         if not project_endpoint:
             raise ValueError(
                 f"Foundry backend requires a project endpoint. Set it via:\n"
                 f"\n"
-                f"  1. 'backend.project_endpoint' in your run.yaml, or\n"
+                f"  1. 'target.endpoint.project_endpoint' in your run.yaml, or\n"
                 f"  2. Environment variable {project_endpoint_env}:\n"
                 f"\n"
                 f"     PowerShell:\n"
@@ -893,12 +164,12 @@ class FoundryBackend:
             )
         if target == "agent" and not agent_id:
             raise ValueError(
-                "Foundry backend requires backend.agent_id when target=agent"
+                "Foundry backend requires target.endpoint.agent_id when target type is 'agent'"
             )
         if target == "model" and not model:
             raise ValueError(
-                "Foundry backend requires a model deployment name when target=model. "
-                "Set 'backend.model' in run.yaml or AZURE_AI_MODEL_DEPLOYMENT_NAME."
+                "Foundry backend requires a model deployment name when target type is 'model'. "
+                "Set 'target.endpoint.model' in run.yaml or AZURE_AI_MODEL_DEPLOYMENT_NAME."
             )
 
         if target == "model":
@@ -917,8 +188,8 @@ class FoundryBackend:
             api_version=api_version,
             agent_token=agent_token,
             token_scope=token_scope,
-            poll_interval_seconds=backend.poll_interval_seconds or 2.0,
-            max_poll_attempts=backend.max_poll_attempts or 120,
+            poll_interval_seconds=endpoint.poll_interval_seconds or 2.0,
+            max_poll_attempts=endpoint.max_poll_attempts or 120,
             target=target,
         )
 
@@ -927,10 +198,10 @@ class FoundryBackend:
         *,
         method: str,
         url: str,
-        headers: Dict[str, str],
+        headers: dict[str, str],
         timeout_seconds: int | None,
-        body: Dict[str, Any] | None = None,
-    ) -> Dict[str, Any]:
+        body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         request_body = json.dumps(body).encode("utf-8") if body is not None else None
         request = urllib.request.Request(
             url=url,
@@ -948,7 +219,7 @@ class FoundryBackend:
             )
         return payload
 
-    def _extract_agent_message_text(self, messages_payload: Dict[str, Any]) -> str:
+    def _extract_agent_message_text(self, messages_payload: dict[str, Any]) -> str:
         entries = messages_payload.get("data")
         if not isinstance(entries, list):
             raise ValueError(
@@ -964,7 +235,7 @@ class FoundryBackend:
                 return content.strip()
 
             if isinstance(content, list):
-                parts: List[str] = []
+                parts: list[str] = []
                 for item in content:
                     if not isinstance(item, dict):
                         continue
@@ -982,7 +253,7 @@ class FoundryBackend:
             "Invalid Foundry Agent Service response: no assistant message found"
         )
 
-    def _extract_response_output_text(self, response_payload: Dict[str, Any]) -> str:
+    def _extract_response_output_text(self, response_payload: dict[str, Any]) -> str:
         output = response_payload.get("output")
         if not isinstance(output, list):
             raise ValueError("Invalid Foundry response payload: missing output array")
@@ -995,7 +266,7 @@ class FoundryBackend:
             if not isinstance(content, list):
                 continue
 
-            parts: List[str] = []
+            parts: list[str] = []
             for part in content:
                 if not isinstance(part, dict):
                     continue
@@ -1035,7 +306,7 @@ class FoundryBackend:
             agent_name = split_name.strip()
             agent_version = split_version.strip() or None
 
-        agent_reference: Dict[str, Any] = {
+        agent_reference: dict[str, Any] = {
             "type": "agent_reference",
             "name": agent_name,
         }
@@ -1237,10 +508,10 @@ class FoundryBackend:
         )
 
         # --- Build testing criteria (azure_ai_evaluator) ---------------------
-        testing_criteria: List[Dict[str, Any]] = []
+        testing_criteria: list[dict[str, Any]] = []
         for evaluator in foundry_evaluators:
             builtin_name = _to_builtin_evaluator_name(evaluator.name)
-            criterion: Dict[str, Any] = {
+            criterion: dict[str, Any] = {
                 "type": "azure_ai_evaluator",
                 "name": evaluator.name,
                 "evaluator_name": f"builtin.{builtin_name}",
@@ -1278,7 +549,7 @@ class FoundryBackend:
             "Authorization": f"Bearer {evals_token}",
         }
 
-        def _evals_post(path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        def _evals_post(path: str, body: dict[str, Any]) -> dict[str, Any]:
             url = (
                 f"{evals_base_url}/openai/evals{path}?api-version={_EVALS_API_VERSION}"
             )
@@ -1290,7 +561,7 @@ class FoundryBackend:
                 body=body,
             )
 
-        def _evals_get(path: str, extra_params: str = "") -> Dict[str, Any]:
+        def _evals_get(path: str, extra_params: str = "") -> dict[str, Any]:
             params = f"api-version={_EVALS_API_VERSION}"
             if extra_params:
                 params = f"{params}&{extra_params}"
@@ -1303,35 +574,12 @@ class FoundryBackend:
             )
 
         # --- Data schema ----------------------------------------------------
-        # Determine which extra fields the enabled evaluators need so that
-        # the item_schema declares them and the Foundry service validates
-        # dataset rows correctly.
-        builtin_names = frozenset(
-            _to_builtin_evaluator_name(e.name) for e in foundry_evaluators
-        )
-        needs_tool_defs = bool(
-            builtin_names
-            & (_EVALUATORS_NEEDING_TOOL_CALLS | _EVALUATORS_NEEDING_TOOL_DEFS_ONLY)
-        )
-        needs_context = bool(builtin_names & _EVALUATORS_NEEDING_CONTEXT)
-
-        schema_properties: Dict[str, Any] = {
-            input_field: {"type": "string"},
-            expected_field: {"type": "string"},
-        }
-        if needs_context and dataset_config.format.context_field:
-            schema_properties[dataset_config.format.context_field] = {"type": "string"}
-        if needs_tool_defs:
-            schema_properties["tool_definitions"] = {
-                "anyOf": [
-                    {"type": "array", "items": {"type": "object"}},
-                    {"type": "object"},
-                ]
-            }
-
-        item_schema: Dict[str, Any] = {
+        item_schema: dict[str, Any] = {
             "type": "object",
-            "properties": schema_properties,
+            "properties": {
+                input_field: {"type": "string"},
+                expected_field: {"type": "string"},
+            },
             "required": [input_field, expected_field],
         }
 
@@ -1352,7 +600,7 @@ class FoundryBackend:
         logger.info("Cloud evaluation created: %s", eval_id)
 
         # --- Target + input messages ----------------------------------------
-        input_messages: Dict[str, Any] = {
+        input_messages: dict[str, Any] = {
             "type": "template",
             "template": [
                 {
@@ -1389,7 +637,7 @@ class FoundryBackend:
             # Agent target
             assert settings.agent_id is not None
             agent_name, agent_version = _parse_agent_name_version(settings.agent_id)
-            target: Dict[str, Any] = {
+            target: dict[str, Any] = {
                 "type": "azure_ai_agent",
                 "name": agent_name,
             }
@@ -1425,7 +673,7 @@ class FoundryBackend:
         terminal_failure = {"failed", "cancelled", "canceled", "expired", "error"}
         poll_start = perf_counter()
         last_logged_status: str | None = None
-        latest_run: Dict[str, Any] = eval_run
+        latest_run: dict[str, Any] = eval_run
 
         for attempt in range(1, settings.max_poll_attempts + 1):
             latest_run = _evals_get(f"/{eval_id}/runs/{run_id}")
@@ -1460,13 +708,13 @@ class FoundryBackend:
             f"/{eval_id}/runs/{run_id}/output_items",
             extra_params="order=asc&limit=100",
         )
-        output_items: List[Dict[str, Any]] = output_items_resp.get("data", [])
+        output_items: list[dict[str, Any]] = output_items_resp.get("data", [])
         if not output_items:
             raise RuntimeError(
                 "Foundry cloud evaluation completed with no output items"
             )
 
-        evaluator_aggregate_values: Dict[str, List[float]] = {
+        evaluator_aggregate_values: dict[str, list[float]] = {
             name: [] for name in enabled_evaluator_order
         }
         # Track which local evaluators the bundle actually requests.
@@ -1486,9 +734,9 @@ class FoundryBackend:
                 approx_latency_per_row,
             )
 
-        row_metrics_payload: List[Dict[str, Any]] = []
-        stdout_lines: List[str] = []
-        stderr_lines: List[str] = []
+        row_metrics_payload: list[dict[str, Any]] = []
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
 
         for index, item in enumerate(output_items, start=1):
             datasource_item = item.get("datasource_item", {}) or {}
@@ -1498,7 +746,7 @@ class FoundryBackend:
                 else {}
             )
 
-            prompt = _normalize_text(row_data.get(input_field))  # noqa: F841
+            prompt = _normalize_text(row_data.get(input_field))
             expected = _normalize_text(row_data.get(expected_field))
 
             # Extract prediction from sample
@@ -1507,7 +755,7 @@ class FoundryBackend:
             if isinstance(sample, dict):
                 prediction = _normalize_text(sample.get("output_text", ""))
 
-            row_metric_entries: List[Dict[str, Any]] = []
+            row_metric_entries: list[dict[str, Any]] = []
             for result in item.get("results", []) or []:
                 metric_name = result.get("name", "") if isinstance(result, dict) else ""
                 metric_score = (
@@ -1525,24 +773,6 @@ class FoundryBackend:
                             break
                     value = float(metric_score)
                     row_metric_entries.append({"name": metric_name, "value": value})
-                elif isinstance(metric_name, str) and metric_score is None:
-                    # Evaluator returned null score — check for error details.
-                    sample_data = result.get("sample", {}) or {}
-                    error_info = sample_data.get("error", {}) or {}
-                    error_msg = error_info.get("message", "")
-                    if error_msg:
-                        logger.warning(
-                            "Evaluator '%s' returned no score (row %d): %s",
-                            metric_name,
-                            index,
-                            error_msg,
-                        )
-                    else:
-                        logger.warning(
-                            "Evaluator '%s' returned no score for row %d",
-                            metric_name,
-                            index,
-                        )
 
             # Only emit local evaluator metrics if they are configured in the bundle.
             if "exact_match" in enabled_local_names:
@@ -1582,6 +812,9 @@ class FoundryBackend:
             row_metrics_payload.append(
                 {
                     "row_index": row_index,
+                    "input": prompt,
+                    "response": prediction,
+                    "context": row_data.get("context"),
                     "metrics": row_metric_entries,
                 }
             )
@@ -1593,7 +826,7 @@ class FoundryBackend:
         total = len(output_items)
 
         # --- Aggregate metrics ----------------------------------------------
-        metrics_entries: List[Dict[str, Any]] = []
+        metrics_entries: list[dict[str, Any]] = []
         for name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(name, [])
             if values:
@@ -1633,7 +866,7 @@ class FoundryBackend:
             encoding="utf-8",
         )
 
-        finished = datetime.now(timezone.utc)
+        finished = datetime.now(UTC)
         duration = perf_counter() - started_perf
         if settings.target == "model":
             command_display = (
@@ -1667,11 +900,11 @@ class FoundryBackend:
         stderr_path = context.backend_output_dir / "backend.stderr.log"
         metrics_path = context.backend_output_dir / "backend_metrics.json"
 
-        started = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
         started_perf = perf_counter()
 
-        stdout_lines: List[str] = []
-        stderr_lines: List[str] = []
+        stdout_lines: list[str] = []
+        stderr_lines: list[str] = []
         exit_code = 0
 
         settings = self._read_settings(context)
@@ -1727,24 +960,24 @@ class FoundryBackend:
         )
         input_field = dataset_config.format.input_field
         expected_field = dataset_config.format.expected_field
-        timeout_seconds = context.backend_config.timeout_seconds
+        timeout_seconds = context.run_config.execution.timeout_seconds
 
         total = 0
-        per_item_latencies: List[float] = []
-        row_metrics_payload: List[Dict[str, Any]] = []
+        per_item_latencies: list[float] = []
+        row_metrics_payload: list[dict[str, Any]] = []
         # Track which local evaluators the bundle actually requests.
         enabled_local_names = frozenset(
             e.name for e in enabled_evaluators if e.source == "local"
         )
 
-        evaluator_aggregate_values: Dict[str, List[float]] = {
+        evaluator_aggregate_values: dict[str, list[float]] = {
             evaluator_name: [] for evaluator_name in enabled_evaluator_order
         }
 
         def _record_row_metrics(
             *,
             row_index: int,
-            row_data: Dict[str, Any],
+            row_data: dict[str, Any],
             prompt_text: str,
             expected_text: str,
             prediction_text: str,
@@ -1755,7 +988,7 @@ class FoundryBackend:
             prediction_normalized = _normalize_text(prediction_text)
             total += 1
 
-            row_metric_entries: List[Dict[str, Any]] = []
+            row_metric_entries: list[dict[str, Any]] = []
 
             for runtime in foundry_evaluator_runtimes:
                 score = _run_foundry_evaluator(
@@ -1800,6 +1033,9 @@ class FoundryBackend:
             row_metrics_payload.append(
                 {
                     "row_index": row_index,
+                    "input": prompt_text,
+                    "response": prediction_normalized,
+                    "context": row_data.get("context"),
                     "metrics": row_metric_entries,
                 }
             )
@@ -1919,7 +1155,7 @@ class FoundryBackend:
             else 0.0
         )
 
-        metrics_entries: List[Dict[str, Any]] = []
+        metrics_entries: list[dict[str, Any]] = []
         for evaluator_name in enabled_evaluator_order:
             values = evaluator_aggregate_values.get(evaluator_name, [])
             if values:
@@ -1942,7 +1178,7 @@ class FoundryBackend:
         stdout_path.write_text("\n".join(stdout_lines), encoding="utf-8")
         stderr_path.write_text("\n".join(stderr_lines), encoding="utf-8")
 
-        finished = datetime.now(timezone.utc)
+        finished = datetime.now(UTC)
         duration = perf_counter() - started_perf
         if settings.target == "model":
             command_display = (

@@ -98,7 +98,7 @@ format:
     assert cfg.name == "smoke"
 
 
-def test_load_run_config_requires_subprocess_command(tmp_path: Path) -> None:
+def test_load_run_config_rejects_legacy_format(tmp_path: Path) -> None:
     path = tmp_path / "run.yaml"
     path.write_text(
         """
@@ -116,5 +116,78 @@ output:
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="RunConfig validation error"):
+    with pytest.raises(ValueError, match="'backend' key is not supported"):
         load_run_config(path)
+
+
+def test_load_run_config_rejects_backend_key(tmp_path: Path) -> None:
+    path = tmp_path / "run.yaml"
+    path.write_text(
+        """
+version: 1
+bundle:
+  path: ".agentops/bundles/rag_baseline.yaml"
+dataset:
+  path: ".agentops/datasets/smoke-agent.yaml"
+backend:
+  type: "http"
+  url: "http://localhost/chat"
+output:
+  write_report: true
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="'backend' key is not supported"):
+        load_run_config(path)
+
+
+def test_load_run_config_backend_error_suggests_target_hosting(tmp_path: Path) -> None:
+    """Verify the error message includes the migration hint about target.hosting."""
+    path = tmp_path / "run.yaml"
+    path.write_text(
+        """
+version: 1
+bundle:
+  path: ".agentops/bundles/rag_baseline.yaml"
+dataset:
+  path: ".agentops/datasets/smoke-agent.yaml"
+backend: foundry
+output:
+  write_report: true
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="target.hosting"):
+        load_run_config(path)
+
+
+def test_load_run_config_parses(tmp_path: Path) -> None:
+    path = tmp_path / "run.yaml"
+    path.write_text(
+        """
+version: 1
+target:
+  type: model
+  hosting: local
+  execution_mode: local
+  local:
+    adapter: "python my_adapter.py"
+bundle:
+  name: model_quality_baseline
+dataset:
+  name: smoke-model-direct
+execution:
+  timeout_seconds: 30
+output:
+  write_report: true
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    cfg = load_run_config(path)
+    assert cfg.version == 1
+    assert cfg.target.type == "model"
+    assert cfg.target.execution_mode == "local"
+    assert cfg.bundle.name == "model_quality_baseline"
