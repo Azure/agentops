@@ -49,7 +49,7 @@ Exit code contract:
 ## Quickstart
 
 <p align="center">
-<img alt="Quickstart demo: agentops init and eval run" src="https://raw.githubusercontent.com/Azure/agentops/main/media/quickstart.gif"/>
+<img alt="Quickstart demo: agentops init and eval run" src="https://github.com/Azure/agentops/raw/main/media/quickstart.gif"/>
 </p>
 
 ### 1) Install
