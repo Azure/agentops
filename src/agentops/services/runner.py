@@ -19,6 +19,9 @@ from agentops.core.config_loader import (
 )
 from agentops.core.models import (
     Artifacts,
+    BundleInfo,
+    DatasetInfo,
+    ExecutionInfo,
     ItemEvaluationResult,
     ItemThresholdEvaluationResult,
     MetricResult,
@@ -506,7 +509,7 @@ def _run_evaluation_inner(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if run_config.backend.type == "subprocess":
-        backend = SubprocessBackend()
+        backend: SubprocessBackend | FoundryBackend = SubprocessBackend()
     elif run_config.backend.type == "foundry":
         backend = FoundryBackend()
     else:
@@ -597,16 +600,16 @@ def _run_evaluation_inner(
     normalized_result = RunResult(
         version=1,
         status="completed",
-        bundle={"name": bundle_config.name, "path": bundle_path},
-        dataset={"name": dataset_config.name, "path": dataset_path},
-        execution={
-            "backend": backend_result.backend,
-            "command": backend_result.command,
-            "started_at": backend_result.started_at,
-            "finished_at": backend_result.finished_at,
-            "duration_seconds": backend_result.duration_seconds,
-            "exit_code": backend_result.exit_code,
-        },
+        bundle=BundleInfo(name=bundle_config.name, path=bundle_path),
+        dataset=DatasetInfo(name=dataset_config.name, path=dataset_path),
+        execution=ExecutionInfo(
+            backend=backend_result.backend,
+            command=backend_result.command,
+            started_at=backend_result.started_at,
+            finished_at=backend_result.finished_at,
+            duration_seconds=backend_result.duration_seconds,
+            exit_code=backend_result.exit_code,
+        ),
         metrics=metrics,
         row_metrics=row_metrics,
         item_evaluations=item_evaluations,

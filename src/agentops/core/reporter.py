@@ -525,20 +525,20 @@ def generate_comparison_html(result: ComparisonResult) -> str:
 
     # Pre-compute per-evaluator row pass rates
     eval_row_rates: dict[str, list[tuple[int, int]]] = {}
-    for tr in result.threshold_rows:
+    for thr in result.threshold_rows:
         rates = []
         for run_idx in range(len(result.runs)):
             total = 0
             passed = 0
             for ir in result.item_rows:
-                scores_list = ir.scores.get(tr.evaluator, [])
+                scores_list = ir.scores.get(thr.evaluator, [])
                 score = scores_list[run_idx] if run_idx < len(scores_list) else None
                 if score is not None:
                     total += 1
-                    if _check_threshold(score, tr.criteria, tr.target):
+                    if _check_threshold(score, thr.criteria, thr.target):
                         passed += 1
             rates.append((passed, total))
-        eval_row_rates[tr.evaluator] = rates
+        eval_row_rates[thr.evaluator] = rates
 
     parts: list[str] = []
 
@@ -707,9 +707,9 @@ def generate_comparison_html(result: ComparisonResult) -> str:
         parts.append(
             "<table><thead><tr><th>Parameter</th><th>Value</th></tr></thead><tbody>"
         )
-        for k, v in cond.fixed.items():
+        for key, val in cond.fixed.items():
             parts.append(
-                f"<tr><td>{_html_escape(k)}</td><td>{_html_escape(v)}</td></tr>"
+                f"<tr><td>{_html_escape(key)}</td><td>{_html_escape(val)}</td></tr>"
             )
         parts.append("</tbody></table>")
 
