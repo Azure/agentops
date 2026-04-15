@@ -3,6 +3,8 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.6] - 2026-04-15
+
 ### Changed
 - **Unified changelog** — removed separate `plugins/agentops/CHANGELOG.md`; CI now copies the root changelog into the VSIX package. Single source of truth for both CLI and extension.
 - **Removed `[Unreleased]` changelog pattern** — changelog entries are now added directly under versioned sections.

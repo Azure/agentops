@@ -2,7 +2,7 @@
   "name": "agentops-toolkit",
   "displayName": "AgentOps Skills for GitHub Copilot",
   "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Toolkit and Microsoft Foundry agents.",
-  "version": "0.1.0",
+  "version": "0.1.6",
   "publisher": "AgentOpsToolkit",
   "icon": "icon.png",
   "license": "MIT",
