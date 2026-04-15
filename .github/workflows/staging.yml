@@ -129,26 +129,21 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0 # Full history for version derivation
 
-      - name: Sync VSIX version from git tag
+      - name: Sync VSIX version from branch name
         run: |
-          # Use global tag sort (not git describe) to find the latest tag
-          # across ALL branches, not just reachable ones from HEAD.
-          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
-          LAST_TAG=${LAST_TAG:-v0.0.0}
-          LAST_VERSION=${LAST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
-          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
-            BASE_VERSION="$LAST_VERSION"
-          else
-            BASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+          # Derive version from the release branch name (e.g. release/v0.1.8 → 0.1.8).
+          # This avoids the PATCH+1 heuristic that leaked future versions to Marketplace.
+          BRANCH="${GITHUB_REF_NAME}"
+          VERSION="${BRANCH#release/v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not derive semver from branch '$BRANCH'. Expected release/vX.Y.Z format."
+            exit 1
           fi
-          jq --arg v "$BASE_VERSION" '.version = $v' \
+          jq --arg v "$VERSION" '.version = $v' \
             plugins/agentops/package.json > plugins/agentops/package.json.tmp
           mv plugins/agentops/package.json.tmp plugins/agentops/package.json
-          echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
+          echo "VSIX version set to $VERSION (from branch $BRANCH)"
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
