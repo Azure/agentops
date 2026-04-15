@@ -159,6 +159,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
+          skip-existing: true
 
   # ── VSIX Stable Publish ──────────────────────────────────────────────
   # Publish the VS Code extension as a stable release to the Marketplace.

@@ -105,7 +105,7 @@ if (-not $env:PYPI_TOKEN) {
         Write-Host ">>> Aborted PyPI publish" -ForegroundColor Red
         exit 1
     }
-    uv run twine upload dist/*
+    uv run twine upload --skip-existing dist/*
     Write-Host ">>> Published to PyPI" -ForegroundColor Green
 }
 
