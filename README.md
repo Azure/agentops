@@ -5,13 +5,16 @@ AgentOps CLI for evaluation, observability, and operational workflows for Micros
 </p>
 
 <p align="center">
+<a href="https://pypi.org/project/agentops-toolkit/"><img alt="PyPI" src="https://img.shields.io/pypi/v/agentops-toolkit.svg?label=PyPI&color=blue"/></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit"><img alt="VS Code Extension" src="https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg?logo=visualstudiocode"/></a>
 <a href="https://github.com/Azure/agentops/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Azure/agentops/actions/workflows/ci.yml/badge.svg?branch=develop"/></a>
 <a href="https://github.com/Azure/agentops/actions/workflows/release.yml"><img alt="Release" src="https://github.com/Azure/agentops/actions/workflows/release.yml/badge.svg"/></a>
+<a href="https://github.com/Azure/agentops"><img alt="Status: Preview" src="https://img.shields.io/badge/Status-Preview-orange.svg"/></a>
+<br/>
+<a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg"/></a>
+<a href="https://typer.tiangolo.com/"><img alt="CLI: Typer" src="https://img.shields.io/badge/CLI-Typer-5A67D8.svg"/></a>
+<a href="https://learn.microsoft.com/azure/ai-foundry/"><img alt="Built on Microsoft Foundry" src="https://img.shields.io/badge/Built%20on-Microsoft%20Foundry-0078D4.svg"/></a>
 <a href="https://github.com/Azure/agentops/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
-<img alt="Status: Preview" src="https://img.shields.io/badge/Status-Preview-orange.svg"/>
-<img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg"/>
-<img alt="CLI" src="https://img.shields.io/badge/CLI-Typer-5A67D8.svg"/>
-<img alt="Built on Microsoft Foundry" src="https://img.shields.io/badge/Built%20on-Microsoft%20Foundry-0078D4.svg"/>
 </p>
 
 ## Overview
