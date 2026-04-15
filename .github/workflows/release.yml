@@ -174,21 +174,15 @@ jobs:
 
       - name: Sync VSIX version from git tag
         run: |
-          # Use global tag sort (not git describe) to find the latest tag
-          # across ALL branches, not just reachable ones from HEAD.
-          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
-          LAST_TAG=${LAST_TAG:-v0.0.0}
-          LAST_VERSION=${LAST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
-          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
-            BASE_VERSION="$LAST_VERSION"
-          else
-            BASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-          fi
-          jq --arg v "$BASE_VERSION" '.version = $v' \
+          # Derive version from the tag name directly (most reliable for releases)
+          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG=${TAG:-$(git tag -l 'v*' --sort=-v:refname | head -1)}
+          TAG=${TAG:-v0.0.0}
+          VERSION=${TAG#v}
+          jq --arg v "$VERSION" '.version = $v' \
             plugins/agentops/package.json > plugins/agentops/package.json.tmp
           mv plugins/agentops/package.json.tmp plugins/agentops/package.json
-          echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
+          echo "VSIX version set to $VERSION (from tag $TAG)"
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
