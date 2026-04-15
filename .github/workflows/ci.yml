@@ -1,11 +1,14 @@
 # AgentOps Toolkit — CI/CD Pipelines
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR; publish dev builds to TestPyPI on develop
+#   1. ci.yml          — Lint + test on every push/PR; publish dev builds to TestPyPI on develop; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
 #   3. staging.yml     — Staging: release/* branch → TestPyPI → verify; VSIX pre-release → Marketplace
-#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GitHub Release; VSIX stable → Marketplace
+#   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
 #   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
+#
+# NOTE: VSIX publishing is handled exclusively by staging.yml (pre-release)
+# and release.yml (stable). CI only validates that the VSIX packages correctly.
 
 name: CI
 
@@ -242,60 +245,3 @@ jobs:
         with:
           name: vsix
           path: plugins/agentops/*.vsix
-
-  # Publish VSIX pre-release to Marketplace on every push to develop (not PRs)
-  publish-vsix-dev:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    needs: [lint, test, build-vsix]
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0 # Full history for version derivation
-
-      - name: Sync VSIX version from git tag
-        run: |
-          # Use global tag sort (not git describe) to find the latest tag
-          # across ALL branches, not just reachable ones from HEAD.
-          LAST_TAG=$(git tag -l 'v*' --sort=-v:refname | head -1)
-          LAST_TAG=${LAST_TAG:-v0.0.0}
-          LAST_VERSION=${LAST_TAG#v}
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
-          if git describe --tags --exact-match HEAD >/dev/null 2>&1; then
-            BASE_VERSION="$LAST_VERSION"
-          else
-            BASE_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
-          fi
-          jq --arg v "$BASE_VERSION" '.version = $v' \
-            plugins/agentops/package.json > plugins/agentops/package.json.tmp
-          mv plugins/agentops/package.json.tmp plugins/agentops/package.json
-          echo "VSIX version set to $BASE_VERSION (from tag $LAST_TAG)"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-
-      - name: Install vsce
-        run: npm install -g @vscode/vsce
-
-      - name: Copy root assets for VSIX
-        run: |
-          cp CHANGELOG.md plugins/agentops/CHANGELOG.md
-          cp icon.png plugins/agentops/icon.png
-
-      - name: Package VSIX (pre-release)
-        working-directory: plugins/agentops
-        run: vsce package --pre-release -o agentops-skills.vsix
-
-      - name: Publish pre-release to VS Code Marketplace
-        continue-on-error: true # Tolerate "already exists" for dev builds
-        working-directory: plugins/agentops
-        run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
-
-      - name: Summary
-        run: |
-          echo "## ✅ VSIX pre-release published to Marketplace" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Extension: [AgentOps Toolkit](https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit)" >> "$GITHUB_STEP_SUMMARY"
