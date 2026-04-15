@@ -12,7 +12,7 @@
 #   7. Creates GitHub Release with artifacts
 #   8. Syncs develop from main
 #
-# Usage:  .\.local\release.ps1
+# Usage:  .\scripts\release.ps1
 # Prereqs:
 #   - PR merged to main
 #   - gh auth login

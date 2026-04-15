@@ -11,7 +11,7 @@
 #   6. Build VSIX pre-release
 #   7. Publish VSIX pre-release to Marketplace
 #
-# Usage:  .\.local\staging.ps1
+# Usage:  .\scripts\staging.ps1
 # Prereqs:
 #   - uv installed
 #   - twine: pip install twine (for TestPyPI upload)
@@ -151,4 +151,4 @@ Write-Host "  Tests:    passed" -ForegroundColor Cyan
 Write-Host "  Build:    dist/" -ForegroundColor Cyan
 if (-not $skipTestPyPI) { Write-Host "  TestPyPI: published + verified" -ForegroundColor Cyan }
 if (-not $skipVSIX) { Write-Host "  VSIX:     plugins/agentops/agentops-skills.vsix" -ForegroundColor Cyan }
-Write-Host "`nNext: merge the PR, then run .\.local\release.ps1" -ForegroundColor DarkYellow
+Write-Host "`nNext: merge the PR, then run .\scripts\release.ps1" -ForegroundColor DarkYellow

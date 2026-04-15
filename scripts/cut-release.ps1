@@ -12,7 +12,7 @@
 #   7. Commits and pushes the branch
 #   8. Creates a PR to main via gh CLI
 #
-# Usage:  .\.local\cut-release.ps1
+# Usage:  .\scripts\cut-release.ps1
 # Prereq: gh auth login
 # ─────────────────────────────────────────────────────────────────────
 
@@ -86,10 +86,10 @@ Automated release branch created from ``develop``.
 - ``plugins/agentops/package.json`` version synced to ``$version``
 
 ### Next steps
-1. Run staging locally: ``.\.local\staging.ps1``
+1. Run staging locally: ``.\scripts\staging.ps1``
 2. Review and approve this PR
 3. Merge to ``main``
-4. Run release locally: ``.\.local\release.ps1``
+4. Run release locally: ``.\scripts\release.ps1``
 5. Sync develop: ``git checkout develop; git merge main; git push origin develop``
 
 ### Checklist
@@ -111,4 +111,4 @@ gh pr create `
 Write-Host "`n✅ Cut Release complete!" -ForegroundColor Green
 Write-Host "  Branch: release/v$version" -ForegroundColor Cyan
 Write-Host "  PR:     release/v$version → main" -ForegroundColor Cyan
-Write-Host "`nNext: run .\.local\staging.ps1 to build + verify" -ForegroundColor DarkYellow
+Write-Host "`nNext: run .\scripts\staging.ps1 to build + verify" -ForegroundColor DarkYellow
