@@ -59,7 +59,7 @@ jobs:
       id-token: write # Required for PyPI Trusted Publishing (OIDC)
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -157,6 +157,11 @@ jobs:
 
       - name: Install vsce
         run: npm install -g @vscode/vsce
+
+      - name: Copy root assets for VSIX
+        run: |
+          cp CHANGELOG.md plugins/agentops/CHANGELOG.md
+          cp icon.png plugins/agentops/icon.png
 
       - name: Package VSIX (pre-release)
         working-directory: plugins/agentops

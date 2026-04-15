@@ -106,15 +106,15 @@ We maintain [CHANGELOG.md](CHANGELOG.md) using the **Keep a Changelog** format a
 
 Rules:
 
-- All user-visible changes must include a changelog entry under **`[Unreleased]`**.
+- All user-visible changes must include a changelog entry under the appropriate versioned section (e.g. `## [0.2.0] - YYYY-MM-DD`).
 - Use the standard sections: **Added**, **Changed**, **Fixed** (and **Deprecated/Removed/Security** if needed).
 - Write entries as short, imperative bullets (what changed, not how).
 - Do not edit or reorder historical release sections after they ship.
 
 Release process (maintainers):
 
-- When cutting a release (e.g. `0.1.0`), move the relevant items from `[Unreleased]` into a new version section like `## [0.1.0] - YYYY-MM-DD`.
-- After release, `[Unreleased]` should be left ready for new entries.
+- When cutting a release (e.g. `0.1.0`), ensure all entries are under the correct versioned section `## [0.1.0] - YYYY-MM-DD`.
+- The `cut-release` workflow handles changelog versioning automatically.
 
 ## Code Update Workflow
 

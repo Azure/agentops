@@ -163,7 +163,7 @@ Before your PR can be merged to `develop`:
 2. **Code review approved** — at least one reviewer
 3. **Architecture rules followed** — see [CONTRIBUTING.md](../CONTRIBUTING.md)
 4. **Tests included** — unit tests in `tests/unit/`, integration tests if needed
-5. **CHANGELOG updated** — add entry under `[Unreleased]` for user-visible changes
+5. **CHANGELOG updated** — add entry under the appropriate versioned section for user-visible changes
 
 ### After Your PR is Merged
 
@@ -563,7 +563,7 @@ push tag v0.2.0
 
 The workflow automatically:
 - Creates `release/v0.2.0` from `develop`
-- Updates `CHANGELOG.md` (`[Unreleased]` → `[0.2.0] - YYYY-MM-DD`)
+- Updates `CHANGELOG.md` (adds versioned section `[0.2.0] - YYYY-MM-DD`)
 - Pushes the branch (triggers [staging pipeline](#7-staging-pipeline-testpypi))
 - Opens a PR: `release/v0.2.0` → `main`
 
@@ -765,10 +765,10 @@ Purpose: One-click release branch creation from develop
 
 Key details:
 - Creates `release/v<version>` branch from `develop`
-- Automatically updates `CHANGELOG.md` — renames `[Unreleased]` to `[<version>] - <date>` and adds a fresh `[Unreleased]` section
+- Automatically updates `CHANGELOG.md` — inserts a versioned section `[<version>] - <date>` at the top
 - Opens a PR from `release/v<version>` → `main` with a checklist
 - The branch push triggers `staging.yml` automatically
-- Fails safely if the branch already exists or CHANGELOG is missing `[Unreleased]`
+- Fails safely if the branch already exists
 - Does NOT auto-tag or auto-publish — tagging remains a manual, intentional step
 
 ## 12. Release Checklist
@@ -777,7 +777,7 @@ Use this checklist when cutting a release:
 
 **Preparation**
 - [ ] All intended features/fixes are merged to `develop`
-- [ ] `CHANGELOG.md` has entries under `[Unreleased]` for all user-visible changes
+- [ ] `CHANGELOG.md` has entries for all user-visible changes under the appropriate versioned section
 - [ ] Tests pass locally: `uv run pytest tests/ -x -q`
 - [ ] Version from setuptools-scm looks correct: `python -m setuptools_scm`
 
@@ -799,7 +799,7 @@ Use this checklist when cutting a release:
 **Cleanup**
 - [ ] `main` merged back to `develop`
 - [ ] Release branch deleted (remote and local)
-- [ ] `[Unreleased]` section in CHANGELOG ready for new entries
+- [ ] CHANGELOG is ready for new entries
 
 ## 13. Troubleshooting
 
