@@ -174,8 +174,15 @@ def eval_item_span(
 
     from opentelemetry.trace import SpanKind
 
+    _label = f"eval_item {row_index}"
+    if input_text:
+        _snippet = input_text[:60].replace("\n", " ")
+        if len(input_text) > 60:
+            _snippet += "\u2026"
+        _label = f"{_label} - '{_snippet}'"
+
     with _tracer.start_as_current_span(
-        f"eval_item {row_index}",
+        _label,
         kind=SpanKind.INTERNAL,
     ) as span:
         # CICD task attributes

@@ -482,15 +482,15 @@ def run_evaluation(
         _row_metrics_by_index = {r.row_index: r for r in row_metrics}
         for item_eval in item_evaluations:
             row_data = _row_metrics_by_index.get(item_eval.row_index)
-            with eval_item_span(row_index=item_eval.row_index) as item_span:
+            _input_text = row_data.input if row_data else None
+            with eval_item_span(
+                row_index=item_eval.row_index,
+                input_text=_input_text,
+            ) as item_span:
                 if row_data:
                     for m in row_data.metrics:
                         matching = next(
-                            (
-                                t
-                                for t in item_eval.thresholds
-                                if t.evaluator == m.name
-                            ),
+                            (t for t in item_eval.thresholds if t.evaluator == m.name),
                             None,
                         )
                         record_evaluator_span(
@@ -500,7 +500,8 @@ def run_evaluation(
                             score=m.value,
                             threshold=(
                                 float(matching.expected)
-                                if matching and matching.expected
+                                if matching
+                                and matching.expected
                                 and matching.criteria not in ("true", "false")
                                 else None
                             ),

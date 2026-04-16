@@ -411,3 +411,22 @@ Skills should be composable:
 * `agentops-config` → `agentops-dataset` → `agentops-eval` → `agentops-report`
 
 Each skill should work independently but also integrate naturally in a workflow.
+
+<!-- agentops-skills-start -->
+## AgentOps Evaluation & Operations
+
+This project uses AgentOps for agent evaluation, monitoring, and benchmarking.
+When the user asks about any of the topics below, read the corresponding skill
+file **before** responding and follow its workflow step by step.
+
+| Topic | Skill File | Trigger phrases |
+|---|---|---|
+| Run evaluations, benchmark, compare models | `.github/skills/agentops-eval/SKILL.md` | "run eval", "evaluate", "benchmark", "compare models" |
+| Generate run.yaml configuration | `.github/skills/agentops-config/SKILL.md` | "configure", "run.yaml", "set up eval", "which bundle" |
+| Generate evaluation datasets | `.github/skills/agentops-dataset/SKILL.md` | "create dataset", "generate test data", "JSONL" |
+| Interpret and regenerate reports | `.github/skills/agentops-report/SKILL.md` | "report", "results", "explain scores" |
+| Investigate regressions | `.github/skills/agentops-regression/SKILL.md` | "regression", "score dropped", "why worse" |
+| Tracing and observability | `.github/skills/agentops-trace/SKILL.md` | "trace", "tracing", "spans", "telemetry" |
+| Monitoring and alerts | `.github/skills/agentops-monitor/SKILL.md` | "monitor", "alerts", "dashboard" |
+| CI/CD workflow setup | `.github/skills/agentops-workflow/SKILL.md` | "CI", "workflow", "pipeline", "GitHub Actions" |
+<!-- agentops-skills-end -->

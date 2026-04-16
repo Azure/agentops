@@ -34,6 +34,7 @@ from agentops.backends.eval_engine import (
     _validate_supported_local_evaluators,
 )
 from agentops.core.config_loader import load_bundle_config, load_dataset_config
+from agentops.utils.telemetry import agent_invoke_span, set_agent_invoke_result
 
 logger = logging.getLogger(__name__)
 
@@ -233,15 +234,23 @@ class HttpBackend:
 
                 row_start = perf_counter()
                 try:
-                    response_payload = _post_json(
-                        url=url,
-                        body=request_body,
-                        extra_headers=extra_headers,
-                        auth_token=auth_token,
-                        timeout_seconds=timeout_seconds,
-                    )
-                    raw_response = _extract_dot_path(response_payload, response_field)
-                    prediction_text = _normalize_text(raw_response)
+                    with agent_invoke_span(
+                        target=context.run_config.target.type,
+                        model=getattr(endpoint, "model", None),
+                        provider="http",
+                    ) as invoke_span:
+                        response_payload = _post_json(
+                            url=url,
+                            body=request_body,
+                            extra_headers=extra_headers,
+                            auth_token=auth_token,
+                            timeout_seconds=timeout_seconds,
+                        )
+                        raw_response = _extract_dot_path(
+                            response_payload, response_field
+                        )
+                        prediction_text = _normalize_text(raw_response)
+                        set_agent_invoke_result(invoke_span)
 
                     # Extract tool_calls from HTTP response for agent evaluators.
                     if tool_calls_field:

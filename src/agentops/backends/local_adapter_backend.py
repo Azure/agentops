@@ -55,11 +55,14 @@ from agentops.backends.eval_engine import (
     _validate_supported_local_evaluators,
 )
 from agentops.core.config_loader import load_bundle_config, load_dataset_config
+from agentops.utils.telemetry import agent_invoke_span, set_agent_invoke_result
 
 logger = logging.getLogger(__name__)
 
 
-def _load_callable(callable_path: str) -> Callable[[str, Dict[str, Any]], Dict[str, Any]]:
+def _load_callable(
+    callable_path: str,
+) -> Callable[[str, Dict[str, Any]], Dict[str, Any]]:
     """Import and return the user function from a ``module:function`` path."""
     module_name, _, func_name = callable_path.partition(":")
     module_name = module_name.strip()
@@ -202,22 +205,27 @@ class LocalAdapterBackend:
                 if user_callable is not None:
                     # --- Callable mode ---
                     try:
-                        context_dict = dict(row)
-                        result = user_callable(prompt_text, context_dict)
-                        if not isinstance(result, dict):
-                            raise TypeError(
-                                f"Callable must return a dict, got {type(result).__name__}"
+                        with agent_invoke_span(
+                            target=context.run_config.target.type,
+                            provider="local.callable",
+                        ) as invoke_span:
+                            context_dict = dict(row)
+                            result = user_callable(prompt_text, context_dict)
+                            if not isinstance(result, dict):
+                                raise TypeError(
+                                    f"Callable must return a dict, got {type(result).__name__}"
+                                )
+                            if "response" not in result:
+                                raise ValueError(
+                                    "Callable return dict must include a 'response' key"
+                                )
+                            prediction_text = _normalize_text(
+                                result.get("response", "")
                             )
-                        if "response" not in result:
-                            raise ValueError(
-                                "Callable return dict must include a 'response' key"
-                            )
-                        prediction_text = _normalize_text(result.get("response", ""))
+                            set_agent_invoke_result(invoke_span)
                     except Exception as exc:  # noqa: BLE001
                         stderr_lines.append(f"row={index} error={exc!s}")
-                        logger.error(
-                            "Callable failed for row %d: %s", index, exc
-                        )
+                        logger.error("Callable failed for row %d: %s", index, exc)
                         exit_code = 1
                         continue
                 else:
@@ -227,32 +235,39 @@ class LocalAdapterBackend:
                     )
 
                     try:
-                        completed = subprocess.run(
-                            shlex.split(adapter_command, posix=(sys.platform != "win32")),
-                            input=adapter_input,
-                            capture_output=True,
-                            text=True,
-                            timeout=timeout_seconds,
-                            check=False,
-                        )
-                        if completed.returncode != 0:
-                            stderr_lines.append(
-                                f"row={index} adapter exit_code={completed.returncode} "
-                                f"stderr={completed.stderr.strip()}"
+                        with agent_invoke_span(
+                            target=context.run_config.target.type,
+                            provider="local.subprocess",
+                        ) as invoke_span:
+                            completed = subprocess.run(
+                                shlex.split(
+                                    adapter_command, posix=(sys.platform != "win32")
+                                ),
+                                input=adapter_input,
+                                capture_output=True,
+                                text=True,
+                                timeout=timeout_seconds,
+                                check=False,
                             )
-                            logger.error(
-                                "Adapter failed for row %d (exit %d): %s",
-                                index,
-                                completed.returncode,
-                                completed.stderr.strip(),
-                            )
-                            exit_code = 1
-                            continue
+                            if completed.returncode != 0:
+                                stderr_lines.append(
+                                    f"row={index} adapter exit_code={completed.returncode} "
+                                    f"stderr={completed.stderr.strip()}"
+                                )
+                                logger.error(
+                                    "Adapter failed for row %d (exit %d): %s",
+                                    index,
+                                    completed.returncode,
+                                    completed.stderr.strip(),
+                                )
+                                exit_code = 1
+                                continue
 
-                        adapter_output = json.loads(completed.stdout)
-                        prediction_text = _normalize_text(
-                            adapter_output.get("response", "")
-                        )
+                            adapter_output = json.loads(completed.stdout)
+                            prediction_text = _normalize_text(
+                                adapter_output.get("response", "")
+                            )
+                            set_agent_invoke_result(invoke_span)
                     except subprocess.TimeoutExpired:
                         stderr_lines.append(f"row={index} error=adapter timeout")
                         logger.error("Adapter timed out for row %d", index)
@@ -313,7 +328,13 @@ class LocalAdapterBackend:
                         evaluator_aggregate_values[name].append(entry["value"])
 
                 row_metrics_payload.append(
-                    {"row_index": index, "input": prompt_text, "response": prediction_text, "context": row.get("context"), "metrics": row_metric_entries}
+                    {
+                        "row_index": index,
+                        "input": prompt_text,
+                        "response": prediction_text,
+                        "context": row.get("context"),
+                        "metrics": row_metric_entries,
+                    }
                 )
                 stdout_lines.append(
                     f"row={index} expected={expected_text!r} prediction={prediction_text!r}"
