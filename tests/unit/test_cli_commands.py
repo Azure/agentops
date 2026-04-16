@@ -30,13 +30,6 @@ def test_eval_compare_rejects_wrong_run_count() -> None:
     )
 
 
-def test_trace_init_is_planned_stub() -> None:
-    result = runner.invoke(app, ["trace", "init"])
-
-    assert result.exit_code == 1
-    assert "planned but not implemented" in result.stdout.lower()
-
-
 def test_model_list_is_planned_stub() -> None:
     result = runner.invoke(app, ["model", "list"])
 
