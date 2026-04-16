@@ -4,5 +4,11 @@
             "approve": true,
             "matchCommandLine": true
         }
-    }
+    },
+    "chat.plugins.extraKnownMarketplaces": [
+        "Azure/agentops"
+    ],
+    "chat.plugins.enabledPlugins": [
+        "agentops-toolkit"
+    ]
 }

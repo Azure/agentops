@@ -103,6 +103,31 @@ cp -r <agentops-repo>/plugins/agentops/skills/* plugins/agentops/skills/
 
 This way the skills travel with the repo and every contributor gets them automatically.
 
+### Option 5: Agent Plugin Marketplace (cross-tool)
+
+The AgentOps plugin is published to the **Agent Plugin Marketplace**, which works
+across VS Code Copilot, Copilot CLI, and Claude Code.
+
+**VS Code** — add the marketplace to your workspace or user settings:
+
+```json
+{
+  "chat.plugins.extraKnownMarketplaces": ["Azure/agentops"],
+  "chat.plugins.enabledPlugins": ["agentops-toolkit"]
+}
+```
+
+**Claude Code** — register the marketplace from the CLI:
+
+```bash
+claude plugin marketplace add Azure/agentops
+```
+
+The marketplace is defined in `.github/plugin/marketplace.json` (the canonical
+location for VS Code and Copilot CLI) and `.claude-plugin/marketplace.json`
+(the Claude Code discovery location). Both point to the same plugin at
+`plugins/agentops/`.
+
 ## Verifying the installation
 
 Check that the skill directories exist:

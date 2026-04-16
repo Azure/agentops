@@ -18,9 +18,31 @@ Copilot agent skills for running standardized evaluation workflows with
 
 ## Installation
 
+### VS Code Extension Marketplace
+
 Install from the
 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit)
 or search **"AgentOps Skills"** in the VS Code Extensions view.
+
+### Agent Plugin Marketplace
+
+The AgentOps plugin is also available through the cross-tool **Agent Plugin
+Marketplace**, which works with VS Code Copilot, Copilot CLI, and Claude Code.
+
+**VS Code** — add this to your `.vscode/settings.json`:
+
+```json
+{
+  "chat.plugins.extraKnownMarketplaces": ["Azure/agentops"],
+  "chat.plugins.enabledPlugins": ["agentops-toolkit"]
+}
+```
+
+**Claude Code** — register the marketplace:
+
+```bash
+claude plugin marketplace add Azure/agentops
+```
 
 ## Usage
 
