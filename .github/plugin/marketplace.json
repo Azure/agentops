@@ -1,0 +1,29 @@
+{
+  "name": "agentops",
+  "metadata": {
+    "description": "AgentOps Toolkit plugin marketplace — evaluation skills for Microsoft Foundry agents",
+    "version": "1.0.0"
+  },
+  "owner": {
+    "name": "AgentOps Toolkit",
+    "email": "agentops@microsoft.com"
+  },
+  "plugins": [
+    {
+      "name": "agentops-toolkit",
+      "source": "../../plugins/agentops",
+      "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Toolkit and Microsoft Foundry agents.",
+      "version": "0.1.7",
+      "keywords": [
+        "agentops",
+        "evaluation",
+        "foundry",
+        "copilot",
+        "agent-skills",
+        "ai-evaluation"
+      ],
+      "license": "MIT",
+      "repository": "https://github.com/Azure/agentops"
+    }
+  ]
+}

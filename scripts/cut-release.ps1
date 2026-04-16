@@ -59,17 +59,34 @@ if ($changelog -match [regex]::Escape("## [$version]")) {
     Write-Host "CHANGELOG updated with [$version] - $date" -ForegroundColor Green
 }
 
-# ── Step 6: Sync VSIX version ──────────────────────────────────────
-Write-Host "`n>>> Syncing VSIX version in package.json..." -ForegroundColor Yellow
+# ── Step 6: Sync plugin versions ────────────────────────────────────
+Write-Host "`n>>> Syncing plugin versions..." -ForegroundColor Yellow
+
+# 6a. package.json (VSIX)
 $pkgPath = "plugins/agentops/package.json"
 $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
 $pkg.version = $version
 $pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -NoNewline
-Write-Host "VSIX version set to $version" -ForegroundColor Green
+Write-Host "  package.json  → $version" -ForegroundColor Green
+
+# 6b. plugin.json (Agent Plugins)
+$pluginPath = "plugins/agentops/plugin.json"
+$plugin = Get-Content $pluginPath -Raw | ConvertFrom-Json
+$plugin.version = $version
+$plugin | ConvertTo-Json -Depth 10 | Set-Content $pluginPath -NoNewline
+Write-Host "  plugin.json   → $version" -ForegroundColor Green
+
+# 6c. marketplace.json (GitHub + Claude Code)
+foreach ($mpPath in @(".github/plugin/marketplace.json", ".claude-plugin/marketplace.json")) {
+    $mp = Get-Content $mpPath -Raw | ConvertFrom-Json
+    $mp.plugins[0].version = $version
+    $mp | ConvertTo-Json -Depth 10 | Set-Content $mpPath -NoNewline
+    Write-Host "  $mpPath → $version" -ForegroundColor Green
+}
 
 # ── Step 7: Configure git, commit and push ──────────────────────────
 Write-Host "`n>>> Committing and pushing..." -ForegroundColor Yellow
-git add CHANGELOG.md plugins/agentops/package.json
+git add CHANGELOG.md plugins/agentops/package.json plugins/agentops/plugin.json .github/plugin/marketplace.json .claude-plugin/marketplace.json
 git commit -m "chore: prepare release $version"
 git push origin "release/v$version"
 
@@ -83,7 +100,7 @@ Automated release branch created from ``develop``.
 ### What happened
 - Branch ``release/v$version`` created from ``develop``
 - ``CHANGELOG.md`` updated: versioned section ``[$version]`` added
-- ``plugins/agentops/package.json`` version synced to ``$version``
+- Plugin versions synced to ``$version`` (package.json, plugin.json, marketplace.json)
 
 ### Next steps
 1. Run staging locally: ``.\scripts\staging.ps1``

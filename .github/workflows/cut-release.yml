@@ -76,12 +76,28 @@ jobs:
             echo "CHANGELOG updated with [${{ env.version }}] - $DATE"
           fi
 
-      - name: Sync VS Code extension version
+      - name: Sync plugin versions
         run: |
-          jq --arg v "${{ env.version }}" '.version = $v' \
+          VERSION="${{ env.version }}"
+
+          # package.json (VSIX)
+          jq --arg v "$VERSION" '.version = $v' \
             plugins/agentops/package.json > plugins/agentops/package.json.tmp
           mv plugins/agentops/package.json.tmp plugins/agentops/package.json
-          echo "VSIX version set to ${{ env.version }}"
+          echo "package.json  → $VERSION"
+
+          # plugin.json (Agent Plugins)
+          jq --arg v "$VERSION" '.version = $v' \
+            plugins/agentops/plugin.json > plugins/agentops/plugin.json.tmp
+          mv plugins/agentops/plugin.json.tmp plugins/agentops/plugin.json
+          echo "plugin.json   → $VERSION"
+
+          # marketplace.json (GitHub + Claude Code)
+          for mp in .github/plugin/marketplace.json .claude-plugin/marketplace.json; do
+            jq --arg v "$VERSION" '.plugins[0].version = $v' "$mp" > "$mp.tmp"
+            mv "$mp.tmp" "$mp"
+            echo "$mp → $VERSION"
+          done
 
       - name: Configure git
         run: |
@@ -90,7 +106,7 @@ jobs:
 
       - name: Commit and push
         run: |
-          git add CHANGELOG.md plugins/agentops/package.json
+          git add CHANGELOG.md plugins/agentops/package.json plugins/agentops/plugin.json .github/plugin/marketplace.json .claude-plugin/marketplace.json
           git commit -m "chore: prepare release ${{ env.version }}"
           git push origin "release/v${{ env.version }}"
 
@@ -109,7 +125,7 @@ jobs:
           ### What happened
           - Branch \`release/v${{ env.version }}\` created from \`develop\`
           - \`CHANGELOG.md\` updated: versioned section \`[${{ env.version }}]\` added
-          - \`plugins/agentops/package.json\` version synced to \`${{ env.version }}\`
+          - Plugin versions synced to \`${{ env.version }}\` (package.json, plugin.json, marketplace.json)
           - Staging pipeline triggered automatically (build → TestPyPI + VSIX pre-release → verify)
 
           ### Next steps
@@ -135,7 +151,7 @@ jobs:
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: \`release/v${{ env.version }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- CHANGELOG updated with version **${{ env.version }}**" >> "$GITHUB_STEP_SUMMARY"
-          echo "- VS Code extension version synced to **${{ env.version }}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Plugin versions synced to **${{ env.version }}** (package.json, plugin.json, marketplace.json)" >> "$GITHUB_STEP_SUMMARY"
           echo "- PR opened: \`release/v${{ env.version }}\` → \`main\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Staging pipeline triggered automatically" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

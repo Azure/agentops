@@ -1,0 +1,10 @@
+{
+  "name": "agentops-toolkit",
+  "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Toolkit and Microsoft Foundry agents.",
+  "version": "0.1.7",
+  "author": {
+    "name": "AgentOps Toolkit",
+    "url": "https://github.com/Azure/agentops"
+  },
+  "skills": "skills/"
+}

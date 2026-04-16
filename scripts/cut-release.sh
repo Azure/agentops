@@ -9,7 +9,7 @@
 #   3. Verifies release branch doesn't exist
 #   4. Creates release/v<version> branch
 #   5. Updates CHANGELOG.md with versioned section
-#   6. Syncs VSIX version in plugins/agentops/package.json
+#   6. Syncs plugin versions (package.json, plugin.json, marketplace.json)
 #   7. Commits and pushes the branch
 #   8. Creates a PR to main via gh CLI
 #
@@ -55,16 +55,31 @@ else
     echo "CHANGELOG updated with [$version] - $date_today"
 fi
 
-# ── Step 6: Sync VSIX version ──────────────────────────────────────
-echo -e "\n>>> Syncing VSIX version in package.json..."
+# ── Step 6: Sync plugin versions ────────────────────────────────────
+echo -e "\n>>> Syncing plugin versions..."
+
+# 6a. package.json (VSIX)
 pkg_path="plugins/agentops/package.json"
 jq --arg v "$version" '.version = $v' "$pkg_path" > "${pkg_path}.tmp"
 mv "${pkg_path}.tmp" "$pkg_path"
-echo "VSIX version set to $version"
+echo "  package.json  → $version"
+
+# 6b. plugin.json (Agent Plugins)
+plugin_path="plugins/agentops/plugin.json"
+jq --arg v "$version" '.version = $v' "$plugin_path" > "${plugin_path}.tmp"
+mv "${plugin_path}.tmp" "$plugin_path"
+echo "  plugin.json   → $version"
+
+# 6c. marketplace.json (GitHub + Claude Code)
+for mp in .github/plugin/marketplace.json .claude-plugin/marketplace.json; do
+    jq --arg v "$version" '.plugins[0].version = $v' "$mp" > "$mp.tmp"
+    mv "$mp.tmp" "$mp"
+    echo "  $mp → $version"
+done
 
 # ── Step 7: Commit and push ────────────────────────────────────────
 echo -e "\n>>> Committing and pushing..."
-git add CHANGELOG.md plugins/agentops/package.json
+git add CHANGELOG.md plugins/agentops/package.json plugins/agentops/plugin.json .github/plugin/marketplace.json .claude-plugin/marketplace.json
 git commit -m "chore: prepare release $version"
 git push origin "release/v$version"
 
@@ -81,7 +96,7 @@ Automated release branch created from \`develop\`.
 ### What happened
 - Branch \`release/v$version\` created from \`develop\`
 - \`CHANGELOG.md\` updated: versioned section \`[$version]\` added
-- \`plugins/agentops/package.json\` version synced to \`$version\`
+- Plugin versions synced to \`$version\` (package.json, plugin.json, marketplace.json)
 
 ### Next steps
 1. Run staging locally: \`./scripts/staging.sh\`
