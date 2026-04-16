@@ -32,6 +32,7 @@ from agentops.backends.eval_engine import (
     _validate_supported_local_evaluators,
 )
 from agentops.core.config_loader import load_bundle_config, load_dataset_config
+from agentops.utils.telemetry import agent_invoke_span, set_agent_invoke_result
 
 logger = logging.getLogger(__name__)
 
@@ -1058,14 +1059,30 @@ class FoundryBackend:
             prompt = _normalize_text(row.get(input_field))
             expected = _normalize_text(row.get(expected_field))
 
+            _agent_name: str | None = None
+            _agent_version: str | None = None
+            if settings.agent_id:
+                _agent_name, _agent_version = _parse_agent_name_version(
+                    settings.agent_id
+                )
+
             row_start = perf_counter()
             try:
-                if settings.target == "model":
-                    prediction = self._invoke_model_direct(settings, prompt)
-                else:
-                    prediction = self._invoke_agent_service(
-                        settings, prompt, timeout_seconds
-                    )
+                with agent_invoke_span(
+                    target=settings.target,
+                    model=settings.model,
+                    agent_id=settings.agent_id,
+                    agent_name=_agent_name,
+                    agent_version=_agent_version,
+                    provider="azure.ai.foundry",
+                ) as invoke_span:
+                    if settings.target == "model":
+                        prediction = self._invoke_model_direct(settings, prompt)
+                    else:
+                        prediction = self._invoke_agent_service(
+                            settings, prompt, timeout_seconds
+                        )
+                    set_agent_invoke_result(invoke_span, response_model=settings.model)
             except urllib.error.HTTPError as exc:
                 details = exc.read().decode("utf-8", errors="replace")
                 if exc.code == 401 and _is_audience_mismatch(details):
@@ -1080,11 +1097,22 @@ class FoundryBackend:
                             agent_token=_acquire_token(alternate_scope),
                             token_scope=alternate_scope,
                         )
-                        if settings.target == "model":
-                            prediction = self._invoke_model_direct(settings, prompt)
-                        else:
-                            prediction = self._invoke_agent_service(
-                                settings, prompt, timeout_seconds
+                        with agent_invoke_span(
+                            target=settings.target,
+                            model=settings.model,
+                            agent_id=settings.agent_id,
+                            agent_name=_agent_name,
+                            agent_version=_agent_version,
+                            provider="azure.ai.foundry",
+                        ) as retry_invoke_span:
+                            if settings.target == "model":
+                                prediction = self._invoke_model_direct(settings, prompt)
+                            else:
+                                prediction = self._invoke_agent_service(
+                                    settings, prompt, timeout_seconds
+                                )
+                            set_agent_invoke_result(
+                                retry_invoke_span, response_model=settings.model
                             )
                     except Exception as retry_exc:  # noqa: BLE001
                         retry_details = str(retry_exc)

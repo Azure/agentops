@@ -32,6 +32,15 @@ from agentops.core.models import (
 )
 from agentops.core.reporter import generate_report_html, generate_report_markdown
 from agentops.services.foundry_evals import publish_foundry_evaluation
+from agentops.utils.telemetry import (
+    eval_item_span,
+    eval_run_span,
+    init_tracing,
+    record_evaluator_span,
+    set_eval_item_result,
+    set_eval_run_result,
+    shutdown as shutdown_tracing,
+)
 
 
 @dataclass(frozen=True)
@@ -381,151 +390,217 @@ def run_evaluation(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    backend: Backend
-    if run_config.target.execution_mode == "local":
-        from agentops.backends.local_adapter_backend import LocalAdapterBackend
+    # --- Telemetry: initialise OTLP exporter (no-op when env var unset) ---
+    init_tracing()
 
-        backend = LocalAdapterBackend()
-    elif run_config.target.execution_mode == "remote":
-        endpoint = run_config.target.endpoint
-        assert endpoint is not None  # guaranteed by TargetConfig validator
-        if endpoint.kind == "foundry_agent":
-            from agentops.backends.foundry_backend import FoundryBackend
+    # Extract optional model/agent_id from endpoint config for span attributes
+    _endpoint = run_config.target.endpoint
+    _span_model = getattr(_endpoint, "model", None) if _endpoint else None
+    _span_agent_id = getattr(_endpoint, "agent_id", None) if _endpoint else None
 
-            backend = FoundryBackend()
-        elif endpoint.kind == "http":
-            from agentops.backends.http_backend import HttpBackend
+    with eval_run_span(
+        bundle_name=bundle_config.name,
+        dataset_name=dataset_config.name,
+        backend_type=run_config.target.execution_mode,
+        target=run_config.target.type,
+        model=_span_model,
+        agent_id=_span_agent_id,
+    ) as run_span:
+        backend: Backend
+        if run_config.target.execution_mode == "local":
+            from agentops.backends.local_adapter_backend import LocalAdapterBackend
 
-            backend = HttpBackend()
+            backend = LocalAdapterBackend()
+        elif run_config.target.execution_mode == "remote":
+            endpoint = run_config.target.endpoint
+            assert endpoint is not None  # guaranteed by TargetConfig validator
+            if endpoint.kind == "foundry_agent":
+                from agentops.backends.foundry_backend import FoundryBackend
+
+                backend = FoundryBackend()
+            elif endpoint.kind == "http":
+                from agentops.backends.http_backend import HttpBackend
+
+                backend = HttpBackend()
+            else:
+                raise ValueError(f"Unsupported endpoint kind: {endpoint.kind}")
         else:
-            raise ValueError(f"Unsupported endpoint kind: {endpoint.kind}")
-    else:
-        raise ValueError(
-            f"Unsupported execution_mode: {run_config.target.execution_mode}"
-        )
-
-    backend_result = backend.execute(
-        BackendRunContext(
-            run_config=run_config,
-            bundle_path=bundle_path,
-            dataset_path=dataset_path,
-            backend_output_dir=output_dir,
-        )
-    )
-
-    if backend_result.exit_code != 0:
-        raise RuntimeError(
-            f"Backend execution failed with exit code {backend_result.exit_code}"
-        )
-
-    backend_metrics_path = output_dir / "backend_metrics.json"
-    metrics, row_metrics = _load_backend_metrics(backend_metrics_path)
-    metrics_by_name: dict[str, float] = {
-        metric.name: metric.value for metric in metrics
-    }
-
-    enabled_evaluator_names = [
-        evaluator.name for evaluator in bundle_config.evaluators if evaluator.enabled
-    ]
-    _validate_enabled_evaluators_scored(
-        evaluator_names=enabled_evaluator_names,
-        row_metrics=row_metrics,
-    )
-
-    item_evaluations = _evaluate_item_thresholds(bundle_config.thresholds, row_metrics)
-
-    if bundle_config.thresholds and not row_metrics:
-        raise ValueError(
-            "Item-level threshold evaluation requires backend 'row_metrics'"
-        )
-
-    threshold_results = _summarize_thresholds_from_items(
-        bundle_config.thresholds, item_evaluations
-    )
-    summary = _summary_from_thresholds(
-        metrics, [item.passed for item in threshold_results]
-    )
-    run_metrics = _derive_run_metrics(
-        metrics_by_name, row_metrics, item_evaluations, summary
-    )
-
-    foundry_eval_studio_url: str | None = None
-    foundry_eval_name: str | None = None
-
-    cloud_report_url, cloud_evaluation_name = _load_cloud_evaluation_metadata(
-        output_dir
-    )
-    if cloud_report_url is not None:
-        foundry_eval_studio_url = cloud_report_url
-    if cloud_evaluation_name is not None:
-        foundry_eval_name = cloud_evaluation_name
-
-    if (
-        run_config.output.publish_foundry_evaluation
-        and run_config.target.endpoint is not None
-        and run_config.target.endpoint.kind == "foundry_agent"
-        and cloud_report_url is None
-    ):
-        try:
-            foundry_publish = publish_foundry_evaluation(
-                endpoint_config=run_config.target.endpoint,
-                dataset_config_path=dataset_path,
-                backend_stdout_path=backend_result.stdout_file,
+            raise ValueError(
+                f"Unsupported execution_mode: {run_config.target.execution_mode}"
             )
-            foundry_eval_studio_url = foundry_publish.studio_url
-            foundry_eval_name = foundry_publish.evaluation_name
-        except Exception as exc:
-            if run_config.output.fail_on_foundry_publish_error:
-                raise RuntimeError(f"Foundry evaluation publish failed: {exc}") from exc
-            publish_error_path = output_dir / "foundry_eval_publish_error.log"
-            publish_error_path.write_text(str(exc), encoding="utf-8")
 
-    normalized_result = RunResult(
-        version=1,
-        status="completed",
-        bundle=BundleInfo(name=bundle_config.name, path=bundle_path),
-        dataset=DatasetInfo(name=dataset_config.name, path=dataset_path),
-        execution=ExecutionInfo(
-            backend=backend_result.backend,
-            command=backend_result.command,
-            started_at=backend_result.started_at,
-            finished_at=backend_result.finished_at,
-            duration_seconds=backend_result.duration_seconds,
-            exit_code=backend_result.exit_code,
-        ),
-        metrics=metrics,
-        row_metrics=row_metrics,
-        item_evaluations=item_evaluations,
-        run_metrics=run_metrics,
-        thresholds=threshold_results,
-        summary=summary,
-        artifacts=Artifacts(
-            backend_stdout=backend_result.stdout_file.name,
-            backend_stderr=backend_result.stderr_file.name,
-            foundry_eval_studio_url=foundry_eval_studio_url,
-            foundry_eval_name=foundry_eval_name,
-        ),
-    )
-
-    results_path = output_dir / "results.json"
-    report_path: Path
-
-    results_path.write_text(
-        json.dumps(normalized_result.model_dump(mode="json"), indent=2),
-        encoding="utf-8",
-    )
-    if report_format in ("md", "all"):
-        md_path = output_dir / "report.md"
-        md_path.write_text(
-            generate_report_markdown(normalized_result), encoding="utf-8"
+        backend_result = backend.execute(
+            BackendRunContext(
+                run_config=run_config,
+                bundle_path=bundle_path,
+                dataset_path=dataset_path,
+                backend_output_dir=output_dir,
+            )
         )
-        report_path = md_path
-    if report_format in ("html", "all"):
-        html_path = output_dir / "report.html"
-        html_path.write_text(generate_report_html(normalized_result), encoding="utf-8")
-        report_path = html_path
-    if report_format == "all":
-        report_path = md_path
+
+        if backend_result.exit_code != 0:
+            raise RuntimeError(
+                f"Backend execution failed with exit code {backend_result.exit_code}"
+            )
+
+        backend_metrics_path = output_dir / "backend_metrics.json"
+        metrics, row_metrics = _load_backend_metrics(backend_metrics_path)
+        metrics_by_name: dict[str, float] = {
+            metric.name: metric.value for metric in metrics
+        }
+
+        enabled_evaluator_names = [
+            evaluator.name
+            for evaluator in bundle_config.evaluators
+            if evaluator.enabled
+        ]
+        _validate_enabled_evaluators_scored(
+            evaluator_names=enabled_evaluator_names,
+            row_metrics=row_metrics,
+        )
+
+        item_evaluations = _evaluate_item_thresholds(
+            bundle_config.thresholds, row_metrics
+        )
+
+        if bundle_config.thresholds and not row_metrics:
+            raise ValueError(
+                "Item-level threshold evaluation requires backend 'row_metrics'"
+            )
+
+        threshold_results = _summarize_thresholds_from_items(
+            bundle_config.thresholds, item_evaluations
+        )
+        summary = _summary_from_thresholds(
+            metrics, [item.passed for item in threshold_results]
+        )
+        run_metrics = _derive_run_metrics(
+            metrics_by_name, row_metrics, item_evaluations, summary
+        )
+
+        # --- Telemetry: emit per-item and per-evaluator spans ---
+        _row_metrics_by_index = {r.row_index: r for r in row_metrics}
+        for item_eval in item_evaluations:
+            row_data = _row_metrics_by_index.get(item_eval.row_index)
+            _input_text = row_data.input if row_data else None
+            with eval_item_span(
+                row_index=item_eval.row_index,
+                input_text=_input_text,
+            ) as item_span:
+                if row_data:
+                    for m in row_data.metrics:
+                        matching = next(
+                            (t for t in item_eval.thresholds if t.evaluator == m.name),
+                            None,
+                        )
+                        record_evaluator_span(
+                            evaluator_name=m.name,
+                            builtin_name=m.name,
+                            source=run_config.target.execution_mode,
+                            score=m.value,
+                            threshold=(
+                                float(matching.expected)
+                                if matching
+                                and matching.expected
+                                and matching.criteria not in ("true", "false")
+                                else None
+                            ),
+                            passed=matching.passed if matching else None,
+                        )
+                set_eval_item_result(item_span, passed=item_eval.passed_all)
+
+        # --- Telemetry: set final run result on the root span ---
+        set_eval_run_result(
+            run_span,
+            passed=summary.overall_passed,
+            items_total=len(item_evaluations),
+            items_passed=sum(1 for i in item_evaluations if i.passed_all),
+        )
+
+        foundry_eval_studio_url: str | None = None
+        foundry_eval_name: str | None = None
+
+        cloud_report_url, cloud_evaluation_name = _load_cloud_evaluation_metadata(
+            output_dir
+        )
+        if cloud_report_url is not None:
+            foundry_eval_studio_url = cloud_report_url
+        if cloud_evaluation_name is not None:
+            foundry_eval_name = cloud_evaluation_name
+
+        if (
+            run_config.output.publish_foundry_evaluation
+            and run_config.target.endpoint is not None
+            and run_config.target.endpoint.kind == "foundry_agent"
+            and cloud_report_url is None
+        ):
+            try:
+                foundry_publish = publish_foundry_evaluation(
+                    endpoint_config=run_config.target.endpoint,
+                    dataset_config_path=dataset_path,
+                    backend_stdout_path=backend_result.stdout_file,
+                )
+                foundry_eval_studio_url = foundry_publish.studio_url
+                foundry_eval_name = foundry_publish.evaluation_name
+            except Exception as exc:
+                if run_config.output.fail_on_foundry_publish_error:
+                    raise RuntimeError(
+                        f"Foundry evaluation publish failed: {exc}"
+                    ) from exc
+                publish_error_path = output_dir / "foundry_eval_publish_error.log"
+                publish_error_path.write_text(str(exc), encoding="utf-8")
+
+        normalized_result = RunResult(
+            version=1,
+            status="completed",
+            bundle=BundleInfo(name=bundle_config.name, path=bundle_path),
+            dataset=DatasetInfo(name=dataset_config.name, path=dataset_path),
+            execution=ExecutionInfo(
+                backend=backend_result.backend,
+                command=backend_result.command,
+                started_at=backend_result.started_at,
+                finished_at=backend_result.finished_at,
+                duration_seconds=backend_result.duration_seconds,
+                exit_code=backend_result.exit_code,
+            ),
+            metrics=metrics,
+            row_metrics=row_metrics,
+            item_evaluations=item_evaluations,
+            run_metrics=run_metrics,
+            thresholds=threshold_results,
+            summary=summary,
+            artifacts=Artifacts(
+                backend_stdout=backend_result.stdout_file.name,
+                backend_stderr=backend_result.stderr_file.name,
+                foundry_eval_studio_url=foundry_eval_studio_url,
+                foundry_eval_name=foundry_eval_name,
+            ),
+        )
+
+        results_path = output_dir / "results.json"
+        report_path: Path
+
+        results_path.write_text(
+            json.dumps(normalized_result.model_dump(mode="json"), indent=2),
+            encoding="utf-8",
+        )
+        if report_format in ("md", "all"):
+            md_path = output_dir / "report.md"
+            md_path.write_text(
+                generate_report_markdown(normalized_result), encoding="utf-8"
+            )
+            report_path = md_path
+        if report_format in ("html", "all"):
+            html_path = output_dir / "report.html"
+            html_path.write_text(
+                generate_report_html(normalized_result), encoding="utf-8"
+            )
+            report_path = html_path
+        if report_format == "all":
+            report_path = md_path
+
+    # --- Telemetry: flush spans after the root span closes ---
+    shutdown_tracing()
 
     latest_dir = _latest_output_dir(run_config_path)
     _sync_latest_output(output_dir, latest_dir)

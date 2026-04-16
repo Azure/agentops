@@ -29,7 +29,6 @@ config_app = typer.Typer(help="Configuration utility commands.")
 report_app = typer.Typer(help="Reporting commands.")
 workflow_app = typer.Typer(help="CI/CD workflow commands.")
 monitor_app = typer.Typer(help="Monitoring setup and operations.")
-trace_app = typer.Typer(help="Tracing commands.")
 model_app = typer.Typer(help="Model discovery commands.")
 agent_app = typer.Typer(help="Agent discovery commands.")
 skills_app = typer.Typer(help="Coding agent skills management.")
@@ -41,7 +40,6 @@ app.add_typer(config_app, name="config")
 app.add_typer(report_app, name="report")
 app.add_typer(workflow_app, name="workflow")
 app.add_typer(monitor_app, name="monitor")
-app.add_typer(trace_app, name="trace")
 app.add_typer(model_app, name="model")
 app.add_typer(agent_app, name="agent")
 app.add_typer(skills_app, name="skills")
@@ -446,12 +444,6 @@ def cmd_workflow_generate(
         typer.echo("  4. Commit and push the workflow files")
     elif result.skipped_files:
         typer.echo("No files written. Use --force to overwrite existing workflows.")
-
-
-@trace_app.command("init")
-def cmd_trace_init() -> None:
-    """Set up tracing integration (planned)."""
-    _planned_command("agentops trace init")
 
 
 @monitor_app.command("setup")
