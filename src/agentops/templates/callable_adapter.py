@@ -27,6 +27,14 @@ import urllib.request
 # Set AGENT_HTTP_URL in your environment or replace the default below.
 ENDPOINT = os.environ.get("AGENT_HTTP_URL", "http://localhost:8000/api/chat")
 
+# ── Authentication ─────────────────────────────────────────────────────
+# Set both AGENT_AUTH_HEADER and AGENT_AUTH_TOKEN to enable auth.
+# Examples:
+#   Dapr:    AGENT_AUTH_HEADER=dapr-api-token  AGENT_AUTH_TOKEN=dev-token
+#   API Key: AGENT_AUTH_HEADER=X-API-KEY        AGENT_AUTH_TOKEN=my-key
+AUTH_HEADER = os.environ.get("AGENT_AUTH_HEADER", "")
+AUTH_TOKEN = os.environ.get("AGENT_AUTH_TOKEN", "")
+
 # ── Response cleaning helpers ──────────────────────────────────────────
 
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
@@ -49,10 +57,13 @@ def run_evaluation(input_text: str, context: dict) -> dict:
     """
     # --- Option 1: Standard JSON POST (default) ---
     body = json.dumps({"message": input_text}).encode()
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if AUTH_HEADER and AUTH_TOKEN:
+        headers[AUTH_HEADER] = AUTH_TOKEN
     req = urllib.request.Request(
         ENDPOINT,
         data=body,
-        headers={"Content-Type": "application/json"},
+        headers=headers,
         method="POST",
     )
     with urllib.request.urlopen(req) as resp:

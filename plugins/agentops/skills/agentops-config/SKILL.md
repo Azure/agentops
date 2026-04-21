@@ -76,6 +76,18 @@ Search these locations **in order** — stop as soon as each value is found:
 3. `.azure/<env>/.env` files (azd environments) — also read `AZURE_RESOURCE_GROUP`, `AZURE_SUBSCRIPTION_ID`
 4. `.azure/config.json` for `defaultEnvironment` to pick the right env folder
 
+### Validate azd environment (if using `.azure/<env>/.env`)
+
+Before trusting values from `.azure/<env>/.env`, verify the environment is still valid:
+
+1. **Check the environment is current** — run `azd env list` and confirm the selected environment appears. If multiple environments exist, list them and ask the user which to use.
+2. **Verify the resource group exists**:
+   ```bash
+   az group exists --name $RG --subscription $SUB
+   ```
+   If this returns `false`, warn: *"Resource group '$RG' no longer exists. Your azd environment may be outdated."*
+3. **If validation fails**, ask the user for correct values or to select a different environment.
+
 If values are **not found** in any file, run Azure CLI discovery:
 ```bash
 # 1. Confirm auth and get subscription
