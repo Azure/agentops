@@ -79,7 +79,12 @@ def _acquire_token(scope: str) -> str:
         ) from exc
 
     try:
-        credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
+        # process_timeout=30 accommodates slow Azure CLI cold starts
+        # (notably on Windows where az.cmd can take >10s to initialize).
+        credential = DefaultAzureCredential(
+            exclude_developer_cli_credential=True,
+            process_timeout=30,
+        )
         token = credential.get_token(scope)
         return token.token
     except Exception as exc:
@@ -431,7 +436,10 @@ class FoundryBackend:
                 "Install with: pip install 'azure-ai-projects>=2.0.1' azure-identity openai"
             ) from exc
 
-        credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
+        credential = DefaultAzureCredential(
+            exclude_developer_cli_credential=True,
+            process_timeout=30,
+        )
         project_client = AIProjectClient(
             endpoint=settings.project_endpoint,
             credential=credential,

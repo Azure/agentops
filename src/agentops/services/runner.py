@@ -32,6 +32,7 @@ from agentops.core.models import (
 )
 from agentops.core.reporter import generate_report_html, generate_report_markdown
 from agentops.services.foundry_evals import publish_foundry_evaluation
+from agentops.services.preflight import PreflightReport, run_preflight_checks
 from agentops.utils.telemetry import (
     eval_item_span,
     eval_run_span,
@@ -367,6 +368,7 @@ def run_evaluation(
     config_path: Path | None = None,
     output_override: Path | None = None,
     report_format: str = "md",
+    dry_run: bool = False,
 ) -> EvalRunServiceResult:
     run_config_path = (
         config_path.resolve() if config_path is not None else _default_run_config_path()
@@ -382,6 +384,27 @@ def run_evaluation(
 
     bundle_config = load_bundle_config(bundle_path)
     dataset_config = load_dataset_config(dataset_path)
+
+    # --- Pre-flight checks ---------------------------------------------------
+    # Detect common configuration issues (missing SDKs, env vars, unreachable
+    # endpoints, credential failures) before backend execution so they surface
+    # fast with actionable error messages.
+    preflight = run_preflight_checks(run_config, bundle_config)
+    if not preflight.ok:
+        raise RuntimeError(preflight.format())
+    if preflight.warnings:
+        import sys as _sys
+
+        _sys.stderr.write(preflight.format() + "\n")
+
+    if dry_run:
+        # --dry-run: preflight passed, skip backend execution.
+        return EvalRunServiceResult(
+            output_dir=run_config_path.parent,
+            results_path=run_config_path.parent,
+            report_path=run_config_path.parent,
+            exit_code=0,
+        )
 
     output_dir = (
         output_override.resolve()
