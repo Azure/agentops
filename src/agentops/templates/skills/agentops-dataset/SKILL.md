@@ -90,8 +90,17 @@ If the scenario is **RAG** and the generated JSONL has no `context` field:
 2. **Build a retrieval script** at `.agentops/rag_context.py` (**never** in `src/`) that:
    - Reads the project's own retrieval config (env vars, endpoint, index name) from whatever the project uses
    - For each row in the JSONL, queries the retrieval backend with `row["input"]` and writes the result into `row["context"]`
-   - Uses only stdlib (`urllib.request`, `json`, `os`) — no third-party dependencies
+   - Uses only stdlib (`urllib.request`, `json`, `os`, `subprocess`, `sys`, `shutil`) — no third-party dependencies
    - Accepts the JSONL file path as a CLI argument: `python .agentops/rag_context.py .agentops/data/data.jsonl`
+   - **Must be cross-platform** (Windows + Linux/macOS) — when calling external CLIs (e.g. `az`), use:
+     ```python
+     import shutil, subprocess, sys
+     def _run_cli(args: list[str], **kwargs) -> subprocess.CompletedProcess:
+         exe = shutil.which(args[0])
+         if exe is None:
+             raise FileNotFoundError(f"'{args[0]}' not found in PATH.")
+         return subprocess.run([exe] + args[1:], **kwargs, shell=(sys.platform == "win32"))
+     ```
 
 3. Verify: each JSONL row now has a `context` field.
 4. Update dataset YAML to include `context_field: context` under `format:`.

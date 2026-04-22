@@ -3,6 +3,19 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.7] - 2026-04-21
+
+### Added
+- **Single source of truth for skills (closes #87)** — `src/agentops/templates/skills/` is now the canonical location. Added `scripts/sync-skills.sh` and `scripts/sync-skills.ps1` to propagate changes to `plugins/agentops/skills/`. CI test `test_skills_sync.py` fails if the two directories diverge.
+- **Optional unit test generation** — `agentops-eval` skill (Step 1) now offers to generate unit tests for agent code when no existing tests are detected. Generates `pytest` + `unittest.mock` tests covering endpoint handlers, response parsing, and error handling. Opt-in only — skips silently if tests already exist or user declines.
+
+### Changed
+- **Cross-platform subprocess handling in generated scripts** — `agentops-eval` and `agentops-dataset` skills now instruct generated `rag_context.py` scripts to use `shutil.which()` + `shell=(sys.platform == "win32")` when calling external CLIs, preventing `FileNotFoundError` on Windows.
+- **Auth detection carrythrough to callable adapter** — `agentops-eval` skill Step 5.5 now explicitly wires the auth pattern detected in Step 2 into the adapter using generic `AGENT_AUTH_HEADER` and `AGENT_AUTH_TOKEN` env vars. Updated `callable_adapter.py` template to use the same generic auth mechanism. Prevents 401 errors on first smoke test.
+- **azd environment validation** — `agentops-eval` (Step 4) and `agentops-config` (Step 3) skills now validate azd environments before trusting `.azure/<env>/.env` values: checks `azd env list`, verifies resource group exists via `az group exists`, and warns on stale environments.
+- **Enhanced smoke test diagnostics** — `agentops-eval` skill Step 6 smoke test now checks for empty responses, response length, response format mismatches (JSON vs SSE), unexpected prefixes (UUIDs), and HTML error pages. Expanded troubleshooting table with specific remediation steps.
+- **Updated CONTRIBUTING.md** — added single-source-of-truth rule for skills and sync script instructions.
+
 ## [0.1.6] - 2026-04-15
 
 ### Changed

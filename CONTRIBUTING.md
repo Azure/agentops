@@ -81,6 +81,21 @@ These rules are critical to maintaining the project's architecture. PRs that vio
 | Add a new CLI command | `cli/app.py` (keep it thin — delegate to `services/`) |
 | Add a new workflow/service | `services/` (new file) |
 | Add starter templates | `templates/` + update `pyproject.toml` package-data |
+| Edit a coding agent skill | `src/agentops/templates/skills/<name>/SKILL.md` (single source of truth) → run `scripts/sync-skills.sh` or `.ps1` to propagate to `plugins/agentops/skills/` |
+
+### Skills: Single Source of Truth
+
+`src/agentops/templates/skills/` is the **canonical location** for all SKILL.md files. The VS Code extension directory `plugins/agentops/skills/` is a copy. After editing any skill file, run the sync script:
+
+```bash
+# Linux / macOS
+bash scripts/sync-skills.sh
+
+# Windows
+.\scripts\sync-skills.ps1
+```
+
+CI will fail if the two directories diverge (`test_skills_sync.py`).
 
 ### Testing Expectations
 
