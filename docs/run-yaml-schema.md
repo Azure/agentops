@@ -167,7 +167,7 @@ References the evaluation dataset. At least one of `name` or `path` is required.
 |---|---|---|---|---|
 | `path` | path | No | — | Output directory override |
 | `write_report` | bool | No | `true` | Generate `report.md` |
-| `publish_foundry_evaluation` | bool | No | `false` | Publish results to Foundry |
+| `publish_foundry_evaluation` | bool | No | `true` | Publish results to Foundry |
 | `fail_on_foundry_publish_error` | bool | No | `false` | Fail if Foundry publish fails |
 
 ---
