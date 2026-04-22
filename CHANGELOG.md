@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.8] - 2026-04-22
+
+### Added
+- **Pre-flight checks for `agentops eval run`** — detects common issues (missing `azure-identity` or `azure-ai-evaluation` packages, missing env vars for AI-assisted/safety evaluators, Azure credential failures, unreachable endpoints) *before* backend execution. All detectable issues are reported at once with actionable error messages and `pip install` hints.
+- **`--dry-run` / `-n` flag on `eval run`** — runs pre-flight checks without executing the evaluation. Exits 0 if all checks pass, 1 otherwise. Useful for CI gating and fast feedback.
+- **Credential warm-up in pre-flight** — acquires and caches the MSAL token once during pre-flight so subsequent evaluator calls don't each cold-start `az.cmd`.
+
+### Changed
+- **Azure CLI credential timeout raised to 30s** — all `DefaultAzureCredential` instantiation sites (`eval_engine.py`, `foundry_backend.py`) now pass `process_timeout=30`. Default (10s) is insufficient for Windows `az.cmd` cold starts and was causing intermittent `AzureCliCredential: Failed to invoke the Azure CLI` errors.
+
 ## [0.1.7] - 2026-04-21
 
 ### Added

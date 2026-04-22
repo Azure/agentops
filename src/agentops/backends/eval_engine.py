@@ -425,7 +425,12 @@ def _default_credential() -> Any:
         ) from exc
 
     try:
-        return DefaultAzureCredential(exclude_developer_cli_credential=True)
+        # process_timeout=30 accommodates slow Azure CLI cold starts
+        # (notably on Windows where az.cmd can take >10s to initialize).
+        return DefaultAzureCredential(
+            exclude_developer_cli_credential=True,
+            process_timeout=30,
+        )
     except Exception as exc:
         raise RuntimeError(_CREDENTIAL_HELP_MESSAGE) from exc
 

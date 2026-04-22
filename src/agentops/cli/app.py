@@ -204,6 +204,15 @@ def cmd_eval_run(
     report_format: Annotated[
         str, typer.Option("--format", "-f", help="Report format: md, html, or all.")
     ] = "md",
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            "-n",
+            help="Run pre-flight checks (SDK imports, env vars, credentials, "
+            "endpoint reachability) without executing the evaluation.",
+        ),
+    ] = False,
 ) -> None:
     """Run an evaluation defined in a run.yaml file."""
     from agentops.services.runner import run_evaluation
@@ -213,18 +222,26 @@ def cmd_eval_run(
         raise typer.Exit(code=1)
 
     log.debug(
-        "cmd_eval_run called config=%s output=%s format=%s",
+        "cmd_eval_run called config=%s output=%s format=%s dry_run=%s",
         config,
         output,
         report_format,
+        dry_run,
     )
     try:
         run_result = run_evaluation(
-            config_path=config, output_override=output, report_format=report_format
+            config_path=config,
+            output_override=output,
+            report_format=report_format,
+            dry_run=dry_run,
         )
     except Exception as exc:
         typer.echo(f"Error: evaluation failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+    if dry_run:
+        typer.echo("Pre-flight checks passed.")
+        return
 
     typer.echo(f"Evaluation output directory: {run_result.output_dir}")
     typer.echo(f"results.json: {run_result.results_path}")
