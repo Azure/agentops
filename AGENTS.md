@@ -363,7 +363,7 @@ Callable protocol: `fn(input_text: str, context: dict) -> dict` returning `{"res
 `output` section:
 - `path` — Output directory
 - `write_report` — Generate `report.md` (default: `true`)
-- `publish_foundry_evaluation` — Publish results to Foundry (default: `false`)
+- `publish_foundry_evaluation` — Publish results to Foundry (default: `true`)
 - `fail_on_foundry_publish_error` — Fail if Foundry publish fails (default: `false`)
 
 Backend resolution:

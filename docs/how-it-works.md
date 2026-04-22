@@ -360,7 +360,7 @@ Both support two resolution modes (at least one required):
 
 - `path` — Output directory
 - `write_report` — Generate `report.md` (default: `true`)
-- `publish_foundry_evaluation` — Publish results to Foundry (default: `false`)
+- `publish_foundry_evaluation` — Publish results to Foundry (default: `true`)
 - `fail_on_foundry_publish_error` — Fail if Foundry publish fails (default: `false`)
 
 #### Validation rules

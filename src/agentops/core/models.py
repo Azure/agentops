@@ -347,7 +347,7 @@ class RunMetadata(BaseModel):
 class OutputConfig(BaseModel):
     path: Optional[Path] = None
     write_report: bool = True
-    publish_foundry_evaluation: bool = False
+    publish_foundry_evaluation: bool = True
     fail_on_foundry_publish_error: bool = False
 
 
