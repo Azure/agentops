@@ -222,6 +222,7 @@ class LocalAdapterBackend:
                             prediction_text = _normalize_text(
                                 result.get("response", "")
                             )
+                            returned_tool_calls = result.get("tool_calls")
                             set_agent_invoke_result(invoke_span)
                     except Exception as exc:  # noqa: BLE001
                         stderr_lines.append(f"row={index} error={exc!s}")
@@ -267,6 +268,7 @@ class LocalAdapterBackend:
                             prediction_text = _normalize_text(
                                 adapter_output.get("response", "")
                             )
+                            returned_tool_calls = adapter_output.get("tool_calls")
                             set_agent_invoke_result(invoke_span)
                     except subprocess.TimeoutExpired:
                         stderr_lines.append(f"row={index} error=adapter timeout")
@@ -333,6 +335,7 @@ class LocalAdapterBackend:
                         "input": prompt_text,
                         "response": prediction_text,
                         "context": row.get("context"),
+                        "tool_calls": returned_tool_calls,
                         "metrics": row_metric_entries,
                     }
                 )

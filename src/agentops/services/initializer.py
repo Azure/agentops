@@ -23,6 +23,7 @@ _TEMPLATE_FILES: tuple[str, ...] = (
     "run.yaml",
     "run-rag.yaml",
     "run-agent.yaml",
+    "run-agent-local.yaml",
     "run-http-model.yaml",
     "run-http-rag.yaml",
     "run-http-agent-tools.yaml",

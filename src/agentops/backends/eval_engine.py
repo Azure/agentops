@@ -25,6 +25,34 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Suppress noisy SDK warnings for single-turn evaluation inputs
+# ---------------------------------------------------------------------------
+
+class _ConversationHistoryFilter(logging.Filter):
+    """Suppress 'Conversation history could not be parsed' from azure-ai-evaluation.
+
+    This warning fires on every single-turn evaluation row because plain-text
+    inputs are not in conversation-list format.  It is expected and harmless.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "Conversation history could not be parsed" not in record.getMessage()
+
+
+# Apply filter to SDK loggers that emit the warning.
+# Each evaluator module passes its own logger to reformat_conversation_history().
+for _sdk_logger_name in (
+    "azure.ai.evaluation._common.utils",
+    "azure.ai.evaluation._evaluators._task_adherence._task_adherence",
+    "azure.ai.evaluation._evaluators._intent_resolution._intent_resolution",
+    "azure.ai.evaluation._evaluators._task_completion._task_completion",
+    "azure.ai.evaluation._evaluators._tool_call_accuracy._tool_call_accuracy",
+    "azure.ai.evaluation",
+):
+    logging.getLogger(_sdk_logger_name).addFilter(_ConversationHistoryFilter())
+
+
+# ---------------------------------------------------------------------------
 # Cloud-only evaluator sentinel
 # ---------------------------------------------------------------------------
 

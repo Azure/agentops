@@ -1,0 +1,30 @@
+version: 1
+
+# Local agent workflow evaluation via callable adapter.
+# Evaluates a local Python function that implements a multi-agent workflow.
+#
+# The callable must accept (input_text: str, context: dict) -> dict
+# and return at least {"response": "..."}.  For tool-aware evaluation,
+# also return {"tool_calls": [{"name": "...", "arguments": {...}}]}.
+#
+# Cloud-only evaluators (TaskCompletionEvaluator, ToolSelectionEvaluator,
+# ToolInputAccuracyEvaluator) will be gracefully skipped in local mode.
+# Use 'hosting: foundry' with 'execution_mode: remote' to run all evaluators.
+
+target:
+  type: agent
+  hosting: local
+  execution_mode: local
+  framework: agent_framework
+  local:
+    # Format: module_path:function_name
+    # The function must accept (input_text: str, context: dict) -> dict
+    callable: callable_adapter:run_evaluation
+bundle:
+  name: agent_workflow_baseline
+dataset:
+  name: smoke-agent-tools
+execution:
+  timeout_seconds: 300
+output:
+  write_report: true
