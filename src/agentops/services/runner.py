@@ -10,8 +10,6 @@ from datetime import datetime
 from pathlib import Path
 
 from agentops.backends.base import Backend, BackendRunContext
-
-logger = logging.getLogger(__name__)
 from agentops.core.config_loader import (
     load_bundle_config,
     load_dataset_config,
@@ -44,6 +42,8 @@ from agentops.utils.telemetry import (
     set_eval_run_result,
     shutdown as shutdown_tracing,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
