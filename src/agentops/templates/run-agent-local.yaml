@@ -3,9 +3,15 @@ version: 1
 # Local agent workflow evaluation via callable adapter.
 # Evaluates a local Python function that implements a multi-agent workflow.
 #
-# The callable must accept (input_text: str, context: dict) -> dict
-# and return at least {"response": "..."}.  For tool-aware evaluation,
-# also return {"tool_calls": [{"name": "...", "arguments": {...}}]}.
+# Two adapter options:
+#
+#   1. agent_framework_adapter:run_evaluation
+#      For Azure AI Foundry agents (Agent Framework SDK).
+#      Requires: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT and AGENT_ID env vars.
+#      pip install azure-ai-projects azure-identity
+#
+#   2. callable_adapter:run_evaluation
+#      For custom agents — HTTP, direct Python, or any callable.
 #
 # Cloud-only evaluators (TaskCompletionEvaluator, ToolSelectionEvaluator,
 # ToolInputAccuracyEvaluator) will be gracefully skipped in local mode.
@@ -17,8 +23,9 @@ target:
   execution_mode: local
   framework: agent_framework
   local:
-    # Format: module_path:function_name
-    # The function must accept (input_text: str, context: dict) -> dict
+    # Option 1: Agent Framework adapter (Azure AI Foundry agents)
+    #   callable: agent_framework_adapter:run_evaluation
+    # Option 2: Custom callable adapter (HTTP, direct Python, etc.)
     callable: callable_adapter:run_evaluation
 bundle:
   name: agent_workflow_baseline

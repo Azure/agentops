@@ -29,6 +29,7 @@ _TEMPLATE_FILES: tuple[str, ...] = (
     "run-http-agent-tools.yaml",
     "run-callable.yaml",
     "callable_adapter.py",
+    "agent_framework_adapter.py",
     ".gitignore",
     "bundles/model_quality_baseline.yaml",
     "bundles/rag_quality_baseline.yaml",
