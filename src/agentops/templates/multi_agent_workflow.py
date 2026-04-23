@@ -9,7 +9,7 @@ Demonstrates a router-to-specialist pattern using the Agent Framework SDK:
 All agents share a FoundryChatClient and run as a Workflow.
 
 Prerequisites:
-  pip install agent-framework agent-framework-foundry azure-identity
+  pip install agent-framework[foundry] azure-identity
 
 Environment variables:
   AZURE_AI_FOUNDRY_PROJECT_ENDPOINT  — Foundry project endpoint
@@ -47,7 +47,7 @@ def _get_chat_client():
     global _client
     if _client is None:
         from azure.identity import DefaultAzureCredential
-        from agent_framework_foundry import FoundryChatClient
+        from agent_framework.foundry import FoundryChatClient
 
         _client = FoundryChatClient(
             project_endpoint=PROJECT_ENDPOINT,
