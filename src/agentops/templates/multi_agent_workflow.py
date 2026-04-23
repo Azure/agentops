@@ -304,9 +304,9 @@ def run_evaluation(input_text: str, context: dict) -> dict:
         spec_config = SPECIALISTS[specialist_key]
         specialist = _create_agent(
             client,
-            name=spec_config["name"],
-            instructions=spec_config["instructions"],
-            tools=spec_config["tools"],
+            name=str(spec_config["name"]),
+            instructions=str(spec_config["instructions"]),
+            tools=list(spec_config["tools"]),
         )
         created_agents.append(specialist.id)
         logger.info("Created Specialist Agent: %s (%s)", spec_config["name"], specialist.id)

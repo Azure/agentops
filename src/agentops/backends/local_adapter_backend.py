@@ -231,6 +231,7 @@ class LocalAdapterBackend:
                         continue
                 else:
                     # --- Subprocess mode ---
+                    assert adapter_command is not None
                     adapter_input = json.dumps(
                         {"input": prompt_text, "expected": expected_text, **row}
                     )
