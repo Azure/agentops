@@ -30,6 +30,7 @@ _TEMPLATE_FILES: tuple[str, ...] = (
     "run-callable.yaml",
     "callable_adapter.py",
     "agent_framework_adapter.py",
+    "multi_agent_workflow.py",
     ".gitignore",
     "bundles/model_quality_baseline.yaml",
     "bundles/rag_quality_baseline.yaml",
