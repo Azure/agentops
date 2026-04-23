@@ -11,7 +11,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, List
+from typing import Dict, List
 
 _TEMPLATE_PACKAGE = "agentops.templates"
 

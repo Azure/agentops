@@ -679,7 +679,7 @@ def test_install_github_skill_claude(tmp_path: Path) -> None:
     with patch(
         "agentops.services.skills._fetch_github_tarball", return_value=tarball
     ):
-        result = install_github_skill(
+        install_github_skill(
             source="donlee/pptx-designer",
             directory=tmp_path,
             platforms=["claude"],
