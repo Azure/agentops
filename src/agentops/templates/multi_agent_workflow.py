@@ -1,15 +1,15 @@
-"""Minimal multi-agent workflow using Azure AI Agent Framework.
+"""Multi-agent workflow using Azure AI Agent Framework (azure-ai-agents).
 
-Demonstrates a router→specialist pattern where:
+Demonstrates a router-to-specialist pattern where:
 1. A Router Agent analyzes the query and picks the right specialist
-2. The selected Specialist Agent has tools and processes the query
-3. Tool calls are captured from the run steps
+2. The selected Specialist Agent has Python function tools
+3. Agent Framework auto-executes tool calls via enable_auto_function_calls
+4. Tool calls are captured from run steps for evaluation
 
-All agents are created dynamically via the Agent Framework SDK
-(azure-ai-projects + OpenAI Assistants API) and cleaned up after use.
+All agents are created dynamically via AgentsClient and cleaned up after use.
 
 Prerequisites:
-  pip install azure-ai-projects azure-identity openai
+  pip install azure-ai-agents azure-identity
 
 Environment variables:
   AZURE_AI_FOUNDRY_PROJECT_ENDPOINT  — Foundry project endpoint
@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import urllib.request
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -36,252 +37,200 @@ logger = logging.getLogger(__name__)
 PROJECT_ENDPOINT = os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", "")
 MODEL = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "")
 
-# Lazy-initialized client
-_oai_client = None
+_client = None
+_token: str | None = None
 
 
-def _get_openai_client():
-    """Get an AzureOpenAI client for the Assistants API."""
-    global _oai_client
-    if _oai_client is None:
+def _get_client():
+    """Lazily initialize the AgentsClient."""
+    global _client
+    if _client is None:
+        from azure.ai.agents import AgentsClient
         from azure.identity import DefaultAzureCredential
-        from openai import AzureOpenAI
 
-        cred = DefaultAzureCredential()
-        token = cred.get_token("https://cognitiveservices.azure.com/.default")
-
-        # Extract base endpoint (without /api/projects/... path)
-        endpoint = PROJECT_ENDPOINT.split("/api/")[0] if "/api/" in PROJECT_ENDPOINT else PROJECT_ENDPOINT
-
-        _oai_client = AzureOpenAI(
-            azure_endpoint=endpoint,
-            api_version="2025-03-01-preview",
-            azure_ad_token=token.token,
+        _client = AgentsClient(
+            endpoint=PROJECT_ENDPOINT,
+            credential=DefaultAzureCredential(),
         )
-    return _oai_client
+    return _client
 
 
-# ── Tool definitions for specialist agents ─────────────────────────────
+def _get_token() -> str:
+    """Get a bearer token for REST API calls (messages, run steps)."""
+    global _token
+    from azure.identity import DefaultAzureCredential
 
-WEATHER_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "Get current weather for a city",
-            "parameters": {
-                "type": "object",
-                "properties": {"city": {"type": "string"}},
-                "required": ["city"],
-            },
-        },
-    }
-]
+    _token = DefaultAzureCredential().get_token(
+        "https://ai.azure.com/.default"
+    ).token
+    return _token
 
-FINANCE_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "convert_currency",
-            "description": "Convert an amount from one currency to another",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "amount": {"type": "number"},
-                    "from_currency": {"type": "string"},
-                    "to_currency": {"type": "string"},
-                },
-                "required": ["amount", "from_currency", "to_currency"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate_compound_interest",
-            "description": "Calculate compound interest",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "principal": {"type": "number"},
-                    "rate": {"type": "number"},
-                    "years": {"type": "integer"},
-                },
-                "required": ["principal", "rate", "years"],
-            },
-        },
-    },
-]
 
-SEARCH_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_news",
-            "description": "Search for recent news articles",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string"},
-                    "max_results": {"type": "integer"},
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_flights",
-            "description": "Search for available flights",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "origin": {"type": "string"},
-                    "destination": {"type": "string"},
-                    "date": {"type": "string"},
-                },
-                "required": ["origin", "destination", "date"],
-            },
-        },
-    },
-]
+def _rest_get(path: str) -> dict:
+    """GET request to the Foundry project API."""
+    url = f"{PROJECT_ENDPOINT}{path}?api-version=2025-05-01"
+    req = urllib.request.Request(
+        url, headers={"Authorization": f"Bearer {_get_token()}"}
+    )
+    with urllib.request.urlopen(req) as resp:
+        return json.loads(resp.read())
 
-# Simulated tool results
-TOOL_RESULTS = {
-    "get_weather": lambda args: f"Current weather in {args.get('city', 'unknown')}: 55°F, partly cloudy.",
-    "convert_currency": lambda args: f"{args.get('amount', 0)} {args.get('from_currency', '')} = {args.get('amount', 0) * 0.92:.2f} {args.get('to_currency', '')}",
-    "calculate_compound_interest": lambda args: f"Compound interest: ${args.get('principal', 0) * ((1 + args.get('rate', 0)) ** args.get('years', 0) - 1):,.2f}",
-    "search_news": lambda args: f"Found 5 articles about '{args.get('query', '')}'.",
-    "search_flights": lambda args: f"Found 3 flights from {args.get('origin', '')} to {args.get('destination', '')} on {args.get('date', '')}.",
-}
 
-# ── Specialist definitions ─────────────────────────────────────────────
+# ── Tool functions for specialist agents ───────────────────────────────
+# Agent Framework uses real Python functions (not JSON schemas).
+# FunctionTool wraps these and auto-executes them when the agent
+# makes a tool call via enable_auto_function_calls().
 
-SPECIALISTS = {
+
+def get_weather(city: str) -> str:
+    """Get current weather for a city"""
+    return f"Current weather in {city}: 55°F, partly cloudy."
+
+
+def convert_currency(amount: str, from_currency: str, to_currency: str) -> str:
+    """Convert an amount from one currency to another"""
+    amt = float(amount)
+    return f"{amt} {from_currency} = {amt * 0.92:.2f} {to_currency}"
+
+
+def calculate_compound_interest(principal: str, rate: str, years: str) -> str:
+    """Calculate compound interest"""
+    p, r, y = float(principal), float(rate) / 100, int(float(years))
+    total = p * ((1 + r) ** y)
+    interest = total - p
+    return f"Compound interest: ${interest:,.2f}, total: ${total:,.2f}"
+
+
+def search_news(query: str, max_results: str = "5") -> str:
+    """Search for recent news articles"""
+    return f"Found {max_results} articles about '{query}'."
+
+
+def search_flights(origin: str, destination: str, date: str) -> str:
+    """Search for available flights"""
+    return f"Found 3 flights from {origin} to {destination} on {date}."
+
+
+# ── Specialist configurations ──────────────────────────────────────────
+
+SPECIALISTS: dict[str, dict[str, Any]] = {
     "weather": {
         "name": "WeatherSpecialist",
-        "instructions": "You are a weather specialist. Use the get_weather tool to answer weather queries. Always call the tool before responding.",
-        "tools": WEATHER_TOOLS,
+        "instructions": (
+            "You are a weather specialist. Use the get_weather tool "
+            "to answer weather queries. Always call the tool before responding."
+        ),
+        "functions": [get_weather],
     },
     "finance": {
         "name": "FinanceSpecialist",
-        "instructions": "You are a finance specialist. Use convert_currency or calculate_compound_interest tools as needed. Always call the appropriate tool before responding.",
-        "tools": FINANCE_TOOLS,
+        "instructions": (
+            "You are a finance specialist. Use convert_currency or "
+            "calculate_compound_interest tools as needed. Always call "
+            "the appropriate tool before responding."
+        ),
+        "functions": [convert_currency, calculate_compound_interest],
     },
     "search": {
         "name": "SearchSpecialist",
-        "instructions": "You are a search specialist. Use search_news or search_flights tools as needed. Always call the appropriate tool before responding.",
-        "tools": SEARCH_TOOLS,
+        "instructions": (
+            "You are a search specialist. Use search_news or search_flights "
+            "tools as needed. Always call the appropriate tool before responding."
+        ),
+        "functions": [search_news, search_flights],
     },
 }
 
 
-def _create_agent(client, name: str, instructions: str, tools: list) -> Any:
-    """Create an Agent Framework agent via the Assistants API."""
-    return client.beta.assistants.create(
-        model=MODEL,
-        name=name,
-        instructions=instructions,
-        tools=tools,
-    )
-
-
-def _run_agent_with_tools(client, agent_id: str, query: str) -> dict:
-    """Run an agent, handle tool calls, and return response + tool_calls."""
-    thread = client.beta.threads.create()
-    client.beta.threads.messages.create(
-        thread_id=thread.id, role="user", content=query
-    )
-
-    run = client.beta.threads.runs.create_and_poll(
-        thread_id=thread.id,
-        assistant_id=agent_id,
-    )
-
-    all_tool_calls = []
-
-    # Handle tool calls if the agent requested them
-    while run.status == "requires_action":
-        tool_outputs = []
-        for tc in run.required_action.submit_tool_outputs.tool_calls:
-            fn_name = tc.function.name
-            fn_args = json.loads(tc.function.arguments)
-            all_tool_calls.append({"name": fn_name, "arguments": fn_args})
-
-            handler = TOOL_RESULTS.get(fn_name)
-            result = handler(fn_args) if handler else f"Unknown tool: {fn_name}"
-            tool_outputs.append({"tool_call_id": tc.id, "output": result})
-
-        run = client.beta.threads.runs.submit_tool_outputs_and_poll(
-            thread_id=thread.id, run_id=run.id, tool_outputs=tool_outputs
-        )
-
-    # Extract final response
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
+def _extract_response_and_tool_calls(
+    thread_id: str, run_id: str
+) -> dict[str, Any]:
+    """Extract response text and tool calls from a completed run."""
+    # Get assistant messages
+    msgs = _rest_get(f"/threads/{thread_id}/messages")
     response_text = ""
-    for msg in messages.data:
-        if msg.role == "assistant":
-            for block in msg.content:
-                if block.type == "text":
-                    response_text += block.text.value
+    for msg in msgs.get("data", []):
+        if msg.get("role") == "assistant":
+            for block in msg.get("content", []):
+                if block.get("type") == "text":
+                    val = block.get("text", {})
+                    response_text += (
+                        val.get("value", "") if isinstance(val, dict) else str(val)
+                    )
             break
 
-    # Cleanup thread
-    client.beta.threads.delete(thread.id)
+    # Get tool calls from run steps
+    steps = _rest_get(f"/threads/{thread_id}/runs/{run_id}/steps")
+    tool_calls: list[dict[str, Any]] = []
+    for step in steps.get("data", []):
+        details = step.get("step_details", {})
+        if details.get("type") == "tool_calls":
+            for tc in details.get("tool_calls", []):
+                if tc.get("type") == "function":
+                    fn = tc.get("function", {})
+                    tool_calls.append({
+                        "name": fn.get("name", ""),
+                        "arguments": json.loads(fn.get("arguments", "{}")),
+                    })
 
-    return {"response": response_text, "tool_calls": all_tool_calls}
+    return {"response": response_text.strip(), "tool_calls": tool_calls}
 
 
-def _route_query(client, router_id: str, query: str) -> str:
+def _route_query(client: Any, router_id: str, query: str) -> str:
     """Use the Router Agent to determine which specialist to use."""
-    thread = client.beta.threads.create()
-    client.beta.threads.messages.create(
-        thread_id=thread.id, role="user", content=query
+    from azure.ai.agents.models import ThreadMessageOptions
+
+    result = client.create_thread_and_process_run(
+        agent_id=router_id,
+        thread={
+            "messages": [
+                ThreadMessageOptions(role="user", content=query)
+            ]
+        },
     )
 
-    client.beta.threads.runs.create_and_poll(
-        thread_id=thread.id, assistant_id=router_id
-    )
-
-    messages = client.beta.threads.messages.list(thread_id=thread.id)
+    msgs = _rest_get(f"/threads/{result.thread_id}/messages")
     routing_decision = ""
-    for msg in messages.data:
-        if msg.role == "assistant":
-            for block in msg.content:
-                if block.type == "text":
-                    routing_decision = block.text.value.strip().lower()
+    for msg in msgs.get("data", []):
+        if msg.get("role") == "assistant":
+            for block in msg.get("content", []):
+                if block.get("type") == "text":
+                    val = block.get("text", {})
+                    routing_decision = (
+                        val.get("value", "").strip().lower()
+                        if isinstance(val, dict)
+                        else str(val).strip().lower()
+                    )
             break
 
-    client.beta.threads.delete(thread.id)
-
-    # Parse routing decision
     if "weather" in routing_decision:
         return "weather"
-    elif "finance" in routing_decision or "currency" in routing_decision or "interest" in routing_decision:
+    if any(k in routing_decision for k in ("finance", "currency", "interest")):
         return "finance"
-    else:
-        return "search"
+    return "search"
 
 
 def run_evaluation(input_text: str, context: dict) -> dict:
     """Multi-agent workflow entry point for AgentOps evaluation.
 
     Orchestrates: Router Agent → Specialist Agent (with tools) → Response.
-    All agents are created dynamically and cleaned up after each call.
+    All agents are created dynamically via Agent Framework SDK
+    (azure-ai-agents AgentsClient) and cleaned up after each call.
     """
     if not PROJECT_ENDPOINT or not MODEL:
         raise ValueError(
             "Set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT and AZURE_OPENAI_DEPLOYMENT"
         )
 
-    client = _get_openai_client()
-    created_agents = []
+    from azure.ai.agents.models import FunctionTool, ThreadMessageOptions, ToolSet
+
+    client = _get_client()
+    created_agents: list[str] = []
 
     try:
-        # Step 1: Create Router Agent
-        router = _create_agent(
-            client,
+        # Step 1: Create Router Agent (no tools, just routing logic)
+        router = client.create_agent(
+            model=MODEL,
             name="RouterAgent",
             instructions=(
                 "You are a routing agent. Given a user query, respond with ONLY "
@@ -291,7 +240,6 @@ def run_evaluation(input_text: str, context: dict) -> dict:
                 "- 'search' for news, flights, or general search queries\n"
                 "Respond with only the category word, nothing else."
             ),
-            tools=[],
         )
         created_agents.append(router.id)
         logger.info("Created Router Agent: %s", router.id)
@@ -300,32 +248,52 @@ def run_evaluation(input_text: str, context: dict) -> dict:
         specialist_key = _route_query(client, router.id, input_text)
         logger.info("Router selected specialist: %s", specialist_key)
 
-        # Step 3: Create the selected Specialist Agent
-        spec_config = SPECIALISTS[specialist_key]
-        specialist = _create_agent(
-            client,
-            name=str(spec_config["name"]),
-            instructions=str(spec_config["instructions"]),
-            tools=list(spec_config["tools"]),
+        # Step 3: Create Specialist Agent with FunctionTool
+        spec = SPECIALISTS[specialist_key]
+        functions = FunctionTool(functions=spec["functions"])
+        toolset = ToolSet()
+        toolset.add(functions)
+
+        specialist = client.create_agent(
+            model=MODEL,
+            name=str(spec["name"]),
+            instructions=str(spec["instructions"]),
+            toolset=toolset,
         )
         created_agents.append(specialist.id)
-        logger.info("Created Specialist Agent: %s (%s)", spec_config["name"], specialist.id)
-
-        # Step 4: Run the specialist with tool handling
-        result = _run_agent_with_tools(client, specialist.id, input_text)
         logger.info(
-            "Specialist returned: response=%d chars, tool_calls=%d",
-            len(result["response"]),
-            len(result["tool_calls"]),
+            "Created Specialist: %s (%s)", spec["name"], specialist.id
         )
 
-        return result
+        # Step 4: Enable auto function calls and run
+        client.enable_auto_function_calls(toolset)
+
+        result = client.create_thread_and_process_run(
+            agent_id=specialist.id,
+            thread={
+                "messages": [
+                    ThreadMessageOptions(role="user", content=input_text)
+                ]
+            },
+        )
+        logger.info("Specialist run completed: %s", result.status)
+
+        # Step 5: Extract response and tool calls
+        output = _extract_response_and_tool_calls(
+            result.thread_id, result.id
+        )
+        logger.info(
+            "Result: response=%d chars, tool_calls=%d",
+            len(output["response"]),
+            len(output["tool_calls"]),
+        )
+        return output
 
     finally:
-        # Step 5: Cleanup — delete all created agents
+        # Cleanup all created agents
         for agent_id in created_agents:
             try:
-                client.beta.assistants.delete(agent_id)
+                client.delete_agent(agent_id)
                 logger.debug("Deleted agent: %s", agent_id)
             except Exception:
                 logger.debug("Failed to delete agent: %s", agent_id, exc_info=True)
