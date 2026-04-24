@@ -1,23 +1,20 @@
-"""Agent Framework adapter for evaluating a single Foundry Agent with tools.
+"""Agent Framework adapter for evaluating a single agent with tools.
 
-Wraps a pre-deployed Azure AI Foundry Agent using the Microsoft Agent
-Framework SDK (FoundryAgent) with local @tool functions for tool call
-capture. The agent's instructions and model are configured on the
-service; local tools provide the implementations that Agent Framework
-auto-executes.
+Uses Microsoft Agent Framework Agent with FoundryChatClient to create
+an agent with local @tool functions. Unlike FoundryAgent (which requires
+tools declared server-side), this pattern defines tools entirely in code.
 
 For multi-agent workflows with routing, use multi_agent_workflow.py.
 
-Reference: github.com/microsoft/agent-framework/python/samples/02-agents/
-           providers/foundry/foundry_agent_with_function_tools.py
+Reference: github.com/microsoft/agent-framework/python/samples/
+           03-workflows/_start-here/step2_agents_in_a_workflow.py
 
 Prerequisites:
   pip install agent-framework[foundry] azure-identity
 
 Environment variables:
   AZURE_AI_FOUNDRY_PROJECT_ENDPOINT  — Foundry project endpoint
-  AGENT_NAME     — name of the agent in Foundry
-  AGENT_VERSION  — version of the agent (optional)
+  AZURE_OPENAI_DEPLOYMENT            — model deployment name
 
 Usage in run.yaml:
   target:
@@ -35,21 +32,34 @@ import logging
 import os
 from typing import Any
 
-from agent_framework import AgentResponse, tool
+from agent_framework import Agent, AgentResponse, tool
 
 logger = logging.getLogger(__name__)
 
 PROJECT_ENDPOINT = os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", "")
-AGENT_NAME = os.environ.get("AGENT_NAME", "")
-AGENT_VERSION = os.environ.get("AGENT_VERSION", None)
+MODEL = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "")
 
+_client = None
 _captured_tool_calls: list[dict[str, Any]] = []
 
 
+def _get_chat_client():
+    """Lazily initialize the FoundryChatClient."""
+    global _client
+    if _client is None:
+        from azure.identity import DefaultAzureCredential
+        from agent_framework.foundry import FoundryChatClient
+
+        _client = FoundryChatClient(
+            project_endpoint=PROJECT_ENDPOINT,
+            model=MODEL,
+            credential=DefaultAzureCredential(),
+        )
+    return _client
+
+
 # ── Local tool implementations ─────────────────────────────────────────
-# These must match the tool declarations on the Foundry agent.
-# Agent Framework auto-executes them when the agent makes a tool call.
-# Replace or extend these with your agent's actual tools.
+# Replace these with your agent's actual tools.
 
 
 @tool
@@ -84,15 +94,15 @@ ALL_TOOLS = [get_weather, convert_currency, search_news]
 
 
 async def _run_agent(input_text: str) -> dict[str, Any]:
-    """Run a pre-deployed Foundry Agent with local tool implementations."""
-    from azure.identity import DefaultAzureCredential
-    from agent_framework.foundry import FoundryAgent
-
-    agent = FoundryAgent(
-        project_endpoint=PROJECT_ENDPOINT,
-        agent_name=AGENT_NAME,
-        agent_version=AGENT_VERSION,
-        credential=DefaultAzureCredential(),
+    """Run a single agent with local @tool functions."""
+    agent = Agent(
+        client=_get_chat_client(),
+        name="EvalAgent",
+        instructions=(
+            "You are a helpful assistant with tools. "
+            "Use the appropriate tool to answer the user's query. "
+            "Always call a tool before responding."
+        ),
         tools=ALL_TOOLS,
     )
 
@@ -110,14 +120,13 @@ async def _run_agent(input_text: str) -> dict[str, Any]:
 def run_evaluation(input_text: str, context: dict) -> dict:
     """Callable entry point for AgentOps evaluation.
 
-    Invokes a pre-deployed Foundry Agent with local @tool functions.
-    Agent Framework auto-executes tools; invocations are captured
-    and returned alongside the response for evaluator scoring.
+    Creates a single Agent with local @tool functions using
+    Microsoft Agent Framework. Tool calls are captured and
+    returned alongside the response for evaluator scoring.
     """
-    if not PROJECT_ENDPOINT or not AGENT_NAME:
+    if not PROJECT_ENDPOINT or not MODEL:
         raise ValueError(
-            "Set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT and AGENT_NAME. "
-            "Example: AGENT_NAME=my-agent AGENT_VERSION=1.0"
+            "Set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT and AZURE_OPENAI_DEPLOYMENT"
         )
 
     return asyncio.run(_run_agent(input_text))
