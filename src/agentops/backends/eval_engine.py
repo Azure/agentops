@@ -23,6 +23,44 @@ from agentops.core.models import EvaluatorConfig
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Suppress noisy SDK warnings for single-turn evaluation inputs
+# ---------------------------------------------------------------------------
+
+class _ConversationHistoryFilter(logging.Filter):
+    """Suppress 'Conversation history could not be parsed' from azure-ai-evaluation.
+
+    This warning fires on every single-turn evaluation row because plain-text
+    inputs are not in conversation-list format.  It is expected and harmless.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return "Conversation history could not be parsed" not in record.getMessage()
+
+
+# Apply filter to SDK loggers that emit the warning.
+# Each evaluator module passes its own logger to reformat_conversation_history().
+for _sdk_logger_name in (
+    "azure.ai.evaluation._common.utils",
+    "azure.ai.evaluation._evaluators._task_adherence._task_adherence",
+    "azure.ai.evaluation._evaluators._intent_resolution._intent_resolution",
+    "azure.ai.evaluation._evaluators._task_completion._task_completion",
+    "azure.ai.evaluation._evaluators._tool_call_accuracy._tool_call_accuracy",
+    "azure.ai.evaluation",
+):
+    logging.getLogger(_sdk_logger_name).addFilter(_ConversationHistoryFilter())
+
+
+# ---------------------------------------------------------------------------
+# Cloud-only evaluator sentinel
+# ---------------------------------------------------------------------------
+
+
+class _CloudOnlyEvaluatorError(Exception):
+    """Raised when an evaluator is only available via Foundry Cloud Evaluation."""
+
+
 # ---------------------------------------------------------------------------
 # Credential help (shared by _default_credential and _acquire_token)
 # ---------------------------------------------------------------------------
@@ -609,8 +647,12 @@ def _load_foundry_evaluator_callable(
                 "Install with: pip install azure-ai-evaluation"
             ) from exc
         except AttributeError as exc:
-            raise ValueError(
-                f"Unknown built-in Foundry evaluator class: {class_name}"
+            raise _CloudOnlyEvaluatorError(
+                f"Evaluator '{class_name}' is not available in the local "
+                f"azure-ai-evaluation SDK. It may only be available via "
+                f"Foundry Cloud Evaluation (builtin.{_to_builtin_evaluator_name(class_name)}). "
+                f"Use 'hosting: foundry' with 'execution_mode: remote' to "
+                f"run this evaluator, or disable it for local runs."
             ) from exc
 
         return _instantiate_evaluator_symbol(
@@ -691,12 +733,23 @@ def _build_foundry_evaluator_runtimes(
                 )
             score_keys = score_keys_raw
 
-        evaluator_callable = _load_foundry_evaluator_callable(
-            evaluator_name=evaluator.name,
-            evaluator_config=config,
-            fallback_endpoint=fallback_endpoint,
-            fallback_deployment=fallback_deployment,
-        )
+        try:
+            evaluator_callable = _load_foundry_evaluator_callable(
+                evaluator_name=evaluator.name,
+                evaluator_config=config,
+                fallback_endpoint=fallback_endpoint,
+                fallback_deployment=fallback_deployment,
+            )
+        except _CloudOnlyEvaluatorError:
+            logger.warning(
+                "Skipping evaluator '%s' — not available in the local "
+                "azure-ai-evaluation SDK. This evaluator is only supported "
+                "via Foundry Cloud Evaluation (hosting: foundry, "
+                "execution_mode: remote). It will be ignored for this "
+                "local run.",
+                evaluator.name,
+            )
+            continue
 
         runtimes.append(
             FoundryEvaluatorRuntime(

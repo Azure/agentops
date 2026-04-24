@@ -5,6 +5,15 @@ description: >
   Measures task completion, tool call accuracy, intent resolution,
   task adherence, tool selection, and tool input accuracy using
   AI-assisted evaluators from the Foundry evaluation suite.
+
+  Note: TaskCompletionEvaluator, ToolSelectionEvaluator, and
+  ToolInputAccuracyEvaluator are only available via Foundry Cloud
+  Evaluation and will be gracefully skipped in local execution mode.
+
+  Note: TaskAdherenceEvaluator works best with multi-turn conversation
+  format (list of message dicts with role/content).  Single-turn plain
+  text inputs may produce low scores because the evaluator cannot assess
+  procedural adherence without conversation context.
 evaluators:
   - name: TaskCompletionEvaluator
     source: foundry

@@ -42,7 +42,7 @@ def test_init_creates_expected_files(tmp_path: Path) -> None:
     assert (tmp_path / ".agentops" / "data" / "smoke-conversational.jsonl").is_file()
     assert (tmp_path / ".agentops" / "workflows" / "agentops-eval.yml").is_file()
 
-    assert len(result.created_files) == 24
+    assert len(result.created_files) == 27
     assert len(result.overwritten_files) == 0
 
     run_config = load_yaml(tmp_path / ".agentops" / "run.yaml")
