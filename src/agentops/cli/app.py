@@ -491,6 +491,17 @@ def cmd_skills_install(
             help="Target platform(s): copilot, claude.",
         ),
     ] = None,
+    from_github: Annotated[
+        str | None,
+        typer.Option(
+            "--from",
+            help=(
+                "Install a community skill from GitHub. "
+                "Format: org/repo or github:org/repo[@ref]. "
+                "Example: --from donlee/pptx-designer"
+            ),
+        ),
+    ] = None,
     force: bool = typer.Option(
         False,
         "--force",
@@ -507,12 +518,18 @@ def cmd_skills_install(
         help="Target repository root directory.",
     ),
 ) -> None:
-    """Install AgentOps coding agent skills into the target project."""
-    from agentops.services.skills import install_skills
+    """Install AgentOps coding agent skills into the target project.
 
+    Use --from to install a community skill from GitHub:
+
+        agentops skills install --from donlee/pptx-designer
+
+        agentops skills install --from github:org/repo@v1.0
+    """
     log.debug(
-        "cmd_skills_install called platform=%s force=%s prompt=%s dir=%s",
+        "cmd_skills_install called platform=%s from=%s force=%s prompt=%s dir=%s",
         platform,
+        from_github,
         force,
         prompt,
         directory,
@@ -523,6 +540,31 @@ def cmd_skills_install(
     if not resolved_platforms:
         typer.echo("No platforms selected. Skipping skill installation.")
         return
+
+    if from_github:
+        # GitHub-based skill installation
+        from agentops.services.skills import install_github_skill
+
+        typer.echo(f"Installing skill from GitHub: {from_github}")
+        try:
+            result = install_github_skill(
+                source=from_github,
+                directory=directory,
+                platforms=resolved_platforms,
+                force=True,
+            )
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        except Exception as exc:
+            typer.echo(f"Error: failed to install skill: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+        _print_skills_result(result)
+        return
+
+    # Bundled skills installation
+    from agentops.services.skills import install_skills
 
     try:
         result = install_skills(

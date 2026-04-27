@@ -103,6 +103,14 @@ def run_evaluation(input_text: str, context: dict) -> dict:
     # result = workflow.invoke(input_text)
     # return {"response": result.output}
 
+    # --- Option 4: Agent Framework (Azure AI Foundry agent) ---
+    # For Agent Framework agents, use the dedicated adapter template instead:
+    #
+    #   callable: agent_framework_adapter:run_evaluation
+    #
+    # Set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT and AGENT_ID environment variables.
+    # See agent_framework_adapter.py for details.
+
     # --- Context sanitization (RAG scenarios) ---
     # If your dataset has a "context" field with raw document content,
     # clean it before returning:

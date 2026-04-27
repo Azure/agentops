@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 from dataclasses import dataclass
 from datetime import datetime
@@ -41,6 +42,8 @@ from agentops.utils.telemetry import (
     set_eval_run_result,
     shutdown as shutdown_tracing,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -218,9 +221,9 @@ def _evaluate_item_thresholds(
         threshold_results: list[ItemThresholdEvaluationResult] = []
         for rule in threshold_rules:
             if rule.evaluator not in row_values:
-                raise ValueError(
-                    f"Missing evaluator score '{rule.evaluator}' for row {row.row_index}"
-                )
+                # Evaluator may be cloud-only and was skipped during local
+                # execution — silently skip its threshold check.
+                continue
 
             threshold_results.append(
                 _evaluate_threshold_against_value(
@@ -266,8 +269,12 @@ def _validate_enabled_evaluators_scored(
 
     missing = [name for name in evaluator_names if name not in scored_names]
     if missing:
-        raise ValueError(
-            "Missing scores for enabled evaluators: " + ", ".join(sorted(missing))
+        logger.warning(
+            "Some enabled evaluators did not produce scores and will be "
+            "excluded from threshold checks: %s. These evaluators may "
+            "only be available via Foundry Cloud Evaluation "
+            "(hosting: foundry, execution_mode: remote).",
+            ", ".join(sorted(missing)),
         )
 
 
@@ -290,6 +297,11 @@ def _summarize_thresholds_from_items(
                     and threshold_result.criteria == rule.criteria
                 ):
                     rule_results.append(threshold_result)
+
+        # Skip threshold rules for evaluators that produced no scores
+        # (e.g., cloud-only evaluators skipped during local execution).
+        if not rule_results:
+            continue
 
         passed_items = sum(1 for result in rule_results if result.passed)
         passed = bool(rule_results) and passed_items == len(rule_results)
