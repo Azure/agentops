@@ -179,6 +179,33 @@ class TestAgentOpsConfig:
         assert parsed["groundedness"].value == 3.0
         assert parsed["coherence"].value == 3.5
 
+    def test_publish_foundry_accepted(self) -> None:
+        cfg = AgentOpsConfig(
+            version=1,
+            agent="my-rag:3",
+            dataset="./qa.jsonl",
+            publish="foundry",
+            project_endpoint="https://x.services.ai.azure.com/api/projects/p",
+        )
+        assert cfg.publish == "foundry"
+        assert cfg.project_endpoint.endswith("/projects/p")
+
+    def test_publish_defaults_to_none(self) -> None:
+        cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")
+        assert cfg.publish is None
+        assert cfg.project_endpoint is None
+
+    def test_publish_rejects_unknown_target(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "my-rag:3",
+                    "dataset": "./qa.jsonl",
+                    "publish": "datadog",
+                }
+            )
+
     def test_protocol_rejected_for_prompt_agent(self) -> None:
         with pytest.raises(ValidationError, match="prompt agent"):
             AgentOpsConfig(

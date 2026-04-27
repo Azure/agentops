@@ -50,6 +50,9 @@ TargetKind = Literal[
     "model_direct",     # model:<deployment>
 ]
 
+#: Where to publish the evaluation run. ``None`` keeps results local-only.
+PublishTarget = Literal["foundry"]
+
 
 # ---------------------------------------------------------------------------
 # Threshold model
@@ -213,6 +216,22 @@ class AgentOpsConfig(BaseModel):
     auth_header_env: Optional[str] = None
 
     evaluators: Optional[List[EvaluatorOverride]] = None
+
+    publish: Optional[PublishTarget] = Field(
+        None,
+        description=(
+            "Optional opt-in publish target. When set to 'foundry', the "
+            "evaluation run is published to the New Foundry Evaluations "
+            "panel after results are written locally."
+        ),
+    )
+    project_endpoint: Optional[str] = Field(
+        None,
+        description=(
+            "Optional Foundry project endpoint URL used by 'publish: foundry'. "
+            "When omitted, AGENTOPS reads AZURE_AI_FOUNDRY_PROJECT_ENDPOINT."
+        ),
+    )
 
     model_config = ConfigDict(extra="forbid")
 

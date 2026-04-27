@@ -31,7 +31,7 @@ from agentops.core.results import (
     TargetInfo,
 )
 from agentops.pipeline import comparison as comparison_module
-from agentops.pipeline import invocations, reporter, runtime, thresholds
+from agentops.pipeline import invocations, publisher, reporter, runtime, thresholds
 
 logger = logging.getLogger("agentops.pipeline")
 
@@ -135,7 +135,43 @@ def run_evaluation(
         )
 
     _persist(result, options.output_dir)
+
+    if config.publish == "foundry":
+        _publish_to_foundry_safely(result, config, options.output_dir)
+
     return result
+
+
+def _publish_to_foundry_safely(
+    result: RunResult,
+    config: AgentOpsConfig,
+    output_dir: Path,
+) -> None:
+    """Best-effort Foundry publish. Failures are logged, never fatal."""
+    if config.publish != "foundry":
+        return
+
+    try:
+        published = publisher.publish_to_foundry(
+            result,
+            project_endpoint=config.project_endpoint,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("foundry publish failed: %s", exc)
+        return
+
+    cloud_meta_path = output_dir / "cloud_evaluation.json"
+    cloud_meta_path.write_text(
+        json.dumps(
+            {
+                "evaluation_name": published.evaluation_name,
+                "report_url": published.studio_url,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    logger.info("Foundry Evaluations URL: %s", published.studio_url)
 
 
 def exit_code_from(result: RunResult) -> int:

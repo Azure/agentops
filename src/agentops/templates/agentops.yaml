@@ -24,3 +24,10 @@ dataset: .agentops/data/smoke.jsonl
 #   coherence: ">=3"
 #   groundedness: ">=3"
 #   avg_latency_seconds: "<=10"
+
+# Optional. Publish the run to the New Foundry Evaluations panel after writing
+# results.json/report.md locally. Requires AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+# (or 'project_endpoint' below).
+#
+# publish: foundry
+# project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<project>"
