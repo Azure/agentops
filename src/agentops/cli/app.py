@@ -22,10 +22,12 @@ eval_app = typer.Typer(
 report_app = typer.Typer(help="Reporting commands.")
 workflow_app = typer.Typer(help="CI/CD workflow commands.")
 skills_app = typer.Typer(help="Coding agent skills management.")
+mcp_app = typer.Typer(help="MCP (Model Context Protocol) server commands.")
 app.add_typer(eval_app, name="eval")
 app.add_typer(report_app, name="report")
 app.add_typer(workflow_app, name="workflow")
 app.add_typer(skills_app, name="skills")
+app.add_typer(mcp_app, name="mcp")
 
 log = get_logger(__name__)
 DEFAULT_REPORT_INPUT = Path(".agentops/results/latest/results.json")
@@ -538,6 +540,36 @@ def cmd_skills_install(
         typer.echo(f"Warning: failed to register skills: {exc}", err=True)
     else:
         _print_registration_result(reg_result)
+
+
+# ---------------------------------------------------------------------------
+# agentops mcp serve
+# ---------------------------------------------------------------------------
+
+
+@mcp_app.command("serve")
+def cmd_mcp_serve() -> None:
+    """Start the AgentOps MCP server on stdio.
+
+    Exposes the AgentOps workflow (init, eval run, report show, results
+    summary, dataset add, list runs, workflow init) as MCP tools so that
+    MCP-aware coding agents can drive AgentOps directly.
+
+    Requires the optional ``mcp`` extra:
+
+        pip install agentops-toolkit[mcp]
+    """
+    try:
+        from agentops.mcp.server import serve_stdio
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    try:
+        serve_stdio()
+    except RuntimeError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 def main() -> None:

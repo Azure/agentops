@@ -109,6 +109,7 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 | `agentops report generate [--in FILE]` | Regenerate `report.md` from `results.json` |
 | `agentops workflow generate` | Generate GitHub Actions workflow |
 | `agentops skills install [--platform <p>]` | Install coding agent skills (Copilot, Claude) |
+| `agentops mcp serve` | Start the AgentOps MCP server (stdio). Requires `pip install agentops-toolkit[mcp]`. |
 
 ## Documentation
 

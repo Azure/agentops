@@ -16,6 +16,9 @@ dependencies = [
 ]
 license = { file = "LICENSE" }
 
+[project.optional-dependencies]
+mcp = ["mcp>=1.0,<2"]
+
 [project.scripts]
 agentops = "agentops.cli.app:main"
 
