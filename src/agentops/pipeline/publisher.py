@@ -62,6 +62,13 @@ def publish_to_foundry(
     ValueError
         Project endpoint is missing or no rows are publishable.
     """
+    endpoint = project_endpoint or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    if not endpoint:
+        raise ValueError(
+            "publish: foundry requires either 'project_endpoint' in "
+            "agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
+        )
+
     try:
         import pandas as pd  # noqa: WPS433
         from azure.ai.evaluation._evaluate._utils import (  # noqa: WPS433
@@ -72,13 +79,6 @@ def publish_to_foundry(
             "Foundry publish requires 'azure-ai-evaluation' and 'pandas'. "
             "Install with: pip install azure-ai-evaluation pandas"
         ) from exc
-
-    endpoint = project_endpoint or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
-    if not endpoint:
-        raise ValueError(
-            "publish: foundry requires either 'project_endpoint' in "
-            "agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
-        )
 
     instance_rows = _build_instance_rows(result)
     if not instance_rows:
