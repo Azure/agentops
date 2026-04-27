@@ -1,0 +1,101 @@
+# AgentOps end-to-end demo workflow.
+#
+# Runs the offline CLI demo on every push and PR targeting the revamp branch
+# and on manual dispatch. Uploads the resulting evidence/ folder as a
+# downloadable artifact and writes a Markdown summary to the run page.
+#
+# This workflow does NOT contact Azure or Foundry. It validates the
+# CLI surface (init, eval run, eval run --baseline, report generate)
+# against a local in-process HTTP echo agent.
+
+name: E2E
+
+on:
+  push:
+    branches:
+      - feature/revamp-1.0
+  pull_request:
+    branches:
+      - feature/revamp-1.0
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+
+      - name: Install AgentOps
+        run: uv sync --group dev
+
+      - name: Run E2E demo
+        run: uv run python scripts/e2e_demo.py
+
+      - name: Render summary on run page
+        if: always()
+        run: |
+          summary=$(find evidence -name SUMMARY.md | head -n 1)
+          if [ -n "$summary" ]; then
+            cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agentops-e2e-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  unit-tests-with-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run pytest with coverage
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/unit/test_browse.py \
+            --junitxml=test-results.xml \
+            --cov=agentops \
+            --cov-report=xml \
+            --cov-report=term-missing
+
+      - name: Upload coverage + JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agentops-test-results
+          path: |
+            test-results.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 14

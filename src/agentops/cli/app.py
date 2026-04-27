@@ -373,6 +373,49 @@ def _default_flat_output_dir(config_path: Path) -> Path:
     return base / "latest"
 
 
+def _is_flat_results(results_path: Path) -> bool:
+    """Return True when results.json was produced by the flat pipeline."""
+    if not results_path.exists():
+        return False
+    try:
+        import json as _json
+        data = _json.loads(results_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    target = data.get("target")
+    return (
+        data.get("version") == 1
+        and isinstance(target, dict)
+        and "kind" in target
+        and "bundle" not in data
+    )
+
+
+def _regenerate_flat_report(
+    *,
+    results_path: Path,
+    output_path: Path | None,
+    report_format: str,
+) -> Path:
+    """Render report.md from a flat-pipeline results.json."""
+    import json as _json
+
+    from agentops.core.results import RunResult
+    from agentops.pipeline import reporter as flat_reporter
+
+    if report_format not in ("md", "all"):
+        raise ValueError(
+            "flat-pipeline results only support --format md (got %r)" % report_format
+        )
+    payload = _json.loads(results_path.read_text(encoding="utf-8"))
+    result = RunResult.model_validate(payload)
+    target = output_path or (results_path.parent / "report.md")
+    target.write_text(flat_reporter.render(result), encoding="utf-8")
+    return target
+
+
 
 @eval_app.command("compare")
 def cmd_eval_compare(
@@ -470,6 +513,22 @@ def cmd_report_generate(
         report_out,
         report_format,
     )
+
+    if _is_flat_results(resolved_results_in):
+        try:
+            output_path = _regenerate_flat_report(
+                results_path=resolved_results_in,
+                output_path=report_out,
+                report_format=report_format,
+            )
+        except Exception as exc:
+            typer.echo(f"Error: report generation failed: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+
+        typer.echo(f"Loaded results: {resolved_results_in}")
+        typer.echo(f"Generated report: {output_path}")
+        return
+
     try:
         report_result = generate_report_from_results(
             results_path=resolved_results_in,
