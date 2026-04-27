@@ -20,23 +20,6 @@ def test_init_help_exposes_path_alias() -> None:
     assert "--path" in _strip_ansi(result.stdout)
 
 
-def test_eval_compare_rejects_wrong_run_count() -> None:
-    result = runner.invoke(app, ["eval", "compare", "--runs", "only_one"])
-
-    assert result.exit_code == 1
-    assert (
-        "at least two" in result.stdout.lower()
-        or "at least two" in (result.stderr or "").lower()
-    )
-
-
-def test_model_list_is_planned_stub() -> None:
-    result = runner.invoke(app, ["model", "list"])
-
-    assert result.exit_code == 1
-    assert "planned but not implemented" in result.stdout.lower()
-
-
 def test_version_flag() -> None:
     result = runner.invoke(app, ["--version"])
 
@@ -44,11 +27,26 @@ def test_version_flag() -> None:
     assert "agentops" in result.stdout.lower()
 
 
-def test_report_help_exposes_available_and_planned_commands() -> None:
+def test_report_help_only_exposes_generate() -> None:
     result = runner.invoke(app, ["report", "--help"])
 
     assert result.exit_code == 0
     stripped = _strip_ansi(result.stdout)
     assert "generate" in stripped
-    assert "show" in stripped
-    assert "export" in stripped
+    assert "show" not in stripped
+    assert "export" not in stripped
+
+
+def test_eval_help_does_not_expose_compare_subcommand() -> None:
+    result = runner.invoke(app, ["eval", "--help"])
+
+    assert result.exit_code == 0
+    stripped = _strip_ansi(result.stdout)
+    assert "compare" not in stripped
+
+
+def test_planned_command_groups_removed() -> None:
+    """Stub command groups (monitor/model/agent/dataset/config) are gone in 1.0."""
+    for group in ("monitor", "model", "agent", "dataset", "config"):
+        result = runner.invoke(app, [group, "--help"])
+        assert result.exit_code != 0, f"unexpected: 'agentops {group}' is still wired"
