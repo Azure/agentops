@@ -69,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: agentops-e2e-evidence
+          name: offline-smoke
           path: evidence/
           if-no-files-found: error
           retention-days: 14
@@ -108,7 +108,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: agentops-test-results
+          name: unit-tests-with-coverage
           path: |
             test-results.xml
             coverage.xml
@@ -296,7 +296,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-foundry-prompt
+          name: live-foundry-prompt
           path: |
             e2e-runs/foundry-prompt/.agentops/results/
             e2e-runs/foundry-prompt/transcript.md
@@ -346,7 +346,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-foundry-hosted
+          name: live-foundry-hosted
           path: |
             e2e-runs/foundry-hosted/.agentops/results/
             e2e-runs/foundry-hosted/transcript.md
@@ -396,7 +396,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-http-aca
+          name: live-http-aca
           path: |
             e2e-runs/http-aca/.agentops/results/
             e2e-runs/http-aca/transcript.md
@@ -446,7 +446,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: e2e-model-direct
+          name: live-model-direct
           path: |
             e2e-runs/model-direct/.agentops/results/
             e2e-runs/model-direct/transcript.md
