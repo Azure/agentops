@@ -119,10 +119,14 @@ def _extract_responses_text(payload: Dict[str, Any]) -> str:
         return direct.strip()
 
     output = payload.get("output")
+    has_tool_call = False
     if isinstance(output, list):
         parts: List[str] = []
         for item in output:
             if not isinstance(item, dict):
+                continue
+            if item.get("type") in {"tool_call", "function_call"}:
+                has_tool_call = True
                 continue
             if (
                 item.get("type") in {"message", "assistant_message"}
@@ -141,6 +145,11 @@ def _extract_responses_text(payload: Dict[str, Any]) -> str:
                             parts.append(chunk)
         if parts:
             return "\n".join(parts).strip()
+        if has_tool_call:
+            # Agent invoked a tool instead of replying with text. Return an
+            # empty response so tool-use evaluators (which only need
+            # tool_calls + tool_definitions) can still run.
+            return ""
 
     raise ValueError("Foundry response did not include assistant output text")
 

@@ -150,7 +150,6 @@ agent: {hosted_agent}
 dataset: ../../{rel_tools}
 thresholds:
   tool_call_accuracy: ">=0"
-  task_completion: ">=0"
   intent_resolution: ">=0"
   task_adherence: ">=0"
   f1_score: ">=0"
@@ -186,9 +185,9 @@ of fabricating an answer.
 `get_weather` tool call as ground truth).
 
 **Evaluators (auto-inferred from `tool_definitions` + `tool_calls`):**
-`task_completion`, `tool_call_accuracy`, `intent_resolution`,
-`task_adherence`, plus `f1_score` and `avg_latency_seconds`. Thresholds are
-very permissive — this is a pipeline smoke test, not a quality gate.
+`tool_call_accuracy`, `intent_resolution`, `task_adherence`, plus
+`f1_score` and `avg_latency_seconds`. Thresholds are very permissive —
+this is a pipeline smoke test, not a quality gate.
 """,
         )
         written.append("foundry-hosted")
