@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -90,11 +91,32 @@ def cmd_create(args: argparse.Namespace) -> int:
         instructions=INSTRUCTIONS,
         tools=[tool],
     )
-    version = client.agents.create_version(
-        agent_name=args.name,
-        definition=definition,
-        description="AgentOps E2E transient hosted agent (weather + get_weather tool).",
-    )
+
+    from azure.core.exceptions import HttpResponseError, ServiceResponseError
+
+    last_exc: Exception | None = None
+    version = None
+    for attempt in range(1, 6):
+        try:
+            version = client.agents.create_version(
+                agent_name=args.name,
+                definition=definition,
+                description="AgentOps E2E transient hosted agent (weather + get_weather tool).",
+            )
+            break
+        except (HttpResponseError, ServiceResponseError) as exc:
+            status = getattr(exc, "status_code", None)
+            transient = status is None or status >= 500 or status == 429
+            print(
+                f"create_version attempt {attempt}/5 failed (status={status}): {exc}",
+                file=sys.stderr,
+            )
+            if not transient or attempt == 5:
+                raise
+            last_exc = exc
+            time.sleep(min(2 ** attempt, 30))
+    if version is None:
+        raise SystemExit(f"create_version failed after retries: {last_exc!r}")
 
     version_id = getattr(version, "version", None) or getattr(version, "id", None)
     if not version_id:

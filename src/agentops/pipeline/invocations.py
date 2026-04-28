@@ -81,14 +81,30 @@ def _http_request_json(
     request = urllib.request.Request(
         url=url, data=encoded, method=method, headers=headers
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-            payload = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-        raise RuntimeError(
-            f"HTTP {exc.code} from {url}: {detail or exc.reason}"
-        ) from exc
+    last_exc: Optional[BaseException] = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                payload = response.read().decode("utf-8")
+            break
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            transient = exc.code >= 500 or exc.code == 429
+            if transient and attempt < 3:
+                time.sleep(2 ** attempt)
+                last_exc = exc
+                continue
+            raise RuntimeError(
+                f"HTTP {exc.code} from {url}: {detail or exc.reason}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+                last_exc = exc
+                continue
+            raise
+    else:  # pragma: no cover - loop exits via break/raise
+        raise RuntimeError(f"HTTP request to {url} failed: {last_exc!r}")
     if not payload:
         return {}
     return json.loads(payload)
@@ -191,10 +207,25 @@ def _invoke_model_direct(
 
     assert target.deployment is not None
     started = time.perf_counter()
-    response = openai_client.chat.completions.create(
-        model=target.deployment,
-        messages=[{"role": "user", "content": _row_input(row)}],
-    )
+    last_exc: Optional[BaseException] = None
+    response = None
+    for attempt in range(1, 4):
+        try:
+            response = openai_client.chat.completions.create(
+                model=target.deployment,
+                messages=[{"role": "user", "content": _row_input(row)}],
+            )
+            break
+        except Exception as exc:  # noqa: BLE001
+            status = getattr(exc, "status_code", None)
+            transient = status is None or status >= 500 or status == 429
+            if transient and attempt < 3:
+                time.sleep(2 ** attempt)
+                last_exc = exc
+                continue
+            raise
+    if response is None:
+        raise RuntimeError(f"model_direct invocation failed after retries: {last_exc!r}")
     elapsed = time.perf_counter() - started
 
     text = ""
