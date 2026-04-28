@@ -124,6 +124,7 @@ jobs:
   bootstrap-live:
     if: ${{ github.event.inputs.scenarios != 'offline-only' }}
     runs-on: ubuntu-latest
+    environment: e2e
     permissions:
       id-token: write
       contents: read
@@ -183,6 +184,7 @@ jobs:
     needs: bootstrap-live
     if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-prompt' }}
     runs-on: ubuntu-latest
+    environment: e2e
     permissions:
       id-token: write
       contents: read
@@ -225,6 +227,7 @@ jobs:
     needs: bootstrap-live
     if: ${{ (github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted') && vars.AGENTOPS_E2E_FOUNDRY_HOSTED_URL != '' }}
     runs-on: ubuntu-latest
+    environment: e2e
     permissions:
       id-token: write
       contents: read
@@ -267,6 +270,7 @@ jobs:
     needs: bootstrap-live
     if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'http-aca' }}
     runs-on: ubuntu-latest
+    environment: e2e
     permissions:
       id-token: write
       contents: read
@@ -308,6 +312,7 @@ jobs:
     needs: bootstrap-live
     if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'model-direct' }}
     runs-on: ubuntu-latest
+    environment: e2e
     permissions:
       id-token: write
       contents: read
@@ -355,6 +360,7 @@ jobs:
       - live-model-direct
     if: ${{ always() && github.event.inputs.scenarios != 'offline-only' && github.event.inputs.keep_resources != 'true' }}
     runs-on: ubuntu-latest
+    environment: e2e
     permissions:
       id-token: write
       contents: read
