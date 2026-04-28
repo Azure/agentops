@@ -37,18 +37,17 @@ def _read_results(job_dir: Path) -> dict | None:
 
 def _headline_metric(results: dict) -> tuple[str, str]:
     """Return (metric_name, formatted_value) for the most informative metric."""
-    metrics = results.get("metrics") or {}
-    # Prefer items_pass_rate, then run_pass, then anything else.
-    for preferred in ("items_pass_rate", "run_pass", "threshold_pass_rate"):
-        if preferred in metrics:
-            v = metrics[preferred]
+    summary = results.get("summary") or {}
+    for preferred in ("items_pass_rate", "threshold_pass_rate"):
+        if preferred in summary:
             try:
-                return preferred, f"{float(v):.3f}"
+                return preferred, f"{float(summary[preferred]):.3f}"
             except (TypeError, ValueError):
-                return preferred, str(v)
-    if metrics:
-        k = next(iter(metrics))
-        v = metrics[k]
+                return preferred, str(summary[preferred])
+    agg = results.get("aggregate_metrics") or results.get("metrics") or {}
+    if agg:
+        k = next(iter(agg))
+        v = agg[k]
         try:
             return k, f"{float(v):.3f}"
         except (TypeError, ValueError):
@@ -61,11 +60,17 @@ def _row_from_live(job_name: str, job_dir: Path) -> str:
     if not results:
         return f"| `{job_name}` | ? | ❓ | — |"
     summary = results.get("summary") or {}
-    exit_code = summary.get("exit_code", results.get("exit_code", "?"))
     passed = summary.get("overall_passed")
-    if passed is None:
-        passed = (results.get("metrics") or {}).get("run_pass")
-    icon = "✅" if passed in (True, 1, 1.0) else ("❌" if passed in (False, 0, 0.0) else "❓")
+    # AgentOps exit code contract: 0 = passed, 2 = thresholds failed.
+    if passed is True:
+        exit_code = 0
+        icon = "✅"
+    elif passed is False:
+        exit_code = 2
+        icon = "❌"
+    else:
+        exit_code = "?"
+        icon = "❓"
     metric_name, metric_value = _headline_metric(results)
     return f"| `{job_name}` | {exit_code} | {icon} | {metric_name} = {metric_value} |"
 
