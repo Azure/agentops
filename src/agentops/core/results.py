@@ -17,6 +17,7 @@ class RowMetric(BaseModel):
     name: str
     value: Optional[float] = None
     error: Optional[str] = None
+    reason: Optional[str] = None
 
 
 class RowResult(BaseModel):

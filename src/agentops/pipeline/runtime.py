@@ -285,6 +285,22 @@ def _extract_score(payload: Any, score_key: str) -> Optional[float]:
     return None
 
 
+def _extract_reason(payload: Any, score_key: str) -> Optional[str]:
+    if not isinstance(payload, dict):
+        return None
+    for candidate in (
+        f"{score_key}_reason",
+        f"{score_key}_reasoning",
+        f"gpt_{score_key}_reason",
+        "reason",
+        "reasoning",
+    ):
+        value = payload.get(candidate)
+        if isinstance(value, str) and value.strip():
+            return value
+    return None
+
+
 def run_evaluator(
     runtime: EvaluatorRuntime,
     *,
@@ -315,6 +331,7 @@ def run_evaluator(
                     kwargs["response"] = conversation["response"]
         result = runtime.callable(**kwargs)
         score = _extract_score(result, preset.score_key)
-        return RowMetric(name=preset.score_key, value=score)
+        reason = _extract_reason(result, preset.score_key)
+        return RowMetric(name=preset.score_key, value=score, reason=reason)
     except Exception as exc:  # noqa: BLE001
         return RowMetric(name=preset.score_key, error=str(exc))
