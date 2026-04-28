@@ -1,0 +1,82 @@
+# AgentOps Watchdog Agent configuration.
+#
+# Every section is optional — sources auto-skip with a diagnostic note when
+# they are disabled, missing required config, or missing the optional Azure
+# extras (`pip install agentops-toolkit[agent]`).
+#
+# Run:
+#
+#   agentops agent analyze
+#   agentops agent serve --no-verify   # local dev
+#
+version: 1
+
+# Lookback window applied to production telemetry queries.
+lookback_days: 7
+
+sources:
+  # Reads `.agentops/results/*/results.json` (offline; always available).
+  results_history:
+    enabled: true
+    path: .agentops/results
+    lookback_runs: 10
+
+  # Azure Monitor / Application Insights for the deployed agent.
+  azure_monitor:
+    enabled: true
+    # Use either app_insights_resource_id (preferred) OR
+    # log_analytics_workspace_id, depending on how telemetry is wired.
+    app_insights_resource_id: ""
+    log_analytics_workspace_id: ""
+
+  # Foundry control plane (agent metadata / recent runs).
+  foundry_control:
+    enabled: true
+    # Inline value, or read from this env var.
+    project_endpoint: ""
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+    # Empty list = consider all agents in the project.
+    agent_ids: []
+
+  # Azure management plane — read-only resource posture audits.
+  # Required RBAC: `Reader` on the resource group. Disabled by default;
+  # uncomment and fill the fields below to enable the WAF-AI Security
+  # pillar checklist.
+  azure_resources:
+    enabled: false
+    # subscription_id: "00000000-0000-0000-0000-000000000000"
+    subscription_id_env: AZURE_SUBSCRIPTION_ID
+    # resource_group: "rg-myproject"
+    # cognitive_services_account: "ai-services-myproject"
+
+checks:
+  regression:
+    metrics: [coherence, fluency, similarity, f1_score, groundedness, tool_call_accuracy]
+    threshold_drop: 0.10
+    min_runs: 3
+
+  latency:
+    p95_threshold_seconds: 5.0
+
+  errors:
+    rate_threshold: 0.05
+
+  safety:
+    severity_floor: Medium  # Low | Medium | High
+
+  # WAF-AI posture audit. Opt-in: requires the `azure_resources` source
+  # above to be configured. Findings are produced under the `security`
+  # category, which can be filtered with
+  # `agentops agent analyze --categories security`.
+  posture:
+    enabled: false
+    pillar: security
+    # Skip individual rules without disabling the whole check, e.g.
+    # exclude_rules:
+    #   - waf.security.diagnostic_settings
+    exclude_rules: []
+
+server:
+  # GitHub App client id, used to distinguish the Copilot Extension that
+  # is allowed to call this server. Optional for v1.
+  github_app_client_id: ""

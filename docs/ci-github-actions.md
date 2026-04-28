@@ -1,379 +1,236 @@
-# Running AgentOps Evaluations in GitHub Actions
+# AgentOps GenAIOps GitFlow on GitHub Actions
 
-This guide explains how to add AgentOps evaluation to your CI/CD pipeline using GitHub Actions. Inspired by [GenAIOps Git Workflow](https://github.com/Azure/GenAIOps/blob/main/documentation/git_workflow.md) and [Foundry CI/CD patterns](https://github.com/balakreshnan/foundrycicdbasic), AgentOps generates up to three pipeline types tailored to your project.
+This guide shows how to wire AgentOps into a complete GenAIOps CI/CD
+pipeline on GitHub Actions, mapped to a classic GitFlow branching model
+with three deployment environments (`dev`, `qa`, `production`).
 
-## Pipeline Types
+`agentops workflow generate` ships **four** ready-to-use templates that
+form the full scaffold:
 
-`agentops workflow generate` auto-detects which pipelines to create based on your `.agentops/` workspace:
+| File | Trigger | GitHub Environment | Purpose |
+|---|---|---|---|
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | (none) | Eval gate. Fails the PR if thresholds drop. Comments report on PR. |
+| `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
+| `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
+| `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → build → deploy PROD (gated by required reviewers) |
 
-| Pipeline | File | Trigger | Purpose |
-| -------- | ---- | ------- | ------- |
-| **PR Evaluation** | `agentops-eval.yml` | Pull requests to main/develop | Gate PRs on evaluation thresholds |
-| **CI Evaluation** | `agentops-eval-ci.yml` | Push to develop/main | Post-merge comprehensive evaluation with optional matrix strategy |
-| **CD Pipeline** | `agentops-eval-cd.yml` | Push to main | Safety QA evaluation gate + deploy placeholder |
-
-### Auto-Detection Rules
-
-- **PR pipeline** — always generated.
-- **CI pipeline** — generated when multiple bundles or run configs exist in `.agentops/`.
-- **CD pipeline** — generated alongside the CI pipeline (same detection rule).
-
-To override auto-detection, simply delete any unwanted workflow file after generation.
-
-### Branching Strategy
-
-The pipeline suite maps to the Git Flow branching model:
+## GitFlow assumed
 
 ```
-feature/* → PR to develop   → agentops-eval.yml (PR gate)
-             merge to develop → agentops-eval-ci.yml (CI evaluation)
-             release/* → PR to main → agentops-eval.yml (PR gate)
-             merge to main   → agentops-eval-cd.yml (safety QA → deploy)
+                                 ┌── agentops-pr.yml (gate) ──┐
+feature/* ── PR ──▶ develop ─────┘                            │
+                       │                                       │
+                       └── merge ──▶ agentops-deploy-dev.yml  ─┴──▶ DEV
+release/* ── push ─────────▶ agentops-deploy-qa.yml            ───▶ QA
+                                 ┌── agentops-pr.yml (gate) ──┐
+release/* ── PR ──▶ main ────────┘                            │
+                       │                                       │
+                       └── merge ──▶ agentops-deploy-prod.yml ─┴──▶ PROD (reviewers)
 ```
 
-## Quick Start
+If you are on trunk-based development, generate only the templates you
+need: `agentops workflow generate --kinds pr,dev,prod`.
 
-1. **Initialise your workspace** (if you haven't already):
+## Quick start
 
-   ```bash
-   agentops init
-   ```
+```bash
+# 1. Make sure your eval works locally first.
+agentops eval run
 
-   This creates the `.agentops/` directory with starter configs, bundles, and datasets.
+# 2. Generate the four workflows.
+agentops workflow generate
 
-2. **Generate the workflow files**:
+# 3. Configure GitHub (see sections below):
+#    - OIDC repo variables
+#    - dev / qa / production environments
+#    - branch protection on develop and main
+#    - fill in Build / Deploy placeholders
 
-   ```bash
-   agentops workflow generate
-   ```
+# 4. Commit and push.
+```
 
-   This creates one or more files in `.github/workflows/` based on your workspace content.
+## Configuration walkthrough
 
-3. **Configure GitHub Secrets** (see [Authentication](#authentication) below).
+### 1. Repository variables (OIDC)
 
-4. **Push a PR** — the PR evaluation runs automatically. Merge to trigger the CI evaluation.
+In Settings → Secrets and variables → Actions → **Variables**, add:
 
-## Required Files
+| Variable | Purpose |
+|---|---|
+| `AZURE_CLIENT_ID` | App registration / managed identity used for federated login |
+| `AZURE_TENANT_ID` | Azure AD tenant |
+| `AZURE_SUBSCRIPTION_ID` | Target subscription |
+| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project URL (used by the eval step) |
 
-Your repository must contain these files for the workflow to succeed:
+Then on the Azure side, configure Workload Identity Federation
+(federated credentials) on the app registration so it can be assumed
+from GitHub Actions runs. See
+[Microsoft's WIF docs](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp).
 
-| File                              | Purpose                                                         |
-| --------------------------------- | --------------------------------------------------------------- |
-| `.agentops/run.yaml`              | Run specification — references the bundle, dataset, and backend |
-| `.agentops/bundles/<name>.yaml`   | Evaluation bundle — evaluators + thresholds                     |
-| `.agentops/datasets/<name>.yaml`  | Dataset metadata                                                |
-| `.agentops/datasets/<name>.jsonl` | Dataset rows (JSONL format)                                     |
+### 2. GitHub Environments
 
-All paths in `run.yaml` are relative to the `.agentops/` directory.
+In Settings → Environments, create three:
 
-### Example `run.yaml`
+#### `dev`
+- Usually no protection rules.
+- Override env-specific variables here (e.g. dev resource group, dev
+  ACA app name).
+
+#### `qa`
+- Optional: restrict deployment branches to `release/**`.
+- Override env-specific variables for QA infra.
+
+#### `production`
+- **Required reviewers**: at least one. Deploys to PROD pause until
+  approved.
+- Optional: **Wait timer** for an extra cool-down.
+- Optional: **Deployment branches**: restrict to `main`.
+- Override env-specific variables for production infra.
+
+Environment-level variables override repo-level ones automatically
+when the workflow's `environment:` matches.
+
+### 3. Fill in Build and Deploy
+
+Each `agentops-deploy-*.yml` ships with `Build (placeholder)` and
+`Deploy (placeholder)` steps. The DEV template lists commented example
+snippets for the most common patterns. Copy the relevant one into all
+three deploy templates.
+
+#### Container Apps
 
 ```yaml
-version: 1
-target:
-  type: model
-  hosting: foundry
-  execution_mode: remote
-  endpoint:
-    kind: foundry_agent
-    model: gpt-4o
-    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-bundle:
-  name: model_quality_baseline
-dataset:
-  name: smoke-model-direct
-execution:
-  timeout_seconds: 1800
-output:
-  write_report: true
+# Build
+- name: Build image
+  run: |
+    az acr build \
+      --registry "${{ vars.ACR_NAME }}" \
+      --image "myapp:${{ github.sha }}" \
+      .
+
+# Deploy
+- name: Deploy to ACA
+  run: |
+    az containerapp update \
+      --name "${{ vars.ACA_APP_NAME }}" \
+      --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+      --image "${{ vars.ACR_NAME }}.azurecr.io/myapp:${{ github.sha }}"
 ```
 
-## Authentication
+#### App Service
 
-The workflow uses **Workload Identity Federation (OIDC)** — no client secrets to manage or rotate. The GitHub Actions runner exchanges a short-lived OIDC token for an Azure access token at runtime.
+```yaml
+# Build
+- uses: actions/setup-python@v5
+  with: { python-version: "3.11" }
+- run: pip install -r requirements.txt -t ./dist
+- run: cp -r src ./dist/
 
-#### Azure setup (one-time)
+# Deploy
+- uses: azure/webapps-deploy@v3
+  with:
+    app-name: ${{ vars.WEBAPP_NAME }}
+    package: ./dist
+```
 
-1. **Create or reuse an App Registration** in Azure AD (Microsoft Entra ID).
-2. **Add a Federated Credential**:
-   - Go to the App Registration → **Certificates & secrets** → **Federated credentials** → **Add credential**
-   - Organization: your GitHub org/user
-   - Repository: your repo name
-   - Entity type: `Pull Request` (for PR triggers) **and** `Branch` (for CI, CD, and workflow_dispatch triggers)
-   - Name: e.g. `github-agentops-eval`
-3. **Grant the app** the required roles on your Foundry project:
-   - `Cognitive Services User` — invoke agents and evaluator models
-   - `Azure AI Developer` — access evaluation APIs and Foundry features
-4. Note the **Application (client) ID**, **Directory (tenant) ID**, and **Subscription ID**.
+#### Foundry hosted agent
 
-#### GitHub setup
+```yaml
+# Build is typically empty: hosted agents are configured, not packaged.
 
-Set these as **repository variables** (not secrets — they are not confidential):
+# Deploy: publish a new agent version with whatever your project uses
+# to manage Foundry agents (project-specific tooling).
+```
 
-| Variable                | Value                   |
-| ----------------------- | ----------------------- |
-| `AZURE_CLIENT_ID`       | Application (client) ID |
-| `AZURE_TENANT_ID`       | Directory (tenant) ID   |
-| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID   |
+#### azd-managed app
 
-Set this as a **repository secret**:
+```yaml
+# Build
+- uses: Azure/setup-azd@v2
+- run: azd package --no-prompt
 
-| Secret                              | Value                        |
-| ----------------------------------- | ---------------------------- |
-| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project endpoint URL |
+# Deploy
+- run: azd deploy --no-prompt
+  env:
+    AZURE_ENV_NAME: dev   # or qa / prod
+```
 
-Go to **Settings** → **Secrets and variables** → **Actions** → **Variables** tab (for variables) or **Secrets** tab (for the endpoint).
+### 4. Branch protection
 
-## Workflow Triggers
+In Settings → Branches, add a rule for **both `develop` and `main`**:
 
-Each pipeline type has different triggers:
+- ✅ Require a pull request before merging.
+- ✅ Require status checks to pass: select
+  **`AgentOps PR / Eval (PR gate)`**.
+- (Optional) Require linear history.
 
-### PR Evaluation (`agentops-eval.yml`)
+This makes the AgentOps eval a hard merge requirement.
 
-| Trigger             | When                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| `pull_request`      | Any PR targeting `main` or `develop`                                               |
-| `workflow_dispatch` | Manual run from the Actions tab (supports custom config path and output directory) |
+## Exit codes
 
-### CI Evaluation (`agentops-eval-ci.yml`)
+The eval step uses the AgentOps exit code contract to gate deploys:
 
-| Trigger             | When                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| `push`              | Push to `develop` or `main` (path filter: `.agentops/**`, `src/**`, `pyproject.toml`) |
-| `workflow_dispatch` | Manual run from the Actions tab                                                    |
-
-### CD Pipeline (`agentops-eval-cd.yml`)
-
-| Trigger             | When                                                                               |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| `push`              | Push to `main`                                                                     |
-| `workflow_dispatch` | Manual run from the Actions tab (supports `skip_safety` input)                     |
-
-The CD pipeline has two jobs: **safety-qa** (runs evaluation as a quality gate) and **deploy** (placeholder for deployment commands). The deploy job only runs if the safety-qa job passes.
-
-To change which branches trigger evaluations, edit the branch arrays in the workflow files.
-
-## Exit Codes and CI Behaviour
-
-AgentOps returns CI-friendly exit codes that GitHub Actions interprets directly:
-
-| Exit Code | Meaning                                             | CI Result    |
-| --------- | --------------------------------------------------- | ------------ |
-| `0`       | Evaluation succeeded, all thresholds passed         | ✅ Job passes |
-| `2`       | Evaluation succeeded, one or more thresholds failed | ❌ Job fails  |
-| `1`       | Runtime or configuration error                      | ❌ Job fails  |
-
-No special handling is needed — GitHub Actions fails the job on any non-zero exit code.
+| Exit code | Meaning | Job result |
+|---|---|---|
+| `0` | Eval ran, all thresholds passed | ✅ pass |
+| `2` | Eval ran, one or more thresholds failed | ❌ fail (deploy never runs) |
+| `1` | Runtime / config error | ❌ fail |
 
 ## Artifacts
 
-Each pipeline uploads files as GitHub Actions artifacts:
+Each workflow uploads (always — even on failure):
 
-| Pipeline | Artifact name | Contents |
-| -------- | ------------- | -------- |
-| PR Evaluation | `agentops-eval-results` | results.json, report.md, backend_metrics.json, cloud_evaluation.json, logs |
-| CI Evaluation | `agentops-ci-eval-results` | Same as above |
-| CD Pipeline | `agentops-cd-safety-results` | Same as above (from safety-qa job) |
+- `results.json` — machine-readable, versioned
+- `report.md` — human-readable
+- `cloud_evaluation.json` — present when using Foundry cloud evaluation;
+  contains a deep link to the New Foundry Experience Evaluations page
 
-Individual files in the artifact:
+Artifact names per workflow:
 
-| File                    | Description                                                    |
-| ----------------------- | -------------------------------------------------------------- |
-| `results.json`          | Machine-readable evaluation results (versioned schema)         |
-| `report.md`             | Human-readable Markdown summary                                |
-| `backend_metrics.json`  | Raw backend scores per row                                     |
-| `cloud_evaluation.json` | Cloud eval metadata with Foundry portal link (cloud mode only) |
-| `backend.stdout.log`    | Backend stdout capture                                         |
-| `backend.stderr.log`    | Backend stderr capture                                         |
+| Workflow | Artifact name |
+|---|---|
+| `agentops-pr.yml` | `agentops-pr-results` |
+| `agentops-deploy-dev.yml` | `agentops-dev-results` |
+| `agentops-deploy-qa.yml` | `agentops-qa-results` |
+| `agentops-deploy-prod.yml` | `agentops-prod-results` |
 
-Artifacts are uploaded even when the evaluation fails (`if: always()`), so you can always inspect results.
-
-### Downloading artifacts
-
-From the **Actions** tab → select the workflow run → scroll to **Artifacts** → click to download.
-
-## PR Comments
-
-When triggered by a pull request, the workflow automatically posts (or updates) a PR comment containing the full `report.md` content. This gives reviewers immediate visibility into evaluation results without downloading artifacts.
-
-The comment is identified by a hidden HTML marker (`<!-- agentops-eval-report -->`) so subsequent pushes to the same PR update the existing comment rather than creating duplicates.
-
-## Job Summary
-
-The workflow writes a [GitHub Actions Job Summary](https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary) that includes:
-
-- Pass/fail status banner
-- Full `report.md` content (when available)
-
-This is visible on the workflow run page without downloading artifacts.
-
-## CLI Command Reference
-
-### Generate the workflows
+## CLI reference
 
 ```bash
-agentops workflow generate
+agentops workflow generate                     # all four templates (default)
+agentops workflow generate --kinds pr,dev,prod # subset (trunk-based)
+agentops workflow generate --force             # overwrite existing files
+agentops workflow generate --dir <path>        # different repo root
 ```
 
-This auto-detects which pipelines to generate based on your `.agentops/` workspace content.
+| Flag | Description | Default |
+|---|---|---|
+| `--kinds` | Comma-separated subset of `pr,dev,qa,prod` | all four |
+| `--force` | Overwrite existing workflow files | `false` |
+| `--dir` | Repository root | `.` |
 
-Options:
+## Customisation tips
 
-| Flag         | Description                       | Default                 |
-| ------------ | --------------------------------- | ----------------------- |
-| `--dir PATH` | Target repository root directory  | `.` (current directory) |
-| `--force`    | Overwrite existing workflow files | `false`                 |
+- **Tighten thresholds for QA / PROD** — copy `.agentops/run.yaml` to
+  `.agentops/run-qa.yaml` / `.agentops/run-prod.yaml` and tighten
+  thresholds in the bundle. Update the `inputs.config` default in the
+  matching workflow file.
+- **Scheduled runs** — add a `schedule:` entry in `agentops-pr.yml` (or
+  a new file) to evaluate against `main` nightly.
+- **Matrix per scenario** — if you have multiple `runs/*.yaml`, extend
+  the eval job with `strategy.matrix.config:` and reference
+  `${{ matrix.config }}` in the eval step.
+- **Regression baseline** — wire deploy templates to download the
+  previous run's `results.json` artifact and call
+  `agentops eval compare` between the two.
 
-### Regenerate (overwrite)
+## Migration from the older 3-template layout
 
-```bash
-agentops workflow generate --force
-```
+If your repository still has `agentops-eval.yml`, `agentops-eval-ci.yml`,
+or `agentops-eval-cd.yml` from a prior version of AgentOps:
 
-## Customisation
-
-### Using a different config path
-
-With `workflow_dispatch`, you can specify a custom config path:
-
-```bash
-agentops eval run --config path/to/custom-run.yaml
-```
-
-Or modify the workflow's default:
-
-```yaml
-steps:
-  - name: Run evaluation
-    run: agentops eval run --config .agentops/my-custom-run.yaml
-```
-
-### Using a custom output directory
-
-```yaml
-steps:
-  - name: Run evaluation
-    run: agentops eval run --config .agentops/run.yaml --output ./eval-output
-```
-
-Update the artifact upload paths accordingly.
-
-### Running multiple evaluations
-
-To run several evaluation configs in a single workflow, use a matrix strategy:
-
-```yaml
-jobs:
-  evaluate:
-    strategy:
-      fail-fast: false
-      matrix:
-        config:
-          - .agentops/runs/model-direct.yaml
-          - .agentops/runs/rag-retrieval.yaml
-          - .agentops/runs/agent-tools.yaml
-    steps:
-      # ...
-      - name: Run evaluation
-        run: agentops eval run --config ${{ matrix.config }}
-```
-
-### Skipping the PR comment
-
-Remove or comment out the "Post report as PR comment" step in the workflow.
-
-## CD Pipeline
-
-The CD pipeline (`agentops-eval-cd.yml`) is generated alongside the CI pipeline when multiple bundles or run configs exist in the workspace. It runs on pushes to `main` and acts as a deployment gate.
-
-### How it works
-
-1. The **safety-qa** job runs `agentops eval run` to evaluate the model/agent.
-2. If evaluation passes (exit code 0), the **deploy** job runs.
-3. If thresholds fail (exit code 2) or an error occurs (exit code 1), the deploy job is skipped.
-4. The deploy job is a **placeholder** — fill it in with your deployment commands.
-
-### Skipping safety checks
-
-For emergency deployments, use `workflow_dispatch` with the `skip_safety` input set to `true`. This skips the safety-qa job and runs the deploy job directly.
-
-### Adding deployment steps
-
-Edit the `deploy` job in `agentops-eval-cd.yml` and replace the placeholder with your deployment commands:
-
-```yaml
-deploy:
-  name: Deploy
-  needs: safety-qa
-  runs-on: ubuntu-latest
-  # environment: production  # Uncomment for manual approval gate
-  steps:
-    - uses: actions/checkout@v4
-    - name: Deploy to production
-      run: |
-        # Your deployment commands here, e.g.:
-        # az webapp deploy ...
-        # kubectl apply ...
-        # azd deploy ...
-```
-
-### Adding environment approval
-
-Uncomment `environment: production` in the deploy job to require manual approval before deployment. Configure the environment in GitHub Settings → Environments.
-
-## CI Evaluation Pipeline
-
-The CI pipeline (`agentops-eval-ci.yml`) is generated when multiple bundles or run configs exist. It runs after merges for comprehensive evaluation.
-
-### Enabling matrix strategy
-
-Uncomment the matrix block in the CI workflow and list your run configs:
-
-```yaml
-strategy:
-  fail-fast: false
-  matrix:
-    config:
-      - .agentops/run.yaml
-      - .agentops/runs/rag-retrieval.yaml
-      - .agentops/runs/agent-tools.yaml
-```
-
-### Enabling baseline comparison
-
-Uncomment the comparison step in the CI workflow. Store a baseline run ID and compare automatically:
-
-```yaml
-- name: Compare against baseline
-  run: |
-    BASELINE=$(cat .agentops/results/baseline_id.txt)
-    CURRENT=$(jq -r '.run_id' .agentops/results/latest/results.json)
-    agentops eval compare --runs "$BASELINE,$CURRENT" -f md
-```
-
-## Troubleshooting
-
-| Problem                                  | Solution                                                                                                                                                                                                                                  |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Error: evaluation failed: ...` (exit 1) | Check that `.agentops/run.yaml` exists, config is valid YAML, and secrets are set                                                                                                                                                         |
-| `Threshold status: FAILED` (exit 2)      | Review `report.md` — thresholds are too strict or model quality regressed                                                                                                                                                                 |
-| Missing artifacts                        | Ensure `.agentops/results/latest/` is not in `.gitignore` — the workflow reads this path                                                                                                                                                  |
-| Authentication errors                    | Verify the federated credential entity matches your repo/branch; check that `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` are set as repository variables; confirm the app registration has access to the Foundry project |
-| `agentops: command not found`            | Ensure `pip install agentops-toolkit` runs before the eval step                                                                                                                                                                           |
-| Only PR workflow generated               | Auto-detection found a single bundle — this is expected; add bundles or run configs to trigger CI/CD pipelines                                                                                             |
-
-## Internal CI/CD Workflows (Contributors)
-
-If you are contributing to the agentops-toolkit repository itself, the project has separate CI/CD workflows for building and releasing the package:
-
-| Workflow          | Trigger                                    | Purpose                                                                   |
-| ----------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| `ci.yml`          | Push to `develop`, PRs to `main`/`develop` | Lint (ruff) + test (matrix) + coverage                                    |
-| `_build.yml`      | Called by staging/release                  | Reusable lint + test + build package                                      |
-| `staging.yml`     | Push to `release/**`                       | Build → TestPyPI → verify install                                         |
-| `release.yml`     | Push `v*` tag                              | TestPyPI → PyPI (with approval) → GitHub Release                          |
-| `cut-release.yml` | Manual dispatch (Actions tab button)       | Create release branch from `develop`, update CHANGELOG, open PR to `main` |
-
-The **Cut Release** workflow provides a one-click way to start a release: enter a version number in the Actions UI, and it creates the release branch, updates the changelog, and opens the PR automatically.
-
-For full details, see [release-process.md](release-process.md).
+1. Delete the three old files.
+2. Run `agentops workflow generate`.
+3. Re-add Build / Deploy commands you had customised.
+4. Update branch-protection status checks to point at the new
+   `AgentOps PR` job.

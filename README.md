@@ -110,10 +110,22 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 | `agentops workflow generate` | Generate GitHub Actions workflow |
 | `agentops skills install [--platform <p>]` | Install coding agent skills (Copilot, Claude) |
 | `agentops mcp serve` | Start the AgentOps MCP server (stdio). Requires `pip install agentops-toolkit[mcp]`. |
+| `agentops agent analyze` | Run the watchdog over your run history. Requires `pip install agentops-toolkit[agent]`. |
+| `agentops agent serve` | Start the watchdog as a FastAPI Copilot Extension. Requires `pip install agentops-toolkit[agent]`. |
 
 ## Documentation
 
-- [Quickstart tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-quickstart.md)
+- [Quickstart tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-quickstart.md) — bootstrap a workspace and run one evaluation.
+- [End-to-end tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md) — full do-it-yourself tour: Foundry hosted agent, baseline comparison, GitFlow CI/CD, watchdog.
+- Per-scenario tutorials:
+  - [Foundry hosted agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-basic-foundry-agent.md)
+  - [Model-direct](https://github.com/Azure/agentops/blob/main/docs/tutorial-model-direct.md)
+  - [RAG](https://github.com/Azure/agentops/blob/main/docs/tutorial-rag.md)
+  - [Conversational agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-conversational-agent.md)
+  - [Agent with tool calling](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-workflow.md)
+  - [HTTP-deployed agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-http-agent.md)
+- [Baseline comparison](https://github.com/Azure/agentops/blob/main/docs/tutorial-baseline-comparison.md)
+- [Watchdog agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-watchdog.md)
 - [CI/CD with GitHub Actions](https://github.com/Azure/agentops/blob/main/docs/ci-github-actions.md)
 - [Built-in evaluator reference](https://github.com/Azure/agentops/blob/main/docs/foundry-evaluation-sdk-built-in-evaluators.md)
 - [Release process](https://github.com/Azure/agentops/blob/main/docs/release-process.md)

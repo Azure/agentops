@@ -22,6 +22,8 @@ Public CLI contract:
 - `agentops report generate --in <results.json> [--out <report.md>]`
 - `agentops workflow generate [--force] [--dir <path>]`
 - `agentops skills install [--platform <p>] [--prompt] [--force]`
+- `agentops agent analyze [--workspace <path>] [--config <path>] [--out <path>] [--lookback-days N] [--severity-fail <severity>]`
+- `agentops agent serve [--host <host>] [--port <port>] [--config <path>] [--no-verify] [--workers N]`
 
 Planned CLI stubs (not implemented in this release):
 - `agentops run list|show`
@@ -143,7 +145,7 @@ src/
         ├── data/                      # Starter dataset JSONL rows
         ├── skills/                    # Coding agent skill templates
         └── workflows/                 # CI/CD workflow templates
-            └── agentops-eval.yml      # GitHub Actions evaluation workflow
+            └── agentops-pr.yml        # PR + 3 deploy templates (dev/qa/prod)
 ```
 
 ### Tests

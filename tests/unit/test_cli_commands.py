@@ -46,7 +46,16 @@ def test_eval_help_does_not_expose_compare_subcommand() -> None:
 
 
 def test_planned_command_groups_removed() -> None:
-    """Stub command groups (monitor/model/agent/dataset/config) are gone in 1.0."""
-    for group in ("monitor", "model", "agent", "dataset", "config"):
+    """Stub command groups (monitor/model/dataset/config) are gone in 1.0."""
+    for group in ("monitor", "model", "dataset", "config"):
         result = runner.invoke(app, [group, "--help"])
         assert result.exit_code != 0, f"unexpected: 'agentops {group}' is still wired"
+
+
+def test_agent_command_group_wired() -> None:
+    """`agentops agent` exposes the watchdog subcommands."""
+    result = runner.invoke(app, ["agent", "--help"])
+    assert result.exit_code == 0
+    stripped = _strip_ansi(result.stdout)
+    assert "analyze" in stripped
+    assert "serve" in stripped

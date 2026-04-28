@@ -23,11 +23,19 @@ report_app = typer.Typer(help="Reporting commands.")
 workflow_app = typer.Typer(help="CI/CD workflow commands.")
 skills_app = typer.Typer(help="Coding agent skills management.")
 mcp_app = typer.Typer(help="MCP (Model Context Protocol) server commands.")
+agent_app = typer.Typer(
+    help=(
+        "Watchdog agent commands. Combine AgentOps eval history, Azure Monitor "
+        "traces, and Foundry control-plane data to surface regressions, "
+        "latency, error, and safety findings."
+    )
+)
 app.add_typer(eval_app, name="eval")
 app.add_typer(report_app, name="report")
 app.add_typer(workflow_app, name="workflow")
 app.add_typer(skills_app, name="skills")
 app.add_typer(mcp_app, name="mcp")
+app.add_typer(agent_app, name="agent")
 
 log = get_logger(__name__)
 DEFAULT_REPORT_INPUT = Path(".agentops/results/latest/results.json")
@@ -392,18 +400,50 @@ def cmd_workflow_generate(
         "--dir",
         help="Target repository root directory.",
     ),
+    kinds: str = typer.Option(
+        "",
+        "--kinds",
+        help=(
+            "Comma-separated subset of workflow kinds to generate. "
+            "Valid values: pr, dev, qa, prod. "
+            "Default (empty) generates all four."
+        ),
+    ),
 ) -> None:
-    """Generate GitHub Actions workflows for AgentOps evaluation.
+    """Generate the AgentOps GitFlow GitHub Actions workflows.
 
-    Auto-detects which pipelines to create based on the .agentops/ workspace:
-    PR evaluation (always), CI evaluation (multiple configs), and CD pipeline
-    with safety QA gate + deploy placeholder (multiple configs).
+    By default writes all four templates that map to a classic GitFlow
+    setup with three GitHub Environments (dev, qa, production):
+
+      - agentops-pr.yml          (PR gate; PRs to develop, release/**, main)
+      - agentops-deploy-dev.yml  (push to develop  -> environment: dev)
+      - agentops-deploy-qa.yml   (push to release/** -> environment: qa)
+      - agentops-deploy-prod.yml (push to main      -> environment: production)
+
+    Use --kinds to opt into a subset, e.g. --kinds pr,dev.
     """
-    from agentops.services.cicd import generate_cicd_workflows
+    from agentops.services.cicd import ALL_KINDS, generate_cicd_workflows
 
-    log.debug("cmd_workflow_generate called force=%s dir=%s", force, directory)
+    log.debug(
+        "cmd_workflow_generate called force=%s dir=%s kinds=%r", force, directory, kinds
+    )
+
+    selected: list[str] | None = None
+    if kinds.strip():
+        selected = [k.strip() for k in kinds.split(",") if k.strip()]
+        invalid = [k for k in selected if k not in ALL_KINDS]
+        if invalid:
+            typer.echo(
+                f"Error: unknown --kinds value(s): {', '.join(invalid)}. "
+                f"Valid: {', '.join(ALL_KINDS)}.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
     try:
-        result = generate_cicd_workflows(directory=directory, force=force)
+        result = generate_cicd_workflows(
+            directory=directory, force=force, kinds=selected
+        )
     except Exception as exc:
         typer.echo(f"Error: failed to generate CI/CD workflows: {exc}", err=True)
         raise typer.Exit(code=1) from exc
@@ -419,15 +459,26 @@ def cmd_workflow_generate(
         typer.echo("")
         typer.echo("Next steps:")
         typer.echo(
-            "  1. Set GitHub repository variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID"
+            "  1. Configure Azure Workload Identity Federation (OIDC) and set "
+            "repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, "
+            "AZURE_SUBSCRIPTION_ID, AZURE_AI_FOUNDRY_PROJECT_ENDPOINT."
         )
         typer.echo(
-            "  2. Set GitHub repository secret: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+            "  2. Create three GitHub Environments: 'dev', 'qa', 'production'. "
+            "Add required reviewers to 'production'."
         )
         typer.echo(
-            "  3. Configure Azure Workload Identity Federation (see docs/ci-github-actions.md)"
+            "  3. Open each agentops-deploy-*.yml and replace the Build/Deploy "
+            "placeholder steps with your stack's commands "
+            "(snippets are provided in comments)."
         )
-        typer.echo("  4. Commit and push the workflow files")
+        typer.echo(
+            "  4. In Settings -> Branches, require the 'AgentOps PR' status check "
+            "on develop and main."
+        )
+        typer.echo(
+            "  5. Commit and push. See docs/ci-github-actions.md for the full guide."
+        )
     elif result.skipped_files:
         typer.echo("No files written. Use --force to overwrite existing workflows.")
 
@@ -570,6 +621,222 @@ def cmd_mcp_serve() -> None:
     except RuntimeError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
+
+
+# ---------------------------------------------------------------------------
+# `agentops agent` commands
+# ---------------------------------------------------------------------------
+
+
+def _resolve_agent_config_path(workspace: Path, explicit: Path | None) -> Path | None:
+    if explicit is not None:
+        return explicit
+    candidate = workspace / ".agentops" / "agent.yaml"
+    return candidate if candidate.exists() else None
+
+
+@agent_app.command("analyze")
+def cmd_agent_analyze(
+    workspace: Annotated[
+        Path,
+        typer.Option(
+            "--workspace",
+            "-w",
+            help="Project root containing `.agentops/`.",
+        ),
+    ] = Path("."),
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to `agent.yaml` (default: `.agentops/agent.yaml`).",
+        ),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            "-o",
+            help="Where to write the Markdown report.",
+        ),
+    ] = Path(".agentops/agent/report.md"),
+    lookback_days: Annotated[
+        int | None,
+        typer.Option(
+            "--lookback-days",
+            help="Override the lookback window for production telemetry.",
+        ),
+    ] = None,
+    severity_fail: Annotated[
+        str,
+        typer.Option(
+            "--severity-fail",
+            help="Exit 2 when a finding at or above this severity is produced.",
+        ),
+    ] = "critical",
+    categories: Annotated[
+        str | None,
+        typer.Option(
+            "--categories",
+            help=(
+                "Comma-separated list of categories to include "
+                "(quality, performance, reliability, security). "
+                "Default: include all."
+            ),
+        ),
+    ] = None,
+    exclude_rules: Annotated[
+        str | None,
+        typer.Option(
+            "--exclude-rules",
+            help=(
+                "Comma-separated list of posture rule ids to skip "
+                "(for example `waf.security.diagnostic_settings`)."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Run the watchdog agent analyzer and emit a Markdown report.
+
+    Exit codes:
+
+    * ``0`` — analyzer ran cleanly and no finding met `--severity-fail`.
+    * ``2`` — at least one finding meets the configured severity floor.
+    * ``1`` — runtime/configuration error.
+    """
+    from agentops.agent.analyzer import analyze
+    from agentops.agent.config import load_agent_config
+    from agentops.agent.findings import Severity
+    from agentops.agent.report import render_report
+
+    workspace = workspace.resolve()
+    resolved_config = _resolve_agent_config_path(workspace, config_path)
+
+    try:
+        config = load_agent_config(resolved_config)
+    except Exception as exc:
+        typer.echo(f"Error loading agent config: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    if lookback_days is not None:
+        config = config.model_copy(update={"lookback_days": lookback_days})
+
+    try:
+        severity_floor = Severity(severity_fail.lower())
+    except ValueError as exc:
+        typer.echo(
+            f"Error: invalid --severity-fail '{severity_fail}'. "
+            "Use one of: info, warning, critical.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+
+    try:
+        result = analyze(
+            workspace,
+            config,
+            categories=(
+                [c for c in categories.split(",") if c.strip()]
+                if categories
+                else None
+            ),
+            exclude_rules=(
+                [r for r in exclude_rules.split(",") if r.strip()]
+                if exclude_rules
+                else None
+            ),
+        )
+    except Exception as exc:  # pragma: no cover
+        typer.echo(f"Error running analyzer: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    out_path = out if out.is_absolute() else workspace / out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(render_report(result), encoding="utf-8")
+
+    typer.echo(f"Wrote {out_path}")
+    typer.echo(f"Findings: {len(result.findings)}")
+    if result.max_severity is not None:
+        typer.echo(f"Max severity: {result.max_severity.value}")
+
+    if result.max_severity is not None and result.max_severity >= severity_floor:
+        raise typer.Exit(code=2)
+
+
+@agent_app.command("serve")
+def cmd_agent_serve(
+    host: Annotated[
+        str, typer.Option("--host", help="Bind host.")
+    ] = "0.0.0.0",
+    port: Annotated[
+        int, typer.Option("--port", help="Bind port.")
+    ] = 8080,
+    workspace: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Project root for analysis."),
+    ] = Path("."),
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to `agent.yaml` (default: `.agentops/agent.yaml`).",
+        ),
+    ] = None,
+    no_verify: Annotated[
+        bool,
+        typer.Option(
+            "--no-verify",
+            help="Skip Copilot Extensions signature validation (dev only).",
+        ),
+    ] = False,
+    workers: Annotated[
+        int, typer.Option("--workers", help="Uvicorn worker count.")
+    ] = 1,
+) -> None:
+    """Start the watchdog agent as a Copilot Extension HTTP server.
+
+    Exposes ``POST /agents/messages`` (Copilot Extensions protocol),
+    ``GET /healthz`` and ``GET /``. Requires the ``[agent]`` extra:
+
+        pip install agentops-toolkit[agent]
+    """
+    try:
+        import uvicorn
+    except ImportError as exc:
+        typer.echo(
+            "Error: agent extras not installed. "
+            "Run `pip install agentops-toolkit[agent]`.",
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+
+    from agentops.agent.config import load_agent_config
+    from agentops.agent.server.app import create_app
+
+    workspace = workspace.resolve()
+    resolved_config = _resolve_agent_config_path(workspace, config_path)
+
+    try:
+        config = load_agent_config(resolved_config)
+    except Exception as exc:
+        typer.echo(f"Error loading agent config: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    fastapi_app = create_app(
+        workspace=workspace,
+        config=config,
+        verify_signature=not no_verify,
+    )
+
+    if no_verify:
+        typer.echo(
+            "WARNING: Copilot Extensions signature validation is disabled. "
+            "Use only for local development."
+        )
+
+    uvicorn.run(fastapi_app, host=host, port=port, workers=workers)
 
 
 def main() -> None:
