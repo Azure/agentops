@@ -209,6 +209,8 @@ jobs:
       - name: Run AgentOps eval
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/foundry-prompt
         run: uv run agentops eval run --config agentops.yaml
       - uses: actions/upload-artifact@v7
@@ -249,6 +251,8 @@ jobs:
       - name: Run AgentOps eval
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/foundry-hosted
         run: uv run agentops eval run --config agentops.yaml
       - uses: actions/upload-artifact@v7
@@ -281,6 +285,9 @@ jobs:
           AGENTOPS_E2E_ACA_URL: ${{ needs.bootstrap-live.outputs.aca_url }}
         run: uv run python scripts/e2e_render_config.py
       - name: Run AgentOps eval
+        env:
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/http-aca
         run: uv run agentops eval run --config agentops.yaml
       - uses: actions/upload-artifact@v7
@@ -321,6 +328,8 @@ jobs:
       - name: Run AgentOps eval
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/model-direct
         run: uv run agentops eval run --config agentops.yaml
       - uses: actions/upload-artifact@v7
