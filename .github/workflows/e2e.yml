@@ -131,6 +131,8 @@ jobs:
     outputs:
       aca_url: ${{ steps.deploy_perrun.outputs.aca_url }}
       aca_app_name: ${{ steps.deploy_perrun.outputs.aca_app_name }}
+      hosted_agent_id: ${{ steps.create_hosted_agent.outputs.agent_id }}
+      hosted_agent_name: ${{ steps.create_hosted_agent.outputs.agent_name }}
       suffix: ${{ steps.suffix.outputs.value }}
     steps:
       - uses: actions/checkout@v6
@@ -180,6 +182,26 @@ jobs:
           echo "ACA app did not become reachable" >&2
           exit 1
 
+      - name: Set up Python (for hosted agent provisioning)
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted' }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install azure-ai-projects (for hosted agent provisioning)
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted' }}
+        run: pip install --quiet "azure-ai-projects>=2.0.1" azure-identity
+
+      - id: create_hosted_agent
+        name: Create transient hosted agent (with get_weather tool)
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted' }}
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+        run: |
+          python scripts/e2e_hosted_agent.py create \
+            --name "e2e-hosted-${{ steps.suffix.outputs.value }}" \
+            --model "${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}"
+
   live-foundry-prompt:
     needs: bootstrap-live
     if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-prompt' }}
@@ -215,17 +237,24 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/foundry-prompt
         run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/foundry-prompt
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-foundry-prompt
-          path: e2e-runs/foundry-prompt/.agentops/results/
+          path: |
+            e2e-runs/foundry-prompt/.agentops/results/
+            e2e-runs/foundry-prompt/transcript.txt
+            e2e-runs/foundry-prompt/HEADER.md
+            e2e-runs/foundry-prompt/agentops.yaml
           if-no-files-found: warn
           retention-days: 14
 
   live-foundry-hosted:
     needs: bootstrap-live
-    if: ${{ (github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted') && vars.AGENTOPS_E2E_FOUNDRY_HOSTED_URL != '' }}
+    if: ${{ (github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted') && needs.bootstrap-live.outputs.hosted_agent_id != '' }}
     runs-on: ubuntu-latest
     environment: e2e
     permissions:
@@ -249,7 +278,7 @@ jobs:
       - run: uv pip install azure-ai-evaluation pandas azure-ai-projects azure-identity
       - name: Render scenario config
         env:
-          AGENTOPS_E2E_FOUNDRY_HOSTED_URL: ${{ vars.AGENTOPS_E2E_FOUNDRY_HOSTED_URL }}
+          AGENTOPS_E2E_FOUNDRY_HOSTED_AGENT: ${{ needs.bootstrap-live.outputs.hosted_agent_id }}
         run: uv run python scripts/e2e_render_config.py
       - name: Run AgentOps eval
         env:
@@ -258,11 +287,19 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/foundry-hosted
         run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/foundry-hosted
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-foundry-hosted
-          path: e2e-runs/foundry-hosted/.agentops/results/
+          path: |
+            e2e-runs/foundry-hosted/.agentops/results/
+            e2e-runs/foundry-hosted/transcript.txt
+            e2e-runs/foundry-hosted/HEADER.md
+            e2e-runs/foundry-hosted/agentops.yaml
+            e2e-runs/foundry-hosted/agent-info.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -300,11 +337,18 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/http-aca
         run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/http-aca
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-http-aca
-          path: e2e-runs/http-aca/.agentops/results/
+          path: |
+            e2e-runs/http-aca/.agentops/results/
+            e2e-runs/http-aca/transcript.txt
+            e2e-runs/http-aca/HEADER.md
+            e2e-runs/http-aca/agentops.yaml
           if-no-files-found: warn
           retention-days: 14
 
@@ -343,11 +387,18 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
         working-directory: e2e-runs/model-direct
         run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/model-direct
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: e2e-model-direct
-          path: e2e-runs/model-direct/.agentops/results/
+          path: |
+            e2e-runs/model-direct/.agentops/results/
+            e2e-runs/model-direct/transcript.txt
+            e2e-runs/model-direct/HEADER.md
+            e2e-runs/model-direct/agentops.yaml
           if-no-files-found: warn
           retention-days: 14
 
@@ -379,6 +430,21 @@ jobs:
             --resource-group "${{ vars.AZURE_E2E_RESOURCE_GROUP }}" \
             --name "${{ needs.bootstrap-live.outputs.aca_app_name }}" \
             --yes || true
+      - name: Set up Python (for hosted agent teardown)
+        if: needs.bootstrap-live.outputs.hosted_agent_name != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install azure-ai-projects (for hosted agent teardown)
+        if: needs.bootstrap-live.outputs.hosted_agent_name != ''
+        run: pip install --quiet "azure-ai-projects>=2.0.1" azure-identity
+      - name: Delete transient hosted agent
+        if: needs.bootstrap-live.outputs.hosted_agent_name != ''
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+        run: |
+          python scripts/e2e_hosted_agent.py delete \
+            --name "${{ needs.bootstrap-live.outputs.hosted_agent_name }}" || true
       - name: Sweep stale e2e ACA apps (>1d old)
         run: |
           set -e

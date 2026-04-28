@@ -34,6 +34,9 @@ def render_module(monkeypatch, tmp_path):
     monkeypatch.setattr(
         module, "DATASET_RAG", tmp_path / "scripts" / "e2e_data" / "rag.jsonl"
     )
+    monkeypatch.setattr(
+        module, "DATASET_TOOLS", tmp_path / "scripts" / "e2e_data" / "tools.jsonl"
+    )
     yield module
     sys.modules.pop("e2e_render_config", None)
 
@@ -41,10 +44,7 @@ def render_module(monkeypatch, tmp_path):
 @pytest.fixture
 def all_scenarios_env(monkeypatch):
     monkeypatch.setenv("AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT", "e2e-prompt:1")
-    monkeypatch.setenv(
-        "AGENTOPS_E2E_FOUNDRY_HOSTED_URL",
-        "https://hosted.eastus2.services.ai.azure.com/agents/abc",
-    )
+    monkeypatch.setenv("AGENTOPS_E2E_FOUNDRY_HOSTED_AGENT", "e2e-hosted-run42:1")
     monkeypatch.setenv(
         "AGENTOPS_E2E_ACA_URL",
         "https://aca-echo-run123.icy.eastus2.azurecontainerapps.io",
@@ -55,7 +55,7 @@ def all_scenarios_env(monkeypatch):
 def test_render_writes_only_for_set_env_vars(render_module, monkeypatch, tmp_path):
     for var in (
         "AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT",
-        "AGENTOPS_E2E_FOUNDRY_HOSTED_URL",
+        "AGENTOPS_E2E_FOUNDRY_HOSTED_AGENT",
         "AGENTOPS_E2E_ACA_URL",
         "AGENTOPS_E2E_MODEL_DEPLOYMENT",
     ):
@@ -84,7 +84,10 @@ def test_render_all_scenarios_load_and_classify(
 
     expected_kinds = {
         "foundry-prompt": ("foundry_prompt", None),
-        "foundry-hosted": ("foundry_hosted", "responses"),
+        # The hosted agent is created dynamically and referenced as
+        # name:version, so it routes through the foundry_prompt
+        # (agent_reference) invocation path — same as the prompt scenario.
+        "foundry-hosted": ("foundry_prompt", None),
         "http-aca": ("http_json", "http-json"),
         "model-direct": ("model_direct", None),
     }
@@ -99,6 +102,12 @@ def test_render_all_scenarios_load_and_classify(
             f"{scenario}: expected protocol={protocol}, got {target.protocol}"
         )
 
+        # Each rendered scenario must also write a HEADER.md so the
+        # transcript script can produce a self-explanatory artifact.
+        header = cfg_path.parent / "HEADER.md"
+        assert header.exists(), f"{scenario}: HEADER.md is missing"
+        assert header.stat().st_size > 0
+
 
 def test_render_creates_datasets_when_missing(render_module, all_scenarios_env, tmp_path):
     render_module.render()
@@ -111,7 +120,7 @@ def test_render_creates_datasets_when_missing(render_module, all_scenarios_env, 
 def test_render_main_exits_nonzero_with_no_env(render_module, monkeypatch, capsys):
     for var in (
         "AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT",
-        "AGENTOPS_E2E_FOUNDRY_HOSTED_URL",
+        "AGENTOPS_E2E_FOUNDRY_HOSTED_AGENT",
         "AGENTOPS_E2E_ACA_URL",
         "AGENTOPS_E2E_MODEL_DEPLOYMENT",
     ):
