@@ -416,6 +416,7 @@ jobs:
       id-token: write
       contents: read
     steps:
+      - uses: actions/checkout@v4
       - name: Azure login (OIDC)
         uses: ./.github/actions/azure-oidc-login
         with:
