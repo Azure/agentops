@@ -211,61 +211,75 @@ this is a pipeline smoke test, not a quality gate.
 
     aca_url = os.environ.get("AGENTOPS_E2E_ACA_URL")
     if aca_url:
-        # The hello-agent ACA app is a real LLM-backed agent (Microsoft Agent
-        # Framework + the workflow's configured Azure OpenAI deployment), so
-        # we exercise the regular quality evaluators here. Thresholds are
-        # permissive — this is a smoke test of the http-json invocation path
-        # against a real model, not a quality gate for the model itself.
+        # The hello-agent ACA app is a real LLM-backed agent with one tool
+        # (`get_weather`). The http-aca scenario exercises *both* the http-json
+        # invocation path AND tool-call evaluation — the dataset asks weather
+        # questions in three different cities, the agent picks the tool, the
+        # framework runs it, and the agent produces a final natural-language
+        # answer. AgentOps captures the structured tool calls via
+        # `tool_calls_field` for `tool_call_accuracy` while quality evaluators
+        # grade the final text.
         _write(
             "http-aca",
             f"""version: 1
 agent: {aca_url}
-dataset: ../../{rel_basic}
+dataset: ../../{rel_tools}
 protocol: http-json
 request_field: message
 response_field: text
-# Permissive thresholds: e2e smoke test of the http-json invocation path
-# against a real LLM, not a quality gate for the model itself.
+tool_calls_field: tool_calls
+# Permissive thresholds: e2e smoke test of the http-json + tool-calling
+# invocation path against a real LLM, not a quality gate for the model.
 thresholds:
+  tool_call_accuracy: ">=0"
   coherence: ">=0"
   fluency: ">=0"
-  similarity: ">=0"
   f1_score: ">=0"
   avg_latency_seconds: "<=60"
 """,
-            header=f"""# Scenario: http-aca
+            header=f"""# Scenario: http-aca (HTTP agent with tool calling)
 
 **Target:** A *real* Microsoft Agent Framework chat agent
 (`agent_framework.Agent` + `OpenAIChatCompletionClient` against Azure
-OpenAI `{model}`) deployed as an Azure Container App per workflow
-run by `infra/e2e/perrun.bicep` at `{aca_url}`.
+OpenAI `{model}`) deployed as an Azure Container App per workflow run by
+`infra/e2e/perrun.bicep` at `{aca_url}`.
 
 **What it does:** The agent (see `infra/e2e/agent-app/app.py`) is a small
 FastAPI service that exposes `POST /` accepting `{{"message": "..."}}`
-and returning `{{"text": "..."}}`. It runs the user's question through a
-single-turn `Agent.run()` call with the instructions:
+and returning `{{"text": "...", "tool_calls": [...]}}`. The agent is
+configured with one function tool, `get_weather(location)`, and these
+instructions:
 
-> *You are a concise factual assistant. Answer the user's question in one
-> short sentence. Do not add caveats, disclaimers, or follow-up questions.*
+> *You are a concise factual assistant. When the user asks about the
+> weather in a location, you MUST call the `get_weather` tool with that
+> location instead of guessing. After the tool returns, summarize the
+> weather for the user in one short sentence...*
+
+Each POST is a single AgentOps invocation, but **inside** the agent
+there are multiple internal turns: the model picks the tool, the
+framework executes it locally, the model observes the canned tool
+result, and produces a final natural-language answer. AgentOps captures
+the structured tool calls (via `tool_calls_field: tool_calls`) for
+`tool_call_accuracy` while the quality evaluators grade the final text.
 
 The container authenticates to Azure OpenAI via a User-Assigned Managed
 Identity (no API keys) granted `Cognitive Services OpenAI User` on the
 shared AI Services account.
 
 **Why this scenario exists:** It exercises AgentOps' `http-json`
-invocation path — POSTing a JSON body, parsing a JSON response with a
-configurable dot-path, and measuring round-trip latency — against a
-freshly-deployed Azure resource the workflow itself owns end to end
-(image built server-side via `az acr build`, deployed via Bicep, pulled
-with managed identity, torn down by the teardown job).
+invocation path *plus* tool-call evaluation against a freshly-deployed
+Azure resource the workflow itself owns end to end (image built
+server-side via `az acr build`, deployed via Bicep, pulled with managed
+identity, torn down by the teardown job).
 
-**Dataset:** `{rel_basic}` (3 short factual rows: arithmetic, capital
-city, sky color).
+**Dataset:** `{rel_tools}` (3 weather questions across Paris, Tokyo,
+São Paulo, each with the expected `get_weather` tool call).
 
-**Evaluators (auto-inferred from dataset shape):** `coherence`, `fluency`,
-`similarity`, `f1_score`, plus `avg_latency_seconds`. Thresholds are
-intentionally permissive (`>=0`) because the goal is to validate
-connectivity and the eval pipeline, not to gate on `{model}` quality.
+**Evaluators (auto-inferred from dataset shape):** `tool_call_accuracy`,
+`coherence`, `fluency`, `f1_score`, plus `avg_latency_seconds`.
+Thresholds are intentionally permissive (`>=0`) because the goal is to
+validate connectivity and the eval pipeline, not to gate on `{model}`
+quality.
 """,
         )
         written.append("http-aca")
