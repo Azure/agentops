@@ -220,7 +220,7 @@ _TOOL_USE_EVALUATORS: Tuple[EvaluatorPreset, ...] = (
 
 _LATENCY = EvaluatorPreset(
     name="avg_latency_seconds",
-    class_name="_BuiltinLatency",
+    class_name="_latency",
     score_key="avg_latency_seconds",
     input_mapping={},
     default_threshold=_t("avg_latency_seconds", "<=", 10.0),

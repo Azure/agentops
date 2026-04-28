@@ -1,0 +1,53 @@
+live-model-direct	Run AgentOps eval	∩╗┐2026-04-28T01:40:13.6498188Z ##[group]Run uv run agentops eval run --config agentops.yaml
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6498636Z [36;1muv run agentops eval run --config agentops.yaml[0m
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6557202Z shell: /usr/bin/bash -e {0}
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6557470Z env:
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6557764Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.13/x64
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6558205Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib/pkgconfig
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6558623Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6558985Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6559366Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6559751Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6560153Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6560524Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6561417Z   AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: https://agentopse2e-ai-mkq7fkj2rxnrs.services.ai.azure.com/api/projects/agentopse2e-proj
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6562169Z   AZURE_OPENAI_ENDPOINT: https://agentopse2e-ai-mkq7fkj2rxnrs.openai.azure.com/
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6562587Z   AZURE_OPENAI_DEPLOYMENT: gpt-4o-mini
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:13.6562855Z ##[endgroup]
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:20.2983835Z Error: evaluation failed: Evaluator class '_BuiltinLatency' not found in azure.ai.evaluation
+live-model-direct	Run AgentOps eval	2026-04-28T01:40:20.5714720Z ##[error]Process completed with exit code 1.
+live-http-aca	Run AgentOps eval	∩╗┐2026-04-28T01:40:13.9087754Z ##[group]Run uv run agentops eval run --config agentops.yaml
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9088197Z [36;1muv run agentops eval run --config agentops.yaml[0m
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9109347Z shell: /usr/bin/bash -e {0}
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9109582Z env:
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9109838Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.13/x64
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9110265Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib/pkgconfig
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9110674Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9111031Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9111564Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9111937Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9112383Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9112752Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9113211Z   AZURE_OPENAI_ENDPOINT: https://agentopse2e-ai-mkq7fkj2rxnrs.openai.azure.com/
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9113678Z   AZURE_OPENAI_DEPLOYMENT: gpt-4o-mini
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:13.9113925Z ##[endgroup]
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:20.4712112Z Error: evaluation failed: Evaluator class '_BuiltinLatency' not found in azure.ai.evaluation
+live-http-aca	Run AgentOps eval	2026-04-28T01:40:20.7284994Z ##[error]Process completed with exit code 1.
+live-foundry-prompt	Run AgentOps eval	∩╗┐2026-04-28T01:40:13.6105851Z ##[group]Run uv run agentops eval run --config agentops.yaml
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6106307Z [36;1muv run agentops eval run --config agentops.yaml[0m
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6127657Z shell: /usr/bin/bash -e {0}
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6127897Z env:
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6128153Z   pythonLocation: /opt/hostedtoolcache/Python/3.12.13/x64
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6128587Z   PKG_CONFIG_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib/pkgconfig
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6129007Z   Python_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6129385Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6129775Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.13/x64
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6130152Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.13/x64/lib
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6130544Z   UV_PYTHON_INSTALL_DIR: /home/runner/work/_temp/uv-python-dir
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6130918Z   UV_CACHE_DIR: /home/runner/work/_temp/setup-uv-cache
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6131553Z   AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: https://agentopse2e-ai-mkq7fkj2rxnrs.services.ai.azure.com/api/projects/agentopse2e-proj
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6132584Z   AZURE_OPENAI_ENDPOINT: https://agentopse2e-ai-mkq7fkj2rxnrs.openai.azure.com/
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6133010Z   AZURE_OPENAI_DEPLOYMENT: gpt-4o-mini
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:13.6133263Z ##[endgroup]
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:19.4298352Z Error: evaluation failed: Evaluator class '_BuiltinLatency' not found in azure.ai.evaluation
+live-foundry-prompt	Run AgentOps eval	2026-04-28T01:40:19.6873712Z ##[error]Process completed with exit code 1.
