@@ -203,6 +203,7 @@ _TOOL_USE_EVALUATORS: Tuple[EvaluatorPreset, ...] = (
         input_mapping={
             "query": "$prompt",
             "response": "$prediction",
+            "tool_definitions": "$tool_definitions",
         },
         default_threshold=_t("task_adherence", ">=", 3.0),
         categories=frozenset({"agent"}),
