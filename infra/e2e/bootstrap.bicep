@@ -50,7 +50,7 @@ var acrName = toLower(replace('${prefix}acr${suffix}', '-', ''))
 
 // ---------- AI Services + Foundry project ----------
 
-resource aiServices 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+resource aiServices 'Microsoft.CognitiveServices/accounts@2025-04-01-preview' = {
   name: aiServicesName
   location: location
   identity: {
@@ -64,6 +64,7 @@ resource aiServices 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
     customSubDomainName: aiServicesName
     publicNetworkAccess: 'Enabled'
     disableLocalAuth: false
+    allowProjectManagement: true
   }
 }
 
@@ -80,7 +81,7 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-04-0
   }
 }
 
-resource gptDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+resource gptDeployment 'Microsoft.CognitiveServices/accounts/deployments@2025-04-01-preview' = {
   parent: aiServices
   name: modelDeploymentName
   sku: {
@@ -142,7 +143,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2023-11-01-preview' = {
 // ---------- Outputs (capture into GitHub Actions Variables) ----------
 
 @description('Foundry project endpoint URL — set as AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT.')
-output foundryProjectEndpoint string = 'https://${aiServices.properties.endpoint}/api/projects/${projectName}'
+output foundryProjectEndpoint string = 'https://${aiServices.name}.services.ai.azure.com/api/projects/${projectName}'
 
 @description('Azure OpenAI endpoint of the AI Services account.')
 output azureOpenAiEndpoint string = aiServices.properties.endpoint
