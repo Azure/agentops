@@ -104,6 +104,11 @@ def render() -> list[str]:
     rel_basic = DATASET_BASIC.relative_to(ROOT).as_posix()
     rel_rag = DATASET_RAG.relative_to(ROOT).as_posix()
     rel_tools = DATASET_TOOLS.relative_to(ROOT).as_posix()
+    # Pulled from repo Actions Variables by the workflow. We only use it for
+    # human-readable HEADER text — the actual deployment that's exercised is
+    # always whatever the workflow has configured in `AZURE_OPENAI_DEPLOYMENT`,
+    # so this is purely cosmetic and falls back to a generic placeholder.
+    model = os.environ.get("AGENTOPS_E2E_MODEL_DEPLOYMENT") or "the configured Azure OpenAI deployment"
 
     prompt_agent = os.environ.get("AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT")
     if prompt_agent:
@@ -124,7 +129,7 @@ thresholds:
 
 **Target:** Foundry prompt agent `{prompt_agent}` (created manually in the Foundry portal).
 
-**What it does:** A general-purpose prompt agent backed by `gpt-4o-mini`. It
+**What it does:** A general-purpose prompt agent backed by `{model}`. It
 answers short factual questions with the canonical short answer
 (e.g. "What is 2+2?" → "4"). No tools, no retrieval.
 
@@ -164,7 +169,7 @@ thresholds:
 this workflow run via `scripts/e2e_hosted_agent.py create` and deleted in
 `teardown-live`.
 
-**What it does:** A weather assistant backed by `gpt-4o-mini` with a single
+**What it does:** A weather assistant backed by `{model}` with a single
 function tool `get_weather(location)`. The agent's instructions tell it to
 *always* invoke `get_weather` when the user asks about the weather, instead
 of fabricating an answer.
@@ -207,10 +212,10 @@ this is a pipeline smoke test, not a quality gate.
     aca_url = os.environ.get("AGENTOPS_E2E_ACA_URL")
     if aca_url:
         # The hello-agent ACA app is a real LLM-backed agent (Microsoft Agent
-        # Framework + Azure OpenAI gpt-4o-mini), so we exercise the regular
-        # quality evaluators here. Thresholds are permissive — this is a
-        # smoke test of the http-json invocation path against a real model,
-        # not a quality gate for gpt-4o-mini itself.
+        # Framework + the workflow's configured Azure OpenAI deployment), so
+        # we exercise the regular quality evaluators here. Thresholds are
+        # permissive — this is a smoke test of the http-json invocation path
+        # against a real model, not a quality gate for the model itself.
         _write(
             "http-aca",
             f"""version: 1
@@ -220,7 +225,7 @@ protocol: http-json
 request_field: message
 response_field: text
 # Permissive thresholds: e2e smoke test of the http-json invocation path
-# against a real LLM, not a quality gate for gpt-4o-mini.
+# against a real LLM, not a quality gate for the model itself.
 thresholds:
   coherence: ">=0"
   fluency: ">=0"
@@ -232,7 +237,7 @@ thresholds:
 
 **Target:** A *real* Microsoft Agent Framework chat agent
 (`agent_framework.Agent` + `OpenAIChatCompletionClient` against Azure
-OpenAI `gpt-4o-mini`) deployed as an Azure Container App per workflow
+OpenAI `{model}`) deployed as an Azure Container App per workflow
 run by `infra/e2e/perrun.bicep` at `{aca_url}`.
 
 **What it does:** The agent (see `infra/e2e/agent-app/app.py`) is a small
@@ -260,7 +265,7 @@ city, sky color).
 **Evaluators (auto-inferred from dataset shape):** `coherence`, `fluency`,
 `similarity`, `f1_score`, plus `avg_latency_seconds`. Thresholds are
 intentionally permissive (`>=0`) because the goal is to validate
-connectivity and the eval pipeline, not to gate on `gpt-4o-mini` quality.
+connectivity and the eval pipeline, not to gate on `{model}` quality.
 """,
         )
         written.append("http-aca")
