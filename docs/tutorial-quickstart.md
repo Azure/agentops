@@ -36,7 +36,7 @@ python -m pip install agentops-toolkit
 ## 2. Bootstrap the project
 
 ```bash
-agentops init --flat
+agentops init
 ```
 
 This creates two files:

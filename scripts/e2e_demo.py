@@ -8,7 +8,7 @@ The script is offline by design: it does not contact Azure, Foundry, or any
 real model provider. It validates the parts of the pipeline that are most
 prone to regression:
 
-* ``agentops init --flat`` creates ``agentops.yaml`` and a seed dataset.
+* ``agentops init`` creates ``agentops.yaml`` and a seed dataset.
 * ``agentops eval run`` invokes the agent, runs the inferred evaluators,
   writes ``results.json`` and ``report.md``, and exits with the documented
   exit-code contract.

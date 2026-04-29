@@ -24,7 +24,7 @@ F1Score, latency).
 
 ```bash
 pip install agentops-toolkit
-agentops init --flat
+agentops init
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 

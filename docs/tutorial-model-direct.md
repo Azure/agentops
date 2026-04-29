@@ -13,7 +13,7 @@ model can't answer your dataset, no agent prompt will save it.
 ## 1. Bootstrap
 
 ```bash
-agentops init --flat
+agentops init
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 

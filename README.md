@@ -53,7 +53,7 @@ python -m pip install agentops-toolkit
 ### 2) Bootstrap
 
 ```bash
-agentops init --flat
+agentops init
 ```
 
 This writes a single `agentops.yaml` at the project root and a tiny seed dataset at `.agentops/data/smoke.jsonl`. Edit `agentops.yaml` to point at your agent.
@@ -104,7 +104,7 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 | Command | Description |
 |---|---|
 | `agentops --version` | Show installed version |
-| `agentops init --flat` | Bootstrap `agentops.yaml` and a seed dataset |
+| `agentops init` | Bootstrap `agentops.yaml` and a seed dataset |
 | `agentops eval run [--config PATH] [--baseline PATH]` | Run an evaluation |
 | `agentops report generate [--in FILE]` | Regenerate `report.md` from `results.json` |
 | `agentops workflow generate` | Generate GitHub Actions workflow |
