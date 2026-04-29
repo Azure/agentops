@@ -49,17 +49,19 @@ A **trace** represents a single end-to-end operation. In AgentOps, one evaluatio
 A **span** is a unit of work with a start time, end time, a name, and key-value attributes. Spans nest inside each other to form a tree. Example:
 
 ```
-RUN conversational_agent_baseline          ← root span (the whole run)
-├── eval_item 0                            ← child span (one dataset row)
-│   ├── invoke_agent my-agent              ← grandchild (the agent call)
-│   ├── evaluator builtin.similarity       ← grandchild (scoring)
-│   └── evaluator builtin.coherence        ← grandchild (scoring)
-├── eval_item 1
+RUN conversational_agent_baseline                    ← root span (the whole run)
+├── eval_item 1 - 'What is 2+2?'                     ← child span (one dataset row)
+│   ├── invoke_agent my-agent                        ← grandchild (the agent call)
+│   ├── evaluator builtin.similarity                 ← grandchild (scoring)
+│   └── evaluator builtin.coherence                  ← grandchild (scoring)
+├── eval_item 2 - 'Capital of France?'
 │   ├── invoke_agent my-agent
 │   ├── evaluator builtin.similarity
 │   └── evaluator builtin.coherence
 └── ...
 ```
+
+Item indices are **1-based**, and each `eval_item` span name includes a short snippet of the row input for easy scanning in trace UIs.
 
 Each span records **attributes** — structured key-value pairs like `agentops.eval.evaluator.score = 0.87`.
 
@@ -196,11 +198,12 @@ RUN <bundle_name>                             kind=SERVER
 │     agentops.eval.model = <deployment>          (if applicable)
 │     agentops.eval.agent_id = <agent_id>         (if applicable)
 │
-├── eval_item 0                                kind=INTERNAL
+├── eval_item 1 - 'What is 2+2?'              kind=INTERNAL
 │   │   cicd.pipeline.task.name = "eval_item"
-│   │   agentops.eval.item.index = 0
-│   │   agentops.eval.item.input = "..."
-│   │   agentops.eval.item.expected = "..."
+│   │   cicd.pipeline.task.run.id = "1"
+│   │   cicd.pipeline.task.run.result = "success"
+│   │   agentops.eval.item.index = 1
+│   │   agentops.eval.item.input = "What is 2+2?"
 │   │   agentops.eval.item.passed = true
 │   │
 │   ├── invoke_agent my-agent                  kind=CLIENT
@@ -222,7 +225,7 @@ RUN <bundle_name>                             kind=SERVER
 │         agentops.eval.evaluator.score = 0.85
 │         ...
 │
-├── eval_item 1
+├── eval_item 2 - 'Capital of France?'
 │   └── ...
 │
 └── (final attributes on root span)
@@ -265,8 +268,8 @@ Follows the [OTel GenAI semantic conventions](https://opentelemetry.io/docs/spec
 
 | Attribute | Example | Description |
 |---|---|---|
-| `gen_ai.operation.name` | `invoke_agent` / `chat` | Operation type |
-| `gen_ai.provider.name` | `azure.ai.inference` | Provider |
+| `gen_ai.operation.name` | `invoke_agent` / `chat` | Operation type — `invoke_agent` for agent targets, `chat` for model targets |
+| `gen_ai.provider.name` | `azure.ai.inference` / `local.callable` | Provider — varies by backend (e.g. `azure.ai.inference` for Foundry, `local.callable` for the local adapter backend) |
 | `gen_ai.request.model` | `gpt-4o` | Requested model deployment |
 | `gen_ai.response.model` | `gpt-4o-2024-08-06` | Actual model version |
 | `gen_ai.agent.id` | `my-agent:3` | Foundry agent identifier |
@@ -289,9 +292,8 @@ Custom attributes for evaluation-specific data that has no standard equivalent.
 | `agentops.eval.items_total` | `10` | Total rows evaluated |
 | `agentops.eval.items_passed` | `9` | Rows passing thresholds |
 | `agentops.eval.pass_rate` | `0.9` | Pass rate |
-| `agentops.eval.item.index` | `0` | Row index |
+| `agentops.eval.item.index` | `1` | Row index (1-based) |
 | `agentops.eval.item.input` | `"What is 2+2?"` | Input text |
-| `agentops.eval.item.expected` | `"4"` | Expected answer |
 | `agentops.eval.item.passed` | `true` | Row pass/fail |
 | `agentops.eval.evaluator.name` | `SimilarityEvaluator` | Class name |
 | `agentops.eval.evaluator.builtin` | `builtin.similarity` | Builtin name |
