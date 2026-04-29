@@ -48,14 +48,6 @@ you copy a command, you see an artefact, you keep moving.
 
 Set the project endpoint up front so every command picks it up.
 
-**bash / zsh (Linux, macOS, WSL):**
-
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
-export AZURE_OPENAI_ENDPOINT="https://<your-aoai-resource>.openai.azure.com"
-export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
-```
-
 **PowerShell (Windows):**
 
 ```powershell
@@ -64,16 +56,24 @@ $env:AZURE_OPENAI_ENDPOINT             = "https://<your-aoai-resource>.openai.az
 $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
 ```
 
+**bash / zsh (Linux, macOS, WSL):**
+
+```bash
+export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
+export AZURE_OPENAI_ENDPOINT="https://<your-aoai-resource>.openai.azure.com"
+export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
+```
+
 > The remaining shell snippets in this tutorial are written for
-> bash. PowerShell users can substitute `$env:VAR = "value"` for
-> `export VAR=value`, `Get-Content` for `cat`, and
-> `Get-ChildItem` for `ls`.
+> **PowerShell** (the default on Windows). bash / zsh users can
+> substitute `export VAR=value` for `$env:VAR = "value"`, `cat`
+> for `Get-Content`, and `ls` for `Get-ChildItem`.
 
 ## 1. Install AgentOps
 
-```bash
+```powershell
 python -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1    # bash/zsh: source .venv/bin/activate
 python -m pip install -U pip
 python -m pip install agentops-toolkit
 python -m pip install azure-ai-projects azure-identity   # used by the helper script
@@ -98,7 +98,7 @@ that does it in one command. Save the file locally (it has no
 AgentOps dependency — only `azure-ai-projects` and `azure-identity`)
 and run:
 
-```bash
+```powershell
 python scripts/create_support_agent.py create --name support-bot
 # stdout: support-bot:1
 ```
@@ -125,7 +125,7 @@ into `agentops.yaml` next. The script:
 
 In an empty folder (or the GitHub repo you want to use):
 
-```bash
+```powershell
 agentops init
 ```
 
@@ -217,7 +217,7 @@ quality stack. When AgentOps loads the dataset it picks:
 
 ## 5. Run your first evaluation
 
-```bash
+```powershell
 agentops eval run
 ```
 
@@ -232,8 +232,8 @@ The CLI:
 
 Inspect the outputs:
 
-```bash
-cat .agentops/results/latest/report.md
+```powershell
+Get-Content .agentops/results/latest/report.md
 ```
 
 The report has four sections you will revisit often:
@@ -256,14 +256,6 @@ failed). `1` means a runtime error.
 This is where the tutorial earns its keep. Snapshot the run id you
 just produced and tell `agentops eval run` to use it as a baseline.
 
-**bash / zsh:**
-
-```bash
-ls -1 .agentops/results
-# 2026-04-29T15-30-12Z   latest
-export BASELINE=.agentops/results/2026-04-29T15-30-12Z/results.json
-```
-
 **PowerShell:**
 
 ```powershell
@@ -273,12 +265,20 @@ Get-ChildItem .agentops/results | Select-Object Name
 $env:BASELINE = ".agentops/results/2026-04-29T15-30-12Z/results.json"
 ```
 
+**bash / zsh:**
+
+```bash
+ls -1 .agentops/results
+# 2026-04-29T15-30-12Z   latest
+export BASELINE=.agentops/results/2026-04-29T15-30-12Z/results.json
+```
+
 Now create a **degraded** version of the agent — same model, same
 tools, but a friendly chatbot prompt that drops the tool-use rule:
 
-```bash
-python scripts/create_support_agent.py create \
-  --name support-bot \
+```powershell
+python scripts/create_support_agent.py create `
+  --name support-bot `
   --variant v2-degraded
 # stdout: support-bot:2
 ```
@@ -291,8 +291,8 @@ agent: "support-bot:2"
 
 Re-run with the v1 result as the baseline:
 
-```bash
-agentops eval run --baseline "$BASELINE"
+```powershell
+agentops eval run --baseline $env:BASELINE
 ```
 
 The new `report.md` adds a **Comparison vs Baseline** section with
@@ -319,7 +319,7 @@ will wire into CI next.**
 
 ## 7. Generate the GitFlow workflows
 
-```bash
+```powershell
 agentops workflow generate
 ```
 
@@ -339,7 +339,7 @@ reference. The defaults are sane: you do not need to edit them yet.
 
 Initialize the repo and push:
 
-```bash
+```powershell
 git init -b main
 git add .
 git commit -m "feat: bootstrap AgentOps eval and CI/CD"
@@ -385,7 +385,7 @@ plus the `agents/*` action surface).
 
 ### Open a PR
 
-```bash
+```powershell
 git checkout -b feature/tweak-prompt
 # make any small change, e.g. edit tickets.jsonl
 git commit -am "test: refine ticket dataset"
@@ -409,7 +409,7 @@ queries Application Insights and the Foundry control plane to flag
 drifts that a single eval cannot see — repeated regressions, latency
 trends, error spikes, safety findings.
 
-```bash
+```powershell
 pip install "agentops-toolkit[agent]"
 agentops agent analyze
 ```
@@ -423,8 +423,9 @@ latency checks across all your previous runs.
 To pull production telemetry, drop a starter `agent.yaml` into the
 workspace and edit it:
 
-```bash
-cp "$(python -c 'import agentops, pathlib; print(pathlib.Path(agentops.__file__).parent / "templates" / "agent.yaml")')" .agentops/agent.yaml
+```powershell
+$tpl = python -c "import agentops, pathlib; print(pathlib.Path(agentops.__file__).parent / 'templates' / 'agent.yaml')"
+Copy-Item $tpl .agentops/agent.yaml
 ```
 
 ```yaml
@@ -462,7 +463,7 @@ For deeper integration (Copilot Chat extension, ACA deploy), see
 The two agent versions live in your Foundry project until you delete
 them. The helper script handles cleanup:
 
-```bash
+```powershell
 python scripts/create_support_agent.py delete --name support-bot
 ```
 
