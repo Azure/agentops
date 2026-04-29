@@ -113,8 +113,18 @@ TOOL_SPECS = [
 
 
 def _client():
+    import logging
+
     from azure.ai.projects import AIProjectClient
+    from azure.core.exceptions import ClientAuthenticationError
     from azure.identity import DefaultAzureCredential
+
+    # Silence azure-identity's verbose credential-chain logging so the
+    # friendly "Run `az login`" message below isn't drowned out.
+    logging.getLogger("azure.identity").setLevel(logging.ERROR)
+    logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
+        logging.ERROR
+    )
 
     endpoint = os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
     if not endpoint:
@@ -124,6 +134,17 @@ def _client():
             "'https://<resource>.services.ai.azure.com/api/projects/<project>'."
         )
     cred = DefaultAzureCredential(exclude_developer_cli_credential=True)
+    # Preflight: fail fast with a clear message if no Azure identity is available.
+    # Without this, the SDK would otherwise dump a 30+ line credential-chain
+    # error five times (once per retry) before bailing out.
+    try:
+        cred.get_token("https://ai.azure.com/.default")
+    except ClientAuthenticationError:
+        raise SystemExit(
+            "Unable to acquire an Azure access token. Run `az login` "
+            "(or set AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_CLIENT_SECRET for "
+            "service-principal auth) and try again."
+        )
     return AIProjectClient(endpoint=endpoint, credential=cred)
 
 
