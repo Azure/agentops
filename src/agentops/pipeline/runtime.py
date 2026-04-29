@@ -68,7 +68,12 @@ def _model_config() -> Dict[str, str]:
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv(
         "AZURE_AI_MODEL_DEPLOYMENT_NAME"
     )
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+    # The New Foundry "AI Services" inference endpoint rejects the
+    # azure-ai-evaluation SDK's stock api-version with
+    # ``BadRequest: API version not supported``. Default to a version
+    # known to work against both the New Foundry proxy and classic
+    # Azure OpenAI; allow override via AZURE_OPENAI_API_VERSION.
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION") or "2025-04-01-preview"
 
     missing = []
     if not endpoint:
@@ -84,9 +89,8 @@ def _model_config() -> Dict[str, str]:
     config: Dict[str, str] = {
         "azure_endpoint": endpoint,  # type: ignore[dict-item]
         "azure_deployment": deployment,  # type: ignore[dict-item]
+        "api_version": api_version,
     }
-    if api_version:
-        config["api_version"] = api_version
     return config
 
 

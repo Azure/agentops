@@ -54,7 +54,6 @@ Set the project endpoint up front so every command picks it up.
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
 $env:AZURE_OPENAI_ENDPOINT             = "https://<your-project>.services.ai.azure.com"
 $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
-$env:AZURE_OPENAI_API_VERSION          = "2025-04-01-preview"
 ```
 
 **bash / zsh (Linux, macOS, WSL):**
@@ -63,7 +62,6 @@ $env:AZURE_OPENAI_API_VERSION          = "2025-04-01-preview"
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
 export AZURE_OPENAI_ENDPOINT="https://<your-project>.services.ai.azure.com"
 export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
-export AZURE_OPENAI_API_VERSION="2025-04-01-preview"
 ```
 
 > **Watch out for two endpoint shapes.** On a Foundry "AI Services"
@@ -71,10 +69,11 @@ export AZURE_OPENAI_API_VERSION="2025-04-01-preview"
 > project endpoint includes `/api/projects/<project-name>` while
 > `AZURE_OPENAI_ENDPOINT` is **only** the hostname (no path). If you
 > paste the project URL into `AZURE_OPENAI_ENDPOINT` the evaluators
-> fail with `BadRequest: API version not supported`. The
-> `AZURE_OPENAI_API_VERSION` line pins a version known to work with
-> the New Foundry inference endpoint; without it the SDK picks a
-> default that is sometimes rejected by the AI-Services proxy.
+> fail with `BadRequest: API version not supported`. AgentOps
+> defaults the API version to a release that works against both
+> New Foundry and classic Azure OpenAI; override with
+> `AZURE_OPENAI_API_VERSION` only if your resource needs a specific
+> version.
 
 > The remaining shell snippets in this tutorial are written for
 > **PowerShell** (the default on Windows). bash / zsh users can
