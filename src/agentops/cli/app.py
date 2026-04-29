@@ -380,9 +380,44 @@ def cmd_dataset_import() -> None:
 
 
 @config_app.command("validate")
-def cmd_config_validate() -> None:
-    """Validate configuration files (planned)."""
-    _planned_command("agentops config validate")
+def cmd_config_validate(
+    config: Path = typer.Option(
+        Path(".agentops/run.yaml"),
+        "-c",
+        "--config",
+        help="Path to a run.yaml file to validate.",
+    ),
+) -> None:
+    """Validate a run.yaml configuration file against the AgentOps schema.
+
+    Loads the file with the same Pydantic models the runner uses, prints a
+    summary on success, and prints a clear error message and exits with
+    code 1 on validation failure.
+    """
+    from agentops.core.config_loader import load_run_config
+
+    if not config.exists():
+        typer.echo(f"Error: config file not found: {config}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        run_cfg = load_run_config(config)
+    except ValueError as exc:
+        typer.echo(f"❌ {config} is invalid:\n{exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    except Exception as exc:  # pragma: no cover - unexpected I/O / parser error
+        typer.echo(f"Error reading {config}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    target = run_cfg.target
+    bundle_ref = run_cfg.bundle.name or run_cfg.bundle.path
+    dataset_ref = run_cfg.dataset.name or run_cfg.dataset.path
+    typer.echo(
+        f"✅ {config} is valid "
+        f"(version={run_cfg.version}, target.type={target.type}, "
+        f"target.hosting={target.hosting}, target.execution_mode={target.execution_mode}, "
+        f"bundle={bundle_ref}, dataset={dataset_ref})"
+    )
 
 
 @config_app.command("show")

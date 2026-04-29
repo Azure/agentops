@@ -249,7 +249,7 @@ The `agent_workflow_baseline` bundle enforces:
 | TaskAdherenceEvaluator | ≥ | 3.0 |
 | ToolSelectionEvaluator | ≥ | 3.0 |
 | ToolInputAccuracyEvaluator | ≥ | 3.0 |
-| avg_latency_seconds | ≤ | 15.0 |
+| avg_latency_seconds | ≤ | 45.0 |
 
 Scores range from 1 to 5. Adjust thresholds in `.agentops/bundles/agent_workflow_baseline.yaml`.
 

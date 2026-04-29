@@ -233,7 +233,7 @@ The `conversational_agent_baseline` bundle enforces:
 | FluencyEvaluator | ≥ | 3.0 |
 | RelevanceEvaluator | ≥ | 3.0 |
 | SimilarityEvaluator | ≥ | 3.0 |
-| avg_latency_seconds | ≤ | 10.0 |
+| avg_latency_seconds | ≤ | 30.0 |
 
 Scores range from 1 to 5. Adjust thresholds in `.agentops/bundles/conversational_agent_baseline.yaml` for your quality bar.
 

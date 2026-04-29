@@ -14,6 +14,26 @@ AgentOps ships five predefined bundles covering the most common evaluation scena
 | `agent_workflow_baseline` | Agent workflow | TaskCompletionEvaluator, ToolCallAccuracyEvaluator, IntentResolutionEvaluator, TaskAdherenceEvaluator, ToolSelectionEvaluator, ToolInputAccuracyEvaluator, avg\_latency\_seconds | Agents with tool calling |
 | `safe_agent_baseline` | Safety | ViolenceEvaluator, SexualEvaluator, SelfHarmEvaluator, HateUnfairnessEvaluator, ProtectedMaterialEvaluator, avg\_latency\_seconds | Content safety and responsible AI |
 
+## Tuning Defaults for Your Backend
+
+The shipped bundles target a **Foundry cloud-evaluation** baseline. Two thresholds are
+worth reviewing for your environment:
+
+- **`avg_latency_seconds`** — measures the *full pipeline* (agent invocation **plus**
+  evaluator execution), not just the agent. For Foundry cloud evaluation this is
+  typically 15–25 s/row including the judge model. Defaults are set conservatively
+  (30 s for most bundles, 45 s for `agent_workflow_baseline`). For HTTP or
+  local-adapter backends with light evaluators you can usually tighten this to
+  5–10 s.
+
+- **Tool-related evaluators** (`agent_workflow_baseline`) — `ToolCallAccuracyEvaluator`,
+  `ToolSelectionEvaluator`, and `ToolInputAccuracyEvaluator` only produce meaningful
+  scores when the target agent **actually exposes tool definitions** matching the
+  `tool_definitions` field in your dataset rows. Running this bundle against an
+  agent without registered tools will silently produce near-zero scores (the
+  evaluators see no tool calls to grade); use `conversational_agent_baseline`
+  instead for tool-less agents.
+
 ## Bundle YAML Structure
 
 ```yaml

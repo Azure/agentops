@@ -106,7 +106,7 @@ thresholds:
     value: 3
   - evaluator: avg_latency_seconds
     criteria: "<="
-    value: 15.0
+    value: 45.0
 metadata:
   category: agent-workflow
   scenario: agent_with_tools

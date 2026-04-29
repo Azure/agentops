@@ -64,7 +64,7 @@ thresholds:
     value: 3
   - evaluator: avg_latency_seconds
     criteria: "<="
-    value: 10.0
+    value: 30.0
 metadata:
   category: conversational
   scenario: conversational_agent

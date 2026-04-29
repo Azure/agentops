@@ -76,6 +76,13 @@ After saving, you need the agent's identifier for the run config. There are two 
 
 AgentOps handles both. Named agents use the Foundry Responses API; legacy agents use the Threads API.
 
+> **Versioning tip.** When you omit the `:version` suffix on a named agent
+> (e.g., `agent_id: my-agent`), Foundry resolves to the **latest** version of
+> that agent at run time. This is convenient for local iteration but can hurt
+> reproducibility — a later run could pick up a different agent revision.
+> For CI / baseline runs, pin an explicit version (e.g., `my-agent:3`) so
+> the same `results.json` can be re-generated deterministically.
+
 ## Part 2: Set up AgentOps
 
 ### 1) Azure login

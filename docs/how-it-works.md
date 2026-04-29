@@ -320,7 +320,7 @@ Run configs use `version: 1`.
 - `kind` — `foundry_agent` or `http`
 
 Foundry agent endpoint fields:
-- `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version)
+- `agent_id` — Agent identifier, e.g. `my-agent:3` (name:version). Omitting the `:version` suffix is allowed and resolves to the **latest** version at run time, but is not deterministic across runs — pin a version for CI / baseline comparisons.
 - `project_endpoint` — Foundry project URL (inline value)
 - `project_endpoint_env` — Env var name holding the project URL (default: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`)
 - `api_version` — Agent Service API version
