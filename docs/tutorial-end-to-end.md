@@ -46,13 +46,28 @@ you copy a command, you see an artefact, you keep moving.
 - A GitHub account and the `gh` CLI (or use the web UI for pushes).
 - An existing or new GitHub repo — empty is fine; we will populate it.
 
-Set the project endpoint up front so every command picks it up:
+Set the project endpoint up front so every command picks it up.
+
+**bash / zsh (Linux, macOS, WSL):**
 
 ```bash
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
 export AZURE_OPENAI_ENDPOINT="https://<your-aoai-resource>.openai.azure.com"
 export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
 ```
+
+**PowerShell (Windows):**
+
+```powershell
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
+$env:AZURE_OPENAI_ENDPOINT             = "https://<your-aoai-resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
+```
+
+> The remaining shell snippets in this tutorial are written for
+> bash. PowerShell users can substitute `$env:VAR = "value"` for
+> `export VAR=value`, `Get-Content` for `cat`, and
+> `Get-ChildItem` for `ls`.
 
 ## 1. Install AgentOps
 
@@ -239,12 +254,23 @@ failed). `1` means a runtime error.
 ## 6. Compare against a degraded baseline
 
 This is where the tutorial earns its keep. Snapshot the run id you
-just produced and tell `agentops eval run` to use it as a baseline:
+just produced and tell `agentops eval run` to use it as a baseline.
+
+**bash / zsh:**
 
 ```bash
 ls -1 .agentops/results
 # 2026-04-29T15-30-12Z   latest
 export BASELINE=.agentops/results/2026-04-29T15-30-12Z/results.json
+```
+
+**PowerShell:**
+
+```powershell
+Get-ChildItem .agentops/results | Select-Object Name
+# 2026-04-29T15-30-12Z
+# latest
+$env:BASELINE = ".agentops/results/2026-04-29T15-30-12Z/results.json"
 ```
 
 Now create a **degraded** version of the agent — same model, same
