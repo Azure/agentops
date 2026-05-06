@@ -29,6 +29,14 @@ def _create_workspace(tmp_path: Path) -> Path:
     return ws
 
 
+def _create_workspace_without_results(tmp_path: Path) -> Path:
+    """Create a .agentops workspace that has no results directory."""
+    ws = tmp_path / ".agentops"
+    ws.mkdir()
+    (ws / "bundles").mkdir()
+    return ws
+
+
 def _write_bundle(ws: Path, name: str, evaluators: list, thresholds: list) -> Path:
     bundle_path = ws / "bundles" / f"{name}.yaml"
     save_yaml(
@@ -150,6 +158,11 @@ class TestListRuns:
         result = list_runs(directory=tmp_path)
         assert result.runs == []
 
+    def test_missing_results_dir_returns_empty(self, tmp_path: Path) -> None:
+        _create_workspace_without_results(tmp_path)
+        result = list_runs(directory=tmp_path)
+        assert result.runs == []
+
     def test_lists_runs(self, tmp_path: Path) -> None:
         ws = _create_workspace(tmp_path)
         _write_run(ws, "2026-04-07_100000", passed=True)
@@ -162,12 +175,55 @@ class TestListRuns:
         assert result.runs[1].run_id == "2026-04-07_100000"
         assert result.runs[1].overall_passed is True
 
-    def test_skips_latest_dir(self, tmp_path: Path) -> None:
+    def test_skips_latest_when_history_runs_exist(self, tmp_path: Path) -> None:
         ws = _create_workspace(tmp_path)
         _write_run(ws, "2026-04-07_100000")
+        _write_run(ws, "2026-04-07_110000")
+        _write_run(ws, "latest")
+        result = list_runs(directory=tmp_path)
+        assert [run.run_id for run in result.runs] == [
+            "2026-04-07_110000",
+            "2026-04-07_100000",
+        ]
+
+    def test_skips_empty_latest_when_no_history_runs(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
         (ws / "results" / "latest").mkdir()
         result = list_runs(directory=tmp_path)
+        assert result.runs == []
+
+    def test_lists_malformed_history_run_and_skips_latest_mirror(
+        self, tmp_path: Path
+    ) -> None:
+        ws = _create_workspace(tmp_path)
+        malformed_run = ws / "results" / "2026-04-07_100000"
+        malformed_run.mkdir()
+        (malformed_run / "results.json").write_text("{", encoding="utf-8")
+        _write_run(ws, "latest")
+        result = list_runs(directory=tmp_path)
         assert len(result.runs) == 1
+        assert result.runs[0].run_id == "2026-04-07_100000"
+        assert result.runs[0].status == "error"
+
+    def test_lists_malformed_latest_when_no_history_runs(
+        self, tmp_path: Path
+    ) -> None:
+        ws = _create_workspace(tmp_path)
+        latest_run = ws / "results" / "latest"
+        latest_run.mkdir()
+        (latest_run / "results.json").write_text("{", encoding="utf-8")
+        result = list_runs(directory=tmp_path)
+        assert len(result.runs) == 1
+        assert result.runs[0].run_id == "latest"
+        assert result.runs[0].status == "error"
+
+    def test_lists_latest_when_no_history_runs(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "latest", passed=False)
+        result = list_runs(directory=tmp_path)
+        assert len(result.runs) == 1
+        assert result.runs[0].run_id == "latest"
+        assert result.runs[0].overall_passed is False
 
 
 class TestShowRun:
@@ -185,6 +241,25 @@ class TestShowRun:
         _create_workspace(tmp_path)
         with pytest.raises(FileNotFoundError, match="not found"):
             show_run("nonexistent", directory=tmp_path)
+
+    def test_not_found_hints_latest_when_latest_is_only_listable_run(
+        self, tmp_path: Path
+    ) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "latest")
+        with pytest.raises(FileNotFoundError) as exc_info:
+            show_run("nonexistent", directory=tmp_path)
+
+        assert "Recent runs: latest" in str(exc_info.value)
+
+    def test_not_found_with_missing_results_dir_has_empty_recent_hint(
+        self, tmp_path: Path
+    ) -> None:
+        _create_workspace_without_results(tmp_path)
+        with pytest.raises(FileNotFoundError) as exc_info:
+            show_run("nonexistent", directory=tmp_path)
+
+        assert "Recent runs: (none)" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +312,14 @@ class TestRunListCLI:
         assert result.exit_code == 0
         assert "2026-04-07_100000" in result.stdout
         assert "PASS" in result.stdout
+
+    def test_lists_latest_when_no_history_runs(self, tmp_path: Path) -> None:
+        ws = _create_workspace(tmp_path)
+        _write_run(ws, "latest", passed=True)
+        result = runner.invoke(app, ["run", "list", "--dir", str(tmp_path)])
+        assert result.exit_code == 0
+        assert "latest" in result.stdout
+        assert "No runs found" not in result.stdout
 
 
 class TestRunShowCLI:

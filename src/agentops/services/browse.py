@@ -15,6 +15,8 @@ from agentops.core.models import RunResult
 # ---------------------------------------------------------------------------
 
 _DEFAULT_AGENTOPS_DIR = ".agentops"
+_LATEST_RUN_DIR_NAME = "latest"
+_RESULTS_FILENAME = "results.json"
 
 
 def _resolve_workspace(directory: Path) -> Path:
@@ -187,6 +189,36 @@ class RunListResult:
     results_dir: Path
 
 
+def _has_results_file(run_dir: Path) -> bool:
+    """Return whether a run directory contains persisted results."""
+    return (run_dir / _RESULTS_FILENAME).exists()
+
+
+def _history_run_dirs(results_dir: Path) -> list[Path]:
+    """Return non-latest run directories that have persisted results."""
+    return [
+        run_dir
+        for run_dir in sorted(results_dir.iterdir(), reverse=True)
+        if run_dir.is_dir()
+        and run_dir.name != _LATEST_RUN_DIR_NAME
+        and _has_results_file(run_dir)
+    ]
+
+
+def _listable_run_dirs(results_dir: Path) -> list[Path]:
+    """Return run directories that should appear in ``agentops run list``.
+
+    ``latest`` mirrors the newest run when timestamped history exists, so list it
+    only when it is the sole run directory with persisted results.
+    """
+    history_run_dirs = _history_run_dirs(results_dir)
+    if history_run_dirs:
+        return history_run_dirs
+
+    latest_dir = results_dir / _LATEST_RUN_DIR_NAME
+    return [latest_dir] if _has_results_file(latest_dir) else []
+
+
 def list_runs(directory: Path = Path(".")) -> RunListResult:
     """List all past evaluation runs in the workspace."""
     workspace = _resolve_workspace(directory)
@@ -196,16 +228,8 @@ def list_runs(directory: Path = Path(".")) -> RunListResult:
         return RunListResult(runs=[], results_dir=results_dir)
 
     summaries: list[RunSummary] = []
-    for run_dir in sorted(results_dir.iterdir(), reverse=True):
-        if not run_dir.is_dir():
-            continue
-        if run_dir.name == "latest":
-            continue  # Skip the symlink/copy
-
-        results_file = run_dir / "results.json"
-        if not results_file.exists():
-            continue
-
+    for run_dir in _listable_run_dirs(results_dir):
+        results_file = run_dir / _RESULTS_FILENAME
         try:
             data = json.loads(results_file.read_text(encoding="utf-8"))
             result = RunResult.model_validate(data)
@@ -270,17 +294,17 @@ def show_run(run_id: str, directory: Path = Path(".")) -> RunDetail:
 
     run_dir = (results_dir / run_id).resolve()
     if not run_dir.is_dir():
-        available = [
-            d.name
-            for d in sorted(results_dir.iterdir(), reverse=True)
-            if d.is_dir() and d.name != "latest" and (d / "results.json").exists()
-        ]
+        available = (
+            [listable_dir.name for listable_dir in _listable_run_dirs(results_dir)]
+            if results_dir.is_dir()
+            else []
+        )
         hint = ", ".join(available[:5]) if available else "(none)"
         raise FileNotFoundError(
             f"Run '{run_id}' not found in {results_dir}. Recent runs: {hint}"
         )
 
-    results_file = run_dir / "results.json"
+    results_file = run_dir / _RESULTS_FILENAME
     if not results_file.exists():
         raise FileNotFoundError(f"No results.json in {run_dir}")
 
