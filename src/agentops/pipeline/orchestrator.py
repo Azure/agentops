@@ -413,11 +413,16 @@ def _evaluate_row(
             return True
         target_v = float(rule.value)
         c = rule.criteria
-        if c == ">=": return value >= target_v
-        if c == ">":  return value >  target_v
-        if c == "<=": return value <= target_v
-        if c == "<":  return value <  target_v
-        if c == "==": return value == target_v
+        if c == ">=":
+            return value >= target_v
+        if c == ">":
+            return value > target_v
+        if c == "<=":
+            return value <= target_v
+        if c == "<":
+            return value < target_v
+        if c == "==":
+            return value == target_v
         return True
 
     def _format_metric(m: RowMetric) -> str:

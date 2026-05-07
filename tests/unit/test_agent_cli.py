@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 
 from agentops.cli.app import app
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
 
 
 def _seed_regression(workspace: Path) -> None:

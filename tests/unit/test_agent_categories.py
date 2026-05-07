@@ -20,7 +20,6 @@ from agentops.agent.sources.azure_resources import (
     AzureResourcesPayload,
     CognitiveAccountSnapshot,
     DeploymentSnapshot,
-    DiagnosticSettingSnapshot,
 )
 
 

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 from agentops.core.results import (
     ComparisonInfo,
     ComparisonMetric,
-    ComparisonRow,
     RowResult,
     RunResult,
     ThresholdEvaluation,
