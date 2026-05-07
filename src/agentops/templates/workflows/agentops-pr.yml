@@ -22,9 +22,9 @@ on:
   workflow_dispatch:
     inputs:
       config:
-        description: "Path to run.yaml (defaults to .agentops/run.yaml)"
+        description: "Path to agentops.yaml (defaults to ./agentops.yaml at repo root)"
         required: false
-        default: ".agentops/run.yaml"
+        default: "agentops.yaml"
 
 permissions:
   contents: read
@@ -70,7 +70,7 @@ jobs:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
         run: |
           set +e
-          agentops eval run --config "${{ inputs.config || '.agentops/run.yaml' }}"
+          agentops eval run --config "${{ inputs.config || 'agentops.yaml' }}"
           ec=$?
           echo "exit_code=$ec" >> "$GITHUB_OUTPUT"
           if [ $ec -eq 0 ]; then

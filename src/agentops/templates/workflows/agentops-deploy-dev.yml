@@ -22,9 +22,9 @@ on:
   workflow_dispatch:
     inputs:
       config:
-        description: "Path to run.yaml (defaults to .agentops/run.yaml)"
+        description: "Path to agentops.yaml (defaults to ./agentops.yaml at repo root)"
         required: false
-        default: ".agentops/run.yaml"
+        default: "agentops.yaml"
 
 permissions:
   contents: read
@@ -64,7 +64,7 @@ jobs:
       - name: Run AgentOps eval
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
-        run: agentops eval run --config "${{ inputs.config || '.agentops/run.yaml' }}"
+        run: agentops eval run --config "${{ inputs.config || 'agentops.yaml' }}"
 
       - name: Upload AgentOps results
         if: always()
@@ -168,7 +168,7 @@ jobs:
       # # Foundry hosted agent (publish a new agent version):
       # - run: |
       #     agentops agent publish \
-      #       --config .agentops/run.yaml \
+      #       --config agentops.yaml \
       #       --tag dev-${{ github.sha }}
       #
       # # azd up / deploy:
