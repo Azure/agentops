@@ -76,22 +76,38 @@ agentops eval run
 Outputs:
 
 ```
-.agentops/results/latest/
-├── results.json
-└── report.md
+.agentops/results/
+├── 2026-05-06T14-30-22Z/   # Timestamped run (immutable history)
+│   ├── results.json
+│   └── report.md
+└── latest/                 # Mirror of the most recent run
+    ├── results.json
+    └── report.md
+```
+
+To view the report rendered (tables, ✅/❌), open it in VS Code and press `Ctrl+Shift+V`:
+
+```bash
+code .agentops/results/latest/report.md
 ```
 
 The CLI prints `Threshold status: PASSED` (exit code `0`) or `FAILED` (exit code `2`) so you can wire it into CI directly.
 
 ## 5. Compare against a baseline
 
-Save a known-good run and use it as a baseline:
+Each `agentops eval run` writes to a timestamped folder and refreshes
+`.agentops/results/latest/`. To diff a new run against the previous
+one, just point `--baseline` at it — no copy needed:
 
 ```bash
-agentops eval run --output .agentops/results/baseline
 # ... change your prompt, model, or dataset ...
-agentops eval run --baseline .agentops/results/baseline/results.json
+agentops eval run --baseline .agentops/results/latest/results.json
 ```
+
+AgentOps loads the baseline into memory before refreshing `latest/`,
+so `latest/results.json` is shorthand for "the run before this one".
+For a stable reference (e.g. a CI baseline), point at a specific
+timestamp folder instead.
 
 `report.md` now includes a `Comparison vs Baseline` section with per-metric deltas (🟢 improved / 🔴 regressed / ⚪ unchanged).
 

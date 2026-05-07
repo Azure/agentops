@@ -37,19 +37,76 @@ class InvocationResult:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+# Maximum number of follow-up calls when running the tool-execution loop
+# against a Foundry hosted/prompt agent. Most agents resolve in 1–2 hops;
+# the cap exists to bound retries against pathological multi-step plans.
+_MAX_TOOL_ITERATIONS = 4
+
+# Generic stub returned to the agent for every function call during the
+# tool-execution loop. The toolkit cannot run project-specific tool
+# implementations, so a uniform "ok" stub keeps the loop fully generic
+# while letting the agent produce its final natural-language reply.
+_TOOL_STUB_OUTPUT = '{"status": "ok"}'
+
+
+def _summarise_tool_calls(calls: List[Any]) -> str:
+    """Build a short, human-readable summary of executed tool calls.
+
+    Used as a last-resort fallback when the agent never produces
+    assistant text — quality evaluators still need a non-empty
+    ``response`` string to score.
+    """
+    parts: List[str] = []
+    for call in calls:
+        if not isinstance(call, dict):
+            continue
+        name = call.get("name") or "tool"
+        args = call.get("arguments")
+        parts.append(f"[Called {name}({args})]" if args else f"[Called {name}]")
+    return " ".join(parts) if parts else "[tool_call]"
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
 def _credential() -> Any:
-    from azure.identity import DefaultAzureCredential  # noqa: WPS433
+    """Return a cached ``DefaultAzureCredential`` singleton.
 
-    return DefaultAzureCredential(exclude_developer_cli_credential=True)
+    Caching matters: each row invocation needs a token, and constructing a
+    fresh ``DefaultAzureCredential`` per call walks the full credential
+    chain (Azure CLI / PowerShell subprocesses included), which is both
+    slow and prone to transient subprocess failures on the first try.
+    Caching the credential lets the SDK reuse its internal token cache
+    across rows.
+    """
+    global _CREDENTIAL_SINGLETON
+    if _CREDENTIAL_SINGLETON is None:
+        from azure.identity import DefaultAzureCredential  # noqa: WPS433
+
+        _CREDENTIAL_SINGLETON = DefaultAzureCredential(
+            exclude_developer_cli_credential=True
+        )
+    return _CREDENTIAL_SINGLETON
+
+
+_CREDENTIAL_SINGLETON: Any = None
 
 
 def _get_token(scope: str) -> str:
-    return _credential().get_token(scope).token
+    """Acquire a token for ``scope``, retrying once on transient failures.
+
+    The first credential-chain walk on Windows occasionally fails because
+    the Azure CLI / PowerShell subprocess is slow to spawn. Retrying once
+    after the credential is warmed up almost always succeeds.
+    """
+    try:
+        return _credential().get_token(scope).token
+    except Exception:  # noqa: BLE001 - retry once on any transient failure
+        global _CREDENTIAL_SINGLETON
+        _CREDENTIAL_SINGLETON = None  # force a fresh chain walk
+        return _credential().get_token(scope).token
 
 
 def _project_endpoint_from_env() -> str:
@@ -130,21 +187,21 @@ def _dot_path(payload: Any, path: str) -> Any:
 
 
 def _extract_responses_text(payload: Dict[str, Any]) -> str:
+    """Pull assistant text from a Foundry/Responses-API payload.
+
+    Returns an empty string when the response only contains tool/function
+    calls (the caller must submit ``function_call_output`` items via a
+    follow-up call to obtain the final natural-language reply).
+    """
     direct = payload.get("output_text")
     if isinstance(direct, str) and direct.strip():
         return direct.strip()
 
     output = payload.get("output")
-    tool_call_summaries: List[str] = []
     if isinstance(output, list):
         parts: List[str] = []
         for item in output:
             if not isinstance(item, dict):
-                continue
-            if item.get("type") in {"tool_call", "function_call"}:
-                name = item.get("name") or "tool"
-                args = item.get("arguments")
-                tool_call_summaries.append(f"[Called {name}({args})]" if args else f"[Called {name}]")
                 continue
             if (
                 item.get("type") in {"message", "assistant_message"}
@@ -163,14 +220,9 @@ def _extract_responses_text(payload: Dict[str, Any]) -> str:
                             parts.append(chunk)
         if parts:
             return "\n".join(parts).strip()
-        if tool_call_summaries:
-            # Agent invoked tool(s) instead of replying with text. Return a
-            # synthetic, human-readable summary so quality evaluators (which
-            # require non-empty response text) still run; tool-use evaluators
-            # use the structured tool_calls field separately.
-            return " ".join(tool_call_summaries)
+        return ""
 
-    raise ValueError("Foundry response did not include assistant output text")
+    return ""
 
 
 def _extract_responses_tool_calls(payload: Dict[str, Any]) -> Optional[List[Any]]:
@@ -239,6 +291,74 @@ def _invoke_model_direct(
     return InvocationResult(response=text, latency_seconds=elapsed)
 
 
+def _run_responses_tool_loop(
+    *,
+    url: str,
+    headers: Dict[str, str],
+    initial_body: Dict[str, Any],
+    timeout: float,
+    follow_up_extras: Optional[Dict[str, Any]] = None,
+) -> tuple[str, List[Any], float]:
+    """Drive a Foundry/Responses-API tool-execution loop.
+
+    Sends ``initial_body`` to ``url``, then repeatedly submits stub
+    ``function_call_output`` items back via ``previous_response_id`` until
+    the agent emits assistant text or the iteration cap is reached.
+
+    ``follow_up_extras`` is merged into every follow-up request body
+    (e.g. ``agent_reference`` for prompt agents).
+
+    Returns ``(text, aggregated_tool_calls, elapsed_seconds)``.
+    """
+    started = time.perf_counter()
+    aggregated_tool_calls: List[Any] = []
+    text = ""
+    body = initial_body
+
+    for _iteration in range(_MAX_TOOL_ITERATIONS):
+        payload = _http_request_json(
+            method="POST",
+            url=url,
+            headers=headers,
+            body=body,
+            timeout=timeout,
+        )
+
+        iteration_calls = _extract_responses_tool_calls(payload) or []
+        aggregated_tool_calls.extend(iteration_calls)
+
+        text = _extract_responses_text(payload)
+        if text or not iteration_calls:
+            break
+
+        previous_response_id = payload.get("id")
+        follow_up_input: List[Dict[str, Any]] = []
+        for call in iteration_calls:
+            call_id = call.get("call_id") or call.get("id")
+            if not call_id:
+                continue
+            follow_up_input.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": _TOOL_STUB_OUTPUT,
+                }
+            )
+
+        if not follow_up_input or not previous_response_id:
+            break
+
+        body = {
+            "input": follow_up_input,
+            "previous_response_id": previous_response_id,
+        }
+        if follow_up_extras:
+            body.update(follow_up_extras)
+
+    elapsed = time.perf_counter() - started
+    return text, aggregated_tool_calls, elapsed
+
+
 def _invoke_foundry_prompt(
     target: TargetResolution,
     config: AgentOpsConfig,  # noqa: ARG001
@@ -254,29 +374,37 @@ def _invoke_foundry_prompt(
     }
 
     assert target.name is not None and target.version is not None
-    body = {
+    url = f"{project_endpoint}/openai/v1/responses"
+    agent_reference = {
+        "type": "agent_reference",
+        "name": target.name,
+        "version": target.version,
+    }
+    initial_body: Dict[str, Any] = {
         "input": [{"role": "user", "content": _row_input(row)}],
-        "agent_reference": {
-            "type": "agent_reference",
-            "name": target.name,
-            "version": target.version,
-        },
+        "agent_reference": agent_reference,
     }
 
-    started = time.perf_counter()
-    payload = _http_request_json(
-        method="POST",
-        url=f"{project_endpoint}/openai/v1/responses",
+    text, aggregated_tool_calls, elapsed = _run_responses_tool_loop(
+        url=url,
         headers=headers,
-        body=body,
+        initial_body=initial_body,
         timeout=timeout,
+        follow_up_extras={"agent_reference": agent_reference},
     )
-    elapsed = time.perf_counter() - started
 
-    text = _extract_responses_text(payload)
-    tool_calls = _extract_responses_tool_calls(payload)
+    if not text:
+        if aggregated_tool_calls:
+            text = _summarise_tool_calls(aggregated_tool_calls)
+        else:
+            raise ValueError(
+                "Foundry response did not include assistant output text"
+            )
+
     return InvocationResult(
-        response=text, latency_seconds=elapsed, tool_calls=tool_calls,
+        response=text,
+        latency_seconds=elapsed,
+        tool_calls=aggregated_tool_calls or None,
     )
 
 
@@ -296,21 +424,30 @@ def _invoke_foundry_hosted(
     }
 
     if target.protocol == "responses":
-        body = {"input": [{"role": "user", "content": _row_input(row)}]}
         url = target.url.rstrip("/")
         if not url.endswith("/responses"):
             url = f"{url}/responses"
+        initial_body = {"input": [{"role": "user", "content": _row_input(row)}]}
 
-        started = time.perf_counter()
-        payload = _http_request_json(
-            method="POST", url=url, headers=headers, body=body, timeout=timeout
+        text, aggregated_tool_calls, elapsed = _run_responses_tool_loop(
+            url=url,
+            headers=headers,
+            initial_body=initial_body,
+            timeout=timeout,
         )
-        elapsed = time.perf_counter() - started
+
+        if not text:
+            if aggregated_tool_calls:
+                text = _summarise_tool_calls(aggregated_tool_calls)
+            else:
+                raise ValueError(
+                    "Foundry response did not include assistant output text"
+                )
 
         return InvocationResult(
-            response=_extract_responses_text(payload),
+            response=text,
             latency_seconds=elapsed,
-            tool_calls=_extract_responses_tool_calls(payload),
+            tool_calls=aggregated_tool_calls or None,
         )
 
     return _invoke_http_json(target, config, row, timeout=timeout)

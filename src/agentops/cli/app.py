@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
+from agentops.utils.colors import style
 from agentops.utils.logging import get_logger, setup_logging
 
 app = typer.Typer(
@@ -246,12 +249,17 @@ def _run_flat_schema_eval(
         typer.echo(f"Error: failed to load {config_path}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
-    output_dir = output or _default_flat_output_dir(config_path)
+    use_default_layout = output is None
+    if use_default_layout:
+        output_dir = _default_flat_output_dir(config_path)
+    else:
+        output_dir = output
 
     options = RunOptions(
         config_path=config_path.resolve(),
         output_dir=output_dir,
         baseline_path=baseline.resolve() if baseline else None,
+        progress=lambda msg: typer.echo(msg),
     )
 
     try:
@@ -260,19 +268,45 @@ def _run_flat_schema_eval(
         typer.echo(f"Error: evaluation failed: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
-    typer.echo(f"Evaluation output directory: {output_dir}")
-    typer.echo(f"results.json: {output_dir / 'results.json'}")
-    typer.echo(f"report.md:    {output_dir / 'report.md'}")
+    latest_dir = config_path.parent / ".agentops" / "results" / "latest"
+    if output_dir.resolve() != latest_dir.resolve():
+        try:
+            _mirror_to_latest(output_dir, latest_dir)
+        except Exception as exc:  # pragma: no cover - mirror failures shouldn't fail the run
+            typer.echo(
+                f"Warning: failed to update {latest_dir}: {exc}",
+                err=True,
+            )
+            latest_dir = None  # type: ignore[assignment]
+    else:
+        latest_dir = None  # type: ignore[assignment]
+
+    typer.echo(f"Evaluation output directory: {style(str(output_dir), 'cyan')}")
+    typer.echo(f"results.json: {style(str(output_dir / 'results.json'), 'cyan')}")
+    typer.echo(f"report.md:    {style(str(output_dir / 'report.md'), 'cyan')}")
+    if latest_dir is not None:
+        typer.echo(f"latest/:      {style(str(latest_dir), 'cyan')}")
     if result.summary.overall_passed:
-        typer.echo("Threshold status: PASSED")
+        typer.echo(f"Threshold status: {style('PASSED', 'bold', 'green')}")
         return
-    typer.echo("Threshold status: FAILED")
+    typer.echo(f"Threshold status: {style('FAILED', 'bold', 'red')}")
     raise typer.Exit(code=exit_code_from(result))
 
 
 def _default_flat_output_dir(config_path: Path) -> Path:
     base = config_path.parent / ".agentops" / "results"
-    return base / "latest"
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    return base / timestamp
+
+
+def _mirror_to_latest(source: Path, latest: Path) -> None:
+    """Replace ``latest`` with a copy of ``source``."""
+    if latest.exists():
+        if latest.is_symlink() or latest.is_file():
+            latest.unlink()
+        else:
+            shutil.rmtree(latest)
+    shutil.copytree(source, latest)
 
 
 def _is_flat_results(results_path: Path) -> bool:

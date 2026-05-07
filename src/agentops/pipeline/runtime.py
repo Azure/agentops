@@ -12,6 +12,7 @@ import importlib
 import inspect
 import json
 import os
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -185,8 +186,7 @@ def _build_conversation_messages(
     Returns ``None`` when there are no tool calls to include — callers
     should fall back to plain string kwargs in that case.
     """
-    if not isinstance(tool_calls, list) or not tool_calls:
-        return None
+    has_tool_calls = isinstance(tool_calls, list) and len(tool_calls) > 0
 
     query_messages: List[Dict[str, Any]] = [
         {
@@ -196,43 +196,44 @@ def _build_conversation_messages(
     ]
 
     response_messages: List[Dict[str, Any]] = []
-    for index, call in enumerate(tool_calls):
-        if not isinstance(call, dict):
-            continue
-        # Normalise across the OpenAI ``function_call`` shape and the
-        # nested ``function`` envelope produced by some Foundry payloads.
-        function = call.get("function") if isinstance(call.get("function"), dict) else {}
-        name = call.get("name") or function.get("name")
-        if not name:
-            continue
-        arguments = call.get("arguments")
-        if arguments is None:
-            arguments = function.get("arguments")
-        if isinstance(arguments, str):
-            try:
-                arguments = json.loads(arguments)
-            except json.JSONDecodeError:
-                # leave as raw string — evaluators tolerate either form
-                pass
-        tool_call_id = call.get("tool_call_id") or call.get("id") or f"call_{index}"
+    if has_tool_calls:
+        for index, call in enumerate(tool_calls):
+            if not isinstance(call, dict):
+                continue
+            # Normalise across the OpenAI ``function_call`` shape and the
+            # nested ``function`` envelope produced by some Foundry payloads.
+            function = call.get("function") if isinstance(call.get("function"), dict) else {}
+            name = call.get("name") or function.get("name")
+            if not name:
+                continue
+            arguments = call.get("arguments")
+            if arguments is None:
+                arguments = function.get("arguments")
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    # leave as raw string — evaluators tolerate either form
+                    pass
+            tool_call_id = call.get("tool_call_id") or call.get("id") or f"call_{index}"
 
-        response_messages.append({
-            "role": "assistant",
-            "content": [{
-                "type": "tool_call",
-                "tool_call_id": tool_call_id,
-                "name": name,
-                "arguments": arguments if arguments is not None else {},
-            }],
-        })
-
-        result = call.get("result")
-        if isinstance(result, str) and result:
             response_messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": [{"type": "tool_result", "tool_result": result}],
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_call",
+                    "tool_call_id": tool_call_id,
+                    "name": name,
+                    "arguments": arguments if arguments is not None else {},
+                }],
             })
+
+            result = call.get("result")
+            if isinstance(result, str) and result:
+                response_messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": [{"type": "tool_result", "tool_result": result}],
+                })
 
     if response_text:
         response_messages.append({
@@ -311,19 +312,51 @@ def run_evaluator(
     row: Dict[str, Any],
     response: str,
     latency_seconds: float,
+    actual_tool_calls: Optional[List[Any]] = None,
 ) -> RowMetric:
     """Execute one evaluator on one row. Captures errors so the run continues."""
     preset = runtime.preset
     if runtime.callable is _LATENCY_SENTINEL:
         return RowMetric(name=preset.score_key, value=float(latency_seconds))
 
+    # ToolCallAccuracyEvaluator: special handling when the agent made no
+    # tool calls. The Azure SDK evaluator raises ("No tool calls found in
+    # response...") which would surface as ERR. Translate that into a
+    # meaningful score:
+    #   * dataset has no tool_calls either -> not applicable (n/a).
+    #   * dataset expected tool_calls -> the agent failed to call them, so
+    #     score it as 0.0 instead of crashing the row.
+    if preset.class_name == "ToolCallAccuracyEvaluator":
+        has_actual = isinstance(actual_tool_calls, list) and len(actual_tool_calls) > 0
+        has_dataset = isinstance(row.get("tool_calls"), list) and len(row["tool_calls"]) > 0
+        if not has_actual:
+            if has_dataset:
+                return RowMetric(
+                    name=preset.score_key,
+                    value=0.0,
+                    reason="agent made no tool calls but the dataset expected some",
+                )
+            return RowMetric(
+                name=preset.score_key,
+                value=None,
+                reason="not applicable: agent made no tool calls",
+            )
+
     try:
         kwargs = _resolve_kwargs(preset.input_mapping, row=row, response=response)
         if preset.needs_conversation:
+            # Prefer the actual calls made by the agent during invocation;
+            # fall back to the dataset's expected calls if the runner did
+            # not provide any (e.g. unit tests).
+            tool_calls_for_convo = (
+                actual_tool_calls
+                if actual_tool_calls is not None
+                else row.get("tool_calls")
+            )
             conversation = _build_conversation_messages(
                 input_text=row.get("input"),
                 response_text=response,
-                tool_calls=row.get("tool_calls"),
+                tool_calls=tool_calls_for_convo,
             )
             if conversation is not None:
                 # Upgrade query/response from plain strings to the
@@ -333,9 +366,39 @@ def run_evaluator(
                     kwargs["query"] = conversation["query"]
                 if "response" in kwargs:
                     kwargs["response"] = conversation["response"]
-        result = runtime.callable(**kwargs)
+
+        # Retry once on transient Azure CLI credential failures. The
+        # az CLI occasionally fails to launch on Windows under heavy
+        # I/O; DefaultAzureCredential's other sources usually succeed
+        # on the second attempt because the token has been cached.
+        last_exc: Optional[Exception] = None
+        for attempt in range(2):
+            try:
+                result = runtime.callable(**kwargs)
+                last_exc = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt == 0 and _is_transient_credential_error(exc):
+                    time.sleep(0.5)
+                    continue
+                raise
+        if last_exc is not None:  # pragma: no cover — defensive
+            raise last_exc
         score = _extract_score(result, preset.score_key)
         reason = _extract_reason(result, preset.score_key)
         return RowMetric(name=preset.score_key, value=score, reason=reason)
     except Exception as exc:  # noqa: BLE001
         return RowMetric(name=preset.score_key, error=str(exc))
+
+
+_TRANSIENT_CRED_MARKERS = (
+    "failed to invoke the azure cli",
+    "azureclicredential",
+    "credentialunavailableerror",
+)
+
+
+def _is_transient_credential_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(marker in msg for marker in _TRANSIENT_CRED_MARKERS)

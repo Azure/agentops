@@ -46,6 +46,38 @@ you copy a command, you see an artefact, you keep moving.
 - A GitHub account and the `gh` CLI (or use the web UI for pushes).
 - An existing or new GitHub repo — empty is fine; we will populate it.
 
+> **Verify your auth before running anything.** Most "this should
+> have worked" failures in this tutorial come from a stale CLI token
+> cache, being logged into the wrong tenant, or missing the role
+> above. A 30-second sanity check:
+>
+> ```powershell
+> az account show --query "{tenant:tenantId, user:user.name, sub:name}" -o table
+> ```
+>
+> If the tenant or subscription is wrong, run `az login --tenant <tenant-id>`
+> and `az account set --subscription <subscription-id>`. To grant the role
+> to yourself (replace the placeholders with your account values):
+>
+> ```powershell
+> az role assignment create `
+>   --assignee "<your-upn-or-object-id>" `
+>   --role "Azure AI User" `
+>   --scope "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<foundry-account>"
+> ```
+>
+> A 401 with `"Token not supported"` from
+> `create_support_agent.py` almost always means one of:
+>
+> 1. **Stale CLI token cache** — most common when the script worked
+>    earlier today and now suddenly fails. Fix:
+>    ```powershell
+>    az account clear
+>    az login
+>    ```
+> 2. Wrong tenant (see above).
+> 3. Missing **Azure AI User** role (see above).
+
 Set the project endpoint up front so every command picks it up.
 
 **PowerShell (Windows):**
@@ -112,12 +144,14 @@ would expose:
 Registering three tools through the portal is fiddly, so this
 repository ships a small helper script,
 [`scripts/create_support_agent.py`](../scripts/create_support_agent.py),
-that does it in one command. Save the file locally (it has no
-AgentOps dependency — only `azure-ai-projects` and `azure-identity`)
-and run:
+that does it in one command. **Just download the single file into the
+root of your tutorial project** — there's no need to create a
+`scripts/` folder, and the script has no AgentOps dependency (only
+`azure-ai-projects` and `azure-identity`). Then run it from the same
+folder:
 
 ```powershell
-python scripts/create_support_agent.py create --name support-bot
+python create_support_agent.py create --name support-bot
 # stdout: support-bot:1
 ```
 
@@ -253,14 +287,17 @@ The CLI:
 2. Calls the Foundry hosted agent once per row, capturing both the
    final text response and the structured tool calls.
 3. Runs evaluators using `AZURE_OPENAI_DEPLOYMENT`.
-4. Writes a timestamped run under `.agentops/results/<id>/` and
-   updates `.agentops/results/latest/`.
+4. Writes a timestamped run under `.agentops/results/<timestamp>/` and refreshes
+   `.agentops/results/latest/` with a copy of it. Pass `--output <dir>` to write
+   the run only to that path instead.
 
-Inspect the outputs:
+Open the report in VS Code (any OS, no extra tooling required) and press `Ctrl+Shift+V` to render the Markdown — tables and ✅/❌ display the same way they do on GitHub:
 
 ```powershell
-Get-Content .agentops/results/latest/report.md
+code .agentops/results/latest/report.md
 ```
+
+> Tip: `Ctrl+K V` opens the rendered preview side-by-side with the source.
 
 The report has four sections you will revisit often:
 
@@ -279,31 +316,26 @@ failed). `1` means a runtime error.
 
 ## 6. Compare against a degraded baseline
 
-This is where the tutorial earns its keep. Snapshot the run id you
-just produced and tell `agentops eval run` to use it as a baseline.
+This is where the tutorial earns its keep. AgentOps writes every run to a
+timestamped folder under `.agentops/results/` and refreshes
+`.agentops/results/latest/` with a copy. The v1 run you just executed
+is still on disk — you don't need to copy or re-run anything to use it
+as the baseline. Just point `--baseline` at the previous run when you
+execute v2:
 
-**PowerShell:**
+- `.agentops/results/latest/results.json` works as a shorthand for
+  "the run before this one" (AgentOps loads it into memory before
+  refreshing `latest/`).
+- For a stable, named reference you can also point at a specific
+  timestamp folder, e.g.
+  `.agentops/results/2026-05-06T20-13-21Z/results.json`.
 
-```powershell
-Get-ChildItem .agentops/results | Select-Object Name
-# 2026-04-29T15-30-12Z
-# latest
-$env:BASELINE = ".agentops/results/2026-04-29T15-30-12Z/results.json"
-```
-
-**bash / zsh:**
-
-```bash
-ls -1 .agentops/results
-# 2026-04-29T15-30-12Z   latest
-export BASELINE=.agentops/results/2026-04-29T15-30-12Z/results.json
-```
-
-Now create a **degraded** version of the agent — same model, same
-tools, but a friendly chatbot prompt that drops the tool-use rule:
+Now create a **degraded** version of the agent — same model, no
+tools, plain-text-only instructions — so the regression demo has
+something to detect:
 
 ```powershell
-python scripts/create_support_agent.py create `
+python create_support_agent.py create `
   --name support-bot `
   --variant v2-degraded
 # stdout: support-bot:2
@@ -317,31 +349,51 @@ agent: "support-bot:2"
 
 Re-run with the v1 result as the baseline:
 
+**PowerShell:**
+
 ```powershell
-agentops eval run --baseline $env:BASELINE
+agentops eval run --baseline .agentops/results/latest/results.json
 ```
 
-The new `report.md` adds a **Comparison vs Baseline** section with
-per-metric deltas. With the degraded prompt you should see something
-like:
+**bash / zsh:**
 
-| Metric | Baseline (v1) | Current (v2) | Delta |
+```bash
+agentops eval run --baseline .agentops/results/latest/results.json
+```
+
+Then open the new report:
+
+```powershell
+code .agentops/results/latest/report.md
+```
+
+Press `Ctrl+Shift+V` to render the Markdown.
+
+The new `report.md` adds a **Comparison vs Baseline** section with
+per-metric deltas. Because v2 has **no tools attached at all**, the
+agent literally cannot call `lookup_order`, `refund_order`, or
+`escalate_to_human` — every order-specific row degrades to a
+plain-text apology. You should see roughly:
+
+| Metric | Baseline (v1) | Current (v2) | Direction |
 |---|---|---|---|
-| `tool_call_accuracy` | 0.95 | 0.05 | ▼ −0.90 |
-| `intent_resolution` | 4.6 | 2.1 | ▼ −2.5 |
-| `task_adherence` | 1.0 | 0.0 | ▼ −1.0 |
-| `coherence` | 4.4 | 4.5 | ≈ |
-| `fluency` | 4.7 | 4.7 | ≈ |
-| `similarity` | 3.6 | 3.4 | ≈ |
+| `tool_call_accuracy` | high (≈ 5) | **collapses to `n/a` / floor** | 🔴 regressed |
+| `intent_resolution` | high (≈ 4–5) | **drops noticeably** | 🔴 regressed |
+| `task_adherence` | mid–high | **drops to floor (1.0)** | 🔴 regressed |
+| `coherence` | ≈ 4 | ≈ 4 | ⚪ unchanged |
+| `fluency` | ≈ 4 | ≈ 4 | ⚪ unchanged |
+| `similarity` | ≈ 3 | ≈ 3 | ⚪ unchanged |
 
 Text quality barely moves — the degraded agent is still articulate
-and on-topic — but tool-calling collapses, the verdict flips to fail,
-and the run exits `2`. **This is the regression-detection loop you
-will wire into CI next.**
+and on-topic — but the tool-related metrics collapse, the verdict
+flips to fail, and the run exits `2`. **This is the regression-detection
+loop you will wire into CI next.**
 
-> Realistic numbers will jitter a bit run-to-run because the
-> evaluators themselves are model-graded. The shape of the delta
-> (tool metrics down, text metrics flat) is what matters.
+> Exact numbers will jitter run-to-run because the evaluators
+> themselves are model-graded, and metrics like `task_adherence` use
+> an ordinal 1–5 scale (1.0 is the floor, not 0). What matters is the
+> *shape* of the delta: tool/task metrics down, text-quality metrics
+> flat.
 
 ## 7. Generate the GitFlow workflows
 
@@ -363,51 +415,156 @@ reference. The defaults are sane: you do not need to edit them yet.
 
 ## 8. Push to GitHub and watch it run
 
-Initialize the repo and push:
+Initialize the repo and push. Pick a unique suffix (your initials, a
+date, anything) so the repo and the app registration you create later
+don't collide with someone else running this same tutorial:
 
 ```powershell
+$suffix = "<your-initials-or-date>"   # e.g. "pl-20260507"
 git init -b main
 git add .
 git commit -m "feat: bootstrap AgentOps eval and CI/CD"
-gh repo create my-agent-evals --public --source=. --push
+gh repo create "support-bot-$suffix" --public --source=. --push
 git checkout -b develop
 git push -u origin develop
 ```
 
+> **Prefer the portal?** Create the repo at
+> [github.com/new](https://github.com/new) named `support-bot-<suffix>`,
+> then push from your terminal:
+> `git remote add origin https://github.com/<owner>/support-bot-<suffix>.git && git push -u origin main && git push -u origin develop`.
+
 ### Wire the GitHub Environments
 
-Create three environments in **Settings → Environments**:
+The three workflows (`pr`, `deploy-dev`, `deploy-qa`, `deploy-prod`)
+expect a GitHub **environment** per stage, each populated with the same
+six variables and a federated credential so Azure trusts GitHub OIDC.
 
-- `dev`
-- `qa`
-- `prod`
+The next four snippets create everything end-to-end. Run them in order
+from the same PowerShell session you used above (so `$suffix` is still
+in scope).
 
-For each one, add the secrets and variables the workflows expect:
+#### 1. Create the app registration GitHub will impersonate
 
-| Name | Where | Value |
-|---|---|---|
-| `AZURE_TENANT_ID` | Variable | Your Azure AD tenant id |
-| `AZURE_SUBSCRIPTION_ID` | Variable | Subscription holding the Foundry project |
-| `AZURE_CLIENT_ID` | Variable | App registration client id (federated) |
-| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Variable | Same value you exported earlier |
-| `AZURE_OPENAI_ENDPOINT` | Variable | Same value you exported earlier |
-| `AZURE_OPENAI_DEPLOYMENT` | Variable | `gpt-4o-mini` (or your deployment) |
-
-### Configure OIDC (federated credential)
-
-On the app registration backing `AZURE_CLIENT_ID`, add federated
-credentials for each environment. The subject pattern is:
-
-```
-repo:<owner>/<repo>:environment:<env-name>
+```powershell
+$app    = az ad app create --display-name "support-bot-ci-$suffix" | ConvertFrom-Json
+az ad sp create --id $app.appId | Out-Null
+$client = $app.appId
+$tenant = az account show --query tenantId -o tsv
+$sub    = az account show --query id -o tsv
+Write-Host "AZURE_CLIENT_ID       = $client"
+Write-Host "AZURE_TENANT_ID       = $tenant"
+Write-Host "AZURE_SUBSCRIPTION_ID = $sub"
 ```
 
-Add one for `environment:dev`, one for `environment:qa`, one for
-`environment:prod`, and one for `pull_request` (used by
-`agentops-pr.yml`). Grant the app's managed identity at least
-`Cognitive Services OpenAI User` on the AOAI resource and the
-**Azure AI User** role on the Foundry project (data-plane reads
-plus the `agents/*` action surface).
+> **Notes**
+> - **One app registration vs many.** This tutorial uses a single app
+>   registration shared across `dev`, `qa`, and `prod` to keep the
+>   walkthrough short. In production you typically create **one app
+>   registration per environment** so you can grant least-privilege
+>   roles per stage and rotate them independently.
+> - **No CLI? Use the portal.** Create the app under **Microsoft Entra
+>   ID → App registrations → New registration**, then set
+>   `$client = "<application-client-id>"` manually before running the
+>   next snippet.
+
+#### 2. Create the three environments and push the variables
+
+```powershell
+$foundry = $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+$aoai    = $env:AZURE_OPENAI_ENDPOINT
+$deploy  = "gpt-4o-mini"
+$repo    = gh repo view --json nameWithOwner -q .nameWithOwner
+
+foreach ($envName in @("dev","qa","prod")) {
+  gh api -X PUT "repos/$repo/environments/$envName" | Out-Null
+  gh variable set AZURE_TENANT_ID                    --env $envName --body $tenant
+  gh variable set AZURE_SUBSCRIPTION_ID              --env $envName --body $sub
+  gh variable set AZURE_CLIENT_ID                    --env $envName --body $client
+  gh variable set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT  --env $envName --body $foundry
+  gh variable set AZURE_OPENAI_ENDPOINT              --env $envName --body $aoai
+  gh variable set AZURE_OPENAI_DEPLOYMENT            --env $envName --body $deploy
+  Write-Host "Configured environment: $envName"
+}
+```
+
+> **Prefer the portal?** Open your repo on github.com → **Settings →
+> Environments → New environment** and create `dev`, `qa`, and `prod`.
+> For each one, click **Add variable** and add the six rows from the
+> table at the top of this section.
+
+#### 3. Add federated credentials so Azure trusts GitHub OIDC
+
+One credential per environment, plus one for pull requests
+(`agentops-pr.yml` runs without an environment context). The JSON is
+written to a temp file because `az` does not parse inline JSON
+reliably under PowerShell:
+
+```powershell
+$subjects = @{
+  "dev"          = "repo:${repo}:environment:dev"
+  "qa"           = "repo:${repo}:environment:qa"
+  "prod"         = "repo:${repo}:environment:prod"
+  "pull-request" = "repo:${repo}:pull_request"
+}
+
+foreach ($name in $subjects.Keys) {
+  $payload = [ordered]@{
+    name      = "github-$name"
+    issuer    = "https://token.actions.githubusercontent.com"
+    subject   = $subjects[$name]
+    audiences = @("api://AzureADTokenExchange")
+  }
+  $tmp = New-TemporaryFile
+  $payload | ConvertTo-Json | Set-Content -Path $tmp -Encoding utf8
+
+  az ad app federated-credential create --id $client --parameters "@$tmp" | Out-Null
+  Remove-Item $tmp
+  Write-Host "Added federated credential: $name"
+}
+```
+
+> **Prefer the portal?** Open **Microsoft Entra ID → App registrations
+> → support-bot-ci-$suffix → Certificates & secrets → Federated
+> credentials → Add credential**. Pick **GitHub Actions deploying Azure
+> resources** as the scenario, then create one credential per subject
+> in the table above (`environment:dev`, `environment:qa`,
+> `environment:prod`, and a `Pull request` one).
+
+#### 4. Grant the app the roles it needs
+
+```powershell
+$spId = az ad sp show --id $client --query id -o tsv
+
+# Resolve resource IDs from the endpoint URLs (no need to know the RG).
+$foundryName = (($env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT -split "//")[1] -split "\.")[0]
+$aoaiName    = (($env:AZURE_OPENAI_ENDPOINT -split "//")[1] -split "\.")[0]
+
+$foundryId = az resource list --name $foundryName `
+  --resource-type "Microsoft.CognitiveServices/accounts" --query "[0].id" -o tsv
+$aoaiId    = az resource list --name $aoaiName `
+  --resource-type "Microsoft.CognitiveServices/accounts" --query "[0].id" -o tsv
+
+if (-not $foundryId) { throw "Could not resolve Foundry resource id for '$foundryName'" }
+if (-not $aoaiId)    { throw "Could not resolve Azure OpenAI resource id for '$aoaiName'" }
+
+# Foundry project — read agents and runs
+az role assignment create --assignee-object-id $spId `
+  --assignee-principal-type ServicePrincipal `
+  --role "Azure AI User" --scope $foundryId | Out-Null
+
+# Azure OpenAI — call the judge model
+az role assignment create --assignee-object-id $spId `
+  --assignee-principal-type ServicePrincipal `
+  --role "Cognitive Services OpenAI User" --scope $aoaiId | Out-Null
+
+Write-Host "Roles granted on Foundry project and Azure OpenAI."
+```
+
+> **Prefer the portal?** Open your Foundry project resource → **Access
+> control (IAM) → Add role assignment**, pick **Azure AI User**, and
+> assign it to the `support-bot-ci-$suffix` app. Repeat on the Azure
+> OpenAI resource with the **Cognitive Services OpenAI User** role.
 
 ### Open a PR
 
@@ -490,7 +647,7 @@ The two agent versions live in your Foundry project until you delete
 them. The helper script handles cleanup:
 
 ```powershell
-python scripts/create_support_agent.py delete --name support-bot
+python create_support_agent.py delete --name support-bot
 ```
 
 This removes every version (idempotent — ignores 404s).

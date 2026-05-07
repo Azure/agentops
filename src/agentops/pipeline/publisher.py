@@ -101,7 +101,6 @@ def publish_to_foundry(
             "Foundry publish completed but the studio URL was empty."
         )
 
-    logger.info("Foundry publish completed: %s", studio_url)
     return PublishResult(studio_url=studio_url, evaluation_name=eval_name)
 
 

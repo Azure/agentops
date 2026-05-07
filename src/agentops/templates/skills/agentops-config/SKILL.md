@@ -64,7 +64,8 @@ thresholds:
   groundedness: ">=3"
   avg_latency_seconds: "<=10"
 
-publish: foundry
+publish: foundry            # Classic Foundry panel (works for any target)
+# publish: foundry_cloud    # New Foundry panel (preview; name:version agents only)
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 
 evaluators:           # rare - AgentOps auto-selects from agent + dataset

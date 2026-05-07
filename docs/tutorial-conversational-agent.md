@@ -76,15 +76,17 @@ Fluency, Similarity, F1Score, average latency.
 agentops eval run
 ```
 
-Open `.agentops/results/latest/report.md` for verdict, per-row
+Open the report with `code .agentops/results/latest/report.md` and press `Ctrl+Shift+V` to render the Markdown — verdict, per-row
 transcript, and aggregate scores.
 
 ## 5. Lock in a baseline
 
+No extra step needed — `latest/results.json` is your previous run.
+Diff your next run against it:
+
 ```bash
-agentops eval run --output .agentops/results/baseline
 # … change a prompt / model / config …
-agentops eval run --baseline .agentops/results/baseline/results.json
+agentops eval run --baseline .agentops/results/latest/results.json
 ```
 
 The next report adds *Comparison vs Baseline* with per-metric deltas.

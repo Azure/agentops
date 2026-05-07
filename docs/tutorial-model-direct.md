@@ -48,7 +48,7 @@ F1Score, plus average latency.
 agentops eval run
 ```
 
-Outputs land in `.agentops/results/latest/`:
+Outputs land in `.agentops/results/<timestamp>/` and are mirrored to `.agentops/results/latest/`:
 
 - `results.json` — machine-readable
 - `report.md` — Markdown summary with thresholds, per-row metrics,
@@ -61,11 +61,15 @@ Exit code `0` = all thresholds passed, `2` = at least one failed,
 
 ```bash
 # Baseline run on gpt-4o
-agentops eval run --output .agentops/results/baseline
+agentops eval run
 
 # Switch agentops.yaml to agent: "model:gpt-5.1", run again, then:
-agentops eval run --baseline .agentops/results/baseline/results.json
+agentops eval run --baseline .agentops/results/latest/results.json
 ```
+
+AgentOps loads the baseline before refreshing `latest/`, so
+`latest/results.json` always means "the run before this one". For a
+stable reference, point at a specific timestamp folder instead.
 
 `report.md` now includes a *Comparison vs Baseline* table with
 per-metric deltas (🟢 improved / 🔴 regressed / ⚪ unchanged).

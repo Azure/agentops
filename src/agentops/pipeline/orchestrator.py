@@ -11,11 +11,13 @@ from __future__ import annotations
 import json
 import logging
 import statistics
+import sys
 import time
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from agentops.core.agentops_config import AgentOpsConfig, Threshold, classify_agent
 from agentops.core.evaluators import (
@@ -32,6 +34,7 @@ from agentops.core.results import (
 )
 from agentops.pipeline import comparison as comparison_module
 from agentops.pipeline import invocations, publisher, reporter, runtime, thresholds
+from agentops.utils.colors import style
 
 logger = logging.getLogger("agentops.pipeline")
 
@@ -49,6 +52,11 @@ class RunOptions:
     timeout_seconds: float = 120.0
     dataset_override: Optional[Path] = None
     agent_override: Optional[str] = None
+    # Optional callback invoked with progress messages during a run. The
+    # CLI wires this to ``typer.echo`` so users see per-row progress
+    # ("invoking", "scored", ...) instead of long unexplained pauses.
+    # Library callers can leave it as ``None`` to keep runs silent.
+    progress: Optional[Callable[[str], None]] = field(default=None, repr=False)
 
 
 def run_evaluation(
@@ -80,16 +88,38 @@ def run_evaluation(
 
     evaluator_runtimes = runtime.load_evaluators(presets)
 
+    progress = options.progress or (lambda _msg: None)
+
+    dataset_rows = list(_iter_dataset(dataset_path))
+    total = len(dataset_rows)
+    from agentops import __version__ as _agentops_version
+    py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    progress(
+        f"{style('agentops', 'bold', 'cyan')} {style(_agentops_version, 'cyan')} "
+        f"{style('|', 'dim')} python {py} "
+        f"{style('|', 'dim')} config: {style(options.config_path.name, 'cyan')}"
+    )
+    progress(
+        f"Loaded {style(str(total), 'bold')} row(s) from "
+        f"{style(dataset_path.name, 'cyan')}; running "
+        f"{style(str(len(presets)), 'bold')} evaluator(s) against "
+        f"{_friendly_target_kind(target.kind)}: {style(target.raw, 'bold')}."
+    )
+
     rows: List[RowResult] = []
-    for index, row in enumerate(_iter_dataset(dataset_path)):
+    rules_by_metric = {rule.metric: rule for rule in threshold_rules}
+    for index, row in enumerate(dataset_rows):
         rows.append(
             _evaluate_row(
                 row=row,
                 index=index,
+                total=total,
                 target=target,
                 config=config,
                 evaluators=evaluator_runtimes,
                 timeout=options.timeout_seconds,
+                progress=progress,
+                rules_by_metric=rules_by_metric,
             )
         )
 
@@ -137,7 +167,11 @@ def run_evaluation(
     _persist(result, options.output_dir)
 
     if config.publish == "foundry":
-        _publish_to_foundry_safely(result, config, options.output_dir)
+        _publish_to_foundry_safely(result, config, options.output_dir, progress=progress)
+    elif config.publish == "foundry_cloud":
+        _publish_to_foundry_cloud_safely(
+            result, config, options.output_dir, dataset_path, progress=progress,
+        )
 
     return result
 
@@ -146,10 +180,14 @@ def _publish_to_foundry_safely(
     result: RunResult,
     config: AgentOpsConfig,
     output_dir: Path,
+    *,
+    progress: Optional[Callable[[str], None]] = None,
 ) -> None:
-    """Best-effort Foundry publish. Failures are logged, never fatal."""
+    """Best-effort Classic Foundry publish. Failures are logged, never fatal."""
     if config.publish != "foundry":
         return
+
+    notify = progress or (lambda _msg: None)
 
     try:
         published = publisher.publish_to_foundry(
@@ -158,12 +196,17 @@ def _publish_to_foundry_safely(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("foundry publish failed: %s", exc)
+        notify(
+            f"{style('publish foundry FAILED', 'red')}: {exc}. "
+            f"Local results.json is the source of truth."
+        )
         return
 
     cloud_meta_path = output_dir / "cloud_evaluation.json"
     cloud_meta_path.write_text(
         json.dumps(
             {
+                "mode": "classic",
                 "evaluation_name": published.evaluation_name,
                 "report_url": published.studio_url,
             },
@@ -171,7 +214,85 @@ def _publish_to_foundry_safely(
         ),
         encoding="utf-8",
     )
-    logger.info("Foundry Evaluations URL: %s", published.studio_url)
+    notify(
+        f"Published to {style('Classic Foundry Evaluations', 'bold')}: "
+        f"{style(published.studio_url, 'cyan')}"
+    )
+    notify(
+        f"Tip: to run server-side in the {style('New Foundry', 'bold')} "
+        f"experience, use 'publish: foundry_cloud' (preview)."
+    )
+
+
+def _publish_to_foundry_cloud_safely(
+    result: RunResult,
+    config: AgentOpsConfig,
+    output_dir: Path,
+    dataset_path: Path,
+    *,
+    progress: Optional[Callable[[str], None]] = None,
+) -> None:
+    """Best-effort New Foundry (cloud) publish. Failures are logged, never fatal."""
+    if config.publish != "foundry_cloud":
+        return
+
+    notify = progress or (lambda _msg: None)
+
+    endpoint = config.project_endpoint or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    if not endpoint:
+        msg = (
+            "publish: foundry_cloud requires either 'project_endpoint' in "
+            "agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
+        )
+        logger.warning(msg)
+        notify(f"{style('publish foundry_cloud FAILED', 'red')}: {msg}")
+        return
+
+    # Lazy import keeps unit tests free of azure-ai-projects.
+    from agentops.pipeline import cloud_publisher
+
+    try:
+        published = cloud_publisher.publish_to_foundry_cloud(
+            result,
+            dataset_path=dataset_path,
+            project_endpoint=endpoint,
+            progress=notify,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("foundry_cloud publish failed: %s", exc)
+        notify(
+            f"{style('publish foundry_cloud FAILED', 'red')}: {exc}. "
+            f"Local results.json is the source of truth."
+        )
+        return
+
+    cloud_meta_path = output_dir / "cloud_evaluation.json"
+    cloud_meta_path.write_text(
+        json.dumps(
+            {
+                "mode": "cloud",
+                "evaluation_name": published.evaluation_name,
+                "eval_id": published.eval_id,
+                "run_id": published.run_id,
+                "status": published.status,
+                "report_url": published.report_url,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    logger.info(
+        "New Foundry cloud evaluation: %s (eval=%s run=%s)",
+        published.report_url, published.eval_id, published.run_id,
+    )
+    notify(
+        f"Submitted to {style('New Foundry Evaluations', 'bold')}: "
+        f"{style(published.report_url or '(no portal URL)', 'cyan')}"
+    )
+    notify(
+        f"  eval_id={published.eval_id} run_id={published.run_id} "
+        f"status={style(published.status, 'green' if published.status == 'completed' else 'yellow')}"
+    )
 
 
 def exit_code_from(result: RunResult) -> int:
@@ -198,6 +319,18 @@ def _resolve_dataset_path(config: AgentOpsConfig, options: RunOptions) -> Path:
     if not resolved.exists():
         raise FileNotFoundError(f"dataset not found: {resolved}")
     return resolved
+
+
+_FRIENDLY_KIND = {
+    "foundry_prompt": "foundry agent",
+    "foundry_hosted": "foundry agent (hosted)",
+    "http_json": "http endpoint",
+    "model_direct": "model deployment",
+}
+
+
+def _friendly_target_kind(kind: str) -> str:
+    return _FRIENDLY_KIND.get(kind, kind)
 
 
 def _iter_dataset(path: Path) -> Iterable[Dict[str, Any]]:
@@ -228,15 +361,25 @@ def _evaluate_row(
     *,
     row: Dict[str, Any],
     index: int,
+    total: int,
     target,
     config: AgentOpsConfig,
     evaluators: List[runtime.EvaluatorRuntime],
     timeout: float,
+    progress: Callable[[str], None],
+    rules_by_metric: Optional[Dict[str, Threshold]] = None,
 ) -> RowResult:
+    label = style(f"[{index + 1}/{total}]", "dim")
+    preview = str(row.get("input", "")).strip().replace("\n", " ")
+    if len(preview) > 80:
+        preview = preview[:77] + "..."
+    progress(f"{label} invoking target: {preview!r}")
+
     try:
         invocation = invocations.invoke(target, config, row, timeout=timeout)
     except Exception as exc:  # noqa: BLE001
         logger.warning("row %d invocation failed: %s", index, exc)
+        progress(f"{label} {style('invocation FAILED', 'bold', 'red')}: {exc}")
         return RowResult(
             row_index=index,
             input=str(row.get("input", "")),
@@ -246,6 +389,12 @@ def _evaluate_row(
             error=str(exc),
         )
 
+    tool_count = len(invocation.tool_calls) if invocation.tool_calls else 0
+    progress(
+        f"{label} replied in {style(f'{invocation.latency_seconds:.2f}s', 'cyan')} "
+        f"({tool_count} tool call(s)); scoring..."
+    )
+
     metrics: List[RowMetric] = []
     for evaluator in evaluators:
         metric = runtime.run_evaluator(
@@ -253,8 +402,40 @@ def _evaluate_row(
             row=row,
             response=invocation.response,
             latency_seconds=invocation.latency_seconds,
+            actual_tool_calls=invocation.tool_calls,
         )
         metrics.append(metric)
+
+    rules = rules_by_metric or {}
+
+    def _passes(rule: Threshold, value: float) -> bool:
+        if rule.value is None or rule.criteria in {"true", "false"}:
+            return True
+        target_v = float(rule.value)
+        c = rule.criteria
+        if c == ">=": return value >= target_v
+        if c == ">":  return value >  target_v
+        if c == "<=": return value <= target_v
+        if c == "<":  return value <  target_v
+        if c == "==": return value == target_v
+        return True
+
+    def _format_metric(m: RowMetric) -> str:
+        if isinstance(m.value, (int, float)):
+            rule = rules.get(m.name)
+            text = f"{m.value:.2f}"
+            if rule is None:
+                # No user threshold for this metric: keep value neutral
+                # so the line stays readable.
+                return f"{m.name}={text}"
+            color = "green" if _passes(rule, float(m.value)) else "red"
+            return f"{m.name}={style(text, color)}"
+        if m.error:
+            return f"{m.name}={style('ERR', 'red')}"
+        return f"{m.name}={style('n/a', 'dim')}"
+
+    scored = ", ".join(_format_metric(m) for m in metrics)
+    progress(f"{label} scored: {scored}")
 
     return RowResult(
         row_index=index,

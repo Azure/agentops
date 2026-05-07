@@ -79,14 +79,17 @@ The report's per-row block shows:
 
 ## 5. CI gate
 
-In a PR check, fail when tool quality regresses:
+In a PR check, fail when tool quality regresses. After your first
+run, diff every subsequent run against it:
 
 ```bash
-agentops eval run --baseline .agentops/results/baseline/results.json
+agentops eval run --baseline .agentops/results/latest/results.json
 ```
 
-The baseline diff highlights when `tool_call_accuracy` drops — the
-fastest signal that someone broke the function-calling layer.
+AgentOps loads the baseline into memory before refreshing `latest/`,
+so `latest/results.json` is shorthand for "the run before this one".
+For CI, commit a stable baseline file (see
+[tutorial-baseline-comparison.md](tutorial-baseline-comparison.md)).
 
 ## Build a real tool-calling agent
 

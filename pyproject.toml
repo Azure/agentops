@@ -44,6 +44,7 @@ where = ["src"]
   "agent.yaml",
   "smoke.jsonl",
   ".gitignore",
+  "project.gitignore",
   "workflows/*.yml",
   "skills/*/SKILL.md",
   "agent-server/*",

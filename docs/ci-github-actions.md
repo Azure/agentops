@@ -16,16 +16,25 @@ form the full scaffold:
 
 ## GitFlow assumed
 
-```
-                                 ┌── agentops-pr.yml (gate) ──┐
-feature/* ── PR ──▶ develop ─────┘                            │
-                       │                                       │
-                       └── merge ──▶ agentops-deploy-dev.yml  ─┴──▶ DEV
-release/* ── push ─────────▶ agentops-deploy-qa.yml            ───▶ QA
-                                 ┌── agentops-pr.yml (gate) ──┐
-release/* ── PR ──▶ main ────────┘                            │
-                       │                                       │
-                       └── merge ──▶ agentops-deploy-prod.yml ─┴──▶ PROD (reviewers)
+```mermaid
+flowchart LR
+    feat["feature/*"] -->|PR| prGate1{{"agentops-pr.yml<br/>(gate)"}}
+    prGate1 -->|merge| dev["develop"]
+    dev --> deployDev["agentops-deploy-dev.yml"]
+    deployDev --> DEV(["DEV"])
+
+    rel["release/*"] -->|push| deployQa["agentops-deploy-qa.yml"]
+    deployQa --> QA(["QA"])
+
+    rel -->|PR| prGate2{{"agentops-pr.yml<br/>(gate)"}}
+    prGate2 -->|merge| main["main"]
+    main --> deployProd["agentops-deploy-prod.yml"]
+    deployProd --> PROD(["PROD<br/>(required reviewers)"])
+
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
+    class prGate1,prGate2 gate;
+    class DEV,QA,PROD env;
 ```
 
 If you are on trunk-based development, generate only the templates you

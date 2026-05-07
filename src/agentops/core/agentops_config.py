@@ -51,7 +51,7 @@ TargetKind = Literal[
 ]
 
 #: Where to publish the evaluation run. ``None`` keeps results local-only.
-PublishTarget = Literal["foundry"]
+PublishTarget = Literal["foundry", "foundry_cloud"]
 
 
 # ---------------------------------------------------------------------------
@@ -220,9 +220,13 @@ class AgentOpsConfig(BaseModel):
     publish: Optional[PublishTarget] = Field(
         None,
         description=(
-            "Optional opt-in publish target. When set to 'foundry', the "
-            "evaluation run is published to the New Foundry Evaluations "
-            "panel after results are written locally."
+            "Optional opt-in publish target.\n"
+            "- 'foundry' (Classic): runs locally, uploads computed metrics "
+            "to the Classic Foundry Evaluations panel via OneDP.\n"
+            "- 'foundry_cloud' (preview): submits the run to the New Foundry "
+            "experience via the OpenAI Evals API. The agent and evaluators "
+            "execute server-side; agent must be a 'name:version' Foundry "
+            "agent."
         ),
     )
     project_endpoint: Optional[str] = Field(

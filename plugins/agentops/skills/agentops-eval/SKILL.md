@@ -65,16 +65,29 @@ AgentOps does not ship a separate `eval compare` command.
 
 ## Step 5 — (Optional) Publish to Foundry Evaluations
 
-Add to `agentops.yaml` and re-run:
+Two modes are supported. Both write a deep-link into
+`.agentops/results/latest/cloud_evaluation.json` and require
+`AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (or the inline `project_endpoint`).
+
+**Classic Foundry Evaluations panel** (default — works for any target
+kind, uploads metrics that AgentOps already computed locally):
 
 ```yaml
 publish: foundry
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
-Requires `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (or the inline
-`project_endpoint`). Successful publishes write a deep-link to the New
-Foundry Evaluations panel into the run output.
+**New Foundry Evaluations panel** (preview — re-runs the agent + builtin
+evaluators server-side via the OpenAI Evals API; only works for
+`name:version` Foundry agents):
+
+```yaml
+publish: foundry_cloud
+# project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
+```
+
+Foundry-side latency and judges replace the local view in this mode;
+`results.json` from the local run remains the canonical record.
 
 ## Tips
 

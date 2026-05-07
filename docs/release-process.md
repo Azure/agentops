@@ -274,26 +274,14 @@ The staging pipeline validates a release candidate by publishing to TestPyPI and
 
 ### Pipeline Flow
 
-```
-push to release/v0.2.0
-        │
-   ┌────▼────────┐
-   │   _build     │  ← Reusable workflow: test + build package
-   │  (tests +    │     Version: 0.2.1.dev3 (from setuptools-scm)
-   │   package)   │
-   └────┬────────┘
-        │
-   ┌────▼───────────┐
-   │ publish-testpypi │  ← Upload to TestPyPI (staging environment)
-   │                   │     Uses TEST_PYPI_TOKEN secret
-   └────┬───────────┘
-        │
-   ┌────▼───────────┐
-   │ verify-testpypi  │  ← Install from TestPyPI in a fresh environment
-   │                   │     Run: agentops --version
-   │                   │     Run: agentops --help
-   │                   │     Run: agentops init (in temp directory)
-   └─────────────────┘
+```mermaid
+flowchart TD
+    push(["push to release/v0.2.0"])
+    build["_build<br/><i>tests + package</i><br/>Version: 0.2.1.dev3 (setuptools-scm)"]
+    publish["publish-testpypi<br/><i>Upload to TestPyPI (staging environment)</i><br/>Uses TEST_PYPI_TOKEN secret"]
+    verify["verify-testpypi<br/><i>Install from TestPyPI in fresh environment</i><br/>agentops --version / --help / init"]
+
+    push --> build --> publish --> verify
 ```
 
 ### What Gets Validated
@@ -522,34 +510,19 @@ The production pipeline publishes a final release to PyPI and creates a GitHub R
 
 ### Pipeline Flow
 
-```
-push tag v0.2.0
-        │
-   ┌────▼────────┐
-   │   _build     │  ← Same reusable build as staging
-   │  (tests +    │     Version: 0.2.0 (clean, from tag)
-   │   package)   │
-   └────┬────────┘
-        │
-   ┌────▼───────────┐
-   │ publish-testpypi │  ← Final TestPyPI upload (clean version)
-   └────┬───────────┘
-        │
-   ┌────▼───────────┐
-   │ verify-testpypi  │  ← Smoke test from TestPyPI
-   └────┬───────────┘
-        │
-   ┌────▼───────────┐
-   │  publish-pypi    │  ← ⏸️ PAUSES HERE — requires approval
-   │                   │     Uses PYPI_TOKEN secret
-   │  (environment:   │     Designated reviewers must approve
-   │   release)       │
-   └────┬───────────┘
-        │
-   ┌────▼───────────┐
-   │ github-release   │  ← Creates GitHub Release with artifacts
-   │                   │     Generates release notes automatically
-   └─────────────────┘
+```mermaid
+flowchart TD
+    tag(["push tag v0.2.0"])
+    build["_build<br/><i>tests + package</i><br/>Version: 0.2.0 (clean, from tag)"]
+    publishTest["publish-testpypi<br/><i>Final TestPyPI upload (clean version)</i>"]
+    verifyTest["verify-testpypi<br/><i>Smoke test from TestPyPI</i>"]
+    publishPypi{{"publish-pypi ⏸<br/><i>PAUSES — requires approval</i><br/>Uses PYPI_TOKEN<br/>environment: release"}}
+    ghRelease["github-release<br/><i>Creates GitHub Release with artifacts</i><br/>Auto-generated release notes"]
+
+    tag --> build --> publishTest --> verifyTest --> publishPypi --> ghRelease
+
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    class publishPypi gate;
 ```
 
 ### Step-by-Step: Cutting a Release
@@ -847,63 +820,42 @@ Use this checklist when cutting a release:
 
 ## Architecture Diagram
 
-```
-  Feature Development              Staging                    Production Release
-  ─────────────────              ───────                    ──────────────────
+```mermaid
+flowchart TD
+    feat["feature/*"] -->|PR| develop(["develop"])
+    develop --> ci["CI (ci.yml)<br/>lint + test + coverage<br/>publish-dev → TestPyPI (dev version)"]
+    develop --> cut{{"Cut Release (cut-release.yml)<br/>manual dispatch — enter version"}}
+    cut --> rel(["release/v0.2.0"])
 
-  feature/* ──PR──→ develop
-                      │
-                      ├──→ CI (ci.yml)
-                      │    lint + test + coverage
-                      │    + publish-dev → TestPyPI (dev version)
-                      │
-                      └──→ Cut Release (cut-release.yml)
-                           manual dispatch → enter version
-                           │
-                           └──→ release/v0.2.0
-                                │
-                                ├──→ Staging (staging.yml)
-                                │
-                                │    ┌──────────┐
-                                │    │  _build   │
-                                │    │ test+build│
-                                │    └────┬─────┘
-                                │         │
-                                │    ┌────▼────────┐
-                                │    │  TestPyPI    │
-                                │    │  publish     │
-                                │    └────┬────────┘
-                                │         │
-                                │    ┌────▼────────┐
-                                │    │  Verify      │
-                                │    │  install     │
-                                │    └─────────────┘
-                                │
-                                └──PR──→ main ──tag──→ v0.2.0
-                                                          │
-                                                          ├──→ Release (release.yml)
-                                                          │
-                                                          │    ┌──────────┐
-                                                          │    │  _build   │
-                                                          │    └────┬─────┘
-                                                          │         │
-                                                          │    ┌────▼────────┐
-                                                          │    │  TestPyPI    │
-                                                          │    └────┬────────┘
-                                                          │         │
-                                                          │    ┌────▼────────┐
-                                                          │    │  Verify      │
-                                                          │    └────┬────────┘
-                                                          │         │
-                                                          │    ┌────▼────────┐
-                                                          │    │  PyPI       │
-                                                          │    │  (approval) │
-                                                          │    └────┬────────┘
-                                                          │         │
-                                                          │    ┌────▼────────┐
-                                                          │    │  GitHub     │
-                                                          │    │  Release    │
-                                                          │    └────────────┘
-                                                          │
-                                                    main ──merge──→ develop
+    rel --> stagingBuild["_build<br/>test + build"]
+    stagingBuild --> stagingTest["TestPyPI publish"]
+    stagingTest --> stagingVerify["Verify install"]
+
+    rel -->|PR| main(["main"])
+    main -->|tag| tag(["v0.2.0"])
+
+    tag --> relBuild["_build"]
+    relBuild --> relTest["TestPyPI"]
+    relTest --> relVerify["Verify"]
+    relVerify --> relPypi{{"PyPI<br/>(approval)"}}
+    relPypi --> relGh["GitHub Release"]
+
+    main -->|merge back| develop
+
+    subgraph Staging["Staging (staging.yml)"]
+        stagingBuild
+        stagingTest
+        stagingVerify
+    end
+
+    subgraph Release["Release (release.yml)"]
+        relBuild
+        relTest
+        relVerify
+        relPypi
+        relGh
+    end
+
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    class cut,relPypi gate;
 ```

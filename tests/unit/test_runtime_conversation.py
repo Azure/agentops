@@ -11,12 +11,32 @@ from __future__ import annotations
 from agentops.pipeline.runtime import _build_conversation_messages
 
 
-def test_returns_none_when_no_tool_calls() -> None:
-    assert _build_conversation_messages(
+def test_builds_text_only_conversation_when_no_tool_calls() -> None:
+    """Even without tool calls, we build a structured conversation so the
+    Azure evaluators don't try to parse plain query strings as history and
+    emit ``WARNING: Conversation history could not be parsed``.
+    """
+    out = _build_conversation_messages(
         input_text="Hi", response_text="Hello.", tool_calls=None,
-    ) is None
-    assert _build_conversation_messages(
+    )
+    assert out is not None
+    assert out["query"] == [
+        {"role": "user", "content": [{"type": "text", "text": "Hi"}]}
+    ]
+    assert out["response"] == [
+        {"role": "assistant", "content": [{"type": "text", "text": "Hello."}]}
+    ]
+
+    out_empty = _build_conversation_messages(
         input_text="Hi", response_text="Hello.", tool_calls=[],
+    )
+    assert out_empty == out
+
+
+def test_returns_none_when_no_response_and_no_tool_calls() -> None:
+    """Nothing to evaluate — caller should fall back to plain kwargs."""
+    assert _build_conversation_messages(
+        input_text="Hi", response_text="", tool_calls=None,
     ) is None
 
 

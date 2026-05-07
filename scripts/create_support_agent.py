@@ -48,7 +48,8 @@ INSTRUCTIONS_GOOD = (
 
 INSTRUCTIONS_DEGRADED = (
     "You are a friendly customer support assistant. Answer the user in a "
-    "warm, conversational tone. Be helpful and reassuring."
+    "warm, conversational tone. Reassure them and apologize for any "
+    "inconvenience. Do not use any tools — just reply in plain text."
 )
 
 
@@ -155,10 +156,17 @@ def cmd_create(args: argparse.Namespace) -> int:
     instructions = (
         INSTRUCTIONS_DEGRADED if args.variant == "v2-degraded" else INSTRUCTIONS_GOOD
     )
-    tools = [
-        FunctionTool(name=name, description=desc, parameters=params, strict=True)
-        for name, desc, params in TOOL_SPECS
-    ]
+    if args.variant == "v2-degraded":
+        # The whole point of the degraded variant is to demonstrate a tool-quality
+        # regression. We strip the tools entirely so the agent literally cannot
+        # call lookup_order / refund_order / escalate_to_human — forcing
+        # tool_call_accuracy and task_adherence to collapse.
+        tools: list = []
+    else:
+        tools = [
+            FunctionTool(name=name, description=desc, parameters=params, strict=True)
+            for name, desc, params in TOOL_SPECS
+        ]
 
     definition = PromptAgentDefinition(
         model=args.model,
@@ -190,6 +198,31 @@ def cmd_create(args: argparse.Namespace) -> int:
                 f"create_version attempt {attempt}/5 failed (status={status}): {exc}",
                 file=sys.stderr,
             )
+            if status in (401, 403):
+                # Don't retry on auth errors and surface a concrete fix.
+                raise SystemExit(
+                    "Foundry rejected the access token (HTTP "
+                    f"{status}). Likely causes, in order of frequency:\n"
+                    "  1. Stale Azure CLI token cache (very common when "
+                    "this script worked earlier today and now suddenly "
+                    "fails). Refresh with:\n"
+                    "       az account clear\n"
+                    "       az login\n"
+                    "     If you have multiple tenants, add `--tenant <id>`.\n"
+                    "  2. You're logged into the wrong Azure tenant. "
+                    "Verify with `az account show` and re-login with "
+                    "`az login --tenant <tenant-id>` if needed.\n"
+                    "  3. Your account is missing the 'Azure AI User' "
+                    "role on the Foundry account. Ask an admin (or run "
+                    "yourself if you have permissions):\n"
+                    "       az role assignment create \\\n"
+                    "         --assignee <your-upn-or-object-id> \\\n"
+                    "         --role 'Azure AI User' \\\n"
+                    "         --scope <foundry-account-resource-id>\n"
+                    "  4. AZURE_AI_FOUNDRY_PROJECT_ENDPOINT points at a "
+                    "different project than the one where your role "
+                    "assignment lives."
+                ) from exc
             if not transient or attempt == 5:
                 raise
             last_exc = exc

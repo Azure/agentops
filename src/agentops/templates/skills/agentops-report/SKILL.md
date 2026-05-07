@@ -13,8 +13,10 @@ Latest run: `.agentops/results/latest/`. Each run produces:
 
 - `results.json` — machine-readable metrics, per-row scores, thresholds.
 - `report.md` — human-readable summary suitable for PR comments.
-- `cloud_evaluation.json` (only when `publish: foundry` was set) — Foundry
-  Evaluations deep-link.
+- `cloud_evaluation.json` (only when `publish:` was set) — deep-link to
+  the Foundry Evaluations panel. `mode: classic` for `publish: foundry`,
+  `mode: cloud` for `publish: foundry_cloud` (preview, server-side run
+  via the OpenAI Evals API).
 
 ## Step 1 — Regenerate report.md if needed
 

@@ -28,11 +28,19 @@ _FLAT_FILES: Dict[str, str] = {
 }
 
 
+# Project-root .gitignore. Only written when one doesn't already exist so we
+# never clobber a user's curated ignore file.
+_PROJECT_GITIGNORE_TEMPLATE = "project.gitignore"
+_PROJECT_GITIGNORE_TARGET = ".gitignore"
+
+
 def initialize_flat_workspace(directory: Path, force: bool = False) -> InitResult:
     """Bootstrap the AgentOps 1.0 workspace.
 
     Creates ``agentops.yaml`` at the project root and a tiny seed dataset at
-    ``.agentops/data/smoke.jsonl``.
+    ``.agentops/data/smoke.jsonl``. Also drops a starter ``.gitignore`` at the
+    project root if one does not exist yet (covers ``.venv/``, Python build
+    artifacts, and the ``.agentops/results/`` runtime output).
     """
     project_root = directory.resolve()
     result = InitResult(workspace_dir=project_root / ".agentops")
@@ -56,5 +64,18 @@ def initialize_flat_workspace(directory: Path, force: bool = False) -> InitResul
             result.overwritten_files.append(target)
         else:
             result.created_files.append(target)
+
+    # Write a starter project-root .gitignore. We never overwrite an existing
+    # one (even with --force) — users often have curated ignores we don't want
+    # to clobber.
+    gitignore_target = project_root / _PROJECT_GITIGNORE_TARGET
+    if not gitignore_target.exists():
+        content = templates_root.joinpath(_PROJECT_GITIGNORE_TEMPLATE).read_text(
+            encoding="utf-8"
+        )
+        gitignore_target.write_text(content, encoding="utf-8")
+        result.created_files.append(gitignore_target)
+    else:
+        result.skipped_files.append(gitignore_target)
 
     return result

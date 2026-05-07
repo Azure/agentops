@@ -176,13 +176,13 @@ The backend:
 4. Runs evaluators (`SimilarityEvaluator`, `avg_latency_seconds`).
 5. Writes `backend_metrics.json`, then `results.json` and `report.md`.
 
-Output lands in `.agentops/results/<timestamp>/` and is also synced to `.agentops/results/latest/`.
+Output lands in `.agentops/results/<timestamp>/` and is mirrored to `.agentops/results/latest/`. Pass `--output <dir>` to write the run only to that path instead.
 
 ## Part 5: Review results
 
 **Console:** AgentOps prints a summary with pass/fail per threshold.
 
-**Report:** Open `.agentops/results/latest/report.md` for a human-readable summary.
+**Report:** Open the report in VS Code with `code .agentops/results/latest/report.md` and press `Ctrl+Shift+V` to render the Markdown.
 
 **JSON:** Parse `.agentops/results/latest/results.json` for machine-readable scores.
 

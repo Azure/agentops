@@ -21,17 +21,30 @@ The exit code still follows the threshold contract (`0` / `2` / `1`).
 The baseline does **not** by itself fail the run — your thresholds in
 `agentops.yaml` do.
 
-## 1. Capture a baseline
+## 1. Pick a baseline
 
-Run the eval against your known-good configuration and keep the
-results somewhere stable:
+Each `agentops eval run` writes to a timestamped folder under
+`.agentops/results/` and refreshes `.agentops/results/latest/` with a
+copy. So you have two options:
 
-```bash
-agentops eval run --output .agentops/results/baseline
-```
+- **Local iteration** — point `--baseline` at
+  `.agentops/results/latest/results.json`. AgentOps loads the baseline
+  into memory before refreshing `latest/`, so it always means "the
+  run before this one".
+- **CI / shared baseline** — commit a stable copy into the repo (or
+  publish it as a CI artifact). This is the path used by the
+  `agentops-pr.yml` workflow:
 
-`baseline/results.json` is what you'll point at later. Commit it into
-the repo (small file, deterministic) or store it as a CI artifact.
+  ```bash
+  mkdir -p .agentops/baseline
+  cp .agentops/results/latest/results.json .agentops/baseline/results.json
+  git add .agentops/baseline/results.json
+  git commit -m "chore: capture AgentOps baseline"
+  ```
+
+Use the first form while iterating; use the second when you want a
+baseline that doesn't move every time someone runs `agentops eval run`
+locally.
 
 ## 2. Make your change
 
@@ -40,11 +53,19 @@ you want to evaluate the impact of.
 
 ## 3. Re-run with `--baseline`
 
+Local iteration (compares against the previous run):
+
 ```bash
-agentops eval run --baseline .agentops/results/baseline/results.json
+agentops eval run --baseline .agentops/results/latest/results.json
 ```
 
-Open `.agentops/results/latest/report.md`. The new section looks like:
+Against a committed CI baseline:
+
+```bash
+agentops eval run --baseline .agentops/baseline/results.json
+```
+
+Open `.agentops/results/latest/report.md` in VS Code (`code .agentops/results/latest/report.md`, then `Ctrl+Shift+V` for the rendered preview). The new section looks like:
 
 ```markdown
 ## Comparison vs Baseline

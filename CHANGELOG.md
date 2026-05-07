@@ -3,39 +3,15 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 1.0 revamp
-
-The 1.0 line replaces the multi-file `run.yaml` + `bundle.yaml` + `dataset.yaml` stack with a single flat `agentops.yaml`. This is a breaking change for projects that were using the legacy schema.
+## [0.1.8] - 2026-04-22
 
 ### Added
-- **Watchdog agent (`agentops agent`)** — new module under `src/agentops/agent/` plus CLI commands `agentops agent analyze` (Markdown report with severity-ranked findings, exit codes 0/1/2) and `agentops agent serve` (FastAPI Copilot Extension server with SSE replies and GitHub signature validation). Combines AgentOps eval history, Azure Monitor / Application Insights traces, and Foundry control-plane data into a unified production-health view. Requires `pip install agentops-toolkit[agent]` for the server. Includes an `agentops-agent` Copilot skill and a Container Apps deploy scaffold (`Dockerfile` + `main.bicep` under `src/agentops/templates/agent-server/`).
-- **Flat `agentops.yaml` schema** — a three-line minimal config (`version`, `agent`, `dataset`) replaces the legacy multi-file stack for the common case. Implemented in `src/agentops/core/agentops_config.py`.
-- **Automatic target classification** — `agent:` is classified as `foundry_prompt` (`name:version`), `foundry_hosted` (Foundry endpoint URL), `http_json` (any other URL), or `model_direct` (`model:<deployment>`).
-- **Automatic evaluator inference** — evaluators are picked from the target type and the dataset columns (`context`, `tool_calls`, `tool_definitions`). The `scenario`/`bundle` concepts are gone from the user-facing surface. Implemented in `src/agentops/core/evaluators.py`.
-- **New `pipeline/` namespace** — single end-to-end pipeline (`orchestrator.py`, `invocations.py`, `runtime.py`, `thresholds.py`, `comparison.py`, `reporter.py`, `publisher.py`) supporting all four target kinds, including Foundry hosted endpoints.
-- **`agentops eval run --baseline <results.json>`** — compare a run against any previous `results.json` and append a *Comparison vs Baseline* table to the report.
-- **Opt-in publish to Foundry Evaluations** — set `publish: foundry` in `agentops.yaml` (with `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` or inline `project_endpoint`) and AgentOps publishes the run to the New Foundry Experience Evaluations panel after writing local results.
-- **`agentops mcp serve`** — opt-in MCP (Model Context Protocol) stdio server exposing 7 tools (`agentops_init`, `agentops_eval_run`, `agentops_report_show`, `agentops_results_summary`, `agentops_dataset_add`, `agentops_list_runs`, `agentops_workflow_init`). Requires `pip install agentops-toolkit[mcp]`.
-- **Offline e2e demo** — `scripts/e2e_demo.py` and `.github/workflows/e2e.yml` exercise the pipeline end-to-end without Azure credentials.
+- **Pre-flight checks for `agentops eval run`** — detects common issues (missing `azure-identity` or `azure-ai-evaluation` packages, missing env vars for AI-assisted/safety evaluators, Azure credential failures, unreachable endpoints) *before* backend execution. All detectable issues are reported at once with actionable error messages and `pip install` hints.
+- **`--dry-run` / `-n` flag on `eval run`** — runs pre-flight checks without executing the evaluation. Exits 0 if all checks pass, 1 otherwise. Useful for CI gating and fast feedback.
+- **Credential warm-up in pre-flight** — acquires and caches the MSAL token once during pre-flight so subsequent evaluator calls don't each cold-start `az.cmd`.
 
 ### Changed
-- **`agentops init`** is now flat-only: writes a single `agentops.yaml` at the project root and a tiny seed dataset under `.agentops/data/smoke.jsonl`.
-- **`agentops eval run`** is flat-only and defaults to `./agentops.yaml`. The legacy schema is rejected with an actionable error message listing the offending keys.
-- **`agentops report generate`** is flat-only and emits Markdown (no HTML).
-- **Coding agent skills** rewritten for the flat schema. Retained skills: `agentops-eval`, `agentops-config`, `agentops-dataset`, `agentops-report`, `agentops-workflow`. Removed: `agentops-monitor`, `agentops-trace`, `agentops-regression` (out of scope for 1.0).
-
-### Removed
-- **Legacy multi-file schema** (`run.yaml`, `bundle.yaml`, `dataset.yaml`) and the corresponding loaders, models, and templates.
-- **Legacy backends layer** (`src/agentops/backends/`) — replaced by `src/agentops/pipeline/`.
-- **Legacy services** — `services/runner.py`, `services/foundry_evals.py`, `services/reporting.py`, `services/comparison.py`, `services/browse.py`.
-- **Legacy core modules** — `core/models.py`, `core/reporter.py`, `core/thresholds.py`. `core/config_loader.py` is reduced to `load_agentops_config()`.
-- **Stub CLI commands** that were never implemented — `eval compare`, `report show`, `report export`, `dataset *`, `config *`, `monitor *`, `model list`, `agent list`, `bundle *`, `run *`. Final command surface: `init`, `eval run`, `report generate`, `workflow generate`, `skills install`, `mcp serve`.
-
-### Engineering
-- 177 unit + integration tests passing (with `mcp` extra installed; 1 skipped when `mcp` is absent).
-- Foundry SDK calls remain lazy and never pass `api_version` to `get_openai_client()`.
-- Optional `mcp` dependency declared as `[project.optional-dependencies] mcp` in `pyproject.toml`.
-
+- **Azure CLI credential timeout raised to 30s** — all `DefaultAzureCredential` instantiation sites (`eval_engine.py`, `foundry_backend.py`) now pass `process_timeout=30`. Default (10s) is insufficient for Windows `az.cmd` cold starts and was causing intermittent `AzureCliCredential: Failed to invoke the Azure CLI` errors.
 
 ## [0.1.7] - 2026-04-21
 

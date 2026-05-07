@@ -104,40 +104,24 @@ agentops init
 
 ## Part 3: Configure the agent run
 
-Open `.agentops/run-agent.yaml` and fill in your agent details:
+Open `agentops.yaml` at your project root and point it at your agent:
 
 ```yaml
 version: 1
-target:
-  type: agent
-  hosting: foundry
-  execution_mode: remote
-  endpoint:
-    kind: foundry_agent
-    agent_id: my-agent:1                # ← your agent name or asst_ ID
-    model: gpt-5.1                      # ← used as judge model for evaluators
-    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-    api_version: "2025-05-01"
-    poll_interval_seconds: 2
-    max_poll_attempts: 120
-bundle:
-  name: agent_workflow_baseline
-dataset:
-  name: smoke-agent-tools
-execution:
-  timeout_seconds: 1800
-output:
-  write_report: true
+agent: "my-agent:1"                       # ← your agent name:version (or asst_ ID)
+dataset: .agentops/data/smoke-agent-tools.jsonl
+thresholds:
+  similarity: ">=3"
+  avg_latency_seconds: "<=20"
 ```
 
-Key differences from model-direct:
-- `target.type: agent` — routes prompts through the agent instead of calling the model directly
-- `target.endpoint.agent_id` — identifies which agent to invoke. Required for agent target.
-- `target.endpoint.model` — still needed as the judge model for AI-assisted evaluators like SimilarityEvaluator. This is the model that *evaluates* the agent's responses, not the model the agent uses internally.
-
-### Why both `agent_id` and `model`?
-
-The `agent_id` determines *what* you are evaluating (the agent). The `model` determines *how* you evaluate it (the judge model that runs SimilarityEvaluator). They can be different deployments. In practice, most teams use the same deployment for both, but you could use a cheaper model as the judge if cost is a concern.
+Key points:
+- `agent` is a single string. AgentOps recognizes the `name:version` shape
+  and routes the run to the Foundry Agent Service automatically.
+- The judge model used by AI-assisted evaluators (SimilarityEvaluator) is
+  taken from `AZURE_OPENAI_DEPLOYMENT` (set in Part 2).
+- Evaluators are auto-selected from the dataset row shape — `input` +
+  `expected` triggers `SimilarityEvaluator`. No `bundle` to maintain.
 
 ## Part 4: Review the dataset
 
@@ -157,7 +141,7 @@ For meaningful evaluation, your dataset should match what your agent is designed
 ## Part 5: Run the evaluation
 
 ```bash
-agentops eval run -c .agentops/run-agent.yaml
+agentops eval run
 ```
 
 AgentOps will:
@@ -166,7 +150,7 @@ AgentOps will:
 3. Collect the agent's response
 4. Run SimilarityEvaluator comparing the response to the expected answer
 5. Measure latency per row
-6. Write results under `.agentops/results/latest/`
+6. Write results under `.agentops/results/<timestamp>/` and mirror them to `.agentops/results/latest/`
 
 ### What to expect
 
@@ -180,7 +164,13 @@ A 5-row agent evaluation typically takes 30–60 seconds in local mode, compared
 
 ### Reading the results
 
-Open `.agentops/results/latest/report.md`. For an agent with the simple QA instructions above, expect:
+Open the report in VS Code and press `Ctrl+Shift+V` to render the Markdown:
+
+```powershell
+code .agentops/results/latest/report.md
+```
+
+For an agent with the simple QA instructions above, expect:
 
 - **SimilarityEvaluator** around 3–4 (the agent captures meaning but rephrases)
 - **avg_latency_seconds** around 5–15s per row (agent orchestration overhead)
@@ -190,40 +180,30 @@ If most rows score 4–5, your agent is working well. If most score 1–2, check
 
 ## Part 6: Compare with a baseline
 
-After you change the agent's instructions, add tools, or update the model deployment, run again and compare:
+You've only run a single evaluation, so `.agentops/results/` has one timestamped run plus the `latest/` mirror. To compare a future run against it, you don't need to copy anything — just point `--baseline` at the previous result. AgentOps loads the baseline into memory before refreshing `latest/`, so `latest/results.json` works as a shorthand for "the run before this one".
+
+**1. Change something** — agent instructions, model deployment, an evaluator threshold, the dataset.
+
+**2. Re-run with `--baseline`:**
 
 ```bash
-agentops eval run -c .agentops/run-agent.yaml
-agentops eval compare --runs <previous-timestamp>,latest
+agentops eval run --baseline .agentops/results/latest/results.json
 ```
 
-The comparison shows metric deltas, threshold flips, and per-row changes. See the [Baseline Comparison Tutorial](tutorial-baseline-comparison.md) for the full workflow.
+> Prefer a stable, named reference? Point at the specific timestamp folder you want to keep, e.g. `--baseline .agentops/results/2026-05-06T20-13-21Z/results.json`.
 
-### Comparing agent vs model-direct
-
-You can also compare your agent run against a model-direct run on the same dataset:
-
-```bash
-agentops eval compare --runs model-direct-run,agent-run
-```
-
-This tells you how much the agent layer changes the output quality. Expect:
-- **Similarity drops** — the agent rephrases, which is normal
-- **Latency increases** — agent orchestration adds overhead
-- **Possible threshold flips** — thresholds set for model-direct may be too strict for agent responses
-
-This comparison is useful for diagnostics but should not be used as a CI gate. Gate model-direct runs against model-direct baselines, and agent runs against agent baselines.
+`report.md` now contains a **Comparison vs Baseline** table with per-metric deltas (🟢 improved / 🔴 regressed / ⚪ unchanged). See the [Baseline Comparison Tutorial](tutorial-baseline-comparison.md) for the full PR-gating workflow.
 
 ## Evaluation scenarios
 
-AgentOps supports multiple scenarios, each with a different bundle:
+AgentOps auto-selects evaluators from the dataset row shape:
 
-| Scenario | Bundle | Target | Evaluators | Use case |
-|---|---|---|---|---|
-| **Model Quality** | `model_quality_baseline` | `model` | SimilarityEvaluator, CoherenceEvaluator, FluencyEvaluator, F1ScoreEvaluator | Benchmark raw model quality |
-| **RAG Quality** | `rag_quality_baseline` | `agent` | GroundednessEvaluator, RelevanceEvaluator, RetrievalEvaluator | Evaluate grounding against context |
-| **Conversational** | `conversational_agent_baseline` | `agent` | CoherenceEvaluator, FluencyEvaluator, RelevanceEvaluator, SimilarityEvaluator | Chatbots and Q&A agents |
-| **Agent Workflow** | `agent_workflow_baseline` | `agent` | TaskCompletionEvaluator, ToolCallAccuracyEvaluator | Agents with tool calling |
+| Scenario | Required row fields | Evaluators auto-selected | Use case |
+|---|---|---|---|
+| **Model Quality** | `input`, `expected` | SimilarityEvaluator, CoherenceEvaluator, FluencyEvaluator, F1ScoreEvaluator | Benchmark raw model quality |
+| **RAG Quality** | `input`, `expected`, `context` | GroundednessEvaluator, RelevanceEvaluator, RetrievalEvaluator | Evaluate grounding against context |
+| **Conversational** | `input`, `expected` | CoherenceEvaluator, FluencyEvaluator, RelevanceEvaluator, SimilarityEvaluator | Chatbots and Q&A agents |
+| **Agent Workflow** | `input`, `expected`, `tool_definitions`, `tool_calls` | TaskCompletionEvaluator, ToolCallAccuracyEvaluator | Agents with tool calling |
 
 The RAG scenario uses GroundednessEvaluator instead of SimilarityEvaluator because the key question is whether the agent's response is grounded in the retrieved context, not whether it matches a specific expected answer.
 

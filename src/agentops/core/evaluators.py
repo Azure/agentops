@@ -363,6 +363,15 @@ def select_evaluators(
             selected.extend(_RAG_EVALUATORS)
         if shape.looks_tool_use:
             selected.extend(_TOOL_USE_EVALUATORS)
+            # F1ScoreEvaluator and SimilarityEvaluator compare the
+            # assistant's natural-language reply against ``expected``. In
+            # tool-using datasets ``expected`` is conventionally a behavior
+            # description (e.g. "Calls lookup_order with order_id='ORD-12345'")
+            # rather than the literal reply, so token overlap and semantic
+            # similarity are meaningless and gate well-behaved agents on a
+            # metric that does not apply. Drop both from the selection.
+            _drop = {"F1ScoreEvaluator", "SimilarityEvaluator"}
+            selected = [p for p in selected if p.name not in _drop]
 
     selected.append(_LATENCY)
     return selected

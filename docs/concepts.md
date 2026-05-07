@@ -4,53 +4,34 @@ This page explains the core building blocks of AgentOps and how they fit togethe
 
 ## How an Evaluation Works
 
-```
-                          ┌─────────────────────────────┐
-                          │         run.yaml            │
-                          │  (what, where, how to eval) │
-                          └──────┬──────────┬───────────┘
-                                 │          │
-                    ┌────────────┘          └────────────┐
-                    ▼                                    ▼
-          ┌─────────────────┐                  ┌─────────────────┐
-          │     Bundle      │                  │     Dataset     │
-          │  (evaluators +  │                  │  (JSONL rows:   │
-          │   thresholds)   │                  │   input,        │
-          └────────┬────────┘                  │   expected)     │
-                   │                           └────────┬────────┘
-                   │                                    │
-                   └──────────┐    ┌────────────────────┘
-                              ▼    ▼
-                       ┌──────────────┐
-                       │    Runner    │
-                       │  (resolves   │
-                       │   backend)   │
-                       └──────┬───────┘
-                              │
-               ┌──────────────┼──────────────┐
-               ▼              ▼              ▼
-        ┌────────────┐ ┌────────────┐ ┌────────────┐
-        │  Foundry   │ │    HTTP    │ │   Local    │
-        │  Backend   │ │  Backend   │ │  Adapter   │
-        └──────┬─────┘ └──────┬─────┘ └──────┬─────┘
-               │              │              │
-               └──────────────┼──────────────┘
-                              ▼
-                    ┌──────────────────┐
-                    │   Evaluators     │
-                    │  (score each     │
-                    │   response)      │
-                    └────────┬─────────┘
-                             │
-                ┌────────────┴────────────┐
-                ▼                         ▼
-        ┌──────────────┐         ┌──────────────┐
-        │ results.json │         │  report.md   │
-        │ (machine)    │         │  (human)     │
-        └──────────────┘         └──────────────┘
+```mermaid
+flowchart TD
+    run["run.yaml<br/><i>what, where, how to eval</i>"]
+    bundle["Bundle<br/><i>evaluators + thresholds</i>"]
+    dataset["Dataset<br/><i>JSONL rows: input, expected</i>"]
+    runner(["Runner<br/><i>resolves backend</i>"])
+    foundry["Foundry<br/>Backend"]
+    http["HTTP<br/>Backend"]
+    local["Local<br/>Adapter"]
+    evals(["Evaluators<br/><i>score each response</i>"])
+    results[/"results.json<br/>(machine)"/]
+    report[/"report.md<br/>(human)"/]
 
-        Exit code: 0 = pass, 2 = threshold fail, 1 = error
+    run --> bundle
+    run --> dataset
+    bundle --> runner
+    dataset --> runner
+    runner --> foundry
+    runner --> http
+    runner --> local
+    foundry --> evals
+    http --> evals
+    local --> evals
+    evals --> results
+    evals --> report
 ```
+
+> Exit code: `0` = pass, `2` = threshold fail, `1` = error
 
 ## Core Concepts
 

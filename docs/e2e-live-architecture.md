@@ -32,18 +32,23 @@ Entra app needs to be revoked to cut access.
 
 ## Job graph
 
-```
-                       ┌──────────────────┐
-                       │  bootstrap-live  │ deploys per-run ACA
-                       └────────┬─────────┘
-              ┌─────────────────┼──────────────────┬─────────────────┐
-              ▼                 ▼                  ▼                 ▼
-    live-foundry-prompt   live-foundry-hosted   live-http-aca   live-model-direct
-              └─────────────────┴──────────────────┴─────────────────┘
-                                       ▼
-                                ┌────────────┐
-                                │  teardown  │  always() — sweeps stale
-                                └────────────┘
+```mermaid
+flowchart TD
+    bootstrap(["bootstrap-live<br/><i>deploys per-run ACA</i>"])
+    foundryPrompt["live-foundry-prompt"]
+    foundryHosted["live-foundry-hosted"]
+    httpAca["live-http-aca"]
+    modelDirect["live-model-direct"]
+    teardown(["teardown<br/><i>always() — sweeps stale</i>"])
+
+    bootstrap --> foundryPrompt
+    bootstrap --> foundryHosted
+    bootstrap --> httpAca
+    bootstrap --> modelDirect
+    foundryPrompt --> teardown
+    foundryHosted --> teardown
+    httpAca --> teardown
+    modelDirect --> teardown
 ```
 
 `bootstrap-live` only runs `perrun.bicep` if the requested scenarios
