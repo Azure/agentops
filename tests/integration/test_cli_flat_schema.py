@@ -10,6 +10,11 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+pytest.importorskip(
+    "azure.ai.evaluation",
+    reason="azure-ai-evaluation is required to instantiate evaluators in the pipeline runtime",
+)
+
 from agentops.cli.app import app
 
 runner = CliRunner()

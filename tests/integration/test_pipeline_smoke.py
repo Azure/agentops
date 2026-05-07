@@ -14,6 +14,11 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip(
+    "azure.ai.evaluation",
+    reason="azure-ai-evaluation is required to instantiate evaluators in the pipeline runtime",
+)
+
 from agentops.core.agentops_config import AgentOpsConfig
 from agentops.core.config_loader import load_agentops_config
 from agentops.pipeline.orchestrator import (

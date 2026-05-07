@@ -52,6 +52,7 @@ where = ["src"]
 
 [dependency-groups]
 dev = [
+    "azure-ai-evaluation>=1.0",
     "mypy>=1.19.1",
     "pre-commit>=4.0",
     "pytest>=8.0",
