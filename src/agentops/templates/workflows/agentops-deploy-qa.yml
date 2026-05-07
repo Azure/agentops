@@ -59,7 +59,9 @@ jobs:
       - name: Install AgentOps Toolkit
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "agentops-toolkit[foundry]"
+          # NOTE: pinned to develop branch until AgentOps 1.0 lands on PyPI.
+          # Switch to `pip install "agentops-toolkit[foundry]"` after the 1.0 release.
+          python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 
       - name: Run AgentOps eval
         env:
