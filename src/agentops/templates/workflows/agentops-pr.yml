@@ -39,6 +39,9 @@ jobs:
   eval:
     name: AgentOps eval (PR gate)
     runs-on: ubuntu-latest
+    # Run the PR gate against the dev environment so the OIDC token
+    # subject is `environment:dev` and `vars.*` resolves from there.
+    environment: dev
     timeout-minutes: 30
     steps:
       - name: Checkout

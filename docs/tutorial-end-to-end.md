@@ -495,17 +495,17 @@ foreach ($envName in @("dev","qa","prod")) {
 
 #### 3. Add federated credentials so Azure trusts GitHub OIDC
 
-One credential per environment, plus one for pull requests
-(`agentops-pr.yml` runs without an environment context). The JSON is
-written to a temp file because `az` does not parse inline JSON
-reliably under PowerShell:
+One credential per environment. The PR gate workflow runs **inside the
+`dev` environment** (so it inherits the same `dev` variables and OIDC
+subject) — no separate `pull_request` credential is needed. The JSON is
+written to a temp file because `az` does not parse inline JSON reliably
+under PowerShell:
 
 ```powershell
 $subjects = @{
-  "dev"          = "repo:${repo}:environment:dev"
-  "qa"           = "repo:${repo}:environment:qa"
-  "prod"         = "repo:${repo}:environment:prod"
-  "pull-request" = "repo:${repo}:pull_request"
+  "dev"  = "repo:${repo}:environment:dev"
+  "qa"   = "repo:${repo}:environment:qa"
+  "prod" = "repo:${repo}:environment:prod"
 }
 
 foreach ($name in $subjects.Keys) {
@@ -529,7 +529,7 @@ foreach ($name in $subjects.Keys) {
 > credentials → Add credential**. Pick **GitHub Actions deploying Azure
 > resources** as the scenario, then create one credential per subject
 > in the table above (`environment:dev`, `environment:qa`,
-> `environment:prod`, and a `Pull request` one).
+> `environment:prod`).
 
 #### 4. Grant the app the roles it needs
 
