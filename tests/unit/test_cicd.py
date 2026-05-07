@@ -136,8 +136,10 @@ def test_pr_template_triggers_and_no_environment(tmp_path: Path) -> None:
     assert "actions/setup-python@v5" in content
     assert "3.11" in content
 
-    # PR template has no environment (it's a gate, not a deploy)
-    assert "environment:" not in content
+    # PR template runs inside the dev environment so the OIDC token subject
+    # is `repo:<owner>/<repo>:environment:dev` and `vars.AZURE_*` resolve from
+    # the dev environment scope. Without this the gate fails on `azure/login`.
+    assert "environment: dev" in content
 
     # PR comment idempotency marker
     assert "<!-- agentops-pr-report -->" in content
