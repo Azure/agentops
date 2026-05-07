@@ -104,7 +104,7 @@ def _build_server() -> Any:
             "results_json": str(out_dir / "results.json"),
             "report_md": str(out_dir / "report.md"),
             "passed": bool(run.summary.overall_passed),
-            "metrics": dict(run.summary.metrics or {}),
+            "metrics": dict(run.aggregate_metrics or {}),
         }
 
     @server.tool()

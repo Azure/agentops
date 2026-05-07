@@ -63,3 +63,6 @@ dev = [
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"
+
+[tool.mypy]
+plugins = ["pydantic.mypy"]

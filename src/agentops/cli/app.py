@@ -251,8 +251,9 @@ def _run_flat_schema_eval(
 
     use_default_layout = output is None
     if use_default_layout:
-        output_dir = _default_flat_output_dir(config_path)
+        output_dir: Path = _default_flat_output_dir(config_path)
     else:
+        assert output is not None
         output_dir = output
 
     options = RunOptions(

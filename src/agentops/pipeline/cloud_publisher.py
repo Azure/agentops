@@ -206,7 +206,7 @@ def publish_to_foundry_cloud(
             "item_schema": item_schema,
             "include_sample_schema": True,
         },
-        testing_criteria=testing_criteria,
+        testing_criteria=testing_criteria,  # type: ignore[arg-type]
     )
     eval_id = eval_obj.id
 
@@ -216,7 +216,7 @@ def publish_to_foundry_cloud(
     run_obj = openai_client.evals.runs.create(
         eval_id=eval_id,
         name=f"{eval_name}-run",
-        data_source={
+        data_source={  # type: ignore[arg-type]
             "type": "azure_ai_target_completions",
             "agent_reference": {
                 "type": "agent_reference",

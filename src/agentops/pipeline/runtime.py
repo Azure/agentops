@@ -202,7 +202,8 @@ def _build_conversation_messages(
                 continue
             # Normalise across the OpenAI ``function_call`` shape and the
             # nested ``function`` envelope produced by some Foundry payloads.
-            function = call.get("function") if isinstance(call.get("function"), dict) else {}
+            raw_function = call.get("function")
+            function: Dict[str, Any] = raw_function if isinstance(raw_function, dict) else {}
             name = call.get("name") or function.get("name")
             if not name:
                 continue

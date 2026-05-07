@@ -1,6 +1,6 @@
 ---
 name: release-management
-description: Guide maintainers and contributors through branching, versioning, changelog updates, and publishing agentops-toolkit. Trigger when users ask about branching strategy, creating a release, version tagging, publishing to PyPI, updating the changelog, cutting a release, opening a PR, or syncing a fork. Common phrases: "cut a release", "how do I publish", "create release branch", "tag a version", "update changelog", "release process", "bump version", "what branch should I use", "feature branch", "prepare release".
+description: 'Guide maintainers and contributors through branching, versioning, changelog updates, and publishing agentops-toolkit. Trigger when users ask about branching strategy, creating a release, version tagging, publishing to PyPI, updating the changelog, cutting a release, opening a PR, or syncing a fork. Common phrases include "cut a release", "how do I publish", "create release branch", "tag a version", "update changelog", "release process", "bump version", "what branch should I use", "feature branch", "prepare release".'
 ---
 
 # Release Management
