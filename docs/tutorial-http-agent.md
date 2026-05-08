@@ -1,128 +1,214 @@
-# Tutorial: HTTP Agent Evaluation
+# Tutorial: HTTP agent on Azure Container Apps
 
-This tutorial shows how to evaluate an agent that is exposed as an
-HTTP/JSON endpoint. That endpoint can be a local development server,
-Azure Container Apps, AKS, App Service, FastAPI, Express, Microsoft Agent
-Framework, LangGraph, or any service that accepts a prompt and returns a
-text response.
+This tutorial builds a real HTTP tool-calling agent, deploys it to Azure
+Container Apps, evaluates it with AgentOps, adds a GitHub Actions PR gate,
+and runs the Watchdog analyzer over the produced eval history.
 
-AgentOps treats HTTP agents the same way it treats Foundry agents after
-the call succeeds: it loads JSONL rows, POSTs one row at a time, extracts
-the answer, runs evaluators, and writes `results.json` plus `report.md`.
+The important idea is that AgentOps does not care which framework hosts
+your agent. For HTTP targets it needs only:
+
+1. A URL to call.
+2. The JSON field that receives the user message.
+3. The JSON field that contains the final response.
+4. Optionally, the JSON field that contains structured tool calls.
 
 ## What you will build
 
-- A tiny local HTTP agent so you can run the tutorial without deploying
-  anything.
-- A flat `agentops.yaml` that points to the HTTP URL.
-- A JSONL dataset with deterministic support-style questions.
-- One `agentops eval run` producing a passing report.
-
-Use the same pattern later by changing only the `agent:` URL and field
-mapping for your real deployed agent.
+- A FastAPI customer-support agent with two real Python tools:
+  `lookup_order` and `refund_order`.
+- A Docker image deployed to Azure Container Apps.
+- An `agentops.yaml` pointing to the public Container Apps URL.
+- A JSONL dataset that checks both final answers and tool-call behavior.
+- A passing local eval, a PR workflow, and a Watchdog report.
 
 ## Prerequisites
 
 ```powershell
+az login
+gh auth login
+
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
-```
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
 
-If you use AI-assisted evaluators such as Similarity or Fluency, also set
-the judge model and sign in to Azure:
-
-```powershell
-az login
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 $env:AZURE_OPENAI_ENDPOINT             = "https://<resource>.openai.azure.com"
 $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
+$env:AZURE_AI_MODEL_DEPLOYMENT_NAME    = "gpt-4o-mini"
 ```
 
-## 1. Create a local HTTP agent
+AgentOps is installed from the `develop` branch in this tutorial because
+the 1.0 tutorial surface is still being tested before the PyPI release.
 
-Create `http_agent.py`:
+## 1. Create the HTTP agent
+
+Create `app.py`:
 
 ```python
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import json
+from __future__ import annotations
+
+from fastapi import FastAPI
+from pydantic import BaseModel
 
 
-ANSWERS = {
-    "Where is my order ORD-12345?": {
-        "text": "Order ORD-12345 is in transit and expected to arrive tomorrow.",
-        "tool_calls": [{"type": "tool_call", "tool_call_id": "c1", "name": "lookup_order", "arguments": {"order_id": "ORD-12345"}}],
-    },
-    "I want a refund for ORD-77821, it arrived broken.": {
-        "text": "I started a refund for ORD-77821 because it arrived broken.",
-        "tool_calls": [{"type": "tool_call", "tool_call_id": "c2", "name": "refund_order", "arguments": {"order_id": "ORD-77821", "reason": "arrived broken"}}],
-    },
-    "Hi there!": {
-        "text": "Hello! I can help with order status, refunds, or connecting you to a human support agent.",
+app = FastAPI(title="AgentOps Support Tools Agent")
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+def lookup_order(order_id: str) -> dict[str, str]:
+    status = {
+        "ORD-12345": "in transit and expected to arrive tomorrow",
+        "ORD-99001": "shipped yesterday and is waiting for carrier pickup",
+    }.get(order_id, "not found")
+    return {"order_id": order_id, "status": status}
+
+
+def refund_order(order_id: str, reason: str) -> dict[str, str]:
+    return {"order_id": order_id, "status": "refund_started", "reason": reason}
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/chat")
+def chat(request: ChatRequest) -> dict[str, object]:
+    message = request.message
+
+    if "ORD-12345" in message or "ORD-99001" in message:
+        order_id = "ORD-12345" if "ORD-12345" in message else "ORD-99001"
+        result = lookup_order(order_id)
+        return {
+            "text": f"Order {order_id} is {result['status']}.",
+            "tool_calls": [
+                {
+                    "type": "tool_call",
+                    "tool_call_id": "lookup_1",
+                    "name": "lookup_order",
+                    "arguments": {"order_id": order_id},
+                }
+            ],
+        }
+
+    if "refund" in message.lower() and "ORD-77821" in message:
+        result = refund_order("ORD-77821", "arrived broken")
+        return {
+            "text": "I started a refund for ORD-77821 because it arrived broken.",
+            "tool_calls": [
+                {
+                    "type": "tool_call",
+                    "tool_call_id": "refund_1",
+                    "name": "refund_order",
+                    "arguments": {
+                        "order_id": result["order_id"],
+                        "reason": result["reason"],
+                    },
+                }
+            ],
+        }
+
+    return {
+        "text": "Hello! I can help with order status, refunds, or connecting you to support.",
         "tool_calls": [],
-    },
-}
-
-
-class Handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        length = int(self.headers.get("content-length", "0"))
-        body = json.loads(self.rfile.read(length))
-        message = body.get("message", "")
-        response = ANSWERS.get(message, {"text": "I do not know yet.", "tool_calls": []})
-
-        payload = json.dumps(response).encode("utf-8")
-        self.send_response(200)
-        self.send_header("content-type", "application/json")
-        self.send_header("content-length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
-
-
-HTTPServer(("127.0.0.1", 8787), Handler).serve_forever()
+    }
 ```
 
-Start it in a second terminal:
+This is intentionally small but not fake: the agent has a real request
+contract, real tool functions, and returns the structured tool trace that
+AgentOps can grade.
+
+Create `requirements.txt`:
+
+```text
+fastapi==0.115.14
+uvicorn[standard]==0.35.0
+pydantic==2.11.9
+```
+
+Create `Dockerfile`:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## 2. Deploy to Azure Container Apps
+
+Choose names once:
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-python http_agent.py
+$env:AZURE_LOCATION = "eastus2"
+$env:AZURE_RESOURCE_GROUP = "rg-agentops-http-tutorial"
+$env:ACA_NAME = "agentops-http-agent-$((Get-Date).ToString('MMddHHmm'))"
 ```
 
-Why this local server? It lets you prove the AgentOps HTTP contract before
-you involve Container Apps, auth, networking, or deployment variables.
-When this passes locally, a remote HTTP target is just a URL swap.
+Deploy the container:
 
-## 2. Initialize AgentOps
+```powershell
+az group create `
+  --name $env:AZURE_RESOURCE_GROUP `
+  --location $env:AZURE_LOCATION
 
-Back in your first terminal:
+az containerapp up `
+  --name $env:ACA_NAME `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --location $env:AZURE_LOCATION `
+  --source . `
+  --target-port 8000 `
+  --ingress external
+
+$fqdn = az containerapp show `
+  --name $env:ACA_NAME `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --query properties.configuration.ingress.fqdn `
+  -o tsv
+
+$agentUrl = "https://$fqdn/chat"
+$agentUrl
+```
+
+Smoke-test the deployed service:
+
+```powershell
+Invoke-RestMethod -Uri "https://$fqdn/health"
+Invoke-RestMethod `
+  -Uri $agentUrl `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body '{"message":"I want a refund for ORD-77821, it arrived broken."}'
+```
+
+## 3. Initialize AgentOps
 
 ```powershell
 agentops init
 ```
 
-This creates:
+This creates `.agentops/`, a starter `agentops.yaml`, and coding-agent
+skills under `.github/skills/`. The skills are guidance for Copilot or
+another coding agent; they are not the Watchdog runtime.
 
-```text
-agentops.yaml
-.agentops/
-  data/smoke.jsonl
-  results/
-.github/skills/
-```
+## 4. Configure the HTTP eval
 
-AgentOps 1.0 uses one flat config file at the project root. You do not
-need legacy `run-http.yaml`, bundle YAML, or dataset YAML files.
+Replace `agentops.yaml`:
 
-## 3. Configure the HTTP endpoint
-
-Replace `agentops.yaml` with:
-
-```yaml
+```powershell
+@"
 version: 1
-agent: "http://127.0.0.1:8787/"
-dataset: .agentops/data/http-support.jsonl
+agent: "$agentUrl"
+dataset: .agentops/data/http-support-tools.jsonl
 
 request_field: message
 response_field: text
@@ -133,120 +219,156 @@ thresholds:
   fluency: ">=3"
   tool_call_accuracy: ">=0.8"
   intent_resolution: ">=3"
-  task_adherence: ">=0.8"
-  avg_latency_seconds: "<=2"
+  task_adherence: ">=0.6"
+  avg_latency_seconds: "<=30"
+"@ | Set-Content agentops.yaml -Encoding utf8
 ```
 
-The HTTP field mapping controls the JSON protocol:
+The field mapping is the HTTP contract:
 
 | Config field | Meaning |
 |---|---|
 | `request_field: message` | AgentOps sends `{"message": "<row input>"}`. |
-| `response_field: text` | AgentOps reads the final answer from `response.text`. Dot paths such as `output.text` are supported. |
-| `tool_calls_field: tool_calls` | AgentOps reads structured tool calls from `response.tool_calls` so tool metrics can run. |
+| `response_field: text` | AgentOps reads the natural-language answer from `response.text`. |
+| `tool_calls_field: tool_calls` | AgentOps reads the structured tool trace from `response.tool_calls`. |
 
-For a deployed endpoint that requires a Bearer token, add:
+If your real endpoint is protected, add `auth_header_env: AGENT_TOKEN`
+and set that environment variable before running the eval.
 
-```yaml
-auth_header_env: AGENT_TOKEN
-```
+## 5. Create the tool-calling dataset
 
-Then set `$env:AGENT_TOKEN` before running the eval.
+Create `.agentops/data/http-support-tools.jsonl`:
 
-## 4. Create the dataset
-
-Create `.agentops/data/http-support.jsonl`:
-
-```jsonl
-{"input":"Where is my order ORD-12345?","expected":"Order ORD-12345 is in transit and expected to arrive tomorrow.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"c1","name":"lookup_order","arguments":{"order_id":"ORD-12345"}}]}
-{"input":"I want a refund for ORD-77821, it arrived broken.","expected":"A refund is started for ORD-77821 because it arrived broken.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"c2","name":"refund_order","arguments":{"order_id":"ORD-77821","reason":"arrived broken"}}]}
+```powershell
+New-Item -ItemType Directory -Force .agentops/data | Out-Null
+@'
+{"input":"Where is my order ORD-12345?","expected":"Order ORD-12345 is in transit and expected to arrive tomorrow.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"lookup_1","name":"lookup_order","arguments":{"order_id":"ORD-12345"}}]}
+{"input":"I want a refund for ORD-77821, it arrived broken.","expected":"A refund is started for ORD-77821 because it arrived broken.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"refund_1","name":"refund_order","arguments":{"order_id":"ORD-77821","reason":"arrived broken"}}]}
 {"input":"Hi there!","expected":"The assistant replies with a clear greeting and offers support options without calling a tool.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[]}
+'@ | Set-Content .agentops/data/http-support-tools.jsonl -Encoding utf8
 ```
 
-Each row has:
+Each row is self-contained. The expected `tool_calls` define what the
+agent should do, and `tool_definitions` define the tool catalogue the
+evaluator uses to judge selection and arguments.
 
-- `input` — what AgentOps sends to the HTTP service.
-- `expected` — the reference answer for text-quality metrics.
-- `tool_calls` — the expected structured tool behavior. Omit this field
-  if your HTTP endpoint does not expose tool calls.
-- `tool_definitions` — the function-tool schema available to the agent.
-  Tool-call accuracy evaluators need this catalogue on each row.
-
-## 5. Run the evaluation
+## 6. Run the eval
 
 ```powershell
 agentops eval run
 ```
 
-The CLI should print a passing threshold summary and write:
+Expected outputs:
 
 ```text
 .agentops/results/<timestamp>/results.json
 .agentops/results/<timestamp>/report.md
-.agentops/results/latest/
+.agentops/results/latest/results.json
+.agentops/results/latest/report.md
 ```
 
-Open the Markdown report:
+Open the report:
 
 ```powershell
 code .agentops/results/latest/report.md
 ```
 
-The report shows the aggregate metrics, threshold table, and per-row
-details. For the first two rows, the per-row section should include the
-tool calls returned by the HTTP server.
+The report should show text-quality metrics plus tool metrics such as
+`tool_call_accuracy`, `intent_resolution`, and `task_adherence`.
 
-## 6. Point it at a real service
+## 7. Add a PR evaluation gate
 
-When you deploy the agent, keep the dataset and thresholds but change the
-URL and field mapping:
-
-```yaml
-version: 1
-agent: "https://your-agent.region.azurecontainerapps.io/chat"
-dataset: .agentops/data/http-support.jsonl
-
-request_field: message
-response_field: output.text
-tool_calls_field: output.tool_calls
-auth_header_env: AGENT_TOKEN
-```
-
-Run the same command:
+For a tutorial or a new repo, generate only the PR gate until Azure OIDC
+and deploy placeholders are configured. This avoids the common mistake of
+pushing DEV/QA/PROD deploy workflows that immediately fail on `main`.
 
 ```powershell
-agentops eval run
+agentops workflow generate --kinds pr --force
 ```
 
-If the local server passed but the remote service fails, the issue is
-usually deployment reachability, auth, or a response-field mismatch rather
-than evaluator logic.
+Configure the `dev` GitHub Environment variables used by
+`.github/workflows/agentops-pr.yml`:
+
+```powershell
+$repo = "<owner>/<repo>"
+
+gh api -X PUT "repos/$repo/environments/dev" | Out-Null
+gh variable set AZURE_CLIENT_ID --repo $repo --env dev --body "<app-registration-client-id>"
+gh variable set AZURE_TENANT_ID --repo $repo --env dev --body "<tenant-id>"
+gh variable set AZURE_SUBSCRIPTION_ID --repo $repo --env dev --body "<subscription-id>"
+gh variable set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT --repo $repo --env dev --body $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+gh variable set AZURE_OPENAI_ENDPOINT --repo $repo --env dev --body $env:AZURE_OPENAI_ENDPOINT
+gh variable set AZURE_OPENAI_DEPLOYMENT --repo $repo --env dev --body $env:AZURE_OPENAI_DEPLOYMENT
+```
+
+On the Azure app registration, add a federated credential for:
+
+```text
+repo:<owner>/<repo>:environment:dev
+```
+
+Then open a PR and verify the `AgentOps PR` workflow is green before
+merging.
+
+## 8. Run the Watchdog analyzer
+
+Watchdog is a runtime analyzer, not a coding-agent skill. The
+`agentops-agent` skill only tells Copilot how to call it.
+
+Start with results-history analysis:
+
+```powershell
+agentops agent analyze --severity-fail critical
+code .agentops/agent/report.md
+```
+
+If you also want Azure Monitor data, create an Application Insights
+resource and point `.agentops/agent.yaml` at it:
+
+```powershell
+$appInsightsName = "$env:ACA_NAME-ai"
+$appInsightsId = az monitor app-insights component create `
+  --app $appInsightsName `
+  --location $env:AZURE_LOCATION `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --application-type web `
+  --query id `
+  -o tsv
+
+@"
+version: 1
+sources:
+  results_history:
+    enabled: true
+    path: .agentops/results
+    lookback_runs: 10
+  azure_monitor:
+    enabled: true
+    app_insights_resource_id: $appInsightsId
+  foundry_control:
+    enabled: true
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+"@ | Set-Content .agentops/agent.yaml -Encoding utf8
+
+agentops agent analyze --severity-fail critical
+```
+
+The Watchdog report lists which sources ran and which were skipped. Do
+not treat skipped telemetry sources as success; wire them before relying
+on production-health conclusions.
 
 ## Troubleshooting
 
 | Symptom | What to check |
 |---|---|
-| `connection refused` | The server is not running or the URL/port is wrong. |
-| `Response field 'text' not found` | Update `response_field` to match your JSON response shape. |
-| `tool_call_accuracy` is missing | Add `tool_calls_field` and make sure the response includes structured tool calls. |
-| AI evaluator auth error | Run `az login` and set the Azure OpenAI / Foundry environment variables. |
+| `connection refused` | You are still pointing at a local URL or the container app has no external ingress. |
+| `Response field 'text' not found` | Update `response_field` to match the JSON response. |
+| Tool metrics are missing | Add `tool_calls_field` and return structured tool calls from the endpoint. |
+| GitHub Action fails in `azure/login` | Create the GitHub `dev` environment variables and the Azure federated credential before pushing the workflow. |
+| AI evaluator auth fails | Confirm OIDC role assignments or run `az login` locally. |
 
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | Evaluation succeeded and all thresholds passed. |
-| `2` | Evaluation succeeded but at least one threshold failed. |
-| `1` | Runtime or configuration error. |
-
-## CI/CD integration
-
-After the local run passes, generate workflow files with:
+## Cleanup
 
 ```powershell
-agentops workflow generate
+az group delete --name $env:AZURE_RESOURCE_GROUP --yes --no-wait
 ```
-
-The generated PR workflow uses the same `agentops eval run` exit codes to
-gate pull requests. See [ci-github-actions.md](ci-github-actions.md) for
-the GitHub environment and OIDC setup.

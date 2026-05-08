@@ -9,9 +9,11 @@ Help the user wire AgentOps into a real GenAIOps GitFlow CI/CD setup with
 three environments (`dev`, `qa`, `production`) and an automatic eval gate
 on every change.
 
-This skill produces four workflow files via `agentops workflow generate`
-and then walks the user through the GitHub-side configuration (OIDC,
-environments, branch protection, deploy step).
+For a new repository or tutorial, start with the PR gate only:
+`agentops workflow generate --kinds pr`. Generate DEV/QA/PROD deploy
+workflows only after GitHub Environments, Azure OIDC, and real
+build/deploy commands are configured. This avoids creating failing
+deploy Actions on the first push to `main`.
 
 ## Branch model assumed
 
@@ -40,14 +42,27 @@ and have them generate `--kinds pr,dev,prod`.
 ## Step 1 — Generate the workflows
 
 ```bash
-agentops workflow generate
+agentops workflow generate --kinds pr
 ```
 
-This writes **four** files into `.github/workflows/`:
+This writes the safe first workflow into `.github/workflows/`:
 
 | File | Trigger | Environment |
 |---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | (none) |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` plus manual dispatch | `dev` |
+
+After OIDC, environments, and real build/deploy commands are ready, expand
+to the full scaffold:
+
+```bash
+agentops workflow generate --kinds pr,dev,qa,prod --force
+```
+
+The full scaffold writes:
+
+| File | Trigger | Environment |
+|---|---|---|
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` |
 | `agentops-deploy-prod.yml` | push to `main` | `production` |
@@ -55,8 +70,8 @@ This writes **four** files into `.github/workflows/`:
 Useful flags:
 
 - `--force` — overwrite existing workflow files.
-- `--kinds pr,dev,qa,prod` — generate a subset (e.g. `--kinds pr,dev,prod`
-  for trunk-based teams).
+- `--kinds pr,dev,qa,prod` — generate a subset. Prefer `--kinds pr`
+  until deploy environments are configured.
 - `--dir <path>` — non-default repo root.
 
 ## Step 2 — Configure GitHub Environments
@@ -144,6 +159,8 @@ Common follow-ups:
 
 - Do **not** invent CLI flags. The supported `workflow generate` flags
   are `--force`, `--dir`, `--kinds`.
+- Do **not** push DEV/QA/PROD deploy workflows with placeholder
+  Build/Deploy steps or missing OIDC variables; generate PR-only first.
 - Do **not** create parallel workflow files. Prefer editing the
   generated ones.
 - Do **not** auto-fill Build/Deploy with steps you can't justify from

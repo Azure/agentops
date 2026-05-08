@@ -21,6 +21,7 @@ _SKILLS: tuple[str, ...] = (
     "skills/agentops-dataset/SKILL.md",
     "skills/agentops-report/SKILL.md",
     "skills/agentops-workflow/SKILL.md",
+    "skills/agentops-agent/SKILL.md",
 )
 
 _PLATFORM_CONFIGS: Dict[str, Dict[str, str]] = {
@@ -61,6 +62,7 @@ user asks about any of the topics below, read the corresponding skill file
 | Generate evaluation datasets | `.github/skills/agentops-dataset/SKILL.md` | "create dataset", "generate test data", "JSONL" |
 | Interpret and regenerate reports | `.github/skills/agentops-report/SKILL.md` | "report", "results", "explain scores" |
 | CI/CD workflow setup | `.github/skills/agentops-workflow/SKILL.md` | "CI", "workflow", "pipeline", "GitHub Actions" |
+| Watchdog analysis | `.github/skills/agentops-agent/SKILL.md` | "watchdog", "agent analyze", "production health", "latency spikes" |
 {_COPILOT_MARKER_END}"""
 
 _CURSOR_MDC = """\
@@ -80,6 +82,7 @@ read the corresponding skill file and follow its workflow step by step.
 | Generate evaluation datasets | `.github/skills/agentops-dataset/SKILL.md` |
 | Interpret and regenerate reports | `.github/skills/agentops-report/SKILL.md` |
 | CI/CD workflow setup | `.github/skills/agentops-workflow/SKILL.md` |
+| Watchdog analysis | `.github/skills/agentops-agent/SKILL.md` |
 """
 
 
