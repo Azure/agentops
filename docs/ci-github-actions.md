@@ -4,12 +4,16 @@ This guide shows how to wire AgentOps into a complete GenAIOps CI/CD
 pipeline on GitHub Actions, mapped to a classic GitFlow branching model
 with three deployment environments (`dev`, `qa`, `production`).
 
-`agentops workflow generate` ships **four** ready-to-use templates that
-form the full scaffold:
+`agentops workflow generate --kinds pr` is the safe first step for a new
+repository: it creates only the PR eval gate. Generate the full DEV/QA/PROD
+deploy scaffold after GitHub Environments, Azure OIDC, and real
+build/deploy commands are configured.
+
+The full scaffold ships four templates:
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | (none) | Eval gate. Fails the PR if thresholds drop. Comments report on PR. |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate. Fails the PR if thresholds drop. Comments report on PR. |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
 | `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → build → deploy PROD (gated by required reviewers) |
@@ -46,16 +50,18 @@ need: `agentops workflow generate --kinds pr,dev,prod`.
 # 1. Make sure your eval works locally first.
 agentops eval run
 
-# 2. Generate the four workflows.
-agentops workflow generate
+# 2. Generate the PR gate first.
+agentops workflow generate --kinds pr
 
 # 3. Configure GitHub (see sections below):
 #    - OIDC repo variables
-#    - dev / qa / production environments
+#    - dev environment
 #    - branch protection on develop and main
-#    - fill in Build / Deploy placeholders
 
-# 4. Commit and push.
+# 4. Commit and push the PR gate.
+
+# 5. Only after deploy wiring is real, generate the full scaffold:
+agentops workflow generate --kinds pr,dev,qa,prod --force
 ```
 
 ## Configuration walkthrough
@@ -206,6 +212,7 @@ Artifact names per workflow:
 ## CLI reference
 
 ```bash
+agentops workflow generate --kinds pr          # safe first PR gate
 agentops workflow generate                     # all four templates (default)
 agentops workflow generate --kinds pr,dev,prod # subset (trunk-based)
 agentops workflow generate --force             # overwrite existing files
