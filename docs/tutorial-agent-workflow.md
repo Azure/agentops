@@ -17,8 +17,8 @@ both of these row fields:
 When AgentOps sees `tool_calls` (or `tool_definitions`) in the
 dataset rows, it auto-selects the **agent workflow** evaluators:
 TaskCompletion, ToolCallAccuracy, IntentResolution, TaskAdherence,
-plus the conversational baseline (Coherence, Fluency, Similarity,
-F1Score, latency).
+plus the conversational baseline metrics that apply to the target
+(Coherence, Fluency, latency, and any explicitly configured text metric).
 
 ## 1. Bootstrap
 
@@ -44,11 +44,11 @@ body:
 ```yaml
 version: 1
 agent: "https://aca-weather-bot.example.com/"
-http:
-  request_field: message
-  response_field: text
-  tool_calls_field: tool_calls
 dataset: .agentops/data/tools.jsonl
+
+request_field: message
+response_field: text
+tool_calls_field: tool_calls
 ```
 
 `tool_calls_field` tells AgentOps where in the response JSON to find
@@ -61,9 +61,9 @@ the structured tool calls (dot-path notation supported).
 {"id":"2","input":"How is the weather in Tokyo, Japan?","expected":"Calls get_weather with location='Tokyo, Japan'.","tool_calls":[{"type":"function_call","name":"get_weather","arguments":{"location":"Tokyo, Japan"}}]}
 ```
 
-You can additionally include `tool_definitions` to give the evaluator
-the schema of every tool the agent should know about. This sharpens
-the **ToolSelectionEvaluator** judgement.
+Include `tool_definitions` when you evaluate tool-call accuracy. The
+evaluator needs the schema of every tool the agent should know about;
+repeat the catalogue on each JSONL row so every row is self-contained.
 
 ## 4. Run
 

@@ -34,9 +34,17 @@ the deployment, and skips agent infrastructure entirely.
 `.agentops/data/smoke.jsonl` (one JSON object per line):
 
 ```jsonl
-{"id":"1","input":"What is the capital of France?","expected":"Paris is the capital of France."}
-{"id":"2","input":"Which planet is known as the Red Planet?","expected":"Mars is the Red Planet."}
+{"id":"1","input":"Answer with exactly this sentence: Paris is the capital of France and one of Europe's major cultural centers.","expected":"Paris is the capital of France and one of Europe's major cultural centers."}
+{"id":"2","input":"Answer with exactly this sentence: Mars is known as the Red Planet because iron-rich dust gives its surface a reddish color.","expected":"Mars is known as the Red Planet because iron-rich dust gives its surface a reddish color."}
+{"id":"3","input":"Answer with exactly this sentence: Water has the chemical formula H2O because each molecule contains two hydrogen atoms and one oxygen atom.","expected":"Water has the chemical formula H2O because each molecule contains two hydrogen atoms and one oxygen atom."}
 ```
+
+The first model-direct smoke test intentionally uses short factual
+sentences with exact-answer instructions. That makes the default
+Similarity, F1, and Fluency thresholds meaningful: if this fails, you
+likely have a configuration/auth problem rather than a subjective-answer
+mismatch. Once the loop is working, replace these rows with realistic
+prompts for your application.
 
 The dataset has only `input` and `expected`, so AgentOps auto-selects
 the **model quality** evaluators: Coherence, Fluency, Similarity,

@@ -220,18 +220,18 @@ agentops workflow generate --dir <path>        # different repo root
 
 ## Customisation tips
 
-- **Tighten thresholds for QA / PROD** — copy `.agentops/run.yaml` to
-  `.agentops/run-qa.yaml` / `.agentops/run-prod.yaml` and tighten
-  thresholds in the bundle. Update the `inputs.config` default in the
+- **Tighten thresholds for QA / PROD** - copy `agentops.yaml` to
+  `agentops-qa.yaml` / `agentops-prod.yaml` and tighten the
+  `thresholds:` block. Update the `inputs.config` default in the
   matching workflow file.
 - **Scheduled runs** — add a `schedule:` entry in `agentops-pr.yml` (or
   a new file) to evaluate against `main` nightly.
-- **Matrix per scenario** — if you have multiple `runs/*.yaml`, extend
+- **Matrix per scenario** - if you have multiple AgentOps config files, extend
   the eval job with `strategy.matrix.config:` and reference
   `${{ matrix.config }}` in the eval step.
-- **Regression baseline** — wire deploy templates to download the
+- **Regression baseline** - wire deploy templates to download the
   previous run's `results.json` artifact and call
-  `agentops eval compare` between the two.
+  `agentops eval run --baseline <results.json>`.
 
 ## Migration from the older 3-template layout
 

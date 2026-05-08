@@ -219,4 +219,4 @@ The RAG scenario uses GroundednessEvaluator instead of SimilarityEvaluator becau
 - [Model-Direct Tutorial](tutorial-model-direct.md) — evaluate a model without agents
 - [RAG Tutorial](tutorial-rag.md) — evaluate retrieval-augmented responses
 - [Baseline Comparison Tutorial](tutorial-baseline-comparison.md) — compare runs and detect regressions
-- [Copilot Skills Tutorial](tutorial-copilot-skills.md) — install skills for AI-assisted guidance
+- [Copilot Skills Tutorial](tutorial-copilot-skills.md) — use the installed AgentOps skills to build an eval workflow with Copilot

@@ -31,7 +31,8 @@ and have them generate `--kinds pr,dev,prod`.
 ## Step 0 — Prerequisites
 
 1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
-2. `.agentops/run.yaml` exists and `agentops eval run` works locally.
+2. `agentops.yaml` exists at the project root and `agentops eval run`
+   works locally.
 3. The user's repo follows GitFlow (or is willing to). If not, ask which
    branches map to dev/qa/prod and adjust the `on:` triggers after
    generation.
@@ -126,18 +127,18 @@ This makes the eval gate a hard merge requirement.
 
 Common follow-ups:
 
-- **Tighten thresholds for QA/PROD** — copy `.agentops/run.yaml` to
-  `.agentops/run-qa.yaml` / `.agentops/run-prod.yaml` and tighten the
-  bundle thresholds. Point each workflow at its own config via the
+- **Tighten thresholds for QA/PROD** — copy `agentops.yaml` to
+  `agentops-qa.yaml` / `agentops-prod.yaml` and tighten the
+  `thresholds:` block. Point each workflow at its own config via the
   `inputs.config` default.
 - **Scheduled runs** — add a `schedule:` entry in `agentops-pr.yml` (or a
   new `agentops-nightly.yml`) to evaluate against `main` nightly.
-- **Matrix per scenario** — if the user has multiple `runs/*.yaml` files,
+- **Matrix per scenario** — if the user has multiple AgentOps config files,
   extend the eval job with `strategy.matrix.config:` and reference
   `${{ matrix.config }}`.
 - **Regression baseline** — wire the deploy templates to download the
   previous run's `results.json` artifact and call
-  `agentops eval compare`.
+  `agentops eval run --baseline <results.json>`.
 
 ## Guardrails
 

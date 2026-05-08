@@ -48,10 +48,10 @@ different field names, override them:
 ```yaml
 version: 1
 agent: "https://api.example.com/chat"
-http:
-  request_field: prompt
-  response_field: choices.0.message.content
 dataset: .agentops/data/chat.jsonl
+
+request_field: prompt
+response_field: choices.0.message.content
 ```
 
 ## 3. Dataset shape (`chat.jsonl`)
@@ -67,8 +67,8 @@ auto-selects the **conversational baseline** evaluators: Coherence,
 Fluency, Similarity, F1Score, average latency.
 
 > Want to test multi-turn behaviour explicitly? Have your service
-> accept a `history` field, then add `extra_fields: [history]` under
-> `http:` and include a `history` array in each JSONL row.
+> accept a `history` field, then add `extra_fields: [history]` to
+> `agentops.yaml` and include a `history` array in each JSONL row.
 
 ## 4. Run
 

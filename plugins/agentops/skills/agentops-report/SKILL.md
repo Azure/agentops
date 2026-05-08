@@ -59,9 +59,9 @@ exit code of the original run reflects the gate:
   suggest concrete prompt or retrieval changes.
 - For latency regressions, look at `run_metrics.avg_latency_seconds` and
   per-row latency.
-- To compare two runs, diff the two `results.json` files at the metric
-  level and surface the deltas; AgentOps does not ship a separate
-  comparison CLI.
+- To compare a new run against a previous one, re-run with
+  `agentops eval run --baseline <previous-results.json>` and explain the
+  generated **Comparison vs Baseline** section.
 
 ## Guardrails
 

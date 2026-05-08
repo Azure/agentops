@@ -117,6 +117,7 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 
 - [Quickstart tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-quickstart.md) — bootstrap a workspace and run one evaluation.
 - [End-to-end tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md) — full do-it-yourself tour: Foundry hosted agent, baseline comparison, GitFlow CI/CD, watchdog.
+- [Copilot skills tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md) — use AgentOps skills to have Copilot configure, run, explain, and wire evals into CI.
 - Per-scenario tutorials:
   - [Foundry hosted agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-basic-foundry-agent.md)
   - [Model-direct](https://github.com/Azure/agentops/blob/main/docs/tutorial-model-direct.md)

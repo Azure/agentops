@@ -60,8 +60,9 @@ agentops report generate --in <results.json>
 ```
 
 Open `.agentops/results/latest/report.md`. To compare two runs, hand both
-`results.json` files to the user and walk them through metric deltas;
-AgentOps does not ship a separate `eval compare` command.
+`results.json` files to the user or run the next eval with
+`--baseline <previous-results.json>` so AgentOps adds a **Comparison vs
+Baseline** section to the report.
 
 ## Step 5 — (Optional) Publish to Foundry Evaluations
 

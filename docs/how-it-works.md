@@ -46,7 +46,7 @@ src/
     │   ├── invocations.py     # Per-row agent / model invocation strategies
     │   ├── thresholds.py      # Threshold pass/fail evaluation
     │   ├── reporter.py        # Markdown report generation
-    │   ├── comparison.py      # `eval compare` two runs
+    │   ├── comparison.py      # Baseline delta rendering for `eval run --baseline`
     │   ├── publisher.py       # Classic Foundry publish (OneDP upload of metrics)
     │   └── cloud_publisher.py # New Foundry publish (server-side via OpenAI Evals API)
     │
@@ -108,7 +108,7 @@ When you run `agentops eval run`, the following happens step by step:
 |---|---|---|
 | `agentops init [--path DIR]` | Scaffold `.agentops/` workspace with starter config, bundles, datasets, and data. Also installs coding agent skills. | Available |
 | `agentops eval run` | Execute an evaluation (main command) | Available |
-| `agentops eval compare --runs ID1,ID2` | Compare two past evaluation runs | Available |
+| `agentops eval run --baseline <results.json>` | Run an eval and add a comparison against a previous result | Available |
 | `agentops skills install` | Install AgentOps coding agent skills (Copilot, Claude) into the target project | Available |
 | `agentops run list\|show` | List or inspect past runs | Planned (stub) |
 | `agentops run view <id> [--entry N]` | Deep-inspect a run | Planned (stub) |

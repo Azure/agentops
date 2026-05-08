@@ -43,7 +43,8 @@ agentops init
 This creates two files:
 
 - `agentops.yaml` — your evaluation config (3 lines + comments).
-- `.agentops/data/smoke.jsonl` — a 3-row seed dataset.
+- `.agentops/data/smoke.jsonl` — a 3-row seed dataset with short,
+  deterministic factual answers.
 
 ## 3. Configure your agent
 
@@ -90,6 +91,12 @@ To view the report rendered (tables, ✅/❌), open it in VS Code and press `Ctr
 ```bash
 code .agentops/results/latest/report.md
 ```
+
+The seed dataset asks the target to answer with exact short factual
+sentences. That keeps the first run focused on proving the AgentOps loop
+works instead of debugging subjective wording differences. After the
+smoke test passes, replace the rows with domain-specific examples for
+your agent.
 
 The CLI prints `Threshold status: PASSED` (exit code `0`) or `FAILED` (exit code `2`) so you can wire it into CI directly.
 

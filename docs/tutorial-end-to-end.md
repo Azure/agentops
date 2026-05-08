@@ -84,7 +84,7 @@ Set the project endpoint up front so every command picks it up.
 
 ```powershell
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
-$env:AZURE_OPENAI_ENDPOINT             = "https://<your-project>.services.ai.azure.com"
+$env:AZURE_OPENAI_ENDPOINT             = "https://<your-project>.openai.azure.com"
 $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
 ```
 
@@ -92,20 +92,19 @@ $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
 
 ```bash
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
-export AZURE_OPENAI_ENDPOINT="https://<your-project>.services.ai.azure.com"
+export AZURE_OPENAI_ENDPOINT="https://<your-project>.openai.azure.com"
 export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
 ```
 
-> **Watch out for two endpoint shapes.** On a Foundry "AI Services"
-> account, both env vars start with the same hostname but the
-> project endpoint includes `/api/projects/<project-name>` while
-> `AZURE_OPENAI_ENDPOINT` is **only** the hostname (no path). If you
-> paste the project URL into `AZURE_OPENAI_ENDPOINT` the evaluators
-> fail with `BadRequest: API version not supported`. AgentOps
-> defaults the API version to a release that works against both
-> New Foundry and classic Azure OpenAI; override with
-> `AZURE_OPENAI_API_VERSION` only if your resource needs a specific
-> version.
+> **Watch out for two endpoint shapes.** The Foundry project endpoint
+> uses the `*.services.ai.azure.com/api/projects/<project-name>` shape.
+> The evaluator model endpoint is the Azure OpenAI data-plane host,
+> usually `*.openai.azure.com`, with **no path**. If you paste the
+> project URL into `AZURE_OPENAI_ENDPOINT`, evaluators can fail with
+> `BadRequest: API version not supported`. AgentOps defaults the API
+> version to a release that works against both New Foundry and classic
+> Azure OpenAI; override with `AZURE_OPENAI_API_VERSION` only if your
+> resource needs a specific version.
 
 > The remaining shell snippets in this tutorial are written for
 > **PowerShell** (the default on Windows). bash / zsh users can
@@ -204,8 +203,8 @@ You get:
     └── agentops-*/SKILL.md
 ```
 
-Open `.agentops/agentops.yaml` and configure it for the support
-agent:
+Open `agentops.yaml` at the project root and configure it for the
+support agent:
 
 ```yaml
 version: 1
@@ -223,8 +222,9 @@ thresholds:
   coherence: ">=3"
   fluency: ">=3"
   similarity: ">=3"
-  # Latency budget.
-  avg_latency_seconds: "<=10"
+  # Lab-safe latency budget. Tool-calling Foundry agents can have
+  # occasional cold-start / orchestration spikes during a tutorial run.
+  avg_latency_seconds: "<=90"
 ```
 
 The `agent: "name:version"` shape is recognised as a **Foundry hosted
@@ -275,6 +275,13 @@ quality stack. When AgentOps loads the dataset it picks:
 | `CoherenceEvaluator` / `FluencyEvaluator` / `SimilarityEvaluator` / `F1ScoreEvaluator` | Standard text quality. |
 | `avg_latency_seconds` | End-to-end latency budget. |
 
+> **Why is the latency budget 90 seconds?** The point of this first gate
+> is to prove tool behavior, not to fail a learner because one Foundry
+> row hit a transient cold-start or service-queue spike. Keep this
+> tutorial gate broad, then tighten latency for your own production
+> agent after you have baseline data. Step 9 shows how to use
+> Application Insights and Watchdog for stricter p95 latency monitoring.
+
 ## 5. Run your first evaluation
 
 ```powershell
@@ -308,8 +315,10 @@ The report has four sections you will revisit often:
   debugging false-positive tool calls.
 - **Aggregate metrics** — averages across rows.
 - **Thresholds** — every rule from `agentops.yaml` with measured
-  value. With v1 you should see all the tool-calling thresholds in
-  the green.
+  value. With v1 you should see the tool-calling and text-quality
+  thresholds in the green. If latency is high but below the lab-safe
+  budget, keep going; you will inspect production-style p95 latency
+  with Watchdog later.
 
 The exit code is `0` (all thresholds passed) or `2` (one or more
 failed). `1` means a runtime error.
@@ -655,6 +664,9 @@ The `agentops-pr.yml` workflow runs. When it finishes you will see:
 - A green or red check on the PR.
 - A bot comment with the verdict, threshold table (including the
   tool-call metrics), and a link to the full `report.md` artifact.
+  The tutorial's latency threshold is intentionally broad; after a few
+  real runs, tighten it in `agentops.yaml` or enforce p95 latency with
+  Watchdog in step 9.
 
 Merge the PR. `agentops-deploy-dev.yml` triggers, runs an eval against
 the dev environment, and deploys if it passes.
