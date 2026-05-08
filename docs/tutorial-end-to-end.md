@@ -441,15 +441,45 @@ git push -u origin develop
 
 ### Wire the GitHub Environments
 
+At this point the eval works on your machine because your local Azure
+login has access to Foundry and to the evaluator model. GitHub Actions is
+a different machine, so you must give the workflow its own identity and
+permissions.
+
 The three workflows (`pr`, `deploy-dev`, `deploy-qa`, `deploy-prod`)
-expect a GitHub **environment** per stage, each populated with the same
-six variables and a federated credential so Azure trusts GitHub OIDC.
+expect one GitHub **environment** per stage. Each environment stores the
+variables the workflow needs and maps to one trusted Azure identity.
+
+| Piece | Why you need it |
+|---|---|
+| App registration + service principal | The Azure identity that GitHub Actions will impersonate. |
+| GitHub environment variables | Non-secret configuration such as tenant, subscription, Foundry endpoint, and evaluator model endpoint. |
+| Federated credential | The trust rule that allows GitHub OIDC tokens from this repo/environment to become Azure tokens. |
+| Azure role assignments | The actual permissions to read the Foundry agent and call the Azure OpenAI judge model. |
+
+Think of the setup in two layers:
+
+1. **Authentication:** GitHub proves "this workflow is running from your
+   `support-bot-*` repo in the `dev`, `qa`, or `prod` environment".
+2. **Authorization:** Azure checks whether that identity has roles on the
+   Foundry and Azure OpenAI resources.
 
 The next four snippets create everything end-to-end. Run them in order
 from the same PowerShell session you used above (so `$suffix` is still
 in scope).
 
 #### 1. Create the app registration GitHub will impersonate
+
+This creates the Azure identity used by the workflows. There is no client
+secret in this tutorial: GitHub will authenticate with OIDC instead of a
+stored password.
+
+The command prints three values you will store as GitHub environment
+variables:
+
+- `AZURE_CLIENT_ID` — which app registration GitHub should impersonate.
+- `AZURE_TENANT_ID` — which Microsoft Entra tenant owns the app.
+- `AZURE_SUBSCRIPTION_ID` — which Azure subscription the workflow should use.
 
 ```powershell
 $app    = az ad app create --display-name "support-bot-ci-$suffix" | ConvertFrom-Json
@@ -475,6 +505,23 @@ Write-Host "AZURE_SUBSCRIPTION_ID = $sub"
 
 #### 2. Create the three environments and push the variables
 
+GitHub environments give each stage its own variable scope and its own
+OIDC subject (`environment:dev`, `environment:qa`, `environment:prod`).
+The PR gate intentionally runs in `dev`, so it reuses the same variables
+and identity as the first deployment stage.
+
+This snippet creates the environments and stores the values the generated
+workflows read through `vars.*`:
+
+| Variable | Where it comes from | Used for |
+|---|---|---|
+| `AZURE_TENANT_ID` | `az account show` | Tells `azure/login` which Entra tenant to authenticate against. |
+| `AZURE_SUBSCRIPTION_ID` | `az account show` | Selects the Azure subscription for the workflow. |
+| `AZURE_CLIENT_ID` | The app registration from step 1 | Tells `azure/login` which identity GitHub should impersonate. |
+| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Your local env var | Tells AgentOps where the hosted support agent lives. |
+| `AZURE_OPENAI_ENDPOINT` | Your local env var | Tells evaluators where the judge model endpoint is. |
+| `AZURE_OPENAI_DEPLOYMENT` | The deployment name, e.g. `gpt-4o-mini` | Tells evaluators which judge model deployment to call. |
+
 ```powershell
 $foundry = $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
 $aoai    = $env:AZURE_OPENAI_ENDPOINT
@@ -495,16 +542,25 @@ foreach ($envName in @("dev","qa","prod")) {
 
 > **Prefer the portal?** Open your repo on github.com → **Settings →
 > Environments → New environment** and create `dev`, `qa`, and `prod`.
-> For each one, click **Add variable** and add the six rows from the
-> table at the top of this section.
+> For each one, click **Add variable** and add the six variables listed
+> above.
 
 #### 3. Add federated credentials so Azure trusts GitHub OIDC
 
-One credential per environment. The PR gate workflow runs **inside the
-`dev` environment** (so it inherits the same `dev` variables and OIDC
-subject) — no separate `pull_request` credential is needed. The JSON is
-written to a temp file because `az` does not parse inline JSON reliably
-under PowerShell:
+The variables above tell GitHub which Azure identity to use, but Azure
+still needs to trust this repository. A federated credential is that trust
+rule.
+
+Each credential says: "Accept tokens issued by GitHub for this exact repo
+and this exact environment." That is why the `subject` values include
+`environment:dev`, `environment:qa`, and `environment:prod`.
+
+The PR gate workflow runs **inside the `dev` environment**, so it inherits
+the same `dev` variables and OIDC subject — no separate `pull_request`
+credential is needed.
+
+The JSON is written to a temp file because `az` does not parse inline JSON
+reliably under PowerShell:
 
 ```powershell
 $subjects = @{
@@ -537,6 +593,19 @@ foreach ($name in $subjects.Keys) {
 > `environment:prod`).
 
 #### 4. Grant the app the roles it needs
+
+OIDC only proves the workflow's identity; it does not grant access by
+itself. This step assigns least-privilege Azure roles to the service
+principal:
+
+| Scope | Role | Why |
+|---|---|---|
+| Foundry account/project resource | `Azure AI User` | Lets AgentOps read and invoke the hosted support agent. |
+| Azure OpenAI account | `Cognitive Services OpenAI User` | Lets the evaluators call the judge model deployment. |
+
+The endpoint URLs contain the Azure resource names, but role assignments
+need full Azure resource IDs. The first half of the script extracts those
+names and resolves them to IDs; the second half assigns the roles.
 
 ```powershell
 $spId = az ad sp show --id $client --query id -o tsv
