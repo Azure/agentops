@@ -18,6 +18,11 @@ license = { file = "LICENSE" }
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0,<2"]
+foundry = [
+  "azure-ai-evaluation>=1.0",
+  "azure-identity>=1.17",
+  "pandas>=2.0",
+]
 agent = [
   "fastapi>=0.110",
   "uvicorn[standard]>=0.30",
