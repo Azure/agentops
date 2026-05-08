@@ -11,7 +11,7 @@ from `agentops.yaml`).
 
 ## Step 0 — Prerequisites
 
-1. `pip install agentops-toolkit` if `agentops` is missing.
+1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
 2. `agentops init` if `agentops.yaml` does not exist.
 
 ## Step 1 — Pick the columns

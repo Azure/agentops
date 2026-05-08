@@ -47,7 +47,7 @@ Exit code contract:
 ```bash
 python -m venv .venv
 python -m pip install -U pip
-python -m pip install agentops-toolkit
+python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ### 2) Bootstrap
@@ -109,9 +109,9 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 | `agentops report generate [--in FILE]` | Regenerate `report.md` from `results.json` |
 | `agentops workflow generate` | Generate GitHub Actions workflow |
 | `agentops skills install [--platform <p>]` | Install coding agent skills (Copilot, Claude) |
-| `agentops mcp serve` | Start the AgentOps MCP server (stdio). Requires `pip install agentops-toolkit[mcp]`. |
-| `agentops agent analyze` | Run the watchdog over your run history. Requires `pip install agentops-toolkit[agent]`. |
-| `agentops agent serve` | Start the watchdog as a FastAPI Copilot Extension. Requires `pip install agentops-toolkit[agent]`. |
+| `agentops mcp serve` | Start the AgentOps MCP server (stdio). Requires `pip install "agentops-toolkit[mcp] @ git+https://github.com/Azure/agentops.git@develop"`. |
+| `agentops agent analyze` | Run the watchdog over your run history. Requires `pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`. |
+| `agentops agent serve` | Start the watchdog as a FastAPI Copilot Extension. Requires `pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`. |
 
 ## Documentation
 

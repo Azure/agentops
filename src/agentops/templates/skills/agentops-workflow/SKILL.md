@@ -30,7 +30,7 @@ and have them generate `--kinds pr,dev,prod`.
 
 ## Step 0 — Prerequisites
 
-1. `pip install agentops-toolkit` if `agentops` is missing.
+1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
 2. `.agentops/run.yaml` exists and `agentops eval run` works locally.
 3. The user's repo follows GitFlow (or is willing to). If not, ask which
    branches map to dev/qa/prod and adjust the `on:` triggers after

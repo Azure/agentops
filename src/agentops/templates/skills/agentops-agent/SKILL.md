@@ -75,7 +75,7 @@ those folders.
 If the user wants the watchdog inside Copilot Chat, they can:
 
 ```bash
-pip install agentops-toolkit[agent]
+pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"
 agentops agent serve --no-verify       # local dev
 ```
 

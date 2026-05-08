@@ -118,7 +118,7 @@ export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1    # bash/zsh: source .venv/bin/activate
 python -m pip install -U pip
-python -m pip install agentops-toolkit
+python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
 python -m pip install azure-ai-projects azure-identity azure-ai-evaluation
 agentops --version
 ```
@@ -593,7 +593,7 @@ drifts that a single eval cannot see — repeated regressions, latency
 trends, error spikes, safety findings.
 
 ```powershell
-pip install "agentops-toolkit[agent]"
+pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"
 agentops agent analyze
 ```
 

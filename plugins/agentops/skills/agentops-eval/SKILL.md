@@ -9,7 +9,7 @@ End-to-end workflow: install → init → configure → run → read report.
 
 ## Step 0 — Setup
 
-1. Install if missing: `pip install agentops-toolkit`.
+1. Install if missing: `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"`.
 2. If `agentops.yaml` does not exist at the project root, run `agentops init`.
 
 ## Step 1 — Identify the agent target

@@ -23,7 +23,7 @@ F1Score, latency).
 ## 1. Bootstrap
 
 ```bash
-pip install agentops-toolkit
+pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
 agentops init
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```

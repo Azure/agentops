@@ -31,7 +31,7 @@ The rest of the toolkit (legacy bundles, multi-file workspaces, custom adapters)
 ```bash
 python -m venv .venv
 python -m pip install -U pip
-python -m pip install agentops-toolkit
+python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Bootstrap the project

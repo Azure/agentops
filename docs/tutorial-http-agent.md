@@ -20,7 +20,7 @@ The HTTP backend works for multi-agent scenarios transparently — evaluation al
 - Python 3.11+
 - An agent running and accessible via HTTP (local or remote).
 - *(Optional)* Azure CLI for AI-assisted evaluators (`az login`).
-- `pip install agentops-toolkit`
+- `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"`
 
 ## Part 1: Set up
 
