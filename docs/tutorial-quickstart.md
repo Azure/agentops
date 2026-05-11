@@ -1,6 +1,9 @@
 # Tutorial: minimal quickstart
 
-This tutorial covers the simplest end-to-end AgentOps flow: bootstrap a workspace, point it at any agent, and run an evaluation.
+This tutorial covers the simplest end-to-end AgentOps flow: create a
+small Foundry prompt agent, bootstrap an AgentOps workspace, run a
+baseline evaluation, intentionally change the agent prompt, and compare
+the new run against the baseline.
 
 > Looking for the long-form, do-it-yourself tour that also covers
 > a real tool-calling support agent, baseline comparison, GitFlow
@@ -9,21 +12,21 @@ This tutorial covers the simplest end-to-end AgentOps flow: bootstrap a workspac
 
 ## What you will build
 
+- A Foundry prompt agent with deterministic smoke-test instructions.
 - A flat `agentops.yaml` at your project root.
 - A small JSONL dataset.
-- One `agentops eval run` execution producing `results.json` and `report.md`.
+- A baseline `agentops eval run` producing `results.json` and `report.md`.
+- A second run compared against the baseline so the report shows prompt
+  quality deltas.
 
 The former bundle-based, multi-file workspace has been replaced by this flat `agentops.yaml` workflow for the common case.
 
 ## Prerequisites
 
 - Python 3.11 or later.
-- Access to a target agent or model. Choose one:
-  - A **Foundry prompt agent** identified by `name:version` (for example `customer-support:3`).
-  - A **Foundry hosted endpoint** (`https://*.services.ai.azure.com/.../agents/<id>`).
-  - A **generic HTTP/JSON agent** deployed anywhere (ACA, AKS, your own server).
-  - A **raw Foundry model deployment** (e.g. `gpt-4o`).
-- For Foundry targets: the Foundry project endpoint URL.
+- Permission to create or edit a **Foundry prompt agent** and publish a
+  version identified by `name:version` (for example `agentops-smoke:1`).
+- The Foundry project endpoint URL.
 - For AI-assisted evaluators (Coherence, Groundedness, etc.): an Azure OpenAI endpoint and deployment to use as the judge model.
 
 ## 1. Install
@@ -48,24 +51,41 @@ This creates two files:
 - `.agentops/data/smoke.jsonl` — a 3-row seed dataset with short,
   deterministic factual answers.
 
-## 3. Configure your agent
+## 3. Create the smoke-test Foundry agent
 
-Open `agentops.yaml` and set the `agent:` field. The classifier infers the target kind from the value:
+In Azure AI Foundry, create a prompt agent named `agentops-smoke` with
+your preferred model deployment. Paste this exact instruction into the
+agent's **Instructions** field, then save and publish it:
 
-| Value                                                    | Resolves to                          |
-| -------------------------------------------------------- | ------------------------------------ |
-| `"customer-support:3"`                                   | Foundry prompt agent (`name:version`) |
-| `"https://<host>.services.ai.azure.com/.../agents/<id>"` | Foundry hosted endpoint              |
-| `"https://api.example.com/chat"`                         | Generic HTTP/JSON agent              |
-| `"model:gpt-4o"`                                         | Raw Foundry model deployment         |
+```text
+You are the AgentOps quickstart smoke-test agent.
 
-For Foundry prompt agents, use the agent name plus the published version number shown in Foundry, without the `v` prefix. For example, an agent named `my-agent` with published version `v2` is referenced as `my-agent:2`.
+For every user message:
+- If the message starts with "Answer with exactly this sentence:", copy
+  only the sentence after that prefix.
+- Do not add greetings, markdown, citations, caveats, or explanations.
+- Preserve punctuation, capitalization, and wording exactly.
+- If the message does not use that prefix, answer briefly and factually
+  in one sentence.
+```
+
+Copy the published `name:version` value from Foundry, for example
+`agentops-smoke:1`. This prompt is intentionally strict because the seed
+dataset checks whether the agent can follow exact-output instructions.
+
+## 4. Configure AgentOps
+
+Open `agentops.yaml` and set `agent:` to your Foundry prompt agent using
+the `name:version` format. Use the agent name plus the published version
+number shown in Foundry, without the `v` prefix. For example, an agent
+named `my-agent` with published version `v2` is referenced as
+`my-agent:2`.
 
 The full minimal config is just:
 
 ```yaml
 version: 1
-agent: "customer-support:3"
+agent: "agentops-smoke:1"
 dataset: .agentops/data/smoke.jsonl
 ```
 
@@ -73,12 +93,17 @@ If your target is a Foundry prompt agent (`name:version`) and you want the run t
 
 ```yaml
 version: 1
-agent: "customer-support:3"
+agent: "agentops-smoke:1"
 dataset: .agentops/data/smoke.jsonl
 publish: foundry_cloud
 ```
 
-## 4. Run the evaluation
+> AgentOps also supports hosted Foundry endpoints, generic HTTP/JSON
+> endpoints, and raw model deployments. Those are covered in the scenario
+> tutorials; this quickstart keeps the path focused on a Foundry prompt
+> agent.
+
+## 5. Run the baseline evaluation
 
 Set credentials and run. For Foundry targets, provide the project endpoint either in `agentops.yaml` as `project_endpoint:` or in `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`; if both are set, `agentops.yaml` wins for target invocation and publishing.
 
@@ -121,40 +146,61 @@ code .agentops/results/latest/report.md
 ```
 
 The seed dataset asks the target to answer with exact short factual
-sentences. That keeps the first run focused on proving the AgentOps loop
-works instead of debugging subjective wording differences. After the
-smoke test passes, replace the rows with domain-specific examples for
-your agent.
+sentences. The prompt from step 3 is designed to pass this smoke test, so
+this first successful run is your baseline.
+
+Capture that baseline before changing the agent:
+
+```powershell
+New-Item -ItemType Directory -Force .agentops\baseline | Out-Null
+Copy-Item .agentops\results\latest\results.json .agentops\baseline\results.json
+```
 
 The CLI prints `Threshold status: PASSED` (exit code `0`) or `FAILED` (exit code `2`) so you can wire it into CI directly.
 
-## 5. Compare against a baseline later
+## 6. Change the prompt and compare against the baseline
 
-Comparison is most useful after a meaningful change. If you immediately
-run the same agent, prompt, model, and dataset again, the report will
-mostly show "unchanged" metrics plus normal latency variance. Treat the
-first successful quickstart run as your baseline, then compare after you
-change something real, for example:
+Before running the comparison, make a real prompt change so the report
+has something visible to measure. In Foundry, replace the agent
+instructions with this intentionally degraded prompt, then save and
+publish a new version:
 
-- publish a new version of the Foundry agent and update `agent: "name:version"`
-- change the agent instructions or model deployment
-- replace the smoke dataset with domain-specific rows
+```text
+You are a friendly educational assistant.
 
-Each `agentops eval run` writes to a timestamped folder and refreshes
-`.agentops/results/latest/`. After making one of those changes, compare
-the new run against the previous one by pointing `--baseline` at `latest`:
-
-```powershell
-# After changing the agent version, prompt, model, or dataset:
-agentops eval run --baseline .agentops/results/latest/results.json
+For every answer:
+- Do not copy the user's requested sentence verbatim.
+- Paraphrase the answer in your own words.
+- Add one extra sentence of helpful context.
+- Use a warm, conversational tone.
 ```
 
-AgentOps loads the baseline into memory before refreshing `latest/`,
-so `latest/results.json` is shorthand for "the run before this one".
-For a stable reference (e.g. a CI baseline), point at a specific
-timestamp folder instead.
+Update `agentops.yaml` to the new published version:
+
+```yaml
+version: 1
+agent: "agentops-smoke:2"
+dataset: .agentops/data/smoke.jsonl
+publish: foundry_cloud
+```
+
+Now compare the changed prompt against the captured baseline:
+
+```powershell
+agentops eval run --baseline .agentops/baseline/results.json
+```
+
+The comparison should show visible deltas because the baseline prompt
+copied the exact expected sentences while the new prompt deliberately
+paraphrases and adds extra text. Expect `similarity` and `f1_score` to
+drop, while latency may vary normally.
 
 `report.md` now includes a `Comparison vs Baseline` section with per-metric deltas (🟢 improved / 🔴 regressed / ⚪ unchanged).
+
+For normal local iteration you can also use
+`.agentops/results/latest/results.json` as the baseline path. AgentOps
+loads the baseline before refreshing `latest/`, so that path means "the
+run before this one".
 
 ## Where evaluators come from
 

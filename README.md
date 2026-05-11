@@ -57,7 +57,7 @@ python -m pip install --upgrade "agentops-toolkit[foundry]"
 agentops init
 ```
 
-This writes a single `agentops.yaml` at the project root and a tiny seed dataset at `.agentops/data/smoke.jsonl`. Edit `agentops.yaml` to point at your agent.
+This writes a single `agentops.yaml` at the project root and a tiny seed dataset at `.agentops/data/smoke.jsonl`.
 
 ### 3) Configure your agent
 
@@ -70,11 +70,21 @@ agent: "https://api.example.com/chat"      # any HTTP/JSON agent (ACA, AKS, cust
 agent: "model:gpt-4o"                       # raw Foundry model deployment
 ```
 
+For the smoke dataset, create a Foundry prompt agent such as
+`agentops-smoke` and publish it with instructions that copy exact-answer
+requests verbatim:
+
+```text
+If the user message starts with "Answer with exactly this sentence:",
+copy only the sentence after that prefix. Do not add greetings,
+markdown, citations, caveats, or explanations.
+```
+
 Evaluators are inferred from the dataset shape (rows with `context` → RAG evaluators, rows with `tool_calls`/`tool_definitions` → agent-workflow evaluators). The full minimal config is:
 
 ```yaml
 version: 1
-agent: "my-rag:3"
+agent: "agentops-smoke:1"
 dataset: .agentops/data/smoke.jsonl
 ```
 
@@ -95,11 +105,20 @@ Outputs land in `.agentops/results/latest/`:
 - `results.json` — machine-readable (versioned, stable schema)
 - `report.md` — human-readable, PR-friendly
 
-After changing the agent version, prompt, model, or dataset, compare
-against a previous run with `--baseline`:
+Capture the first successful run as a baseline:
 
 ```powershell
-agentops eval run --baseline .agentops/results/baseline/results.json
+New-Item -ItemType Directory -Force .agentops\baseline | Out-Null
+Copy-Item .agentops\results\latest\results.json .agentops\baseline\results.json
+```
+
+To see a visible comparison, publish a new agent version with a prompt
+that paraphrases instead of copying exact-answer requests, update
+`agentops.yaml` to that new `name:version`, and compare against the
+baseline:
+
+```powershell
+agentops eval run --baseline .agentops/baseline/results.json
 ```
 
 The report grows a `Comparison vs Baseline` section with per-metric deltas.
