@@ -6,7 +6,7 @@ model can't answer your dataset, no agent prompt will save it.
 
 ## Prerequisites
 
-- Python 3.11+ and `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"`
+- Python 3.11+ and `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`
 - A Foundry project with at least one model deployment
 - `az login` (AgentOps uses `DefaultAzureCredential`)
 

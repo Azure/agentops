@@ -47,7 +47,7 @@ Exit code contract:
 ```bash
 python -m venv .venv
 python -m pip install -U pip
-python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ### 2) Bootstrap

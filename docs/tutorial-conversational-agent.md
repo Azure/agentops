@@ -20,7 +20,7 @@ script of questions.
 ## 1. Bootstrap
 
 ```bash
-pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
+pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 agentops init
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```

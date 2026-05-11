@@ -117,14 +117,13 @@ export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1    # bash/zsh: source .venv/bin/activate
 python -m pip install -U pip
-python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
-python -m pip install azure-ai-projects azure-identity azure-ai-evaluation
+python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 agentops --version
 ```
 
-> `azure-ai-projects` and `azure-identity` are only needed by the
-> helper script that creates the agent. `azure-ai-evaluation` is the
-> SDK that runs the local evaluators (`ToolCallAccuracyEvaluator`,
+> The `[foundry]` extra installs the Azure SDK dependencies needed by
+> the helper script and by the local evaluator runtime. `azure-ai-evaluation`
+> provides evaluators such as `ToolCallAccuracyEvaluator`,
 > `IntentResolutionEvaluator`, `CoherenceEvaluator`, …) — without it
 > `agentops eval run` exits with
 > `Evaluators require the 'azure-ai-evaluation' package`.

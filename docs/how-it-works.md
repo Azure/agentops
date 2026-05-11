@@ -99,7 +99,7 @@ When you run `agentops eval run`, the following happens step by step:
 10. Write results.json + report.md (pipeline/reporter.py)
 11. Sync .agentops/results/latest/
 12. (Optional) Publish local metrics to Classic Foundry (`publish: foundry`)
-    or submit a server-side New Foundry run (`publish: foundry_cloud`)
+    or additionally submit a server-side New Foundry run (`publish: foundry_cloud`)
 13. CLI returns exit code         (0 = pass, 2 = threshold fail, 1 = error)
 ```
 
@@ -196,7 +196,7 @@ That's a complete config. AgentOps:
 | `headers` | no | Static HTTP headers (dict). |
 | `auth_header_env` | no | Env var name holding a Bearer token. |
 | `evaluators` | no | Escape-hatch list of evaluator names that overrides auto-selection. |
-| `publish` | no | `foundry` (Classic) or `foundry_cloud` (preview, server-side). See [Publishing](#publishing-to-foundry-evaluations). |
+| `publish` | no | `foundry` (Classic upload) or `foundry_cloud` (also submit server-side). See [Publishing](#publishing-to-foundry-evaluations). |
 | `project_endpoint` | no | Foundry project URL used by `publish:`. Falls back to `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. |
 
 ### Target kinds
@@ -251,7 +251,7 @@ thresholds:
   avg_latency_seconds: "<=8"
 ```
 
-**New Foundry server-side run (preview):**
+**Also submit to New Foundry server-side (preview):**
 
 ```yaml
 version: 1
@@ -329,16 +329,16 @@ if every threshold passes. The run passes only if every row passes
 
 ## Publishing to Foundry Evaluations
 
-`publish:` is opt-in. It primarily controls Foundry visibility, but
-`publish: foundry_cloud` also changes where evaluator execution happens.
-Both modes are best-effort: if publish fails, the local `results.json` and
-`report.md` remain the canonical record and the exit code reflects only
-thresholds, not publish failures.
+`publish:` is opt-in and controls Foundry visibility. AgentOps always writes
+local `results.json` and `report.md` first. `publish: foundry_cloud` then also
+submits a second, server-side Foundry evaluation. Both modes are best-effort:
+if publish fails, the local artifacts remain the canonical record and the exit
+code reflects only thresholds, not publish failures.
 
-| Mode | Where evaluation runs | Where results land | Target restriction |
+| Mode | What runs | Where results land | Target restriction |
 |---|---|---|---|
 | `publish: foundry` | Locally in AgentOps, then uploads computed metrics via OneDP. | **Classic** Foundry Evaluations panel. | Any target kind. |
-| `publish: foundry_cloud` (preview) | Server-side in Foundry via the OpenAI Evals API. | **New** Foundry Evaluations panel. | `foundry_prompt` only (`name:version` Foundry agents). |
+| `publish: foundry_cloud` (preview) | Locally in AgentOps first, then server-side in Foundry via the OpenAI Evals API. | Local artifacts plus **New** Foundry Evaluations panel. | `foundry_prompt` only (`name:version` Foundry agents). |
 
 Both modes:
 

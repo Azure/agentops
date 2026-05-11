@@ -9,7 +9,7 @@ End-to-end workflow: install → init → configure → run → read report.
 
 ## Step 0 — Setup
 
-1. Install if missing: `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"`.
+1. Install if missing: `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`.
 2. If `agentops.yaml` does not exist at the project root, run `agentops init`.
 
 ## Step 1 — Identify the agent target
@@ -64,31 +64,30 @@ Open `.agentops/results/latest/report.md`. To compare two runs, hand both
 `--baseline <previous-results.json>` so AgentOps adds a **Comparison vs
 Baseline** section to the report.
 
-## Step 5 — (Optional) Publish to Foundry Evaluations
+## Step 5 — (Optional) Foundry execution / visibility
 
 Two modes are supported. Both write a deep-link into
 `.agentops/results/latest/cloud_evaluation.json` and require
 `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (or the inline `project_endpoint`).
 
-**Classic Foundry Evaluations panel** (default — works for any target
-kind, uploads metrics that AgentOps already computed locally):
+**Classic Foundry Evaluations panel** (works for any target kind):
+AgentOps runs locally first, then uploads the metrics it computed.
 
 ```yaml
 publish: foundry
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
-**New Foundry Evaluations panel** (preview — re-runs the agent + builtin
-evaluators server-side via the OpenAI Evals API; only works for
-`name:version` Foundry agents):
+**New Foundry Evaluations panel** (preview): AgentOps still writes local
+artifacts first, then submits a server-side Foundry run via the OpenAI Evals
+API. This only works for `name:version` Foundry agents.
 
 ```yaml
 publish: foundry_cloud
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
-Foundry-side latency and judges replace the local view in this mode;
-`results.json` from the local run remains the canonical record.
+Without `publish`, AgentOps runs locally and only writes local artifacts.
 
 ## Tips
 

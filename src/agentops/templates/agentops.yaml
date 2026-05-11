@@ -25,11 +25,11 @@ dataset: .agentops/data/smoke.jsonl
 #   groundedness: ">=3"
 #   avg_latency_seconds: "<=10"
 
-# Optional. Publish controls Foundry visibility. With foundry_cloud it also
-# moves evaluator execution to Foundry server-side.
+# Optional. Publish controls Foundry visibility. foundry_cloud keeps the local
+# AgentOps run and also submits a server-side run to New Foundry.
 # Requires AZURE_AI_FOUNDRY_PROJECT_ENDPOINT (or 'project_endpoint' below).
 #
-# - foundry_cloud: run + results in New Foundry (preview, name:version agents)
+# - foundry_cloud: local run + server-side New Foundry run (name:version agents)
 # - foundry: local run, then upload metrics to Classic Foundry
 #
 # publish: foundry_cloud

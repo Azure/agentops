@@ -9,7 +9,7 @@ End-to-end workflow: install → init → configure → run → read report.
 
 ## Step 0 — Setup
 
-1. Install if missing: `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"`.
+1. Install if missing: `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`.
 2. If `agentops.yaml` does not exist at the project root, run `agentops init`.
 
 ## Step 1 — Identify the agent target
@@ -78,9 +78,9 @@ publish: foundry
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
-**New Foundry Evaluations panel** (preview): Foundry runs the agent and
-builtin evaluators server-side via the OpenAI Evals API. This only works
-for `name:version` Foundry agents.
+**New Foundry Evaluations panel** (preview): AgentOps still writes local
+artifacts first, then submits a server-side Foundry run via the OpenAI Evals
+API. This only works for `name:version` Foundry agents.
 
 ```yaml
 publish: foundry_cloud

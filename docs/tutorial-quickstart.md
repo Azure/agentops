@@ -31,7 +31,7 @@ The former bundle-based, multi-file workspace has been replaced by this flat `ag
 ```bash
 python -m venv .venv
 python -m pip install -U pip
-python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Bootstrap the project
@@ -67,7 +67,7 @@ agent: "customer-support:3"
 dataset: .agentops/data/smoke.jsonl
 ```
 
-If your target is a Foundry prompt agent (`name:version`) and you want the evaluation to run server-side and appear in the New Foundry Evaluations panel, opt in to cloud publishing:
+If your target is a Foundry prompt agent (`name:version`) and you want the run to also appear in the New Foundry Evaluations panel, opt in to cloud publishing:
 
 ```yaml
 version: 1
@@ -99,7 +99,7 @@ Outputs:
     └── cloud_evaluation.json   # when publish: foundry_cloud is set
 ```
 
-Without `publish`, AgentOps runs locally and only writes local artifacts. With `publish: foundry_cloud`, Foundry runs the agent and built-in evaluators server-side; `cloud_evaluation.json` includes the Foundry `eval_id`, `run_id`, status, and `report_url`.
+Without `publish`, AgentOps runs locally and only writes local artifacts. With `publish: foundry_cloud`, AgentOps still writes local artifacts first, then submits a server-side Foundry evaluation; `cloud_evaluation.json` includes the Foundry `eval_id`, `run_id`, status, and `report_url`.
 
 To view the report rendered (tables, ✅/❌), open it in VS Code and press `Ctrl+Shift+V`:
 

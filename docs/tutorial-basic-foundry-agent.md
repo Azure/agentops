@@ -40,7 +40,7 @@ If you see agent scores drop to 1.0 on questions that the model-direct handles a
 - Azure CLI (`az login`)
 - A Foundry project with a deployed agent
 - A model deployment in the same project (used as the judge model for SimilarityEvaluator)
-- `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"`
+- `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`
 
 ## Part 1: Create the agent in Foundry
 
@@ -123,11 +123,10 @@ Key points:
   taken from `AZURE_OPENAI_DEPLOYMENT` (set in Part 2).
 - Evaluators are auto-selected from the dataset row shape — `input` +
   `expected` triggers `SimilarityEvaluator`. No `bundle` to maintain.
-- `publish: foundry_cloud` is optional. It means Foundry runs the agent and
-  built-in evaluators server-side, then shows the run in the New Foundry
-  Evaluations panel and writes `cloud_evaluation.json` with the portal URL.
-  Remove it if you only want AgentOps to run locally and write `results.json`
-  and `report.md`.
+- `publish: foundry_cloud` is optional. AgentOps still writes local
+  `results.json` and `report.md` first, then submits a server-side Foundry
+  evaluation and writes `cloud_evaluation.json` with the portal URL. Remove it
+  if you only want the local artifacts.
 
 ## Part 4: Review the dataset
 
@@ -215,7 +214,7 @@ The RAG scenario uses GroundednessEvaluator instead of SimilarityEvaluator becau
 
 ## Notes
 
-- **Cloud vs local mode**: By default, AgentOps uses Foundry Cloud Evaluation with the `azure_ai_evaluator` API. Set `AGENTOPS_FOUNDRY_MODE=local` to invoke the agent row-by-row and run evaluators locally (requires `pip install azure-ai-evaluation`).
+- **Local vs Foundry publishing**: By default, AgentOps invokes the agent row-by-row and runs evaluators locally. Add `publish: foundry_cloud` to also submit a server-side run to the New Foundry Evaluations panel.
 - **Authentication**: `DefaultAzureCredential` handles auth automatically. For local dev, use `az login`. For CI, set `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`.
 - **Named vs legacy agents**: Named agents (e.g., `my-agent:3`) use the Responses API. Legacy agents (`asst_*`) use the Threads API. Both work transparently.
 - **Exit codes**: `0` = all thresholds passed, `2` = threshold failures, `1` = error.

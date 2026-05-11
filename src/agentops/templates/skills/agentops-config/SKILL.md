@@ -11,7 +11,7 @@ handful of fields — most projects need just `version`, `agent`, and
 
 ## Step 0 — Prerequisites
 
-1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
+1. `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
 2. `agentops init` if `agentops.yaml` does not exist.
 
 ## Step 1 — Detect the agent target
@@ -65,7 +65,7 @@ thresholds:
   avg_latency_seconds: "<=10"
 
 publish: foundry            # local run, then upload metrics to Classic Foundry
-# publish: foundry_cloud    # server-side run in New Foundry (name:version agents only)
+# publish: foundry_cloud    # local run + server-side New Foundry run (name:version agents only)
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 
 evaluators:           # rare - AgentOps auto-selects from agent + dataset

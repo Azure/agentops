@@ -223,10 +223,9 @@ class AgentOpsConfig(BaseModel):
             "Optional opt-in publish target.\n"
             "- 'foundry' (Classic): runs locally, uploads computed metrics "
             "to the Classic Foundry Evaluations panel via OneDP.\n"
-            "- 'foundry_cloud' (preview): submits the run to the New Foundry "
-            "experience via the OpenAI Evals API. The agent and evaluators "
-            "execute server-side; agent must be a 'name:version' Foundry "
-            "agent."
+            "- 'foundry_cloud' (preview): after local artifacts are written, "
+            "submits a server-side run to the New Foundry experience via the "
+            "OpenAI Evals API; agent must be a 'name:version' Foundry agent."
         ),
     )
     project_endpoint: Optional[str] = Field(
