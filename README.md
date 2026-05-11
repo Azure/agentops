@@ -44,15 +44,16 @@ Exit code contract:
 
 ### 1) Install
 
-```bash
+```powershell
 python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ### 2) Bootstrap
 
-```bash
+```powershell
 agentops init
 ```
 
@@ -79,8 +80,8 @@ dataset: .agentops/data/smoke.jsonl
 
 ### 4) Run
 
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+```powershell
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 agentops eval run
 ```
 
@@ -91,7 +92,7 @@ Outputs land in `.agentops/results/latest/`:
 
 To compare against a previous run, pass `--baseline`:
 
-```bash
+```powershell
 agentops eval run --baseline .agentops/results/baseline/results.json
 ```
 

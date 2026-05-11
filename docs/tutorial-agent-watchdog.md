@@ -26,12 +26,13 @@ in three form factors:
 
 ## 1. Local dry-run
 
-```bash
-pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
+```powershell
+pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"
 agentops init                     # if you don't already have .agentops/
 
 # Optional: drop a starter agent.yaml into the workspace.
-cp $(python -c "import agentops, pathlib; print(pathlib.Path(agentops.__file__).parent / 'templates' / 'agent.yaml')") .agentops/agent.yaml
+$template = python -c "import agentops, pathlib; print(pathlib.Path(agentops.__file__).parent / 'templates' / 'agent.yaml')"
+Copy-Item $template .agentops\agent.yaml
 
 agentops agent analyze
 ```
@@ -58,7 +59,7 @@ sources:
 Install the agent extras (lazy SDKs only loaded when sources are
 enabled):
 
-```bash
+```powershell
 pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"
 az login
 agentops agent analyze --severity-fail critical
@@ -204,7 +205,7 @@ network restriction plan.
 
 Run only the security category, or skip a specific rule from the CLI:
 
-```bash
+```powershell
 # Run every check, including the WAF audit (the default once enabled).
 agentops agent analyze
 
@@ -255,7 +256,7 @@ jobs:
 
 ## 5. Copilot Chat extension (local)
 
-```bash
+```powershell
 pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"
 agentops agent serve --no-verify --port 8080
 ```
@@ -278,18 +279,18 @@ src/agentops/templates/agent-server/
 
 Workflow:
 
-```bash
-az acr build --registry <acr> --image agentops-watchdog:1.0.0 \
+```powershell
+az acr build --registry <acr> --image agentops-watchdog:1.0.0 `
    --file Dockerfile .
 
-az deployment group create \
-   --resource-group <rg> \
-   --template-file main.bicep \
-   --parameters \
-       environmentName=<aca-env> \
-       image=<acr>.azurecr.io/agentops-watchdog:1.0.0 \
-       userAssignedIdentityId=<umi-id> \
-       appInsightsResourceId=<appi-id> \
+az deployment group create `
+   --resource-group <rg> `
+   --template-file main.bicep `
+   --parameters `
+       environmentName=<aca-env> `
+       image=<acr>.azurecr.io/agentops-watchdog:1.0.0 `
+       userAssignedIdentityId=<umi-id> `
+       appInsightsResourceId=<appi-id> `
        foundryProjectEndpoint=<https://...>
 ```
 

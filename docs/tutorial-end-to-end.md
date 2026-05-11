@@ -88,14 +88,6 @@ $env:AZURE_OPENAI_ENDPOINT             = "https://<your-project>.openai.azure.co
 $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
 ```
 
-**bash / zsh (Linux, macOS, WSL):**
-
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<your-project>.services.ai.azure.com/api/projects/<project-name>"
-export AZURE_OPENAI_ENDPOINT="https://<your-project>.openai.azure.com"
-export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
-```
-
 > **Watch out for two endpoint shapes.** The Foundry project endpoint
 > uses the `*.services.ai.azure.com/api/projects/<project-name>` shape.
 > The evaluator model endpoint is the Azure OpenAI data-plane host,
@@ -106,16 +98,15 @@ export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
 > Azure OpenAI; override with `AZURE_OPENAI_API_VERSION` only if your
 > resource needs a specific version.
 
-> The remaining shell snippets in this tutorial are written for
-> **PowerShell** (the default on Windows). bash / zsh users can
-> substitute `export VAR=value` for `$env:VAR = "value"`, `cat`
-> for `Get-Content`, and `ls` for `Get-ChildItem`.
+> The shell snippets in this tutorial are written for **PowerShell**.
+> On macOS or Linux, use the equivalent bash/zsh syntax for environment
+> variables and file commands.
 
 ## 1. Install AgentOps
 
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1    # bash/zsh: source .venv/bin/activate
+.\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 agentops --version
@@ -355,15 +346,7 @@ agent: "support-bot:2"
 
 Re-run with the v1 result as the baseline:
 
-**PowerShell:**
-
 ```powershell
-agentops eval run --baseline .agentops/results/latest/results.json
-```
-
-**bash / zsh:**
-
-```bash
 agentops eval run --baseline .agentops/results/latest/results.json
 ```
 

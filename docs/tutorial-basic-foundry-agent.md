@@ -80,25 +80,21 @@ AgentOps handles both. Named agents use the Foundry Responses API; legacy agents
 
 ### 1) Azure login
 
-```bash
+```powershell
 az login
 ```
 
 ### 2) Set the project endpoint
 
-PowerShell:
 ```powershell
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 
-Bash/zsh:
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
-```
+On macOS or Linux, set the same environment variable with your shell's syntax.
 
 ### 3) Initialize the workspace
 
-```bash
+```powershell
 agentops init
 ```
 
@@ -145,7 +141,7 @@ For meaningful evaluation, your dataset should match what your agent is designed
 
 ## Part 5: Run the evaluation
 
-```bash
+```powershell
 agentops eval run
 ```
 
@@ -191,7 +187,7 @@ You've only run a single evaluation, so `.agentops/results/` has one timestamped
 
 **2. Re-run with `--baseline`:**
 
-```bash
+```powershell
 agentops eval run --baseline .agentops/results/latest/results.json
 ```
 

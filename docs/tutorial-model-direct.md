@@ -12,9 +12,9 @@ model can't answer your dataset, no agent prompt will save it.
 
 ## 1. Bootstrap
 
-```bash
+```powershell
 agentops init
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 
 ## 2. Edit `agentops.yaml`
@@ -52,7 +52,7 @@ F1Score, plus average latency.
 
 ## 4. Run
 
-```bash
+```powershell
 agentops eval run
 ```
 
@@ -67,7 +67,7 @@ Exit code `0` = all thresholds passed, `2` = at least one failed,
 
 ## 5. Compare two model deployments
 
-```bash
+```powershell
 # Baseline run on gpt-4o
 agentops eval run
 

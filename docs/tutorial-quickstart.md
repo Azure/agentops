@@ -28,15 +28,16 @@ The former bundle-based, multi-file workspace has been replaced by this flat `ag
 
 ## 1. Install
 
-```bash
+```powershell
 python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Bootstrap the project
 
-```bash
+```powershell
 agentops init
 ```
 
@@ -80,8 +81,8 @@ publish: foundry_cloud
 
 Set credentials and run:
 
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+```powershell
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 agentops eval run
 ```
 
@@ -103,7 +104,7 @@ Without `publish`, AgentOps runs locally and only writes local artifacts. With `
 
 To view the report rendered (tables, ✅/❌), open it in VS Code and press `Ctrl+Shift+V`:
 
-```bash
+```powershell
 code .agentops/results/latest/report.md
 ```
 
@@ -121,7 +122,7 @@ Each `agentops eval run` writes to a timestamped folder and refreshes
 `.agentops/results/latest/`. To diff a new run against the previous
 one, just point `--baseline` at it — no copy needed:
 
-```bash
+```powershell
 # ... change your prompt, model, or dataset ...
 agentops eval run --baseline .agentops/results/latest/results.json
 ```

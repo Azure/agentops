@@ -47,27 +47,21 @@ After saving the agent, copy:
 
 ### 1) Azure login
 
-```bash
+```powershell
 az login
 ```
 
 ### 2) Configure the project endpoint
 
-PowerShell:
-
 ```powershell
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 
-Bash/zsh:
-
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
-```
+On macOS or Linux, set the same environment variable with your shell's syntax.
 
 ### 3) Initialize AgentOps
 
-```bash
+```powershell
 agentops init
 ```
 
@@ -125,7 +119,7 @@ automatically.
 
 ## Part 5: Run evaluation
 
-```bash
+```powershell
 agentops eval run
 ```
 

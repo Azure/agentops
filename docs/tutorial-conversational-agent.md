@@ -19,10 +19,10 @@ script of questions.
 
 ## 1. Bootstrap
 
-```bash
+```powershell
 pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
 agentops init
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 ```
 
 ## 2. Edit `agentops.yaml`
@@ -72,7 +72,7 @@ Fluency, Similarity, F1Score, average latency.
 
 ## 4. Run
 
-```bash
+```powershell
 agentops eval run
 ```
 
@@ -84,7 +84,7 @@ transcript, and aggregate scores.
 No extra step needed — `latest/results.json` is your previous run.
 Diff your next run against it:
 
-```bash
+```powershell
 # … change a prompt / model / config …
 agentops eval run --baseline .agentops/results/latest/results.json
 ```

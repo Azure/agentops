@@ -5,7 +5,7 @@ that turns AgentOps from a one-shot evaluation into a quality gate.
 
 ## The contract
 
-```bash
+```powershell
 agentops eval run --baseline <path-to-previous-results.json>
 ```
 
@@ -35,9 +35,9 @@ copy. So you have two options:
   publish it as a CI artifact). This is the path used by the
   `agentops-pr.yml` workflow:
 
-  ```bash
-  mkdir -p .agentops/baseline
-  cp .agentops/results/latest/results.json .agentops/baseline/results.json
+  ```powershell
+  New-Item -ItemType Directory -Force .agentops\baseline | Out-Null
+  Copy-Item .agentops\results\latest\results.json .agentops\baseline\results.json
   git add .agentops/baseline/results.json
   git commit -m "chore: capture AgentOps baseline"
   ```
@@ -55,13 +55,13 @@ you want to evaluate the impact of.
 
 Local iteration (compares against the previous run):
 
-```bash
+```powershell
 agentops eval run --baseline .agentops/results/latest/results.json
 ```
 
 Against a committed CI baseline:
 
-```bash
+```powershell
 agentops eval run --baseline .agentops/baseline/results.json
 ```
 
@@ -89,8 +89,7 @@ already supports this — drop a baseline file in your repo (e.g.
 ```yaml
 - name: Run AgentOps eval against baseline
   run: |
-    agentops eval run \
-      --baseline .agentops/baseline/results.json
+    agentops eval run --baseline .agentops/baseline/results.json
 ```
 
 When a PR causes a metric to regress past your threshold, the run
@@ -102,8 +101,8 @@ either fixes the regression or refreshes the baseline.
 When a regression is intentional (e.g. you swapped models on
 purpose), promote the new run to the baseline:
 
-```bash
-cp .agentops/results/latest/results.json .agentops/baseline/results.json
+```powershell
+Copy-Item .agentops\results\latest\results.json .agentops\baseline\results.json
 git add .agentops/baseline/results.json
 git commit -m "chore: refresh AgentOps baseline after model upgrade"
 ```
