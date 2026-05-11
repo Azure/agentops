@@ -87,6 +87,18 @@ def _run_evaluation(
             "`.agentops/results/latest/results.json` to the baseline path."
         )
 
+    if config.execution == "cloud":
+        return _run_evaluation_cloud(config, options=options)
+    return _run_evaluation_local(config, options=options)
+
+
+def _run_evaluation_local(
+    config: AgentOpsConfig,
+    *,
+    options: RunOptions,
+) -> RunResult:
+    """Local execution: AgentOps invokes the agent + evaluators row-by-row."""
+
     started_at = datetime.now(timezone.utc)
     started_perf = time.perf_counter()
 
@@ -202,15 +214,183 @@ def _run_evaluation(
 
     _persist(result, options.output_dir)
 
+    # Local execution only ever publishes to Classic Foundry. Cloud
+    # execution goes through _run_evaluation_cloud and never reaches here.
     if config.publish_target() == "foundry":
         _publish_to_foundry_safely(result, config, options.output_dir, progress=progress)
-    elif config.publish_target() == "foundry_cloud":
-        cloud_metadata = _publish_to_foundry_cloud_safely(
-            result, config, options.output_dir, dataset_path, progress=progress,
+
+    return result
+
+
+def _run_evaluation_cloud(
+    config: AgentOpsConfig,
+    *,
+    options: RunOptions,
+) -> RunResult:
+    """Cloud execution: Foundry invokes the agent + evaluators server-side.
+
+    The agent is invoked exactly once — on Foundry's side. AgentOps does
+    not run the row-by-row local loop. After the cloud run completes we
+    download the per-row ``output_items`` and reshape them into the same
+    :class:`RunResult` schema that local execution produces, so
+    ``report.md`` and ``--baseline`` work identically.
+    """
+    started_at = datetime.now(timezone.utc)
+    started_perf = time.perf_counter()
+
+    target = classify_agent(
+        options.agent_override or config.agent,
+        config.protocol,
+    )
+    if target.kind != "foundry_prompt":
+        raise ValueError(
+            "execution: cloud only supports Foundry prompt agents "
+            f"('name:version'); got target.kind={target.kind!r}."
         )
-        if cloud_metadata is not None:
-            result.config["cloud_evaluation"] = cloud_metadata
-            _persist(result, options.output_dir)
+
+    dataset_path = options.dataset_override or _resolve_dataset_path(config, options)
+    shape = detect_dataset_shape(dataset_path)
+    overrides = (
+        [override.name for override in config.evaluators] if config.evaluators else None
+    )
+    presets = select_evaluators(target, shape, overrides=overrides)
+    user_thresholds = [
+        Threshold.from_expression(metric, expr)
+        for metric, expr in config.thresholds.items()
+    ]
+    threshold_rules = merge_thresholds(presets, user_thresholds)
+
+    # Build a "shell" result that carries just enough metadata for the
+    # cloud publisher to map evaluator class names onto Azure AI evaluator
+    # testing criteria.
+    shell_target = TargetInfo(
+        kind=target.kind,
+        raw=target.raw,
+        protocol=target.protocol,
+        name=target.name,
+        version=target.version,
+        url=target.url,
+        deployment=target.deployment,
+    )
+
+    progress = options.progress or (lambda _msg: None)
+    from agentops import __version__ as _agentops_version
+    py = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    progress(
+        f"{style('agentops', 'bold', 'cyan')} {style(_agentops_version, 'cyan')} "
+        f"{style('|', 'dim')} python {py} "
+        f"{style('|', 'dim')} config: {style(options.config_path.name, 'cyan')}"
+    )
+    progress(
+        f"execution: {style('cloud', 'bold')} — Foundry will run the agent "
+        f"and {style(str(len(presets)), 'bold')} evaluator(s) server-side. "
+        f"Agent: {style(target.raw, 'bold')}."
+    )
+
+    shell_result = RunResult(
+        started_at=started_at.isoformat(),
+        finished_at=started_at.isoformat(),
+        duration_seconds=0.0,
+        target=shell_target,
+        dataset_path=str(dataset_path),
+        evaluators=[preset.name for preset in presets],
+        rows=[],
+        aggregate_metrics={},
+        thresholds=[],
+        summary=_summarize([], []),
+        config={
+            "version": config.version,
+            "agent": config.agent,
+            "thresholds": dict(config.thresholds),
+        },
+    )
+
+    endpoint = config.project_endpoint or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    if not endpoint:
+        raise ValueError(
+            "execution: cloud requires either 'project_endpoint' in "
+            "agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
+        )
+
+    from agentops.pipeline import cloud_publisher
+    from agentops.pipeline import cloud_results
+
+    published = cloud_publisher.publish_to_foundry_cloud(
+        shell_result,
+        dataset_path=dataset_path,
+        project_endpoint=endpoint,
+        progress=progress,
+    )
+
+    rows = cloud_results.rows_from_cloud_output_items(published.output_items)
+    aggregate = _aggregate_metrics(rows)
+    threshold_results = thresholds.evaluate(threshold_rules, aggregate)
+    summary = _summarize(rows, threshold_results)
+
+    finished_at = datetime.now(timezone.utc)
+    duration = time.perf_counter() - started_perf
+
+    result = RunResult(
+        started_at=started_at.isoformat(),
+        finished_at=finished_at.isoformat(),
+        duration_seconds=duration,
+        target=shell_target,
+        dataset_path=str(dataset_path),
+        evaluators=[preset.name for preset in presets],
+        rows=rows,
+        aggregate_metrics=aggregate,
+        thresholds=threshold_results,
+        summary=summary,
+        config={
+            "version": config.version,
+            "agent": config.agent,
+            "thresholds": dict(config.thresholds),
+            "execution": "cloud",
+            "cloud_evaluation": {
+                "mode": "cloud",
+                "evaluation_name": published.evaluation_name,
+                "eval_id": published.eval_id,
+                "run_id": published.run_id,
+                "status": published.status,
+                "report_url": published.report_url,
+            },
+        },
+    )
+
+    if options.baseline_path is not None:
+        baseline = comparison_module.load_baseline(options.baseline_path)
+        result.comparison = comparison_module.build_comparison(
+            current=result,
+            baseline=baseline,
+            baseline_path=options.baseline_path,
+        )
+
+    _persist(result, options.output_dir)
+
+    # Write cloud_evaluation.json next to the other artifacts for parity
+    # with the (now-removed) post-run cloud publish path.
+    cloud_meta_path = options.output_dir / "cloud_evaluation.json"
+    cloud_meta_path.write_text(
+        json.dumps(result.config["cloud_evaluation"], indent=2),
+        encoding="utf-8",
+    )
+
+    progress(
+        f"Submitted to {style('New Foundry Evaluations', 'bold')}: "
+        f"{style(published.report_url or '(no portal URL)', 'cyan')}"
+    )
+    progress(
+        f"  eval_id={published.eval_id} run_id={published.run_id} "
+        f"status={style(published.status, 'green' if published.status == 'completed' else 'yellow')} "
+        f"rows={len(rows)}"
+    )
+
+    if not rows:
+        progress(
+            f"{style('WARNING', 'yellow')}: no per-row results were "
+            f"downloaded from Foundry; report.md will be minimal. The "
+            f"canonical view is the Foundry portal."
+        )
 
     return result
 
@@ -261,85 +441,6 @@ def _publish_to_foundry_safely(
         f"Tip: to run server-side in the {style('New Foundry', 'bold')} "
         f"experience, set 'execution: cloud' + 'publish: true' (preview)."
     )
-
-
-def _publish_to_foundry_cloud_safely(
-    result: RunResult,
-    config: AgentOpsConfig,
-    output_dir: Path,
-    dataset_path: Path,
-    *,
-    progress: Optional[Callable[[str], None]] = None,
-) -> Optional[Dict[str, Any]]:
-    """Best-effort New Foundry (cloud) publish. Failures are logged, never fatal."""
-    if config.publish_target() != "foundry_cloud":
-        return None
-
-    notify = progress or (lambda _msg: None)
-
-    endpoint = config.project_endpoint or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
-    if not endpoint:
-        msg = (
-            "execution: cloud + publish: true requires either 'project_endpoint' "
-            "in agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
-        )
-        logger.debug(msg)
-        notify(f"{style('publish foundry_cloud FAILED', 'red')}: {msg}")
-        return {
-            "mode": "cloud",
-            "status": "failed",
-            "error": msg,
-        }
-
-    # Lazy import keeps unit tests free of azure-ai-projects.
-    from agentops.pipeline import cloud_publisher
-
-    try:
-        published = cloud_publisher.publish_to_foundry_cloud(
-            result,
-            dataset_path=dataset_path,
-            project_endpoint=endpoint,
-            progress=notify,
-        )
-    except Exception as exc:  # noqa: BLE001
-        message = summarize_exception(exc)
-        logger.debug("foundry_cloud publish failed: %s", message)
-        notify(
-            f"{style('publish foundry_cloud FAILED', 'red')}: {message}. "
-            f"Local results.json is the source of truth."
-        )
-        return {
-            "mode": "cloud",
-            "status": "failed",
-            "error": message,
-        }
-
-    metadata = {
-        "mode": "cloud",
-        "evaluation_name": published.evaluation_name,
-        "eval_id": published.eval_id,
-        "run_id": published.run_id,
-        "status": published.status,
-        "report_url": published.report_url,
-    }
-    cloud_meta_path = output_dir / "cloud_evaluation.json"
-    cloud_meta_path.write_text(
-        json.dumps(metadata, indent=2),
-        encoding="utf-8",
-    )
-    logger.info(
-        "New Foundry cloud evaluation: %s (eval=%s run=%s)",
-        published.report_url, published.eval_id, published.run_id,
-    )
-    notify(
-        f"Submitted to {style('New Foundry Evaluations', 'bold')}: "
-        f"{style(published.report_url or '(no portal URL)', 'cyan')}"
-    )
-    notify(
-        f"  eval_id={published.eval_id} run_id={published.run_id} "
-        f"status={style(published.status, 'green' if published.status == 'completed' else 'yellow')}"
-    )
-    return metadata
 
 
 def exit_code_from(result: RunResult) -> int:

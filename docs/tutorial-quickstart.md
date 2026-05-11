@@ -235,17 +235,6 @@ evaluators:
   - CoherenceEvaluator
 ```
 
-## Known limitation: dual invocation in cloud mode
-
-With `execution: cloud` + `publish: true`, the current AgentOps build
-invokes the agent **twice**: once locally (to populate
-`.agentops/results/latest/results.json`) and once on Foundry's side
-(server-side run for the New Foundry panel). This is a temporary
-implementation detail — the planned design pulls per-row results back
-from Foundry to avoid the local invocation. Track progress in the
-project issues. For now, if you want a single invocation, use
-`execution: local` + `publish: true` (Classic Foundry).
-
 ## Where to go next
 
 - [`docs/how-it-works.md`](how-it-works.md) — architecture and request flow.

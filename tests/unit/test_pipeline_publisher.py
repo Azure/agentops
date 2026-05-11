@@ -222,23 +222,28 @@ def test_orchestrator_writes_cloud_evaluation_metadata(tmp_path: Path):
     assert payload["evaluation_name"] == "agentops-eval-abc"
 
 
-def test_orchestrator_dispatches_to_cloud_publisher_when_publish_is_foundry_cloud(
+def test_run_evaluation_cloud_uses_cloud_publisher_and_does_not_invoke_locally(
     tmp_path: Path,
 ):
-    """publish='foundry_cloud' must invoke cloud_publisher (NOT the Classic
-    publisher) and write a ``mode='cloud'`` cloud_evaluation.json."""
+    """execution: cloud must route through cloud_publisher and skip the
+    local row-by-row invocation entirely. Per-row results come from the
+    Foundry output_items download."""
     from agentops.core.agentops_config import AgentOpsConfig
     from agentops.pipeline import cloud_publisher as _cp
     from agentops.pipeline import orchestrator
 
     dataset_path = tmp_path / "dataset.jsonl"
-    dataset_path.write_text('{"input": "hi"}\n', encoding="utf-8")
+    dataset_path.write_text(
+        '{"input": "hi", "expected": "hello"}\n'
+        '{"input": "ping", "expected": "pong"}\n',
+        encoding="utf-8",
+    )
 
     config = AgentOpsConfig(
         version=1,
         agent="support-bot:1",
         dataset=dataset_path,
-        execution="cloud", publish=True,
+        execution="cloud",
         project_endpoint="https://contoso.services.ai.azure.com/api/projects/p",
     )
     output_dir = tmp_path / "out"
@@ -250,26 +255,51 @@ def test_orchestrator_dispatches_to_cloud_publisher_when_publish_is_foundry_clou
         status="completed",
         report_url="https://ai.azure.com/foundry/runs/run-1",
         evaluation_name="agentops-cloud-abc",
-    )
-
-    result = _build_run_result()
-    result.target = TargetInfo(
-        kind="foundry_prompt", raw="support-bot:1",
-        name="support-bot", version="1",
+        output_items=[
+            {
+                "datasource_item": {"input": "hi", "expected": "hello"},
+                "sample": {"output_text": "hello"},
+                "results": [
+                    {"name": "similarity", "score": 4.5},
+                    {"name": "coherence", "score": 5.0},
+                ],
+            },
+            {
+                "datasource_item": {"input": "ping", "expected": "pong"},
+                "sample": {"output_text": "pong"},
+                "results": [
+                    {"name": "similarity", "score": 4.0},
+                    {"name": "coherence", "score": 4.5},
+                ],
+            },
+        ],
     )
 
     with mock.patch.object(
         _cp, "publish_to_foundry_cloud", return_value=fake_published,
     ) as cloud_mock, mock.patch.object(
         publisher, "publish_to_foundry",
-    ) as classic_mock:
-        metadata = orchestrator._publish_to_foundry_cloud_safely(
-            result, config, output_dir, dataset_path,
+    ) as classic_mock, mock.patch.object(
+        orchestrator, "_evaluate_row",
+    ) as evaluate_row_mock:
+        options = orchestrator.RunOptions(
+            config_path=tmp_path / "agentops.yaml",
+            output_dir=output_dir,
         )
+        result = orchestrator._run_evaluation_cloud(config, options=options)
 
+    # Agent was never invoked locally.
+    evaluate_row_mock.assert_not_called()
     classic_mock.assert_not_called()
     cloud_mock.assert_called_once()
 
+    # Per-row results came from the cloud output_items.
+    assert len(result.rows) == 2
+    assert result.rows[0].input == "hi"
+    assert result.rows[0].response == "hello"
+    assert {m.name for m in result.rows[0].metrics} == {"similarity", "coherence"}
+
+    # cloud_evaluation.json was written.
     meta_path = output_dir / "cloud_evaluation.json"
     assert meta_path.exists()
     import json
@@ -277,59 +307,12 @@ def test_orchestrator_dispatches_to_cloud_publisher_when_publish_is_foundry_clou
     assert payload["mode"] == "cloud"
     assert payload["eval_id"] == "eval-1"
     assert payload["run_id"] == "run-1"
-    assert payload["report_url"].endswith("/run-1")
-    assert metadata == payload
 
 
-def test_orchestrator_swallows_cloud_publish_errors(tmp_path: Path):
-    """A failure in cloud_publisher must not be fatal — local results
-    remain the source of truth."""
+def test_run_evaluation_cloud_requires_project_endpoint(tmp_path: Path, monkeypatch):
+    """Cloud execution requires either project_endpoint in the config or
+    the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."""
     from agentops.core.agentops_config import AgentOpsConfig
-    from agentops.pipeline import cloud_publisher as _cp
-    from agentops.pipeline import orchestrator
-
-    dataset_path = tmp_path / "dataset.jsonl"
-    dataset_path.write_text('{"input": "hi"}\n', encoding="utf-8")
-
-    config = AgentOpsConfig(
-        version=1,
-        agent="support-bot:1",
-        dataset=dataset_path,
-        execution="cloud", publish=True,
-        project_endpoint="https://x.example/api/projects/p",
-    )
-    output_dir = tmp_path / "out"
-    output_dir.mkdir()
-
-    result = _build_run_result()
-    result.target = TargetInfo(
-        kind="foundry_prompt", raw="support-bot:1",
-        name="support-bot", version="1",
-    )
-
-    notices: list = []
-    with mock.patch.object(
-        _cp, "publish_to_foundry_cloud", side_effect=RuntimeError("boom"),
-    ):
-        metadata = orchestrator._publish_to_foundry_cloud_safely(
-            result, config, output_dir, dataset_path,
-            progress=notices.append,
-        )
-
-    # No metadata file written on failure.
-    assert not (output_dir / "cloud_evaluation.json").exists()
-    assert metadata is not None
-    assert metadata["status"] == "failed"
-    assert metadata["error"] == "boom"
-    # User saw a clear failure notice.
-    assert any("foundry_cloud FAILED" in m for m in notices)
-
-
-def test_orchestrator_cloud_publish_requires_project_endpoint(tmp_path: Path, monkeypatch):
-    """Without project_endpoint or AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, the
-    cloud branch refuses to call out and emits a clear progress message."""
-    from agentops.core.agentops_config import AgentOpsConfig
-    from agentops.pipeline import cloud_publisher as _cp
     from agentops.pipeline import orchestrator
 
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
@@ -341,20 +324,44 @@ def test_orchestrator_cloud_publish_requires_project_endpoint(tmp_path: Path, mo
         version=1,
         agent="support-bot:1",
         dataset=dataset_path,
-        execution="cloud", publish=True,
+        execution="cloud",
         project_endpoint=None,
     )
     output_dir = tmp_path / "out"
     output_dir.mkdir()
 
-    result = _build_run_result()
-    notices: list = []
-    with mock.patch.object(_cp, "publish_to_foundry_cloud") as cloud_mock:
-        metadata = orchestrator._publish_to_foundry_cloud_safely(
-            result, config, output_dir, dataset_path,
-            progress=notices.append,
-        )
-    cloud_mock.assert_not_called()
-    assert metadata is not None
-    assert metadata["status"] == "failed"
-    assert any("project_endpoint" in m for m in notices)
+    options = orchestrator.RunOptions(
+        config_path=tmp_path / "agentops.yaml",
+        output_dir=output_dir,
+    )
+    with pytest.raises(ValueError, match="project_endpoint"):
+        orchestrator._run_evaluation_cloud(config, options=options)
+
+
+def test_run_evaluation_cloud_rejects_non_foundry_target(tmp_path: Path):
+    """execution: cloud only works for Foundry prompt agents."""
+    from agentops.core.agentops_config import AgentOpsConfig
+    from agentops.pipeline import orchestrator
+
+    # Construct config bypassing validators: only Foundry prompt agents
+    # can be cloud-executed, so build a model_direct target to exercise
+    # the orchestrator-level guard.
+    dataset_path = tmp_path / "dataset.jsonl"
+    dataset_path.write_text('{"input": "hi"}\n', encoding="utf-8")
+
+    config = AgentOpsConfig(
+        version=1,
+        agent="model:gpt-4o-mini",
+        dataset=dataset_path,
+        execution="cloud",
+        project_endpoint="https://x.example/api/projects/p",
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    options = orchestrator.RunOptions(
+        config_path=tmp_path / "agentops.yaml",
+        output_dir=output_dir,
+    )
+    with pytest.raises(ValueError, match="Foundry prompt agents"):
+        orchestrator._run_evaluation_cloud(config, options=options)

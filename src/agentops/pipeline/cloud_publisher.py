@@ -44,7 +44,7 @@ import logging
 import os
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -67,6 +67,13 @@ class CloudPublishResult:
     status: str
     report_url: Optional[str]
     evaluation_name: str
+    #: Raw per-row output items downloaded from the Foundry Evals API.
+    #: Each item is a dict with at least ``datasource_item`` (the original
+    #: input row), ``sample`` (the agent response), and ``results``
+    #: (per-criterion scores). May be empty if the SDK returns no items
+    #: or the download failed (in which case orchestrator falls back to
+    #: a thin RunResult that just records the portal URL).
+    output_items: List[Dict[str, Any]] = field(default_factory=list)
 
 
 # Map AgentOps evaluator class names to the OpenAI Evals API evaluator
@@ -287,12 +294,23 @@ def publish_to_foundry_cloud(
         )
 
     progress(f"cloud publish: done. status={status}")
+
+    # Download per-row results from Foundry so the local results.json can
+    # be populated without re-invoking the agent client-side.
+    output_items = _list_output_items(
+        openai_client,
+        eval_id=eval_id,
+        run_id=run_id,
+        progress=progress,
+    )
+
     return CloudPublishResult(
         eval_id=eval_id,
         run_id=run_id,
         status=status,
         report_url=report_url,
         evaluation_name=eval_name,
+        output_items=output_items,
     )
 
 
@@ -489,4 +507,73 @@ def _extract_report_url(run: Any) -> Optional[str]:
             value = metadata.get(key)
             if isinstance(value, str) and value:
                 return value
+    return None
+
+
+def _list_output_items(
+    openai_client: Any,
+    *,
+    eval_id: str,
+    run_id: str,
+    progress: Callable[[str], None],
+) -> List[Dict[str, Any]]:
+    """Download per-row output items from a completed Foundry eval run.
+
+    Returns a list of dicts (one per dataset row) containing the original
+    ``datasource_item`` (input row), the ``sample`` returned by the agent,
+    and the per-criterion ``results``. Returns ``[]`` on any failure so
+    the orchestrator can still emit a ``results.json`` that records the
+    Foundry portal URL (no fallback to local invocation).
+    """
+    try:
+        # The OpenAI Evals API exposes a paginated list endpoint at
+        # ``client.evals.runs.output_items.list``. We accept either a
+        # paginator object with ``.data`` / iteration, or a plain list.
+        output_items_api = openai_client.evals.runs.output_items
+        page = output_items_api.list(eval_id=eval_id, run_id=run_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("could not list output_items: %s", exc)
+        progress(
+            f"cloud publish: WARNING — could not download per-row results "
+            f"({exc.__class__.__name__}); local results.json will record the "
+            f"portal URL only."
+        )
+        return []
+
+    items: List[Dict[str, Any]] = []
+    try:
+        iterable = getattr(page, "data", None) or page
+        for raw in iterable:
+            item = _coerce_output_item_to_dict(raw)
+            if item is not None:
+                items.append(item)
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("could not iterate output_items: %s", exc)
+        progress(
+            f"cloud publish: WARNING — failed to iterate output_items "
+            f"({exc.__class__.__name__}); local results.json will be thin."
+        )
+        return []
+
+    progress(f"cloud publish: downloaded {len(items)} output item(s)")
+    return items
+
+
+def _coerce_output_item_to_dict(raw: Any) -> Optional[Dict[str, Any]]:
+    """Convert an SDK output item (Pydantic model or dict) into a plain dict."""
+    if isinstance(raw, dict):
+        return raw
+    for method in ("model_dump", "to_dict", "dict"):
+        fn = getattr(raw, method, None)
+        if callable(fn):
+            try:
+                value = fn()
+                if isinstance(value, dict):
+                    return value
+            except Exception:  # noqa: BLE001
+                continue
+    # Fallback: pull known attributes off the object.
+    keys = ("id", "status", "datasource_item", "sample", "results")
+    if any(hasattr(raw, k) for k in keys):
+        return {k: getattr(raw, k, None) for k in keys}
     return None
