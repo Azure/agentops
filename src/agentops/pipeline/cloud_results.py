@@ -14,6 +14,7 @@ spellings (``output_text`` / ``output`` / ``message``; ``score`` /
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
 from agentops.core.results import RowMetric, RowResult
@@ -79,28 +80,70 @@ def _metric_from_result(entry: Any) -> Optional[RowMetric]:
 
 
 def _extract_response_text(sample: Dict[str, Any]) -> str:
-    """Reach into a Foundry sample payload and pull a plain text response."""
+    """Reach into a Foundry sample payload and pull a plain text response.
+
+    Foundry's sample shape varies: sometimes the response is a clean string
+    under ``output_text``, sometimes it's a list of output items under
+    ``output`` / ``output_items``, and occasionally ``output_text`` is set
+    to a JSON-encoded version of the structured output. Try structured
+    fields first (they're authoritative), and recurse into JSON-encoded
+    strings rather than passing them through as the response.
+    """
+    # 1. Structured fields are authoritative. Walk them first.
+    for key in ("output", "messages", "output_items"):
+        text = _text_from_structured(sample.get(key))
+        if text:
+            return text
+
+    # 2. Flat string fields. If the value looks like JSON, parse and recurse.
     for key in ("output_text", "text", "content"):
         value = sample.get(key)
         if isinstance(value, str) and value:
+            stripped = value.strip()
+            if stripped.startswith("[") or stripped.startswith("{"):
+                try:
+                    parsed = json.loads(stripped)
+                except (ValueError, TypeError):
+                    return value
+                if isinstance(parsed, list):
+                    text = _text_from_structured(parsed)
+                    if text:
+                        return text
+                elif isinstance(parsed, dict):
+                    return _extract_response_text(parsed)
+                # Fall through to raw value if we couldn't extract.
             return value
-    # Some shapes nest the response under "output" or "messages" (list of
-    # role/content dicts). Pick the last assistant message's text.
-    for key in ("output", "messages", "output_items"):
-        value = sample.get(key)
         if isinstance(value, list):
-            for entry in reversed(value):
-                if not isinstance(entry, dict):
-                    continue
-                text = entry.get("content") or entry.get("text") or entry.get("output_text")
-                if isinstance(text, str) and text:
-                    return text
-                if isinstance(text, list):
-                    for inner in text:
-                        if isinstance(inner, dict):
-                            inner_text = inner.get("text") or inner.get("output_text")
-                            if isinstance(inner_text, str) and inner_text:
-                                return inner_text
+            text = _text_from_structured(value)
+            if text:
+                return text
+    return ""
+
+
+def _text_from_structured(value: Any) -> str:
+    """Walk a list-of-dicts (output / messages / output_items shape) and
+    return the first textual payload encountered, or ``""`` when none is
+    found. Iterates in reverse so the assistant's final message wins.
+    """
+    if not isinstance(value, list):
+        return ""
+    for entry in reversed(value):
+        if not isinstance(entry, dict):
+            continue
+        # Try flat text fields first.
+        for field in ("output_text", "text"):
+            candidate = entry.get(field)
+            if isinstance(candidate, str) and candidate:
+                return candidate
+        # Some shapes nest under "content" as either a string or a list of
+        # content blocks (OpenAI Responses API: content: [{type, text}, ...]).
+        nested = entry.get("content")
+        if isinstance(nested, str) and nested:
+            return nested
+        if isinstance(nested, list):
+            text = _text_from_structured(nested)
+            if text:
+                return text
     return ""
 
 
