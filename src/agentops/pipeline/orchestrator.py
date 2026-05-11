@@ -202,9 +202,9 @@ def _run_evaluation(
 
     _persist(result, options.output_dir)
 
-    if config.publish == "foundry":
+    if config.publish_target() == "foundry":
         _publish_to_foundry_safely(result, config, options.output_dir, progress=progress)
-    elif config.publish == "foundry_cloud":
+    elif config.publish_target() == "foundry_cloud":
         cloud_metadata = _publish_to_foundry_cloud_safely(
             result, config, options.output_dir, dataset_path, progress=progress,
         )
@@ -223,7 +223,7 @@ def _publish_to_foundry_safely(
     progress: Optional[Callable[[str], None]] = None,
 ) -> None:
     """Best-effort Classic Foundry publish. Failures are logged, never fatal."""
-    if config.publish != "foundry":
+    if config.publish_target() != "foundry":
         return
 
     notify = progress or (lambda _msg: None)
@@ -259,7 +259,7 @@ def _publish_to_foundry_safely(
     )
     notify(
         f"Tip: to run server-side in the {style('New Foundry', 'bold')} "
-        f"experience, use 'publish: foundry_cloud' (preview)."
+        f"experience, set 'execution: cloud' + 'publish: true' (preview)."
     )
 
 
@@ -272,7 +272,7 @@ def _publish_to_foundry_cloud_safely(
     progress: Optional[Callable[[str], None]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Best-effort New Foundry (cloud) publish. Failures are logged, never fatal."""
-    if config.publish != "foundry_cloud":
+    if config.publish_target() != "foundry_cloud":
         return None
 
     notify = progress or (lambda _msg: None)
@@ -280,8 +280,8 @@ def _publish_to_foundry_cloud_safely(
     endpoint = config.project_endpoint or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
     if not endpoint:
         msg = (
-            "publish: foundry_cloud requires either 'project_endpoint' in "
-            "agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
+            "execution: cloud + publish: true requires either 'project_endpoint' "
+            "in agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
         )
         logger.debug(msg)
         notify(f"{style('publish foundry_cloud FAILED', 'red')}: {msg}")

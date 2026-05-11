@@ -26,7 +26,7 @@ dataset: .agentops/data/smoke.jsonl
 # thresholds:
 #   coherence: ">=3"
 #   groundedness: ">=3"
-#   avg_latency_seconds: "<=10"
+#   avg_latency_seconds: "<=30"
 
 # Optional. Foundry prompt agents and Foundry publishing need a project
 # endpoint. If both this value and AZURE_AI_FOUNDRY_PROJECT_ENDPOINT are set,
@@ -34,11 +34,17 @@ dataset: .agentops/data/smoke.jsonl
 #
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<project>"
 #
-# Optional. Publish controls Foundry visibility. foundry_cloud keeps the local
-# AgentOps run and also submits a server-side run to New Foundry.
-# Requires project_endpoint or AZURE_AI_FOUNDRY_PROJECT_ENDPOINT.
+# Optional. Where the agent and evaluators execute.
+#   local (default) — AgentOps runs the agent row-by-row locally.
+#   cloud           — Foundry runs the agent and evaluators server-side
+#                     (only valid for 'name:version' Foundry prompt agents).
 #
-# - foundry_cloud: local run + server-side New Foundry run (name:version agents)
-# - foundry: local run, then upload metrics to Classic Foundry
+# execution: local
 #
-# publish: foundry_cloud
+# Optional. Publish results to the Foundry Evaluations panel.
+#   false (default) — only local results.json / report.md are written.
+#   true            — publish results; destination is derived from 'execution':
+#                       execution: local + publish: true → Classic Foundry
+#                       execution: cloud + publish: true → New Foundry
+#
+# publish: false

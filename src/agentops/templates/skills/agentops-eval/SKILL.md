@@ -74,20 +74,23 @@ Two modes are supported. Both write a deep-link into
 AgentOps runs locally first, then uploads the metrics it computed.
 
 ```yaml
-publish: foundry
+execution: local
+publish: true
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
-**New Foundry Evaluations panel** (preview): AgentOps still writes local
-artifacts first, then submits a server-side Foundry run via the OpenAI Evals
-API. This only works for `name:version` Foundry agents.
+**New Foundry Evaluations panel** (preview): Foundry runs the agent +
+evaluators server-side via the OpenAI Evals API. Only works for
+`name:version` Foundry agents.
 
 ```yaml
-publish: foundry_cloud
+execution: cloud
+publish: true
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
-Without `publish`, AgentOps runs locally and only writes local artifacts.
+With `publish: false` (default), AgentOps runs locally and only writes
+local artifacts.
 
 ## Tips
 

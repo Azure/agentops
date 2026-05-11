@@ -90,18 +90,25 @@ The full minimal config is just:
 version: 1                       # schema version of agentops.yaml itself
 agent: "agentops-smoke:2"        # ':2' is the Foundry agent version
 dataset: .agentops/data/smoke.jsonl
+execution: cloud                 # Foundry runs the agent + evaluators server-side
+publish: true                    # publish results to the New Foundry Evaluations panel
 ```
+
+Field reference:
+
+| Field | Values | Effect |
+|---|---|---|
+| `execution` | `local` (default) / `cloud` | `local`: AgentOps invokes the agent row-by-row. `cloud`: Foundry runs the agent + evaluators server-side via the OpenAI Evals API. |
+| `publish` | `false` (default) / `true` | When `true`, results are published to Foundry. Destination is derived from `execution`: local + publish → **Classic Foundry**, cloud + publish → **New Foundry**. |
 
 The top-level `version: 1` is the schema version of `agentops.yaml`
 (always `1` today). The trailing `:2` in `agent:` is the Foundry agent's
 published version — they are independent.
 
-> **Skipping `publish: foundry_cloud` in the quickstart.** Cloud publish
-> re-invokes the agent on Foundry's side after AgentOps already ran it
-> locally, which doubles the work on a smoke test. This tutorial keeps
-> the loop local; see [`docs/foundry-cloud-publish.md`](foundry-cloud-publish.md)
-> (TODO) once you want the run to show up in the New Foundry Evaluations
-> panel.
+> **Why `execution: cloud` for the quickstart?** With cloud execution
+> the run shows up directly in the New Foundry Evaluations panel and
+> you get one canonical place to inspect results. Local execution is
+> the fallback for non-Foundry agents and offline iteration.
 
 > AgentOps also supports hosted Foundry endpoints, generic HTTP/JSON
 > endpoints, and raw model deployments. Those are covered in the scenario
@@ -138,14 +145,14 @@ Outputs:
 ├── 2026-05-06T14-30-22Z/   # Timestamped run (immutable history)
 │   ├── results.json
 │   ├── report.md
-│   └── cloud_evaluation.json   # when publish: foundry_cloud is set
+│   └── cloud_evaluation.json   # when publish: true (Classic or New mode)
 └── latest/                 # Mirror of the most recent run
     ├── results.json
     ├── report.md
-    └── cloud_evaluation.json   # when publish: foundry_cloud is set
+    └── cloud_evaluation.json   # when publish: true (Classic or New mode)
 ```
 
-Without `publish`, AgentOps runs locally and only writes local artifacts. With `publish: foundry_cloud`, AgentOps still writes local artifacts first, then submits a server-side Foundry evaluation; `cloud_evaluation.json` includes the Foundry `eval_id`, `run_id`, status, and `report_url`.
+With `publish: false`, AgentOps writes only `results.json` and `report.md`. With `publish: true`, AgentOps also publishes to Foundry: `execution: local` uploads metrics to Classic Foundry; `execution: cloud` triggers a server-side run on New Foundry. Either way, `cloud_evaluation.json` records the portal URL.
 
 To view the report rendered (tables, ✅/❌), open it in VS Code and press `Ctrl+Shift+V`:
 
@@ -191,6 +198,8 @@ after your baseline — typically `:3`):
 version: 1
 agent: "agentops-smoke:3"
 dataset: .agentops/data/smoke.jsonl
+execution: cloud
+publish: true
 ```
 
 Now compare the changed prompt against the captured baseline:
@@ -226,6 +235,17 @@ evaluators:
   - GroundednessEvaluator
   - CoherenceEvaluator
 ```
+
+## Known limitation: dual invocation in cloud mode
+
+With `execution: cloud` + `publish: true`, the current AgentOps build
+invokes the agent **twice**: once locally (to populate
+`.agentops/results/latest/results.json`) and once on Foundry's side
+(server-side run for the New Foundry panel). This is a temporary
+implementation detail — the planned design pulls per-row results back
+from Foundry to avoid the local invocation. Track progress in the
+project issues. For now, if you want a single invocation, use
+`execution: local` + `publish: true` (Classic Foundry).
 
 ## Where to go next
 

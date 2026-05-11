@@ -62,10 +62,13 @@ Optional extras (only add when the user asks for them):
 thresholds:
   coherence: ">=3"
   groundedness: ">=3"
-  avg_latency_seconds: "<=10"
+  avg_latency_seconds: "<=30"
 
-publish: foundry            # local run, then upload metrics to Classic Foundry
-# publish: foundry_cloud    # local run + server-side New Foundry run (name:version agents only)
+# Publish results to the Foundry Evaluations panel:
+#   execution: local + publish: true  → Classic Foundry (uploads metrics)
+#   execution: cloud + publish: true  → New Foundry (server-side run)
+execution: local
+publish: true
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 
 evaluators:           # rare - AgentOps auto-selects from agent + dataset

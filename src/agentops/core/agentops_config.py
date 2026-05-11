@@ -50,7 +50,17 @@ TargetKind = Literal[
     "model_direct",     # model:<deployment>
 ]
 
-#: Where to publish the evaluation run. ``None`` keeps results local-only.
+#: Where to execute the agent and evaluators.
+#:
+#: - ``local`` (default): AgentOps invokes the agent row-by-row and runs
+#:   evaluators locally. Results are the canonical record.
+#: - ``cloud``: Foundry runs the agent and evaluators server-side via the
+#:   OpenAI Evals API. Use this when you want the run to appear in the
+#:   New Foundry Evaluations panel as the primary record.
+ExecutionMode = Literal["local", "cloud"]
+
+#: Internal-only literal kept for the publisher dispatch table. Derived from
+#: ``execution`` + ``publish`` via :meth:`AgentOpsConfig.publish_target`.
 PublishTarget = Literal["foundry", "foundry_cloud"]
 
 
@@ -145,7 +155,6 @@ class EvaluatorOverride(BaseModel):
 _LEGACY_TOP_LEVEL_KEYS = {
     "target",
     "bundle",
-    "execution",
     "output",
     "scenario",
     "backend",
@@ -217,15 +226,26 @@ class AgentOpsConfig(BaseModel):
 
     evaluators: Optional[List[EvaluatorOverride]] = None
 
-    publish: Optional[PublishTarget] = Field(
-        None,
+    publish: bool = Field(
+        False,
         description=(
-            "Optional opt-in publish target.\n"
-            "- 'foundry' (Classic): runs locally, uploads computed metrics "
-            "to the Classic Foundry Evaluations panel via OneDP.\n"
-            "- 'foundry_cloud' (preview): after local artifacts are written, "
-            "submits a server-side run to the New Foundry experience via the "
-            "OpenAI Evals API; agent must be a 'name:version' Foundry agent."
+            "Whether to publish results to the Foundry Evaluations panel.\n"
+            "- false (default): only local artifacts (results.json / report.md).\n"
+            "- true: combined with 'execution' to decide the destination:\n"
+            "  * execution: local + publish: true  → upload metrics to Classic Foundry.\n"
+            "  * execution: cloud + publish: true  → server-side run on New Foundry.\n"
+            "\n"
+            "Backward compatibility: the legacy string values 'foundry' and "
+            "'foundry_cloud' are still accepted and normalized into "
+            "(execution, publish)."
+        ),
+    )
+    execution: ExecutionMode = Field(
+        "local",
+        description=(
+            "Where to execute the agent and evaluators.\n"
+            "- local (default): AgentOps invokes the agent row-by-row locally.\n"
+            "- cloud: Foundry runs the agent and evaluators server-side."
         ),
     )
     project_endpoint: Optional[str] = Field(
@@ -238,6 +258,43 @@ class AgentOpsConfig(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_publish(cls, data: Any) -> Any:
+        """Translate legacy ``publish: foundry|foundry_cloud`` strings into
+        the new ``(execution, publish)`` pair.
+
+        Accepts:
+        - ``publish: foundry`` → ``execution: local,  publish: true``
+        - ``publish: foundry_cloud`` → ``execution: cloud, publish: true``
+        - ``publish: true|false`` (new shape) → passthrough
+        - ``publish: null`` / missing → defaults (``execution: local``, ``publish: false``)
+
+        Raises ``ValueError`` only for unknown string values.
+        """
+        if not isinstance(data, dict):
+            return data
+        publish = data.get("publish")
+        if publish is None or isinstance(publish, bool):
+            return data
+        if isinstance(publish, str):
+            normalized = publish.strip().lower()
+            if normalized == "foundry":
+                data["publish"] = True
+                data.setdefault("execution", "local")
+                return data
+            if normalized == "foundry_cloud":
+                data["publish"] = True
+                data.setdefault("execution", "cloud")
+                return data
+            raise ValueError(
+                f"publish must be a boolean (or legacy 'foundry'/'foundry_cloud'); "
+                f"got {publish!r}"
+            )
+        raise ValueError(
+            f"publish must be a boolean; got {type(publish).__name__}"
+        )
 
     @model_validator(mode="before")
     @classmethod
@@ -312,6 +369,21 @@ class AgentOpsConfig(BaseModel):
     def resolved_target(self) -> "TargetResolution":
         """Return the resolved target classification."""
         return classify_agent(self.agent, self.protocol)
+
+    def publish_target(self) -> Optional[PublishTarget]:
+        """Return the internal publisher dispatch key, or ``None`` if disabled.
+
+        Derived from ``execution`` + ``publish``:
+
+        - ``publish: false`` → ``None`` (no publishing)
+        - ``publish: true``, ``execution: local``  → ``"foundry"`` (Classic)
+        - ``publish: true``, ``execution: cloud``  → ``"foundry_cloud"`` (New)
+        """
+        if not self.publish:
+            return None
+        if self.execution == "cloud":
+            return "foundry_cloud"
+        return "foundry"
 
 
 # ---------------------------------------------------------------------------
