@@ -263,7 +263,7 @@ def test_orchestrator_dispatches_to_cloud_publisher_when_publish_is_foundry_clou
     ) as cloud_mock, mock.patch.object(
         publisher, "publish_to_foundry",
     ) as classic_mock:
-        orchestrator._publish_to_foundry_cloud_safely(
+        metadata = orchestrator._publish_to_foundry_cloud_safely(
             result, config, output_dir, dataset_path,
         )
 
@@ -278,6 +278,7 @@ def test_orchestrator_dispatches_to_cloud_publisher_when_publish_is_foundry_clou
     assert payload["eval_id"] == "eval-1"
     assert payload["run_id"] == "run-1"
     assert payload["report_url"].endswith("/run-1")
+    assert metadata == payload
 
 
 def test_orchestrator_swallows_cloud_publish_errors(tmp_path: Path):
@@ -310,13 +311,16 @@ def test_orchestrator_swallows_cloud_publish_errors(tmp_path: Path):
     with mock.patch.object(
         _cp, "publish_to_foundry_cloud", side_effect=RuntimeError("boom"),
     ):
-        orchestrator._publish_to_foundry_cloud_safely(
+        metadata = orchestrator._publish_to_foundry_cloud_safely(
             result, config, output_dir, dataset_path,
             progress=notices.append,
         )
 
     # No metadata file written on failure.
     assert not (output_dir / "cloud_evaluation.json").exists()
+    assert metadata is not None
+    assert metadata["status"] == "failed"
+    assert metadata["error"] == "boom"
     # User saw a clear failure notice.
     assert any("foundry_cloud FAILED" in m for m in notices)
 
@@ -346,9 +350,11 @@ def test_orchestrator_cloud_publish_requires_project_endpoint(tmp_path: Path, mo
     result = _build_run_result()
     notices: list = []
     with mock.patch.object(_cp, "publish_to_foundry_cloud") as cloud_mock:
-        orchestrator._publish_to_foundry_cloud_safely(
+        metadata = orchestrator._publish_to_foundry_cloud_safely(
             result, config, output_dir, dataset_path,
             progress=notices.append,
         )
     cloud_mock.assert_not_called()
+    assert metadata is not None
+    assert metadata["status"] == "failed"
     assert any("project_endpoint" in m for m in notices)

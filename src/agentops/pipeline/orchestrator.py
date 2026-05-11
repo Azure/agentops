@@ -198,9 +198,12 @@ def _run_evaluation(
     if config.publish == "foundry":
         _publish_to_foundry_safely(result, config, options.output_dir, progress=progress)
     elif config.publish == "foundry_cloud":
-        _publish_to_foundry_cloud_safely(
+        cloud_metadata = _publish_to_foundry_cloud_safely(
             result, config, options.output_dir, dataset_path, progress=progress,
         )
+        if cloud_metadata is not None:
+            result.config["cloud_evaluation"] = cloud_metadata
+            _persist(result, options.output_dir)
 
     return result
 
@@ -260,10 +263,10 @@ def _publish_to_foundry_cloud_safely(
     dataset_path: Path,
     *,
     progress: Optional[Callable[[str], None]] = None,
-) -> None:
+) -> Optional[Dict[str, Any]]:
     """Best-effort New Foundry (cloud) publish. Failures are logged, never fatal."""
     if config.publish != "foundry_cloud":
-        return
+        return None
 
     notify = progress or (lambda _msg: None)
 
@@ -275,7 +278,11 @@ def _publish_to_foundry_cloud_safely(
         )
         logger.debug(msg)
         notify(f"{style('publish foundry_cloud FAILED', 'red')}: {msg}")
-        return
+        return {
+            "mode": "cloud",
+            "status": "failed",
+            "error": msg,
+        }
 
     # Lazy import keeps unit tests free of azure-ai-projects.
     from agentops.pipeline import cloud_publisher
@@ -294,21 +301,23 @@ def _publish_to_foundry_cloud_safely(
             f"{style('publish foundry_cloud FAILED', 'red')}: {message}. "
             f"Local results.json is the source of truth."
         )
-        return
+        return {
+            "mode": "cloud",
+            "status": "failed",
+            "error": message,
+        }
 
+    metadata = {
+        "mode": "cloud",
+        "evaluation_name": published.evaluation_name,
+        "eval_id": published.eval_id,
+        "run_id": published.run_id,
+        "status": published.status,
+        "report_url": published.report_url,
+    }
     cloud_meta_path = output_dir / "cloud_evaluation.json"
     cloud_meta_path.write_text(
-        json.dumps(
-            {
-                "mode": "cloud",
-                "evaluation_name": published.evaluation_name,
-                "eval_id": published.eval_id,
-                "run_id": published.run_id,
-                "status": published.status,
-                "report_url": published.report_url,
-            },
-            indent=2,
-        ),
+        json.dumps(metadata, indent=2),
         encoding="utf-8",
     )
     logger.info(
@@ -323,6 +332,7 @@ def _publish_to_foundry_cloud_safely(
         f"  eval_id={published.eval_id} run_id={published.run_id} "
         f"status={style(published.status, 'green' if published.status == 'completed' else 'yellow')}"
     )
+    return metadata
 
 
 def exit_code_from(result: RunResult) -> int:

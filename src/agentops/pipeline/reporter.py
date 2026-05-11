@@ -68,6 +68,20 @@ def render(result: RunResult) -> str:
     for row in result.rows:
         lines.append(_row_summary(row))
     lines.append("")
+
+    if result.rows:
+        lines.append("## Row Details")
+        lines.append("")
+        lines.append("| # | Input | Response | Expected |")
+        lines.append("| --- | --- | --- | --- |")
+        for row in result.rows:
+            lines.append(_row_detail(row))
+        lines.append("")
+
+    cloud = result.config.get("cloud_evaluation")
+    if isinstance(cloud, dict):
+        lines.extend(_render_cloud_evaluation(cloud))
+        lines.append("")
     return "\n".join(lines)
 
 
@@ -88,9 +102,38 @@ def _row_summary(row: RowResult) -> str:
     return f"| {row.row_index} | {latency} | {metrics_str} |"
 
 
+def _row_detail(row: RowResult) -> str:
+    response = row.response or (f"Error: {row.error}" if row.error else "—")
+    return (
+        f"| {row.row_index} | {_cell(row.input, 220)} | "
+        f"{_cell(response, 220)} | {_cell(row.expected or '—', 220)} |"
+    )
+
+
+def _cell(value: str, limit: int) -> str:
+    return _short(str(value), limit).replace("\r", " ").replace("\n", "<br>")
+
+
 def _short(text: str, limit: int) -> str:
     text = text.replace("\n", " ").replace("|", "\\|")
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _render_cloud_evaluation(cloud: dict) -> List[str]:
+    lines = ["## Foundry Cloud Session", ""]
+    status = str(cloud.get("status") or "unknown")
+    lines.append(f"- **Status:** {status}")
+    if cloud.get("evaluation_name"):
+        lines.append(f"- **Evaluation:** `{cloud['evaluation_name']}`")
+    if cloud.get("eval_id"):
+        lines.append(f"- **Eval ID:** `{cloud['eval_id']}`")
+    if cloud.get("run_id"):
+        lines.append(f"- **Run ID:** `{cloud['run_id']}`")
+    if cloud.get("report_url"):
+        lines.append(f"- **Foundry URL:** {cloud['report_url']}")
+    if cloud.get("error"):
+        lines.append(f"- **Error:** {_cell(str(cloud['error']), 300)}")
+    return lines
 
 
 def _render_comparison(comparison: ComparisonInfo) -> List[str]:
