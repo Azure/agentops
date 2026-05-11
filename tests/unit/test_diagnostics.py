@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agentops.pipeline.diagnostics import with_tenant_mismatch_guidance
+from agentops.pipeline.diagnostics import summarize_exception, with_tenant_mismatch_guidance
 
 
 def test_tenant_mismatch_guidance_handles_resource_token_error():
@@ -31,3 +31,20 @@ def test_tenant_mismatch_guidance_leaves_unrelated_errors_unchanged():
     message = "HTTP 404 from endpoint"
 
     assert with_tenant_mismatch_guidance(message) == message
+
+
+def test_summarize_exception_compacts_foundry_validation_errors():
+    exc = RuntimeError(
+        "Error code: 400 - {'error': {'message': \"Evaluation failed validation: "
+        "{\\n  Code: MissingRequiredParameter\\n  Message: Parameter "
+        "'deployment_name' is required by evaluator 'builtin.coherence'.\\n}\\n"
+        "{\\n  Code: MissingRequiredDataMapping\\n  Message: Data mapping for "
+        "required field 'response' is missing for evaluator 'builtin.fluency'.\\n}\"}}"
+    )
+
+    summary = summarize_exception(exc)
+
+    assert summary.startswith("Foundry cloud validation failed:")
+    assert "deployment_name" in summary
+    assert "required field 'response'" in summary
+    assert "messageParameters" not in summary

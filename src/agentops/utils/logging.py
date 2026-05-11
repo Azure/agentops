@@ -43,7 +43,8 @@ def setup_logging(verbose: bool = False) -> None:
         logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
             logging.WARNING
         )
-        logging.getLogger("azure.ai.evaluation").setLevel(logging.WARNING)
+        logging.getLogger("azure.ai.evaluation").setLevel(logging.CRITICAL)
+        logging.getLogger("azure.ai.evaluation._legacy").setLevel(logging.CRITICAL)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("openai").setLevel(logging.WARNING)
 

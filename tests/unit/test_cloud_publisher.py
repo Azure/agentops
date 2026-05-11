@@ -84,7 +84,8 @@ def dataset_file(tmp_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def test_build_testing_criteria_maps_quality_evaluators():
+def test_build_testing_criteria_maps_quality_evaluators(monkeypatch):
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
     result = _make_result()
     criteria = cloud_publisher._build_testing_criteria(result)
 
@@ -95,20 +96,24 @@ def test_build_testing_criteria_maps_quality_evaluators():
     for c in criteria:
         assert c["type"] == "azure_ai_evaluator"
         assert c["name"] in {"coherence", "fluency"}
+        assert c["initialization_parameters"] == {"deployment_name": "gpt-4o-mini"}
+        assert c["data_mapping"]["response"] == "{{sample.output_text}}"
 
 
-def test_build_testing_criteria_skips_latency():
+def test_build_testing_criteria_skips_latency(monkeypatch):
     """avg_latency_seconds is a runtime-only metric and must NOT become an
     azure_ai_evaluator (Foundry has its own server-side latency view)."""
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
     result = _make_result()
     criteria = cloud_publisher._build_testing_criteria(result)
     names = {c["name"] for c in criteria}
     assert "avg_latency_seconds" not in names
 
 
-def test_build_testing_criteria_uses_selected_evaluators_when_metrics_empty():
+def test_build_testing_criteria_uses_selected_evaluators_when_metrics_empty(monkeypatch):
     """Cloud publish should still know what to evaluate if local invocation
     failed before any row metrics were produced."""
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
     result = _make_result()
     result.aggregate_metrics.clear()
 
@@ -117,6 +122,14 @@ def test_build_testing_criteria_uses_selected_evaluators_when_metrics_empty():
     azure_names = {c["evaluator_name"] for c in criteria}
     assert "builtin.coherence" in azure_names
     assert "builtin.fluency" in azure_names
+
+
+def test_build_testing_criteria_requires_deployment_for_ai_evaluators(monkeypatch):
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+    monkeypatch.delenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", raising=False)
+
+    with pytest.raises(ValueError, match="AZURE_OPENAI_DEPLOYMENT"):
+        cloud_publisher._build_testing_criteria(_make_result())
 
 
 def test_build_testing_criteria_warns_on_unknown_evaluator(caplog):
@@ -347,8 +360,8 @@ def test_publish_to_foundry_cloud_happy_path(dataset_file: Path):
     Verifies:
     - dataset is uploaded with purpose='evals'
     - testing_criteria contain only mappable evaluators (coherence + fluency)
-    - data_source carries an agent_reference with name + version
-    - agent_reference is built from result.target (not the raw string)
+    - data_source carries an azure_ai_agent target with name + version
+    - target is built from result.target (not the raw string)
     - polling runs to completion and the result captures the portal URL
     """
     fake_openai = _FakeOpenAIClient(statuses=["queued", "completed"])
@@ -367,15 +380,19 @@ def test_publish_to_foundry_cloud_happy_path(dataset_file: Path):
             "azure.identity": fake_identity_module,
         },
     ):
-        with mock.patch("agentops.pipeline.cloud_publisher.time.sleep"):
-            published = cloud_publisher.publish_to_foundry_cloud(
-                _make_result(),
+        with mock.patch.dict(
+            "os.environ", {"AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini"}
+        ):
+            with mock.patch("agentops.pipeline.cloud_publisher.time.sleep"):
+                published = cloud_publisher.publish_to_foundry_cloud(
+                    _make_result(),
                 dataset_path=dataset_file,
                 project_endpoint="https://contoso.services.ai.azure.com/api/projects/p",
                 poll_interval_seconds=0.0,
                 max_poll_attempts=5,
                 progress=progress_messages.append,
             )
+
 
     # The SDK was called with the right project endpoint.
     fake_projects_module.AIProjectClient.assert_called_once()
@@ -391,13 +408,17 @@ def test_publish_to_foundry_cloud_happy_path(dataset_file: Path):
     azure_names = {c["evaluator_name"] for c in criteria}
     assert "builtin.coherence" in azure_names
     assert "builtin.fluency" in azure_names
+    assert all(c["initialization_parameters"]["deployment_name"] == "gpt-4o-mini" for c in criteria)
+    assert all("data_mapping" in c for c in criteria)
 
     # The data_source uses azure_ai_target_completions with the right agent.
     data_source = fake_openai.evals.runs.created_with["data_source"]
     assert data_source["type"] == "azure_ai_target_completions"
-    ref = data_source["agent_reference"]
-    assert ref["name"] == "support-bot"
-    assert ref["version"] == "1"
+    target = data_source["target"]
+    assert target["type"] == "azure_ai_agent"
+    assert target["name"] == "support-bot"
+    assert target["version"] == "1"
+    assert data_source["input_messages"]["template"][0]["content"]["text"] == "{{item.input}}"
     assert data_source["source"] == {"type": "file_id", "id": "file-abc"}
 
     # Result captures status + portal URL.
@@ -428,12 +449,15 @@ def test_publish_to_foundry_cloud_raises_when_run_fails(dataset_file: Path):
             "azure.identity": fake_identity_module,
         },
     ):
-        with mock.patch("agentops.pipeline.cloud_publisher.time.sleep"):
-            with pytest.raises(RuntimeError, match="status 'failed'"):
-                cloud_publisher.publish_to_foundry_cloud(
-                    _make_result(),
-                    dataset_path=dataset_file,
-                    project_endpoint="https://x.example/api/projects/p",
-                    poll_interval_seconds=0.0,
-                    max_poll_attempts=2,
-                )
+        with mock.patch.dict(
+            "os.environ", {"AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini"}
+        ):
+            with mock.patch("agentops.pipeline.cloud_publisher.time.sleep"):
+                with pytest.raises(RuntimeError, match="status 'failed'"):
+                    cloud_publisher.publish_to_foundry_cloud(
+                        _make_result(),
+                        dataset_path=dataset_file,
+                        project_endpoint="https://x.example/api/projects/p",
+                        poll_interval_seconds=0.0,
+                        max_poll_attempts=2,
+                    )

@@ -34,7 +34,7 @@ from agentops.core.results import (
 )
 from agentops.pipeline import comparison as comparison_module
 from agentops.pipeline import invocations, publisher, reporter, runtime, thresholds
-from agentops.pipeline.diagnostics import with_tenant_mismatch_guidance
+from agentops.pipeline.diagnostics import summarize_exception
 from agentops.utils import telemetry
 from agentops.utils.colors import style
 
@@ -224,7 +224,7 @@ def _publish_to_foundry_safely(
             project_endpoint=config.project_endpoint,
         )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("foundry publish failed: %s", exc)
+        logger.debug("foundry publish failed: %s", exc)
         notify(
             f"{style('publish foundry FAILED', 'red')}: {exc}. "
             f"Local results.json is the source of truth."
@@ -273,7 +273,7 @@ def _publish_to_foundry_cloud_safely(
             "publish: foundry_cloud requires either 'project_endpoint' in "
             "agentops.yaml or the AZURE_AI_FOUNDRY_PROJECT_ENDPOINT env var."
         )
-        logger.warning(msg)
+        logger.debug(msg)
         notify(f"{style('publish foundry_cloud FAILED', 'red')}: {msg}")
         return
 
@@ -288,8 +288,8 @@ def _publish_to_foundry_cloud_safely(
             progress=notify,
         )
     except Exception as exc:  # noqa: BLE001
-        message = with_tenant_mismatch_guidance(str(exc))
-        logger.warning("foundry_cloud publish failed: %s", message)
+        message = summarize_exception(exc)
+        logger.debug("foundry_cloud publish failed: %s", message)
         notify(
             f"{style('publish foundry_cloud FAILED', 'red')}: {message}. "
             f"Local results.json is the source of truth."
@@ -445,7 +445,7 @@ def _evaluate_row(
                 )
         except Exception as exc:  # noqa: BLE001
             telemetry.set_eval_item_result(item_span, passed=False)
-            logger.warning("row %d invocation failed: %s", index, exc)
+            logger.debug("row %d invocation failed: %s", index, exc)
             progress(f"{label} {style('invocation FAILED', 'bold', 'red')}: {exc}")
             return RowResult(
                 row_index=index,

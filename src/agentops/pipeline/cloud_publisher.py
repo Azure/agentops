@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -84,6 +85,28 @@ _AZURE_AI_EVALUATOR_NAMES: Dict[str, str] = {
     "ToolCallAccuracyEvaluator": "builtin.tool_call_accuracy",
     "IntentResolutionEvaluator": "builtin.intent_resolution",
     "TaskAdherenceEvaluator": "builtin.task_adherence",
+}
+
+_CLOUD_EVALUATORS_REQUIRING_DEPLOYMENT = {
+    "CoherenceEvaluator",
+    "FluencyEvaluator",
+    "SimilarityEvaluator",
+    "RelevanceEvaluator",
+    "GroundednessEvaluator",
+    "RetrievalEvaluator",
+    "ResponseCompletenessEvaluator",
+    "ToolCallAccuracyEvaluator",
+    "IntentResolutionEvaluator",
+    "TaskAdherenceEvaluator",
+}
+
+_CLOUD_PLACEHOLDERS = {
+    "$prompt": "{{item.input}}",
+    "$prediction": "{{sample.output_text}}",
+    "$expected": "{{item.expected}}",
+    "$context": "{{item.context}}",
+    "$tool_calls": "{{item.tool_calls}}",
+    "$tool_definitions": "{{item.tool_definitions}}",
 }
 
 
@@ -183,9 +206,6 @@ def publish_to_foundry_cloud(
     openai_client = project_client.get_openai_client()
 
     eval_name = evaluation_name or f"agentops-cloud-{uuid.uuid4().hex[:8]}"
-    progress(f"cloud publish: preparing run '{eval_name}'")
-
-    file_id = _upload_dataset(openai_client, dataset_path, progress=progress)
     testing_criteria = _build_testing_criteria(result)
     if not testing_criteria:
         raise ValueError(
@@ -193,6 +213,9 @@ def publish_to_foundry_cloud(
             "criteria; nothing to evaluate server-side."
         )
 
+    progress(f"cloud publish: preparing run '{eval_name}'")
+
+    file_id = _upload_dataset(openai_client, dataset_path, progress=progress)
     item_schema = _build_item_schema(dataset_path)
 
     progress(
@@ -218,14 +241,27 @@ def publish_to_foundry_cloud(
         name=f"{eval_name}-run",
         data_source={  # type: ignore[arg-type]
             "type": "azure_ai_target_completions",
-            "agent_reference": {
-                "type": "agent_reference",
-                "name": agent_name,
-                "version": agent_version,
-            },
             "source": {
                 "type": "file_id",
                 "id": file_id,
+            },
+            "input_messages": {
+                "type": "template",
+                "template": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": {
+                            "type": "input_text",
+                            "text": "{{item.input}}",
+                        },
+                    }
+                ],
+            },
+            "target": {
+                "type": "azure_ai_agent",
+                "name": agent_name,
+                "version": agent_version,
             },
         },
     )
@@ -298,6 +334,8 @@ def _build_testing_criteria(result: RunResult) -> List[Dict[str, Any]]:
     # need them.
     from agentops.core.evaluators import CATALOG
 
+    evaluator_deployment = _evaluator_deployment_name()
+
     # ``CATALOG`` is keyed by preset.name (== class name); ``aggregate_metrics``
     # is keyed by preset.score_key. Build a one-shot reverse index for older
     # result payloads or synthesized tests that only carry metric keys.
@@ -326,12 +364,42 @@ def _build_testing_criteria(result: RunResult) -> List[Dict[str, Any]]:
         if azure_name in seen:
             continue
         seen.add(azure_name)
-        criteria.append({
+        criterion: Dict[str, Any] = {
             "type": "azure_ai_evaluator",
             "name": preset.score_key,
             "evaluator_name": azure_name,
-        })
+            "data_mapping": _build_cloud_data_mapping(preset),
+        }
+        if preset.class_name in _CLOUD_EVALUATORS_REQUIRING_DEPLOYMENT:
+            if not evaluator_deployment:
+                raise ValueError(
+                    "publish: foundry_cloud requires AZURE_OPENAI_DEPLOYMENT "
+                    "or AZURE_AI_MODEL_DEPLOYMENT_NAME for Azure AI "
+                    f"evaluator {preset.class_name}."
+                )
+            criterion["initialization_parameters"] = {
+                "deployment_name": evaluator_deployment,
+            }
+        criteria.append(criterion)
     return criteria
+
+
+def _evaluator_deployment_name() -> Optional[str]:
+    return os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv(
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME"
+    )
+
+
+def _build_cloud_data_mapping(preset: Any) -> Dict[str, str]:
+    mapping: Dict[str, str] = {}
+    for field, placeholder in preset.input_mapping.items():
+        if placeholder == "$prediction" and getattr(preset, "needs_conversation", False):
+            mapping[field] = "{{sample.output_items}}"
+            continue
+        mapped = _CLOUD_PLACEHOLDERS.get(placeholder)
+        if mapped:
+            mapping[field] = mapped
+    return mapping
 
 
 def _build_item_schema(dataset_path: Path) -> Dict[str, Any]:
