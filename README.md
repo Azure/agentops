@@ -84,7 +84,7 @@ Evaluators are inferred from the dataset shape (rows with `context` → RAG eval
 
 ```yaml
 version: 1
-agent: "agentops-smoke:1"
+agent: "agentops-smoke:2"  # Foundry saves the first published version as v2
 dataset: .agentops/data/smoke.jsonl
 ```
 

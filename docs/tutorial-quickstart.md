@@ -70,8 +70,11 @@ For every user message:
 ```
 
 Copy the published `name:version` value from Foundry, for example
-`agentops-smoke:1`. This prompt is intentionally strict because the seed
-dataset checks whether the agent can follow exact-output instructions.
+`agentops-smoke:2`. Foundry's portal saves the first published version
+as **v2** (v1 is reserved for the empty draft), so your baseline will
+normally be `:2`, not `:1`. This prompt is intentionally strict because
+the seed dataset checks whether the agent can follow exact-output
+instructions.
 
 ## 4. Configure AgentOps
 
@@ -85,7 +88,7 @@ The full minimal config is just:
 
 ```yaml
 version: 1
-agent: "agentops-smoke:1"
+agent: "agentops-smoke:2"
 dataset: .agentops/data/smoke.jsonl
 ```
 
@@ -93,7 +96,7 @@ If your target is a Foundry prompt agent (`name:version`) and you want the run t
 
 ```yaml
 version: 1
-agent: "agentops-smoke:1"
+agent: "agentops-smoke:2"
 dataset: .agentops/data/smoke.jsonl
 publish: foundry_cloud
 ```
@@ -175,11 +178,12 @@ For every answer:
 - Use a warm, conversational tone.
 ```
 
-Update `agentops.yaml` to the new published version:
+Update `agentops.yaml` to the new published version (the next number
+after your baseline — typically `:3`):
 
 ```yaml
 version: 1
-agent: "agentops-smoke:2"
+agent: "agentops-smoke:3"
 dataset: .agentops/data/smoke.jsonl
 publish: foundry_cloud
 ```
