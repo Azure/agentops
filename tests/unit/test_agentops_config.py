@@ -204,6 +204,28 @@ class TestAgentOpsConfig:
         )
         assert cfg.publish_target() == "foundry_cloud"
 
+    def test_cloud_execution_implies_publish(self) -> None:
+        """execution: cloud auto-enables publish when not specified."""
+        cfg = AgentOpsConfig(
+            version=1,
+            agent="my-rag:3",
+            dataset="./qa.jsonl",
+            execution="cloud",
+        )
+        assert cfg.publish is True
+        assert cfg.publish_target() == "foundry_cloud"
+
+    def test_cloud_execution_rejects_publish_false(self) -> None:
+        """execution: cloud + publish: false is a contradiction."""
+        with pytest.raises(ValidationError, match="always publishes"):
+            AgentOpsConfig(
+                version=1,
+                agent="my-rag:3",
+                dataset="./qa.jsonl",
+                execution="cloud",
+                publish=False,
+            )
+
     def test_publish_defaults_to_false(self) -> None:
         cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")
         assert cfg.publish is False

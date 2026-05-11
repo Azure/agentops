@@ -37,14 +37,15 @@ dataset: .agentops/data/smoke.jsonl
 # Optional. Where the agent and evaluators execute.
 #   local (default) — AgentOps runs the agent row-by-row locally.
 #   cloud           — Foundry runs the agent and evaluators server-side
-#                     (only valid for 'name:version' Foundry prompt agents).
+#                     (only valid for 'name:version' Foundry prompt agents;
+#                     implicitly publishes to the New Foundry panel).
 #
 # execution: local
 #
-# Optional. Publish results to the Foundry Evaluations panel.
+# Optional. Publish local results to the Classic Foundry Evaluations panel.
+# Only meaningful when execution: local. With execution: cloud the run is
+# always published (Foundry hosts the run by definition).
 #   false (default) — only local results.json / report.md are written.
-#   true            — publish results; destination is derived from 'execution':
-#                       execution: local + publish: true → Classic Foundry
-#                       execution: cloud + publish: true → New Foundry
+#   true            — execution: local + publish: true → upload to Classic Foundry.
 #
 # publish: false

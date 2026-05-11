@@ -64,9 +64,10 @@ thresholds:
   groundedness: ">=3"
   avg_latency_seconds: "<=30"
 
-# Publish results to the Foundry Evaluations panel:
-#   execution: local + publish: true  → Classic Foundry (uploads metrics)
-#   execution: cloud + publish: true  → New Foundry (server-side run)
+# Publish results to the Foundry Evaluations panel.
+# - execution: local + publish: true  → Classic Foundry (uploads metrics)
+# - execution: cloud                  → New Foundry (server-side run;
+#                                       publish is implicit, cloud always publishes)
 execution: local
 publish: true
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"

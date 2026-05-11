@@ -230,10 +230,16 @@ class AgentOpsConfig(BaseModel):
         False,
         description=(
             "Whether to publish results to the Foundry Evaluations panel.\n"
-            "- false (default): only local artifacts (results.json / report.md).\n"
-            "- true: combined with 'execution' to decide the destination:\n"
-            "  * execution: local + publish: true  → upload metrics to Classic Foundry.\n"
-            "  * execution: cloud + publish: true  → server-side run on New Foundry."
+            "- false (default for execution: local): only local artifacts.\n"
+            "- true (forced for execution: cloud): publish to Foundry.\n"
+            "\n"
+            "Destination is derived from 'execution':\n"
+            "  execution: local + publish: true  → Classic Foundry (upload metrics)\n"
+            "  execution: cloud + publish: true  → New Foundry (server-side run)\n"
+            "\n"
+            "execution: cloud always publishes (Foundry hosts the run by "
+            "definition); setting publish: false with execution: cloud is "
+            "rejected as a contradiction."
         ),
     )
     execution: ExecutionMode = Field(
@@ -241,7 +247,9 @@ class AgentOpsConfig(BaseModel):
         description=(
             "Where to execute the agent and evaluators.\n"
             "- local (default): AgentOps invokes the agent row-by-row locally.\n"
-            "- cloud: Foundry runs the agent and evaluators server-side."
+            "- cloud: Foundry runs the agent and evaluators server-side, and "
+            "the run is implicitly published to the New Foundry Evaluations "
+            "panel (publish defaults to true)."
         ),
     )
     project_endpoint: Optional[str] = Field(
@@ -254,6 +262,19 @@ class AgentOpsConfig(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_publish_for_cloud(cls, data: Any) -> Any:
+        """``execution: cloud`` implies ``publish: true`` when publish is
+        omitted, because a cloud run is always recorded by Foundry — there
+        is no way to "not publish" a server-side run.
+        """
+        if not isinstance(data, dict):
+            return data
+        if data.get("execution") == "cloud" and "publish" not in data:
+            data["publish"] = True
+        return data
 
     @model_validator(mode="before")
     @classmethod
@@ -284,6 +305,23 @@ class AgentOpsConfig(BaseModel):
         if not value.strip():
             raise ValueError("agent must be non-empty")
         return value.strip()
+
+    @model_validator(mode="after")
+    def _validate_publish_compat(self) -> "AgentOpsConfig":
+        """``execution: cloud`` + ``publish: false`` is a contradiction.
+
+        A cloud run is always recorded by Foundry — the eval definition,
+        run, and artifacts live on the Foundry side as a side effect of
+        executing there. ``publish: false`` cannot prevent that.
+        """
+        if self.execution == "cloud" and not self.publish:
+            raise ValueError(
+                "execution: cloud always publishes to the New Foundry "
+                "Evaluations panel (Foundry hosts the run). Remove "
+                "'publish: false' or set 'execution: local' if you want "
+                "to keep results local-only."
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_protocol_compat(self) -> "AgentOpsConfig":

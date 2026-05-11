@@ -91,7 +91,6 @@ version: 1                       # schema version of agentops.yaml itself
 agent: "agentops-smoke:2"        # ':2' is the Foundry agent version
 dataset: .agentops/data/smoke.jsonl
 execution: cloud                 # Foundry runs the agent + evaluators server-side
-publish: true                    # publish results to the New Foundry Evaluations panel
 ```
 
 Field reference:
@@ -99,16 +98,17 @@ Field reference:
 | Field | Values | Effect |
 |---|---|---|
 | `execution` | `local` (default) / `cloud` | `local`: AgentOps invokes the agent row-by-row. `cloud`: Foundry runs the agent + evaluators server-side via the OpenAI Evals API. |
-| `publish` | `false` (default) / `true` | When `true`, results are published to Foundry. Destination is derived from `execution`: local + publish → **Classic Foundry**, cloud + publish → **New Foundry**. |
+| `publish` | `false` (default for local) / `true` | When `true`, results are published to Foundry. Destination is derived from `execution`: local + publish → **Classic Foundry**, cloud → **New Foundry**. |
+
+> **`execution: cloud` always publishes.** A cloud run is hosted by
+> Foundry by definition, so `publish` defaults to `true` automatically.
+> Setting `publish: false` together with `execution: cloud` is rejected
+> as a contradiction. If you want local-only results, use
+> `execution: local` (the default).
 
 The top-level `version: 1` is the schema version of `agentops.yaml`
 (always `1` today). The trailing `:2` in `agent:` is the Foundry agent's
 published version — they are independent.
-
-> **Why `execution: cloud` for the quickstart?** With cloud execution
-> the run shows up directly in the New Foundry Evaluations panel and
-> you get one canonical place to inspect results. Local execution is
-> the fallback for non-Foundry agents and offline iteration.
 
 > AgentOps also supports hosted Foundry endpoints, generic HTTP/JSON
 > endpoints, and raw model deployments. Those are covered in the scenario
@@ -199,7 +199,6 @@ version: 1
 agent: "agentops-smoke:3"
 dataset: .agentops/data/smoke.jsonl
 execution: cloud
-publish: true
 ```
 
 Now compare the changed prompt against the captured baseline:

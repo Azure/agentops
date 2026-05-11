@@ -81,16 +81,16 @@ publish: true
 
 **New Foundry Evaluations panel** (preview): Foundry runs the agent +
 evaluators server-side via the OpenAI Evals API. Only works for
-`name:version` Foundry agents.
+`name:version` Foundry agents. `publish` is implicit — a cloud run is
+always recorded by Foundry.
 
 ```yaml
 execution: cloud
-publish: true
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
-With `publish: false` (default), AgentOps runs locally and only writes
-local artifacts.
+With `execution: local` and no `publish: true`, AgentOps runs locally
+and only writes local artifacts.
 
 ## Tips
 
