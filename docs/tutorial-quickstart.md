@@ -23,8 +23,8 @@ The former bundle-based, multi-file workspace has been replaced by this flat `ag
   - A **Foundry hosted endpoint** (`https://*.services.ai.azure.com/.../agents/<id>`).
   - A **generic HTTP/JSON agent** deployed anywhere (ACA, AKS, your own server).
   - A **raw Foundry model deployment** (e.g. `gpt-4o`).
-- For Foundry targets: `az login` (or a service principal) and `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` set.
-- For AI-assisted evaluators (Coherence, Groundedness, etc.): `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT` set.
+- For Foundry targets: the Foundry project endpoint URL.
+- For AI-assisted evaluators (Coherence, Groundedness, etc.): an Azure OpenAI endpoint and deployment to use as the judge model.
 
 ## 1. Install
 
@@ -32,7 +32,8 @@ The former bundle-based, multi-file workspace has been replaced by this flat `ag
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
+agentops --version
 ```
 
 ## 2. Bootstrap the project
@@ -79,12 +80,17 @@ publish: foundry_cloud
 
 ## 4. Run the evaluation
 
-Set credentials and run:
+Set credentials and run. These environment variables are required even if you also put `project_endpoint:` in `agentops.yaml`, because the local invocation and evaluator runtime read them from the process environment.
 
 ```powershell
+az login
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_OPENAI_ENDPOINT = "https://<openai-resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT = "gpt-4o-mini"
 agentops eval run
 ```
+
+Use the Azure OpenAI data-plane endpoint for `AZURE_OPENAI_ENDPOINT` (`*.openai.azure.com`, no `/api/projects/...` path), not the Foundry project endpoint.
 
 Outputs:
 

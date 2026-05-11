@@ -48,7 +48,7 @@ Exit code contract:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 ```
 
 ### 2) Bootstrap
@@ -82,6 +82,8 @@ dataset: .agentops/data/smoke.jsonl
 
 ```powershell
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_OPENAI_ENDPOINT = "https://<openai-resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT = "gpt-4o-mini"
 agentops eval run
 ```
 

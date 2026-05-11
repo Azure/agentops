@@ -45,19 +45,25 @@ After saving the agent, copy:
 
 ## Part 2: Set up AgentOps locally
 
-### 1) Azure login
+### 1) Install and sign in
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 az login
 ```
 
-### 2) Configure the project endpoint
+### 2) Configure Foundry and judge-model endpoints
 
 ```powershell
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_OPENAI_ENDPOINT = "https://<openai-resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT = "gpt-4o-mini"
 ```
 
-On macOS or Linux, set the same environment variable with your shell's syntax.
+Use the Azure OpenAI data-plane endpoint for `AZURE_OPENAI_ENDPOINT` (`*.openai.azure.com`, no `/api/projects/...` path).
 
 ### 3) Initialize AgentOps
 
@@ -87,9 +93,7 @@ That is the entire config. AgentOps:
   `context` field (see [Part 4](#part-4-verify-the-dataset)).
 - Reads the project endpoint from
   `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (set in [Part 2](#2-configure-the-project-endpoint)).
-- Reads the judge-model deployment from
-  `AZURE_AI_MODEL_DEPLOYMENT_NAME` (set this if your project has more
-  than one deployment).
+- Reads the judge-model deployment from `AZURE_OPENAI_DEPLOYMENT`.
 
 ## Part 4: Verify the dataset
 

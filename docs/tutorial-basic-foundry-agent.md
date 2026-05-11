@@ -40,7 +40,7 @@ If you see agent scores drop to 1.0 on questions that the model-direct handles a
 - Azure CLI (`az login`)
 - A Foundry project with a deployed agent
 - A model deployment in the same project (used as the judge model for SimilarityEvaluator)
-- `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`
+- `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"`
 
 ## Part 1: Create the agent in Foundry
 
@@ -78,19 +78,25 @@ AgentOps handles both. Named agents use the Foundry Responses API; legacy agents
 
 ## Part 2: Set up AgentOps
 
-### 1) Azure login
+### 1) Install and sign in
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 az login
 ```
 
-### 2) Set the project endpoint
+### 2) Set Foundry and judge-model endpoints
 
 ```powershell
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_OPENAI_ENDPOINT = "https://<openai-resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT = "gpt-4o-mini"
 ```
 
-On macOS or Linux, set the same environment variable with your shell's syntax.
+Use the Azure OpenAI data-plane endpoint for `AZURE_OPENAI_ENDPOINT` (`*.openai.azure.com`, no `/api/projects/...` path).
 
 ### 3) Initialize the workspace
 

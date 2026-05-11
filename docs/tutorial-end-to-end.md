@@ -108,7 +108,7 @@ $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 agentops --version
 ```
 
@@ -805,7 +805,7 @@ Application Insights connection string, and run one more eval. AgentOps
 will emit OpenTelemetry spans for each dataset row and agent invocation.
 
 ```powershell
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 
 $env:APPLICATIONINSIGHTS_CONNECTION_STRING = $appInsightsConnectionString
 agentops eval run

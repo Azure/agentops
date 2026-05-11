@@ -46,7 +46,7 @@ Use this when you want the skills checked into a repo:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 
 agentops skills install --platform copilot --force
 ```

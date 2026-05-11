@@ -6,15 +6,22 @@ model can't answer your dataset, no agent prompt will save it.
 
 ## Prerequisites
 
-- Python 3.11+ and `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`
+- Python 3.11+
 - A Foundry project with at least one model deployment
 - `az login` (AgentOps uses `DefaultAzureCredential`)
 
 ## 1. Bootstrap
 
 ```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
+az login
 agentops init
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_OPENAI_ENDPOINT = "https://<openai-resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT = "gpt-4o-mini"
 ```
 
 ## 2. Edit `agentops.yaml`

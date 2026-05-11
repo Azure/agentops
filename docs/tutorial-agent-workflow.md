@@ -36,7 +36,7 @@ Set-Location support-tools-agent
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 ```
 
 Create the same FastAPI tool-calling agent used by the HTTP tutorial:

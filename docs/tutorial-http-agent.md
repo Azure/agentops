@@ -30,7 +30,7 @@ gh auth login
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@feature/test-tutorials"
 
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
 $env:AZURE_OPENAI_ENDPOINT             = "https://<resource>.openai.azure.com"
