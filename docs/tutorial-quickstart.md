@@ -87,10 +87,14 @@ named `my-agent` with published version `v2` is referenced as
 The full minimal config is just:
 
 ```yaml
-version: 1
-agent: "agentops-smoke:2"
+version: 1                       # schema version of agentops.yaml itself
+agent: "agentops-smoke:2"        # ':2' is the Foundry agent version
 dataset: .agentops/data/smoke.jsonl
 ```
+
+The top-level `version: 1` is the schema version of `agentops.yaml`
+(always `1` today). The trailing `:2` in `agent:` is the Foundry agent's
+published version — they are independent.
 
 If your target is a Foundry prompt agent (`name:version`) and you want the run to also appear in the New Foundry Evaluations panel, opt in to cloud publishing:
 

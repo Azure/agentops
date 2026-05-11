@@ -11,8 +11,11 @@
 #   agent: "https://api.example.com/chat"  # any HTTP/JSON agent (ACA, AKS, custom)
 #   agent: "model:gpt-4o"                  # raw Foundry model deployment
 
+# Schema version of this agentops.yaml file (not the agent version).
 version: 1
 
+# Foundry agent identifier as name:version, where the trailing number is
+# the *agent* version published in Foundry (not the schema version above).
 agent: "my-agent:1"
 
 dataset: .agentops/data/smoke.jsonl
