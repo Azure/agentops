@@ -192,18 +192,11 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
     run_alt_links = [r.get("alt_link") for r in eval_runs]
     run_alt_labels = [r.get("alt_label") for r in eval_runs]
 
-    # Latest execution is surfaced once at the section header, not on every
-    # card. We still annotate the per-card source footer when the latest run
-    # was a Foundry cloud run, because the bare ".agentops/results/" /
-    # "results.json" labels otherwise read like a local execution — Foundry
-    # actually runs the agent + evaluators server-side, and AgentOps just
-    # caches the downloaded results on disk.
+    # The section header already shows the "Foundry cloud" pill when the
+    # latest run is a cloud run, so the per-card source footers stay short.
+    # The detailed "cloud runs are cached locally" explanation lives in the
+    # Eval runs help tooltip instead.
     latest_execution = latest.get("execution")
-    cloud_suffix = (
-        " · cached from Foundry cloud run"
-        if (latest_execution or "").lower() == "cloud"
-        else ""
-    )
 
     cards: List[Dict[str, Any]] = [
         {
@@ -229,7 +222,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "\n• 3 to 9 — moderate sample"
                 "\n• 10 or more — well sampled"
             ),
-            "source": f".agentops/results/{cloud_suffix}",
+            "source": ".agentops/results/",
         },
         {
             "key": "pass_rate",
@@ -254,7 +247,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "\n• 70 to 89% — mixed"
                 "\n• below 70% — unhealthy"
             ),
-            "source": f"results.json · summary.overall_passed{cloud_suffix}",
+            "source": "results.json · summary.overall_passed",
         },
         {
             "key": "items",
@@ -276,7 +269,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "in the latest run. The dataset on disk may contain more "
                 "rows that were skipped due to filters or errors."
             ),
-            "source": f"results.json · summary.items_total{cloud_suffix}",
+            "source": "results.json · summary.items_total",
         },
         {
             "key": "latest_run",
@@ -307,7 +300,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 f"duration: {latest['duration']:.1f}s" if latest["duration"] else "duration: —",
                 f"execution: {latest['execution']}" if latest["execution"] else "execution: —",
             ],
-            "source": "results.json · target.raw" + cloud_suffix,
+            "source": "results.json · target.raw",
         },
     ]
     return {
