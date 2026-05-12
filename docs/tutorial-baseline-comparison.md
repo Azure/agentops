@@ -83,15 +83,19 @@ similarity is good.
 ## 4. Wire into a PR check
 
 The `agentops-pr.yml` workflow shipped by `agentops workflow generate`
-already supports this — drop a baseline file in your repo (e.g.
-`.agentops/baseline/results.json`) and add this step:
+already supports this — drop a baseline file at
+`.agentops/baseline/results.json` in your repo and the PR gate
+auto-detects it (no workflow edit needed):
 
-```yaml
-- name: Run AgentOps eval against baseline
-  run: |
-    agentops eval run \
-      --baseline .agentops/baseline/results.json
+```bash
+mkdir -p .agentops/baseline
+cp .agentops/results/latest/results.json .agentops/baseline/results.json
+git add .agentops/baseline/results.json
+git commit -m "chore: capture AgentOps baseline"
 ```
+
+When the file is absent, the workflow runs without baseline comparison.
+When present, it runs `agentops eval run --baseline .agentops/baseline/results.json` automatically.
 
 When a PR causes a metric to regress past your threshold, the run
 exits `2` and the workflow fails, blocking merge until somebody

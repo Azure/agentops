@@ -160,6 +160,19 @@ def test_pr_template_triggers_and_no_environment(tmp_path: Path) -> None:
     assert "<!-- agentops-pr-report -->" in content
 
 
+def test_pr_template_auto_detects_committed_baseline(tmp_path: Path) -> None:
+    """The shipped PR workflow turns into a regression gate when a baseline
+    file is committed at ``.agentops/baseline/results.json``."""
+    generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+
+    # Baseline auto-detection: the run step checks for the committed file
+    # and passes --baseline only when it exists.
+    assert ".agentops/baseline/results.json" in content
+    assert "--baseline" in content
+    assert "$BASELINE_ARG" in content
+
+
 def test_dev_template_triggers_and_environment(tmp_path: Path) -> None:
     generate_cicd_workflows(directory=tmp_path, kinds=["dev"])
     content = (tmp_path / _DEV_PATH).read_text(encoding="utf-8")

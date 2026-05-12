@@ -74,7 +74,17 @@ jobs:
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
         run: |
           set +e
-          agentops eval run --config "${{ inputs.config || 'agentops.yaml' }}"
+          # Auto-detect a committed baseline so the PR gate becomes a
+          # regression check when .agentops/baseline/results.json is present.
+          # Drop or refresh that file with `cp .agentops/results/latest/results.json .agentops/baseline/results.json`.
+          BASELINE_ARG=""
+          if [ -f .agentops/baseline/results.json ]; then
+            BASELINE_ARG="--baseline .agentops/baseline/results.json"
+            echo "Using baseline: .agentops/baseline/results.json"
+          else
+            echo "No .agentops/baseline/results.json found; running without baseline comparison."
+          fi
+          agentops eval run --config "${{ inputs.config || 'agentops.yaml' }}" $BASELINE_ARG
           ec=$?
           echo "exit_code=$ec" >> "$GITHUB_OUTPUT"
           if [ $ec -eq 0 ]; then
