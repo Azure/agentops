@@ -13,8 +13,11 @@ default — it is a developer-tool surface, not a production service.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import re
+from importlib.resources import files as _pkg_files
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -95,6 +98,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "unit": "total",
             "series": [1.0] * len(eval_runs),  # constant — show as filled bar
             "badge": {"label": _badge_runs(len(eval_runs)), "tone": "info"},
+            "source": ".agentops/results/",
         },
         {
             "key": "pass_rate",
@@ -103,6 +107,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "unit": "",
             "series": pass_series,
             "badge": _badge_pass_rate(pass_rate),
+            "source": "results.json · summary.overall_passed",
         },
         {
             "key": "items",
@@ -111,12 +116,14 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "unit": "rows",
             "series": items_total_series,
             "badge": {"label": "latest", "tone": "muted"},
+            "source": "results.json · summary.items_total",
         },
         {
             "key": "latest_run",
-            "label": "Latest run",
+            "label": "Latest target",
             "value": latest["target"] or "—",
             "unit": "",
+            "value_kind": "text",
             "series": pass_series[-6:],
             "badge": {
                 "label": "passed" if latest["passed"] else "failed",
@@ -127,6 +134,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 f"duration: {latest['duration']:.1f}s" if latest["duration"] else "duration: —",
                 f"execution: {latest['execution']}" if latest["execution"] else "execution: —",
             ],
+            "source": "results.json · target.raw",
         },
     ]
     return {"has_runs": True, "cards": cards}
@@ -152,6 +160,7 @@ def _build_metrics_cards(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]
             "unit": unit,
             "series": series,
             "badge": badge,
+            "source": f"results.json · aggregate_metrics.{key}",
         })
     return cards
 
@@ -176,6 +185,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
             "unit": "",
             "series": series,
             "badge": _category_badge(key, current, records),
+            "source": f"history.jsonl · findings_by_category.{key}",
         })
 
     latest_label, latest_badge = _latest_run_badge(latest)
@@ -191,6 +201,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 "unit": "total",
                 "series": findings_series,
                 "badge": _headline_badge_total(findings_series),
+                "source": "history.jsonl · findings_total",
             },
             {
                 "key": "critical",
@@ -199,15 +210,18 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 "unit": "open",
                 "series": critical_series,
                 "badge": _headline_badge_critical(critical_series),
+                "source": "history.jsonl · findings_by_severity.critical",
             },
             {
                 "key": "last_analysis",
                 "label": "Last analysis",
                 "value": latest_label,
                 "unit": "",
+                "value_kind": "text",
                 "series": findings_series[-6:],
                 "badge": latest_badge,
                 "meta": _latest_run_meta(latest),
+                "source": "history.jsonl · latest record",
             },
         ],
         "category_cards": category_cards,
@@ -297,8 +311,9 @@ def _telemetry_status() -> Dict[str, Any]:
         return {
             "enabled": True,
             "source": "env",
-            "label": "App Insights (explicit)",
-            "detail": "APPLICATIONINSIGHTS_CONNECTION_STRING is set.",
+            "label": "App Insights",
+            "detail": "Connected via APPLICATIONINSIGHTS_CONNECTION_STRING.",
+            "portal_url": _appinsights_portal_url(explicit_conn),
             "tone": "ok",
         }
     if otlp:
@@ -307,10 +322,10 @@ def _telemetry_status() -> Dict[str, Any]:
             "source": "otlp",
             "label": "OTLP exporter",
             "detail": f"AGENTOPS_OTLP_ENDPOINT={otlp}",
+            "portal_url": None,
             "tone": "ok",
         }
     if project:
-        # Best-effort discovery; cached one-shot per dashboard request.
         try:
             from agentops.utils.foundry_discovery import (
                 resolve_appinsights_connection_from_env,
@@ -322,33 +337,69 @@ def _telemetry_status() -> Dict[str, Any]:
             return {
                 "enabled": True,
                 "source": "discovery",
-                "label": "App Insights (auto-discovered)",
-                "detail": "Resolved from the Foundry project endpoint.",
+                "label": "App Insights",
+                "detail": "Auto-discovered from the Foundry project endpoint.",
+                "portal_url": _appinsights_portal_url(conn),
                 "tone": "ok",
             }
         return {
             "enabled": False,
             "source": "discovery_failed",
-            "label": "Telemetry not active",
+            "label": "Telemetry off",
             "detail": (
-                "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT is set but no Application "
-                "Insights resource was discovered on the project. Connect "
-                "one in the Foundry portal or set "
-                "APPLICATIONINSIGHTS_CONNECTION_STRING manually."
+                "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT is set but no App "
+                "Insights was discovered. Connect one in Foundry or set "
+                "APPLICATIONINSIGHTS_CONNECTION_STRING."
             ),
+            "portal_url": None,
             "tone": "warn",
         }
     return {
         "enabled": False,
         "source": "off",
-        "label": "Telemetry not active",
+        "label": "Telemetry off",
         "detail": (
-            "Set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT for auto-discovery, or "
-            "APPLICATIONINSIGHTS_CONNECTION_STRING to route traces to a "
-            "specific App Insights workspace."
+            "Set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT for auto-discovery, "
+            "or APPLICATIONINSIGHTS_CONNECTION_STRING to route traces."
         ),
+        "portal_url": None,
         "tone": "muted",
     }
+
+
+def _appinsights_portal_url(connection_string: Optional[str]) -> Optional[str]:
+    """Build a deep link to the Logs blade for the App Insights resource
+    identified by the connection string. Returns ``None`` when the
+    connection string lacks the ``ApplicationId`` segment (older format).
+    """
+    if not connection_string:
+        return None
+    m = re.search(r"ApplicationId=([0-9a-fA-F-]+)", connection_string)
+    if not m:
+        return None
+    app_id = m.group(1)
+    # ApplicationInsights-Extension landing query inspecting recent AgentOps spans.
+    query = (
+        "union dependencies, requests, traces"
+        "\n| where timestamp > ago(1h)"
+        "\n| where name has 'ANALYZE' or name has 'RUN ' or name has 'eval_item' "
+        "or name has 'invoke_agent' or name has 'evaluator' or name has 'chat'"
+        "\n| order by timestamp desc"
+        "\n| take 100"
+    )
+    # The portal accepts an `appId` query param shortcut.
+    return (
+        "https://portal.azure.com/#blade/Microsoft_OperationsManagementSuite_Workspace/"
+        f"AnalyticsBlade/initiator/AnalyticsShareLinkToQuery/isQueryEditorVisible/true/"
+        f"sourceId/%2Fapps%2F{app_id}/scope/%7B%22resources%22%3A%5B%7B%22resourceId%22"
+        f"%3A%22%2Fapps%2F{app_id}%22%7D%5D%7D/query/"
+        + _url_quote(query)
+    )
+
+
+def _url_quote(text: str) -> str:
+    from urllib.parse import quote
+    return quote(text, safe="")
 
 
 # ---------------------------------------------------------------------------
@@ -523,32 +574,74 @@ def _render_card(card: Dict[str, Any], *, hero: bool = False) -> str:
     unit = card.get("unit", "")
     unit_html = f'<span class="card-unit"> {unit}</span>' if unit else ""
 
+    # Textual values (e.g. "agent-smoke:3") wrap awkwardly when rendered at
+    # 36px. Detect and switch to a compact text style.
+    value_kind = card.get("value_kind", "numeric")
+    if value_kind == "numeric" and isinstance(value, str):
+        # Auto-detect if the "value" is non-numeric (contains letters).
+        if any(c.isalpha() and c != "." for c in value):
+            value_kind = "text"
+    value_css = "card-value card-value-text" if value_kind == "text" else "card-value"
+
     meta_html = ""
     if card.get("meta"):
         meta_items = "".join(f"<span>{m}</span>" for m in card["meta"] if m)
         if meta_items:
             meta_html = f'<div class="card-meta">{meta_items}</div>'
 
+    footer_html = ""
+    if card.get("source"):
+        footer_html = (
+            f'<div class="card-source" title="Data source">'
+            f'<span class="source-icon">⌖</span>{card["source"]}</div>'
+        )
+
     return (
         f'<div class="{css_class}">'
         f'<div class="card-label">{card["label"]}</div>'
-        f'<div class="card-value">{value}{unit_html}</div>'
+        f'<div class="{value_css}">{value}{unit_html}</div>'
         f"{spark}"
         f"{meta_html}"
         f'<div class="badge tone-{badge["tone"]}">{badge["label"]}</div>'
+        f"{footer_html}"
         f"</div>"
     )
 
 
 def _render_telemetry_card(telemetry: Dict[str, Any]) -> str:
     tone = telemetry["tone"]
-    icon = "●" if telemetry["enabled"] else "○"
+    dot = '<span class="dot dot-on"></span>' if telemetry["enabled"] else '<span class="dot dot-off"></span>'
+
+    link_html = ""
+    if telemetry.get("portal_url"):
+        link_html = (
+            f'<a class="card-link" href="{telemetry["portal_url"]}" '
+            f'target="_blank" rel="noopener noreferrer">'
+            f'View in App Insights →</a>'
+        )
+
+    source_html = ""
+    src = telemetry.get("source")
+    if src:
+        src_label = {
+            "env": "APPLICATIONINSIGHTS_CONNECTION_STRING",
+            "otlp": "AGENTOPS_OTLP_ENDPOINT",
+            "discovery": "Foundry project endpoint (auto)",
+            "discovery_failed": "discovery failed",
+            "off": "no env var set",
+        }.get(src, src)
+        source_html = (
+            f'<div class="card-source"><span class="source-icon">⌖</span>{src_label}</div>'
+        )
+
     return (
         f'<div class="card telemetry">'
         f'<div class="card-label">Telemetry</div>'
-        f'<div class="card-value tone-{tone}-text">{icon} {telemetry["label"]}</div>'
+        f'<div class="card-value card-value-text tone-{tone}-text">{dot}{telemetry["label"]}</div>'
         f'<div class="telemetry-detail">{telemetry["detail"]}</div>'
         f'<div class="badge tone-{tone}">{"on" if telemetry["enabled"] else "off"}</div>'
+        f"{link_html}"
+        f"{source_html}"
         f"</div>"
     )
 
@@ -578,13 +671,113 @@ def _sparkline_svg(series: List[float]) -> str:
         - pad
         - ((window[-1] - min_v) / span) * (height - 2 * pad)
     )
+    # Soft fill below the line for visual weight.
+    area_points = " ".join(points) + f" {last_x:.1f},{height - pad} {pad:.1f},{height - pad}"
     return (
         f'<svg class="sparkline" viewBox="0 0 {width} {height}" preserveAspectRatio="none">'
+        f'<polygon fill="currentColor" fill-opacity="0.08" points="{area_points}"/>'
         f'<polyline fill="none" stroke="currentColor" stroke-width="2" '
         f'stroke-linecap="round" stroke-linejoin="round" points="{polyline}"/>'
-        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="3" fill="currentColor"/>'
+        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="3.5" fill="currentColor"/>'
         f"</svg>"
     )
+
+
+def _icon_data_uri() -> str:
+    """Read the bundled icon.png and return a base64 data URI.
+
+    Falls back to a tiny inline SVG glyph when the asset is missing
+    (older installs) so the dashboard still renders.
+    """
+    try:
+        data = _pkg_files("agentops.templates").joinpath("icon.png").read_bytes()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:image/png;base64,{b64}"
+    except Exception:  # noqa: BLE001
+        # Fallback SVG dot.
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#38bdf8">'
+            '<circle cx="12" cy="12" r="10"/></svg>'
+        )
+        return "data:image/svg+xml;utf8," + svg
+
+
+def render_dashboard_html(payload: Dict[str, Any]) -> str:
+    """Render the dashboard from a payload built by
+    :func:`build_dashboard_payload`. Returns a complete HTML document.
+    """
+    telemetry = payload["telemetry"]
+    telemetry_card = _render_telemetry_card(telemetry)
+
+    eval_section = ""
+    if payload["eval"]["has_runs"]:
+        cards_html = "".join(_render_card(c) for c in payload["eval"]["cards"])
+        eval_section = (
+            '<div class="section-title">Evaluation runs</div>'
+            f'<div class="grid">{cards_html}{telemetry_card}</div>'
+        )
+    else:
+        eval_section = (
+            '<div class="section-title">Evaluation runs</div>'
+            '<div class="empty-state">'
+            "No eval runs yet under <code>.agentops/results/</code>. "
+            "Run <code>agentops eval run</code> to populate this section."
+            "</div>"
+            f'<div class="grid">{telemetry_card}</div>'
+        )
+
+    metrics_section = ""
+    if payload["metrics"]:
+        metrics_html = "".join(_render_card(c) for c in payload["metrics"])
+        metrics_section = (
+            '<div class="section-title">Quality metrics</div>'
+            f'<div class="grid">{metrics_html}</div>'
+        )
+
+    watchdog = payload["watchdog"]
+    if watchdog["has_history"]:
+        watchdog_headline = "".join(
+            _render_card(c, hero=True) for c in watchdog["headline_cards"]
+        )
+        watchdog_categories = "".join(
+            _render_card(c) for c in watchdog["category_cards"]
+        )
+        watchdog_section = (
+            '<div class="section-title">Watchdog findings</div>'
+            f'<div class="grid">{watchdog_headline}</div>'
+            '<div class="section-title sub">By category</div>'
+            f'<div class="grid">{watchdog_categories}</div>'
+        )
+    else:
+        watchdog_section = (
+            '<div class="section-title">Watchdog findings</div>'
+            '<div class="empty-state">'
+            "No analysis history yet. Run "
+            "<code>agentops agent analyze</code> to populate this section."
+            "</div>"
+        )
+
+    counts = payload["summary_counts"]
+    workspace_display = _shorten_workspace(payload["workspace"])
+    return _DASHBOARD_TEMPLATE.format(
+        eval_section=eval_section,
+        metrics_section=metrics_section,
+        watchdog_section=watchdog_section,
+        eval_runs=counts["eval_runs"],
+        analyses=counts["analyses"],
+        workspace_display=workspace_display,
+        workspace=payload["workspace"],
+        icon_uri=_icon_data_uri(),
+    )
+
+
+def _shorten_workspace(path: str) -> str:
+    """Show only the folder name + parent for compact heading display."""
+    p = Path(path)
+    parts = p.parts
+    if len(parts) <= 2:
+        return path
+    return str(Path(*parts[-2:]))
 
 
 _DASHBOARD_TEMPLATE = """<!doctype html>
@@ -596,113 +789,181 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
 <meta http-equiv="refresh" content="15" />
 <style>
   :root {{
-    --bg: #0a0a0a;
-    --card: #161616;
-    --border: #1f1f1f;
-    --text: #f4f4f5;
+    --bg: #08090b;
+    --bg-grad: radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.06), transparent 60%);
+    --card: #161618;
+    --card-hi: #1c1c1f;
+    --border: rgba(255, 255, 255, 0.06);
+    --border-strong: rgba(255, 255, 255, 0.12);
+    --text: #fafafa;
     --text-dim: #a1a1aa;
+    --text-faint: #71717a;
     --ok: #4ade80;
     --info: #38bdf8;
     --warn: #fbbf24;
     --crit: #f87171;
-    --muted: #52525b;
+    --muted: #71717a;
   }}
   * {{ box-sizing: border-box; }}
+  html, body {{ margin: 0; padding: 0; background: var(--bg); color: var(--text); }}
   body {{
-    margin: 0; padding: 24px; background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: 28px 32px 48px;
+    background: var(--bg) var(--bg-grad) no-repeat;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    max-width: 1400px; margin: 0 auto;
   }}
   header {{
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 24px;
+    margin-bottom: 28px; padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }}
+  header .brand {{ display: flex; align-items: center; gap: 14px; }}
+  header .brand img {{
+    width: 40px; height: 40px; border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
   }}
   header h1 {{
-    margin: 0; font-size: 20px; font-weight: 600; letter-spacing: 0.02em;
+    margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
   }}
-  header .subtitle {{ color: var(--text-dim); font-size: 13px; }}
+  header .subtitle {{
+    color: var(--text-dim); font-size: 12px; font-weight: 500;
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    margin-top: 2px;
+  }}
+  header .stats {{
+    display: flex; align-items: center; gap: 18px;
+    color: var(--text-dim); font-size: 12px; font-weight: 500;
+  }}
+  header .stat-num {{ color: var(--text); font-size: 18px; font-weight: 600; }}
   .section-title {{
-    margin: 28px 0 12px; font-size: 15px; font-weight: 600;
-    color: var(--text); letter-spacing: 0.01em;
+    margin: 32px 0 14px; font-size: 11px; font-weight: 700;
+    color: var(--text-faint); letter-spacing: 0.12em;
+    text-transform: uppercase;
   }}
   .section-title.sub {{
-    margin-top: 16px; font-size: 13px; color: var(--text-dim);
-    font-weight: 500;
+    margin-top: 18px; font-size: 11px;
   }}
   .grid {{
     display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
+    gap: 14px;
   }}
   .card {{
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 20px;
-    display: flex; flex-direction: column; gap: 8px;
+    border-radius: 18px;
+    padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 6px;
     color: var(--text);
+    transition: border-color 0.15s ease, transform 0.15s ease;
+    position: relative; overflow: hidden;
   }}
-  .card.hero {{ background: linear-gradient(160deg, #181818 0%, #121212 100%); }}
-  .card.telemetry {{ border-style: dashed; }}
-  .card-label {{ color: var(--text-dim); font-size: 13px; font-weight: 500; }}
+  .card:hover {{ border-color: var(--border-strong); }}
+  .card.hero {{
+    background: linear-gradient(165deg, var(--card-hi) 0%, var(--card) 100%);
+  }}
+  .card.telemetry {{
+    border-style: dashed; border-color: var(--border-strong);
+    background: linear-gradient(165deg, #181a1f 0%, var(--card) 100%);
+  }}
+  .card-label {{
+    color: var(--text-dim); font-size: 12px; font-weight: 600;
+    letter-spacing: 0.02em;
+  }}
   .card-value {{
-    font-size: 36px; font-weight: 600; line-height: 1.1;
-    margin: 4px 0 0;
+    font-size: 36px; font-weight: 700; line-height: 1.05;
+    margin: 2px 0 0; letter-spacing: -0.02em;
+  }}
+  .card-value-text {{
+    font-size: 20px; line-height: 1.25; font-weight: 600;
     word-break: break-word;
   }}
-  .card-unit {{ color: var(--text-dim); font-size: 14px; font-weight: 500; margin-left: 6px; }}
+  .card-unit {{
+    color: var(--text-dim); font-size: 13px; font-weight: 500;
+    margin-left: 5px;
+  }}
   .card-meta {{
     display: flex; flex-direction: column; gap: 2px;
-    color: var(--text-dim); font-size: 12px; margin-top: 4px;
+    color: var(--text-faint); font-size: 11px; margin-top: 4px;
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
   }}
   .telemetry-detail {{
-    color: var(--text-dim); font-size: 12px; line-height: 1.4;
+    color: var(--text-dim); font-size: 12px; line-height: 1.45;
   }}
-  .sparkline {{ width: 100%; height: 56px; color: var(--info); margin-top: 4px; }}
+  .card-link {{
+    color: var(--info); text-decoration: none; font-size: 12px;
+    font-weight: 600; margin-top: 4px;
+  }}
+  .card-link:hover {{ text-decoration: underline; }}
+  .card-source {{
+    color: var(--text-faint); font-size: 10.5px;
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    margin-top: 6px; padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 6px;
+  }}
+  .source-icon {{ opacity: 0.6; }}
+  .sparkline {{
+    width: 100%; height: 56px; color: var(--info); margin-top: 6px;
+  }}
   .card.hero .sparkline {{ color: var(--info); }}
+  .dot {{
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    margin-right: 8px; vertical-align: middle;
+  }}
+  .dot-on  {{ background: var(--ok); box-shadow: 0 0 8px rgba(74, 222, 128, 0.6); }}
+  .dot-off {{ background: var(--muted); }}
   .badge {{
     display: inline-flex; align-self: flex-start; align-items: center;
-    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
-    text-transform: lowercase; margin-top: 6px;
+    padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    text-transform: lowercase; margin-top: 4px; letter-spacing: 0.01em;
   }}
   .tone-ok    {{ background: rgba(74, 222, 128, 0.12); color: var(--ok); }}
   .tone-info  {{ background: rgba(56, 189, 248, 0.12); color: var(--info); }}
-  .tone-warn  {{ background: rgba(251, 191, 36, 0.12); color: var(--warn); }}
-  .tone-crit  {{ background: rgba(248, 113, 113, 0.12); color: var(--crit); }}
-  .tone-muted {{ background: rgba(82, 82, 91, 0.20); color: var(--muted); }}
+  .tone-warn  {{ background: rgba(251, 191, 36, 0.13); color: var(--warn); }}
+  .tone-crit  {{ background: rgba(248, 113, 113, 0.13); color: var(--crit); }}
+  .tone-muted {{ background: rgba(113, 113, 122, 0.18); color: var(--text-dim); }}
   .tone-ok-text    {{ color: var(--ok); }}
   .tone-warn-text  {{ color: var(--warn); }}
   .tone-crit-text  {{ color: var(--crit); }}
   .tone-info-text  {{ color: var(--info); }}
-  .tone-muted-text {{ color: var(--muted); }}
+  .tone-muted-text {{ color: var(--text-dim); }}
   .empty-state {{
-    background: var(--card); border: 1px dashed var(--border);
-    border-radius: 16px; padding: 24px;
-    color: var(--text-dim); margin-bottom: 16px;
+    background: var(--card); border: 1px dashed var(--border-strong);
+    border-radius: 16px; padding: 22px;
+    color: var(--text-dim); margin-bottom: 14px; font-size: 13px;
   }}
   .empty-state code {{
-    background: #1f1f1f; padding: 2px 6px; border-radius: 6px;
-    color: var(--text);
+    background: rgba(255, 255, 255, 0.04); padding: 2px 7px; border-radius: 6px;
+    color: var(--text); font-size: 12px;
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
   }}
   footer {{
-    margin-top: 32px; font-size: 12px; color: var(--text-dim);
-    text-align: center;
+    margin-top: 40px; font-size: 11px; color: var(--text-faint);
+    text-align: center; font-family: "SF Mono", monospace;
   }}
 </style>
 </head>
 <body>
 <header>
-  <div>
-    <h1>AgentOps monitor</h1>
-    <div class="subtitle">{workspace}</div>
+  <div class="brand">
+    <img src="{icon_uri}" alt="AgentOps" />
+    <div>
+      <h1>AgentOps monitor</h1>
+      <div class="subtitle" title="{workspace}">{workspace_display}</div>
+    </div>
   </div>
-  <div class="subtitle">{eval_runs} eval(s) · {analyses} analysis run(s)</div>
+  <div class="stats">
+    <div><span class="stat-num">{eval_runs}</span> eval(s)</div>
+    <div><span class="stat-num">{analyses}</span> analysis run(s)</div>
+  </div>
 </header>
 
 {eval_section}
 {metrics_section}
 {watchdog_section}
 
-<footer>Auto-refreshes every 15s · agentops monitor</footer>
+<footer>Auto-refreshes every 15s · <code>agentops monitor</code></footer>
 </body>
 </html>
 """

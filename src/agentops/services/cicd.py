@@ -28,6 +28,7 @@ _TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
         "dev": ("workflows/agentops-deploy-dev.yml", ".github/workflows/agentops-deploy-dev.yml"),
         "qa": ("workflows/agentops-deploy-qa.yml", ".github/workflows/agentops-deploy-qa.yml"),
         "prod": ("workflows/agentops-deploy-prod.yml", ".github/workflows/agentops-deploy-prod.yml"),
+        "watchdog": ("workflows/agentops-watchdog.yml", ".github/workflows/agentops-watchdog.yml"),
     },
     "azure-devops": {
         "pr": (
@@ -46,10 +47,14 @@ _TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
             "pipelines/azuredevops/agentops-deploy-prod.yml",
             ".azuredevops/pipelines/agentops-deploy-prod.yml",
         ),
+        "watchdog": (
+            "pipelines/azuredevops/agentops-watchdog.yml",
+            ".azuredevops/pipelines/agentops-watchdog.yml",
+        ),
     },
 }
 
-ALL_KINDS: tuple[str, ...] = ("pr", "dev", "qa", "prod")
+ALL_KINDS: tuple[str, ...] = ("pr", "dev", "qa", "prod", "watchdog")
 
 
 @dataclass

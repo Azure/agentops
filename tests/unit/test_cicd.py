@@ -21,7 +21,9 @@ _DEV_PATH = f"{_WORKFLOW_DIR}/agentops-deploy-dev.yml"
 _QA_PATH = f"{_WORKFLOW_DIR}/agentops-deploy-qa.yml"
 _PROD_PATH = f"{_WORKFLOW_DIR}/agentops-deploy-prod.yml"
 
-ALL_PATHS = (_PR_PATH, _DEV_PATH, _QA_PATH, _PROD_PATH)
+_WATCHDOG_PATH = f"{_WORKFLOW_DIR}/agentops-watchdog.yml"
+
+ALL_PATHS = (_PR_PATH, _DEV_PATH, _QA_PATH, _PROD_PATH, _WATCHDOG_PATH)
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +31,7 @@ ALL_PATHS = (_PR_PATH, _DEV_PATH, _QA_PATH, _PROD_PATH)
 # ---------------------------------------------------------------------------
 
 
-def test_default_generates_all_four_templates(tmp_path: Path) -> None:
+def test_default_generates_all_five_templates(tmp_path: Path) -> None:
     result = generate_cicd_workflows(directory=tmp_path)
 
     assert {p.name for p in result.created_files} == {
@@ -37,6 +39,7 @@ def test_default_generates_all_four_templates(tmp_path: Path) -> None:
         "agentops-deploy-dev.yml",
         "agentops-deploy-qa.yml",
         "agentops-deploy-prod.yml",
+        "agentops-watchdog.yml",
     }
     for rel in ALL_PATHS:
         assert (tmp_path / rel).exists()
@@ -86,7 +89,7 @@ def test_force_overwrites_all(tmp_path: Path) -> None:
 
     result = generate_cicd_workflows(directory=tmp_path, force=True)
 
-    assert len(result.overwritten_files) == 4
+    assert len(result.overwritten_files) == len(ALL_PATHS)
     assert len(result.skipped_files) == 0
     for rel in ALL_PATHS:
         assert (tmp_path / rel).read_text(encoding="utf-8") != "old"
@@ -199,7 +202,7 @@ def test_prod_template_triggers_and_environment_with_reviewer_hint(tmp_path: Pat
 
 
 def test_all_kinds_constant_matches_documented_set() -> None:
-    assert set(ALL_KINDS) == {"pr", "dev", "qa", "prod"}
+    assert set(ALL_KINDS) == {"pr", "dev", "qa", "prod", "watchdog"}
 
 
 # ---------------------------------------------------------------------------
@@ -207,11 +210,11 @@ def test_all_kinds_constant_matches_documented_set() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_default_creates_all_four(tmp_path: Path) -> None:
+def test_cli_default_creates_all_five(tmp_path: Path) -> None:
     result = runner.invoke(app, ["workflow", "generate", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0, result.stdout
-    assert result.stdout.count("+ created") == 4
+    assert result.stdout.count("+ created") == 5
     for rel in ALL_PATHS:
         assert (tmp_path / rel).exists()
 
@@ -286,7 +289,8 @@ _ADO_PR = f"{_ADO_DIR}/agentops-pr.yml"
 _ADO_DEV = f"{_ADO_DIR}/agentops-deploy-dev.yml"
 _ADO_QA = f"{_ADO_DIR}/agentops-deploy-qa.yml"
 _ADO_PROD = f"{_ADO_DIR}/agentops-deploy-prod.yml"
-_ADO_PATHS = (_ADO_PR, _ADO_DEV, _ADO_QA, _ADO_PROD)
+_ADO_WATCHDOG = f"{_ADO_DIR}/agentops-watchdog.yml"
+_ADO_PATHS = (_ADO_PR, _ADO_DEV, _ADO_QA, _ADO_PROD, _ADO_WATCHDOG)
 
 
 def test_azure_devops_platform_writes_pipelines(tmp_path: Path) -> None:

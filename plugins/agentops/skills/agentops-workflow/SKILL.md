@@ -76,6 +76,7 @@ The full scaffold writes:
 | `dev` | `.github/workflows/agentops-deploy-dev.yml` | `.azuredevops/pipelines/agentops-deploy-dev.yml` | push to `develop` | `dev` |
 | `qa` | `.github/workflows/agentops-deploy-qa.yml` | `.azuredevops/pipelines/agentops-deploy-qa.yml` | push to `release/**` | `qa` |
 | `prod` | `.github/workflows/agentops-deploy-prod.yml` | `.azuredevops/pipelines/agentops-deploy-prod.yml` | push to `main` | `production` |
+| `watchdog` | `.github/workflows/agentops-watchdog.yml` | `.azuredevops/pipelines/agentops-watchdog.yml` | daily cron (06:00 UTC) | `dev` |
 
 Useful flags:
 

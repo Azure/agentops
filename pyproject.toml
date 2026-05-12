@@ -49,6 +49,7 @@ where = ["src"]
   "agentops.yaml",
   "agent.yaml",
   "smoke.jsonl",
+  "icon.png",
   ".gitignore",
   "project.gitignore",
   "workflows/*.yml",

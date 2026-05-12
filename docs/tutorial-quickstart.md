@@ -256,18 +256,103 @@ generated below to get the same view automatically on every PR.
 
 > **Tip — local dashboard.** Every analyze run also appends a record to
 > `.agentops/agent/history.jsonl`. Run `agentops monitor` (in a separate
-> terminal) to open a FitBit-inspired dashboard at
-> http://127.0.0.1:8090 that shows the counts and sparklines without
-> opening every report.md by hand. The dashboard is read-only and
-> requires no Azure resource.
->
-> **Traces (zero config)** — analyses are also emitted as OpenTelemetry
-> spans (`ANALYZE watchdog`). When `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
-> is set (it already is, for cloud execution), AgentOps auto-discovers
-> the Application Insights resource attached to the Foundry project
-> and routes traces there — no extra environment variable needed.
-> Set `APPLICATIONINSIGHTS_CONNECTION_STRING` explicitly only when you
-> want to send traces to a different App Insights.
+> terminal) to open a dashboard at http://127.0.0.1:8090 that shows the
+> counts and sparklines without opening every report.md by hand. The
+> dashboard is read-only and requires no Azure resource.
+
+### Auditing the agent in App Insights
+
+Whenever `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` is set (it already is, for
+cloud execution), AgentOps **auto-discovers** the Application Insights
+resource attached to the Foundry project and emits OpenTelemetry traces
+there — no extra environment variable required. The `agentops monitor`
+dashboard's *Telemetry* card surfaces "App Insights (auto-discovered)"
+plus a one-click link to the Logs blade.
+
+Once you've run an `agentops eval run` or `agentops agent analyze`, you
+can inspect the spans directly in the Foundry project's App Insights:
+
+```kusto
+union dependencies, requests, traces
+| where timestamp > ago(1h)
+| where name has "ANALYZE" or name has "RUN " or name has "eval_item"
+   or name has "invoke_agent" or name has "evaluator" or name has "chat"
+| project timestamp, itemType, name, success, duration, customDimensions
+| order by timestamp desc
+| take 100
+```
+
+Useful slices once data is flowing:
+
+```kusto
+// Pass rate by agent version over the last 7 days.
+requests
+| where timestamp > ago(7d)
+| where name startswith "RUN "
+| extend agent = tostring(customDimensions["agentops.eval.target"])
+| summarize passed = countif(success == true), total = count() by agent
+| extend pass_rate = round(100.0 * passed / total, 1)
+| order by total desc
+```
+
+```kusto
+// Per-evaluator score distribution for the latest run.
+dependencies
+| where timestamp > ago(2h)
+| where name startswith "evaluator"
+| extend score = todouble(customDimensions["agentops.eval.evaluator.score"])
+| extend evaluator = tostring(customDimensions["agentops.eval.evaluator.builtin"])
+| summarize avg_score = avg(score), runs = count() by evaluator
+| order by avg_score asc
+```
+
+### Scheduling the watchdog
+
+Running `agentops agent analyze` manually is fine for the smoke test,
+but the watchdog earns its keep when it runs on a schedule. Two options:
+
+**(a) CI cron (recommended for shared repos):** generate the watchdog
+workflow that ships with AgentOps:
+
+```powershell
+agentops workflow generate --kinds watchdog
+# or for Azure DevOps Pipelines:
+agentops workflow generate --platform azure-devops --kinds watchdog
+```
+
+This writes a daily-cron workflow (`agentops-watchdog.yml`) that
+checks out the repo, restores the previous run's `history.jsonl` from
+the pipeline artifact, runs `agentops agent analyze`, and re-uploads
+the updated history. Trend data persists across runners.
+
+**(b) Local Task Scheduler / cron (single developer machine):** drop
+into Windows Task Scheduler or a Linux `crontab -e` and add
+`agentops agent analyze --workspace <path>` on the cadence you want
+(hourly, daily). Combine with `agentops monitor` left running and the
+dashboard refreshes itself.
+
+### Security posture (WAF AI Security pillar)
+
+The watchdog's posture check can audit your Foundry project resources
+against the Well-Architected Framework's AI Security pillar — managed
+identity instead of API keys, customer-managed encryption, private
+networking, content safety enabled, etc. To enable it, edit
+`.agentops/agent.yaml` and turn on the `azure_resources` source:
+
+```yaml
+sources:
+  results_history:
+    enabled: true
+  azure_resources:
+    enabled: true
+    subscription_id: "<your-sub-id>"
+    resource_group: "<your-rg>"
+```
+
+Then re-run `agentops agent analyze`. Posture findings appear under the
+`security` category with WAF rule ids you can grep for, and the
+dashboard's *Security* card lights up if anything regressed since the
+last analysis.
 
 ## 8. Generate the CI/CD workflows
 
@@ -293,7 +378,8 @@ writes:
 ├── agentops-pr.yml            # PR gate (PRs to develop, release/**, main)
 ├── agentops-deploy-dev.yml    # push to develop  → environment: dev
 ├── agentops-deploy-qa.yml     # push to release/** → environment: qa
-└── agentops-deploy-prod.yml   # push to main      → environment: production
+├── agentops-deploy-prod.yml   # push to main      → environment: production
+└── agentops-watchdog.yml      # daily cron → runs `agentops agent analyze`
 ```
 
 **Azure DevOps Pipelines:**
@@ -309,7 +395,8 @@ writes:
 ├── agentops-pr.yml
 ├── agentops-deploy-dev.yml
 ├── agentops-deploy-qa.yml
-└── agentops-deploy-prod.yml
+├── agentops-deploy-prod.yml
+└── agentops-watchdog.yml
 ```
 
 Each workflow installs AgentOps, runs `agentops eval run`, uploads the
