@@ -65,10 +65,12 @@ def build_dashboard_payload(
     records = history if history is not None else load_analysis_history(workspace)
     eval_runs = _load_eval_runs(workspace, limit=24)
     telemetry = _telemetry_status()
+    production = _build_production_section(telemetry)
 
     return {
         "workspace": str(workspace.resolve()),
         "telemetry": telemetry,
+        "production": production,
         "eval": _build_eval_section(eval_runs),
         "metrics": _build_metrics_cards(eval_runs),
         "watchdog": _build_watchdog_section(records),
@@ -77,6 +79,35 @@ def build_dashboard_payload(
             "analyses": len(records),
         },
     }
+
+
+def _build_production_section(telemetry: Dict[str, Any]) -> Dict[str, Any]:
+    """Pull live App Insights data when telemetry is wired up."""
+    if not telemetry.get("enabled"):
+        return {"has_data": False, "cards": [], "skip_reason": "telemetry off"}
+
+    # Resolve the connection string once more to extract ApplicationId.
+    # _telemetry_status() already validated the path is reachable; we re-run
+    # the cheap env lookup / discovery (results are cached when discovery
+    # ran already in this process).
+    conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING") or os.getenv(
+        "AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING"
+    )
+    if not conn and os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"):
+        try:
+            from agentops.utils.foundry_discovery import (
+                resolve_appinsights_connection_from_env,
+            )
+            conn = resolve_appinsights_connection_from_env()
+        except Exception:  # noqa: BLE001
+            conn = None
+
+    from agentops.agent.production_telemetry import (
+        collect_production_metrics,
+        extract_application_id,
+    )
+    app_id = extract_application_id(conn)
+    return collect_production_metrics(app_id)
 
 
 def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -97,6 +128,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "value": len(eval_runs),
             "unit": "total",
             "series": [1.0] * len(eval_runs),  # constant — show as filled bar
+            "labels": [_label_for_run(r) for r in eval_runs],
             "badge": {"label": _badge_runs(len(eval_runs)), "tone": "info"},
             "source": ".agentops/results/",
         },
@@ -106,6 +138,10 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "value": f"{int(pass_rate * 100)}%",
             "unit": "",
             "series": pass_series,
+            "labels": [
+                f"{_label_for_run(r)} · {'PASS' if r['passed'] else 'FAIL'}"
+                for r in eval_runs
+            ],
             "badge": _badge_pass_rate(pass_rate),
             "source": "results.json · summary.overall_passed",
         },
@@ -115,6 +151,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "value": int(items_total_series[-1]) if items_total_series else 0,
             "unit": "rows",
             "series": items_total_series,
+            "labels": [_label_for_run(r) for r in eval_runs],
             "badge": {"label": "latest", "tone": "muted"},
             "source": "results.json · summary.items_total",
         },
@@ -125,6 +162,10 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "unit": "",
             "value_kind": "text",
             "series": pass_series[-6:],
+            "labels": [
+                f"{_label_for_run(r)} · {r.get('target') or '—'}"
+                for r in eval_runs[-6:]
+            ],
             "badge": {
                 "label": "passed" if latest["passed"] else "failed",
                 "tone": "ok" if latest["passed"] else "crit",
@@ -140,17 +181,33 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {"has_runs": True, "cards": cards}
 
 
+def _label_for_run(run: Dict[str, Any]) -> str:
+    """Build a human label for a sparkline point on the eval cards."""
+    ts = run.get("timestamp") or ""
+    # Trim to minute precision for hover-tip readability.
+    ts = ts[:16].replace("T", " ") if isinstance(ts, str) else str(ts)
+    return ts or "—"
+
+
 def _build_metrics_cards(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     if not eval_runs:
         return []
     cards: List[Dict[str, Any]] = []
     for key, label, unit in _QUALITY_METRICS:
-        series = [r["metrics"].get(key) for r in eval_runs]
-        series = [float(v) for v in series if v is not None]
-        if not series:
+        # Build aligned series + labels: keep only runs that reported this metric.
+        paired = [
+            (run, run["metrics"].get(key))
+            for run in eval_runs
+            if run["metrics"].get(key) is not None
+        ]
+        if not paired:
             continue
+        series = [float(v) for _r, v in paired]
+        labels = [
+            f"{_label_for_run(r)} · {float(v):.2f}"
+            for r, v in paired
+        ]
         latest = series[-1]
-        # Latency is "lower is better"; quality metrics are "higher is better".
         is_latency = key == "avg_latency_seconds"
         badge = _metric_trend_badge(series, is_latency=is_latency)
         cards.append({
@@ -159,6 +216,7 @@ def _build_metrics_cards(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]
             "value": f"{latest:.2f}",
             "unit": unit,
             "series": series,
+            "labels": labels,
             "badge": badge,
             "source": f"results.json · aggregate_metrics.{key}",
         })
@@ -173,17 +231,23 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
 
     findings_series = _series(lambda r: r.findings_total)
     critical_series = _series(lambda r: r.findings_by_severity.get("critical", 0))
+    record_labels = [_label_for_record(r) for r in records]
 
     category_cards: List[Dict[str, Any]] = []
     for key, label in _CATEGORY_LABELS.items():
         series = _series(lambda r, k=key: r.findings_by_category.get(k, 0))
         current = int(series[-1]) if series else 0
+        labels = [
+            f"{_label_for_record(r)} · {int(r.findings_by_category.get(key, 0))} finding(s)"
+            for r in records
+        ]
         category_cards.append({
             "key": key,
             "label": label,
             "value": current,
             "unit": "",
             "series": series,
+            "labels": labels,
             "badge": _category_badge(key, current, records),
             "source": f"history.jsonl · findings_by_category.{key}",
         })
@@ -200,6 +264,10 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 "value": int(findings_series[-1]) if findings_series else 0,
                 "unit": "total",
                 "series": findings_series,
+                "labels": [
+                    f"{_label_for_record(r)} · {r.findings_total} finding(s)"
+                    for r in records
+                ],
                 "badge": _headline_badge_total(findings_series),
                 "source": "history.jsonl · findings_total",
             },
@@ -209,6 +277,10 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 "value": int(critical_series[-1]) if critical_series else 0,
                 "unit": "open",
                 "series": critical_series,
+                "labels": [
+                    f"{_label_for_record(r)} · {r.findings_by_severity.get('critical', 0)} critical"
+                    for r in records
+                ],
                 "badge": _headline_badge_critical(critical_series),
                 "source": "history.jsonl · findings_by_severity.critical",
             },
@@ -219,6 +291,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 "unit": "",
                 "value_kind": "text",
                 "series": findings_series[-6:],
+                "labels": record_labels[-6:],
                 "badge": latest_badge,
                 "meta": _latest_run_meta(latest),
                 "source": "history.jsonl · latest record",
@@ -226,6 +299,12 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
         ],
         "category_cards": category_cards,
     }
+
+
+def _label_for_record(record: AnalysisRecord) -> str:
+    """Short timestamp label for a watchdog sparkline point."""
+    ts = record.timestamp or ""
+    return ts[:16].replace("T", " ") if isinstance(ts, str) else "—"
 
 
 # ---------------------------------------------------------------------------
@@ -500,74 +579,10 @@ def _metric_trend_badge(series: List[float], *, is_latency: bool) -> Dict[str, s
 # ---------------------------------------------------------------------------
 
 
-def render_dashboard_html(payload: Dict[str, Any]) -> str:
-    """Render the dashboard from a payload built by
-    :func:`build_dashboard_payload`. Returns a complete HTML document.
-    """
-    telemetry = payload["telemetry"]
-    telemetry_card = _render_telemetry_card(telemetry)
-
-    eval_section = ""
-    if payload["eval"]["has_runs"]:
-        cards_html = "".join(_render_card(c) for c in payload["eval"]["cards"])
-        eval_section = (
-            '<div class="section-title">Evaluation runs</div>'
-            f'<div class="grid">{cards_html}{telemetry_card}</div>'
-        )
-    else:
-        eval_section = (
-            '<div class="section-title">Evaluation runs</div>'
-            '<div class="empty-state">'
-            "No eval runs yet under <code>.agentops/results/</code>. "
-            "Run <code>agentops eval run</code> to populate this section."
-            "</div>"
-            f'<div class="grid">{telemetry_card}</div>'
-        )
-
-    metrics_section = ""
-    if payload["metrics"]:
-        metrics_html = "".join(_render_card(c) for c in payload["metrics"])
-        metrics_section = (
-            '<div class="section-title">Quality metrics</div>'
-            f'<div class="grid">{metrics_html}</div>'
-        )
-
-    watchdog = payload["watchdog"]
-    if watchdog["has_history"]:
-        watchdog_headline = "".join(
-            _render_card(c, hero=True) for c in watchdog["headline_cards"]
-        )
-        watchdog_categories = "".join(
-            _render_card(c) for c in watchdog["category_cards"]
-        )
-        watchdog_section = (
-            '<div class="section-title">Watchdog findings</div>'
-            f'<div class="grid">{watchdog_headline}</div>'
-            '<div class="section-title sub">By category</div>'
-            f'<div class="grid">{watchdog_categories}</div>'
-        )
-    else:
-        watchdog_section = (
-            '<div class="section-title">Watchdog findings</div>'
-            '<div class="empty-state">'
-            "No analysis history yet. Run "
-            "<code>agentops agent analyze</code> to populate this section."
-            "</div>"
-        )
-
-    counts = payload["summary_counts"]
-    return _DASHBOARD_TEMPLATE.format(
-        eval_section=eval_section,
-        metrics_section=metrics_section,
-        watchdog_section=watchdog_section,
-        eval_runs=counts["eval_runs"],
-        analyses=counts["analyses"],
-        workspace=payload["workspace"],
-    )
-
-
 def _render_card(card: Dict[str, Any], *, hero: bool = False) -> str:
-    spark = _sparkline_svg(card.get("series", []))
+    series = card.get("series", [])
+    labels = card.get("labels") or []
+    spark = _sparkline_svg(series, labels=labels)
     badge = card["badge"]
     css_class = "card hero" if hero else "card"
     value = card.get("value", 0)
@@ -578,33 +593,58 @@ def _render_card(card: Dict[str, Any], *, hero: bool = False) -> str:
     # 36px. Detect and switch to a compact text style.
     value_kind = card.get("value_kind", "numeric")
     if value_kind == "numeric" and isinstance(value, str):
-        # Auto-detect if the "value" is non-numeric (contains letters).
         if any(c.isalpha() and c != "." for c in value):
             value_kind = "text"
     value_css = "card-value card-value-text" if value_kind == "text" else "card-value"
 
+    # value-num span is updated by JS on sparkline hover; data-orig holds the
+    # original so leaving the card restores it.
+    value_inner = (
+        f'<span class="value-num" data-orig="{_html_escape(str(value))}">'
+        f"{_html_escape(str(value))}</span>"
+    )
+
     meta_html = ""
     if card.get("meta"):
-        meta_items = "".join(f"<span>{m}</span>" for m in card["meta"] if m)
+        meta_items = "".join(
+            f"<span>{_html_escape(m)}</span>" for m in card["meta"] if m
+        )
         if meta_items:
             meta_html = f'<div class="card-meta">{meta_items}</div>'
+
+    # Hover detail shows the sparkline point's timestamp/label when present.
+    hover_html = '<div class="hover-detail" data-default="">&nbsp;</div>'
 
     footer_html = ""
     if card.get("source"):
         footer_html = (
             f'<div class="card-source" title="Data source">'
-            f'<span class="source-icon">⌖</span>{card["source"]}</div>'
+            f'<span class="source-icon">⌖</span>{_html_escape(card["source"])}</div>'
         )
 
     return (
         f'<div class="{css_class}">'
-        f'<div class="card-label">{card["label"]}</div>'
-        f'<div class="{value_css}">{value}{unit_html}</div>'
+        f'<div class="card-label">{_html_escape(card["label"])}</div>'
+        f'<div class="{value_css}">{value_inner}{unit_html}</div>'
         f"{spark}"
+        f"{hover_html}"
         f"{meta_html}"
-        f'<div class="badge tone-{badge["tone"]}">{badge["label"]}</div>'
+        f'<div class="badge tone-{badge["tone"]}">{_html_escape(badge["label"])}</div>'
         f"{footer_html}"
         f"</div>"
+    )
+
+
+def _html_escape(text: Any) -> str:
+    """Minimal HTML attribute/text escaping."""
+    if text is None:
+        return ""
+    s = str(text)
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
     )
 
 
@@ -646,12 +686,17 @@ def _render_telemetry_card(telemetry: Dict[str, Any]) -> str:
     )
 
 
-def _sparkline_svg(series: List[float]) -> str:
+def _sparkline_svg(series: List[float], *, labels: Optional[List[str]] = None) -> str:
     if not series:
         return ""
     window = series[-12:]
+    label_window = (labels or [])[-12:]
+    # Align label count with the window.
+    if len(label_window) < len(window):
+        label_window = label_window + [""] * (len(window) - len(label_window))
     if len(window) == 1:
         window = [window[0], window[0]]
+        label_window = [label_window[0] if label_window else "", label_window[0] if label_window else ""]
     width = 240
     height = 56
     pad = 4
@@ -659,26 +704,42 @@ def _sparkline_svg(series: List[float]) -> str:
     min_v = min(window)
     span = max(max_v - min_v, 1.0)
     step = (width - 2 * pad) / (len(window) - 1) if len(window) > 1 else 0
-    points = []
+    points: List[Tuple[float, float]] = []
     for i, v in enumerate(window):
         x = pad + i * step
         y = height - pad - ((v - min_v) / span) * (height - 2 * pad)
-        points.append(f"{x:.1f},{y:.1f}")
-    polyline = " ".join(points)
-    last_x = pad + (len(window) - 1) * step
-    last_y = (
-        height
-        - pad
-        - ((window[-1] - min_v) / span) * (height - 2 * pad)
+        points.append((x, y))
+    polyline = " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+    last_x, last_y = points[-1]
+    area_points = (
+        " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+        + f" {last_x:.1f},{height - pad} {pad:.1f},{height - pad}"
     )
-    # Soft fill below the line for visual weight.
-    area_points = " ".join(points) + f" {last_x:.1f},{height - pad} {pad:.1f},{height - pad}"
+
+    # Render every point as an interactive dot. The .dot.is-last class
+    # styles the rightmost (current) point more prominently.
+    dots: List[str] = []
+    for i, ((x, y), value) in enumerate(zip(points, window)):
+        label = _html_escape(label_window[i] if i < len(label_window) else "")
+        is_last = "is-last" if i == len(points) - 1 else ""
+        formatted_value = (
+            f"{value:.2f}" if isinstance(value, float) and not value.is_integer()
+            else f"{int(value)}"
+        )
+        dots.append(
+            f'<circle class="dot {is_last}" cx="{x:.1f}" cy="{y:.1f}" r="3.5" '
+            f'fill="currentColor" data-v="{formatted_value}" data-l="{label}">'
+            f'<title>{label}{" — " + formatted_value if label else formatted_value}</title>'
+            f'</circle>'
+        )
+    dots_svg = "".join(dots)
+
     return (
         f'<svg class="sparkline" viewBox="0 0 {width} {height}" preserveAspectRatio="none">'
         f'<polygon fill="currentColor" fill-opacity="0.08" points="{area_points}"/>'
         f'<polyline fill="none" stroke="currentColor" stroke-width="2" '
         f'stroke-linecap="round" stroke-linejoin="round" points="{polyline}"/>'
-        f'<circle cx="{last_x:.1f}" cy="{last_y:.1f}" r="3.5" fill="currentColor"/>'
+        f"{dots_svg}"
         f"</svg>"
     )
 
@@ -734,6 +795,16 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
             f'<div class="grid">{metrics_html}</div>'
         )
 
+    production = payload.get("production") or {}
+    production_section = ""
+    if production.get("has_data") and production.get("cards"):
+        prod_html = "".join(_render_card(c, hero=True) for c in production["cards"])
+        production_section = (
+            '<div class="section-title">Production telemetry'
+            ' <span class="live-pill">live · App Insights</span></div>'
+            f'<div class="grid">{prod_html}</div>'
+        )
+
     watchdog = payload["watchdog"]
     if watchdog["has_history"]:
         watchdog_headline = "".join(
@@ -762,6 +833,7 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
     return _DASHBOARD_TEMPLATE.format(
         eval_section=eval_section,
         metrics_section=metrics_section,
+        production_section=production_section,
         watchdog_section=watchdog_section,
         eval_runs=counts["eval_runs"],
         analyses=counts["analyses"],
@@ -844,6 +916,18 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
   .section-title.sub {{
     margin-top: 18px; font-size: 11px;
   }}
+  .live-pill {{
+    display: inline-block; margin-left: 8px;
+    padding: 2px 8px; border-radius: 999px;
+    background: rgba(74, 222, 128, 0.12); color: var(--ok);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; vertical-align: middle;
+    animation: live-pulse 2s ease-in-out infinite;
+  }}
+  @keyframes live-pulse {{
+    0%, 100% {{ opacity: 1; }}
+    50% {{ opacity: 0.6; }}
+  }}
   .grid {{
     display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 14px;
@@ -905,8 +989,22 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
   .source-icon {{ opacity: 0.6; }}
   .sparkline {{
     width: 100%; height: 56px; color: var(--info); margin-top: 6px;
+    cursor: crosshair;
   }}
+  .sparkline .dot {{
+    opacity: 0; transition: opacity 0.12s ease, r 0.12s ease;
+  }}
+  .sparkline:hover .dot {{ opacity: 0.55; }}
+  .sparkline .dot.is-last {{ opacity: 1; }}
+  .sparkline .dot:hover {{ opacity: 1; r: 5; }}
   .card.hero .sparkline {{ color: var(--info); }}
+  .hover-detail {{
+    color: var(--text-dim); font-size: 11px; font-weight: 500;
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    margin-top: 2px; min-height: 14px;
+    transition: color 0.12s ease;
+  }}
+  .hover-detail.active {{ color: var(--info); }}
   .dot {{
     display: inline-block; width: 9px; height: 9px; border-radius: 50%;
     margin-right: 8px; vertical-align: middle;
@@ -960,10 +1058,42 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
 </header>
 
 {eval_section}
+{production_section}
 {metrics_section}
 {watchdog_section}
 
 <footer>Auto-refreshes every 15s · <code>agentops monitor</code></footer>
+
+<script>
+// Interactive sparkline hover: highlight the hovered point and swap the
+// card's headline value to that point's value, then restore on leave.
+(function() {{
+  document.querySelectorAll('.card').forEach(function(card) {{
+    const valueNum = card.querySelector('.value-num');
+    const hoverDetail = card.querySelector('.hover-detail');
+    if (!valueNum) return;
+    const origValue = valueNum.dataset.orig || valueNum.textContent;
+    card.querySelectorAll('svg.sparkline .dot').forEach(function(dot) {{
+      dot.addEventListener('mouseenter', function() {{
+        const v = dot.getAttribute('data-v');
+        const l = dot.getAttribute('data-l');
+        if (v) valueNum.textContent = v;
+        if (hoverDetail) {{
+          hoverDetail.textContent = l || '';
+          hoverDetail.classList.add('active');
+        }}
+      }});
+    }});
+    card.addEventListener('mouseleave', function() {{
+      valueNum.textContent = origValue;
+      if (hoverDetail) {{
+        hoverDetail.textContent = '';
+        hoverDetail.classList.remove('active');
+      }}
+    }});
+  }});
+}})();
+</script>
 </body>
 </html>
 """
@@ -1004,6 +1134,10 @@ def create_app(workspace: Path):
     @app.get("/api/telemetry")
     def _api_telemetry() -> JSONResponse:
         return JSONResponse(_telemetry_status())
+
+    @app.get("/api/production")
+    def _api_production() -> JSONResponse:
+        return JSONResponse(_build_production_section(_telemetry_status()))
 
     @app.get("/healthz")
     def _healthz() -> Dict[str, str]:
