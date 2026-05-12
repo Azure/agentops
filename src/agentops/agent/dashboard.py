@@ -812,7 +812,12 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
     :func:`build_dashboard_payload`. Returns a complete HTML document.
     """
     telemetry = payload["telemetry"]
-    telemetry_card = _render_telemetry_card(telemetry)
+    # Show the telemetry card only when telemetry is OFF — it then acts as
+    # the "why is the production section empty" hint. When telemetry is
+    # active, the dedicated Production telemetry section communicates the
+    # connection state already.
+    show_telemetry_card = not telemetry.get("enabled", False)
+    telemetry_card = _render_telemetry_card(telemetry) if show_telemetry_card else ""
 
     eval_section = ""
     if payload["eval"]["has_runs"]:
@@ -828,7 +833,7 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
             "No eval runs yet under <code>.agentops/results/</code>. "
             "Run <code>agentops eval run</code> to populate this section."
             "</div>"
-            f'<div class="grid">{telemetry_card}</div>'
+            + (f'<div class="grid">{telemetry_card}</div>' if telemetry_card else "")
         )
 
     metrics_section = ""
@@ -843,9 +848,21 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
     production_section = ""
     if production.get("has_data") and production.get("cards"):
         prod_html = "".join(_render_card(c, hero=True) for c in production["cards"])
+        # Pull the App Insights portal link from the telemetry status, when
+        # available, and put it inline next to the section title so the
+        # user can jump straight to the Logs blade.
+        portal_link = ""
+        portal_url = telemetry.get("portal_url") if isinstance(telemetry, dict) else None
+        if portal_url:
+            portal_link = (
+                f' <a class="section-link" href="{_html_escape(portal_url)}" '
+                f'target="_blank" rel="noopener noreferrer">'
+                f'View in App Insights →</a>'
+            )
         production_section = (
             '<div class="section-title">Production telemetry'
-            ' <span class="live-pill">live · App Insights</span></div>'
+            ' <span class="live-pill">live · App Insights</span>'
+            f'{portal_link}</div>'
             f'<div class="grid">{prod_html}</div>'
         )
 
@@ -1019,6 +1036,12 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
     text-transform: uppercase; vertical-align: middle;
     animation: live-pulse 2s ease-in-out infinite;
   }}
+  .section-link {{
+    margin-left: 12px; color: var(--info); text-decoration: none;
+    font-size: 12px; font-weight: 600; vertical-align: middle;
+    text-transform: none; letter-spacing: 0;
+  }}
+  .section-link:hover {{ text-decoration: underline; }}
   @keyframes live-pulse {{
     0%, 100% {{ opacity: 1; }}
     50% {{ opacity: 0.6; }}
