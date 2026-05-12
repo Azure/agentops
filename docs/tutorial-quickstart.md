@@ -18,6 +18,13 @@ the new run against the baseline.
 - A baseline `agentops eval run` producing `results.json` and `report.md`.
 - A second run compared against the baseline so the report shows prompt
   quality deltas.
+- A watchdog analysis (`agentops agent analyze`) that surfaces
+  regressions across the run history.
+- A live local dashboard (`agentops dashboard`) that visualises eval
+  trends, quality metrics, and production telemetry pulled from the
+  Foundry project's Application Insights.
+- CI/CD workflows for GitHub Actions or Azure DevOps Pipelines
+  (`agentops workflow generate`) including a daily watchdog cron.
 
 The former bundle-based, multi-file workspace has been replaced by this flat `agentops.yaml` workflow for the common case.
 
@@ -28,6 +35,8 @@ The former bundle-based, multi-file workspace has been replaced by this flat `ag
   version identified by `name:version` (for example `agentops-smoke:1`).
 - The Foundry project endpoint URL.
 - For AI-assisted evaluators (Coherence, Groundedness, etc.): an Azure OpenAI endpoint and deployment to use as the judge model.
+- `az login` working against the tenant that owns the Foundry project
+  (the CLI uses it as a credential fallback when no env vars are set).
 
 ## 1. Install
 
@@ -35,9 +44,14 @@ The former bundle-based, multi-file workspace has been replaced by this flat `ag
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install --upgrade "agentops-toolkit[foundry]"
+python -m pip install --upgrade "agentops-toolkit[foundry,agent]"
 agentops --version
 ```
+
+The `[foundry]` extra brings the Azure SDKs the eval path needs;
+`[agent]` adds the FastAPI/uvicorn runtime used by `agentops dashboard`
+later in the tutorial. Installing both upfront avoids a second
+`pip install` later.
 
 ## 2. Bootstrap the project
 
@@ -428,7 +442,12 @@ ready to push the workflows to your repo.
 
 You did not pick evaluators — AgentOps inferred them:
 
-- **Always:** Coherence, Fluency, Similarity, F1Score, average latency.
+- **Always:** Coherence, Fluency, Similarity, F1Score.
+- **`execution: local` only:** `avg_latency_seconds` (client-perceived
+  latency, measured during the row-by-row local invocation). In
+  `execution: cloud`, runtime evaluators are skipped because the agent
+  never runs on your machine, so the latency the CLI prints is
+  Foundry-side instead.
 - **If your dataset rows include `context`:** Groundedness, Relevance, Retrieval, ResponseCompleteness.
 - **If your dataset rows include `tool_calls` or `tool_definitions`:** TaskCompletion, ToolCallAccuracy, IntentResolution, TaskAdherence.
 
