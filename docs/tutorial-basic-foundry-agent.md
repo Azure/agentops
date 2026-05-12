@@ -38,9 +38,13 @@ If you see agent scores drop to 1.0 on questions that the model-direct handles a
 
 - Python 3.11+
 - Azure CLI (`az login`)
-- A Foundry project with a deployed agent
-- A model deployment in the same project (used as the judge model for SimilarityEvaluator)
-- `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"`
+- A Foundry project with a deployed **named, versioned** agent (e.g.,
+  `qa-bot:1`). Legacy classic-portal agents identified only by an
+  `asst_*` ID are not supported by AgentOps today — recreate them as
+  named agents in the new Foundry experience.
+- A model deployment in the same project (used as the judge model for
+  AI-assisted evaluators such as SimilarityEvaluator).
+- `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`
 
 ## Part 1: Create the agent in Foundry
 
@@ -69,12 +73,17 @@ Choose a model deployment (e.g., `gpt-5.1`) and save the agent.
 
 ### 3) Note the agent identifier
 
-After saving, you need the agent's identifier for the run config. There are two types:
+After saving, you need the agent's identifier for the run config. AgentOps
+uses the Foundry **Responses API**, which addresses agents by
+`name:version` — for example `qa-bot:1` or `customer-support:3`.
 
-- **Named agents** (new Foundry experience): use the agent name, optionally with a version — e.g., `my-agent` or `my-agent:3`
-- **Legacy agents** (asst_ prefix): use the full ID — e.g., `asst_ftDQySPlKUwcgR1eiXEzUEO5`
-
-AgentOps handles both. Named agents use the Foundry Responses API; legacy agents use the Threads API.
+> **Legacy `asst_*` agents (classic Foundry):** agents created in the
+> classic Foundry portal are identified by an `asst_*` ID and are
+> served by the older Threads/Assistants API. AgentOps does **not**
+> support that API path today. If you have a legacy agent, recreate it
+> as a named, versioned agent in the new Foundry experience (UI → Build
+> → Agents → New, or via `azure-ai-projects>=2.0.0`'s
+> `project.agents.create_version()`).
 
 ## Part 2: Set up AgentOps
 
@@ -84,17 +93,28 @@ AgentOps handles both. Named agents use the Foundry Responses API; legacy agents
 az login
 ```
 
-### 2) Set the project endpoint
+### 2) Set the project endpoint and judge deployment
 
 PowerShell:
 ```powershell
 $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_AI_MODEL_DEPLOYMENT_NAME = "gpt-5.1"   # judge for AI-assisted evaluators
 ```
 
 Bash/zsh:
 ```bash
 export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://<resource>.services.ai.azure.com/api/projects/<project>"
+export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-5.1"   # judge for AI-assisted evaluators
 ```
+
+`AZURE_AI_MODEL_DEPLOYMENT_NAME` selects the judge deployment that
+AI-assisted evaluators (Coherence, Similarity, etc.) call. AgentOps
+reuses the Foundry project endpoint to reach it, so you don't also
+need `AZURE_OPENAI_ENDPOINT` unless the judge lives in a different
+Azure OpenAI resource. Use the **exact deployment name** as it appears
+in Foundry — names are often suffixed with random IDs
+(e.g. `gpt-4.1-443723`). List your deployments with
+`az cognitiveservices account deployment list --resource-group <rg> --name <foundry-resource> -o table`.
 
 ### 3) Initialize the workspace
 
@@ -108,31 +128,38 @@ Open `agentops.yaml` at your project root and point it at your agent:
 
 ```yaml
 version: 1
-agent: "my-agent:1"                       # ← your agent name:version (or asst_ ID)
-dataset: .agentops/data/smoke-agent-tools.jsonl
+agent: "qa-bot:1"                         # ← your agent name:version
+dataset: .agentops/data/smoke.jsonl
 thresholds:
   similarity: ">=3"
   avg_latency_seconds: "<=20"
 ```
 
 Key points:
-- `agent` is a single string. AgentOps recognizes the `name:version` shape
-  and routes the run to the Foundry Agent Service automatically.
-- The judge model used by AI-assisted evaluators (SimilarityEvaluator) is
-  taken from `AZURE_OPENAI_DEPLOYMENT` (set in Part 2).
+- `agent` is a single `name:version` string. AgentOps routes the run
+  through the Foundry Responses API automatically.
+- The judge model used by AI-assisted evaluators (SimilarityEvaluator,
+  CoherenceEvaluator, etc.) comes from `AZURE_AI_MODEL_DEPLOYMENT_NAME`
+  (set in Part 2).
 - Evaluators are auto-selected from the dataset row shape — `input` +
-  `expected` triggers `SimilarityEvaluator`. No `bundle` to maintain.
+  `expected` triggers the model-quality set (Similarity, Coherence,
+  Fluency, F1Score, plus average latency). No `bundle` to maintain.
 
 ## Part 4: Review the dataset
 
-The sample dataset at `.agentops/data/smoke-agent-tools.jsonl` contains five prompts designed for an agent with tool capabilities:
+`agentops init` already created `.agentops/data/smoke.jsonl` with three
+short factual prompts:
 
 ```jsonl
-{"id":"1","input":"What is the weather in Seattle today?","expected":"I'll check the weather for Seattle..."}
-{"id":"2","input":"Convert 100 USD to EUR","expected":"100 USD is approximately 92 EUR..."}
+{"input": "Answer with exactly this sentence: Paris is the capital of France...", "expected": "Paris is the capital of France..."}
+{"input": "Answer with exactly this sentence: Mars is known as the Red Planet...", "expected": "Mars is known as the Red Planet..."}
+{"input": "Answer with exactly this sentence: Water has the chemical formula H2O...", "expected": "Water has the chemical formula H2O..."}
 ```
 
-These prompts include questions that might trigger tool calls (weather, currency conversion, search). If your agent does not have these tools, it will answer based on its knowledge, which may score lower on similarity. That is expected — the evaluation measures what the agent *actually does*, not what it could do with the right tools.
+These rows are intentionally easy — short, deterministic answers — so
+the first run focuses on proving the AgentOps loop works end-to-end
+rather than debugging subjective wording differences. Replace the rows
+with realistic prompts for your application once the smoke test passes.
 
 ### Adapting the dataset to your agent
 
@@ -211,7 +238,7 @@ The RAG scenario uses GroundednessEvaluator instead of SimilarityEvaluator becau
 
 - **Cloud vs local mode**: By default, AgentOps uses Foundry Cloud Evaluation with the `azure_ai_evaluator` API. Set `AGENTOPS_FOUNDRY_MODE=local` to invoke the agent row-by-row and run evaluators locally (requires `pip install azure-ai-evaluation`).
 - **Authentication**: `DefaultAzureCredential` handles auth automatically. For local dev, use `az login`. For CI, set `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`.
-- **Named vs legacy agents**: Named agents (e.g., `my-agent:3`) use the Responses API. Legacy agents (`asst_*`) use the Threads API. Both work transparently.
+- **Named agents only**: AgentOps targets the Foundry Responses API, which addresses agents by `name:version` (e.g., `qa-bot:1`). Legacy classic-portal agents identified by an `asst_*` ID are not supported today; recreate them as named agents in the new Foundry experience.
 - **Exit codes**: `0` = all thresholds passed, `2` = threshold failures, `1` = error.
 
 ## Next steps
