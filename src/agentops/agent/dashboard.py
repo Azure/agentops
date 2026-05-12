@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
+from agentops.agent.time_range import TimeRange, parse_time_range, preset_keys
 
 
 # ---------------------------------------------------------------------------
@@ -59,15 +60,28 @@ def build_dashboard_payload(
     workspace: Path,
     *,
     history: Optional[List[AnalysisRecord]] = None,
+    time_range: Optional[TimeRange] = None,
 ) -> Dict[str, Any]:
     """Reduce raw history + eval runs into a dashboard-ready dict."""
-    records = history if history is not None else load_analysis_history(workspace)
-    eval_runs = _load_eval_runs(workspace, limit=24)
+    if time_range is None:
+        time_range = parse_time_range()
+    all_records = history if history is not None else load_analysis_history(workspace)
+    records = _filter_records(all_records, time_range)
+    eval_runs_all = _load_eval_runs(workspace, limit=200)
+    eval_runs = _filter_eval_runs(eval_runs_all, time_range)
     telemetry = _telemetry_status()
-    production = _build_production_section(telemetry)
+    production = _build_production_section(telemetry, time_range=time_range)
 
     return {
         "workspace": str(workspace.resolve()),
+        "time_range": {
+            "key": time_range.key,
+            "label": time_range.label,
+            "start": time_range.start.isoformat(),
+            "end": time_range.end.isoformat(),
+            "hours": time_range.hours,
+            "query": time_range.to_query(),
+        },
         "telemetry": telemetry,
         "production": production,
         "eval": _build_eval_section(eval_runs),
@@ -80,15 +94,45 @@ def build_dashboard_payload(
     }
 
 
-def _build_production_section(telemetry: Dict[str, Any]) -> Dict[str, Any]:
+def _filter_records(records: List[AnalysisRecord], time_range: TimeRange) -> List[AnalysisRecord]:
+    out: List[AnalysisRecord] = []
+    for r in records:
+        ts = _parse_iso(r.timestamp)
+        if time_range.contains(ts):
+            out.append(r)
+    return out
+
+
+def _filter_eval_runs(runs: List[Dict[str, Any]], time_range: TimeRange) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for r in runs:
+        ts = _parse_iso(r.get("timestamp"))
+        if time_range.contains(ts):
+            out.append(r)
+    return out
+
+
+def _parse_iso(value: Any) -> Optional[Any]:
+    """Coerce a value to a tz-aware UTC datetime, or return ``None``."""
+    if not isinstance(value, str) or not value:
+        return None
+    from datetime import datetime, timezone
+    try:
+        ts = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def _build_production_section(
+    telemetry: Dict[str, Any],
+    *,
+    time_range: Optional[TimeRange] = None,
+) -> Dict[str, Any]:
     """Pull live App Insights data when telemetry is wired up."""
     if not telemetry.get("enabled"):
         return {"has_data": False, "cards": [], "skip_reason": "telemetry off"}
 
-    # Resolve the connection string once more to extract ApplicationId.
-    # _telemetry_status() already validated the path is reachable; we re-run
-    # the cheap env lookup / discovery (results are cached when discovery
-    # ran already in this process).
     conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING") or os.getenv(
         "AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING"
     )
@@ -106,7 +150,8 @@ def _build_production_section(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         extract_application_id,
     )
     app_id = extract_application_id(conn)
-    return collect_production_metrics(app_id)
+    hours = time_range.hours if time_range is not None else 24
+    return collect_production_metrics(app_id, lookback_hours=hours)
 
 
 def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -829,6 +874,8 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
 
     counts = payload["summary_counts"]
     workspace_display = _shorten_workspace(payload["workspace"])
+    range_info = payload.get("time_range") or {}
+    range_bar = _render_range_bar(range_info)
     return _DASHBOARD_TEMPLATE.format(
         eval_section=eval_section,
         metrics_section=metrics_section,
@@ -839,7 +886,55 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
         workspace_display=workspace_display,
         workspace=payload["workspace"],
         icon_uri=_icon_data_uri(),
+        range_bar=range_bar,
+        range_label=_html_escape(range_info.get("label", "")),
     )
+
+
+def _render_range_bar(range_info: Dict[str, Any]) -> str:
+    """Render the 1D / 7D / 30D / Custom selector."""
+    active_key = range_info.get("key", "7d")
+    pills: List[str] = []
+    labels = {"1d": "1D", "7d": "7D", "30d": "30D"}
+    for key in preset_keys():
+        cls = "range-pill active" if key == active_key else "range-pill"
+        pills.append(f'<a class="{cls}" href="?range={key}">{labels[key]}</a>')
+    custom_cls = "range-pill active" if active_key == "custom" else "range-pill"
+    pills.append(
+        f'<a class="{custom_cls}" href="#" onclick="document.getElementById(\'rangeCustomForm\').classList.toggle(\'open\'); return false;">Custom</a>'
+    )
+
+    today = _today_iso()
+    week_ago = _days_ago_iso(7)
+    custom_from = range_info.get("start", "")[:10] if active_key == "custom" else week_ago
+    custom_to = range_info.get("end", "")[:10] if active_key == "custom" else today
+    form_class = "range-custom-form open" if active_key == "custom" else "range-custom-form"
+
+    custom_form = (
+        f'<form id="rangeCustomForm" class="{form_class}" method="get">'
+        f'<input type="hidden" name="range" value="custom" />'
+        f'<label>From <input type="date" name="from" value="{custom_from}" max="{today}" /></label>'
+        f'<label>To <input type="date" name="to" value="{custom_to}" max="{today}" /></label>'
+        f'<button type="submit">Apply</button>'
+        f'</form>'
+    )
+
+    return (
+        '<div class="range-bar">'
+        + '<div class="range-pills">' + "".join(pills) + '</div>'
+        + custom_form
+        + '</div>'
+    )
+
+
+def _today_iso() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _days_ago_iso(days: int) -> str:
+    from datetime import datetime, timedelta, timezone
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
 def _shorten_workspace(path: str) -> str:
@@ -927,6 +1022,49 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
   @keyframes live-pulse {{
     0%, 100% {{ opacity: 1; }}
     50% {{ opacity: 0.6; }}
+  }}
+  .range-bar {{
+    display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
+    margin-bottom: 8px;
+  }}
+  .range-pills {{ display: flex; gap: 4px; }}
+  .range-pill {{
+    padding: 6px 14px; border-radius: 999px;
+    color: var(--text-dim); text-decoration: none;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    transition: background 0.15s ease, color 0.15s ease;
+  }}
+  .range-pill:hover {{
+    background: rgba(255, 255, 255, 0.06); color: var(--text);
+  }}
+  .range-pill.active {{
+    background: rgba(56, 189, 248, 0.14); color: var(--info);
+    border-color: rgba(56, 189, 248, 0.35);
+  }}
+  .range-custom-form {{
+    display: none; gap: 10px; align-items: center;
+    background: var(--card); padding: 10px 14px;
+    border-radius: 999px; border: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim);
+  }}
+  .range-custom-form.open {{ display: flex; }}
+  .range-custom-form input[type="date"] {{
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border); color: var(--text);
+    padding: 4px 8px; border-radius: 8px; font-size: 12px;
+    color-scheme: dark;
+  }}
+  .range-custom-form button {{
+    background: var(--info); color: #08090b; border: 0;
+    padding: 5px 12px; border-radius: 999px;
+    font-size: 12px; font-weight: 700; cursor: pointer;
+  }}
+  .range-current {{
+    color: var(--text-faint); font-size: 11px; font-weight: 500;
+    margin-left: auto;
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
   }}
   .grid {{
     display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -1057,6 +1195,9 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
   </div>
 </header>
 
+{range_bar}
+<div class="range-current">window: {range_label}</div>
+
 {eval_section}
 {production_section}
 {metrics_section}
@@ -1107,7 +1248,7 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
 def create_app(workspace: Path):
     """Return a FastAPI app rooted at *workspace*."""
     try:
-        from fastapi import FastAPI
+        from fastapi import FastAPI, Query
         from fastapi.responses import HTMLResponse, JSONResponse
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
@@ -1118,8 +1259,13 @@ def create_app(workspace: Path):
     app = FastAPI(title="AgentOps Dashboard", docs_url=None, redoc_url=None)
 
     @app.get("/", response_class=HTMLResponse)
-    def _index() -> HTMLResponse:
-        payload = build_dashboard_payload(workspace)
+    def _index(
+        range_: Optional[str] = Query(None, alias="range"),
+        from_: Optional[str] = Query(None, alias="from"),
+        to: Optional[str] = Query(None),
+    ) -> HTMLResponse:
+        time_range = parse_time_range(range_, from_, to)
+        payload = build_dashboard_payload(workspace, time_range=time_range)
         return HTMLResponse(render_dashboard_html(payload))
 
     @app.get("/favicon.ico")
@@ -1145,8 +1291,13 @@ def create_app(workspace: Path):
         return JSONResponse(_telemetry_status())
 
     @app.get("/api/production")
-    def _api_production() -> JSONResponse:
-        return JSONResponse(_build_production_section(_telemetry_status()))
+    def _api_production(
+        range_: Optional[str] = Query(None, alias="range"),
+        from_: Optional[str] = Query(None, alias="from"),
+        to: Optional[str] = Query(None),
+    ) -> JSONResponse:
+        time_range = parse_time_range(range_, from_, to)
+        return JSONResponse(_build_production_section(_telemetry_status(), time_range=time_range))
 
     @app.get("/healthz")
     def _healthz() -> Dict[str, str]:

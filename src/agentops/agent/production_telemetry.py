@@ -44,18 +44,23 @@ def extract_application_id(connection_string: Optional[str]) -> Optional[str]:
 
 def collect_production_metrics(
     application_id: Optional[str],
+    *,
+    lookback_hours: int = 24,
 ) -> Dict[str, Any]:
     """Return a dashboard-ready payload of live telemetry cards.
 
     Always returns a dict with ``has_data`` and ``cards`` keys; values
-    populate when the App Insights query succeeds.
+    populate when the App Insights query succeeds. The ``lookback_hours``
+    parameter is substituted into the KQL templates so the dashboard
+    time-range picker can drive how far back each card looks.
     """
     empty = {"has_data": False, "cards": [], "diagnostics": {}}
     if not application_id:
         empty["diagnostics"] = {"reason": "no ApplicationId in connection string"}
         return empty
 
-    cached = _cache.get(application_id)
+    cache_key = f"{application_id}:{lookback_hours}"
+    cached = _cache.get(cache_key)
     now = time.time()
     if cached and now - cached[0] < _CACHE_TTL_SECONDS:
         return cached[1]
@@ -65,22 +70,34 @@ def collect_production_metrics(
     except Exception as exc:  # noqa: BLE001
         log.debug("token acquisition failed: %s", exc)
         empty["diagnostics"] = {"reason": f"token: {exc}"}
-        _cache[application_id] = (now, empty)
+        _cache[cache_key] = (now, empty)
         return empty
 
-    summary = _run_query(application_id, bearer, _KQL_SUMMARY)
+    # Pick a sensible bucket size: 1h for short windows, 6h for ~30d.
+    bucket = "1h" if lookback_hours <= 48 else "6h"
+
+    summary = _run_query(application_id, bearer, _KQL_SUMMARY.format(hours=lookback_hours))
     if summary is None:
         empty["diagnostics"] = {"reason": "summary query failed"}
-        _cache[application_id] = (now, empty)
+        _cache[cache_key] = (now, empty)
         return empty
 
-    invocations_buckets = _run_query(application_id, bearer, _KQL_HOURLY_INVOCATIONS) or {}
-    latency_buckets = _run_query(application_id, bearer, _KQL_HOURLY_LATENCY) or {}
-    tokens = _run_query(application_id, bearer, _KQL_TOKENS) or {}
+    invocations_buckets = _run_query(
+        application_id, bearer,
+        _KQL_HOURLY_INVOCATIONS.format(hours=lookback_hours, bucket=bucket),
+    ) or {}
+    latency_buckets = _run_query(
+        application_id, bearer,
+        _KQL_HOURLY_LATENCY.format(hours=lookback_hours, bucket=bucket),
+    ) or {}
+    tokens = _run_query(
+        application_id, bearer,
+        _KQL_TOKENS.format(hours=lookback_hours),
+    ) or {}
 
-    cards = _build_cards(summary, invocations_buckets, latency_buckets, tokens)
+    cards = _build_cards(summary, invocations_buckets, latency_buckets, tokens, lookback_hours)
     payload = {"has_data": bool(cards), "cards": cards, "diagnostics": {}}
-    _cache[application_id] = (now, payload)
+    _cache[cache_key] = (now, payload)
     return payload
 
 
@@ -91,7 +108,7 @@ def collect_production_metrics(
 
 _KQL_SUMMARY = """
 union dependencies, requests
-| where timestamp > ago(24h)
+| where timestamp > ago({hours}h)
 | where name has "invoke_agent" or name has "chat " or name has "RUN "
 | summarize
     invocations = count(),
@@ -102,23 +119,23 @@ union dependencies, requests
 
 _KQL_HOURLY_INVOCATIONS = """
 union dependencies, requests
-| where timestamp > ago(24h)
+| where timestamp > ago({hours}h)
 | where name has "invoke_agent" or name has "chat "
-| summarize count = count() by bin(timestamp, 1h)
+| summarize count = count() by bin(timestamp, {bucket})
 | order by timestamp asc
 """
 
 _KQL_HOURLY_LATENCY = """
 dependencies
-| where timestamp > ago(24h)
+| where timestamp > ago({hours}h)
 | where name has "invoke_agent" or name has "chat "
-| summarize p95_ms = percentile(duration, 95) by bin(timestamp, 1h)
+| summarize p95_ms = percentile(duration, 95) by bin(timestamp, {bucket})
 | order by timestamp asc
 """
 
 _KQL_TOKENS = """
 dependencies
-| where timestamp > ago(24h)
+| where timestamp > ago({hours}h)
 | extend input_t = toint(coalesce(
     customDimensions["gen_ai.usage.input_tokens"],
     customDimensions["llm.usage.input_tokens"]
@@ -199,11 +216,11 @@ def _build_cards(
     invocations_buckets: Dict[str, Any],
     latency_buckets: Dict[str, Any],
     tokens: Dict[str, Any],
+    lookback_hours: int = 24,
 ) -> List[Dict[str, Any]]:
     cards: List[Dict[str, Any]] = []
     rows = summary.get("rows") or []
     if not rows:
-        # No data at all — nothing to render.
         return cards
     row = rows[0]
 
@@ -216,9 +233,11 @@ def _build_cards(
     inv_series, inv_labels = _hourly_series(invocations_buckets, "count")
     lat_series, lat_labels = _hourly_series(latency_buckets, "p95_ms", scale=1 / 1000.0)
 
+    window_label = _window_label(lookback_hours)
+
     cards.append({
         "key": "prod_invocations",
-        "label": "Invocations (24h)",
+        "label": f"Invocations ({window_label})",
         "value": invocations,
         "unit": "calls",
         "series": inv_series or [float(invocations)],
@@ -229,10 +248,10 @@ def _build_cards(
 
     cards.append({
         "key": "prod_errors",
-        "label": "Error rate (24h)",
+        "label": f"Error rate ({window_label})",
         "value": f"{int(error_rate * 100)}%",
         "unit": f"{errors} errors",
-        "series": inv_series or [0.0],  # reuse invocation buckets to give context
+        "series": inv_series or [0.0],
         "labels": inv_labels,
         "badge": _error_rate_badge(error_rate),
         "source": "App Insights · KQL: countif(success == false)",
@@ -240,7 +259,7 @@ def _build_cards(
 
     cards.append({
         "key": "prod_p95",
-        "label": "P95 latency (24h)",
+        "label": f"P95 latency ({window_label})",
         "value": f"{p95_seconds:.2f}" if p95_seconds is not None else "—",
         "unit": "s",
         "series": lat_series or ([p95_seconds] if p95_seconds is not None else [0.0]),
@@ -257,7 +276,7 @@ def _build_cards(
         total = input_t + output_t
         cards.append({
             "key": "prod_tokens",
-            "label": "Tokens (24h)",
+            "label": f"Tokens ({window_label})",
             "value": _format_tokens(total),
             "unit": f"{_format_tokens(input_t)} in / {_format_tokens(output_t)} out",
             "value_kind": "text",
@@ -268,6 +287,17 @@ def _build_cards(
         })
 
     return cards
+
+
+def _window_label(hours: int) -> str:
+    if hours <= 24:
+        return "24h"
+    if hours == 24 * 7:
+        return "7d"
+    if hours == 24 * 30:
+        return "30d"
+    days = hours // 24
+    return f"{days}d" if days else f"{hours}h"
 
 
 def _hourly_series(buckets: Dict[str, Any], value_key: str, *, scale: float = 1.0) -> Tuple[List[float], List[str]]:
