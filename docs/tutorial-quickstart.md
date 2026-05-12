@@ -23,8 +23,7 @@ The rest of the toolkit (legacy bundles, multi-file workspaces, custom adapters)
   - A **Foundry hosted endpoint** (`https://*.services.ai.azure.com/.../agents/<id>`).
   - A **generic HTTP/JSON agent** deployed anywhere (ACA, AKS, your own server).
   - A **raw Foundry model deployment** (e.g. `gpt-4o`).
-- For Foundry targets: `az login` (or a service principal) and `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` set.
-- For AI-assisted evaluators (Coherence, Groundedness, etc.): `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT` set.
+- For Foundry targets: `az login` (or a service principal) and `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` set. AI-assisted evaluators (Coherence, Similarity, etc.) automatically default to the target deployment as the judge — no extra env vars required. Set `AZURE_OPENAI_ENDPOINT` + `AZURE_OPENAI_DEPLOYMENT` only if you want a fully separate Azure OpenAI judge resource.
 
 ## 1. Install
 
@@ -40,11 +39,14 @@ python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.
 agentops init
 ```
 
-This creates two files:
+This creates three files:
 
 - `agentops.yaml` — your evaluation config (3 lines + comments).
 - `.agentops/data/smoke.jsonl` — a 3-row seed dataset with short,
   deterministic factual answers.
+- `.gitignore` (project root) — only created if one does not already
+  exist; covers `.venv/`, Python build artifacts, and
+  `.agentops/results/` so run outputs are not accidentally committed.
 
 ## 3. Configure your agent
 
@@ -126,12 +128,13 @@ You did not pick evaluators — AgentOps inferred them:
 - **If your dataset rows include `context`:** Groundedness, Relevance, Retrieval, ResponseCompleteness.
 - **If your dataset rows include `tool_calls` or `tool_definitions`:** TaskCompletion, ToolCallAccuracy, IntentResolution, TaskAdherence.
 
-To override the auto-selection, list evaluator class names in `agentops.yaml`:
+To override the auto-selection, list evaluator class names in `agentops.yaml`
+under `name:` keys:
 
 ```yaml
 evaluators:
-  - GroundednessEvaluator
-  - CoherenceEvaluator
+  - name: GroundednessEvaluator
+  - name: CoherenceEvaluator
 ```
 
 ## Where to go next
