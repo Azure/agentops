@@ -12,10 +12,13 @@ import importlib
 import inspect
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse, urlunparse
 
+from agentops.core.agentops_config import TargetResolution
 from agentops.core.evaluators import EvaluatorPreset
 from agentops.core.results import RowMetric
 
@@ -44,6 +47,15 @@ _SAFETY = {
     "ProtectedMaterialEvaluator",
 }
 
+_REASONING_MODEL_ENV = "AGENTOPS_EVALUATOR_REASONING_MODEL"
+_REASONING_MODEL_TRUTHY = {"1", "true", "yes", "on"}
+_REASONING_MODEL_FALSEY = {"0", "false", "no", "off"}
+_REASONING_MODEL_VALUES = "1, true, yes, on, 0, false, no, off"
+_REASONING_DEPLOYMENT_RE = re.compile(
+    r"^(?:gpt[-_]?5(?:$|[^a-z0-9])|o[134](?:$|[^a-z0-9]))",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class EvaluatorRuntime:
@@ -64,11 +76,75 @@ def _credential() -> Any:
     return DefaultAzureCredential(exclude_developer_cli_credential=True)
 
 
-def _model_config() -> Dict[str, str]:
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-    deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv(
+def _explicit_evaluator_deployment() -> Optional[str]:
+    return os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv(
         "AZURE_AI_MODEL_DEPLOYMENT_NAME"
     )
+
+
+def _foundry_data_plane_endpoint(project_endpoint: str) -> str:
+    raw = project_endpoint.strip().rstrip("/")
+    parsed = urlparse(raw)
+    if not parsed.scheme or not parsed.netloc:
+        raise RuntimeError(
+            "Cannot derive evaluator endpoint from "
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT because it is not an absolute URL. "
+            "Set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT to a URL like "
+            "'https://<resource>.services.ai.azure.com/api/projects/<project>', "
+            "or set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT for an "
+            "explicit evaluator deployment."
+        )
+
+    segments = [segment for segment in parsed.path.split("/") if segment]
+    if (
+        len(segments) >= 3
+        and segments[0].lower() == "api"
+        and segments[1].lower() == "projects"
+        and segments[2]
+    ):
+        return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
+
+    raise RuntimeError(
+        "Cannot derive evaluator endpoint from "
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT. Expected a Foundry project URL like "
+        "'https://<resource>.services.ai.azure.com/api/projects/<project>'. "
+        "Set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT if you want to "
+        "use a separate evaluator deployment."
+    )
+
+
+def _default_model_direct_config(
+    *,
+    target: Optional[TargetResolution],
+    foundry_project_endpoint: Optional[str],
+) -> tuple[str, str]:
+    if target is None or target.kind != "model_direct" or not target.deployment:
+        raise RuntimeError(
+            "AI-assisted evaluators require an evaluator model. Set "
+            "AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT, or use a "
+            "Foundry model-direct target like agent: 'model:<deployment>' so "
+            "AgentOps can default the evaluator deployment to the target model."
+        )
+    endpoint = foundry_project_endpoint or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    if not endpoint:
+        raise RuntimeError(
+            "AI-assisted evaluators can default the judge deployment to "
+            f"{target.raw!r}, but AZURE_AI_FOUNDRY_PROJECT_ENDPOINT is required "
+            "to derive the evaluator endpoint. Set "
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, or set AZURE_OPENAI_ENDPOINT "
+            "and AZURE_OPENAI_DEPLOYMENT for an explicit evaluator deployment."
+        )
+
+    return _foundry_data_plane_endpoint(endpoint), target.deployment
+
+
+def _model_config(
+    *,
+    target: Optional[TargetResolution] = None,
+    foundry_project_endpoint: Optional[str] = None,
+) -> Dict[str, str]:
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    deployment = _explicit_evaluator_deployment()
     # The New Foundry "AI Services" inference endpoint rejects the
     # azure-ai-evaluation SDK's stock api-version with
     # ``BadRequest: API version not supported``. Default to a version
@@ -76,15 +152,25 @@ def _model_config() -> Dict[str, str]:
     # Azure OpenAI; allow override via AZURE_OPENAI_API_VERSION.
     api_version = os.getenv("AZURE_OPENAI_API_VERSION") or "2025-04-01-preview"
 
-    missing = []
-    if not endpoint:
-        missing.append("AZURE_OPENAI_ENDPOINT")
-    if not deployment:
-        missing.append("AZURE_OPENAI_DEPLOYMENT")
-    if missing:
-        raise RuntimeError(
-            "AI-assisted evaluators require an evaluator model. "
-            "Missing environment variables: " + ", ".join(missing)
+    if endpoint or deployment:
+        missing = []
+        if not endpoint:
+            missing.append("AZURE_OPENAI_ENDPOINT")
+        if not deployment:
+            missing.append("AZURE_OPENAI_DEPLOYMENT")
+        if missing:
+            raise RuntimeError(
+                "AI-assisted evaluator override is incomplete. Missing "
+                "environment variables: "
+                + ", ".join(missing)
+                + ". Set both AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT "
+                "(or AZURE_AI_MODEL_DEPLOYMENT_NAME), or unset them to use the "
+                "Foundry model-direct defaults."
+            )
+    else:
+        endpoint, deployment = _default_model_direct_config(
+            target=target,
+            foundry_project_endpoint=foundry_project_endpoint,
         )
 
     config: Dict[str, str] = {
@@ -93,6 +179,33 @@ def _model_config() -> Dict[str, str]:
         "api_version": api_version,
     }
     return config
+
+
+def _reasoning_model_override() -> Optional[bool]:
+    raw = os.getenv(_REASONING_MODEL_ENV)
+    if raw is None:
+        return None
+
+    value = raw.strip().lower()
+    if value in _REASONING_MODEL_TRUTHY:
+        return True
+    if value in _REASONING_MODEL_FALSEY:
+        return False
+    raise RuntimeError(
+        f"{_REASONING_MODEL_ENV} must be one of {_REASONING_MODEL_VALUES}; "
+        f"got {raw!r}."
+    )
+
+
+def _evaluator_is_reasoning_model(deployment: str) -> bool:
+    override = _reasoning_model_override()
+    if override is not None:
+        return override
+
+    # gpt-5 and o-series deployments require max_completion_tokens in current
+    # Azure OpenAI APIs. The SDK converts legacy prompty max_tokens only when
+    # evaluator classes receive is_reasoning_model=True.
+    return bool(_REASONING_DEPLOYMENT_RE.match(deployment.strip()))
 
 
 def _project_endpoint() -> str:
@@ -107,7 +220,12 @@ def _project_endpoint() -> str:
 _LATENCY_SENTINEL = object()
 
 
-def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
+def load_evaluator(
+    preset: EvaluatorPreset,
+    *,
+    target: Optional[TargetResolution] = None,
+    foundry_project_endpoint: Optional[str] = None,
+) -> EvaluatorRuntime:
     """Instantiate one evaluator. Raises a clear error if the SDK is missing."""
     if preset.class_name == "_latency":
         return EvaluatorRuntime(preset=preset, callable=_LATENCY_SENTINEL)
@@ -128,22 +246,50 @@ def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
 
     init_kwargs: Dict[str, Any] = {}
     if preset.class_name in _AI_ASSISTED:
-        init_kwargs["model_config"] = _model_config()
+        model_config = _model_config(
+            target=target,
+            foundry_project_endpoint=foundry_project_endpoint,
+        )
+        init_kwargs["model_config"] = model_config
+        if _evaluator_is_reasoning_model(model_config["azure_deployment"]):
+            init_kwargs["is_reasoning_model"] = True
     if preset.class_name in _SAFETY:
         init_kwargs["azure_ai_project"] = _project_endpoint()
         init_kwargs["credential"] = _credential()
 
     try:
         instance = cls(**init_kwargs) if inspect.isclass(cls) else cls
-    except TypeError:
+    except TypeError as exc:
+        if init_kwargs:
+            kwarg_names = ", ".join(sorted(init_kwargs))
+            raise RuntimeError(
+                f"Failed to initialize evaluator {preset.class_name!r} with "
+                f"required configuration ({kwarg_names}). AgentOps will not "
+                "retry without that configuration. If this happens with a "
+                "GPT-5 or o-series evaluator deployment, upgrade "
+                "azure-ai-evaluation to a version that supports "
+                "is_reasoning_model."
+            ) from exc
         # Some evaluators reject unexpected kwargs (e.g. F1ScoreEvaluator).
         instance = cls() if inspect.isclass(cls) else cls
 
     return EvaluatorRuntime(preset=preset, callable=instance)
 
 
-def load_evaluators(presets: List[EvaluatorPreset]) -> List[EvaluatorRuntime]:
-    return [load_evaluator(preset) for preset in presets]
+def load_evaluators(
+    presets: List[EvaluatorPreset],
+    *,
+    target: Optional[TargetResolution] = None,
+    foundry_project_endpoint: Optional[str] = None,
+) -> List[EvaluatorRuntime]:
+    return [
+        load_evaluator(
+            preset,
+            target=target,
+            foundry_project_endpoint=foundry_project_endpoint,
+        )
+        for preset in presets
+    ]
 
 
 # ---------------------------------------------------------------------------
