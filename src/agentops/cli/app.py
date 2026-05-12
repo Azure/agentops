@@ -993,6 +993,8 @@ def cmd_dashboard(
         )
         raise typer.Exit(code=1) from exc
 
+    import threading
+
     from agentops.agent.dashboard import create_app as create_dashboard_app
 
     workspace = workspace.resolve()
@@ -1001,8 +1003,28 @@ def cmd_dashboard(
     typer.echo(f"AgentOps dashboard → http://{host}:{port}")
     typer.echo(f"workspace: {workspace}")
     typer.echo("Run `agentops agent analyze` in another terminal to populate watchdog findings.")
+    typer.echo("")
+    typer.echo("Press Enter (or Ctrl+C) to stop the dashboard.")
 
-    uvicorn.run(fastapi_app, host=host, port=port, log_level="warning")
+    # Run uvicorn in a background thread so the foreground can wait on
+    # stdin and let the user stop the server by pressing Enter — friendlier
+    # than telling people to remember Ctrl+C.
+    config = uvicorn.Config(
+        fastapi_app, host=host, port=port, log_level="warning",
+    )
+    server = uvicorn.Server(config)
+
+    server_thread = threading.Thread(target=server.run, daemon=True)
+    server_thread.start()
+
+    try:
+        input()
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+    typer.echo("Stopping dashboard…")
+    server.should_exit = True
+    server_thread.join(timeout=5)
 
 
 def main() -> None:
