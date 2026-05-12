@@ -192,9 +192,18 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
     run_alt_links = [r.get("alt_link") for r in eval_runs]
     run_alt_labels = [r.get("alt_label") for r in eval_runs]
 
-    # Latest execution is surfaced once at the section header, not on every card.
+    # Latest execution is surfaced once at the section header, not on every
+    # card. We still annotate the per-card source footer when the latest run
+    # was a Foundry cloud run, because the bare ".agentops/results/" /
+    # "results.json" labels otherwise read like a local execution — Foundry
+    # actually runs the agent + evaluators server-side, and AgentOps just
+    # caches the downloaded results on disk.
     latest_execution = latest.get("execution")
-    cloud_suffix = ""
+    cloud_suffix = (
+        " · cached from Foundry cloud run"
+        if (latest_execution or "").lower() == "cloud"
+        else ""
+    )
 
     cards: List[Dict[str, Any]] = [
         {
@@ -210,8 +219,11 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "badge": {"label": _badge_runs(len(eval_runs)), "tone": "info"},
             "help": (
                 "Total agentops eval run invocations recorded under "
-                ".agentops/results/. The trend line marks each run, "
-                "oldest on the left."
+                ".agentops/results/. Cloud runs (execution: cloud) are "
+                "executed by Foundry server-side, then downloaded and "
+                "cached here — that is why even cloud runs show up under "
+                "a local path. The trend line marks each run, oldest on "
+                "the left."
                 "\n\nBadge tiers:"
                 "\n• under 3 runs — low sample"
                 "\n• 3 to 9 — moderate sample"
@@ -295,7 +307,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 f"duration: {latest['duration']:.1f}s" if latest["duration"] else "duration: —",
                 f"execution: {latest['execution']}" if latest["execution"] else "execution: —",
             ],
-            "source": "results.json · target.raw",
+            "source": "results.json · target.raw" + cloud_suffix,
         },
     ]
     return {
