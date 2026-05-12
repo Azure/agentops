@@ -153,20 +153,32 @@ def _model_config(
     api_version = os.getenv("AZURE_OPENAI_API_VERSION") or "2025-04-01-preview"
 
     if endpoint or deployment:
-        missing = []
-        if not endpoint:
-            missing.append("AZURE_OPENAI_ENDPOINT")
         if not deployment:
-            missing.append("AZURE_OPENAI_DEPLOYMENT")
-        if missing:
             raise RuntimeError(
-                "AI-assisted evaluator override is incomplete. Missing "
-                "environment variables: "
-                + ", ".join(missing)
-                + ". Set both AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_DEPLOYMENT "
-                "(or AZURE_AI_MODEL_DEPLOYMENT_NAME), or unset them to use the "
-                "Foundry model-direct defaults."
+                "AI-assisted evaluator override is incomplete. "
+                "AZURE_OPENAI_ENDPOINT was set but no evaluator deployment "
+                "was provided. Set AZURE_OPENAI_DEPLOYMENT (or "
+                "AZURE_AI_MODEL_DEPLOYMENT_NAME), or unset "
+                "AZURE_OPENAI_ENDPOINT to use the Foundry model-direct defaults."
             )
+        if not endpoint:
+            # Deployment-only override: keep the Foundry-derived endpoint so
+            # users can pick a separate judge inside the same Foundry project
+            # without rewriting URLs by hand. Falls back to a clear error if
+            # we have no Foundry project endpoint to derive from.
+            project_endpoint = foundry_project_endpoint or os.getenv(
+                "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+            )
+            if not project_endpoint:
+                raise RuntimeError(
+                    "AI-assisted evaluator override is incomplete. "
+                    f"AZURE_OPENAI_DEPLOYMENT={deployment!r} was set but "
+                    "AgentOps cannot derive an evaluator endpoint without "
+                    "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT. Set "
+                    "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, or also set "
+                    "AZURE_OPENAI_ENDPOINT for a fully separate judge resource."
+                )
+            endpoint = _foundry_data_plane_endpoint(project_endpoint)
     else:
         endpoint, deployment = _default_model_direct_config(
             target=target,

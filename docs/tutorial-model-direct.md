@@ -23,14 +23,22 @@ project endpoint to configure AI-assisted evaluators by default: the judge
 deployment defaults to the same deployment named in `agent: "model:<deployment>"`,
 and the evaluator endpoint is derived from the project URL.
 
-If you want a separate judge deployment, set both optional overrides before
-running:
+If you want a separate judge deployment, set just the deployment name —
+AgentOps reuses your Foundry project endpoint to find it:
+
+```bash
+# Same Foundry project, different deployment as judge (most common):
+export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4.1-443723"
+# or, equivalently:
+# export AZURE_OPENAI_DEPLOYMENT="gpt-4.1-443723"
+```
+
+To point the judge at a fully separate Azure OpenAI resource (advanced),
+also set `AZURE_OPENAI_ENDPOINT`:
 
 ```bash
 export AZURE_OPENAI_ENDPOINT="https://<judge-resource>.openai.azure.com"
 export AZURE_OPENAI_DEPLOYMENT="gpt-4o-mini"
-# Or, if your environment uses the Foundry deployment variable:
-# export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4o-mini"
 ```
 
 AgentOps automatically enables the `azure-ai-evaluation` reasoning-model token
@@ -50,6 +58,20 @@ classifies it as `model_direct`, sends each row's `input` straight to
 the target deployment, and skips agent infrastructure entirely. Unless you set
 the optional evaluator overrides, AI-assisted evaluators such as Coherence,
 Fluency, and Similarity use this same deployment as the judge.
+
+> **Tip — use the exact deployment name, not the model name.** Foundry often
+> suffixes auto-created deployments with a random id (e.g. `gpt-4.1-443723`,
+> `gpt-4.1-mini-642951`). Using the bare model name will return
+> `DeploymentNotFound` (HTTP 404). List your deployments with:
+>
+> ```bash
+> az cognitiveservices account deployment list \
+>   --resource-group <your-resource-group> \
+>   --name <your-foundry-resource> \
+>   --query "[].{name:name, model:properties.model.name}" -o table
+> ```
+>
+> Use the value in the **`name`** column for `agent: "model:<deployment>"`.
 
 ## 3. Dataset shape
 
@@ -102,10 +124,10 @@ Exit code `0` = all thresholds passed, `2` = at least one failed,
   `AGENTOPS_EVALUATOR_REASONING_MODEL=true`. If an alias is incorrectly
   detected as reasoning, set `AGENTOPS_EVALUATOR_REASONING_MODEL=false`.
   Accepted values are `1`, `true`, `yes`, `on`, `0`, `false`, `no`, and `off`.
-- **Separate judge override errors**: if you set `AZURE_OPENAI_ENDPOINT`, also
-  set `AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME`; partial
-  overrides are rejected so AgentOps does not silently judge with the wrong
-  deployment.
+- **Separate judge override errors**: setting `AZURE_OPENAI_ENDPOINT` without
+  a deployment is rejected, and setting only a deployment without
+  `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` is rejected too — partial overrides
+  would silently judge with the wrong endpoint.
 
 ## 6. Compare two model deployments
 

@@ -154,6 +154,73 @@ def test_explicit_evaluator_env_overrides_model_direct_defaults(
     assert "is_reasoning_model" not in evaluator_cls.kwargs
 
 
+def test_deployment_only_override_keeps_foundry_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A separate judge inside the same Foundry project needs only a deployment."""
+    evaluator_cls = _install_fake_evaluation(monkeypatch)
+    _clear_explicit_model_env(monkeypatch)
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://aifappframework.services.ai.azure.com/api/projects/models",
+    )
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-443723")
+
+    load_evaluator(_preset(), target=_model_direct_target("gpt-5.1"))
+
+    model_config = evaluator_cls.kwargs["model_config"]
+    assert model_config["azure_endpoint"] == (
+        "https://aifappframework.services.ai.azure.com"
+    )
+    assert model_config["azure_deployment"] == "gpt-4.1-443723"
+    # gpt-4.1 is not a reasoning model.
+    assert "is_reasoning_model" not in evaluator_cls.kwargs
+
+
+def test_deployment_only_override_via_foundry_alias_env_var(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AZURE_AI_MODEL_DEPLOYMENT_NAME is the Foundry-style alias and is sufficient."""
+    evaluator_cls = _install_fake_evaluation(monkeypatch)
+    _clear_explicit_model_env(monkeypatch)
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://aifappframework.services.ai.azure.com/api/projects/models",
+    )
+    monkeypatch.setenv("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-4.1-443723")
+
+    load_evaluator(_preset(), target=_model_direct_target("gpt-5.1"))
+
+    model_config = evaluator_cls.kwargs["model_config"]
+    assert model_config["azure_endpoint"] == (
+        "https://aifappframework.services.ai.azure.com"
+    )
+    assert model_config["azure_deployment"] == "gpt-4.1-443723"
+
+
+def test_deployment_only_override_requires_foundry_project_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_evaluation(monkeypatch)
+    _clear_explicit_model_env(monkeypatch)
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1-443723")
+
+    with pytest.raises(RuntimeError, match="cannot derive an evaluator endpoint"):
+        load_evaluator(_preset(), target=_model_direct_target("gpt-5.1"))
+
+
+def test_endpoint_only_override_still_requires_deployment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_evaluation(monkeypatch)
+    _clear_explicit_model_env(monkeypatch)
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://judge.openai.azure.com")
+
+    with pytest.raises(RuntimeError, match="no evaluator deployment"):
+        load_evaluator(_preset(), target=_model_direct_target("gpt-5.1"))
+
+
 def test_model_direct_defaults_raise_when_foundry_endpoint_cannot_be_derived(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
