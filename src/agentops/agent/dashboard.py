@@ -223,7 +223,6 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "\n• 3 to 9 — moderate sample"
                 "\n• 10 or more — well sampled"
             ),
-            "source": ".agentops/results/",
         },
         {
             "key": "pass_rate",
@@ -248,7 +247,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "\n• 70 to 89% — mixed"
                 "\n• below 70% — unhealthy"
             ),
-            "source": "results.json · summary.overall_passed",
+            "source": "Share of recorded runs that passed every configured threshold.",
         },
         {
             "key": "items",
@@ -270,7 +269,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "in the latest run. The dataset on disk may contain more "
                 "rows that were skipped due to filters or errors."
             ),
-            "source": "results.json · summary.items_total",
+            "source": "Number of dataset rows evaluated in the most recent run.",
         },
         {
             "key": "latest_run",
@@ -301,7 +300,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 f"duration: {latest['duration']:.1f}s" if latest["duration"] else "duration: —",
                 f"execution: {latest['execution']}" if latest["execution"] else "execution: —",
             ],
-            "source": "results.json · target.raw",
+            "source": "Agent or model identifier from the most recent run.",
         },
     ]
     return {
@@ -360,7 +359,7 @@ def _build_metrics_cards(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 "runs. Badge compares the latest run to the previous one: "
                 "improved, regressed, stable, or baseline."
             ),
-            "source": f"results.json · aggregate_metrics.{key}",
+            "source": f"Average {label.lower()} score across runs in this window.",
         })
     return cards
 
@@ -397,7 +396,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 "has moved over time. Badge reflects whether the latest "
                 "value is an improvement or a regression."
             ),
-            "source": f"history.jsonl · findings_by_category.{key}",
+            "source": f"{label} findings recorded by the watchdog across this window.",
         })
 
     latest_label, latest_badge = _latest_run_badge(latest)
@@ -422,7 +421,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                     "all recorded analyses. The badge compares the latest "
                     "run to the previous one."
                 ),
-                "source": "history.jsonl · findings_total",
+                "source": "All findings produced by the watchdog across recorded analyses.",
             },
             {
                 "key": "critical",
@@ -440,7 +439,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                     "analysis. Treat any non-zero value as a fail-the-CI "
                     "candidate."
                 ),
-                "source": "history.jsonl · findings_by_severity.critical",
+                "source": "Findings tagged as critical severity in the latest analysis.",
             },
             {
                 "key": "last_analysis",
@@ -457,7 +456,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                     "to now."
                 ),
                 "meta": _latest_run_meta(latest),
-                "source": "history.jsonl · latest record",
+                "source": "When the most recent watchdog analysis finished.",
             },
         ],
         "category_cards": category_cards,
@@ -478,7 +477,7 @@ def _label_for_record(record: AnalysisRecord) -> str:
 # Cached `gh run list` payload, keyed by workspace. Keeps the dashboard
 # snappy on refresh while still picking up new runs within the TTL.
 _DEPLOYMENTS_CACHE_TTL_SECONDS = 60.0
-_deployments_cache: Dict[str, Tuple[float, List[Dict[str, Any]]]] = {}
+_deployments_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
 def _build_deployments_section(
@@ -488,57 +487,82 @@ def _build_deployments_section(
     """Project recent GitHub Actions runs into the dashboard card shape.
 
     Uses the local ``gh`` CLI to list workflow runs for the repo that
-    contains the workspace. When ``gh`` is not installed, the user is
-    not authenticated, or the workspace is not inside a GitHub repo, we
-    return an empty-state payload that lets the renderer point the user
-    at the right command.
+    contains the workspace. We diagnose each failure mode separately so
+    the empty-state can tell the user exactly what to fix instead of a
+    generic "could not list workflow runs".
     """
-    if shutil.which("gh") is None:
-        return {
-            "has_data": False,
-            "reason": "gh-missing",
-            "hint": (
-                "Install the GitHub CLI (https://cli.github.com) and run "
-                "<code>gh auth login</code> to surface workflow runs here."
-            ),
-            "cards": [],
-        }
+    diag = _diagnose_gh_state(workspace)
+    state = diag.get("state")
 
-    runs = _fetch_workflow_runs(workspace)
-    if runs is None:
-        return {
-            "has_data": False,
-            "reason": "gh-failed",
-            "hint": (
-                "Could not list workflow runs. Confirm <code>gh auth status</code> "
-                "passes from this workspace and that the repo has GitHub Actions enabled."
-            ),
-            "cards": [],
-        }
+    if state == "gh-missing":
+        return _deployments_empty(
+            state,
+            "GitHub CLI is not installed in this environment. "
+            "Install it from <a href=\"https://cli.github.com\" target=\"_blank\" "
+            "rel=\"noopener noreferrer\">cli.github.com</a> and run "
+            "<code>gh auth login</code> to surface workflow runs here.",
+        )
+    if state == "not-git-repo":
+        return _deployments_empty(
+            state,
+            "This workspace is not inside a Git repository, so there are no "
+            "GitHub Actions runs to fetch. Open the dashboard from a clone "
+            "of your repo to see this section populated.",
+        )
+    if state == "no-github-remote":
+        return _deployments_empty(
+            state,
+            "This Git repository has no GitHub remote, so GitHub Actions does "
+            "not apply. Push the repo to GitHub (or run this dashboard from a "
+            "clone that already has an <code>origin</code> on GitHub) to use "
+            "this section.",
+        )
+    if state == "gh-unauthenticated":
+        return _deployments_empty(
+            state,
+            "<code>gh</code> is installed but not authenticated. "
+            "Run <code>gh auth login</code> and then refresh this page.",
+        )
+    if state == "gh-failed":
+        detail = diag.get("detail") or ""
+        suffix = f" Error: <code>{_html_escape(detail)}</code>" if detail else ""
+        return _deployments_empty(
+            state,
+            "Could not list workflow runs from GitHub even though "
+            "<code>gh</code> is authenticated. Confirm the repo has GitHub "
+            "Actions enabled and that your token has the <code>repo</code> "
+            f"scope (<code>gh auth refresh -s repo</code>).{suffix}",
+        )
 
-    runs = _filter_workflow_runs(runs, time_range)
+    # state == "ok"
+    runs = diag.get("runs") or []
     if not runs:
-        return {
-            "has_data": False,
-            "reason": "no-runs",
-            "hint": (
-                "No workflow runs in the selected window. Run "
-                "<code>agentops workflow generate</code> to scaffold one, "
-                "then trigger it on a PR."
-            ),
-            "cards": [],
-        }
+        return _deployments_empty(
+            "no-runs-total",
+            "No GitHub Actions runs exist on this repository yet. Run "
+            "<code>agentops workflow generate</code> to scaffold a workflow, "
+            "commit it under <code>.github/workflows/</code>, and trigger it "
+            "(open a PR or push to a branch).",
+        )
 
-    runs = list(reversed(runs))  # oldest → newest for sparkline left-to-right
+    windowed = _filter_workflow_runs(runs, time_range)
+    if not windowed:
+        return _deployments_empty(
+            "no-runs",
+            "No workflow runs fell inside the selected window. Widen the "
+            "time range above (try 30D) or trigger a new run.",
+        )
 
-    total = len(runs)
-    successes = sum(1 for r in runs if (r.get("conclusion") or "").lower() == "success")
+    windowed = list(reversed(windowed))  # oldest → newest for sparkline left-to-right
+
+    total = len(windowed)
+    successes = sum(1 for r in windowed if (r.get("conclusion") or "").lower() == "success")
     success_rate = successes / total if total else 0.0
-    pass_series = [1.0 if (r.get("conclusion") or "").lower() == "success" else 0.0 for r in runs]
-    run_labels = [_label_for_workflow_run(r) for r in runs]
-    run_links = [r.get("url") for r in runs]
+    pass_series = [1.0 if (r.get("conclusion") or "").lower() == "success" else 0.0 for r in windowed]
+    run_labels = [_label_for_workflow_run(r) for r in windowed]
+    run_links = [r.get("url") for r in windowed]
 
-    latest = runs[-1]
+    latest = windowed[-1]
     latest_conclusion = (latest.get("conclusion") or latest.get("status") or "—").lower()
     latest_label = latest.get("workflowName") or latest.get("name") or "—"
 
@@ -558,7 +582,7 @@ def _build_deployments_section(
                 "workflow name and conclusion; click a dot to open the "
                 "run in GitHub."
             ),
-            "source": "gh run list",
+            "source": "Recent GitHub Actions runs in this repository.",
         },
         {
             "key": "success_rate",
@@ -568,7 +592,7 @@ def _build_deployments_section(
             "series": pass_series,
             "labels": [
                 f"{_label_for_workflow_run(r)} · {(r.get('conclusion') or r.get('status') or '—')}"
-                for r in runs
+                for r in windowed
             ],
             "links": run_links,
             "badge": _success_rate_badge(success_rate),
@@ -581,7 +605,7 @@ def _build_deployments_section(
                 "\n• 70 to 89% — mixed"
                 "\n• below 70% — unhealthy"
             ),
-            "source": "gh run list · conclusion",
+            "source": "Share of recent workflow runs that finished successfully.",
         },
         {
             "key": "latest_workflow",
@@ -603,7 +627,7 @@ def _build_deployments_section(
                 f"branch: {latest.get('headBranch') or '—'}",
                 f"event: {latest.get('event') or '—'}",
             ],
-            "source": "gh run list · latest",
+            "source": "Most recent GitHub Actions run for this repository.",
             "alt_link": latest.get("url"),
             "alt_label": "Open in GitHub",
         },
@@ -612,39 +636,134 @@ def _build_deployments_section(
     return {"has_data": True, "cards": cards}
 
 
-def _fetch_workflow_runs(workspace: Path) -> Optional[List[Dict[str, Any]]]:
-    """Return up to 50 recent workflow runs via ``gh``. Cached for 60s."""
+def _deployments_empty(reason: str, hint_html: str) -> Dict[str, Any]:
+    """Standard shape for an empty Deployments section."""
+    return {"has_data": False, "reason": reason, "hint": hint_html, "cards": []}
+
+
+def _diagnose_gh_state(workspace: Path) -> Dict[str, Any]:
+    """Diagnose why ``gh run list`` would (or would not) work and, if it
+    does, return the list of recent workflow runs.
+
+    Returns a dict with a ``state`` key plus extras:
+
+    - ``{"state": "gh-missing"}``
+    - ``{"state": "not-git-repo"}``
+    - ``{"state": "no-github-remote"}``
+    - ``{"state": "gh-unauthenticated"}``
+    - ``{"state": "gh-failed", "detail": "..."}``
+    - ``{"state": "ok", "runs": [...]}``
+
+    Cached for ``_DEPLOYMENTS_CACHE_TTL_SECONDS`` per workspace.
+    """
     import time
     key = str(workspace.resolve())
     now = time.time()
     cached = _deployments_cache.get(key)
     if cached and now - cached[0] < _DEPLOYMENTS_CACHE_TTL_SECONDS:
         return cached[1]
+
+    result = _diagnose_gh_state_uncached(workspace)
+    _deployments_cache[key] = (now, result)
+    return result
+
+
+def _diagnose_gh_state_uncached(workspace: Path) -> Dict[str, Any]:
+    if shutil.which("gh") is None:
+        return {"state": "gh-missing"}
+
+    # Is the workspace inside a git checkout? `git rev-parse` answers
+    # without raising on subdirectories of a repo root.
+    git_check = _run_quick(["git", "rev-parse", "--is-inside-work-tree"], cwd=workspace)
+    if git_check is None or git_check.returncode != 0:
+        return {"state": "not-git-repo"}
+
+    # Does the repo have any remotes at all? `gh repo view` reports this
+    # as "no git remotes found" but its wording is unstable, so we look
+    # at git directly first.
+    remotes = _run_quick(["git", "remote"], cwd=workspace)
+    if remotes is not None and remotes.returncode == 0:
+        remote_names = [
+            line.strip() for line in (remotes.stdout or "").splitlines() if line.strip()
+        ]
+        if not remote_names:
+            return {"state": "no-github-remote", "detail": "no git remotes"}
+
+    # We have at least one remote. Confirm gh can resolve it as a GitHub
+    # repo (the user might be on a self-hosted-only or non-GitHub remote)
+    # and that the user is authenticated.
+    repo_check = _run_quick(
+        ["gh", "repo", "view", "--json", "nameWithOwner"], cwd=workspace,
+    )
+    if repo_check is None:
+        return {"state": "gh-failed", "detail": "gh repo view did not run"}
+    if repo_check.returncode != 0:
+        stderr = (repo_check.stderr or "").lower()
+        # Order matters: gh's "remote is not GitHub" message includes
+        # "please use `gh auth login`", which would otherwise be matched
+        # by the auth check below.
+        if (
+            "github host" in stderr
+            or "known github" in stderr
+            or "no git remote" in stderr
+            or "no git remotes" in stderr
+            or "not a github" in stderr
+            or "no github" in stderr
+            or "could not determine" in stderr
+        ):
+            return {"state": "no-github-remote", "detail": (repo_check.stderr or "").strip()[:200]}
+        if "not logged" in stderr or "authentication required" in stderr:
+            return {"state": "gh-unauthenticated"}
+        return {
+            "state": "gh-failed",
+            "detail": (repo_check.stderr or "").strip().splitlines()[-1][:200]
+            if repo_check.stderr else "",
+        }
+
+    # Repo confirmed — fetch runs.
+    runs_proc = _run_quick(
+        [
+            "gh", "run", "list",
+            "--limit", "50",
+            "--json", "conclusion,status,createdAt,name,displayTitle,url,headBranch,event,workflowName",
+        ],
+        cwd=workspace,
+        timeout=15,
+    )
+    if runs_proc is None or runs_proc.returncode != 0:
+        detail = ""
+        if runs_proc is not None and runs_proc.stderr:
+            detail = runs_proc.stderr.strip().splitlines()[-1][:200]
+        return {"state": "gh-failed", "detail": detail}
     try:
-        proc = subprocess.run(
-            [
-                "gh", "run", "list",
-                "--limit", "50",
-                "--json", "conclusion,status,createdAt,name,displayTitle,url,headBranch,event,workflowName",
-            ],
-            cwd=str(workspace),
+        runs = json.loads(runs_proc.stdout or "[]")
+    except (ValueError, json.JSONDecodeError):
+        return {"state": "gh-failed", "detail": "unparseable gh run list output"}
+    if not isinstance(runs, list):
+        return {"state": "gh-failed", "detail": "unexpected gh run list shape"}
+
+    return {"state": "ok", "runs": runs}
+
+
+def _run_quick(
+    cmd: List[str], *, cwd: Path, timeout: int = 10,
+) -> Optional[subprocess.CompletedProcess]:
+    """Best-effort subprocess wrapper: returns ``None`` if the command
+    cannot run at all (binary missing, OS error, timeout). Otherwise
+    returns the ``CompletedProcess`` so callers can inspect returncode
+    and stderr without try/except boilerplate.
+    """
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=str(cwd),
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=timeout,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
-    if proc.returncode != 0:
-        return None
-    try:
-        runs = json.loads(proc.stdout or "[]")
-    except (ValueError, json.JSONDecodeError):
-        return None
-    if not isinstance(runs, list):
-        return None
-    _deployments_cache[key] = (now, runs)
-    return runs
 
 
 def _filter_workflow_runs(

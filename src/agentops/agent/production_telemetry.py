@@ -274,7 +274,7 @@ def _build_cards(
             "App Insights for the selected window. Counts dependencies "
             "whose name contains invoke_agent or chat."
         ),
-        "source": "App Insights · KQL: count of invoke_agent + chat spans",
+        "source": "Agent invocations and LLM spans recorded in App Insights.",
     })
 
     cards.append({
@@ -293,7 +293,7 @@ def _build_cards(
             "\n• under 5% — watch"
             "\n• 5% or more — unhealthy"
         ),
-        "source": "App Insights · KQL: countif(success == false)",
+        "source": "Share of invocations that reported a failure status.",
     })
 
     cards.append({
@@ -313,7 +313,7 @@ def _build_cards(
             "\n• 2 to 5s — acceptable"
             "\n• over 5s — sluggish"
         ),
-        "source": "App Insights · KQL: percentile(duration, 95)",
+        "source": "95th-percentile end-to-end duration of agent and chat spans.",
     })
 
     token_rows = (tokens or {}).get("rows") or []
@@ -336,7 +336,7 @@ def _build_cards(
                 "model via gen_ai.usage.input_tokens and "
                 "gen_ai.usage.output_tokens custom dimensions."
             ),
-            "source": "App Insights · KQL: sum(gen_ai.usage.*_tokens)",
+            "source": "Total prompt and completion tokens reported by the model.",
         })
 
     return cards

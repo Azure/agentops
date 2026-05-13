@@ -236,6 +236,44 @@ def test_html_includes_all_sections_when_data_present(tmp_path: Path):
 
 
 
+def test_deployments_diagnostic_not_a_git_repo(tmp_path: Path):
+    """Empty tempdir → deployments section explains it is not a git repo."""
+    from agentops.agent.dashboard import (
+        _build_deployments_section,
+        _deployments_cache,
+    )
+    _deployments_cache.clear()
+    out = _build_deployments_section(tmp_path, _WIDE)
+    assert out["has_data"] is False
+    assert out["reason"] == "not-git-repo"
+    assert "not inside a Git repository" in out["hint"]
+
+
+def test_deployments_diagnostic_no_github_remote(tmp_path: Path):
+    """Git repo without any remote → deployments tells the user precisely."""
+    import subprocess
+    from agentops.agent.dashboard import (
+        _build_deployments_section,
+        _deployments_cache,
+        _diagnose_gh_state,
+    )
+    import shutil as _shutil
+    if _shutil.which("git") is None or _shutil.which("gh") is None:
+        import pytest
+        pytest.skip("git or gh CLI not available")
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _deployments_cache.clear()
+    diag = _diagnose_gh_state(tmp_path)
+    assert diag["state"] == "no-github-remote"
+
+    _deployments_cache.clear()
+    out = _build_deployments_section(tmp_path, _WIDE)
+    assert out["has_data"] is False
+    assert out["reason"] == "no-github-remote"
+    assert "no GitHub remote" in out["hint"]
+
+
 def test_create_app_serves_dashboard(tmp_path: Path):
     """FastAPI integration smoke test (skipped if FastAPI not installed)."""
     try:
