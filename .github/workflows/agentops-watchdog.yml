@@ -89,7 +89,7 @@ jobs:
           if [ ! -f .agentops/agent.yaml ]; then
             agentops init --prompt-skip || true
           fi
-          agentops agent analyze --workspace . --out .agentops/agent/report.md \
+          agentops doctor --workspace . --out .agentops/agent/report.md \
             --severity-fail "${{ inputs.severity_fail || 'critical' }}"
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 

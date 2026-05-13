@@ -1,6 +1,6 @@
 # AgentOps — Scheduled watchdog (Azure DevOps Pipelines)
 #
-# Runs `agentops agent analyze` on a daily cron. Restores the previous
+# Runs `agentops doctor` on a daily cron. Restores the previous
 # run's history.jsonl from a pipeline artifact so the watchdog dashboard
 # carries trend data across executions.
 #
@@ -64,7 +64,7 @@ stages:
               inlineScript: |
                 python -m pip install --upgrade pip
                 python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
-                agentops agent analyze --workspace . --out .agentops/agent/report.md --severity-fail critical
+                agentops doctor --workspace . --out .agentops/agent/report.md --severity-fail critical
             env:
               AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
               AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)

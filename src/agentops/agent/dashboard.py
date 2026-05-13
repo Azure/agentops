@@ -410,11 +410,11 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 ],
                 "badge": _headline_badge_total(findings_series),
                 "help": (
-                    "Total findings produced by the watchdog agent across "
+                    "Total findings produced by the AgentOps doctor across "
                     "all recorded analyses. The badge compares the latest "
                     "run to the previous one."
                 ),
-                "source": "All findings produced by the watchdog across recorded analyses.",
+                "source": "All findings produced by the AgentOps doctor across recorded analyses.",
             },
             {
                 "key": "critical",
@@ -1927,7 +1927,7 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
             'target="_blank" rel="noopener noreferrer">'
             'View in Foundry Compliance &#x2197;</a>'
         )
-    watchdog_title = f"Watchdog findings{compliance_link}"
+    watchdog_title = f"Doctor findings{compliance_link}"
 
     if watchdog["has_history"]:
         watchdog_headline = "".join(
@@ -1942,7 +1942,7 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
         watchdog_body = (
             '<div class="empty-state">'
             "No analysis history yet. Run "
-            "<code>agentops agent analyze</code> to populate this section."
+            "<code>agentops doctor</code> to populate this section."
             "</div>"
         )
     watchdog_section = _collapsible_section(watchdog_title, watchdog_body)

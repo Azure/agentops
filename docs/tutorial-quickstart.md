@@ -7,7 +7,7 @@ the new run against the baseline.
 
 > Looking for the long-form, do-it-yourself tour that also covers
 > a real tool-calling support agent, baseline comparison, GitFlow
-> CI/CD, and the watchdog agent? See
+> CI/CD, and the AgentOps doctor? See
 > [tutorial-end-to-end.md](tutorial-end-to-end.md).
 
 ## What you will build
@@ -18,7 +18,7 @@ the new run against the baseline.
 - A baseline `agentops eval run` producing `results.json` and `report.md`.
 - A second run compared against the baseline so the report shows prompt
   quality deltas.
-- A watchdog analysis (`agentops agent analyze`) that surfaces
+- A doctor analysis (`agentops doctor`) that surfaces
   regressions across the run history.
 - A live local dashboard (`agentops dashboard`) that visualises eval
   trends, quality metrics, and production telemetry pulled from the
@@ -257,25 +257,31 @@ For normal local iteration you can also use
 loads the baseline before refreshing `latest/`, so that path means "the
 run before this one".
 
-## 8. Run the AgentOps watchdog agent
+## 8. Run the AgentOps doctor
 
 So far the loop is reactive: someone ran an eval and decided whether the
-delta was acceptable. The **watchdog agent** is the AgentOps service that
-turns the same run history into a written report — categorised findings,
-severity, suggested remediations — so you can see how the project is
-trending without opening every `results.json` by hand.
+delta was acceptable. The **AgentOps doctor** is the AgentOps service
+that turns the same run history (plus the workspace, eval bundle, and —
+when configured — production telemetry) into a written report:
+severity-ranked findings with categories, summaries, and suggested fixes.
+It is **complementary** to Foundry **Operate → Compliance**, which
+already covers runtime guardrails, security posture, and data
+governance at the resource level. The doctor focuses on what Foundry
+doesn't surface: pipeline hygiene (MLOps), repo / identity security
+beyond posture, and Responsible-AI heuristics on the prompt and eval
+bundle.
 
 You already have at least two runs in `.agentops/results/` (the baseline
-and the comparison). Point the watchdog at the workspace:
+and the comparison). Point the doctor at the workspace:
 
 ```powershell
-agentops agent analyze --workspace . --out .agentops/agent/report.md
+agentops doctor --workspace . --out .agentops/agent/report.md
 ```
 
 It reads every run under `.agentops/results/`, applies the rules defined
 in the workspace `agent.yaml` (regression detection, threshold drift,
-latency spikes, …) and emits a single Markdown report. Open it the same
-way as the eval report:
+latency spikes, MLOps hygiene, …) and emits a single Markdown report.
+Open it the same way as the eval report:
 
 ```powershell
 code .agentops/agent/report.md
@@ -288,8 +294,8 @@ The CLI returns:
   noisily on regressions).
 - `1` — runtime/config error.
 
-The watchdog is the bridge between "one eval ran" and "the project's
-quality is healthy". Wire `agentops agent analyze` into the CI workflow
+The doctor is the bridge between "one eval ran" and "the project's
+quality is healthy". Wire `agentops doctor` into the CI workflow
 generated below to get the same view automatically on every PR.
 
 > **Tip — local dashboard.** Every analyze run also appends a record to
@@ -307,7 +313,7 @@ there — no extra environment variable required. The `agentops dashboard`
 dashboard's *Telemetry* card surfaces "App Insights (auto-discovered)"
 plus a one-click link to the Logs blade.
 
-Once you've run an `agentops eval run` or `agentops agent analyze`, you
+Once you've run an `agentops eval run` or `agentops doctor`, you
 can inspect the spans directly in the Foundry project's App Insights:
 
 ```kusto
@@ -344,12 +350,12 @@ dependencies
 | order by avg_score asc
 ```
 
-### Scheduling the watchdog
+### Scheduling the doctor
 
-Running `agentops agent analyze` manually is fine for the smoke test,
-but the watchdog earns its keep when it runs on a schedule. Two options:
+Running `agentops doctor` manually is fine for the smoke test,
+but the doctor earns its keep when it runs on a schedule. Two options:
 
-**(a) CI cron (recommended for shared repos):** generate the watchdog
+**(a) CI cron (recommended for shared repos):** generate the doctor
 workflow that ships with AgentOps:
 
 ```powershell
@@ -360,12 +366,12 @@ agentops workflow generate --platform azure-devops --kinds watchdog
 
 This writes a daily-cron workflow (`agentops-watchdog.yml`) that
 checks out the repo, restores the previous run's `history.jsonl` from
-the pipeline artifact, runs `agentops agent analyze`, and re-uploads
+the pipeline artifact, runs `agentops doctor`, and re-uploads
 the updated history. Trend data persists across runners.
 
 **(b) Local Task Scheduler / cron (single developer machine):** drop
 into Windows Task Scheduler or a Linux `crontab -e` and add
-`agentops agent analyze --workspace <path>` on the cadence you want
+`agentops doctor --workspace <path>` on the cadence you want
 (hourly, daily). Combine with `agentops dashboard` left running and the
 dashboard refreshes itself.
 
@@ -387,7 +393,7 @@ sources:
     resource_group: "<your-rg>"
 ```
 
-Then re-run `agentops agent analyze`. Posture findings appear under the
+Then re-run `agentops doctor`. Posture findings appear under the
 `security` category with WAF rule ids you can grep for, and the
 dashboard's *Security* card lights up if anything regressed since the
 last analysis.
@@ -417,7 +423,7 @@ writes:
 ├── agentops-deploy-dev.yml    # push to develop  → environment: dev
 ├── agentops-deploy-qa.yml     # push to release/** → environment: qa
 ├── agentops-deploy-prod.yml   # push to main      → environment: production
-└── agentops-watchdog.yml      # daily cron → runs `agentops agent analyze`
+└── agentops-watchdog.yml      # daily cron → runs `agentops doctor`
 ```
 
 **Azure DevOps Pipelines:**

@@ -6,7 +6,7 @@
 #
 # Run:
 #
-#   agentops agent analyze
+#   agentops doctor
 #   agentops agent serve --no-verify   # local dev
 #
 version: 1
@@ -67,7 +67,7 @@ checks:
   # WAF-AI posture audit. Opt-in: requires the `azure_resources` source
   # above to be configured. Findings are produced under the `security`
   # category, which can be filtered with
-  # `agentops agent analyze --categories security`.
+  # `agentops doctor --categories security`.
   posture:
     enabled: false
     pillar: security

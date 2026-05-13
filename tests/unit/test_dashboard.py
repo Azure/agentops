@@ -251,17 +251,17 @@ def test_html_includes_all_sections_when_data_present(tmp_path: Path):
     assert "Evaluation runs" in html
     assert "Deployments" in html
     assert "Quality metrics" in html
-    assert "Watchdog findings" in html
+    assert "Doctor findings" in html
     assert "Telemetry" in html
     assert "<svg" in html
 
     # All five sections are wrapped in collapsible <details> blocks that
     # default to open, in the documented order: eval → deployments →
-    # quality metrics → watchdog → production.
+    # quality metrics → doctor → production.
     eval_pos = html.find('<span class="section-title-text">Evaluation runs')
     deploy_pos = html.find('<span class="section-title-text">Deployments')
     metrics_pos = html.find('<span class="section-title-text">Quality metrics')
-    watchdog_pos = html.find('<span class="section-title-text">Watchdog findings')
+    watchdog_pos = html.find('<span class="section-title-text">Doctor findings')
     assert eval_pos != -1 and deploy_pos != -1
     assert metrics_pos != -1 and watchdog_pos != -1
     assert eval_pos < deploy_pos < metrics_pos < watchdog_pos

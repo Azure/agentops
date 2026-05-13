@@ -28,9 +28,10 @@ skills_app = typer.Typer(help="Coding agent skills management.")
 mcp_app = typer.Typer(help="MCP (Model Context Protocol) server commands.")
 agent_app = typer.Typer(
     help=(
-        "Watchdog agent commands. Combine AgentOps eval history, Azure Monitor "
-        "traces, and Foundry control-plane data to surface regressions, "
-        "latency, error, and safety findings."
+        "Watchdog agent commands (deprecated — use `agentops doctor`). "
+        "Combine AgentOps eval history, Azure Monitor traces, and "
+        "Foundry control-plane data to surface regressions, latency, "
+        "error, and safety findings."
     )
 )
 app.add_typer(eval_app, name="eval")
@@ -754,7 +755,10 @@ def cmd_agent_analyze(
         ),
     ] = None,
 ) -> None:
-    """Run the watchdog agent analyzer and emit a Markdown report.
+    """**Deprecated** — use ``agentops doctor`` instead.
+
+    Run the AgentOps doctor (was: "watchdog agent analyzer") and emit a
+    Markdown report.
 
     Exit codes:
 
@@ -762,6 +766,15 @@ def cmd_agent_analyze(
     * ``2`` — at least one finding meets the configured severity floor.
     * ``1`` — runtime/configuration error.
     """
+    # Deprecation notice — non-fatal, only printed when this alias is
+    # invoked directly (not when cmd_doctor delegates to this body).
+    import sys as _sys
+    if "agent" in _sys.argv and "analyze" in _sys.argv:
+        typer.echo(
+            "note: `agentops agent analyze` is deprecated. "
+            "Use `agentops doctor` instead — same flags, shorter to type.",
+            err=True,
+        )
     from agentops.agent.analyzer import analyze
     from agentops.agent.config import load_agent_config
     from agentops.agent.findings import Severity
@@ -858,6 +871,98 @@ def cmd_agent_analyze(
 
     if result.max_severity is not None and result.max_severity >= severity_floor:
         raise typer.Exit(code=2)
+
+
+@app.command("doctor")
+def cmd_doctor(
+    workspace: Annotated[
+        Path,
+        typer.Option(
+            "--workspace",
+            "-w",
+            help="Project root containing `.agentops/`.",
+        ),
+    ] = Path("."),
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to `agent.yaml` (default: `.agentops/agent.yaml`).",
+        ),
+    ] = None,
+    out: Annotated[
+        Path,
+        typer.Option(
+            "--out",
+            "-o",
+            help="Where to write the Markdown report.",
+        ),
+    ] = Path(".agentops/agent/report.md"),
+    lookback_days: Annotated[
+        int | None,
+        typer.Option(
+            "--lookback-days",
+            help="Override the lookback window for production telemetry.",
+        ),
+    ] = None,
+    severity_fail: Annotated[
+        str,
+        typer.Option(
+            "--severity-fail",
+            help="Exit 2 when a finding at or above this severity is produced.",
+        ),
+    ] = "critical",
+    categories: Annotated[
+        str | None,
+        typer.Option(
+            "--categories",
+            help=(
+                "Comma-separated list of categories to include "
+                "(quality, performance, reliability, mlops, security, "
+                "responsible_ai). Default: include all."
+            ),
+        ),
+    ] = None,
+    exclude_rules: Annotated[
+        str | None,
+        typer.Option(
+            "--exclude-rules",
+            help=(
+                "Comma-separated list of posture rule ids to skip "
+                "(for example `waf.security.diagnostic_settings`)."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Diagnose MLOps / security / responsible-AI gaps in this workspace.
+
+    The AgentOps doctor scans your workspace, eval history, and (when
+    configured) production telemetry, then produces a severity-ranked
+    list of findings + a Markdown report. Complementary to Foundry
+    Operate -> Compliance — this is the half Foundry doesn't surface
+    (pipeline hygiene, identity / pipeline security, prompt + bundle
+    Responsible-AI heuristics, plus the live regression / latency /
+    error signals).
+
+    Exit codes:
+
+    * ``0`` — analyzer ran cleanly and no finding met `--severity-fail`.
+    * ``2`` — at least one finding meets the configured severity floor.
+    * ``1`` — runtime/configuration error.
+    """
+    # Single implementation lives in cmd_agent_analyze; calling it as a
+    # plain Python function is safe — Typer's decorator only wires the
+    # CLI parser, the function body still runs normally.
+    cmd_agent_analyze(
+        workspace=workspace,
+        config_path=config_path,
+        out=out,
+        lookback_days=lookback_days,
+        severity_fail=severity_fail,
+        categories=categories,
+        exclude_rules=exclude_rules,
+    )
 
 
 def _sources_enabled(config) -> list:
@@ -971,7 +1076,7 @@ def cmd_dashboard(
 
     Reads ``.agentops/results/*/results.json`` and
     ``.agentops/agent/history.jsonl`` (populated by ``agentops eval run``
-    and ``agentops agent analyze``) and serves an interactive dark
+    and ``agentops doctor``) and serves an interactive dark
     dashboard on http://127.0.0.1:8090. Read-only, single-page,
     auto-refreshes every 15s. Requires the ``[agent]`` extra::
 
@@ -1005,7 +1110,7 @@ def cmd_dashboard(
 
     typer.echo(f"AgentOps dashboard → {url}")
     typer.echo(f"workspace: {workspace}")
-    typer.echo("Run `agentops agent analyze` in another terminal to populate watchdog findings.")
+    typer.echo("Run `agentops doctor` in another terminal to populate doctor findings.")
     typer.echo("")
     typer.echo("Press Enter (or Ctrl+C) to stop the dashboard.")
 
