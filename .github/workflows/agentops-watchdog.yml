@@ -65,12 +65,16 @@ jobs:
           # template under src/agentops/templates/workflows/.
           python -m pip install ".[foundry,agent]"
 
-      - name: Restore watchdog history
+      # First run has no prior artifact. Using `pattern:` instead of
+      # `name:` makes actions/download-artifact return success with zero
+      # downloads when the artifact does not exist yet, instead of
+      # surfacing a red error annotation on every first run.
+      - name: Restore watchdog history (if any)
         uses: actions/download-artifact@v4
         with:
-          name: agentops-watchdog-history
+          pattern: agentops-watchdog-history
           path: .agentops/agent/
-        continue-on-error: true
+          merge-multiple: true
 
       - name: Run AgentOps watchdog
         id: analyze
