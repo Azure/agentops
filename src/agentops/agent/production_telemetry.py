@@ -69,8 +69,7 @@ def collect_production_metrics(
         bearer = _acquire_token()
     except Exception as exc:  # noqa: BLE001
         log.debug("token acquisition failed: %s", exc)
-        empty["diagnostics"] = {"reason": f"token: {exc}"}
-        _cache[cache_key] = (now, empty)
+        empty["diagnostics"] = {"reason": f"token acquisition failed: {exc}"}
         return empty
 
     # Pick a sensible bucket size: 1h for short windows, 6h for ~30d.
@@ -102,13 +101,28 @@ def collect_production_metrics(
         tokens = fut_tokens.result() or {}
 
     if summary is None:
-        empty["diagnostics"] = {"reason": "summary query failed"}
-        _cache[cache_key] = (now, empty)
+        empty["diagnostics"] = {
+            "reason": "Application Insights query failed (auth, network, "
+            "or KQL error). See `agentops dashboard` console logs for the "
+            "exact message."
+        }
         return empty
 
     cards = _build_cards(summary, invocations_buckets, latency_buckets, tokens, lookback_hours)
     payload = {"has_data": bool(cards), "cards": cards, "diagnostics": {}}
-    _cache[cache_key] = (now, payload)
+    # Only cache populated payloads. Caching empty results masks
+    # transient failures (token expiry, App Insights 5xx, etc.) for up
+    # to a minute — exactly the case the user notices as "the
+    # dashboard suddenly stopped showing telemetry". A subsequent
+    # refresh will retry the query immediately.
+    if cards:
+        _cache[cache_key] = (now, payload)
+    else:
+        payload["diagnostics"] = {
+            "reason": "App Insights returned 0 invocations for the "
+            "selected window. If you expect data here, widen the time "
+            "range or verify that traces are being emitted."
+        }
     return payload
 
 
@@ -200,7 +214,14 @@ _token_cache: Dict[str, Tuple[float, str]] = {}
 
 
 def _run_query(app_id: str, bearer: str, kql: str) -> Optional[Dict[str, Any]]:
-    """POST a KQL query to the App Insights REST endpoint."""
+    """POST a KQL query to the App Insights REST endpoint.
+
+    Returns ``None`` on any failure (HTTP error, network issue, or an
+    Application Insights query error returned with HTTP 200). The
+    caller treats ``None`` as a recoverable failure and surfaces the
+    reason via diagnostics rather than caching a misleading empty
+    result.
+    """
     try:
         # urllib stays in stdlib - avoids dragging requests as a dep.
         import json as _json
@@ -219,6 +240,14 @@ def _run_query(app_id: str, bearer: str, kql: str) -> Optional[Dict[str, Any]]:
         with request.urlopen(req, timeout=10) as resp:  # noqa: S310
             data = resp.read()
         parsed = _json.loads(data)
+        # App Insights surfaces query failures with HTTP 200 and an
+        # ``error`` object — surface those as failures so the caller
+        # does not mistake them for "no data".
+        if isinstance(parsed, dict) and parsed.get("error"):
+            err = parsed["error"]
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            log.debug("app insights query reported error: %s", msg)
+            return None
         return _flatten_first_table(parsed)
     except (error.URLError, ValueError, KeyError) as exc:
         log.debug("app insights query failed: %s", exc)

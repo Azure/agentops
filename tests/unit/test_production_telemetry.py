@@ -153,3 +153,91 @@ def test_collect_caches_per_app_id():
         # Second call must be served from cache → no additional API hits.
         assert call_count["n"] == first_calls
         assert first == second
+
+
+def test_collect_does_not_cache_empty_results():
+    """A transient query failure must not poison the cache with empty
+    results — the next call must retry instead of serving stale empties."""
+    app_id = "no-cache-empty-id"
+    call_count = {"n": 0}
+
+    def fake_run_query(_app_id, _bearer, _kql):
+        call_count["n"] += 1
+        return None  # simulate transient failure
+
+    with mock.patch(
+        "agentops.agent.production_telemetry._acquire_token",
+        return_value="fake-bearer",
+    ), mock.patch(
+        "agentops.agent.production_telemetry._run_query",
+        side_effect=fake_run_query,
+    ):
+        from agentops.agent import production_telemetry as pt
+        pt._cache.pop(f"{app_id}:24", None)
+
+        first = collect_production_metrics(app_id)
+        # _run_query is called 4 times per collect (summary, invocations, latency, tokens).
+        assert call_count["n"] == 4
+        assert first["has_data"] is False
+        assert "reason" in first["diagnostics"]
+
+        # Second call retries from scratch instead of serving the cached empty.
+        second = collect_production_metrics(app_id)
+        assert call_count["n"] == 8
+        assert second["has_data"] is False
+
+
+def test_collect_does_not_cache_zero_invocation_results():
+    """When the query succeeds but returns zero matching rows, the result
+    is reported with a clear diagnostic and not cached."""
+    app_id = "zero-invocations-id"
+    call_count = {"n": 0}
+
+    def fake_run_query(_app_id, _bearer, _kql):
+        call_count["n"] += 1
+        # Summary KQL with summarize-no-by returns 1 row of zeros, but we
+        # simulate the case where _build_cards still produces nothing
+        # because the row aggregates are all empty / zero-rows.
+        return {"rows": []}
+
+    with mock.patch(
+        "agentops.agent.production_telemetry._acquire_token",
+        return_value="fake-bearer",
+    ), mock.patch(
+        "agentops.agent.production_telemetry._run_query",
+        side_effect=fake_run_query,
+    ):
+        from agentops.agent import production_telemetry as pt
+        pt._cache.pop(f"{app_id}:24", None)
+
+        first = collect_production_metrics(app_id)
+        first_calls = call_count["n"]
+        assert first["has_data"] is False
+        assert first["diagnostics"].get("reason")
+
+        # No cache → second call hits the API again.
+        collect_production_metrics(app_id)
+        assert call_count["n"] > first_calls
+
+
+def test_run_query_treats_application_insights_error_response_as_failure(monkeypatch):
+    """When the App Insights REST API returns HTTP 200 with an `error`
+    object (its normal way of reporting KQL failures), `_run_query`
+    must return None, not an empty success."""
+    from agentops.agent.production_telemetry import _run_query
+
+    class _Resp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_a):
+            return False
+        def read(self):
+            return b'{"error": {"message": "syntax error in KQL", "code": "BadRequest"}}'
+
+    def fake_urlopen(_req, timeout=None):
+        return _Resp()
+
+    monkeypatch.setattr(
+        "urllib.request.urlopen", fake_urlopen
+    )
+    assert _run_query("app-id", "bearer", "bad | kql") is None

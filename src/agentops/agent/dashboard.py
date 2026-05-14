@@ -1676,14 +1676,31 @@ def render_production_grid_html(production: Dict[str, Any]) -> str:
     App Insights round-trip off the initial render.
     """
     if not production.get("has_data") or not production.get("cards"):
+        diagnostics = production.get("diagnostics") or {}
+        reason = ""
+        if isinstance(diagnostics, dict):
+            reason = str(diagnostics.get("reason") or "").strip()
+        # When App Insights specifically returned zero invocations, the
+        # "no data in window" label is the accurate headline. For any
+        # other reason (auth, network, KQL error), the failure word is
+        # used so the user knows the empty state is a problem, not a
+        # legitimate "nothing to show" result.
+        is_zero_invocations = "0 invocations" in reason
+        label = (
+            "No invocations in the selected window"
+            if is_zero_invocations
+            else "Production telemetry unavailable"
+        )
+        if not reason:
+            reason = (
+                "No invocations found in the selected window. The Foundry "
+                "project may not have produced any traces yet."
+            )
         return (
             '<div class="card hero loading-card">'
-            '<div class="card-label">No production telemetry yet</div>'
+            f'<div class="card-label">{label}</div>'
             '<div class="card-value card-value-text"> - </div>'
-            '<div class="telemetry-detail">'
-            'No invocations found in the selected window. The Foundry '
-            'project may not have produced any traces yet.'
-            '</div>'
+            f'<div class="telemetry-detail">{_html_escape(reason)}</div>'
             '</div>'
         )
     return "".join(_render_card(c, hero=True) for c in production["cards"])
