@@ -6,6 +6,16 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Changed
+- **`AZURE_OPENAI_ENDPOINT` is now auto-normalized.** When the env
+  var includes the portal-style inference-path suffix
+  (e.g. `https://<resource>.openai.azure.com/openai/v1`,
+  `/openai/`, `/openai/deployments`), AgentOps strips it before
+  passing the value to the `azure-ai-evaluation` SDK and the
+  `openai` client. Trailing slashes are also trimmed. The user can
+  paste whichever URL the Foundry portal showed and the eval
+  pipeline now works transparently.
+
+### Changed
 - **Doctor categories aligned to WAF-AI pillars (breaking).** The
   `genaiops` category was renamed to `operational_excellence` to match
   the Microsoft Well-Architected Framework for AI pillar names. Every

@@ -65,7 +65,10 @@ def _credential() -> Any:
 
 
 def _model_config() -> Dict[str, str]:
-    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    from agentops.utils.azure_endpoints import normalize_azure_openai_endpoint
+
+    raw_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    endpoint = normalize_azure_openai_endpoint(raw_endpoint)
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv(
         "AZURE_AI_MODEL_DEPLOYMENT_NAME"
     )
