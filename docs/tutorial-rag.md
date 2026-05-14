@@ -123,13 +123,26 @@ seed file with something like:
 Each row has:
 - `input` — the question sent to the agent
 - `expected` — the reference answer
-- `context` — the retrieved document context that `GroundednessEvaluator` uses
+- `context` — the reference passages that `GroundednessEvaluator` uses
 
 When any row has a `context` field, the RAG evaluator set is added
 automatically.
 
-> **Tip**: For a real RAG scenario, populate the `context` field with
-> actual retrieved passages from your knowledge base.
+> **The `context` field is always required.** AgentOps maps the dataset's
+> `context` column directly into `GroundednessEvaluator`. The evaluator
+> scores the agent's answer against this reference context — populate it
+> with the canonical passages you want the agent's answers to align with.
+
+> **Populating `context` for production datasets.** Two practical
+> workflows:
+>
+> 1. **Manual reference passages.** Hand-pick the canonical passages
+>    each question should be answered from. Best for curated, stable
+>    golden datasets.
+> 2. **Pre-script retrieval.** Query your knowledge base (Azure AI
+>    Search, etc.) for each test question with your own script, capture
+>    the top-K passages, and write them into the JSONL `context` field.
+>    Best when curating manually doesn't scale.
 
 ## Part 5: Run evaluation
 
@@ -168,3 +181,7 @@ For model-only evaluation (no retrieval), see the [Model-Direct Tutorial](tutori
   one deployment, this is optional.
 - Authentication is automatic via `DefaultAzureCredential`.
 - For local development, `az login` is enough.
+- **Named agents only**: AgentOps targets the Foundry Responses API,
+  which addresses agents by `name:version`. Legacy classic-portal
+  `asst_*` IDs are not supported today (see
+  [#143](https://github.com/Azure/agentops/issues/143)).
