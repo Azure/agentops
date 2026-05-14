@@ -71,11 +71,14 @@ later.
 agentops init
 ```
 
-This creates two files:
+This creates three files:
 
 - `agentops.yaml` — your evaluation config (3 lines + comments).
 - `.agentops/data/smoke.jsonl` — a 3-row seed dataset with short,
   deterministic factual answers.
+- `.gitignore` (project root) — only created if one does not already
+  exist; covers `.venv/`, Python build artifacts, and
+  `.agentops/results/` so run outputs are not accidentally committed.
 
 ## 3. Create the smoke-test Foundry agent
 
@@ -628,12 +631,13 @@ You did not pick evaluators — AgentOps inferred them:
 - **If your dataset rows include `context`:** Groundedness, Relevance, Retrieval, ResponseCompleteness.
 - **If your dataset rows include `tool_calls` or `tool_definitions`:** TaskCompletion, ToolCallAccuracy, IntentResolution, TaskAdherence.
 
-To override the auto-selection, list evaluator class names in `agentops.yaml`:
+To override the auto-selection, list evaluator class names in `agentops.yaml`
+under `name:` keys:
 
 ```yaml
 evaluators:
-  - GroundednessEvaluator
-  - CoherenceEvaluator
+  - name: GroundednessEvaluator
+  - name: CoherenceEvaluator
 ```
 
 ## Where to go next
