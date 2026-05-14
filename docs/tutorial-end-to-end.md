@@ -188,18 +188,18 @@ In an empty folder (or the GitHub repo you want to use):
 agentops init
 ```
 
-You get:
+You get three files:
 
+```text
+agentops.yaml                  # at the project root
+.agentops/data/smoke.jsonl     # 3-row seed dataset
+.gitignore                     # only if one doesn't already exist
 ```
-agentops.yaml
-.agentops/
-├── data/
-│   └── smoke.jsonl
-└── results/
-.github/
-└── skills/
-    └── agentops-*/SKILL.md
-```
+
+`agentops init` does **not** create `.agentops/results/` (that appears on
+the first `agentops eval run`) or `.github/skills/`. Coding-agent skills
+live in their own command: `agentops skills install --platform copilot`
+(or `claude` / `cursor`).
 
 Open `agentops.yaml` at the project root and configure it for the
 support agent:
@@ -405,7 +405,7 @@ intentionally want to demonstrate a red quality gate.
 agentops workflow generate
 ```
 
-Four files appear under `.github/workflows/`:
+Five files appear under `.github/workflows/`:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
@@ -413,6 +413,7 @@ Four files appear under `.github/workflows/`:
 | `agentops-deploy-dev.yml` | Push to `develop` | Deploys to the **dev** environment after a passing eval. |
 | `agentops-deploy-qa.yml` | Push to a `release/*` branch | Deploys to **qa**. |
 | `agentops-deploy-prod.yml` | Push to `main` | Deploys to **prod** after a passing eval. |
+| `agentops-watchdog.yml` | Daily cron + `workflow_dispatch` | Runs `agentops doctor` against the run history and uploads the report as an artifact. |
 
 Read [`ci-github-actions.md`](ci-github-actions.md) for the full
 reference. The defaults are sane: you do not need to edit them yet.
