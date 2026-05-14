@@ -1,9 +1,9 @@
 """FastAPI factory for the Copilot Extension server.
 
 Exposes:
-- ``POST /agents/messages`` — Copilot Extensions protocol (SSE response)
-- ``GET /healthz``         — liveness check
-- ``GET /``                — small HTML index
+- ``POST /agents/messages`` - Copilot Extensions protocol (SSE response)
+- ``GET /healthz``         - liveness check
+- ``GET /``                - small HTML index
 """
 
 import logging

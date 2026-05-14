@@ -1,0 +1,30 @@
+# Workspace WAF checklist override
+#
+# This file is read by the AgentOps Doctor on every run. Rows here
+# either OVERRIDE rows shipped in the packaged checklist
+# (`src/agentops/agent/knowledge/waf-checklist.csv`) by matching the
+# `doctor_check_id` column, or EXTEND the checklist with new rows
+# that map your own custom finding ids onto WAF pillars.
+#
+# Columns (all required):
+#   pillar              - WAF pillar (Security, Reliability, Performance,
+#                         OperationalExcellence, ResponsibleAI, Quality)
+#   area                - Free-text sub-area (e.g. Identity, CI-CD, Telemetry)
+#   item_id             - Stable short id for this item, e.g. waf.opex.my_rule
+#   title               - User-facing short label
+#   detection_source    - One of the Doctor sources (results_history,
+#                         azure_monitor, foundry_control, azure_resources,
+#                         workspace_files) or your own label
+#   detection_signal    - Short description of what the rule checks
+#   doctor_check_id     - The finding id Doctor emits (exact or dotted prefix).
+#                         A row with this column empty is ignored.
+#   status              - Always `implemented` in this file.
+#   reference_url       - Public documentation link (Microsoft Learn or your
+#                         internal wiki).
+#
+# Strict scope rule (same as the packaged checklist): only items the
+# Doctor can actually CHECK belong here. Human-eyeball items are out.
+#
+# Examples of rows you might add (delete or replace these):
+#   OperationalExcellence,Custom,waf.custom.my_rule,My team rule,workspace_files,my custom signal,my.team.custom_rule,implemented,https://your-wiki/waf
+pillar,area,item_id,title,detection_source,detection_signal,doctor_check_id,status,reference_url

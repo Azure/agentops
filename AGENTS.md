@@ -305,49 +305,49 @@ Purpose:
 - Connects one bundle, one dataset, and one target execution specification
 
 Top-level structure:
-- `version: 1` — Required
-- `run` — Optional metadata (`name`, `description`)
-- `target` — What is being evaluated and how (required)
-- `bundle` — Evaluator bundle reference (required)
-- `dataset` — Dataset reference (required)
-- `execution` — Execution settings (optional)
-- `output` — Output settings (optional)
+- `version: 1` - Required
+- `run` - Optional metadata (`name`, `description`)
+- `target` - What is being evaluated and how (required)
+- `bundle` - Evaluator bundle reference (required)
+- `dataset` - Dataset reference (required)
+- `execution` - Execution settings (optional)
+- `output` - Output settings (optional)
 
 `target` section:
-- `type` — `agent` or `model`
-- `hosting` — `local`, `foundry`, `aks`, or `containerapps`
-- `execution_mode` — `local` or `remote`
-- `agent_mode` — `prompt` or `hosted` (Foundry-only, optional)
-- `framework` — `agent_framework`, `langgraph`, or `custom` (agent-only, optional)
-- `endpoint` — Remote endpoint config (required when `execution_mode: remote`)
-- `local` — Local adapter config (required when `execution_mode: local`)
+- `type` - `agent` or `model`
+- `hosting` - `local`, `foundry`, `aks`, or `containerapps`
+- `execution_mode` - `local` or `remote`
+- `agent_mode` - `prompt` or `hosted` (Foundry-only, optional)
+- `framework` - `agent_framework`, `langgraph`, or `custom` (agent-only, optional)
+- `endpoint` - Remote endpoint config (required when `execution_mode: remote`)
+- `local` - Local adapter config (required when `execution_mode: local`)
 
 `target.endpoint` fields (remote execution):
-- `kind` — `foundry_agent` or `http`
+- `kind` - `foundry_agent` or `http`
 
 Foundry agent endpoint fields:
-- `agent_id` — Agent identifier
-- `project_endpoint` — Foundry project URL (inline value)
-- `project_endpoint_env` — Env var name holding the project URL
-- `api_version` — Agent Service API version
-- `poll_interval_seconds` — Polling interval for cloud eval
-- `max_poll_attempts` — Max polling attempts
-- `model` — Deployment name for evaluators
+- `agent_id` - Agent identifier
+- `project_endpoint` - Foundry project URL (inline value)
+- `project_endpoint_env` - Env var name holding the project URL
+- `api_version` - Agent Service API version
+- `poll_interval_seconds` - Polling interval for cloud eval
+- `max_poll_attempts` - Max polling attempts
+- `model` - Deployment name for evaluators
 
 HTTP endpoint fields:
 - `kind: http`
-- `url` — Direct URL to the agent endpoint
-- `url_env` — Environment variable name holding the URL (default: `AGENT_HTTP_URL`)
-- `request_field` — JSON key for the user prompt (default: `message`)
-- `response_field` — Dot-path to extract response text (default: `text`)
-- `headers` — Static extra HTTP headers
-- `auth_header_env` — Environment variable for Bearer token
-- `tool_calls_field` — Dot-path to extract tool calls from response
-- `extra_fields` — JSONL row field names to forward in the request body
+- `url` - Direct URL to the agent endpoint
+- `url_env` - Environment variable name holding the URL (default: `AGENT_HTTP_URL`)
+- `request_field` - JSON key for the user prompt (default: `message`)
+- `response_field` - Dot-path to extract response text (default: `text`)
+- `headers` - Static extra HTTP headers
+- `auth_header_env` - Environment variable for Bearer token
+- `tool_calls_field` - Dot-path to extract tool calls from response
+- `extra_fields` - JSONL row field names to forward in the request body
 
 `target.local` fields (local execution):
-- `adapter` — Command string to spawn the local adapter process (subprocess mode)
-- `callable` — Python function path as `module:function` (callable mode)
+- `adapter` - Command string to spawn the local adapter process (subprocess mode)
+- `callable` - Python function path as `module:function` (callable mode)
 
 Exactly one of `adapter` or `callable` must be provided.
 
@@ -355,18 +355,18 @@ Adapter protocol: subprocess receives JSON on stdin per row, emits JSON on stdou
 Callable protocol: `fn(input_text: str, context: dict) -> dict` returning `{"response": "..."}`.
 
 `bundle` and `dataset` references:
-- `name` — Convention-based: resolves to `<workspace>/bundles/<name>.yaml` or `<workspace>/datasets/<name>.yaml`
-- `path` — Explicit path (relative to config file directory)
+- `name` - Convention-based: resolves to `<workspace>/bundles/<name>.yaml` or `<workspace>/datasets/<name>.yaml`
+- `path` - Explicit path (relative to config file directory)
 
 `execution` section:
-- `concurrency` — Max parallel evaluations (schema-only, default: `1`)
-- `timeout_seconds` — Overall timeout (default: `300`)
+- `concurrency` - Max parallel evaluations (schema-only, default: `1`)
+- `timeout_seconds` - Overall timeout (default: `300`)
 
 `output` section:
-- `path` — Output directory
-- `write_report` — Generate `report.md` (default: `true`)
-- `publish_foundry_evaluation` — Publish results to Foundry (default: `true`)
-- `fail_on_foundry_publish_error` — Fail if Foundry publish fails (default: `false`)
+- `path` - Output directory
+- `write_report` - Generate `report.md` (default: `true`)
+- `publish_foundry_evaluation` - Publish results to Foundry (default: `true`)
+- `fail_on_foundry_publish_error` - Fail if Foundry publish fails (default: `false`)
 
 Backend resolution:
 - `execution_mode: local` → `LocalAdapterBackend`
@@ -486,9 +486,9 @@ Common derived run metrics:
 
 | Scenario | Foundry Agent | Foundry Model | HTTP (LangGraph/LangChain/OpenAI/ACA) | Local Adapter |
 |---|---|---|---|---|
-| Model Quality | — | ✓ run.yaml | ✓ run-http-model.yaml | ✓ (custom) |
-| RAG Quality | ✓ run-rag.yaml | — | ✓ run-http-rag.yaml | ✓ (custom) |
-| Agent Workflow | ✓ run-agent.yaml | — | ✓ run-http-agent-tools.yaml | ✓ (custom) |
+| Model Quality | - | ✓ run.yaml | ✓ run-http-model.yaml | ✓ (custom) |
+| RAG Quality | ✓ run-rag.yaml | - | ✓ run-http-rag.yaml | ✓ (custom) |
+| Agent Workflow | ✓ run-agent.yaml | - | ✓ run-http-agent-tools.yaml | ✓ (custom) |
 | Content Safety | ✓ (custom) | ✓ (custom) | ✓ (custom) | ✓ (custom) |
 
 ## Azure Runtime Notes

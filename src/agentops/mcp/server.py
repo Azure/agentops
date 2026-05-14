@@ -1,6 +1,6 @@
 """AgentOps MCP server (stdio transport).
 
-This module is imported lazily — the ``mcp`` extra is optional. Importing
+This module is imported lazily - the ``mcp`` extra is optional. Importing
 this file triggers ``import mcp.server.fastmcp`` which fails with a clear
 message if the extra is not installed.
 """
@@ -164,7 +164,7 @@ def _build_server() -> Any:
         """Append JSONL rows to ``dataset_path``.
 
         Creates the parent directory if needed. Each row must be a JSON
-        object — typical keys are ``input``, ``expected``, ``context``,
+        object - typical keys are ``input``, ``expected``, ``context``,
         and ``tool_calls`` depending on the agent type.
         """
         if not isinstance(rows, list) or not all(isinstance(r, dict) for r in rows):

@@ -229,7 +229,7 @@ def _run_evaluation_cloud(
 ) -> RunResult:
     """Cloud execution: Foundry invokes the agent + evaluators server-side.
 
-    The agent is invoked exactly once — on Foundry's side. AgentOps does
+    The agent is invoked exactly once - on Foundry's side. AgentOps does
     not run the row-by-row local loop. After the cloud run completes we
     download the per-row ``output_items`` and reshape them into the same
     :class:`RunResult` schema that local execution produces, so
@@ -257,7 +257,7 @@ def _run_evaluation_cloud(
 
     # Cloud execution runs server-side, so client-side runtime evaluators
     # (e.g. avg_latency_seconds) cannot be measured. Excluding them is the
-    # right choice — otherwise their default thresholds would mark the run
+    # right choice - otherwise their default thresholds would mark the run
     # FAILED for a metric we never had a chance to observe.
     presets = [p for p in all_presets if "runtime" not in p.categories]
     skipped_runtime = [p.name for p in all_presets if "runtime" in p.categories]
@@ -265,7 +265,7 @@ def _run_evaluation_cloud(
     user_thresholds = [
         Threshold.from_expression(metric, expr)
         for metric, expr in config.thresholds.items()
-        # Drop user-specified thresholds for runtime metrics too — they
+        # Drop user-specified thresholds for runtime metrics too - they
         # would otherwise fail with actual="missing".
         if metric not in {p.score_key for p in all_presets if "runtime" in p.categories}
     ]
@@ -293,14 +293,14 @@ def _run_evaluation_cloud(
         f"{style('|', 'dim')} config: {style(options.config_path.name, 'cyan')}"
     )
     progress(
-        f"execution: {style('cloud', 'bold')} — Foundry will run the agent "
+        f"execution: {style('cloud', 'bold')} - Foundry will run the agent "
         f"and {style(str(len(presets)), 'bold')} evaluator(s) server-side. "
         f"Agent: {style(target.raw, 'bold')}."
     )
     if skipped_runtime:
         progress(
             f"  (skipped client-side runtime evaluators: "
-            f"{', '.join(skipped_runtime)} — not measurable in cloud mode)"
+            f"{', '.join(skipped_runtime)} - not measurable in cloud mode)"
         )
 
     shell_result = RunResult(
@@ -462,9 +462,9 @@ def _publish_to_foundry_safely(
 def exit_code_from(result: RunResult) -> int:
     """Translate a run's outcome into the ``agentops`` CLI contract.
 
-    * ``0`` — success, all thresholds passed.
-    * ``2`` — invocations succeeded but a threshold failed.
-    * ``1`` — runtime errors are raised as exceptions before this is called.
+    * ``0`` - success, all thresholds passed.
+    * ``2`` - invocations succeeded but a threshold failed.
+    * ``1`` - runtime errors are raised as exceptions before this is called.
     """
     return 0 if result.summary.overall_passed else 2
 

@@ -34,13 +34,13 @@ src/
     │   └── app.py             # Typer CLI definition (init, eval run, report,
     │                              # workflow, skills, mcp, agent)
     │
-    ├── core/                  # Pure data layer — no Azure imports, no I/O
+    ├── core/                  # Pure data layer - no Azure imports, no I/O
     │   ├── agentops_config.py # Flat 1.0 `agentops.yaml` Pydantic schema
     │   ├── config_loader.py   # YAML → AgentOpsConfig
     │   ├── evaluators.py      # Evaluator catalog (presets + auto-selection)
     │   └── results.py         # RunResult / RowResult / TargetInfo / RunSummary
     │
-    ├── pipeline/              # Run orchestration — ADD execution flows here
+    ├── pipeline/              # Run orchestration - ADD execution flows here
     │   ├── orchestrator.py    # End-to-end `eval run` driver
     │   ├── runtime.py         # Pre-flight checks (deps, creds, endpoints)
     │   ├── invocations.py     # Per-row agent / model invocation strategies
@@ -78,7 +78,7 @@ src/
 | Add a new invocation strategy (new target kind) | `pipeline/invocations.py` + `core/agentops_config.py::classify_agent` |
 | Tweak the report layout | `pipeline/reporter.py` |
 | Add or change a publish destination | `pipeline/publisher.py` (Classic) or `pipeline/cloud_runner.py` (New Foundry); register in `pipeline/orchestrator.py` |
-| Add a new CLI command | `cli/app.py` (keep it thin — delegate to `pipeline/` or `services/`) |
+| Add a new CLI command | `cli/app.py` (keep it thin - delegate to `pipeline/` or `services/`) |
 | Add a starter template | `templates/` + update `pyproject.toml` package-data |
 | Add a coding agent skill | `templates/skills/<name>/SKILL.md` + sync to `plugins/agentops/skills/` (`scripts/sync-skills.{sh,ps1}`) |
 
@@ -90,12 +90,12 @@ When you run `agentops eval run`, the following happens step by step:
  1. CLI parses args               (cli/app.py → cmd_eval_run)
  2. Loader parses agentops.yaml   (core/config_loader.py → AgentOpsConfig)
  3. classify_agent resolves kind  (foundry_prompt | foundry_hosted | http_json | model_direct)
- 4. Pre-flight checks run         (pipeline/runtime.py — deps, creds, endpoint reachability)
+ 4. Pre-flight checks run         (pipeline/runtime.py - deps, creds, endpoint reachability)
  5. Orchestrator iterates dataset (pipeline/orchestrator.py)
- 6. Per row: invoke target        (pipeline/invocations.py — picks Foundry / HTTP / model API)
- 7. Per row: run evaluators       (core/evaluators.py — auto-selected from row shape)
+ 6. Per row: invoke target        (pipeline/invocations.py - picks Foundry / HTTP / model API)
+ 7. Per row: run evaluators       (core/evaluators.py - auto-selected from row shape)
  8. Aggregate metrics             (orchestrator builds RunResult)
- 9. Evaluate thresholds           (pipeline/thresholds.py — pass/fail per metric)
+ 9. Evaluate thresholds           (pipeline/thresholds.py - pass/fail per metric)
 10. Write results.json + report.md (pipeline/reporter.py)
 11. Sync .agentops/results/latest/
 12. (Optional) Publish local metrics to Classic Foundry (`publish: foundry`)
@@ -303,7 +303,7 @@ Selection rules (in order):
 
 AI-assisted evaluators use an LLM as a judge. Use instruction-following
 models like `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-4.1-mini`. **Avoid
-reasoning models** (`o1`, `o3`, `o4`, `gpt-5`, `gpt-5-nano`) — they are
+reasoning models** (`o1`, `o3`, `o4`, `gpt-5`, `gpt-5-nano`) - they are
 slower, more expensive, and may not follow the evaluator prompt format.
 
 Set the deployment via env vars before running:
@@ -395,7 +395,7 @@ strategy is derived from the target kind resolved by `classify_agent()`:
 | `model_direct` | Azure OpenAI chat completions via `AIProjectClient.get_openai_client()` |
 
 `AIProjectClient.get_openai_client()` is **always called without
-`api_version`** — passing one explicitly has historically caused 404s
+`api_version`** - passing one explicitly has historically caused 404s
 in this codebase.
 
 ## How evaluators and metrics work
@@ -483,7 +483,7 @@ python -m pytest tests/ -x -q
 ```
 
 Key testing rules:
-- All Azure SDK calls must be **mocked** — tests run without Azure credentials.
+- All Azure SDK calls must be **mocked** - tests run without Azure credentials.
 - Tests must assert correct **exit codes** (0, 1, 2).
 - Unit tests go in `tests/unit/`, integration tests in `tests/integration/`.
 
@@ -515,5 +515,5 @@ Azure SDK dependencies are kept separate so the CLI stays lightweight and tests 
 3. **Try it out**: `agentops init` then explore `.agentops/`
 4. **Read the models**: `core/models.py` is the best single file to understand all data structures
 5. **Follow the flow**: `cli/app.py` → `services/runner.py` → `backends/` → `core/`
-6. **Keep CLI thin**: never put logic in `cli/app.py` — delegate to `services/`
-7. **Keep core pure**: never import Azure SDK in `core/` — that belongs in `backends/` and `services/`
+6. **Keep CLI thin**: never put logic in `cli/app.py` - delegate to `services/`
+7. **Keep core pure**: never import Azure SDK in `core/` - that belongs in `backends/` and `services/`

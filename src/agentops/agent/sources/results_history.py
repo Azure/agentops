@@ -2,7 +2,7 @@
 
 Reads ``.agentops/results/*/results.json`` and produces a normalized
 list of run summaries ordered oldest-to-newest. This source is offline
-and always available — it is the foundation of the regression and
+and always available - it is the foundation of the regression and
 safety checks.
 """
 

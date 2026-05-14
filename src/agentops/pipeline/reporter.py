@@ -1,4 +1,4 @@
-"""Reporter for AgentOps 1.0 — generates ``report.md`` from a ``RunResult``."""
+"""Reporter for AgentOps 1.0 - generates ``report.md`` from a ``RunResult``."""
 
 from __future__ import annotations
 
@@ -98,16 +98,16 @@ def _row_summary(row: RowResult) -> str:
             parts.append(f"{metric.name}=ERR")
         elif metric.value is not None:
             parts.append(f"{metric.name}={metric.value:.2f}")
-    metrics_str = ", ".join(parts) if parts else "—"
-    latency = f"{row.latency_seconds:.2f}" if row.latency_seconds is not None else "—"
+    metrics_str = ", ".join(parts) if parts else " - "
+    latency = f"{row.latency_seconds:.2f}" if row.latency_seconds is not None else " - "
     return f"| {row.row_index} | {latency} | {metrics_str} |"
 
 
 def _row_detail(row: RowResult) -> str:
-    response = row.response or (f"Error: {row.error}" if row.error else "—")
+    response = row.response or (f"Error: {row.error}" if row.error else " - ")
     return (
         f"| {row.row_index} | {_cell(row.input, 220)} | "
-        f"{_cell(response, 220)} | {_cell(row.expected or '—', 220)} |"
+        f"{_cell(response, 220)} | {_cell(row.expected or ' - ', 220)} |"
     )
 
 
@@ -167,7 +167,7 @@ def _render_comparison(comparison: ComparisonInfo) -> List[str]:
 
 def _comparison_metric_row(metric: ComparisonMetric) -> str:
     arrow = {"improved": "🟢", "regressed": "🔴", "unchanged": "⚪"}[metric.direction]
-    baseline = f"{metric.baseline:.3f}" if metric.baseline is not None else "—"
-    current = f"{metric.current:.3f}" if metric.current is not None else "—"
-    delta = f"{metric.delta:+.3f}" if metric.delta is not None else "—"
+    baseline = f"{metric.baseline:.3f}" if metric.baseline is not None else " - "
+    current = f"{metric.current:.3f}" if metric.current is not None else " - "
+    delta = f"{metric.delta:+.3f}" if metric.delta is not None else " - "
     return f"| {metric.metric} | {baseline} | {current} | {delta} | {arrow} {metric.direction} |"

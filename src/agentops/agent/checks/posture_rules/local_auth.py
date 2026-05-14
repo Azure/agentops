@@ -2,7 +2,7 @@
 
 Cognitive Services / Azure OpenAI accounts ship with key-based auth
 enabled by default. Microsoft Entra ID is the recommended path for
-production AI workloads — keys can be exfiltrated, hard to rotate, and
+production AI workloads - keys can be exfiltrated, hard to rotate, and
 bypass conditional access policies.
 
 WAF-AI Security pillar reference:

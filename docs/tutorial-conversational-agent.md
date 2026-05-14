@@ -1,7 +1,7 @@
-# Tutorial — conversational agent
+# Tutorial - conversational agent
 
 Evaluate a multi-turn assistant or chatbot. The shape of a
-*conversational* agent is identical to any other agent for AgentOps —
+*conversational* agent is identical to any other agent for AgentOps  - 
 what makes it conversational is the **dataset**: the rows can include
 prior turns the agent should consider.
 
@@ -63,7 +63,7 @@ response_field: choices.0.message.content
 ## 3. Dataset shape (`chat.jsonl`)
 
 ```jsonl
-{"id":"1","input":"Hi, can you help me reset my password?","expected":"Sure — could you share the email on your account?"}
+{"id":"1","input":"Hi, can you help me reset my password?","expected":"Sure - could you share the email on your account?"}
 {"id":"2","input":"What's the SLA on a refund request?","expected":"Refunds are processed within 5 business days."}
 {"id":"3","input":"My order #1234 hasn't arrived. Can you track it?","expected":"I can look that up. One moment, please."}
 ```
@@ -82,12 +82,12 @@ Fluency, Similarity, F1Score, average latency.
 agentops eval run
 ```
 
-Open the report with `code .agentops/results/latest/report.md` and press `Ctrl+Shift+V` to render the Markdown — verdict, per-row
+Open the report with `code .agentops/results/latest/report.md` and press `Ctrl+Shift+V` to render the Markdown - verdict, per-row
 transcript, and aggregate scores.
 
 ## 5. Lock in a baseline
 
-No extra step needed — `latest/results.json` is your previous run.
+No extra step needed - `latest/results.json` is your previous run.
 Diff your next run against it:
 
 ```powershell
@@ -99,6 +99,6 @@ The next report adds *Comparison vs Baseline* with per-metric deltas.
 
 ## See also
 
-- [tutorial-http-agent.md](tutorial-http-agent.md) — full HTTP-target walkthrough including auth headers
-- [tutorial-agent-workflow.md](tutorial-agent-workflow.md) — same shape, plus tool calling
-- [tutorial-baseline-comparison.md](tutorial-baseline-comparison.md) — regression detection
+- [tutorial-http-agent.md](tutorial-http-agent.md) - full HTTP-target walkthrough including auth headers
+- [tutorial-agent-workflow.md](tutorial-agent-workflow.md) - same shape, plus tool calling
+- [tutorial-baseline-comparison.md](tutorial-baseline-comparison.md) - regression detection

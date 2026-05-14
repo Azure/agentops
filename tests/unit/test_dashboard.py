@@ -358,3 +358,66 @@ def test_create_app_serves_dashboard(tmp_path: Path):
     assert "enabled" in payload
     assert "source" in payload
 
+
+
+def test_pillar_rows_rendered_in_canonical_order(tmp_path: Path):
+    """All six WAF-AI pillars render as rows, in fixed order, even when
+    most pillars are empty."""
+    _make_history(
+        tmp_path,
+        (Severity.CRITICAL, Category.QUALITY),
+        (Severity.WARNING, Category.OPERATIONAL_EXCELLENCE),
+    )
+    payload = build_dashboard_payload(tmp_path, time_range=_WIDE)
+    html = render_dashboard_html(payload)
+
+    # Six pillar rows present.
+    expected_labels = [
+        "Quality",
+        "Performance Efficiency",
+        "Reliability",
+        "Operational Excellence",
+        "Security",
+        "Responsible AI",
+    ]
+    positions = [html.find(f'>{label}</span>') for label in expected_labels]
+    assert all(p > 0 for p in positions), positions
+    assert positions == sorted(positions), (
+        "pillar rows must render in canonical WAF-AI order"
+    )
+
+
+def test_empty_pillars_render_clean_indicator(tmp_path: Path):
+    """Pillars with no findings still render with an explicit 'clean'
+    indicator — the absence is a signal too."""
+    _make_history(tmp_path, (Severity.WARNING, Category.QUALITY))
+    payload = build_dashboard_payload(tmp_path, time_range=_WIDE)
+    html = render_dashboard_html(payload)
+    # Reliability has no findings; it should still render with the
+    # pillar-empty class.
+    assert "pillar-empty" in html
+
+
+def test_spec_conformance_subsection_inside_opex_row(tmp_path: Path):
+    """opex.spec_conformance.* findings render in their own sub-section
+    inside the Operational Excellence row."""
+    finding = Finding(
+        id="opex.spec_conformance.spec_missing",
+        severity=Severity.WARNING,
+        title="Spec missing",
+        summary="Spec scaffolding present but no content.",
+        recommendation="Author the spec.",
+        source="spec_workspace",
+        category=Category.OPERATIONAL_EXCELLENCE,
+    )
+    record = build_record(
+        [finding],
+        sources_enabled=["spec_workspace"],
+        lookback_days=7,
+        duration_seconds=0.1,
+    )
+    append_analysis(tmp_path, record)
+    payload = build_dashboard_payload(tmp_path, time_range=_WIDE)
+    html = render_dashboard_html(payload)
+    assert "Spec Conformance" in html
+    assert "Workspace &amp; CI Hygiene" in html or "Workspace & CI Hygiene" in html

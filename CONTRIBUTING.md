@@ -13,7 +13,7 @@ We appreciate contributions and suggestions for this project!
 
 ## Before You Start
 
-1. Read [`docs/how-it-works.md`](docs/how-it-works.md) — it explains the architecture, directory structure, and data flow.
+1. Read [`docs/how-it-works.md`](docs/how-it-works.md) - it explains the architecture, directory structure, and data flow.
 2. Read the [Quick Reference for New Contributors](docs/how-it-works.md#quick-reference-for-new-contributors) section for a fast onboarding checklist.
 3. Set up your local environment:
 
@@ -78,7 +78,7 @@ These rules are critical to maintaining the project's architecture. PRs that vio
 | Add a new local evaluator | `backends/eval_engine.py` (shared evaluation engine) |
 | Add a new execution backend | `backends/` (new file implementing `Backend` protocol) + register in `services/runner.py` |
 | Support a new endpoint kind | `core/models.py` (`EndpointKind` literal) + `services/runner.py` (resolution) + `backends/` |
-| Add a new CLI command | `cli/app.py` (keep it thin — delegate to `services/`) |
+| Add a new CLI command | `cli/app.py` (keep it thin - delegate to `services/`) |
 | Add a new workflow/service | `services/` (new file) |
 | Add starter templates | `templates/` + update `pyproject.toml` package-data |
 | Edit a coding agent skill | `src/agentops/templates/skills/<name>/SKILL.md` (single source of truth) → run `scripts/sync-skills.sh` or `.ps1` to propagate to `plugins/agentops/skills/` |
@@ -101,7 +101,7 @@ CI will fail if the two directories diverge (`test_skills_sync.py`).
 
 - **Unit tests** for all new logic in `tests/unit/`.
 - **Integration tests** for end-to-end workflows in `tests/integration/`.
-- All Azure SDK calls must be **mocked** — tests must run without Azure credentials.
+- All Azure SDK calls must be **mocked** - tests must run without Azure credentials.
 - Tests must assert correct **exit codes**.
 - Run all tests before submitting: `python -m pytest tests/ -x -q`
 
@@ -139,25 +139,25 @@ Contributors create feature branches from `develop` in their forks. Once changes
 
 ### Process Overview
 
-1. **Fork the Repository** — Create a copy of the upstream repository under your own GitHub account.
+1. **Fork the Repository** - Create a copy of the upstream repository under your own GitHub account.
 
-2. **Clone Locally** — Download your forked repository to your local machine.
+2. **Clone Locally** - Download your forked repository to your local machine.
 
-3. **Add Upstream** — Link the original upstream repository as `upstream` to keep your fork synchronized.
+3. **Add Upstream** - Link the original upstream repository as `upstream` to keep your fork synchronized.
 
-4. **Create a Feature Branch** — From your fork's `develop` branch, create a feature branch for your change (e.g., `feature/new-evaluator`).
+4. **Create a Feature Branch** - From your fork's `develop` branch, create a feature branch for your change (e.g., `feature/new-evaluator`).
 
-5. **Commit and Push Changes** — Implement your updates locally, commit, and push them to your fork on GitHub.
+5. **Commit and Push Changes** - Implement your updates locally, commit, and push them to your fork on GitHub.
 
-6. **Open a Pull Request to `develop`** — Open a PR from your feature branch in your fork to the upstream repository's `develop` branch.
+6. **Open a Pull Request to `develop`** - Open a PR from your feature branch in your fork to the upstream repository's `develop` branch.
 
-7. **Sync with Upstream `develop`** — After your PR is merged, update your fork's `develop` branch with the latest changes from the upstream.
+7. **Sync with Upstream `develop`** - After your PR is merged, update your fork's `develop` branch with the latest changes from the upstream.
 
-8. **Create a Release Branch** *(Maintainers)* — When the `develop` branch is ready for release, create a branch named `release/x.y.z` from `develop`. This branch will be tested and validated before merging to `main`.
+8. **Create a Release Branch** *(Maintainers)* - When the `develop` branch is ready for release, create a branch named `release/x.y.z` from `develop`. This branch will be tested and validated before merging to `main`.
 
-9. **Open a Pull Request to Upstream `main`** *(Maintainers)* — Once the release is validated, open a PR from the release branch to the upstream `main`. After the merge, maintainers will create a version tag (e.g., `v0.2.0`).
+9. **Open a Pull Request to Upstream `main`** *(Maintainers)* - Once the release is validated, open a PR from the release branch to the upstream `main`. After the merge, maintainers will create a version tag (e.g., `v0.2.0`).
 
-10. **Sync Your Fork** — Finally, update both your fork's `main` and `develop` branches to reflect the latest upstream state.
+10. **Sync Your Fork** - Finally, update both your fork's `main` and `develop` branches to reflect the latest upstream state.
 
 ### Step-by-Step Example
 

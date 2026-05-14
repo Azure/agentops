@@ -88,9 +88,9 @@ workflows).
 A scoring function that measures one aspect of the target response.
 Evaluators can be:
 
-- **AI-assisted** (Foundry) — use a judge model to score responses on
+- **AI-assisted** (Foundry) - use a judge model to score responses on
   criteria like coherence, fluency, similarity, or groundedness.
-- **Local metrics** — computed without a judge model, such as
+- **Local metrics** - computed without a judge model, such as
   `F1ScoreEvaluator` or `avg_latency_seconds`.
 
 AgentOps auto-selects evaluators from the target kind and dataset shape.

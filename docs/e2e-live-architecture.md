@@ -27,7 +27,7 @@ GitHub Actions ↔ Entra federated credential. The workflow declares
 env vars `azure/login` exports.
 
 The repo never holds Azure credentials. Compromising the repo cannot
-exfiltrate any usable Azure credential — only the trust policy on the
+exfiltrate any usable Azure credential - only the trust policy on the
 Entra app needs to be revoked to cut access.
 
 ## Job graph
@@ -39,7 +39,7 @@ flowchart TD
     foundryHosted["live-foundry-hosted"]
     httpAca["live-http-aca"]
     modelDirect["live-model-direct"]
-    teardown(["teardown<br/><i>always() — sweeps stale</i>"])
+    teardown(["teardown<br/><i>always() - sweeps stale</i>"])
 
     bootstrap --> foundryPrompt
     bootstrap --> foundryHosted

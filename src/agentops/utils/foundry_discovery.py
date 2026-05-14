@@ -8,7 +8,7 @@ user has configured ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` but not the
 explicit ``APPLICATIONINSIGHTS_CONNECTION_STRING`` env var.
 
 All Azure SDK imports are lazy; the discovery is best-effort and never
-raises into callers — a missing SDK, a 404, or any unexpected response
+raises into callers - a missing SDK, a 404, or any unexpected response
 shape returns ``None`` and the caller falls back to its no-op path.
 """
 

@@ -108,7 +108,7 @@ That is the entire config. AgentOps:
 ## Part 4: Verify the dataset
 
 `agentops init` already created `.agentops/data/smoke.jsonl`. For RAG
-you want each row to include a `context` column — that is what
+you want each row to include a `context` column - that is what
 triggers the auto-selection of `GroundednessEvaluator`. Replace the
 seed file with something like:
 
@@ -121,9 +121,9 @@ seed file with something like:
 ```
 
 Each row has:
-- `input` — the question sent to the agent
-- `expected` — the reference answer
-- `context` — the retrieved document context that `GroundednessEvaluator` uses
+- `input` - the question sent to the agent
+- `expected` - the reference answer
+- `context` - the retrieved document context that `GroundednessEvaluator` uses
 
 When any row has a `context` field, the RAG evaluator set is added
 automatically.
@@ -162,7 +162,7 @@ For model-only evaluation (no retrieval), see the [Model-Direct Tutorial](tutori
 ## Notes
 
 - `Groundedness`, `Relevance`, `Retrieval`, and `ResponseCompleteness`
-  are AI-assisted evaluators — they use a judge model.
+  are AI-assisted evaluators - they use a judge model.
 - Set `AZURE_AI_MODEL_DEPLOYMENT_NAME` to a deployment that exists in
   your Foundry project for the judge model. If your project only has
   one deployment, this is optional.

@@ -38,6 +38,22 @@ union isfuzzy=true requests, dependencies
 """
 
 
+# Detects OpenAI / Foundry content-filter triggers in App Insights /
+# Log Analytics. We intentionally stay conservative: the only attribute
+# guaranteed by the OTel Gen AI semantic conventions is
+# ``gen_ai.response.finish_reasons`` (plural), which contains
+# ``content_filter`` when the model refused to complete a response. Any
+# other category/severity breakdown is vendor-specific and not relied
+# upon here.
+_SAFETY_KQL = """
+union isfuzzy=true requests, dependencies, traces, AppTraces, AppDependencies, AppRequests
+| where timestamp > ago({lookback_days}d)
+| extend cd = tostring(customDimensions)
+| where cd has "content_filter"
+| summarize hits = count()
+"""
+
+
 def collect_azure_monitor(
     config: AzureMonitorSourceConfig,
     lookback_days: int,
@@ -131,5 +147,47 @@ def collect_azure_monitor(
                 payload.p95_duration_seconds = float(p95_ms) / 1000.0
             if payload.request_count > 0:
                 payload.error_rate = payload.error_count / payload.request_count
+
+    # Best-effort second pass: content-filter / safety triggers.
+    # Failures here are isolated from the primary metrics above.
+    try:
+        safety_kql = _SAFETY_KQL.format(lookback_days=int(lookback_days))
+        if config.log_analytics_workspace_id:
+            safety_response = client.query_workspace(
+                workspace_id=config.log_analytics_workspace_id,
+                query=safety_kql,
+                timespan=None,
+            )
+        else:
+            safety_response = client.query_resource(  # type: ignore[union-attr]
+                resource_id=config.app_insights_resource_id,
+                query=safety_kql,
+                timespan=None,
+            )
+        if getattr(safety_response, "status", None) == LogsQueryStatus.FAILURE:
+            diagnostics["safety_status"] = "error"
+            diagnostics["safety_reason"] = "query failed"
+        else:
+            safety_tables = getattr(safety_response, "tables", []) or []
+            hits = 0
+            if safety_tables:
+                safety_rows = list(safety_tables[0].rows)
+                if safety_rows:
+                    cols = [
+                        c.name if hasattr(c, "name") else str(c)
+                        for c in safety_tables[0].columns
+                    ]
+                    data = dict(zip(cols, safety_rows[0]))
+                    hits = int(data.get("hits", 0) or 0)
+            diagnostics["safety_status"] = "ok"
+            diagnostics["safety_hits"] = hits
+            if hits > 0:
+                payload.safety_violations.append(
+                    {"signal": "content_filter", "hits": hits}
+                )
+    except Exception as exc:  # pragma: no cover - best effort
+        diagnostics["safety_status"] = "error"
+        diagnostics["safety_reason"] = str(exc)
+        log.info("Safety KQL probe failed (non-fatal): %s", exc)
 
     return payload

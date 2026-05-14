@@ -184,7 +184,7 @@ def _build_conversation_messages(
       string), and a final assistant text message with the natural-language
       answer.
 
-    Returns ``None`` when there are no tool calls to include — callers
+    Returns ``None`` when there are no tool calls to include - callers
     should fall back to plain string kwargs in that case.
     """
     has_tool_calls = isinstance(tool_calls, list) and len(tool_calls) > 0
@@ -215,7 +215,7 @@ def _build_conversation_messages(
                 try:
                     arguments = json.loads(arguments)
                 except json.JSONDecodeError:
-                    # leave as raw string — evaluators tolerate either form
+                    # leave as raw string - evaluators tolerate either form
                     pass
             tool_call_id = call.get("tool_call_id") or call.get("id") or f"call_{index}"
 
@@ -385,7 +385,7 @@ def run_evaluator(
                     time.sleep(0.5)
                     continue
                 raise
-        if last_exc is not None:  # pragma: no cover — defensive
+        if last_exc is not None:  # pragma: no cover - defensive
             raise last_exc
         score = _extract_score(result, preset.score_key)
         reason = _extract_reason(result, preset.score_key)

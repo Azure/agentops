@@ -1,6 +1,6 @@
 """Logging configuration for AgentOps CLI.
 
-No side effects at import time — call setup_logging() explicitly from the
+No side effects at import time - call setup_logging() explicitly from the
 CLI callback before any command runs.
 """
 

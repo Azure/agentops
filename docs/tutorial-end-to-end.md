@@ -1,4 +1,4 @@
-# Tutorial — End-to-end with AgentOps
+# Tutorial - End-to-end with AgentOps
 
 This is the long-form, do-it-yourself tour of AgentOps. By the end you
 will have a real Foundry hosted agent with **three function tools**
@@ -13,8 +13,8 @@ you copy a command, you see an artefact, you keep moving.
 > **Why a tool-calling agent?** Production agents fail in interesting
 > ways: they pick the wrong tool, fabricate arguments, or skip tool
 > use entirely and answer from memory. AgentOps grades all of those
-> behaviours — `tool_call_accuracy`, `intent_resolution`,
-> `task_adherence` — alongside text quality. A trivia chatbot would
+> behaviours - `tool_call_accuracy`, `intent_resolution`,
+> `task_adherence` - alongside text quality. A trivia chatbot would
 > only exercise the latter; this tutorial uses an agent where tool
 > behaviour is the point.
 
@@ -28,7 +28,7 @@ you copy a command, you see an artefact, you keep moving.
   carrying `tool_definitions` and the expected `tool_calls`.
 - Two evaluation runs (a tool-using **v1** baseline and a degraded
   **v2** that answers from memory) compared side-by-side. The
-  baseline-vs-degraded delta shows tool-call accuracy collapse —
+  baseline-vs-degraded delta shows tool-call accuracy collapse  - 
   exactly the kind of regression CI is meant to catch.
 - Four GitFlow workflows (`pr`, `dev`, `qa`, `prod`) wired to your
   own GitHub repository, gated on threshold pass/fail.
@@ -44,7 +44,7 @@ you copy a command, you see an artefact, you keep moving.
 - The **Azure AI User** RBAC role on the Foundry account
   (data-plane access required to create agents and call them).
 - A GitHub account and the `gh` CLI (or use the web UI for pushes).
-- An existing or new GitHub repo — empty is fine; we will populate it.
+- An existing or new GitHub repo - empty is fine; we will populate it.
 
 > **Verify your auth before running anything.** Most "this should
 > have worked" failures in this tutorial come from a stale CLI token
@@ -69,7 +69,7 @@ you copy a command, you see an artefact, you keep moving.
 > A 401 with `"Token not supported"` from
 > `create_support_agent.py` almost always means one of:
 >
-> 1. **Stale CLI token cache** — most common when the script worked
+> 1. **Stale CLI token cache** - most common when the script worked
 >    earlier today and now suddenly fails. Fix:
 >    ```powershell
 >    az account clear
@@ -115,7 +115,7 @@ agentops --version
 > The `[foundry]` extra installs the Azure SDK dependencies needed by
 > the helper script and by the local evaluator runtime. `azure-ai-evaluation`
 > provides evaluators such as `ToolCallAccuracyEvaluator`,
-> `IntentResolutionEvaluator`, `CoherenceEvaluator`, …) — without it
+> `IntentResolutionEvaluator`, `CoherenceEvaluator`, …) - without it
 > `agentops eval run` exits with
 > `Evaluators require the 'azure-ai-evaluation' package`.
 
@@ -134,7 +134,7 @@ Registering three tools through the portal is fiddly, so this
 repository ships a small helper script,
 [`scripts/create_support_agent.py`](../scripts/create_support_agent.py),
 that does it in one command. **Just download the single file into the
-root of your tutorial project** — there's no need to create a
+root of your tutorial project** - there's no need to create a
 `scripts/` folder, and the script has no AgentOps dependency (only
 `azure-ai-projects` and `azure-identity`). Then run it from the same
 folder:
@@ -160,7 +160,7 @@ into `agentops.yaml` next. The script:
 > portal's Playground tab only lists tools you added through the
 > portal's **Add** button. Tools registered through the SDK (like
 > these) show up under the agent's **Code** / **YAML** tab and are
-> invoked at runtime — `agentops eval run` exercises them either
+> invoked at runtime - `agentops eval run` exercises them either
 > way.
 
 > **Prefer the portal?** Open
@@ -235,21 +235,21 @@ Replace `.agentops/data/smoke.jsonl` with a new
 `.agentops/data/tickets.jsonl` carrying five realistic support
 tickets. Each row includes:
 
-- `input` — the customer message,
-- `expected` — the expected outcome in plain prose,
-- `tool_definitions` — every tool the agent has access to,
-- `tool_calls` — the tool the agent **should** call (or an empty
+- `input` - the customer message,
+- `expected` - the expected outcome in plain prose,
+- `tool_definitions` - every tool the agent has access to,
+- `tool_calls` - the tool the agent **should** call (or an empty
   list when the right behaviour is to answer with no tool).
 
-The variety of intents — order lookup, refund, escalation, an
+The variety of intents - order lookup, refund, escalation, an
 ambiguous query that should resolve to a lookup, and a casual
-greeting that should *not* trigger any tool — is what gives the
+greeting that should *not* trigger any tool - is what gives the
 evaluators something interesting to grade.
 
 ```jsonl
 {"input": "Where is my order ORD-12345?", "expected": "Calls lookup_order with order_id='ORD-12345'.", "tool_definitions": [{"type": "function", "name": "lookup_order", "description": "Look up an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]}}, {"type": "function", "name": "refund_order", "description": "Refund an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["order_id", "reason"]}}, {"type": "function", "name": "escalate_to_human", "description": "Hand the conversation to a human.", "parameters": {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}}], "tool_calls": [{"type": "tool_call", "tool_call_id": "c1", "name": "lookup_order", "arguments": {"order_id": "ORD-12345"}}]}
 {"input": "I want a refund for ORD-77821, it arrived broken.", "expected": "Calls refund_order with order_id='ORD-77821' and reason mentioning broken.", "tool_definitions": [{"type": "function", "name": "lookup_order", "description": "Look up an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]}}, {"type": "function", "name": "refund_order", "description": "Refund an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["order_id", "reason"]}}, {"type": "function", "name": "escalate_to_human", "description": "Hand the conversation to a human.", "parameters": {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}}], "tool_calls": [{"type": "tool_call", "tool_call_id": "c2", "name": "refund_order", "arguments": {"order_id": "ORD-77821", "reason": "arrived broken"}}]}
-{"input": "Please connect me to a human about my refund — this has dragged on too long.", "expected": "Calls escalate_to_human with category='refund'.", "tool_definitions": [{"type": "function", "name": "lookup_order", "description": "Look up an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]}}, {"type": "function", "name": "refund_order", "description": "Refund an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["order_id", "reason"]}}, {"type": "function", "name": "escalate_to_human", "description": "Hand the conversation to a human.", "parameters": {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}}], "tool_calls": [{"type": "tool_call", "tool_call_id": "c3", "name": "escalate_to_human", "arguments": {"category": "refund"}}]}
+{"input": "Please connect me to a human about my refund - this has dragged on too long.", "expected": "Calls escalate_to_human with category='refund'.", "tool_definitions": [{"type": "function", "name": "lookup_order", "description": "Look up an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]}}, {"type": "function", "name": "refund_order", "description": "Refund an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["order_id", "reason"]}}, {"type": "function", "name": "escalate_to_human", "description": "Hand the conversation to a human.", "parameters": {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}}], "tool_calls": [{"type": "tool_call", "tool_call_id": "c3", "name": "escalate_to_human", "arguments": {"category": "refund"}}]}
 {"input": "Did ORD-99001 ship yet?", "expected": "Calls lookup_order with order_id='ORD-99001'.", "tool_definitions": [{"type": "function", "name": "lookup_order", "description": "Look up an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]}}, {"type": "function", "name": "refund_order", "description": "Refund an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["order_id", "reason"]}}, {"type": "function", "name": "escalate_to_human", "description": "Hand the conversation to a human.", "parameters": {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}}], "tool_calls": [{"type": "tool_call", "tool_call_id": "c4", "name": "lookup_order", "arguments": {"order_id": "ORD-99001"}}]}
 {"input": "Hi there!", "expected": "Replies with a brief greeting and does NOT call any tool.", "tool_definitions": [{"type": "function", "name": "lookup_order", "description": "Look up an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}}, "required": ["order_id"]}}, {"type": "function", "name": "refund_order", "description": "Refund an order.", "parameters": {"type": "object", "properties": {"order_id": {"type": "string"}, "reason": {"type": "string"}}, "required": ["order_id", "reason"]}}, {"type": "function", "name": "escalate_to_human", "description": "Hand the conversation to a human.", "parameters": {"type": "object", "properties": {"category": {"type": "string"}}, "required": ["category"]}}], "tool_calls": []}
 ```
@@ -296,7 +296,7 @@ The CLI:
    `.agentops/results/latest/` with a copy of it. Pass `--output <dir>` to write
    the run only to that path instead.
 
-Open the report in VS Code (any OS, no extra tooling required) and press `Ctrl+Shift+V` to render the Markdown — tables and ✅/❌ display the same way they do on GitHub:
+Open the report in VS Code (any OS, no extra tooling required) and press `Ctrl+Shift+V` to render the Markdown - tables and ✅/❌ display the same way they do on GitHub:
 
 ```powershell
 code .agentops/results/latest/report.md
@@ -306,13 +306,13 @@ code .agentops/results/latest/report.md
 
 The report has four sections you will revisit often:
 
-- **Verdict** — one line: pass or fail.
-- **Per-row transcript** — input, expected, agent response, the
+- **Verdict** - one line: pass or fail.
+- **Per-row transcript** - input, expected, agent response, the
   `tool_calls` the agent emitted, and every metric. The greeting
-  row's transcript shows an empty `tool_calls` block — useful when
+  row's transcript shows an empty `tool_calls` block - useful when
   debugging false-positive tool calls.
-- **Aggregate metrics** — averages across rows.
-- **Thresholds** — every rule from `agentops.yaml` with measured
+- **Aggregate metrics** - averages across rows.
+- **Thresholds** - every rule from `agentops.yaml` with measured
   value. With v1 you should see the tool-calling and text-quality
   thresholds in the green. If latency is high but below the lab-safe
   budget, keep going; you will inspect production-style p95 latency
@@ -326,7 +326,7 @@ failed). `1` means a runtime error.
 This is where the tutorial earns its keep. AgentOps writes every run to a
 timestamped folder under `.agentops/results/` and refreshes
 `.agentops/results/latest/` with a copy. The v1 run you just executed
-is still on disk — you don't need to copy or re-run anything to use it
+is still on disk - you don't need to copy or re-run anything to use it
 as the baseline. Just point `--baseline` at the previous run when you
 execute v2:
 
@@ -337,8 +337,8 @@ execute v2:
   timestamp folder, e.g.
   `.agentops/results/2026-05-06T20-13-21Z/results.json`.
 
-Now create a **degraded** version of the agent — same model, no
-tools, plain-text-only instructions — so the regression demo has
+Now create a **degraded** version of the agent - same model, no
+tools, plain-text-only instructions - so the regression demo has
 something to detect:
 
 ```powershell
@@ -371,7 +371,7 @@ Press `Ctrl+Shift+V` to render the Markdown.
 The new `report.md` adds a **Comparison vs Baseline** section with
 per-metric deltas. Because v2 has **no tools attached at all**, the
 agent literally cannot call `lookup_order`, `refund_order`, or
-`escalate_to_human` — every order-specific row degrades to a
+`escalate_to_human` - every order-specific row degrades to a
 plain-text apology. You should see roughly:
 
 | Metric | Baseline (v1) | Current (v2) | Direction |
@@ -383,8 +383,8 @@ plain-text apology. You should see roughly:
 | `fluency` | ≈ 4 | ≈ 4 | ⚪ unchanged |
 | `similarity` | ≈ 3 | ≈ 3 | ⚪ unchanged |
 
-Text quality barely moves — the degraded agent is still articulate
-and on-topic — but the tool-related metrics collapse, the verdict
+Text quality barely moves - the degraded agent is still articulate
+and on-topic - but the tool-related metrics collapse, the verdict
 flips to fail, and the run exits `2`. **This is the regression-detection
 loop you will wire into CI next.**
 
@@ -476,9 +476,9 @@ stored password.
 The command prints three values you will store as GitHub environment
 variables:
 
-- `AZURE_CLIENT_ID` — which app registration GitHub should impersonate.
-- `AZURE_TENANT_ID` — which Microsoft Entra tenant owns the app.
-- `AZURE_SUBSCRIPTION_ID` — which Azure subscription the workflow should use.
+- `AZURE_CLIENT_ID` - which app registration GitHub should impersonate.
+- `AZURE_TENANT_ID` - which Microsoft Entra tenant owns the app.
+- `AZURE_SUBSCRIPTION_ID` - which Azure subscription the workflow should use.
 
 ```powershell
 $app    = az ad app create --display-name "support-bot-ci-$suffix" | ConvertFrom-Json
@@ -555,7 +555,7 @@ and this exact environment." That is why the `subject` values include
 `environment:dev`, `environment:qa`, and `environment:prod`.
 
 The PR gate workflow runs **inside the `dev` environment**, so it inherits
-the same `dev` variables and OIDC subject — no separate `pull_request`
+the same `dev` variables and OIDC subject - no separate `pull_request`
 credential is needed.
 
 The JSON is written to a temp file because `az` does not parse inline JSON
@@ -621,12 +621,12 @@ $aoaiId    = az resource list --name $aoaiName `
 if (-not $foundryId) { throw "Could not resolve Foundry resource id for '$foundryName'" }
 if (-not $aoaiId)    { throw "Could not resolve Azure OpenAI resource id for '$aoaiName'" }
 
-# Foundry project — read agents and runs
+# Foundry project - read agents and runs
 az role assignment create --assignee-object-id $spId `
   --assignee-principal-type ServicePrincipal `
   --role "Azure AI User" --scope $foundryId | Out-Null
 
-# Azure OpenAI — call the judge model
+# Azure OpenAI - call the judge model
 az role assignment create --assignee-object-id $spId `
   --assignee-principal-type ServicePrincipal `
   --role "Cognitive Services OpenAI User" --scope $aoaiId | Out-Null
@@ -727,8 +727,8 @@ What this creates:
 - A workspace-based **Application Insights component** that receives
   AgentOps spans and exposes them to Azure Monitor queries.
 - Two local variables:
-  - `$appInsightsId` — used by the watchdog to query telemetry.
-  - `$appInsightsConnectionString` — used by `agentops eval run` to emit
+  - `$appInsightsId` - used by the watchdog to query telemetry.
+  - `$appInsightsConnectionString` - used by `agentops eval run` to emit
     telemetry.
 
 ### 9.2 Let the CI identity read telemetry
@@ -845,10 +845,10 @@ the **Sources** table still proves which signal sources were queried.
 In the tutorial test environment, the posture-only run produced two
 warnings: missing diagnostic settings and unrestricted public network
 access on the AI Services account. Full walkthrough:
-[`tutorial-agent-watchdog.md`](tutorial-agent-watchdog.md#3-security-posture-audit-waf-ai).
+[`tutorial-agent-doctor.md`](tutorial-agent-doctor.md#3-security-posture-audit-waf-ai).
 
 For deeper integration (Copilot Chat extension, ACA deploy), see
-[`tutorial-agent-watchdog.md`](tutorial-agent-watchdog.md).
+[`tutorial-agent-doctor.md`](tutorial-agent-doctor.md).
 
 [waf-ai]: https://learn.microsoft.com/azure/well-architected/ai/security
 
@@ -861,31 +861,31 @@ them. The helper script handles cleanup:
 python create_support_agent.py delete --name support-bot
 ```
 
-This removes every version (idempotent — ignores 404s).
+This removes every version (idempotent - ignores 404s).
 
 ## 11. Where to go next
 
 You now have the full AgentOps loop running end-to-end with a real
 tool-calling agent. From here:
 
-- **Per-scenario tutorials** — adapt the dataset shape to your own
+- **Per-scenario tutorials** - adapt the dataset shape to your own
   agent:
-  - [`tutorial-rag.md`](tutorial-rag.md) — retrieval-augmented agents.
-  - [`tutorial-agent-workflow.md`](tutorial-agent-workflow.md) —
+  - [`tutorial-rag.md`](tutorial-rag.md) - retrieval-augmented agents.
+  - [`tutorial-agent-workflow.md`](tutorial-agent-workflow.md)  - 
     focused tool-calling reference (single-tool variants, HTTP-hosted
     agents, dataset shape details).
   - [`tutorial-conversational-agent.md`](tutorial-conversational-agent.md)
-    — multi-turn assistants.
-  - [`tutorial-http-agent.md`](tutorial-http-agent.md) — agents
+    - multi-turn assistants.
+  - [`tutorial-http-agent.md`](tutorial-http-agent.md) - agents
     deployed outside Foundry (ACA, AKS, custom).
-  - [`tutorial-model-direct.md`](tutorial-model-direct.md) — raw
+  - [`tutorial-model-direct.md`](tutorial-model-direct.md) - raw
     model deployments without an agent layer.
-- **Deeper baseline workflows** —
+- **Deeper baseline workflows**  - 
   [`tutorial-baseline-comparison.md`](tutorial-baseline-comparison.md).
-- **Watchdog as a Copilot extension** —
-  [`tutorial-agent-watchdog.md`](tutorial-agent-watchdog.md).
-- **CI/CD reference** —
+- **Watchdog as a Copilot extension**  - 
+  [`tutorial-agent-doctor.md`](tutorial-agent-doctor.md).
+- **CI/CD reference**  - 
   [`ci-github-actions.md`](ci-github-actions.md).
-- **Architecture and concepts** —
+- **Architecture and concepts**  - 
   [`how-it-works.md`](how-it-works.md),
   [`concepts.md`](concepts.md).

@@ -9,7 +9,7 @@ All work is best-effort:
 * If the App Insights connection string is not discoverable, the
   dashboard skips this section silently.
 * If the API call fails (auth, network, resource not found, etc.), the
-  module returns an empty payload — the rest of the dashboard keeps
+  module returns an empty payload - the rest of the dashboard keeps
   rendering.
 
 The KQL hits ``https://api.applicationinsights.io/v1/apps/<appId>/query``
@@ -76,7 +76,7 @@ def collect_production_metrics(
     # Pick a sensible bucket size: 1h for short windows, 6h for ~30d.
     bucket = "1h" if lookback_hours <= 48 else "6h"
 
-    # Fire all four queries in parallel — sequential round-trips to App
+    # Fire all four queries in parallel - sequential round-trips to App
     # Insights were the single biggest source of dashboard latency
     # (~4s vs ~1s after this change).
     from concurrent.futures import ThreadPoolExecutor
@@ -202,7 +202,7 @@ _token_cache: Dict[str, Tuple[float, str]] = {}
 def _run_query(app_id: str, bearer: str, kql: str) -> Optional[Dict[str, Any]]:
     """POST a KQL query to the App Insights REST endpoint."""
     try:
-        # urllib stays in stdlib — avoids dragging requests as a dep.
+        # urllib stays in stdlib - avoids dragging requests as a dep.
         import json as _json
         from urllib import error, request
 
@@ -298,9 +298,9 @@ def _build_cards(
             "Share of invocations whose dependency telemetry reported "
             "success = false."
             "\n\nBadge tiers:"
-            "\n• 0% — healthy"
-            "\n• under 5% — watch"
-            "\n• 5% or more — unhealthy"
+            "\n• 0% - healthy"
+            "\n• under 5% - watch"
+            "\n• 5% or more - unhealthy"
         ),
         "source": "Share of invocations that reported a failure status.",
     })
@@ -308,7 +308,7 @@ def _build_cards(
     cards.append({
         "key": "prod_p95",
         "label": f"P95 latency ({window_label})",
-        "value": f"{p95_seconds:.2f}" if p95_seconds is not None else "—",
+        "value": f"{p95_seconds:.2f}" if p95_seconds is not None else " - ",
         "unit": "s",
         "series": lat_series or ([p95_seconds] if p95_seconds is not None else [0.0]),
         "labels": lat_labels,
@@ -318,9 +318,9 @@ def _build_cards(
             "Includes invoke_agent spans (full agent turn with tool "
             "calls) and chat spans (direct model calls)."
             "\n\nBadge tiers:"
-            "\n• under 2s — snappy"
-            "\n• 2 to 5s — acceptable"
-            "\n• over 5s — sluggish"
+            "\n• under 2s - snappy"
+            "\n• 2 to 5s - acceptable"
+            "\n• over 5s - sluggish"
         ),
         "source": "95th-percentile end-to-end duration of agent and chat spans.",
     })

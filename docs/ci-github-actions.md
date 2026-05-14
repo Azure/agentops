@@ -193,11 +193,11 @@ The eval step uses the AgentOps exit code contract to gate deploys:
 
 ## Artifacts
 
-Each workflow uploads (always — even on failure):
+Each workflow uploads (always - even on failure):
 
-- `results.json` — machine-readable, versioned
-- `report.md` — human-readable
-- `cloud_evaluation.json` — present when using Foundry cloud evaluation;
+- `results.json` - machine-readable, versioned
+- `report.md` - human-readable
+- `cloud_evaluation.json` - present when using Foundry cloud evaluation;
   contains a deep link to the New Foundry Experience Evaluations page
 
 Artifact names per workflow:
@@ -231,7 +231,7 @@ agentops workflow generate --dir <path>        # different repo root
   `agentops-qa.yaml` / `agentops-prod.yaml` and tighten the
   `thresholds:` block. Update the `inputs.config` default in the
   matching workflow file.
-- **Scheduled runs** — add a `schedule:` entry in `agentops-pr.yml` (or
+- **Scheduled runs** - add a `schedule:` entry in `agentops-pr.yml` (or
   a new file) to evaluate against `main` nightly.
 - **Matrix per scenario** - if you have multiple AgentOps config files, extend
   the eval job with `strategy.matrix.config:` and reference

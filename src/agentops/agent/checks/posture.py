@@ -1,4 +1,4 @@
-"""Posture check — runs the WAF-AI rule registry against the resource snapshot."""
+"""Posture check - runs the WAF-AI rule registry against the resource snapshot."""
 
 from __future__ import annotations
 

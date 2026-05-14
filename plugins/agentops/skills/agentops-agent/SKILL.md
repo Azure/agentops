@@ -1,9 +1,9 @@
 ---
 name: agentops-agent
-description: AgentOps Watchdog — surface regressions, latency spikes, error rates, and safety hits across AgentOps eval history, Azure Monitor traces, and Foundry control plane.
+description: AgentOps Watchdog - surface regressions, latency spikes, error rates, and safety hits across AgentOps eval history, Azure Monitor traces, and Foundry control plane.
 ---
 
-# `agentops-agent` — Watchdog skill
+# `agentops-agent` - Watchdog skill
 
 Use this skill when the user asks any of:
 
@@ -15,7 +15,7 @@ Use this skill when the user asks any of:
 
 This skill is the front door to `agentops doctor` and the
 `agentops agent serve` Copilot Extension. It does **not** invent
-findings — it shells out to the CLI which reads real data from:
+findings - it shells out to the CLI which reads real data from:
 
 1. `.agentops/results/*/results.json` (eval history)
 2. Application Insights traces emitted by Foundry agents
@@ -45,19 +45,19 @@ agentops doctor --severity-fail critical
 
 The command writes `.agentops/agent/report.md`. Exit codes:
 
-- `0` — no findings at or above the configured severity floor
-- `2` — at least one finding meets the severity floor (use this in CI)
-- `1` — runtime / configuration error
+- `0` - no findings at or above the configured severity floor
+- `2` - at least one finding meets the severity floor (use this in CI)
+- `1` - runtime / configuration error
 
 ### 3. Read and summarize
 
 Open `.agentops/agent/report.md`. The report has:
 
-- **Verdict banner** — overall pass / warning / critical
-- **Summary** — counts by severity
-- **Sources** — which sources ran, which were skipped and why
-- **Findings** — sorted by severity, each with a recommendation
-- **Recent runs** — appendix of the last `lookback_runs` evals
+- **Verdict banner** - overall pass / warning / critical
+- **Summary** - counts by severity
+- **Sources** - which sources ran, which were skipped and why
+- **Findings** - sorted by severity, each with a recommendation
+- **Recent runs** - appendix of the last `lookback_runs` evals
 
 When summarising for the user, lead with the verdict, then the top
 3 findings, each with the recommendation. Always cite the finding `id`
@@ -66,7 +66,7 @@ so the user can grep them later.
 ### 4. Drive remediation, do not invent it
 
 For each finding the report includes a `Recommendation`. Follow it
-verbatim — for example, if the finding says "compare the latest run
+verbatim - for example, if the finding says "compare the latest run
 against the baseline runs in `.agentops/results/`", actually open
 those folders.
 
@@ -81,8 +81,8 @@ agentops dashboard
 # → http://127.0.0.1:8090
 ```
 
-The dashboard reads `.agentops/agent/history.jsonl` — a JSON-lines file
-the analyzer appends to on every run — and renders the latest counts,
+The dashboard reads `.agentops/agent/history.jsonl` - a JSON-lines file
+the analyzer appends to on every run - and renders the latest counts,
 per-category cards, and sparklines of the last 12 analyses. No Azure
 resource needed; it's read-only and bound to localhost.
 
@@ -92,9 +92,9 @@ useful for long-term retention in App Insights or any OTel backend.
 Resolution order:
 
 1. `APPLICATIONINSIGHTS_CONNECTION_STRING` (or the AgentOps-prefixed
-   variant) — explicit user configuration always wins.
-2. `AGENTOPS_OTLP_ENDPOINT` — generic OTLP/HTTP exporter.
-3. **Auto-discovery** — when `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` is
+   variant) - explicit user configuration always wins.
+2. `AGENTOPS_OTLP_ENDPOINT` - generic OTLP/HTTP exporter.
+3. **Auto-discovery** - when `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` is
    set but no explicit env var is, AgentOps asks the Foundry project
    for the connection string of the Application Insights resource
    attached to it. Zero configuration when the user is already on
@@ -128,5 +128,5 @@ Extension on Azure Container Apps.
 - If a source is `skipped` or `error`, surface that as the *first*
   thing in the user-facing summary so they know the analyzer ran with
   partial data.
-- Never suggest disabling content-safety checks — recommend filtering
+- Never suggest disabling content-safety checks - recommend filtering
   the offending row or tightening the system prompt instead.

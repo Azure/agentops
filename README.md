@@ -61,7 +61,7 @@ This writes a single `agentops.yaml` at the project root and a tiny seed dataset
 
 ### 3) Configure your agent
 
-Pick one of these forms for the `agent:` field — AgentOps classifies the target automatically:
+Pick one of these forms for the `agent:` field - AgentOps classifies the target automatically:
 
 ```yaml
 agent: "my-rag:3"                          # Foundry prompt agent (name:version)
@@ -102,8 +102,8 @@ For Foundry targets, you can put `project_endpoint:` in `agentops.yaml` instead 
 
 Outputs land in `.agentops/results/latest/`:
 
-- `results.json` — machine-readable (versioned, stable schema)
-- `report.md` — human-readable, PR-friendly
+- `results.json` - machine-readable (versioned, stable schema)
+- `report.md` - human-readable, PR-friendly
 
 Capture the first successful run as a baseline:
 
@@ -141,9 +141,9 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 
 ## Documentation
 
-- [Quickstart tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-quickstart.md) — bootstrap a workspace and run one evaluation.
-- [End-to-end tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md) — full do-it-yourself tour: Foundry hosted agent, baseline comparison, GitFlow CI/CD, watchdog.
-- [Copilot skills tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md) — use AgentOps skills to have Copilot configure, run, explain, and wire evals into CI.
+- [Quickstart tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-quickstart.md) - bootstrap a workspace and run one evaluation.
+- [End-to-end tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md) - full do-it-yourself tour: Foundry hosted agent, baseline comparison, GitFlow CI/CD, watchdog.
+- [Copilot skills tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md) - use AgentOps skills to have Copilot configure, run, explain, and wire evals into CI.
 - Per-scenario tutorials:
   - [Foundry hosted agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-basic-foundry-agent.md)
   - [Model-direct](https://github.com/Azure/agentops/blob/main/docs/tutorial-model-direct.md)
@@ -152,7 +152,8 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
   - [Agent with tool calling](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-workflow.md)
   - [HTTP-deployed agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-http-agent.md)
 - [Baseline comparison](https://github.com/Azure/agentops/blob/main/docs/tutorial-baseline-comparison.md)
-- [Watchdog agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-watchdog.md)
+- [Doctor agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-doctor.md)
+  - Concept overview: [Doctor explained](https://github.com/Azure/agentops/blob/main/docs/doctor-explained.md)
 - [CI/CD with GitHub Actions](https://github.com/Azure/agentops/blob/main/docs/ci-github-actions.md)
 - [Built-in evaluator reference](https://github.com/Azure/agentops/blob/main/docs/foundry-evaluation-sdk-built-in-evaluators.md)
 - [Release process](https://github.com/Azure/agentops/blob/main/docs/release-process.md)

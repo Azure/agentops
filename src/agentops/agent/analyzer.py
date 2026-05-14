@@ -7,11 +7,18 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 from agentops.agent.checks.errors import run_errors_check
+from agentops.agent.checks.foundry_config import run_foundry_config_check
 from agentops.agent.checks.latency import run_latency_check
-from agentops.agent.checks.mlops import run_mlops_check
+from agentops.agent.checks.opex_workspace import run_opex_workspace_check
+from agentops.agent.checks.opex import run_opex_check
 from agentops.agent.checks.posture import run_posture_check
 from agentops.agent.checks.regression import run_regression_check
 from agentops.agent.checks.safety import run_safety_check
+from agentops.agent.checks.spec_conformance import run_spec_conformance_check
+from agentops.agent.llm_assist import run_llm_assist_check
+from agentops.agent.llm_assist._spec_rules import (
+    run_spec_implementation_gap_rule,
+)
 from agentops.agent.config import AgentConfig
 from agentops.agent.findings import Category, Finding, Severity
 from agentops.agent.sources.azure_monitor import (
@@ -40,6 +47,7 @@ class AnalysisResult:
     foundry: Optional[FoundryControlPayload] = None
     resources: Optional[AzureResourcesPayload] = None
     diagnostics: Dict[str, Any] = field(default_factory=dict)
+    workspace: Optional[Path] = None
 
     @property
     def max_severity(self) -> Optional[Severity]:
@@ -53,12 +61,15 @@ def _normalize_categories(
 ) -> Optional[Set[Category]]:
     if categories is None:
         return None
+    from agentops.agent._legacy_ids import canonical_category
+
     out: Set[Category] = set()
     for c in categories:
         if not c:
             continue
+        normalized = canonical_category(c.strip().lower())
         try:
-            out.add(Category(c.strip().lower()))
+            out.add(Category(normalized))
         except ValueError:
             continue
     return out or None
@@ -94,9 +105,26 @@ def analyze(
     findings.extend(run_regression_check(history, config.checks.regression))
     findings.extend(run_latency_check(history, monitor, config.checks.latency))
     findings.extend(run_errors_check(monitor, foundry, config.checks.errors))
-    findings.extend(run_safety_check(history, config.checks.safety))
+    findings.extend(run_safety_check(history, config.checks.safety, monitor, foundry))
     findings.extend(run_posture_check(resources, posture_config))
-    findings.extend(run_mlops_check(workspace))
+    findings.extend(run_opex_workspace_check(workspace))
+    findings.extend(run_opex_check(history, config.checks.opex))
+    findings.extend(
+        run_spec_conformance_check(
+            workspace, config.checks.operational_excellence.spec_conformance
+        )
+    )
+    findings.extend(run_foundry_config_check(foundry))
+    findings.extend(
+        run_llm_assist_check(workspace, config.checks.llm_assist, foundry)
+    )
+    findings.extend(
+        run_spec_implementation_gap_rule(
+            workspace,
+            config.checks.llm_assist,
+            config.checks.operational_excellence.spec_conformance,
+        )
+    )
 
     allowed = _normalize_categories(categories)
     if allowed is not None:
@@ -116,4 +144,5 @@ def analyze(
             "foundry_control": foundry.diagnostics,
             "azure_resources": resources.diagnostics,
         },
+        workspace=workspace,
     )

@@ -7,7 +7,7 @@ serves a single dashboard page in a dark theme. No external frontend
 dependencies (sparklines are inline SVG); no Azure resource required.
 
 The server is intentionally read-only and bound to ``127.0.0.1`` by
-default — it is a developer-tool surface, not a production service.
+default - it is a developer-tool surface, not a production service.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ from agentops.agent.time_range import TimeRange, parse_time_range, preset_keys
 
 _CATEGORY_LABELS = {
     "quality": "Quality",
-    "performance": "Performance",
+    "performance": "Performance Efficiency",
     "reliability": "Reliability",
-    "mlops": "MLOps",
+    "operational_excellence": "Operational Excellence",
     "security": "Security",
     "responsible_ai": "Responsible AI",
 }
@@ -208,7 +208,7 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             "label": "Eval runs",
             "value": len(eval_runs),
             "unit": "total",
-            "series": [1.0] * len(eval_runs),  # constant — show as filled bar
+            "series": [1.0] * len(eval_runs),  # constant - show as filled bar
             "labels": [_label_for_run(r) for r in eval_runs],
             "links": run_links,
             "alt_links": run_alt_links,
@@ -218,13 +218,13 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "Total agentops eval run invocations recorded under "
                 ".agentops/results/. Cloud runs (execution: cloud) are "
                 "executed by Foundry server-side, then downloaded and "
-                "cached here — that is why even cloud runs show up under "
+                "cached here - that is why even cloud runs show up under "
                 "a local path. The trend line marks each run, oldest on "
                 "the left."
                 "\n\nBadge tiers:"
-                "\n• under 3 runs — low sample"
-                "\n• 3 to 9 — moderate sample"
-                "\n• 10 or more — well sampled"
+                "\n• under 3 runs - low sample"
+                "\n• 3 to 9 - moderate sample"
+                "\n• 10 or more - well sampled"
             ),
         },
         {
@@ -246,9 +246,9 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
                 "Share of recorded runs whose summary.overall_passed is "
                 "true. Hover the sparkline to see each run."
                 "\n\nBadge tiers:"
-                "\n• 90% or above — healthy"
-                "\n• 70 to 89% — mixed"
-                "\n• below 70% — unhealthy"
+                "\n• 90% or above - healthy"
+                "\n• 70 to 89% - mixed"
+                "\n• below 70% - unhealthy"
             ),
             "source": "Share of recorded runs that passed every configured threshold.",
         },
@@ -277,12 +277,12 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
         {
             "key": "latest_run",
             "label": "Latest target",
-            "value": latest["target"] or "—",
+            "value": latest["target"] or " - ",
             "unit": "",
             "value_kind": "text",
             "series": pass_series[-6:],
             "labels": [
-                f"{_label_for_run(r)} · {r.get('target') or '—'}"
+                f"{_label_for_run(r)} · {r.get('target') or ' - '}"
                 f" · {r.get('execution') or 'local'}"
                 for r in eval_runs[-6:]
             ],
@@ -300,8 +300,8 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
             ),
             "meta": [
                 _format_iso_timestamp(latest["timestamp"]),
-                f"duration: {latest['duration']:.1f}s" if latest["duration"] else "duration: —",
-                f"execution: {latest['execution']}" if latest["execution"] else "execution: —",
+                f"duration: {latest['duration']:.1f}s" if latest["duration"] else "duration:  - ",
+                f"execution: {latest['execution']}" if latest["execution"] else "execution:  - ",
             ],
             "source": "Agent or model identifier from the most recent run.",
         },
@@ -318,7 +318,7 @@ def _label_for_run(run: Dict[str, Any]) -> str:
     ts = run.get("timestamp") or ""
     # Trim to minute precision for hover-tip readability.
     ts = ts[:16].replace("T", " ") if isinstance(ts, str) else str(ts)
-    return ts or "—"
+    return ts or " - "
 
 
 def _build_metrics_cards(eval_runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -453,6 +453,30 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
             },
         ],
         "latest_findings": latest_findings,
+        "maturity": _maturity_for_dashboard(latest),
+    }
+
+
+def _maturity_for_dashboard(
+    latest: Optional[AnalysisRecord],
+) -> Optional[Dict[str, Any]]:
+    """Project the GenAIOps maturity assessment onto the dashboard payload."""
+    from agentops.agent.maturity import compute_level_from_ids
+
+    if latest is None:
+        return None
+    finding_ids = [
+        str(f.get("id") or "") for f in (latest.findings or []) if isinstance(f, dict)
+    ]
+    assessment = compute_level_from_ids(
+        finding_ids=[fid for fid in finding_ids if fid],
+        has_history=True,
+    )
+    return {
+        "level": assessment.level,
+        "label": assessment.label,
+        "next_gap": assessment.next_gap,
+        "explanation": assessment.explanation,
     }
 
 
@@ -467,7 +491,7 @@ _SEVERITY_SORT_RANK = {
 def _label_for_record(record: AnalysisRecord) -> str:
     """Short timestamp label for a watchdog sparkline point."""
     ts = record.timestamp or ""
-    return ts[:16].replace("T", " ") if isinstance(ts, str) else "—"
+    return ts[:16].replace("T", " ") if isinstance(ts, str) else " - "
 
 
 # ---------------------------------------------------------------------------
@@ -564,8 +588,8 @@ def _build_deployments_section(
     run_links = [r.get("url") for r in windowed]
 
     latest = windowed[-1]
-    latest_conclusion = (latest.get("conclusion") or latest.get("status") or "—").lower()
-    latest_label = latest.get("workflowName") or latest.get("name") or "—"
+    latest_conclusion = (latest.get("conclusion") or latest.get("status") or " - ").lower()
+    latest_label = latest.get("workflowName") or latest.get("name") or " - "
 
     cards: List[Dict[str, Any]] = [
         {
@@ -592,7 +616,7 @@ def _build_deployments_section(
             "unit": "",
             "series": pass_series,
             "labels": [
-                f"{_label_for_workflow_run(r)} · {(r.get('conclusion') or r.get('status') or '—')}"
+                f"{_label_for_workflow_run(r)} · {(r.get('conclusion') or r.get('status') or ' - ')}"
                 for r in windowed
             ],
             "links": run_links,
@@ -602,9 +626,9 @@ def _build_deployments_section(
                 "conclusion <code>success</code>. Failed, cancelled, and "
                 "skipped runs all count against this rate."
                 "\n\nBadge tiers:"
-                "\n• 90% or above — healthy"
-                "\n• 70 to 89% — mixed"
-                "\n• below 70% — unhealthy"
+                "\n• 90% or above - healthy"
+                "\n• 70 to 89% - mixed"
+                "\n• below 70% - unhealthy"
             ),
             "source": "Share of recent workflow runs that finished successfully.",
         },
@@ -625,8 +649,8 @@ def _build_deployments_section(
             ),
             "meta": [
                 _format_iso_timestamp(latest.get("createdAt") or ""),
-                f"branch: {latest.get('headBranch') or '—'}",
-                f"event: {latest.get('event') or '—'}",
+                f"branch: {latest.get('headBranch') or ' - '}",
+                f"event: {latest.get('event') or ' - '}",
             ],
             "source": "Most recent GitHub Actions run for this repository.",
             "alt_link": latest.get("url"),
@@ -721,7 +745,7 @@ def _diagnose_gh_state_uncached(workspace: Path) -> Dict[str, Any]:
             if repo_check.stderr else "",
         }
 
-    # Repo confirmed — fetch runs.
+    # Repo confirmed - fetch runs.
     runs_proc = _run_quick(
         [
             "gh", "run", "list",
@@ -814,7 +838,7 @@ def _workflow_conclusion_badge(conclusion: str) -> Dict[str, str]:
         return {"label": "cancelled", "tone": "warn"}
     if c in ("in_progress", "queued", "waiting", "requested", "pending"):
         return {"label": c.replace("_", " "), "tone": "info"}
-    return {"label": c or "—", "tone": "muted"}
+    return {"label": c or " - ", "tone": "muted"}
 
 
 # ---------------------------------------------------------------------------
@@ -985,7 +1009,7 @@ def _resolve_foundry_compliance_url(workspace: Path) -> Optional[str]:
 def _resolve_foundry_project_root(workspace: Path) -> Optional[str]:
     """Pull the project-root prefix (everything before ``/build/...``) out
     of the most recent cloud_evaluation.json. Returns ``None`` when there
-    is no cloud run yet — callers fall back to defaults or hide the link.
+    is no cloud run yet - callers fall back to defaults or hide the link.
     """
     results_root = workspace / ".agentops" / "results"
     if not results_root.is_dir():
@@ -1010,7 +1034,7 @@ def _resolve_foundry_project_root(workspace: Path) -> Optional[str]:
             idx = url.find(marker)
             if idx >= 0:
                 return url[:idx]
-        # No /build/ segment — assume the full URL is already the root.
+        # No /build/ segment - assume the full URL is already the root.
         return url.rstrip("/")
     return None
 
@@ -1037,7 +1061,7 @@ def _az_tenant_id() -> Optional[str]:
 
     Cached for the process so we don't shell out per request. Returns
     ``None`` when az CLI is missing, not logged in, or the call fails
-    for any reason — the surrounding URL still works without ``?tid=``.
+    for any reason - the surrounding URL still works without ``?tid=``.
     """
     if "value" in _TENANT_CACHE:
         return _TENANT_CACHE["value"]
@@ -1488,7 +1512,7 @@ def _metric_trend_badge(series: List[float], *, is_latency: bool) -> Dict[str, s
 
 
 # ---------------------------------------------------------------------------
-# HTML rendering — inline, zero JS deps
+# HTML rendering - inline, zero JS deps
 # ---------------------------------------------------------------------------
 
 
@@ -1573,7 +1597,7 @@ def _render_exec_section_tag(execution: Optional[str]) -> str:
     """Render a small inline tag next to a section title indicating the
     execution mode of the latest run (cloud vs local).
 
-    Kept understated — one indicator per section, not per card — so it
+    Kept understated - one indicator per section, not per card - so it
     informs without dominating the visual hierarchy.
     """
     if not execution:
@@ -1655,7 +1679,7 @@ def render_production_grid_html(production: Dict[str, Any]) -> str:
         return (
             '<div class="card hero loading-card">'
             '<div class="card-label">No production telemetry yet</div>'
-            '<div class="card-value card-value-text">—</div>'
+            '<div class="card-value card-value-text"> - </div>'
             '<div class="telemetry-detail">'
             'No invocations found in the selected window. The Foundry '
             'project may not have produced any traces yet.'
@@ -1735,7 +1759,7 @@ def _sparkline_svg(
         circle = (
             f'<circle class="dot {is_last} {is_clickable}" cx="{x:.1f}" cy="{y:.1f}" r="3.5" '
             f'fill="currentColor" data-v="{formatted_value}" data-l="{label}"{alt_attrs}>'
-            f'<title>{label}{" — " + formatted_value if label else formatted_value}'
+            f'<title>{label}{" - " + formatted_value if label else formatted_value}'
             f'{" · click to open" if href else ""}</title>'
             f'</circle>'
         )
@@ -1759,56 +1783,183 @@ def _sparkline_svg(
     )
 
 
+_PILLAR_ORDER: List[str] = [
+    "quality",
+    "performance",
+    "reliability",
+    "operational_excellence",
+    "security",
+    "responsible_ai",
+]
+
+
 def _render_findings_list(findings: List[Dict[str, Any]]) -> str:
-    """Render the watchdog's latest findings as a vertical list, sorted
-    by severity. Replaces the per-category trend cards: the list is
-    easier to scan and reads "what should I fix next" instead of
-    "how have my category counts trended".
+    """Render findings grouped by WAF-AI pillar, one row per pillar.
+
+    Each pillar renders even when empty (an explicit "clean" indicator
+    is a useful status signal). Inside ``operational_excellence`` the
+    rows are split into "Workspace & CI Hygiene" and "Spec Conformance"
+    sub-sections.
     """
-    if not findings:
-        return (
-            '<div class="findings-empty">'
-            '<span class="findings-empty-icon">&#x2713;</span>'
-            '<div><strong>All clear.</strong> '
-            "The watchdog produced zero findings in the latest run.</div>"
-            '</div>'
-        )
 
-    rows: List[str] = []
+    by_pillar: Dict[str, List[Dict[str, Any]]] = {p: [] for p in _PILLAR_ORDER}
     for f in findings:
-        sev = str(f.get("severity") or "info").lower()
-        cat = str(f.get("category") or "").strip()
-        title = str(f.get("title") or "—")
-        summary = str(f.get("summary") or "").strip()
-        rec = str(f.get("recommendation") or "").strip()
-        source = str(f.get("source") or "").strip()
-        sev_tone = {"critical": "crit", "warning": "warn", "info": "info"}.get(sev, "muted")
-        cat_label = _CATEGORY_LABELS.get(cat, cat.title() or "—")
+        cat = str(f.get("category") or "").strip().lower()
+        if cat in by_pillar:
+            by_pillar[cat].append(f)
 
-        rec_html = (
-            f'<div class="finding-recommendation"><strong>Fix:</strong> '
-            f'{_html_escape(rec)}</div>' if rec else ""
+    pillar_rows: List[str] = []
+    for pillar in _PILLAR_ORDER:
+        bucket = by_pillar[pillar]
+        label = _CATEGORY_LABELS.get(pillar, pillar.title())
+        sev_counts = {"critical": 0, "warning": 0, "info": 0}
+        for f in bucket:
+            sev = str(f.get("severity") or "info").lower()
+            if sev in sev_counts:
+                sev_counts[sev] += 1
+        chips = (
+            f'<span class="pillar-chip chip-crit">{sev_counts["critical"]} critical</span>'
+            f'<span class="pillar-chip chip-warn">{sev_counts["warning"]} warning</span>'
+            f'<span class="pillar-chip chip-info">{sev_counts["info"]} info</span>'
         )
-        source_html = (
-            f'<div class="finding-source">Source: {_html_escape(source)}</div>'
-            if source else ""
-        )
-        rows.append(
-            '<div class="finding">'
-            f'<div class="finding-row1">'
-            f'<span class="badge tone-{sev_tone}">{_html_escape(sev)}</span>'
-            f'<span class="finding-cat">{_html_escape(cat_label)}</span>'
-            f'<span class="finding-title">{_html_escape(title)}</span>'
-            '</div>'
-            + (f'<div class="finding-summary">{_html_escape(summary)}</div>' if summary else "")
-            + rec_html
-            + source_html
-            + '</div>'
+
+        if not bucket:
+            body = (
+                '<div class="pillar-empty">'
+                '<span class="pillar-empty-icon">&#x2713;</span>'
+                f'<span>No {label} findings.</span>'
+                '</div>'
+            )
+        elif pillar == "operational_excellence":
+            spec = [
+                f for f in bucket
+                if str(f.get("id") or "").startswith("opex.spec_conformance.")
+            ]
+            hygiene = [f for f in bucket if f not in spec]
+            body = (
+                _render_pillar_subgroup("Workspace & CI Hygiene", hygiene)
+                + _render_pillar_subgroup("Spec Conformance", spec)
+            )
+        else:
+            body = "".join(_render_finding_card(f) for f in bucket)
+
+        pillar_rows.append(
+            '<details class="pillar-row" open>'
+            f'<summary class="pillar-summary">'
+            f'<span class="pillar-name">{_html_escape(label)}</span>'
+            f'<span class="pillar-chips">{chips}</span>'
+            '</summary>'
+            f'<div class="pillar-body">{body}</div>'
+            '</details>'
         )
 
     return (
-        '<div class="section-title sub">Recent findings</div>'
-        f'<div class="findings-list">{"".join(rows)}</div>'
+        '<div class="section-title sub">Findings by WAF-AI pillar</div>'
+        f'<div class="findings-pillars">{"".join(pillar_rows)}</div>'
+    )
+
+
+def _render_pillar_subgroup(label: str, bucket: List[Dict[str, Any]]) -> str:
+    """Render a labeled sub-section within a pillar row."""
+    if not bucket:
+        return (
+            f'<div class="pillar-subgroup">'
+            f'<div class="pillar-subgroup-title">{_html_escape(label)}</div>'
+            '<div class="pillar-empty">'
+            '<span class="pillar-empty-icon">&#x2713;</span>'
+            f'<span>No {label} findings.</span>'
+            '</div>'
+            '</div>'
+        )
+    cards = "".join(_render_finding_card(f) for f in bucket)
+    return (
+        '<div class="pillar-subgroup">'
+        f'<div class="pillar-subgroup-title">{_html_escape(label)}</div>'
+        f'{cards}'
+        '</div>'
+    )
+
+
+def _render_finding_card(f: Dict[str, Any]) -> str:
+    """Render a single finding card (extracted from the old list renderer)."""
+    sev = str(f.get("severity") or "info").lower()
+    cat = str(f.get("category") or "").strip()
+    title = str(f.get("title") or " - ")
+    summary = str(f.get("summary") or "").strip()
+    rec = str(f.get("recommendation") or "").strip()
+    source = str(f.get("source") or "").strip()
+    evidence = f.get("evidence") or {}
+    sev_tone = {"critical": "crit", "warning": "warn", "info": "info"}.get(sev, "muted")
+    cat_label = _CATEGORY_LABELS.get(cat, cat.title() or " - ")
+
+    is_llm = source == "llm_judge"
+    ai_badge = (
+        '<span class="ai-badge" title="LLM-judged signal (advisory)">AI</span>'
+        if is_llm else ""
+    )
+
+    rec_html = (
+        f'<div class="finding-recommendation"><strong>Fix:</strong> '
+        f'{_html_escape(rec)}</div>' if rec else ""
+    )
+    source_html = (
+        f'<div class="finding-source">Source: {_html_escape(source)}</div>'
+        if source else ""
+    )
+
+    fix_panel = _render_suggested_fix_panel(
+        finding_id=str(f.get("id") or ""),
+        title=title,
+        evidence=evidence if isinstance(evidence, dict) else {},
+    )
+
+    return (
+        '<div class="finding">'
+        f'<div class="finding-row1">'
+        f'<span class="badge tone-{sev_tone}">{_html_escape(sev)}</span>'
+        f'<span class="finding-cat">{_html_escape(cat_label)}</span>'
+        f'{ai_badge}'
+        f'<span class="finding-title">{_html_escape(title)}</span>'
+        '</div>'
+        + (f'<div class="finding-summary">{_html_escape(summary)}</div>' if summary else "")
+        + rec_html
+        + fix_panel
+        + source_html
+        + '</div>'
+    )
+
+
+def _render_suggested_fix_panel(
+    *, finding_id: str, title: str, evidence: Dict[str, Any]
+) -> str:
+    """Render a collapsible 'suggested fix' panel for fixable findings.
+
+    The panel is read-only by design - it shows the suggestions the
+    judge model (or the deterministic check) proposed. Applying them
+    is a separate concern handled outside the dashboard render.
+    """
+    suggestions = evidence.get("suggestions") if isinstance(evidence, dict) else None
+    if not suggestions or not isinstance(suggestions, list):
+        return ""
+    cleaned = [str(s).strip() for s in suggestions if str(s).strip()]
+    if not cleaned:
+        return ""
+
+    items = "".join(
+        f'<li>{_html_escape(text)}</li>' for text in cleaned[:6]
+    )
+
+    return (
+        '<details class="finding-fix">'
+        '<summary>'
+        '<span class="fix-icon">&#x1F4A1;</span> '
+        'Suggested fixes ('
+        f'{len(cleaned)})'
+        '</summary>'
+        '<div class="fix-body">'
+        f'<ol class="fix-list">{items}</ol>'
+        '</div>'
+        '</details>'
     )
 
 
@@ -1868,7 +2019,7 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
     :func:`build_dashboard_payload`. Returns a complete HTML document.
     """
     telemetry = payload["telemetry"]
-    # Show the telemetry card only when telemetry is OFF — it then acts as
+    # Show the telemetry card only when telemetry is OFF - it then acts as
     # the "why is the production section empty" hint. When telemetry is
     # active, the dedicated Production telemetry section communicates the
     # connection state already.
@@ -1905,7 +2056,7 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
             "to surface workflow runs here."
         )
         deployments_body = f'<div class="empty-state">{hint}</div>'
-    deployments_section = _collapsible_section("CI/CD", deployments_body)
+    deployments_section = _collapsible_section("CI/CD Pipelines", deployments_body)
 
     metrics_section = ""
     if payload["metrics"]:
@@ -1929,12 +2080,31 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
         )
     watchdog_title = f"Doctor findings{compliance_link}"
 
+    maturity_block = ""
+    maturity = watchdog.get("maturity") if isinstance(watchdog, dict) else None
+    if maturity:
+        next_gap = maturity.get("next_gap")
+        gap_html = (
+            f' &mdash; next gap: <code>{_html_escape(str(next_gap))}</code>'
+            if next_gap and next_gap != "no_history"
+            else ""
+        )
+        maturity_block = (
+            '<div class="maturity-badge" '
+            'title="GenAIOps Maturity Model (Microsoft)">'
+            f'<strong>Maturity: L{int(maturity.get("level", 0))} '
+            f'&mdash; {_html_escape(str(maturity.get("label", "")))}</strong>'
+            f'{gap_html}'
+            '</div>'
+        )
+
     if watchdog["has_history"]:
         watchdog_headline = "".join(
             _render_card(c, hero=True) for c in watchdog["headline_cards"]
         )
         findings_list = _render_findings_list(watchdog.get("latest_findings") or [])
         watchdog_body = (
+            f'{maturity_block}'
             f'<div class="grid">{watchdog_headline}</div>'
             f'{findings_list}'
         )
@@ -1964,7 +2134,7 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
         f'{portal_link}'
     )
     if production.get("has_data") and production.get("cards"):
-        # Server-side render (rare — happens when /api/production/html is
+        # Server-side render (rare - happens when /api/production/html is
         # invoked directly without a deferred placeholder).
         prod_html = "".join(_render_card(c, hero=True) for c in production["cards"])
         prod_body = f'<div class="grid" id="production-grid">{prod_html}</div>'
@@ -2257,6 +2427,77 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
     font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
     text-transform: uppercase; vertical-align: middle;
     animation: live-pulse 2s ease-in-out infinite;
+  }}
+  .maturity-badge {{
+    margin: 0 0 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(96, 165, 250, 0.10);
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    color: var(--fg);
+    font-size: 13px;
+  }}
+  .maturity-badge strong {{
+    margin-right: 6px;
+  }}
+  .maturity-badge code {{
+    background: rgba(0, 0, 0, 0.25);
+    padding: 1px 6px; border-radius: 4px;
+    font-size: 12px;
+  }}
+  .ai-badge {{
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 7px;
+    border-radius: 4px;
+    background: rgba(168, 85, 247, 0.18);
+    color: #c4b5fd;
+    border: 1px solid rgba(168, 85, 247, 0.45);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    vertical-align: middle;
+  }}
+  .finding-fix {{
+    margin-top: 8px;
+    border: 1px solid rgba(168, 85, 247, 0.30);
+    background: rgba(168, 85, 247, 0.08);
+    border-radius: 6px;
+    padding: 6px 10px;
+  }}
+  .finding-fix > summary {{
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--fg);
+    list-style: none;
+  }}
+  .finding-fix > summary::-webkit-details-marker {{ display: none; }}
+  .finding-fix .fix-icon {{ margin-right: 4px; }}
+  .finding-fix .fix-body {{
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(168, 85, 247, 0.30);
+  }}
+  .finding-fix .fix-list {{
+    margin: 0 0 8px 18px;
+    padding: 0;
+    font-size: 13px;
+  }}
+  .finding-fix .fix-list li {{ margin: 4px 0; }}
+  .finding-fix .fix-copilot-link {{
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(168, 85, 247, 0.22);
+    color: #c4b5fd;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+  }}
+  .finding-fix .fix-copilot-link:hover {{
+    background: rgba(168, 85, 247, 0.35);
   }}
   .loading-card {{
     opacity: 0.85; border-style: dashed;
@@ -2668,6 +2909,72 @@ _DASHBOARD_TEMPLATE = """<!doctype html>
     font-size: 18px;
     color: var(--ok);
     font-weight: 700;
+  }}
+  /* Pillar rows (one row per WAF-AI pillar). */
+  .findings-pillars {{
+    display: flex; flex-direction: column; gap: 10px;
+    margin-top: 8px;
+  }}
+  .pillar-row {{
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }}
+  .pillar-row > .pillar-summary {{
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
+  }}
+  .pillar-row > .pillar-summary::-webkit-details-marker {{ display: none; }}
+  .pillar-name {{
+    color: var(--text);
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex: 1 1 auto;
+    min-width: 0;
+  }}
+  .pillar-chips {{ display: flex; gap: 6px; flex-wrap: wrap; }}
+  .pillar-chip {{
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  }}
+  .chip-crit {{ color: var(--crit); border-color: var(--crit); }}
+  .chip-warn {{ color: var(--warn); border-color: var(--warn); }}
+  .chip-info {{ color: var(--info); border-color: var(--info); }}
+  .pillar-body {{
+    padding: 0 16px 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    border-top: 1px solid var(--border);
+  }}
+  .pillar-body > .finding {{ margin-top: 10px; }}
+  .pillar-empty {{
+    display: flex; align-items: center; gap: 10px;
+    color: var(--text-faint);
+    font-size: 12px;
+    padding: 10px 0 0;
+  }}
+  .pillar-empty-icon {{
+    color: var(--ok);
+    font-weight: 700;
+  }}
+  .pillar-subgroup {{ display: flex; flex-direction: column; gap: 8px; }}
+  .pillar-subgroup-title {{
+    margin-top: 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-faint);
+    font-weight: 600;
   }}
   footer {{
     margin-top: 40px; font-size: 11px; color: var(--text-faint);

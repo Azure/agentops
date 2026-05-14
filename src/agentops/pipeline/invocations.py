@@ -54,7 +54,7 @@ def _summarise_tool_calls(calls: List[Any]) -> str:
     """Build a short, human-readable summary of executed tool calls.
 
     Used as a last-resort fallback when the agent never produces
-    assistant text — quality evaluators still need a non-empty
+    assistant text - quality evaluators still need a non-empty
     ``response`` string to score.
     """
     parts: List[str] = []

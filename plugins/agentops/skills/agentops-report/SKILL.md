@@ -7,18 +7,18 @@ description: Read, regenerate, and explain AgentOps evaluation reports. Trigger 
 
 Help the user understand a finished AgentOps run.
 
-## Step 0 — Locate the run
+## Step 0 - Locate the run
 
 Latest run: `.agentops/results/latest/`. Each run produces:
 
-- `results.json` — machine-readable metrics, per-row scores, thresholds.
-- `report.md` — human-readable summary suitable for PR comments.
-- `cloud_evaluation.json` (only when `publish: true`) — deep-link to
+- `results.json` - machine-readable metrics, per-row scores, thresholds.
+- `report.md` - human-readable summary suitable for PR comments.
+- `cloud_evaluation.json` (only when `publish: true`) - deep-link to
   the Foundry Evaluations panel. `mode: classic` when `execution: local`
   (metrics uploaded to Classic Foundry), `mode: cloud` when
   `execution: cloud` (preview, server-side run via the OpenAI Evals API).
 
-## Step 1 — Regenerate report.md if needed
+## Step 1 - Regenerate report.md if needed
 
 ```bash
 agentops report generate                   # uses .agentops/results/latest/results.json
@@ -28,7 +28,7 @@ agentops report generate --in <results.json> --out <report.md>
 `report generate` always reads the flat 1.0 results schema and emits
 Markdown. There is no HTML format.
 
-## Step 2 — Explain the metrics
+## Step 2 - Explain the metrics
 
 Common metrics and their meaning:
 
@@ -52,7 +52,7 @@ exit code of the original run reflects the gate:
 - `2` → one or more thresholds failed
 - `1` → runtime error
 
-## Step 3 — Help the user act on results
+## Step 3 - Help the user act on results
 
 - For low scores on a specific metric, point at the lowest-scoring rows
   in `results.json` (`row_metrics[]` and `item_evaluations[]`) and
@@ -66,4 +66,4 @@ exit code of the original run reflects the gate:
 ## Guardrails
 
 - Never invent metric values. If a metric is absent, say so.
-- Do not edit `results.json` by hand — re-run the eval.
+- Do not edit `results.json` by hand - re-run the eval.

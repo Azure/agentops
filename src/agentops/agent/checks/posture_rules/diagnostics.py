@@ -2,7 +2,7 @@
 
 Without diagnostic settings, audit logs and request traces from the
 Cognitive Services account never reach a Log Analytics workspace,
-storage account, or event hub — making incident investigation and
+storage account, or event hub - making incident investigation and
 content-safety auditing effectively impossible.
 
 The WAF-AI Security pillar recommends streaming diagnostic logs to

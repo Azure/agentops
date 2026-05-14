@@ -54,11 +54,13 @@ where = ["src"]
   "foundry.svg",
   ".gitignore",
   "project.gitignore",
+  "waf-checklist.csv",
   "workflows/*.yml",
   "pipelines/azuredevops/*.yml",
   "skills/*/SKILL.md",
   "agent-server/*",
 ]
+"agentops.agent.knowledge" = ["*.csv"]
 
 [dependency-groups]
 dev = [

@@ -12,7 +12,7 @@ from agentops.utils.logging import get_logger, setup_logging
 
 app = typer.Typer(
     name="agentops",
-    help="AgentOps — standardized evaluation workflows for AI projects.",
+    help="AgentOps - standardized evaluation workflows for AI projects.",
     add_completion=False,
 )
 eval_app = typer.Typer(
@@ -90,7 +90,7 @@ def _print_registration_result(result: object) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Global callback — configures logging before any command runs
+# Global callback - configures logging before any command runs
 # ---------------------------------------------------------------------------
 
 
@@ -568,7 +568,7 @@ def cmd_skills_install(
     force: bool = typer.Option(
         False,
         "--force",
-        help="Deprecated — skills are always overwritten with the latest version.",
+        help="Deprecated - skills are always overwritten with the latest version.",
     ),
     prompt: bool = typer.Option(
         False,
@@ -737,8 +737,9 @@ def cmd_doctor(
             "--categories",
             help=(
                 "Comma-separated list of categories to include "
-                "(quality, performance, reliability, mlops, security, "
-                "responsible_ai). Default: include all."
+                "(quality, performance, reliability, "
+                "operational_excellence, security, responsible_ai). "
+                "Default: include all."
             ),
         ),
     ] = None,
@@ -758,16 +759,16 @@ def cmd_doctor(
     The AgentOps doctor scans your workspace, eval history, and (when
     configured) production telemetry, then produces a severity-ranked
     list of findings + a Markdown report. Complementary to Foundry
-    Operate -> Compliance — this is the half Foundry doesn't surface
+    Operate -> Compliance - this is the half Foundry doesn't surface
     (pipeline hygiene, identity / pipeline security, prompt + bundle
     Responsible-AI heuristics, plus the live regression / latency /
     error signals).
 
     Exit codes:
 
-    * ``0`` — analyzer ran cleanly and no finding met `--severity-fail`.
-    * ``2`` — at least one finding meets the configured severity floor.
-    * ``1`` — runtime/configuration error.
+    * ``0`` - analyzer ran cleanly and no finding met `--severity-fail`.
+    * ``2`` - at least one finding meets the configured severity floor.
+    * ``1`` - runtime/configuration error.
     """
     from agentops.agent.analyzer import analyze
     from agentops.agent.config import load_agent_config
@@ -827,7 +828,7 @@ def cmd_doctor(
 
             duration_seconds = _time.perf_counter() - started_perf
 
-            # Persist the analysis history (always — works without Azure).
+            # Persist the analysis history (always - works without Azure).
             sources_enabled = _sources_enabled(config)
             record = build_record(
                 result.findings,
@@ -988,7 +989,7 @@ def cmd_dashboard(
     ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` is set, the dashboard also
     pulls live data (invocations, error rate, p95 latency, token spend)
     from the Application Insights workspace attached to the Foundry
-    project — auto-discovered, no extra configuration required.
+    project - auto-discovered, no extra configuration required.
     """
     try:
         import uvicorn
@@ -1032,7 +1033,7 @@ def cmd_dashboard(
         _time.sleep(0.05)
     try:
         webbrowser.open(url, new=2)
-    except Exception:  # noqa: BLE001 — never fail dashboard on a browser launch issue
+    except Exception:  # noqa: BLE001 - never fail dashboard on a browser launch issue
         pass
 
     try:
