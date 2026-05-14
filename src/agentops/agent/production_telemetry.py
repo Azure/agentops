@@ -33,6 +33,44 @@ _CACHE_TTL_SECONDS = 60.0
 _cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
+def _humanize_token_error(exc: Exception) -> str:
+    """Convert a verbose ``DefaultAzureCredential`` failure into a short,
+    actionable message suitable for the dashboard's error tile.
+
+    The Azure SDK concatenates the failure reason of every credential
+    in the chain into a single multi-line string ("EnvironmentCredential:
+    ... WorkloadIdentityCredential: ... AzureCliCredential: ..."). The
+    full text is technically accurate but useless for a user staring at
+    a dashboard. Detect the common failure shapes and surface a
+    one-sentence remediation instead.
+    """
+    text = str(exc)
+    lower = text.lower()
+    # The Azure CLI sign-in is the path users on dev machines actually
+    # take, so prioritize that hint when its sub-credential failed.
+    cli_failed = (
+        "azureclicredential: failed to invoke the azure cli" in lower
+        or "no accounts were found in the cache" in lower
+    )
+    if cli_failed:
+        return (
+            "Not signed in to Azure. Run `az login` in the same shell "
+            "you launched `agentops dashboard` from, then refresh."
+        )
+    if "defaultazurecredential failed to retrieve a token" in lower:
+        return (
+            "Azure authentication failed: DefaultAzureCredential could "
+            "not acquire a token. On a dev machine the usual fix is "
+            "`az login`. See dashboard logs for the full credential "
+            "chain."
+        )
+    # Truncate generic exceptions so the tile stays readable.
+    snippet = text.splitlines()[0].strip()
+    if len(snippet) > 240:
+        snippet = snippet[:237] + "..."
+    return f"Token acquisition failed: {snippet}"
+
+
 def extract_application_id(connection_string: Optional[str]) -> Optional[str]:
     """Pull the ``ApplicationId=<guid>`` segment out of an App Insights
     connection string. Returns ``None`` when absent (older format)."""
@@ -69,7 +107,7 @@ def collect_production_metrics(
         bearer = _acquire_token()
     except Exception as exc:  # noqa: BLE001
         log.debug("token acquisition failed: %s", exc)
-        empty["diagnostics"] = {"reason": f"token acquisition failed: {exc}"}
+        empty["diagnostics"] = {"reason": _humanize_token_error(exc)}
         return empty
 
     # Pick a sensible bucket size: 1h for short windows, 6h for ~30d.

@@ -592,7 +592,10 @@ def _build_deployments_section(
 
     latest = windowed[-1]
     latest_conclusion = (latest.get("conclusion") or latest.get("status") or " - ").lower()
-    latest_label = latest.get("workflowName") or latest.get("name") or " - "
+    latest_label = _normalize_workflow_name(
+        latest.get("workflowName") or latest.get("name") or " - "
+    )
+    run_labels = [_normalize_workflow_name(lbl) for lbl in run_labels]
 
     cards: List[Dict[str, Any]] = [
         {
@@ -807,10 +810,28 @@ def _filter_workflow_runs(
 
 
 def _label_for_workflow_run(run: Dict[str, Any]) -> str:
-    name = run.get("workflowName") or run.get("name") or "workflow"
+    name = _normalize_workflow_name(
+        run.get("workflowName") or run.get("name") or "workflow"
+    )
     ts = run.get("createdAt") or ""
     short_ts = ts[:16].replace("T", " ") if isinstance(ts, str) else ""
     return f"{name} · {short_ts}".strip(" ·")
+
+
+def _normalize_workflow_name(name: str) -> str:
+    """Rewrite legacy display names so the dashboard reflects current
+    product naming even for repos whose workflow YAML still has the
+    old ``name:`` field. Pure display normalization — does not touch
+    the underlying workflow file or the link target.
+    """
+    if not isinstance(name, str) or not name:
+        return name
+    return (
+        name
+        .replace("AgentOps watchdog", "AgentOps doctor")
+        .replace("AgentOps Watchdog", "AgentOps Doctor")
+        .replace("agentops watchdog", "agentops doctor")
+    )
 
 
 def _badge_runs_label(count: int) -> str:

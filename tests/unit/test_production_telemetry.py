@@ -241,3 +241,39 @@ def test_run_query_treats_application_insights_error_response_as_failure(monkeyp
         "urllib.request.urlopen", fake_urlopen
     )
     assert _run_query("app-id", "bearer", "bad | kql") is None
+
+
+def test_humanize_token_error_handles_default_credential_wall_of_text():
+    """The DefaultAzureCredential failure message is a 1-2kb wall of text
+    citing every credential in the chain. The dashboard must not dump it
+    raw into the error tile — surface the actionable `az login` hint
+    instead."""
+    from agentops.agent.production_telemetry import _humanize_token_error
+
+    raw = (
+        "DefaultAzureCredential failed to retrieve a token from the "
+        "included credentials. Attempted credentials: "
+        "EnvironmentCredential: EnvironmentCredential authentication "
+        "unavailable. Environment variables are not fully configured. "
+        "...lots of text... AzureCliCredential: Failed to invoke the "
+        "Azure CLI AzurePowerShellCredential: Failed to invoke PowerShell. "
+        "Enable debug logging for additional information. "
+        "InteractiveBrowserCredential unavailable."
+    )
+    msg = _humanize_token_error(Exception(raw))
+    assert "az login" in msg
+    assert "DefaultAzureCredential" not in msg  # no wall of text
+    assert len(msg) < 300
+
+
+def test_humanize_token_error_no_cache_accounts():
+    from agentops.agent.production_telemetry import _humanize_token_error
+    msg = _humanize_token_error(Exception("SharedTokenCacheCredential: No accounts were found in the cache."))
+    assert "az login" in msg
+
+
+def test_humanize_token_error_truncates_unknown_exception():
+    from agentops.agent.production_telemetry import _humanize_token_error
+    msg = _humanize_token_error(Exception("x" * 1000))
+    assert len(msg) <= 300
+    assert msg.endswith("...") or "Token acquisition failed" in msg

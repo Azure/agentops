@@ -99,7 +99,7 @@ def _render_finding_detail(lines: List[str], finding: Finding, workspace=None) -
 def render_report(result: AnalysisResult) -> str:
     lines: List[str] = []
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    lines.append("# AgentOps Watchdog Report")
+    lines.append("# AgentOps Doctor Report")
     lines.append("")
     lines.append(f"_Generated: {now}_")
     lines.append("")
@@ -206,12 +206,12 @@ def render_report(result: AnalysisResult) -> str:
 def short_chat_summary(result: AnalysisResult) -> str:
     """Compact one-screen summary used by the Copilot Extension server."""
     if not result.findings:
-        return "✅ No issues detected by the AgentOps watchdog."
+        return "✅ No issues detected by the AgentOps doctor."
     counts = {Severity.CRITICAL: 0, Severity.WARNING: 0, Severity.INFO: 0}
     for f in result.findings:
         counts[f.severity] += 1
     parts = [
-        f"AgentOps watchdog found {len(result.findings)} finding(s): "
+        f"AgentOps doctor found {len(result.findings)} finding(s): "
         f"🚨 {counts[Severity.CRITICAL]} critical, "
         f"⚠️ {counts[Severity.WARNING]} warning, "
         f"ℹ️ {counts[Severity.INFO]} info."

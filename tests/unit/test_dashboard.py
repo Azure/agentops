@@ -430,3 +430,28 @@ def test_spec_conformance_subsection_inside_opex_row(tmp_path: Path):
     html = render_dashboard_html(payload)
     assert "Spec Conformance" in html
     assert "Workspace &amp; CI Hygiene" in html or "Workspace & CI Hygiene" in html
+
+
+def test_normalize_workflow_name_rewrites_legacy_watchdog():
+    """Existing repos generated before the rename have
+    ``name: AgentOps watchdog`` baked into their workflow YAML.
+    The dashboard must rewrite that to the current product name
+    when displaying it, so users do not see the old label in the
+    Latest run card."""
+    from agentops.agent.dashboard import _normalize_workflow_name
+
+    assert _normalize_workflow_name("AgentOps watchdog") == "AgentOps doctor"
+    assert _normalize_workflow_name("AgentOps Watchdog") == "AgentOps Doctor"
+    # Names without the legacy token pass through unchanged.
+    assert _normalize_workflow_name("AgentOps PR") == "AgentOps PR"
+    assert _normalize_workflow_name("") == ""
+
+
+def test_dashboard_short_chat_summary_does_not_say_watchdog():
+    """The Copilot Extension's short summary used to say
+    "AgentOps watchdog" — make sure the rename stuck."""
+    from agentops.agent.report import short_chat_summary
+    from agentops.agent.analyzer import AnalysisResult
+    text = short_chat_summary(AnalysisResult(findings=[]))
+    assert "watchdog" not in text.lower()
+    assert "doctor" in text.lower()

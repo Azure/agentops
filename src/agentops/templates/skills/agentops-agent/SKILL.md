@@ -1,17 +1,17 @@
 ---
 name: agentops-agent
-description: AgentOps Watchdog - surface regressions, latency spikes, error rates, and safety hits across AgentOps eval history, Azure Monitor traces, and Foundry control plane.
+description: AgentOps Doctor - surface regressions, latency spikes, error rates, and safety hits across AgentOps eval history, Azure Monitor traces, and Foundry control plane.
 ---
 
-# `agentops-agent` - Watchdog skill
+# `agentops-agent` - Doctor skill
 
 Use this skill when the user asks any of:
 
 - *"Are my agents healthy in production?"*
-- *"Run the watchdog"*
+- *"Run the doctor"*
 - *"Anything regressed in our last evals?"*
 - *"Show latency / error spikes from Azure Monitor"*
-- *"Open the AgentOps watchdog report"*
+- *"Open the AgentOps doctor report"*
 
 This skill is the front door to `agentops doctor` and the
 `agentops agent serve` Copilot Extension. It does **not** invent

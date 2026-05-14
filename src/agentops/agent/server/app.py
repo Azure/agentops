@@ -32,7 +32,7 @@ def create_app(
     from agentops.agent.server.chat import stream_reply
     from agentops.agent.server.protocol import parse_copilot_request
 
-    app = FastAPI(title="AgentOps Watchdog", version="1.0")
+    app = FastAPI(title="AgentOps Doctor", version="1.0")
 
     @app.get("/healthz")
     def healthz() -> JSONResponse:
@@ -42,7 +42,7 @@ def create_app(
     def index() -> str:
         return (
             "<!doctype html><html><body>"
-            "<h1>AgentOps Watchdog</h1>"
+            "<h1>AgentOps Doctor</h1>"
             "<p>Copilot Extension endpoint: <code>POST /agents/messages</code></p>"
             "<p>Health: <a href='/healthz'>/healthz</a></p>"
             "</body></html>"
