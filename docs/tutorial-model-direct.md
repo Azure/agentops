@@ -41,9 +41,9 @@ the deployment, and skips agent infrastructure entirely.
 `.agentops/data/smoke.jsonl` (one JSON object per line):
 
 ```jsonl
-{"id":"1","input":"Answer with exactly this sentence: Paris is the capital of France and one of Europe's major cultural centers.","expected":"Paris is the capital of France and one of Europe's major cultural centers."}
-{"id":"2","input":"Answer with exactly this sentence: Mars is known as the Red Planet because iron-rich dust gives its surface a reddish color.","expected":"Mars is known as the Red Planet because iron-rich dust gives its surface a reddish color."}
-{"id":"3","input":"Answer with exactly this sentence: Water has the chemical formula H2O because each molecule contains two hydrogen atoms and one oxygen atom.","expected":"Water has the chemical formula H2O because each molecule contains two hydrogen atoms and one oxygen atom."}
+{"input": "Answer with exactly this sentence: Paris is the capital of France and one of Europe's major cultural centers.", "expected": "Paris is the capital of France and one of Europe's major cultural centers."}
+{"input": "Answer with exactly this sentence: Mars is known as the Red Planet because iron-rich dust gives its surface a reddish color.", "expected": "Mars is known as the Red Planet because iron-rich dust gives its surface a reddish color."}
+{"input": "Answer with exactly this sentence: Water has the chemical formula H2O because each molecule contains two hydrogen atoms and one oxygen atom.", "expected": "Water has the chemical formula H2O because each molecule contains two hydrogen atoms and one oxygen atom."}
 ```
 
 The first model-direct smoke test intentionally uses short factual
