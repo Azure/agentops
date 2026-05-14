@@ -359,10 +359,13 @@ def _build_cards(
             "When several model deployments emit telemetry into the same "
             "App Insights resource, the headline aggregates them all."
         )
-        if n_models > 1:
-            help_text += "\n\nPer-model breakdown:\n" + "\n".join(
-                f"• {line}" for line in breakdown_lines
-            )
+        # Always include the per-deployment breakdown — even with a
+        # single model — so the documented dashboard behavior ("the
+        # Tokens card breaks it down per model deployment in the
+        # tooltip") holds true for every project shape.
+        help_text += "\n\nPer-model breakdown:\n" + "\n".join(
+            f"• {line}" for line in breakdown_lines
+        )
 
         cards.append({
             "key": "prod_tokens",

@@ -2014,6 +2014,155 @@ def _collapsible_section(title_inner_html: str, body_html: str) -> str:
     )
 
 
+def _render_loading_shell() -> str:
+    """Tiny self-contained HTML shell shown while the full dashboard
+    is being built server-side.
+
+    The shell renders **instantly** (no file IO, no subprocesses) so
+    the user sees a branded loading state immediately instead of a
+    black page. A small inline script preserves the query string and
+    fetches ``/?_partial=1`` to hydrate the real dashboard. The page
+    falls back to a plain link for clients with JavaScript disabled.
+    """
+    return """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentOps Dashboard - Loading...</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --card: #11151c;
+    --border: #1f2630;
+    --text: #e6ebf2;
+    --text-dim: #9aa3b2;
+    --accent: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif; }
+  .shell {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .loader-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 36px 44px;
+    text-align: center;
+    max-width: 420px;
+  }
+  .loader-brand {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--accent);
+    font-weight: 700;
+    margin-bottom: 18px;
+  }
+  .loader-title {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0 0 10px 0;
+  }
+  .loader-subtitle {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.55;
+    margin: 0 0 24px 0;
+  }
+  .loader-spinner {
+    width: 56px; height: 56px;
+    margin: 0 auto;
+    border-radius: 50%;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-dots {
+    margin-top: 22px;
+    display: flex; justify-content: center; gap: 6px;
+  }
+  .loader-dots span {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    opacity: 0.4;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  .loader-dots span:nth-child(2) { animation-delay: 0.18s; }
+  .loader-dots span:nth-child(3) { animation-delay: 0.36s; }
+  @keyframes pulse {
+    0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
+    40% { opacity: 1; transform: scale(1.0); }
+  }
+  .loader-fallback {
+    margin-top: 22px;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .loader-fallback a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="loader-card" role="status" aria-live="polite">
+    <div class="loader-brand">AgentOps</div>
+    <h1 class="loader-title">Loading dashboard</h1>
+    <p class="loader-subtitle">
+      Reading eval history, scanning CI/CD runs, and waking up the
+      doctor agent. This takes a few seconds on first load.
+    </p>
+    <div class="loader-spinner" aria-hidden="true"></div>
+    <div class="loader-dots" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <noscript>
+      <p class="loader-fallback">
+        JavaScript is disabled.
+        <a id="noscript-link" href="?_partial=1">Open the dashboard manually</a>.
+      </p>
+    </noscript>
+  </div>
+</div>
+<script>
+(function() {
+  // Preserve the query string (range/from/to) and add _partial=1 so
+  // the server returns the real dashboard. We replace document.open()
+  // / write() / close() rather than redirecting so the user does not
+  // see a flash of empty page.
+  var params = new URLSearchParams(window.location.search || '');
+  params.set('_partial', '1');
+  var url = window.location.pathname + '?' + params.toString();
+  // Update the <noscript> fallback link too, just in case.
+  var fallback = document.getElementById('noscript-link');
+  if (fallback) fallback.setAttribute('href', url);
+  fetch(url, {credentials: 'same-origin'})
+    .then(function(r) { return r.ok ? r.text() : Promise.reject(r.status); })
+    .then(function(html) {
+      document.open();
+      document.write(html);
+      document.close();
+    })
+    .catch(function(err) {
+      var card = document.querySelector('.loader-card');
+      if (!card) return;
+      card.innerHTML =
+        '<div class="loader-brand">AgentOps</div>' +
+        '<h1 class="loader-title">Dashboard failed to load</h1>' +
+        '<p class="loader-subtitle">Server returned an error (' +
+        String(err) + '). Try reloading the page or run ' +
+        '<code>agentops dashboard</code> again.</p>';
+    });
+})();
+</script>
+</body>
+</html>
+"""
+
+
 def render_dashboard_html(payload: Dict[str, Any]) -> str:
     """Render the dashboard from a payload built by
     :func:`build_dashboard_payload`. Returns a complete HTML document.
@@ -2073,10 +2222,18 @@ def render_dashboard_html(payload: Dict[str, Any]) -> str:
     compliance_url = payload.get("foundry_compliance_url")
     compliance_link = ""
     if compliance_url:
+        # The link opens Foundry's *native* Operate → Compliance view,
+        # which surfaces runtime guardrails (content filters, RAI,
+        # network posture) — NOT the doctor's findings. Make the label
+        # explicit so users do not expect to see the same findings
+        # echoed in Foundry.
         compliance_link = (
             f' <a class="section-link" href="{_html_escape(compliance_url)}" '
-            'target="_blank" rel="noopener noreferrer">'
-            'View in Foundry Compliance &#x2197;</a>'
+            'target="_blank" rel="noopener noreferrer" '
+            'title="Opens Foundry\u2019s Operate \u2192 Compliance page '
+            '(runtime guardrails). The doctor findings shown here are '
+            'AgentOps-only and are not echoed in Foundry.">'
+            'Open Foundry runtime compliance &#x2197;</a>'
         )
     watchdog_title = f"Doctor findings{compliance_link}"
 
@@ -3154,7 +3311,16 @@ def create_app(workspace: Path):
         range_: Optional[str] = Query(None, alias="range"),
         from_: Optional[str] = Query(None, alias="from"),
         to: Optional[str] = Query(None),
+        partial: Optional[str] = Query(None, alias="_partial"),
     ) -> HTMLResponse:
+        # The full render does file IO, history aggregation, and a
+        # `gh run list` subprocess for CI/CD, which together can take
+        # several seconds. To avoid a "black page" while the browser
+        # waits, ``/`` returns a tiny branded shell with an animated
+        # loader, and the shell fetches ``/?_partial=1`` to hydrate
+        # the real dashboard once the heavy work completes.
+        if not partial:
+            return HTMLResponse(_render_loading_shell())
         time_range = parse_time_range(range_, from_, to)
         payload = build_dashboard_payload(workspace, time_range=time_range)
         return HTMLResponse(render_dashboard_html(payload))

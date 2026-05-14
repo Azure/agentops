@@ -91,16 +91,22 @@ def test_build_cards_tokens_per_model_breakdown():
     assert "across 2 deployments" in tok["source"]
 
 
-def test_build_cards_tokens_single_model_no_breakdown():
-    """A single-model deployment should not emit a per-model bullet list."""
+def test_build_cards_tokens_single_model_includes_breakdown():
+    """A single-model deployment should still surface a per-model
+    breakdown in the tooltip — the documented behavior is that the
+    Tokens card *always* breaks the grand total down per deployment,
+    regardless of model count."""
     summary = {"rows": [{"invocations": 5, "errors": 0, "avg_ms": 100, "p95_ms": 500}]}
     tokens = {"rows": [
         {"model_name": "gpt-4o-mini", "input_tokens": 1000, "output_tokens": 500},
     ]}
     cards = _build_cards(summary, {}, {}, tokens)
     tok = next(c for c in cards if c["key"] == "prod_tokens")
+    # No "across N models" suffix when there is only one.
     assert "across" not in tok["unit"]
-    assert "Per-model breakdown" not in tok["help"]
+    # But the per-model breakdown bullet list IS present.
+    assert "Per-model breakdown" in tok["help"]
+    assert "gpt-4o-mini" in tok["help"]
 
 
 def test_error_rate_badge_thresholds():

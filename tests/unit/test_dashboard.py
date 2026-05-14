@@ -324,7 +324,16 @@ def test_create_app_serves_dashboard(tmp_path: Path):
     )
     client = TestClient(create_app(tmp_path))
 
+    # ``/`` returns the instant loading shell (no full render).
     r = client.get("/")
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert "AgentOps Dashboard - Loading" in r.text
+    assert "loader-spinner" in r.text
+    assert "_partial=1" in r.text  # JS hydrates from the partial endpoint
+
+    # ``/?_partial=1`` returns the full dashboard HTML.
+    r = client.get("/?_partial=1")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     assert "AgentOps Dashboard" in r.text
@@ -332,12 +341,12 @@ def test_create_app_serves_dashboard(tmp_path: Path):
     assert "range-pills" in r.text
     assert 'range=1d' in r.text and 'range=7d' in r.text and 'range=30d' in r.text
 
-    # Custom range round-trip.
-    r = client.get("/?range=custom&from=2020-01-01&to=2030-01-01")
+    # Custom range round-trip (also returns shell unless _partial is set).
+    r = client.get("/?range=custom&from=2020-01-01&to=2030-01-01&_partial=1")
     assert r.status_code == 200
 
     # Unknown range falls back to 7d default.
-    r = client.get("/?range=eternity")
+    r = client.get("/?range=eternity&_partial=1")
     assert r.status_code == 200
 
     r = client.get("/healthz")
