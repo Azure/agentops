@@ -86,18 +86,36 @@ similarity is good.
 ## 4. Wire into a PR check
 
 The `agentops-pr.yml` workflow shipped by `agentops workflow generate`
-already supports this — drop a baseline file in your repo (e.g.
-`.agentops/baseline/results.json`) and add this step:
+runs `agentops eval run --config agentops.yaml` **without** a baseline by
+default. To turn it into a regression gate, drop a baseline file in your
+repo and modify the eval step to pass `--baseline`:
+
+```powershell
+New-Item -ItemType Directory -Force .agentops\baseline | Out-Null
+Copy-Item .agentops\results\latest\results.json .agentops\baseline\results.json
+git add .agentops/baseline/results.json
+git commit -m "chore: capture AgentOps baseline"
+```
+
+Then edit `.github/workflows/agentops-pr.yml` (or the Azure DevOps
+equivalent under `.azuredevops/pipelines/`) and add `--baseline` to the
+eval step:
 
 ```yaml
 - name: Run AgentOps eval against baseline
   run: |
-    agentops eval run --baseline .agentops/baseline/results.json
+    agentops eval run \
+      --config agentops.yaml \
+      --baseline .agentops/baseline/results.json
 ```
 
 When a PR causes a metric to regress past your threshold, the run
 exits `2` and the workflow fails, blocking merge until somebody
 either fixes the regression or refreshes the baseline.
+
+> **Roadmap note.** Auto-detecting a committed baseline file from the
+> shipped templates (no manual workflow edit) is tracked in
+> [#155](https://github.com/Azure/agentops/issues/155).
 
 ## 5. Refresh the baseline
 
