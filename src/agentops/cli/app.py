@@ -691,6 +691,42 @@ def _resolve_agent_config_path(workspace: Path, explicit: Path | None) -> Path |
     return candidate if candidate.exists() else None
 
 
+def _port_in_use(host: str, port: int) -> bool:
+    """Return True when ``(host, port)`` is already accepting connections."""
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
+def _existing_agentops_dashboard(host: str, port: int) -> bool:
+    """Heuristic: hit ``/healthz`` and verify it looks like our dashboard.
+
+    The dashboard exposes ``GET /healthz`` returning ``{"status": "ok"}``.
+    Any non-200 / non-matching body means a different process owns the
+    port and we should not assume it's safe to point the browser at it.
+    """
+    import json
+    from urllib import error, request
+
+    try:
+        req = request.Request(
+            f"http://{host}:{port}/healthz",
+            headers={"Accept": "application/json"},
+        )
+        with request.urlopen(req, timeout=1.0) as resp:  # noqa: S310
+            if resp.status != 200:
+                return False
+            body = resp.read(256)
+        parsed = json.loads(body)
+        return isinstance(parsed, dict) and parsed.get("status") == "ok"
+    except (error.URLError, ValueError, OSError, TimeoutError):
+        return False
+
+
 @app.command("doctor")
 def cmd_doctor(
     workspace: Annotated[
@@ -1059,6 +1095,32 @@ def cmd_dashboard(
 
     fastapi_app = create_dashboard_app(workspace=workspace)
     url = f"http://{host}:{port}"
+
+    # Friendly port-conflict handling. Without this the user gets a raw
+    # uvicorn `[Errno 10048] only one usage of each socket address
+    # normally permitted` traceback when they accidentally run
+    # `agentops dashboard` twice. Probe the port: if an AgentOps
+    # dashboard is already serving on it, just open the browser and
+    # exit cleanly; otherwise tell the user how to pick a different port.
+    if _port_in_use(host, port):
+        if _existing_agentops_dashboard(host, port):
+            typer.echo(
+                f"AgentOps dashboard is already running on {url} - "
+                "opening browser. Stop the existing dashboard "
+                "(Ctrl+C in its terminal) before starting a new one.",
+                err=True,
+            )
+            try:
+                webbrowser.open(url)
+            except Exception:  # noqa: BLE001 - best effort
+                pass
+            raise typer.Exit(code=0)
+        typer.echo(
+            f"Port {port} is already in use by another process. "
+            f"Pick a different port with `agentops dashboard --port <N>`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
     typer.echo(f"AgentOps dashboard → {url}")
     typer.echo(f"workspace: {workspace}")
