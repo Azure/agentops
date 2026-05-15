@@ -72,7 +72,7 @@ jobs:
       # downloads when the artifact does not exist yet, instead of
       # surfacing a red error annotation on every first run.
       - name: Restore watchdog history (if any)
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: agentops-watchdog-history
           path: .agentops/agent/
