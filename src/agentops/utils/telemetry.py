@@ -1,6 +1,6 @@
 """Optional OpenTelemetry instrumentation for AgentOps evaluation runs.
 
-All OpenTelemetry imports are **lazy** — they only happen when tracing is
+All OpenTelemetry imports are **lazy** - they only happen when tracing is
 enabled via ``APPLICATIONINSIGHTS_CONNECTION_STRING`` (Azure Monitor) or
 the ``AGENTOPS_OTLP_ENDPOINT`` environment variable. When neither variable
 is set, every public function in this module is a no-op.
@@ -8,9 +8,9 @@ is set, every public function in this module is a no-op.
 Schema design follows three OTel semantic convention layers:
 https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/
 
-* **CICD** (``cicd.pipeline.*``)  — the eval run as a pipeline
-* **GenAI** (``gen_ai.*``)        — the agent/model invocation
-* **AgentOps** (``agentops.eval.*``) — evaluation-specific (score, threshold)
+* **CICD** (``cicd.pipeline.*``)  - the eval run as a pipeline
+* **GenAI** (``gen_ai.*``)        - the agent/model invocation
+* **AgentOps** (``agentops.eval.*``) - evaluation-specific (score, threshold)
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from contextlib import contextmanager
 from typing import Any, Generator, Optional
 
 # ---------------------------------------------------------------------------
-# Lazy globals — initialised on first call to ``init_tracing()``
+# Lazy globals - initialised on first call to ``init_tracing()``
 # ---------------------------------------------------------------------------
 _tracer: Any = None
 _tracing_enabled: bool = False
@@ -37,8 +37,8 @@ def init_tracing() -> None:
     Resolution order for the App Insights connection string:
 
     1. ``APPLICATIONINSIGHTS_CONNECTION_STRING`` (or the AgentOps-prefixed
-       variant) — explicit user configuration always wins.
-    2. ``AGENTOPS_OTLP_ENDPOINT`` — use a generic OTLP/HTTP exporter.
+       variant) - explicit user configuration always wins.
+    2. ``AGENTOPS_OTLP_ENDPOINT`` - use a generic OTLP/HTTP exporter.
     3. **Auto-discovery**: when neither of the above is set but
        ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` is, ask the Foundry project
        (via the ``azure-ai-projects`` SDK) for the connection string of
@@ -67,7 +67,7 @@ def init_tracing() -> None:
             )
             appinsights_connection_string = resolve_appinsights_connection_from_env()
         except Exception:  # noqa: BLE001
-            # Discovery is best-effort — never raise into init_tracing.
+            # Discovery is best-effort - never raise into init_tracing.
             appinsights_connection_string = None
 
     if not appinsights_connection_string and not otlp_endpoint:
@@ -78,14 +78,14 @@ def init_tracing() -> None:
     # as span attributes (not just metadata), which is exactly what an
     # eval / watchdog workflow needs to inspect a failing row in the
     # Foundry portal. The flag is "experimental" only in the sense that
-    # Azure may change the underlying schema — not that it is unsafe.
+    # Azure may change the underlying schema - not that it is unsafe.
     # Users who want to opt out can set the env var to "false" explicitly.
     os.environ.setdefault("AZURE_EXPERIMENTAL_ENABLE_GENAI_TRACING", "true")
 
     try:
         from opentelemetry import trace
     except ImportError:
-        # opentelemetry not installed — tracing stays disabled
+        # opentelemetry not installed - tracing stays disabled
         return
 
     if appinsights_connection_string:
@@ -99,7 +99,7 @@ def init_tracing() -> None:
             _tracing_enabled = True
             return
         except ImportError:
-            # Azure Monitor exporter not installed — try OTLP below if configured.
+            # Azure Monitor exporter not installed - try OTLP below if configured.
             pass
 
     if not otlp_endpoint:
@@ -130,7 +130,7 @@ def init_tracing() -> None:
         _tracer = trace.get_tracer("agentops")
         _tracing_enabled = True
     except ImportError:
-        # OTLP exporter not installed — tracing stays disabled
+        # OTLP exporter not installed - tracing stays disabled
         pass
 
 
@@ -436,6 +436,6 @@ def set_agent_analyze_result(
     span.set_attribute(
         "agentops.agent.sources_enabled", ",".join(sorted(sources_enabled))
     )
-    # The watchdog itself completes successfully even when findings exist —
+    # The watchdog itself completes successfully even when findings exist  - 
     # finding severity is observability, not pipeline failure.
     span.set_status(StatusCode.OK)

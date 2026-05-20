@@ -510,7 +510,7 @@ def install_github_skill(
             try:
                 dest.resolve().relative_to(target_dir.resolve())
             except ValueError:
-                continue  # path traversal — skip silently
+                continue  # path traversal - skip silently
 
             existed = dest.exists()
             if existed and not force:
@@ -598,7 +598,7 @@ def _register_copilot(resolved: Path) -> Path | None:
 def _register_cursor(resolved: Path) -> Path | None:
     """Register skills in `.cursor/rules/agentops.mdc`.
 
-    Always overwrites — this is a fully managed file.
+    Always overwrites - this is a fully managed file.
     """
     dest = resolved / ".cursor" / "rules" / "agentops.mdc"
     dest.parent.mkdir(parents=True, exist_ok=True)

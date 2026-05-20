@@ -6,15 +6,19 @@ description: Generate or update agentops.yaml (flat 1.0 schema) by inspecting th
 # AgentOps Config
 
 Generate `agentops.yaml` at the project root. The flat schema has only a
-handful of fields — most projects need just `version`, `agent`, and
+handful of fields - most projects need just `version`, `agent`, and
 `dataset`.
 
-## Step 0 — Prerequisites
+## Step 0 - Prerequisites
 
 1. `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
-2. `agentops init` if `agentops.yaml` does not exist.
+2. If `agentops.yaml` does not exist, run `agentops init` first. The init
+   wizard already collects the agent reference and dataset path, so
+   `agentops-config` is most useful when the user wants to **tweak** an
+   existing config (add thresholds, switch to a different agent target,
+   add HTTP auth headers, etc.) rather than create one from scratch.
 
-## Step 1 — Detect the agent target
+## Step 1 - Detect the agent target
 
 Search the codebase for the strongest signal and pick one:
 
@@ -29,13 +33,13 @@ Look in: `README.md`, `main.py`/`server.py`/`app.ts`, `.env`/`.env.local`,
 `.azure/<env>/.env`, `infra/`, IaC outputs. If nothing is found, ask the
 user once.
 
-## Step 2 — Detect the dataset
+## Step 2 - Detect the dataset
 
 If a JSONL with rows that include `input` already exists in the repo, use
 its path. Otherwise leave the default `.agentops/data/smoke.jsonl` and
 hand off to the `agentops-dataset` skill before the first run.
 
-## Step 3 — Write agentops.yaml
+## Step 3 - Write agentops.yaml
 
 Minimal example:
 
@@ -77,7 +81,7 @@ evaluators:           # rare - AgentOps auto-selects from agent + dataset
     threshold: ">=4"
 ```
 
-## Step 4 — Validate
+## Step 4 - Validate
 
 Run `agentops eval run` once. If the config is malformed AgentOps prints a
 clear error pointing at the offending key. Adjust and re-run.

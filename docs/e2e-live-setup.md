@@ -1,4 +1,4 @@
-# Live Azure E2E — one-time setup
+# Live Azure E2E - one-time setup
 
 This guide walks through the human-only steps needed to enable the **live**
 jobs in [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml). Once
@@ -13,7 +13,7 @@ and pick which scenario(s) to execute against real Azure resources.
 ## Prerequisites
 
 - An Azure subscription you control (the test subscription is fine).
-- A pre-created resource group in your subscription. Any RG works — the
+- A pre-created resource group in your subscription. Any RG works - the
   workflow reads its name from the `AZURE_E2E_RESOURCE_GROUP` Variable.
   Examples in this guide use `<YOUR_RESOURCE_GROUP>` as a placeholder.
 - Sufficient role on that RG to assign roles (Owner or `User Access
@@ -24,7 +24,7 @@ and pick which scenario(s) to execute against real Azure resources.
 
 ---
 
-## Step 1 — One-time shared infra (`bootstrap.bicep`)
+## Step 1 - One-time shared infra (`bootstrap.bicep`)
 
 Deploys the long-lived resources that every workflow run reuses:
 AI Services + Foundry project + `gpt-4o-mini` deployment + Container Apps
@@ -54,7 +54,7 @@ You will use these values in **Step 4**.
 
 ---
 
-## Step 2 — Foundry agents (manual, in the portal)
+## Step 2 - Foundry agents (manual, in the portal)
 
 Bicep does not yet declaratively manage Foundry agents, so create them
 once via the [Azure AI Foundry portal](https://ai.azure.com):
@@ -73,7 +73,7 @@ once via the [Azure AI Foundry portal](https://ai.azure.com):
 
 ---
 
-## Step 3 — Entra app + federated credential
+## Step 3 - Entra app + federated credential
 
 The workflow authenticates to Azure with OIDC. No secrets, just a trust
 relationship between the repo and an Entra app.
@@ -104,7 +104,7 @@ az role assignment create \
   --role "User Access Administrator" \
   --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG"
 
-# 3. Federated credential — bind the app to runs of e2e.yml on the
+# 3. Federated credential - bind the app to runs of e2e.yml on the
 #    feature/revamp-1.0 branch. Add another credential for `main` later.
 cat > /tmp/fic.json <<EOF
 {
@@ -121,7 +121,7 @@ echo "AZURE_TENANT_ID=$(az account show --query tenantId -o tsv)"
 echo "AZURE_SUBSCRIPTION_ID=$SUBSCRIPTION_ID"
 ```
 
-Save the three values printed at the end — you'll add them as
+Save the three values printed at the end - you'll add them as
 **Variables** (not secrets) in Step 4.
 
 > If you ever rename the branch or merge to `main`, add another federated
@@ -129,7 +129,7 @@ Save the three values printed at the end — you'll add them as
 
 ---
 
-## Step 4 — Add Actions Variables
+## Step 4 - Add Actions Variables
 
 GitHub → **Settings → Secrets and variables → Actions → Variables**
 (repo-level). Add the following keys.
@@ -163,7 +163,7 @@ No GitHub Secrets are required.
 
 ---
 
-## Step 5 — Trigger the workflow
+## Step 5 - Trigger the workflow
 
 The workflow is manual-only:
 
@@ -191,7 +191,7 @@ gh workflow run e2e.yml --ref feature/revamp-1.0 \
 
 ## Cost & lifecycle notes
 
-- **Bootstrap (one-time):** ~5 minutes to deploy. Idle costs are minimal —
+- **Bootstrap (one-time):** ~5 minutes to deploy. Idle costs are minimal  - 
   AI Services and ACA are pay-per-request, ACR Basic is ~$5/mo, Log
   Analytics has a generous free tier for low ingestion.
 - **Per run:** ~3–5 minutes total (ACA app comes up in ~30s, scenarios run

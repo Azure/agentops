@@ -60,8 +60,9 @@ def run_regression_check(
                 ),
                 recommendation=(
                     "Compare the latest run against the baseline runs in "
-                    "`.agentops/results/`, inspect prompt/model/dataset "
-                    "changes, and re-run the evaluation after the fix."
+                    "`.agentops/results/` or the Foundry Evaluations page, "
+                    "inspect prompt/model/dataset changes, and re-run the "
+                    "evaluation after the fix."
                 ),
                 source="results_history",
                 evidence={

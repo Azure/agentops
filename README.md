@@ -1,7 +1,7 @@
 <h1 align="center">AgentOps Toolkit</h1>
 
 <p align="center">
-AgentOps CLI for evaluation, observability, and operational workflows for Microsoft Foundry Agents and Models.
+A CLI, local Cockpit, and agent skills that help teams operationalize AI agents on Microsoft Foundry with standardized evaluation, observability, tracing, and operational practices.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@ AgentOps CLI for evaluation, observability, and operational workflows for Micros
 
 ## Overview
 
-AgentOps Toolkit is a CLI built on Microsoft Foundry that standardizes evaluation workflows for AI agents and models, helping teams run and automate evaluations with consistent inputs and outputs.
+AgentOps Toolkit is a CLI, local Cockpit, and agent skills that help teams operationalize AI agents on Microsoft Foundry with standardized evaluation, observability, tracing, and operational practices.
 
 The project enables:
 
@@ -28,6 +28,8 @@ The project enables:
 - Stable machine-readable outputs for automation
 - Human-readable reports for PR reviews and quality gates
 - Baseline comparison to detect regressions across runs
+- Doctor readiness analysis for repo, CI/CD, telemetry, and Foundry configuration
+- A local Cockpit that brings AgentOps artifacts together with Foundry and Azure Monitor navigation
 
 Core outputs:
 
@@ -61,7 +63,7 @@ This writes a single `agentops.yaml` at the project root and a tiny seed dataset
 
 ### 3) Configure your agent
 
-Pick one of these forms for the `agent:` field — AgentOps classifies the target automatically:
+Pick one of these forms for the `agent:` field - AgentOps classifies the target automatically:
 
 ```yaml
 agent: "my-rag:3"                          # Foundry prompt agent (name:version)
@@ -102,8 +104,8 @@ For Foundry targets, you can put `project_endpoint:` in `agentops.yaml` instead 
 
 Outputs land in `.agentops/results/latest/`:
 
-- `results.json` — machine-readable (versioned, stable schema)
-- `report.md` — human-readable, PR-friendly
+- `results.json` - machine-readable (versioned, stable schema)
+- `report.md` - human-readable, PR-friendly
 
 Capture the first successful run as a baseline:
 
@@ -133,17 +135,35 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 | `agentops init` | Bootstrap `agentops.yaml` and a seed dataset |
 | `agentops eval run [--config PATH] [--baseline PATH]` | Run an evaluation |
 | `agentops report generate [--in FILE]` | Regenerate `report.md` from `results.json` |
-| `agentops workflow generate` | Generate GitHub Actions workflow |
+| `agentops workflow generate` | Generate GitHub Actions or Azure DevOps workflows; deploy stages can delegate to azd |
 | `agentops skills install [--platform <p>]` | Install coding agent skills (Copilot, Claude) |
 | `agentops mcp serve` | Start the AgentOps MCP server (stdio). Requires `pip install "agentops-toolkit[mcp] @ git+https://github.com/Azure/agentops.git@develop"`. |
-| `agentops doctor` | Run the watchdog over your run history. Requires `pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`. |
-| `agentops agent serve` | Start the watchdog as a FastAPI Copilot Extension. Requires `pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`. |
+| `agentops doctor` | Run Doctor readiness analysis over eval history, workspace configuration, telemetry, and Foundry context. Requires `pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`. |
+| `agentops cockpit` | Open the local read-only Cockpit for eval history, Doctor findings, CI/CD status, telemetry readiness, and Foundry/Azure links. Requires `pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`. |
+| `agentops agent serve` | Start Doctor as a FastAPI Copilot Extension. Requires `pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`. |
+
+## AgentOps Cockpit
+
+`agentops cockpit` opens a localhost command center for the current workspace. It reads repo-side AgentOps artifacts first - `.agentops/results/`, generated reports, Doctor history, and workflow files - then deep-links into Microsoft Foundry and Azure Monitor for runtime observability.
+
+Microsoft Foundry remains the system of record for runtime metrics, traces, evaluations, and red teaming. Cockpit complements Foundry by surfacing the repo-side signals AgentOps owns - eval history, Doctor findings, readiness checklist, CI/CD status - and routing every runtime question back to the matching Foundry surface.
+
+Cockpit sections, in display order:
+
+- **Foundry connection** - project endpoint, Azure tenant, active agent, and App Insights status.
+- **Foundry launchpad** - one-click deep-links grouped by configured agent, project-wide Foundry surfaces, and Application Insights.
+- **Observability readiness** - checklist for tracing, continuous evaluation, scheduled evaluation, red team scans, and alerts.
+- **AgentOps Doctor** - findings from the latest `agentops doctor` run.
+- **Local eval history** and **Quality metrics** - results, deltas, and score trends from `.agentops/results/`.
+- **Production telemetry** - live App Insights cards (when tracing is wired).
+- **CI/CD Pipelines** - GitHub Actions workflow status (when `gh` is available).
+- **Next actions** - contextual recommendations derived from the sections above.
 
 ## Documentation
 
-- [Quickstart tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-quickstart.md) — bootstrap a workspace and run one evaluation.
-- [End-to-end tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md) — full do-it-yourself tour: Foundry hosted agent, baseline comparison, GitFlow CI/CD, watchdog.
-- [Copilot skills tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md) — use AgentOps skills to have Copilot configure, run, explain, and wire evals into CI.
+- [Quickstart tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-quickstart.md) - bootstrap a workspace and run one evaluation.
+- [End-to-end tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md) - full do-it-yourself tour: Foundry hosted agent, baseline comparison, GitFlow CI/CD, watchdog.
+- [Copilot skills tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md) - use AgentOps skills to have Copilot configure, run, explain, and wire evals into CI.
 - Per-scenario tutorials:
   - [Foundry hosted agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-basic-foundry-agent.md)
   - [Model-direct](https://github.com/Azure/agentops/blob/main/docs/tutorial-model-direct.md)
@@ -152,7 +172,8 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
   - [Agent with tool calling](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-workflow.md)
   - [HTTP-deployed agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-http-agent.md)
 - [Baseline comparison](https://github.com/Azure/agentops/blob/main/docs/tutorial-baseline-comparison.md)
-- [Watchdog agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-watchdog.md)
+- [Doctor agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-doctor.md)
+  - Concept overview: [Doctor explained](https://github.com/Azure/agentops/blob/main/docs/doctor-explained.md)
 - [CI/CD with GitHub Actions](https://github.com/Azure/agentops/blob/main/docs/ci-github-actions.md)
 - [Built-in evaluator reference](https://github.com/Azure/agentops/blob/main/docs/foundry-evaluation-sdk-built-in-evaluators.md)
 - [Release process](https://github.com/Azure/agentops/blob/main/docs/release-process.md)

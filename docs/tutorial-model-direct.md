@@ -1,4 +1,4 @@
-# Tutorial — model-direct evaluation
+# Tutorial - model-direct evaluation
 
 Evaluate a Foundry **model deployment** (`gpt-4o`, `gpt-5.1`, …) with
 no agent layer in between. Use this as your quality floor: if the raw
@@ -32,7 +32,7 @@ agent: "model:gpt-4o"           # <-- key part: the `model:` prefix
 dataset: .agentops/data/smoke.jsonl
 ```
 
-`agent: "model:<deployment>"` is the model-direct shape — AgentOps
+`agent: "model:<deployment>"` is the model-direct shape - AgentOps
 classifies it as `model_direct`, sends each row's `input` straight to
 the deployment, and skips agent infrastructure entirely.
 
@@ -65,8 +65,8 @@ agentops eval run
 
 Outputs land in `.agentops/results/<timestamp>/` and are mirrored to `.agentops/results/latest/`:
 
-- `results.json` — machine-readable
-- `report.md` — Markdown summary with thresholds, per-row metrics,
+- `results.json` - machine-readable
+- `report.md` - Markdown summary with thresholds, per-row metrics,
   and aggregate scores.
 
 Exit code `0` = all thresholds passed, `2` = at least one failed,
@@ -97,7 +97,7 @@ per-metric deltas (🟢 improved / 🔴 regressed / ⚪ unchanged).
 
 For those, see:
 
-- [tutorial-basic-foundry-agent.md](tutorial-basic-foundry-agent.md) — Foundry prompt agent
-- [tutorial-rag.md](tutorial-rag.md) — RAG agent (rows with `context`)
-- [tutorial-http-agent.md](tutorial-http-agent.md) — agent deployed as an HTTP service
-- [tutorial-agent-workflow.md](tutorial-agent-workflow.md) — agent with tool calling
+- [tutorial-basic-foundry-agent.md](tutorial-basic-foundry-agent.md) - Foundry prompt agent
+- [tutorial-rag.md](tutorial-rag.md) - RAG agent (rows with `context`)
+- [tutorial-http-agent.md](tutorial-http-agent.md) - agent deployed as an HTTP service
+- [tutorial-agent-workflow.md](tutorial-agent-workflow.md) - agent with tool calling

@@ -1,15 +1,15 @@
-"""Production telemetry queries for the local AgentOps dashboard.
+"""Production telemetry queries for the local AgentOps cockpit.
 
 Pulls live signals (invocation count, error rate, p95 latency, token
 spend) from the Application Insights resource that the Foundry project
-endpoint resolves to, and reshapes them as dashboard cards.
+endpoint resolves to, and reshapes them as cockpit cards.
 
 All work is best-effort:
 
 * If the App Insights connection string is not discoverable, the
-  dashboard skips this section silently.
+  cockpit skips this section silently.
 * If the API call fails (auth, network, resource not found, etc.), the
-  module returns an empty payload — the rest of the dashboard keeps
+  module returns an empty payload - the rest of the cockpit keeps
   rendering.
 
 The KQL hits ``https://api.applicationinsights.io/v1/apps/<appId>/query``
@@ -28,9 +28,47 @@ from typing import Any, Dict, List, Optional, Tuple
 log = logging.getLogger(__name__)
 
 # In-process cache so /api/production and the HTML render don't hammer the
-# App Insights API on every dashboard refresh (default refresh: 15s).
+# App Insights API on every cockpit refresh (default refresh: 15s).
 _CACHE_TTL_SECONDS = 60.0
 _cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def _humanize_token_error(exc: Exception) -> str:
+    """Convert a verbose ``DefaultAzureCredential`` failure into a short,
+    actionable message suitable for the cockpit's error tile.
+
+    The Azure SDK concatenates the failure reason of every credential
+    in the chain into a single multi-line string ("EnvironmentCredential:
+    ... WorkloadIdentityCredential: ... AzureCliCredential: ..."). The
+    full text is technically accurate but useless for a user staring at
+    a cockpit. Detect the common failure shapes and surface a
+    one-sentence remediation instead.
+    """
+    text = str(exc)
+    lower = text.lower()
+    # The Azure CLI sign-in is the path users on dev machines actually
+    # take, so prioritize that hint when its sub-credential failed.
+    cli_failed = (
+        "azureclicredential: failed to invoke the azure cli" in lower
+        or "no accounts were found in the cache" in lower
+    )
+    if cli_failed:
+        return (
+            "Not signed in to Azure. Run `az login` in the same shell "
+            "you launched `agentops cockpit` from, then refresh."
+        )
+    if "defaultazurecredential failed to retrieve a token" in lower:
+        return (
+            "Azure authentication failed: DefaultAzureCredential could "
+            "not acquire a token. On a dev machine the usual fix is "
+            "`az login`. See cockpit logs for the full credential "
+            "chain."
+        )
+    # Truncate generic exceptions so the tile stays readable.
+    snippet = text.splitlines()[0].strip()
+    if len(snippet) > 240:
+        snippet = snippet[:237] + "..."
+    return f"Token acquisition failed: {snippet}"
 
 
 def extract_application_id(connection_string: Optional[str]) -> Optional[str]:
@@ -47,11 +85,11 @@ def collect_production_metrics(
     *,
     lookback_hours: int = 24,
 ) -> Dict[str, Any]:
-    """Return a dashboard-ready payload of live telemetry cards.
+    """Return a cockpit-ready payload of live telemetry cards.
 
     Always returns a dict with ``has_data`` and ``cards`` keys; values
     populate when the App Insights query succeeds. The ``lookback_hours``
-    parameter is substituted into the KQL templates so the dashboard
+    parameter is substituted into the KQL templates so the cockpit
     time-range picker can drive how far back each card looks.
     """
     empty = {"has_data": False, "cards": [], "diagnostics": {}}
@@ -69,15 +107,14 @@ def collect_production_metrics(
         bearer = _acquire_token()
     except Exception as exc:  # noqa: BLE001
         log.debug("token acquisition failed: %s", exc)
-        empty["diagnostics"] = {"reason": f"token: {exc}"}
-        _cache[cache_key] = (now, empty)
+        empty["diagnostics"] = {"reason": _humanize_token_error(exc)}
         return empty
 
     # Pick a sensible bucket size: 1h for short windows, 6h for ~30d.
     bucket = "1h" if lookback_hours <= 48 else "6h"
 
-    # Fire all four queries in parallel — sequential round-trips to App
-    # Insights were the single biggest source of dashboard latency
+    # Fire all four queries in parallel - sequential round-trips to App
+    # Insights were the single biggest source of cockpit latency
     # (~4s vs ~1s after this change).
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=4) as ex:
@@ -102,13 +139,28 @@ def collect_production_metrics(
         tokens = fut_tokens.result() or {}
 
     if summary is None:
-        empty["diagnostics"] = {"reason": "summary query failed"}
-        _cache[cache_key] = (now, empty)
+        empty["diagnostics"] = {
+            "reason": "Application Insights query failed (auth, network, "
+            "or KQL error). See `agentops cockpit` console logs for the "
+            "exact message."
+        }
         return empty
 
     cards = _build_cards(summary, invocations_buckets, latency_buckets, tokens, lookback_hours)
     payload = {"has_data": bool(cards), "cards": cards, "diagnostics": {}}
-    _cache[cache_key] = (now, payload)
+    # Only cache populated payloads. Caching empty results masks
+    # transient failures (token expiry, App Insights 5xx, etc.) for up
+    # to a minute — exactly the case the user notices as "the
+    # cockpit suddenly stopped showing telemetry". A subsequent
+    # refresh will retry the query immediately.
+    if cards:
+        _cache[cache_key] = (now, payload)
+    else:
+        payload["diagnostics"] = {
+            "reason": "App Insights returned 0 invocations for the "
+            "selected window. If you expect data here, widen the time "
+            "range or verify that traces are being emitted."
+        }
     return payload
 
 
@@ -181,7 +233,7 @@ def _acquire_token() -> str:
 
     Cached in-process for 5 minutes to avoid re-running the expensive
     DefaultAzureCredential chain (IMDS timeouts on non-Azure boxes are
-    the single biggest source of dashboard latency).
+    the single biggest source of cockpit latency).
     """
     cached = _token_cache.get("bearer")
     now = time.time()
@@ -189,7 +241,7 @@ def _acquire_token() -> str:
         return cached[1]
 
     from azure.identity import DefaultAzureCredential
-    credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
+    credential = DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
     token = credential.get_token("https://api.applicationinsights.io/.default")
     _token_cache["bearer"] = (now, token.token)
     return token.token
@@ -200,9 +252,16 @@ _token_cache: Dict[str, Tuple[float, str]] = {}
 
 
 def _run_query(app_id: str, bearer: str, kql: str) -> Optional[Dict[str, Any]]:
-    """POST a KQL query to the App Insights REST endpoint."""
+    """POST a KQL query to the App Insights REST endpoint.
+
+    Returns ``None`` on any failure (HTTP error, network issue, or an
+    Application Insights query error returned with HTTP 200). The
+    caller treats ``None`` as a recoverable failure and surfaces the
+    reason via diagnostics rather than caching a misleading empty
+    result.
+    """
     try:
-        # urllib stays in stdlib — avoids dragging requests as a dep.
+        # urllib stays in stdlib - avoids dragging requests as a dep.
         import json as _json
         from urllib import error, request
 
@@ -219,6 +278,14 @@ def _run_query(app_id: str, bearer: str, kql: str) -> Optional[Dict[str, Any]]:
         with request.urlopen(req, timeout=10) as resp:  # noqa: S310
             data = resp.read()
         parsed = _json.loads(data)
+        # App Insights surfaces query failures with HTTP 200 and an
+        # ``error`` object — surface those as failures so the caller
+        # does not mistake them for "no data".
+        if isinstance(parsed, dict) and parsed.get("error"):
+            err = parsed["error"]
+            msg = err.get("message") if isinstance(err, dict) else str(err)
+            log.debug("app insights query reported error: %s", msg)
+            return None
         return _flatten_first_table(parsed)
     except (error.URLError, ValueError, KeyError) as exc:
         log.debug("app insights query failed: %s", exc)
@@ -271,22 +338,6 @@ def _build_cards(
     window_label = _window_label(lookback_hours)
 
     cards.append({
-        "key": "prod_invocations",
-        "label": f"Invocations ({window_label})",
-        "value": invocations,
-        "unit": "calls",
-        "series": inv_series or [float(invocations)],
-        "labels": inv_labels,
-        "badge": {"label": "live", "tone": "info"},
-        "help": (
-            "Number of agent invocations and LLM chat spans recorded in "
-            "App Insights for the selected window. Counts dependencies "
-            "whose name contains invoke_agent or chat."
-        ),
-        "source": "Agent invocations and LLM spans recorded in App Insights.",
-    })
-
-    cards.append({
         "key": "prod_errors",
         "label": f"Error rate ({window_label})",
         "value": f"{int(error_rate * 100)}%",
@@ -298,9 +349,9 @@ def _build_cards(
             "Share of invocations whose dependency telemetry reported "
             "success = false."
             "\n\nBadge tiers:"
-            "\n• 0% — healthy"
-            "\n• under 5% — watch"
-            "\n• 5% or more — unhealthy"
+            "\n• 0% - healthy"
+            "\n• under 5% - watch"
+            "\n• 5% or more - unhealthy"
         ),
         "source": "Share of invocations that reported a failure status.",
     })
@@ -308,7 +359,7 @@ def _build_cards(
     cards.append({
         "key": "prod_p95",
         "label": f"P95 latency ({window_label})",
-        "value": f"{p95_seconds:.2f}" if p95_seconds is not None else "—",
+        "value": f"{p95_seconds:.2f}" if p95_seconds is not None else " - ",
         "unit": "s",
         "series": lat_series or ([p95_seconds] if p95_seconds is not None else [0.0]),
         "labels": lat_labels,
@@ -318,67 +369,12 @@ def _build_cards(
             "Includes invoke_agent spans (full agent turn with tool "
             "calls) and chat spans (direct model calls)."
             "\n\nBadge tiers:"
-            "\n• under 2s — snappy"
-            "\n• 2 to 5s — acceptable"
-            "\n• over 5s — sluggish"
+            "\n• under 2s - snappy"
+            "\n• 2 to 5s - acceptable"
+            "\n• over 5s - sluggish"
         ),
         "source": "95th-percentile end-to-end duration of agent and chat spans.",
     })
-
-    token_rows = (tokens or {}).get("rows") or []
-    if token_rows:
-        # token_rows now arrives one entry per model (gen_ai.request.model).
-        # Aggregate a grand total for the headline and keep the per-model
-        # breakdown for the tooltip so users with multiple deployments can
-        # still see which model drives the spend.
-        per_model: List[Tuple[str, int, int]] = []
-        total_in = 0
-        total_out = 0
-        for trow in token_rows:
-            name = str(trow.get("model_name") or "unknown")
-            i_t = int(trow.get("input_tokens") or 0)
-            o_t = int(trow.get("output_tokens") or 0)
-            total_in += i_t
-            total_out += o_t
-            per_model.append((name, i_t, o_t))
-
-        total = total_in + total_out
-        n_models = len(per_model)
-        unit = f"{_format_tokens(total_in)} in / {_format_tokens(total_out)} out"
-        if n_models > 1:
-            unit = f"{unit} · across {n_models} models"
-
-        breakdown_lines = [
-            f"{name}: {_format_tokens(i_t)} in / {_format_tokens(o_t)} out"
-            for name, i_t, o_t in per_model
-        ]
-
-        help_text = (
-            "Total prompt and completion tokens reported by the model via "
-            "gen_ai.usage.input_tokens and gen_ai.usage.output_tokens. "
-            "When several model deployments emit telemetry into the same "
-            "App Insights resource, the headline aggregates them all."
-        )
-        if n_models > 1:
-            help_text += "\n\nPer-model breakdown:\n" + "\n".join(
-                f"• {line}" for line in breakdown_lines
-            )
-
-        cards.append({
-            "key": "prod_tokens",
-            "label": f"Tokens ({window_label})",
-            "value": _format_tokens(total),
-            "unit": unit,
-            "value_kind": "text",
-            "series": [float(total)],
-            "labels": [f"input: {total_in} · output: {total_out}"],
-            "badge": {"label": "live", "tone": "info"},
-            "help": help_text,
-            "source": (
-                "Total prompt and completion tokens reported by the model"
-                + (f" across {n_models} deployments." if n_models > 1 else ".")
-            ),
-        })
 
     return cards
 

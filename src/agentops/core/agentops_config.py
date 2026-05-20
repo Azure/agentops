@@ -20,8 +20,8 @@ The minimal valid config is three lines::
     dataset: ./qa.jsonl
 
 The :func:`classify_agent` helper resolves ``agent`` into one of four target
-kinds — ``foundry_prompt``, ``foundry_hosted``, ``http_json``, or
-``model_direct`` — based on the value shape and optional ``protocol`` field.
+kinds - ``foundry_prompt``, ``foundry_hosted``, ``http_json``, or
+``model_direct`` - based on the value shape and optional ``protocol`` field.
 """
 
 from __future__ import annotations
@@ -173,9 +173,9 @@ class AgentOpsConfig(BaseModel):
     ``agent``
         The thing under evaluation. One of:
 
-        * ``"<name>:<version>"`` — a Foundry prompt agent (e.g. ``"my-rag:3"``).
-        * ``"https://..."`` — a Foundry hosted endpoint or any HTTP/JSON agent.
-        * ``"model:<deployment>"`` — a Foundry model deployment (raw model).
+        * ``"<name>:<version>"`` - a Foundry prompt agent (e.g. ``"my-rag:3"``).
+        * ``"https://..."`` - a Foundry hosted endpoint or any HTTP/JSON agent.
+        * ``"model:<deployment>"`` - a Foundry model deployment (raw model).
 
         See :func:`classify_agent` for the full resolution table.
 
@@ -267,7 +267,7 @@ class AgentOpsConfig(BaseModel):
     @classmethod
     def _default_publish_for_cloud(cls, data: Any) -> Any:
         """``execution: cloud`` implies ``publish: true`` when publish is
-        omitted, because a cloud run is always recorded by Foundry — there
+        omitted, because a cloud run is always recorded by Foundry - there
         is no way to "not publish" a server-side run.
         """
         if not isinstance(data, dict):
@@ -310,7 +310,7 @@ class AgentOpsConfig(BaseModel):
     def _validate_publish_compat(self) -> "AgentOpsConfig":
         """``execution: cloud`` + ``publish: false`` is a contradiction.
 
-        A cloud run is always recorded by Foundry — the eval definition,
+        A cloud run is always recorded by Foundry - the eval definition,
         run, and artifacts live on the Foundry side as a side effect of
         executing there. ``publish: false`` cannot prevent that.
         """
@@ -408,7 +408,7 @@ class TargetResolution:
 def _looks_like_foundry_url(url: str) -> bool:
     """Return ``True`` when ``url`` matches a Foundry hosted endpoint pattern.
 
-    Heuristic — Foundry URLs include the segment ``/agents/`` and the host
+    Heuristic - Foundry URLs include the segment ``/agents/`` and the host
     ends in a Foundry-recognized domain. We err on the side of accepting more
     URLs as Foundry hosted (the user can force ``http-json`` via ``protocol``).
     """

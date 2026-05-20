@@ -4,7 +4,7 @@ This module replaces the layered ``bundle.yaml`` system. There is no
 user-facing ``scenario`` concept. Evaluators are picked from two inputs:
 
 1. The resolved target kind (agent vs model). Model targets only get the
-   baseline quality evaluators — agent-specific evaluators are skipped even
+   baseline quality evaluators - agent-specific evaluators are skipped even
    if the dataset contains those fields.
 2. The shape of the dataset rows:
 
@@ -23,7 +23,7 @@ threshold. The runner uses these presets to instantiate
 
 Power users can override the auto-selection by listing evaluator names in
 ``agentops.yaml`` under ``evaluators:``. When set, the override list is the
-final word — no auto-detection runs.
+final word - no auto-detection runs.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ class EvaluatorPreset:
     #: ``query`` and ``response`` kwargs from plain strings to conversation
     #: message lists that include the agent's tool_call + tool_result trace.
     #: This is required for evaluators that judge agent reasoning (e.g.
-    #: TaskAdherence, IntentResolution) — without the trace they only see a
+    #: TaskAdherence, IntentResolution) - without the trace they only see a
     #: short final answer and consistently score it as 1/5.
     needs_conversation: bool = False
 
@@ -206,7 +206,7 @@ _TOOL_USE_EVALUATORS: Tuple[EvaluatorPreset, ...] = (
             "tool_definitions": "$tool_definitions",
         },
         # azure-ai-evaluation's TaskAdherenceEvaluator returns a binary
-        # 0/1 score (0 = flagged, 1 = adheres) — *not* a 1–5 Likert scale
+        # 0/1 score (0 = flagged, 1 = adheres) - *not* a 1–5 Likert scale
         # like IntentResolutionEvaluator. We default to >=0.5 so a score
         # of 1.0 passes and 0.0 fails.
         default_threshold=_t("task_adherence", ">=", 0.5),
@@ -267,7 +267,7 @@ class DatasetShape:
 def detect_dataset_shape(dataset_path: Path, *, sample: int = 50) -> DatasetShape:
     """Inspect up to ``sample`` rows of ``dataset_path`` and report the shape.
 
-    Truthy values are required — empty strings, empty lists, and ``None`` do
+    Truthy values are required - empty strings, empty lists, and ``None`` do
     not count as the field being present.
     """
     if not dataset_path.exists():
@@ -332,7 +332,7 @@ def select_evaluators(
 ) -> List[EvaluatorPreset]:
     """Return the ordered list of evaluators to run.
 
-    When ``overrides`` is provided it wins outright — the inference rules are
+    When ``overrides`` is provided it wins outright - the inference rules are
     bypassed. Each name must exist in :data:`CATALOG` or a ``ValueError`` is
     raised.
 
@@ -392,7 +392,7 @@ def merge_thresholds(
 
     User entries override the preset default for the same metric. Metrics
     listed by the user that don't correspond to any selected preset are kept
-    as-is — the threshold engine will report them as unmet rather than
+    as-is - the threshold engine will report them as unmet rather than
     silently drop them.
     """
     by_metric: Dict[str, Threshold] = {}

@@ -13,7 +13,13 @@ _TEMPLATE_PACKAGE = "agentops.templates"
 # CI/CD platforms supported by ``agentops workflow generate``.
 PLATFORMS: Tuple[str, ...] = ("github", "azure-devops")
 
-# Per-platform mapping of workflow kind → (template path inside package,
+# Deployment template modes. ``placeholder`` keeps the stack-agnostic
+# scaffold; ``azd`` delegates infrastructure and app deployment to Azure
+# Developer CLI. ``auto`` selects ``azd`` only when the target repo already
+# has ``azure.yaml``.
+DEPLOY_MODES: Tuple[str, ...] = ("auto", "placeholder", "azd")
+
+# Per-platform mapping of workflow kind -> (template path inside package,
 # output path in repo).
 #
 # The four templates form a complete GenAIOps GitFlow scaffold:
@@ -54,6 +60,28 @@ _TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
     },
 }
 
+_AZD_TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
+    "github": {
+        "dev": ("workflows/agentops-deploy-dev-azd.yml", ".github/workflows/agentops-deploy-dev.yml"),
+        "qa": ("workflows/agentops-deploy-qa-azd.yml", ".github/workflows/agentops-deploy-qa.yml"),
+        "prod": ("workflows/agentops-deploy-prod-azd.yml", ".github/workflows/agentops-deploy-prod.yml"),
+    },
+    "azure-devops": {
+        "dev": (
+            "pipelines/azuredevops/agentops-deploy-dev-azd.yml",
+            ".azuredevops/pipelines/agentops-deploy-dev.yml",
+        ),
+        "qa": (
+            "pipelines/azuredevops/agentops-deploy-qa-azd.yml",
+            ".azuredevops/pipelines/agentops-deploy-qa.yml",
+        ),
+        "prod": (
+            "pipelines/azuredevops/agentops-deploy-prod-azd.yml",
+            ".azuredevops/pipelines/agentops-deploy-prod.yml",
+        ),
+    },
+}
+
 ALL_KINDS: tuple[str, ...] = ("pr", "dev", "qa", "prod", "watchdog")
 
 
@@ -62,6 +90,7 @@ class CicdResult:
     """Result of generating CI/CD workflow files."""
 
     platform: str = "github"
+    deploy_mode: str = "placeholder"
     created_files: List[Path] = field(default_factory=list)
     overwritten_files: List[Path] = field(default_factory=list)
     skipped_files: List[Path] = field(default_factory=list)
@@ -97,6 +126,7 @@ def generate_cicd_workflows(
     force: bool = False,
     kinds: Sequence[str] | None = None,
     platform: str = "github",
+    deploy_mode: str = "auto",
 ) -> CicdResult:
     """Generate AgentOps GitFlow CI/CD workflows.
 
@@ -114,6 +144,10 @@ def generate_cicd_workflows(
             ``.azuredevops/pipelines/*.yml`` using Azure DevOps Pipelines.
             The conceptual workflows (PR gate + three deploy stages) are
             identical across platforms.
+        deploy_mode: ``"placeholder"`` writes the stack-agnostic deploy
+            scaffold, ``"azd"`` writes Azure Developer CLI provision/deploy
+            workflows, and ``"auto"`` selects ``"azd"`` only when
+            ``azure.yaml`` exists in the target repo.
 
     Returns:
         CicdResult with platform and paths of created, overwritten, or
@@ -123,20 +157,33 @@ def generate_cicd_workflows(
         raise ValueError(
             f"unknown platform {platform!r}; valid: {', '.join(PLATFORMS)}"
         )
+    if deploy_mode not in DEPLOY_MODES:
+        raise ValueError(
+            f"unknown deploy mode {deploy_mode!r}; valid: {', '.join(DEPLOY_MODES)}"
+        )
 
     if kinds is None:
         kinds = ALL_KINDS
 
-    result = CicdResult(platform=platform)
+    directory = directory.resolve()
+    effective_deploy_mode = deploy_mode
+    if effective_deploy_mode == "auto":
+        effective_deploy_mode = "azd" if (directory / "azure.yaml").exists() else "placeholder"
+
+    result = CicdResult(platform=platform, deploy_mode=effective_deploy_mode)
     templates_root = files(_TEMPLATE_PACKAGE)
     template_map = _TEMPLATES_BY_PLATFORM[platform]
+    azd_template_map = _AZD_TEMPLATES_BY_PLATFORM.get(platform, {})
 
     seen: set[str] = set()
     for kind in kinds:
         if kind in seen or kind not in template_map:
             continue
         seen.add(kind)
-        template_path, output_rel = template_map[kind]
+        if effective_deploy_mode == "azd" and kind in azd_template_map:
+            template_path, output_rel = azd_template_map[kind]
+        else:
+            template_path, output_rel = template_map[kind]
         output_path = (directory / output_rel).resolve()
         _write_template(templates_root, template_path, output_path, force, result)
 

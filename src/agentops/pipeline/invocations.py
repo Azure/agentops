@@ -54,7 +54,7 @@ def _summarise_tool_calls(calls: List[Any]) -> str:
     """Build a short, human-readable summary of executed tool calls.
 
     Used as a last-resort fallback when the agent never produces
-    assistant text — quality evaluators still need a non-empty
+    assistant text - quality evaluators still need a non-empty
     ``response`` string to score.
     """
     parts: List[str] = []
@@ -86,9 +86,7 @@ def _credential() -> Any:
     if _CREDENTIAL_SINGLETON is None:
         from azure.identity import DefaultAzureCredential  # noqa: WPS433
 
-        _CREDENTIAL_SINGLETON = DefaultAzureCredential(
-            exclude_developer_cli_credential=True
-        )
+        _CREDENTIAL_SINGLETON = DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
     return _CREDENTIAL_SINGLETON
 
 

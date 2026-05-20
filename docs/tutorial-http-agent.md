@@ -282,8 +282,9 @@ The report should show text-quality metrics plus tool metrics such as
 ## 7. Add a PR evaluation gate
 
 For a tutorial or a new repo, generate only the PR gate until Azure OIDC
-and deploy placeholders are configured. This avoids the common mistake of
-pushing DEV/QA/PROD deploy workflows that immediately fail on `main`.
+and either `azure.yaml` or real deploy commands are configured. This
+avoids the common mistake of pushing DEV/QA/PROD deploy workflows that
+immediately fail on `main`.
 
 ```powershell
 agentops workflow generate --kinds pr --force

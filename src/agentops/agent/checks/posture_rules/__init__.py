@@ -29,7 +29,7 @@ def _build_registry() -> Dict[str, RuleFn]:
     # NOTE: two former rules (content_filter, network) were retired
     # because Foundry's Operate -> Compliance surface now covers them
     # natively (Guardrails tab + Security posture tab respectively).
-    # The watchdog's job in this area is the **complementary** half —
+    # The watchdog's job in this area is the **complementary** half  - 
     # runtime telemetry, identity scope, pipeline hygiene. The dropped
     # rule modules are kept on disk so users with custom posture
     # extensions importing them keep working.

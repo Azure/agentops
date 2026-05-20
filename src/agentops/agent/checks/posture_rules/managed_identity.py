@@ -6,7 +6,7 @@ etc.). The WAF-AI Security pillar recommends using a managed identity
 for those calls instead of connection strings or keys.
 
 This rule fires when the account ``identity.type`` is missing or
-``None`` — i.e. neither system-assigned nor user-assigned managed
+``None`` - i.e. neither system-assigned nor user-assigned managed
 identity is configured.
 """
 

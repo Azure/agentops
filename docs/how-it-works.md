@@ -34,13 +34,13 @@ src/
     │   └── app.py             # Typer CLI definition (init, eval run, report,
     │                              # workflow, skills, mcp, agent)
     │
-    ├── core/                  # Pure data layer — no Azure imports, no I/O
+    ├── core/                  # Pure data layer - no Azure imports, no I/O
     │   ├── agentops_config.py # Flat 1.0 `agentops.yaml` Pydantic schema
     │   ├── config_loader.py   # YAML → AgentOpsConfig
     │   ├── evaluators.py      # Evaluator catalog (presets + auto-selection)
     │   └── results.py         # RunResult / RowResult / TargetInfo / RunSummary
     │
-    ├── pipeline/              # Run orchestration — ADD execution flows here
+    ├── pipeline/              # Run orchestration - ADD execution flows here
     │   ├── orchestrator.py    # End-to-end `eval run` driver
     │   ├── runtime.py         # Pre-flight checks (deps, creds, endpoints)
     │   ├── invocations.py     # Per-row agent / model invocation strategies
@@ -62,10 +62,12 @@ src/
     │
     └── templates/             # Starter files for `agentops init`
         ├── agentops.yaml      # Minimal flat config (the single config file)
-        ├── callable_adapter.py
-        ├── data/              # Sample dataset rows (.jsonl)
+        ├── smoke.jsonl        # Sample dataset
+        ├── agent.yaml         # Doctor config seed
         ├── skills/            # Coding agent skill templates
-        └── workflows/         # CI/CD workflow templates
+        ├── workflows/         # GitHub Actions workflow templates
+        ├── pipelines/         # Azure DevOps pipeline templates
+        └── agent-server/      # Doctor-as-Copilot-Extension deploy scaffold
 ```
 
 ### Where to Add New Code
@@ -78,7 +80,7 @@ src/
 | Add a new invocation strategy (new target kind) | `pipeline/invocations.py` + `core/agentops_config.py::classify_agent` |
 | Tweak the report layout | `pipeline/reporter.py` |
 | Add or change a publish destination | `pipeline/publisher.py` (Classic) or `pipeline/cloud_runner.py` (New Foundry); register in `pipeline/orchestrator.py` |
-| Add a new CLI command | `cli/app.py` (keep it thin — delegate to `pipeline/` or `services/`) |
+| Add a new CLI command | `cli/app.py` (keep it thin - delegate to `pipeline/` or `services/`) |
 | Add a starter template | `templates/` + update `pyproject.toml` package-data |
 | Add a coding agent skill | `templates/skills/<name>/SKILL.md` + sync to `plugins/agentops/skills/` (`scripts/sync-skills.{sh,ps1}`) |
 
@@ -90,12 +92,12 @@ When you run `agentops eval run`, the following happens step by step:
  1. CLI parses args               (cli/app.py → cmd_eval_run)
  2. Loader parses agentops.yaml   (core/config_loader.py → AgentOpsConfig)
  3. classify_agent resolves kind  (foundry_prompt | foundry_hosted | http_json | model_direct)
- 4. Pre-flight checks run         (pipeline/runtime.py — deps, creds, endpoint reachability)
+ 4. Pre-flight checks run         (pipeline/runtime.py - deps, creds, endpoint reachability)
  5. Orchestrator iterates dataset (pipeline/orchestrator.py)
- 6. Per row: invoke target        (pipeline/invocations.py — picks Foundry / HTTP / model API)
- 7. Per row: run evaluators       (core/evaluators.py — auto-selected from row shape)
+ 6. Per row: invoke target        (pipeline/invocations.py - picks Foundry / HTTP / model API)
+ 7. Per row: run evaluators       (core/evaluators.py - auto-selected from row shape)
  8. Aggregate metrics             (orchestrator builds RunResult)
- 9. Evaluate thresholds           (pipeline/thresholds.py — pass/fail per metric)
+ 9. Evaluate thresholds           (pipeline/thresholds.py - pass/fail per metric)
 10. Write results.json + report.md (pipeline/reporter.py)
 11. Sync .agentops/results/latest/
 12. (Optional) Publish local metrics to Classic Foundry (`publish: foundry`)
@@ -105,24 +107,27 @@ When you run `agentops eval run`, the following happens step by step:
 
 ## CLI Commands
 
-| Command | Purpose | Status |
-|---|---|---|
-| `agentops init [--path DIR]` | Scaffold `.agentops/` workspace with starter config, bundles, datasets, and data. Also installs coding agent skills. | Available |
-| `agentops eval run` | Execute an evaluation (main command) | Available |
-| `agentops eval run --baseline <results.json>` | Run an eval and add a comparison against a previous result | Available |
-| `agentops skills install` | Install AgentOps coding agent skills (Copilot, Claude) into the target project | Available |
-| `agentops run list\|show` | List or inspect past runs | Planned (stub) |
-| `agentops run view <id> [--entry N]` | Deep-inspect a run | Planned (stub) |
-| `agentops report generate [--in <path>] [--out <path>]` | Regenerate `report.md` from `results.json` | Available |
-| `agentops report show\|export` | View or export reports | Planned (stub) |
-| `agentops bundle list\|show` | Browse bundle definitions | Planned (stub) |
-| `agentops dataset validate\|describe\|import` | Validate, describe, and import datasets | Planned (stub) |
-| `agentops config validate\|show` | Validate and inspect configuration | Planned (stub) |
-| `agentops workflow generate` | Generate CI/CD workflow file | Available |
-| `agentops trace init` | Initialize tracing setup | Planned (stub) |
-| `agentops monitor setup\|show\|configure` | Monitoring setup and operations | Planned (stub) |
-| `agentops model list` | List model deployments from Foundry project | Planned (stub) |
-| `agentops agent list` | List agent deployments from Foundry project | Planned (stub) |
+| Command | Purpose |
+|---|---|
+| `agentops --version` | Print the installed version |
+| `agentops explain [COMMAND...]` | Long-form, paged manual for any command (top-level dispatcher) |
+| `agentops init` | Idempotent scaffold + azd-style wizard + skill install (the only onboarding command) |
+| `agentops init show` | Inspect resolved config (`agentops.yaml` + `.azure/<env>/.env`) |
+| `agentops init explain` | Long-form `init` manual |
+| `agentops eval run` | Run an evaluation; the main command |
+| `agentops eval run --baseline <results.json>` | Run an eval and add a baseline comparison section to the report |
+| `agentops report generate` | Regenerate `report.md` from a `results.json` |
+| `agentops doctor` | Run the AgentOps Doctor (readiness, regression, OpEx, safety, history) |
+| `agentops doctor explain` | Long-form Doctor manual |
+| `agentops cockpit` | Local read-only Cockpit UI (FastAPI) that links out to Foundry |
+| `agentops workflow generate` | Generate CI/CD workflows for GitHub Actions or Azure DevOps |
+| `agentops skills install` | (Re)install coding-agent skills (Copilot or Claude) |
+| `agentops mcp serve` | Run AgentOps as an MCP server for code agents |
+| `agentops agent serve` | Run the Doctor as a Copilot Extension / FastAPI server |
+
+Every command supports `--help` for a terse description; long-form,
+paged documentation is accessible through `agentops explain` (or the
+local `… explain` subcommand where one exists).
 
 ## Exit Code Contract
 
@@ -134,10 +139,12 @@ Exit codes are part of the public API. **Do not change their meaning.**
 | `2` | Execution succeeded **but** one or more thresholds failed |
 | `1` | Runtime or configuration error |
 
-## User Workspace Structure (`agentops.yaml` + `.agentops/`)
+## User Workspace Structure (`agentops.yaml` + `.agentops/` + `.azure/`)
 
 The flat 1.0 schema places **one config file** at the project root and a
 small directory for datasets, run history, and (optionally) skills.
+`agentops init` also bootstraps an azd-compatible `.azure/<env>/.env`
+file so the same workspace can be driven by AgentOps and `azd`.
 
 ```
 <project root>/
@@ -145,12 +152,19 @@ small directory for datasets, run history, and (optionally) skills.
 ├── .agentops/
 │   ├── data/
 │   │   └── smoke.jsonl        # Sample dataset (created by `agentops init`)
-│   └── results/
-│       ├── 2026-05-06T14-30-22Z/  # Timestamped run (immutable history)
-│       │   ├── results.json
-│       │   ├── report.md
-│       │   └── cloud_evaluation.json   # only when `publish:` was set
-│       └── latest/                # Mirror of the most recent run
+│   ├── results/
+│   │   ├── 2026-05-06T14-30-22Z/  # Timestamped run (immutable history)
+│   │   │   ├── results.json
+│   │   │   ├── report.md
+│   │   │   └── cloud_evaluation.json   # only when `publish:` was set
+│   │   └── latest/                # Mirror of the most recent run
+│   └── agent/                 # Doctor history (history.jsonl + report.md)
+├── .azure/                    # azd-compatible env folder (shared with azd)
+│   ├── config.json            # `defaultEnvironment` pointer
+│   ├── .gitignore
+│   └── dev/
+│       └── .env               # AZURE_AI_FOUNDRY_PROJECT_ENDPOINT,
+│                              #  APPLICATIONINSIGHTS_CONNECTION_STRING, …
 └── .github/skills/            # Coding agent skills (Copilot)
     ├── agentops-config/SKILL.md
     ├── agentops-eval/SKILL.md
@@ -303,7 +317,7 @@ Selection rules (in order):
 
 AI-assisted evaluators use an LLM as a judge. Use instruction-following
 models like `gpt-4o`, `gpt-4o-mini`, `gpt-4.1`, `gpt-4.1-mini`. **Avoid
-reasoning models** (`o1`, `o3`, `o4`, `gpt-5`, `gpt-5-nano`) — they are
+reasoning models** (`o1`, `o3`, `o4`, `gpt-5`, `gpt-5-nano`) - they are
 slower, more expensive, and may not follow the evaluator prompt format.
 
 Set the deployment via env vars before running:
@@ -395,7 +409,7 @@ strategy is derived from the target kind resolved by `classify_agent()`:
 | `model_direct` | Azure OpenAI chat completions via `AIProjectClient.get_openai_client()` |
 
 `AIProjectClient.get_openai_client()` is **always called without
-`api_version`** — passing one explicitly has historically caused 404s
+`api_version`** - passing one explicitly has historically caused 404s
 in this codebase.
 
 ## How evaluators and metrics work
@@ -483,7 +497,7 @@ python -m pytest tests/ -x -q
 ```
 
 Key testing rules:
-- All Azure SDK calls must be **mocked** — tests run without Azure credentials.
+- All Azure SDK calls must be **mocked** - tests run without Azure credentials.
 - Tests must assert correct **exit codes** (0, 1, 2).
 - Unit tests go in `tests/unit/`, integration tests in `tests/integration/`.
 
@@ -515,5 +529,5 @@ Azure SDK dependencies are kept separate so the CLI stays lightweight and tests 
 3. **Try it out**: `agentops init` then explore `.agentops/`
 4. **Read the models**: `core/models.py` is the best single file to understand all data structures
 5. **Follow the flow**: `cli/app.py` → `services/runner.py` → `backends/` → `core/`
-6. **Keep CLI thin**: never put logic in `cli/app.py` — delegate to `services/`
-7. **Keep core pure**: never import Azure SDK in `core/` — that belongs in `backends/` and `services/`
+6. **Keep CLI thin**: never put logic in `cli/app.py` - delegate to `services/`
+7. **Keep core pure**: never import Azure SDK in `core/` - that belongs in `backends/` and `services/`

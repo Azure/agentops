@@ -1,4 +1,4 @@
-"""Tests for `agentops workflow generate` (4-template GenAIOps GitFlow scaffold)."""
+"""Tests for `agentops workflow generate` (5-template GenAIOps GitFlow scaffold)."""
 
 from pathlib import Path
 
@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from agentops.cli.app import app
 from agentops.services.cicd import (
     ALL_KINDS,
+    DEPLOY_MODES,
     generate_cicd_workflow,
     generate_cicd_workflows,
 )
@@ -176,6 +177,43 @@ def test_dev_template_triggers_and_environment(tmp_path: Path) -> None:
     assert "needs: build" in content
 
 
+def test_auto_deploy_mode_uses_placeholder_without_azure_yaml(tmp_path: Path) -> None:
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["dev"])
+    content = (tmp_path / _DEV_PATH).read_text(encoding="utf-8")
+
+    assert result.deploy_mode == "placeholder"
+    assert "Build (placeholder)" in content
+    assert "Deploy (placeholder)" in content
+
+
+def test_auto_deploy_mode_uses_azd_when_azure_yaml_exists(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["dev"])
+    content = (tmp_path / _DEV_PATH).read_text(encoding="utf-8")
+
+    assert result.deploy_mode == "azd"
+    assert "Azure/setup-azd@v2" in content
+    assert content.count("azd env new") == 2
+    assert "azd provision --no-prompt" in content
+    assert "azd env refresh" in content
+    assert "azd deploy --no-prompt" in content
+    assert "Build (placeholder)" not in content
+    assert "./agentops/deploy.sh" not in content
+
+
+def test_force_azd_deploy_mode_without_azure_yaml(tmp_path: Path) -> None:
+    result = generate_cicd_workflows(
+        directory=tmp_path, kinds=["dev"], deploy_mode="azd"
+    )
+    content = (tmp_path / _DEV_PATH).read_text(encoding="utf-8")
+
+    assert result.deploy_mode == "azd"
+    assert "No azure.yaml found" in content
+    assert "azd provision --no-prompt" in content
+    assert "azd deploy --no-prompt" in content
+
+
 def test_qa_template_triggers_and_environment(tmp_path: Path) -> None:
     generate_cicd_workflows(directory=tmp_path, kinds=["qa"])
     content = (tmp_path / _QA_PATH).read_text(encoding="utf-8")
@@ -203,6 +241,10 @@ def test_prod_template_triggers_and_environment_with_reviewer_hint(tmp_path: Pat
 
 def test_all_kinds_constant_matches_documented_set() -> None:
     assert set(ALL_KINDS) == {"pr", "dev", "qa", "prod", "watchdog"}
+
+
+def test_deploy_modes_constant_matches_documented_set() -> None:
+    assert set(DEPLOY_MODES) == {"auto", "placeholder", "azd"}
 
 
 # ---------------------------------------------------------------------------
@@ -333,6 +375,26 @@ def test_azure_devops_deploy_templates_use_deployment_job(tmp_path: Path) -> Non
         assert "agentops eval run" in content
 
 
+def test_azure_devops_azd_deploy_mode_uses_azd_lifecycle(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+
+    result = generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=["dev"],
+        deploy_mode="auto",
+    )
+    content = (tmp_path / _ADO_DEV).read_text(encoding="utf-8")
+
+    assert result.deploy_mode == "azd"
+    assert "curl -fsSL https://aka.ms/install-azd.sh | bash" in content
+    assert content.count("azd env new") == 2
+    assert "azd provision --no-prompt" in content
+    assert "azd env refresh" in content
+    assert "azd deploy --no-prompt" in content
+    assert "./agentops/deploy.sh" not in content
+
+
 def test_unknown_platform_raises(tmp_path: Path) -> None:
     import pytest
 
@@ -364,5 +426,9 @@ def test_cli_platform_invalid_value_fails(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 1
-    out = result.stdout.lower()
+    # ``result.output`` is the combined stdout+stderr stream. Newer Click
+    # releases stopped mixing stderr into ``result.stdout`` by default, so
+    # the platform-error message (which is emitted with ``err=True``) lives
+    # in ``result.output``. Use that to stay version-tolerant.
+    out = result.output.lower()
     assert "unknown" in out and "platform" in out

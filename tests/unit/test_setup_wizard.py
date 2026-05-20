@@ -1,0 +1,545 @@
+"""Tests for :mod:`agentops.services.setup_wizard` (azd-first refactor)."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import pytest
+
+from agentops.services.setup_wizard import (
+    WizardAnswers,
+    apply_answers,
+    collect_snapshot,
+    discover_defaults,
+    mask_secret,
+    run_wizard,
+    validate_agent,
+    validate_dataset,
+    validate_project_endpoint,
+)
+from agentops.utils.azd_env import parse_env_file
+
+
+# ---------------------------------------------------------------------------
+# Validation
+# ---------------------------------------------------------------------------
+
+
+def test_validate_project_endpoint_accepts_https():
+    assert validate_project_endpoint("https://acct.services.ai.azure.com/api/projects/p") is None
+
+
+def test_validate_project_endpoint_rejects_garbage():
+    err = validate_project_endpoint("not a url")
+    assert err and "https://" in err
+
+
+def test_validate_project_endpoint_blank_is_ok():
+    assert validate_project_endpoint("") is None
+
+
+def test_validate_agent_accepts_name_version():
+    assert validate_agent("my-agent:7") is None
+
+
+def test_validate_agent_accepts_model_deployment():
+    assert validate_agent("model:gpt-4o") is None
+
+
+def test_validate_agent_accepts_url():
+    assert validate_agent("https://api.example.com/chat") is None
+
+
+def test_validate_agent_rejects_bare_name():
+    err = validate_agent("just-a-name")
+    assert err and "<name>:<version>" in err
+
+
+def test_validate_dataset_requires_existing_file(tmp_path: Path):
+    err = validate_dataset(".agentops/data/missing.jsonl", tmp_path)
+    assert err and "does not exist" in err
+
+    (tmp_path / "data.jsonl").write_text("{}\n", encoding="utf-8")
+    assert validate_dataset("data.jsonl", tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# Defaults discovery
+# ---------------------------------------------------------------------------
+
+
+def _seed_azd_env(workspace: Path, env_name: str, lines: dict[str, str]) -> Path:
+    env_dir = workspace / ".azure" / env_name
+    env_dir.mkdir(parents=True)
+    env_path = env_dir / ".env"
+    env_path.write_text(
+        "\n".join(f"{k}={v}" for k, v in lines.items()) + "\n",
+        encoding="utf-8",
+    )
+    (workspace / ".azure" / "config.json").write_text(
+        json.dumps({"version": 1, "defaultEnvironment": env_name}) + "\n",
+        encoding="utf-8",
+    )
+    return env_path
+
+
+def test_discover_defaults_reads_yaml_agent_and_dataset(tmp_path: Path):
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-bot:2\ndataset: ./qa.jsonl\n",
+        encoding="utf-8",
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.agent == "my-bot:2"
+    assert defaults.dataset == "./qa.jsonl"
+
+
+def test_discover_defaults_reads_project_endpoint_from_azd_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(
+        tmp_path,
+        "dev",
+        {
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": (
+                '"https://from-azd.services.ai.azure.com/api/projects/p"'
+            ),
+        },
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint == (
+        "https://from-azd.services.ai.azure.com/api/projects/p"
+    )
+
+
+def test_discover_defaults_reads_appinsights_from_azd_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(
+        tmp_path,
+        "dev",
+        {"APPLICATIONINSIGHTS_CONNECTION_STRING": '"InstrumentationKey=zzz"'},
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.appinsights_connection_string == "InstrumentationKey=zzz"
+
+
+def test_discover_defaults_falls_back_to_legacy_agentops_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Workspaces without .azure/ keep getting their old .agentops/.env values."""
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    (tmp_path / ".agentops").mkdir()
+    (tmp_path / ".agentops" / ".env").write_text(
+        'APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=legacy"\n',
+        encoding="utf-8",
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.appinsights_connection_string == "InstrumentationKey=legacy"
+
+
+def test_discover_defaults_env_var_fallback_for_project_endpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """When no env file holds the value, the process environment is consulted."""
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://from-shell.services.ai.azure.com/api/projects/p",
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint and "from-shell" in defaults.project_endpoint
+
+
+# ---------------------------------------------------------------------------
+# Apply / persistence
+# ---------------------------------------------------------------------------
+
+
+def test_apply_answers_writes_agent_and_dataset_to_yaml(tmp_path: Path):
+    answers = WizardAnswers(agent="my-bot:7", dataset=".agentops/data/smoke.jsonl")
+    result = apply_answers(tmp_path, answers)
+    assert result.yaml_updated is True
+    text = (tmp_path / "agentops.yaml").read_text(encoding="utf-8")
+    assert "version: 1" in text
+    assert "agent: my-bot:7" in text
+    assert "dataset: .agentops/data/smoke.jsonl" in text
+
+
+def test_apply_answers_does_not_write_project_endpoint_to_yaml(tmp_path: Path):
+    """The azd-first refactor stops persisting endpoints in agentops.yaml."""
+    answers = WizardAnswers(
+        project_endpoint="https://acct.services.ai.azure.com/api/projects/p"
+    )
+    apply_answers(tmp_path, answers)
+    yaml_path = tmp_path / "agentops.yaml"
+    if yaml_path.exists():
+        assert "project_endpoint" not in yaml_path.read_text(encoding="utf-8")
+
+
+def test_apply_answers_writes_endpoint_to_azd_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    answers = WizardAnswers(
+        project_endpoint="https://acct.services.ai.azure.com/api/projects/p",
+    )
+    result = apply_answers(tmp_path, answers)
+    assert result.env_updated is True
+    assert result.azd_env_created is True
+    assert result.azd_env_name == "dev"
+    assert result.env_path == (tmp_path / ".azure" / "dev" / ".env").resolve()
+    parsed = parse_env_file(result.env_path)
+    assert parsed["AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"] == (
+        "https://acct.services.ai.azure.com/api/projects/p"
+    )
+
+
+def test_apply_answers_writes_appinsights_to_azd_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    answers = WizardAnswers(
+        appinsights_connection_string="InstrumentationKey=abc;IngestionEndpoint=https://x/"
+    )
+    result = apply_answers(tmp_path, answers)
+    assert result.env_updated is True
+    parsed = parse_env_file(result.env_path)
+    assert (
+        parsed["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+        == "InstrumentationKey=abc;IngestionEndpoint=https://x/"
+    )
+
+
+def test_apply_answers_creates_gitignore_for_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Bootstrapping .azure must drop a .gitignore so secrets cannot leak."""
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    apply_answers(
+        tmp_path,
+        WizardAnswers(appinsights_connection_string="InstrumentationKey=zzz"),
+    )
+    gitignore = tmp_path / ".azure" / ".gitignore"
+    assert gitignore.is_file()
+    contents = gitignore.read_text(encoding="utf-8")
+    assert "*/.env" in contents
+
+
+def test_apply_answers_sets_default_env_in_config_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    apply_answers(
+        tmp_path,
+        WizardAnswers(project_endpoint="https://acct.services.ai.azure.com/api/projects/p"),
+    )
+    config = json.loads((tmp_path / ".azure" / "config.json").read_text(encoding="utf-8"))
+    assert config["defaultEnvironment"] == "dev"
+
+
+def test_apply_answers_uses_existing_azd_env_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(tmp_path, "prod", {"AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": "https://old/"})
+    result = apply_answers(
+        tmp_path,
+        WizardAnswers(project_endpoint="https://new.services.ai.azure.com/api/projects/p"),
+    )
+    assert result.azd_env_created is False
+    assert result.azd_env_name == "prod"
+    assert result.env_path == (tmp_path / ".azure" / "prod" / ".env").resolve()
+
+
+def test_apply_answers_preserves_existing_yaml_fields(tmp_path: Path):
+    """A second invocation must not blow away fields the user did not touch."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: keep-me:1\n"
+        "dataset: ./data.jsonl\n"
+        "thresholds:\n"
+        "  coherence: '>=3'\n",
+        encoding="utf-8",
+    )
+    apply_answers(
+        tmp_path,
+        WizardAnswers(project_endpoint="https://acct.services.ai.azure.com/api/projects/p"),
+    )
+    text = (tmp_path / "agentops.yaml").read_text(encoding="utf-8")
+    assert "agent: keep-me:1" in text
+    assert "thresholds" in text
+    assert "coherence" in text
+
+
+def test_apply_answers_no_op_when_nothing_provided(tmp_path: Path):
+    result = apply_answers(tmp_path, WizardAnswers())
+    assert result.yaml_updated is False
+    assert result.env_updated is False
+    assert not (tmp_path / "agentops.yaml").exists()
+    assert not (tmp_path / ".azure").exists()
+
+
+def test_apply_answers_is_idempotent_when_values_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    answers = WizardAnswers(
+        project_endpoint="https://acct.services.ai.azure.com/api/projects/p",
+        agent="my-bot:7",
+        dataset=".agentops/data/smoke.jsonl",
+        appinsights_connection_string="InstrumentationKey=zzz",
+    )
+    apply_answers(tmp_path, answers)
+
+    result = apply_answers(tmp_path, answers)
+    assert result.yaml_updated is False
+    assert result.env_updated is False
+    assert result.yaml_fields == []
+    assert result.env_keys == []
+
+
+def test_apply_answers_preserves_env_file_comments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Line-preserving edits keep comments and untouched keys."""
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    env_path = _seed_azd_env(
+        tmp_path,
+        "dev",
+        {"AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": "https://old/"},
+    )
+    # Add comment + unrelated key by hand.
+    env_path.write_text(
+        "# managed by azd\n"
+        '"AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"=https://old/\n'.replace('"', "")
+        + 'AZURE_SUBSCRIPTION_ID=11111111-1111-1111-1111-111111111111\n'
+        + '# trailing comment\n',
+        encoding="utf-8",
+    )
+    apply_answers(
+        tmp_path,
+        WizardAnswers(project_endpoint="https://new.services.ai.azure.com/api/projects/p"),
+    )
+    text = env_path.read_text(encoding="utf-8")
+    assert "# managed by azd" in text
+    assert "# trailing comment" in text
+    assert "AZURE_SUBSCRIPTION_ID=11111111-1111-1111-1111-111111111111" in text
+    assert "https://new.services.ai.azure.com" in text
+    assert "https://old/" not in text
+
+
+# ---------------------------------------------------------------------------
+# Interactive loop (with injected prompt)
+# ---------------------------------------------------------------------------
+
+
+def _scripted_prompt(answers: list[str]):
+    queue = list(answers)
+
+    def _prompt(question: str, default):  # noqa: ANN001
+        if not queue:
+            raise AssertionError(f"Wizard asked extra question: {question}")
+        return queue.pop(0)
+
+    return _prompt
+
+
+def test_run_wizard_collects_all_four_answers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    # Isolate from the developer shell so all four questions are asked.
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+
+    (tmp_path / "data.jsonl").write_text("{}\n", encoding="utf-8")
+    prompt = _scripted_prompt(
+        [
+            "https://acct.services.ai.azure.com/api/projects/p",
+            "my-bot:9",
+            "data.jsonl",
+            "InstrumentationKey=zzz",
+        ]
+    )
+    answers = run_wizard(tmp_path, prompt=prompt, echo=lambda _msg: None)
+    assert answers.project_endpoint == "https://acct.services.ai.azure.com/api/projects/p"
+    assert answers.agent == "my-bot:9"
+    assert answers.dataset == "data.jsonl"
+    assert answers.appinsights_connection_string == "InstrumentationKey=zzz"
+
+
+def test_run_wizard_skips_appinsights_when_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+
+    (tmp_path / "data.jsonl").write_text("{}\n", encoding="utf-8")
+    prompt = _scripted_prompt(
+        [
+            "https://acct.services.ai.azure.com/api/projects/p",
+            "my-bot:9",
+            "data.jsonl",
+        ]
+    )
+    answers = run_wizard(
+        tmp_path, prompt=prompt, echo=lambda _msg: None, include_appinsights=False
+    )
+    assert answers.appinsights_connection_string is None
+
+
+def test_run_wizard_empty_input_keeps_current(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: keep:1\ndataset: keep.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
+    # With idempotent skip-on-default, agent/dataset are silently reused.
+    # Only the 2 still-empty questions (project_endpoint, appinsights) get
+    # asked, and the user presses Enter on both — yielding zero updates.
+    prompt = _scripted_prompt(["", ""])
+    answers = run_wizard(
+        tmp_path, prompt=prompt, echo=lambda _msg: None, reconfigure=False
+    )
+    assert answers.project_endpoint is None
+    assert answers.agent is None
+    assert answers.dataset is None
+    assert answers.appinsights_connection_string is None
+
+
+def test_run_wizard_re_prompts_on_invalid_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+
+    (tmp_path / "data.jsonl").write_text("{}\n", encoding="utf-8")
+    prompt = _scripted_prompt(
+        [
+            "not a url",
+            "https://acct.services.ai.azure.com/api/projects/p",
+            "bare-name",
+            "my-bot:2",
+            "data.jsonl",
+            "",
+        ]
+    )
+    errors: list[str] = []
+    answers = run_wizard(
+        tmp_path,
+        prompt=prompt,
+        echo=lambda msg: errors.append(msg) if msg.lstrip().startswith("!") else None,
+    )
+    assert answers.project_endpoint == "https://acct.services.ai.azure.com/api/projects/p"
+    assert answers.agent == "my-bot:2"
+    assert len(errors) == 2
+
+
+# ---------------------------------------------------------------------------
+# Round trip with auto-loader
+# ---------------------------------------------------------------------------
+
+
+def test_apply_then_load_round_trip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The wizard writes into the azd env and the auto-loader picks it up."""
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    apply_answers(
+        tmp_path,
+        WizardAnswers(appinsights_connection_string="InstrumentationKey=zzz"),
+    )
+
+    from agentops.utils.dotenv_loader import load_workspace_dotenv
+
+    loaded = load_workspace_dotenv(tmp_path)
+    assert loaded is not None
+    path, count = loaded
+    assert path == (tmp_path / ".azure" / "dev" / ".env").resolve()
+    assert count >= 1
+    assert os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"] == "InstrumentationKey=zzz"
+
+
+# ---------------------------------------------------------------------------
+# Snapshot / setup show
+# ---------------------------------------------------------------------------
+
+
+def test_collect_snapshot_reports_missing_when_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    monkeypatch.delenv("AGENTOPS_FOUNDRY_MODE", raising=False)
+    snapshot = collect_snapshot(tmp_path)
+    assert snapshot.azd_env_name is None
+    assert snapshot.azd_status == "not_found"
+    assert snapshot.yaml_present is False
+    assert "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT" in snapshot.missing_required
+
+
+def test_collect_snapshot_reads_azd_env_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(
+        tmp_path,
+        "dev",
+        {"AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": "https://x.services.ai.azure.com/api/projects/p"},
+    )
+    snapshot = collect_snapshot(tmp_path)
+    assert snapshot.azd_env_name == "dev"
+    assert snapshot.azd_status == "ok"
+    proj_var = next(
+        v for v in snapshot.variables if v.key == "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+    )
+    assert proj_var.value == "https://x.services.ai.azure.com/api/projects/p"
+    assert proj_var.source == "azd-env"
+    assert snapshot.missing_required == []
+
+
+def test_collect_snapshot_attributes_process_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://shell.services.ai.azure.com/api/projects/p",
+    )
+    snapshot = collect_snapshot(tmp_path)
+    proj_var = next(
+        v for v in snapshot.variables if v.key == "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+    )
+    assert proj_var.source == "process-env"
+
+
+def test_collect_snapshot_flags_legacy_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    (tmp_path / ".agentops").mkdir()
+    (tmp_path / ".agentops" / ".env").write_text(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=legacy\n",
+        encoding="utf-8",
+    )
+    snapshot = collect_snapshot(tmp_path)
+    assert snapshot.legacy_env_path is not None
+
+
+def test_mask_secret_handles_short_and_long_values():
+    assert mask_secret(None) == "(not set)"
+    assert mask_secret("") == "(not set)"
+    assert mask_secret("short") == "***"
+    masked = mask_secret("AAAAmiddleBBBB")
+    assert masked.startswith("AAAA") and masked.endswith("BBBB") and "***" in masked

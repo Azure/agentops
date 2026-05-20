@@ -1,4 +1,4 @@
-# Tutorial — baseline comparison
+# Tutorial - baseline comparison
 
 Detect regressions between two AgentOps runs. This is the workflow
 that turns AgentOps from a one-shot evaluation into a quality gate.
@@ -18,7 +18,7 @@ When `--baseline` is provided:
   per-metric deltas, machine-readable.
 
 The exit code still follows the threshold contract (`0` / `2` / `1`).
-The baseline does **not** by itself fail the run — your thresholds in
+The baseline does **not** by itself fail the run - your thresholds in
 `agentops.yaml` do.
 
 ## 1. Pick a baseline
@@ -27,11 +27,11 @@ Each `agentops eval run` writes to a timestamped folder under
 `.agentops/results/` and refreshes `.agentops/results/latest/` with a
 copy. So you have two options:
 
-- **Local iteration** — point `--baseline` at
+- **Local iteration** - point `--baseline` at
   `.agentops/results/latest/results.json`. AgentOps loads the baseline
   into memory before refreshing `latest/`, so it always means "the
   run before this one".
-- **CI / shared baseline** — commit a stable copy into the repo (or
+- **CI / shared baseline** - commit a stable copy into the repo (or
   publish it as a CI artifact). This is the path used by the
   `agentops-pr.yml` workflow:
 
@@ -49,7 +49,7 @@ locally.
 ## 2. Make your change
 
 Edit your prompt, publish and reference a new agent version, swap the
-model deployment, change a tool, or update the dataset — anything whose
+model deployment, change a tool, or update the dataset - anything whose
 impact you want to evaluate. Do not expect an interesting comparison if
 you re-run the exact same agent and dataset; that should normally show
 unchanged quality metrics with only latency variance.
@@ -130,5 +130,5 @@ git commit -m "chore: refresh AgentOps baseline after model upgrade"
 
 ## See also
 
-- [ci-github-actions.md](ci-github-actions.md) — full GenAIOps GitFlow with the four workflow templates
-- [tutorial-quickstart.md](tutorial-quickstart.md) — the minimal AgentOps loop
+- [ci-github-actions.md](ci-github-actions.md) - full GenAIOps GitFlow with the four workflow templates
+- [tutorial-quickstart.md](tutorial-quickstart.md) - the minimal AgentOps loop

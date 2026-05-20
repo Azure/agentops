@@ -15,7 +15,9 @@ version: 1
 lookback_days: 7
 
 sources:
-  # Reads `.agentops/results/*/results.json` (offline; always available).
+  # Reads local `.agentops/results/*/results.json` first. If local history
+  # is missing or too short, Doctor falls back to Foundry cloud evaluations
+  # when `foundry_control` has a reachable project endpoint.
   results_history:
     enabled: true
     path: .agentops/results
@@ -39,11 +41,13 @@ sources:
     agent_ids: []
 
   # Azure management plane — read-only resource posture audits.
-  # Required RBAC: `Reader` on the resource group. Disabled by default;
-  # uncomment and fill the fields below to enable the WAF-AI Security
-  # pillar checklist.
+  # Enabled by default and fail-open: Doctor first reads `.azure/<env>/.env`
+  # from AZD, then falls back to the Foundry project endpoint / Azure
+  # resource scan, then to the fields below. If discovery is not possible,
+  # the source is marked skipped with guidance in the report.
+  # Required RBAC when used: `Reader` on the resource group.
   azure_resources:
-    enabled: false
+    enabled: true
     # subscription_id: "00000000-0000-0000-0000-000000000000"
     subscription_id_env: AZURE_SUBSCRIPTION_ID
     # resource_group: "rg-myproject"
@@ -64,12 +68,13 @@ checks:
   safety:
     severity_floor: Medium  # Low | Medium | High
 
-  # WAF-AI posture audit. Opt-in: requires the `azure_resources` source
-  # above to be configured. Findings are produced under the `security`
-  # category, which can be filtered with
+  # WAF-AI posture audit. Enabled by default; it emits findings only when
+  # the `azure_resources` source is successfully discovered/read. When the
+  # source cannot be used, the reason appears in the report's Sources table.
+  # Findings are produced under the `security` category, filterable with
   # `agentops doctor --categories security`.
   posture:
-    enabled: false
+    enabled: true
     pillar: security
     # Skip individual rules without disabling the whole check, e.g.
     # exclude_rules:

@@ -64,7 +64,7 @@ def test_render_report_contains_verdict_and_findings(tmp_path: Path) -> None:
     result = analyze(tmp_path, _config_with_disabled_remote_sources())
 
     report = render_report(result)
-    assert "AgentOps Watchdog Report" in report
+    assert "AgentOps Doctor Report" in report
     assert "Verdict:" in report
     assert "regression.coherence" in report
     assert "Recent runs" in report

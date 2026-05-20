@@ -1,6 +1,6 @@
 # GitOps Guide: Building and Releasing AgentOps Toolkit
 
-This guide is a comprehensive instruction manual for engineers working on the **agentops-toolkit** project. It covers the full GitOps lifecycle — from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.
+This guide is a comprehensive instruction manual for engineers working on the **agentops-toolkit** project. It covers the full GitOps lifecycle - from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.
 
 ## Table of Contents
 
@@ -22,11 +22,11 @@ This guide is a comprehensive instruction manual for engineers working on the **
 
 AgentOps follows GitOps practices where **git is the single source of truth** for both code and operational state:
 
-- **Declarative configuration** — All pipeline behavior is defined in YAML workflow files checked into the repository.
-- **Version-controlled releases** — Every release is traceable to a git tag. No manual version edits.
-- **Automated pipelines** — Pushing branches or tags triggers the corresponding workflow automatically.
-- **Environment gates** — Production deployment requires explicit human approval via GitHub Environments.
-- **Immutable artifacts** — Built packages are uploaded once and reused across pipeline stages (no rebuilds between TestPyPI and PyPI).
+- **Declarative configuration** - All pipeline behavior is defined in YAML workflow files checked into the repository.
+- **Version-controlled releases** - Every release is traceable to a git tag. No manual version edits.
+- **Automated pipelines** - Pushing branches or tags triggers the corresponding workflow automatically.
+- **Environment gates** - Production deployment requires explicit human approval via GitHub Environments.
+- **Immutable artifacts** - Built packages are uploaded once and reused across pipeline stages (no rebuilds between TestPyPI and PyPI).
 
 ## 2. Branching Model
 
@@ -46,8 +46,8 @@ develop           ← integration branch, all feature PRs target here
 
 | Branch           | Purpose                                                              | Who creates      | Merges into                   |
 | ---------------- | -------------------------------------------------------------------- | ---------------- | ----------------------------- |
-| `main`           | Production-ready code. Every commit here should be a tagged release. | Maintainers only | —                             |
-| `develop`        | Integration branch. All feature work flows through here.             | —                | `main` (via release branches) |
+| `main`           | Production-ready code. Every commit here should be a tagged release. | Maintainers only | -                             |
+| `develop`        | Integration branch. All feature work flows through here.             | -                | `main` (via release branches) |
 | `feature/*`      | Individual features, bug fixes, or improvements.                     | Any contributor  | `develop`                     |
 | `release/v0.X.Y` | Release stabilization and staging. Triggers TestPyPI pipeline.       | Maintainers      | `main`                        |
 
@@ -159,11 +159,11 @@ git push origin feature/my-new-feature
 
 Before your PR can be merged to `develop`:
 
-1. **CI pipeline passes** — lint + tests across OS/Python matrix
-2. **Code review approved** — at least one reviewer
-3. **Architecture rules followed** — see [CONTRIBUTING.md](../CONTRIBUTING.md)
-4. **Tests included** — unit tests in `tests/unit/`, integration tests if needed
-5. **CHANGELOG updated** — add entry under the appropriate versioned section for user-visible changes
+1. **CI pipeline passes** - lint + tests across OS/Python matrix
+2. **Code review approved** - at least one reviewer
+3. **Architecture rules followed** - see [CONTRIBUTING.md](../CONTRIBUTING.md)
+4. **Tests included** - unit tests in `tests/unit/`, integration tests if needed
+5. **CHANGELOG updated** - add entry under the appropriate versioned section for user-visible changes
 
 ### After Your PR is Merged
 
@@ -217,7 +217,7 @@ The `publish-dev` and `verify-dev` jobs only run on pushes to `develop` (not on 
 
 ## 6. Versioning with setuptools-scm
 
-AgentOps uses [setuptools-scm](https://github.com/pypa/setuptools-scm) for **fully automatic versioning**. There is **no `version` field in `pyproject.toml`** — the version is derived from git tags at build time.
+AgentOps uses [setuptools-scm](https://github.com/pypa/setuptools-scm) for **fully automatic versioning**. There is **no `version` field in `pyproject.toml`** - the version is derived from git tags at build time.
 
 ### How It Works
 
@@ -259,10 +259,10 @@ python -c "from agentops import __version__; print(__version__)"
 
 ### Rules
 
-- **Never add `version = "..."` to `pyproject.toml`** — this will conflict with setuptools-scm.
-- **Tags must follow PEP 440** — use `v0.2.0`, not `release-0.2.0` or `0.2.0`.
-- **`fetch-depth: 0`** is required in CI checkout steps — setuptools-scm needs the full git history.
-- **`pip install -e .` requires `.git`** — editable installs need the git directory present (standard for development).
+- **Never add `version = "..."` to `pyproject.toml`** - this will conflict with setuptools-scm.
+- **Tags must follow PEP 440** - use `v0.2.0`, not `release-0.2.0` or `0.2.0`.
+- **`fetch-depth: 0`** is required in CI checkout steps - setuptools-scm needs the full git history.
+- **`pip install -e .` requires `.git`** - editable installs need the git directory present (standard for development).
 
 ## 7. Staging Pipeline (TestPyPI)
 
@@ -286,12 +286,12 @@ flowchart TD
 
 ### What Gets Validated
 
-1. **Tests pass** — the full test suite runs before building
-2. **Package builds** — setuptools-scm generates the correct version, wheel and sdist are created
-3. **Package uploads** — the built artifacts successfully upload to TestPyPI
-4. **Package installs** — `pip install` from TestPyPI resolves all dependencies
-5. **CLI works** — `agentops --version` and `--help` run without errors
-6. **Init works** — `agentops init` creates the expected workspace files
+1. **Tests pass** - the full test suite runs before building
+2. **Package builds** - setuptools-scm generates the correct version, wheel and sdist are created
+3. **Package uploads** - the built artifacts successfully upload to TestPyPI
+4. **Package installs** - `pip install` from TestPyPI resolves all dependencies
+5. **CLI works** - `agentops --version` and `--help` run without errors
+6. **Init works** - `agentops init` creates the expected workspace files
 
 ### Iterating on a Release Branch
 
@@ -432,13 +432,13 @@ This triggers the `release.yml` workflow.
 Job 1: build / build        ✅ Tests + build
 Job 2: publish-testpypi     ✅ Upload to TestPyPI
 Job 3: verify-testpypi      ✅ Install + smoke test
-Job 4: publish-pypi         ⏸️  PAUSES — waiting for approval
+Job 4: publish-pypi         ⏸️  PAUSES - waiting for approval
 Job 5: github-release       ⏳ Waiting for Job 4
 ```
 
 3. At the `publish-pypi` step, you have two choices:
-   - **Approve** — publishes to real PyPI (use only if you want to test the full flow)
-   - **Reject** — cancels the remaining jobs without publishing to PyPI
+   - **Approve** - publishes to real PyPI (use only if you want to test the full flow)
+   - **Reject** - cancels the remaining jobs without publishing to PyPI
 
 #### Step 3: Inspect the Approval Gate
 
@@ -516,7 +516,7 @@ flowchart TD
     build["_build<br/><i>tests + package</i><br/>Version: 0.2.0 (clean, from tag)"]
     publishTest["publish-testpypi<br/><i>Final TestPyPI upload (clean version)</i>"]
     verifyTest["verify-testpypi<br/><i>Smoke test from TestPyPI</i>"]
-    publishPypi{{"publish-pypi ⏸<br/><i>PAUSES — requires approval</i><br/>Uses PYPI_TOKEN<br/>environment: release"}}
+    publishPypi{{"publish-pypi ⏸<br/><i>PAUSES - requires approval</i><br/>Uses PYPI_TOKEN<br/>environment: release"}}
     ghRelease["github-release<br/><i>Creates GitHub Release with artifacts</i><br/>Auto-generated release notes"]
 
     tag --> build --> publishTest --> verifyTest --> publishPypi --> ghRelease
@@ -531,7 +531,7 @@ flowchart TD
 
 1. Go to the **Actions** tab → select **Cut Release** workflow
 2. Click **Run workflow**
-3. Enter the version (e.g. `0.2.0`) — no `v` prefix
+3. Enter the version (e.g. `0.2.0`) - no `v` prefix
 4. Click **Run workflow**
 
 The workflow automatically:
@@ -557,9 +557,9 @@ The branch push triggers the staging pipeline automatically. Wait for it to pass
 
 1. Go to **Actions** tab → find the **Staging** workflow run
 2. Verify all 3 jobs pass:
-   - ✅ `build / build` — tests pass, package builds
-   - ✅ `publish-testpypi` — uploaded to TestPyPI
-   - ✅ `verify-testpypi` — installed and smoke-tested
+   - ✅ `build / build` - tests pass, package builds
+   - ✅ `publish-testpypi` - uploaded to TestPyPI
+   - ✅ `verify-testpypi` - installed and smoke-tested
 
 If any job fails, fix the issue on the release branch and push. The pipeline re-runs automatically.
 
@@ -642,7 +642,7 @@ Create two environments in **Settings → Environments → New environment**:
 #### `release` Environment
 
 - **Purpose**: Controls access to production PyPI publishing
-- **Protection rules**: **Required reviewers** — add at least one team member who must approve
+- **Protection rules**: **Required reviewers** - add at least one team member who must approve
 - **Deployment branches**: Optionally restrict to `main` branch and `v*` tags
 - **Secrets**:
 
@@ -655,7 +655,7 @@ Create two environments in **Settings → Environments → New environment**:
 #### TestPyPI (Staging)
 
 1. Go to [test.pypi.org/account/register](https://test.pypi.org/account/register/)
-2. Create an account (separate from PyPI — different databases)
+2. Create an account (separate from PyPI - different databases)
 3. Go to [test.pypi.org/manage/account/token](https://test.pypi.org/manage/account/token/)
 4. Create an API token (scope: entire account for first upload, then project-scoped after)
 5. Add the token as `TEST_PYPI_TOKEN` secret in the GitHub `staging` environment
@@ -680,7 +680,7 @@ The first time you publish to TestPyPI or PyPI, the project name (`agentops-tool
 
 All workflow files are in `.github/workflows/`:
 
-### `ci.yml` — Continuous Integration
+### `ci.yml` - Continuous Integration
 
 ```
 Trigger: push to develop, PR to develop
@@ -691,7 +691,7 @@ Purpose: Quality gate for all code changes; auto-publish dev builds
 
 Key detail: `publish-dev` and `verify-dev` only run on pushes to `develop` (not PRs). Every merge to develop produces a dev version on TestPyPI (e.g. `0.1.3.dev12`) via setuptools-scm. PRs to `main` are not covered by CI because they come from `release/*` branches which are already validated by the staging pipeline.
 
-### `_build.yml` — Reusable Build
+### `_build.yml` - Reusable Build
 
 ```
 Trigger: workflow_call (called by staging.yml and release.yml)
@@ -701,7 +701,7 @@ Purpose: Single source of truth for the build process
 
 Key detail: Uses `fetch-depth: 0` to ensure setuptools-scm has full git history for version derivation.
 
-### `staging.yml` — Staging Pipeline
+### `staging.yml` - Staging Pipeline
 
 ```
 Trigger: push to release/* branches, or workflow_dispatch
@@ -714,7 +714,7 @@ Key details:
 - Verify step uses a retry loop (5 attempts, 30s apart) for TestPyPI index propagation
 - Smoke tests cover `--version`, `--help`, and `agentops init`
 
-### `release.yml` — Production Release
+### `release.yml` - Production Release
 
 ```
 Trigger: push v* tags, or workflow_dispatch
@@ -727,22 +727,22 @@ Key details:
 - `github-release` uses `gh release create` with `--generate-notes` for automatic release notes
 - Built artifacts (.whl, .tar.gz) are attached to the GitHub Release
 
-### `cut-release.yml` — Cut Release (Manual Dispatch)
+### `cut-release.yml` - Cut Release (Manual Dispatch)
 
 ```
 Trigger: workflow_dispatch (manual button in Actions tab)
-Input:   version — semver string (e.g. 0.2.0)
+Input:   version - semver string (e.g. 0.2.0)
 Flow:    validate → create release branch → update CHANGELOG → push → open PR
 Purpose: One-click release branch creation from develop
 ```
 
 Key details:
 - Creates `release/v<version>` branch from `develop`
-- Automatically updates `CHANGELOG.md` — inserts a versioned section `[<version>] - <date>` at the top
+- Automatically updates `CHANGELOG.md` - inserts a versioned section `[<version>] - <date>` at the top
 - Opens a PR from `release/v<version>` → `main` with a checklist
 - The branch push triggers `staging.yml` automatically
 - Fails safely if the branch already exists
-- Does NOT auto-tag or auto-publish — tagging remains a manual, intentional step
+- Does NOT auto-tag or auto-publish - tagging remains a manual, intentional step
 
 ## 12. Release Checklist
 
@@ -790,7 +790,7 @@ Use this checklist when cutting a release:
 | Problem                                       | Cause                            | Solution                                                                                                                |
 | --------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | Upload fails with 403                         | Invalid or expired token         | Regenerate `TEST_PYPI_TOKEN` and update the GitHub secret                                                               |
-| Upload fails with "already exists"            | Same version previously uploaded | Normal — `skip-existing: true` handles this. If you need a new upload, push another commit to increment the dev version |
+| Upload fails with "already exists"            | Same version previously uploaded | Normal - `skip-existing: true` handles this. If you need a new upload, push another commit to increment the dev version |
 | Install fails with "no matching distribution" | Package not yet indexed          | The verify job retries automatically (5 attempts, 30s apart). If persistent, check TestPyPI status                      |
 | Install fails with dependency errors          | Dependency not on TestPyPI       | Verify `--extra-index-url https://pypi.org/simple/` is present                                                          |
 
@@ -798,7 +798,7 @@ Use this checklist when cutting a release:
 
 | Problem                                    | Cause                                     | Solution                                                       |
 | ------------------------------------------ | ----------------------------------------- | -------------------------------------------------------------- |
-| Publish step stuck on "Waiting for review" | Normal — requires approval                | A designated reviewer must approve in the Actions UI           |
+| Publish step stuck on "Waiting for review" | Normal - requires approval                | A designated reviewer must approve in the Actions UI           |
 | Upload fails with 403                      | Invalid `PYPI_TOKEN`                      | Regenerate the token on pypi.org and update the GitHub secret  |
 | Version already exists on PyPI             | Tag points to an already-released version | PyPI versions are immutable. You must use a new version number |
 
@@ -824,7 +824,7 @@ Use this checklist when cutting a release:
 flowchart TD
     feat["feature/*"] -->|PR| develop(["develop"])
     develop --> ci["CI (ci.yml)<br/>lint + test + coverage<br/>publish-dev → TestPyPI (dev version)"]
-    develop --> cut{{"Cut Release (cut-release.yml)<br/>manual dispatch — enter version"}}
+    develop --> cut{{"Cut Release (cut-release.yml)<br/>manual dispatch - enter version"}}
     cut --> rel(["release/v0.2.0"])
 
     rel --> stagingBuild["_build<br/>test + build"]

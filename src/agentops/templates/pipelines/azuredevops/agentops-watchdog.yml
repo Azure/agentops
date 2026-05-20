@@ -1,7 +1,7 @@
-# AgentOps — Scheduled watchdog (Azure DevOps Pipelines)
+# AgentOps — Scheduled doctor (Azure DevOps Pipelines)
 #
 # Runs `agentops doctor` on a daily cron. Restores the previous
-# run's history.jsonl from a pipeline artifact so the watchdog dashboard
+# run's history.jsonl from a pipeline artifact so the watchdog cockpit
 # carries trend data across executions.
 #
 # Setup mirrors agentops-pr.yml (variable group `agentops`, service
@@ -29,10 +29,10 @@ variables:
 
 stages:
   - stage: analyze
-    displayName: AgentOps watchdog
+    displayName: AgentOps doctor
     jobs:
       - job: run_watchdog
-        displayName: Run AgentOps watchdog
+        displayName: Run AgentOps doctor
         timeoutInMinutes: 30
         steps:
           - checkout: self

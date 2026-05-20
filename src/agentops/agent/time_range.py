@@ -1,9 +1,9 @@
-"""Time range parsing for the AgentOps dashboard.
+"""Time range parsing for the AgentOps cockpit.
 
-The dashboard supports three preset windows (``1d``, ``7d``, ``30d``)
+The cockpit supports three preset windows (``1d``, ``7d``, ``30d``)
 plus a ``custom`` mode driven by ``from`` / ``to`` ISO date strings.
 The parsing is intentionally tolerant: any unknown value falls back to
-the 7-day default so the dashboard never breaks on bad query strings.
+the 7-day default so the cockpit never breaks on bad query strings.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Iterable, Optional
 
 @dataclass(frozen=True)
 class TimeRange:
-    """A resolved time window for filtering dashboard data."""
+    """A resolved time window for filtering cockpit data."""
 
     key: str            # "1d" | "7d" | "30d" | "custom"
     label: str          # display label, e.g. "Last 24h"

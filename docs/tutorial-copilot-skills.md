@@ -217,9 +217,9 @@ agentops workflow generate --kinds pr --force
 Why PR-only? The full `agentops workflow generate` scaffold includes
 DEV/QA/PROD deploy workflows. Those are correct for a real release
 pipeline, but they must not be pushed until GitHub Environments, Azure
-OIDC, and build/deploy placeholders are configured. Otherwise the first
-push to `main` will create a red deploy workflow before the tutorial
-teaches anything useful.
+OIDC, and either `azure.yaml` or real placeholder replacements are
+configured. Otherwise the first push to `main` will create a red deploy
+workflow before the tutorial teaches anything useful.
 
 Configure the `dev` environment variables:
 
@@ -275,18 +275,19 @@ The Watchdog report should list:
 
 ## 7. When to generate the full CI/CD scaffold
 
-After the PR gate is green and you have real deployment commands, ask:
+After the PR gate is green and you have an azd deployment or real
+deployment commands, ask:
 
 ```text
 Use the agentops-workflow skill. Generate the full dev/qa/prod workflow
-scaffold and wire it to this repository's actual Azure Container Apps
-build and deploy commands.
+scaffold. If this repo has azure.yaml, use azd provision/deploy; otherwise
+wire placeholders to this repository's actual build and deploy commands.
 ```
 
 Expected command:
 
 ```powershell
-agentops workflow generate --kinds pr,dev,qa,prod --force
+agentops workflow generate --kinds pr,dev,qa,prod --deploy-mode auto --force
 ```
 
 Before pushing those files, verify:
@@ -294,7 +295,9 @@ Before pushing those files, verify:
 - GitHub Environments `dev`, `qa`, and `production` exist.
 - Production has required reviewers.
 - Azure federated credentials exist for every workflow subject.
-- Build and deploy placeholders are replaced with real commands.
+- If using azd, `azure.yaml`, `infra/`, and azd hooks are committed.
+- If using placeholder mode, build and deploy placeholders are replaced
+  with real commands.
 
 That is the difference between a useful CI/CD tutorial and a red Action
 that only proves the repo was not configured.

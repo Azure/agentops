@@ -2,7 +2,7 @@
 
 Colors are automatically disabled when stdout is not a TTY, when the
 ``NO_COLOR`` environment variable is set (https://no-color.org/), or when
-``AGENTOPS_NO_COLOR`` is set. No emojis, no extended unicode — only plain
+``AGENTOPS_NO_COLOR`` is set. No emojis, no extended unicode - only plain
 ASCII text wrapped in standard ANSI SGR escape codes that all modern
 terminals (Windows Terminal, ConEmu, VS Code, macOS, Linux) understand.
 """

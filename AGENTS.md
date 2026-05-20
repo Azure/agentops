@@ -1,41 +1,41 @@
 ## Solution Overview
 
-AgentOps Toolkit is a standalone Python CLI for standardized evaluation workflows targeting AI agents and model deployments, with first-class support for Microsoft Foundry Agent Service.
+AgentOps Toolkit is a CLI, local Cockpit, and agent skills that help teams operationalize AI agents on Microsoft Foundry with standardized evaluation, observability, tracing, and operational practices.
 
 The repository provides:
-- Reusable YAML-based evaluation configuration
-- A thin CLI for workspace initialization, evaluation execution, and report regeneration
-- Native Foundry execution with cloud evaluation and local fallback modes
-- A normalized output contract for CI pipelines and human review
+- A single flat `agentops.yaml` configuration file at the project root
+- An interactive `agentops init` wizard that bootstraps the workspace and the
+  azd-compatible `.azure/<env>/.env` environment
+- Native Foundry execution with cloud (OpenAI Evals API) and local fallback
+- A normalized output contract (`results.json`, `report.md`) for CI and PRs
+- A local Cockpit (`agentops cockpit`) that links out to Foundry for runtime
+  observability and surfaces Doctor findings AgentOps owns end-to-end
+- A Doctor (`agentops doctor`) for readiness, regression, and OpEx checks
+- Coding-agent skills (Copilot, Claude Code) installed alongside the workspace
 
 Primary capabilities:
-- Evaluate Foundry agents and direct model deployments
-- Run reusable bundle + dataset + run-config workflows from a local project root
+- Evaluate Foundry prompt agents, Foundry hosted agents, raw model deployments,
+  and any HTTP/JSON agent (LangGraph, LangChain, ACA, AKS, custom REST)
+- Auto-infer evaluators from the agent type and dataset columns
 - Produce machine-readable `results.json` and human-readable `report.md`
 - Enforce CI-friendly exit codes for threshold gating
-- Support a local adapter backend for custom evaluator pipelines via stdin/stdout JSON protocol
+- Publish results to the New Foundry (cloud) or Classic Foundry (local) panels
 
 Public CLI contract:
-- `agentops init [--prompt]`
-- `agentops eval run --config <run.yaml> [--output <dir>]`
-- `agentops eval compare --runs <baseline>,<current>`
-- `agentops report generate --in <results.json> [--out <report.md>]`
-- `agentops workflow generate [--force] [--dir <path>]`
-- `agentops skills install [--platform <p>] [--prompt] [--force]`
-- `agentops doctor [--workspace <path>] [--config <path>] [--out <path>] [--lookback-days N] [--severity-fail <severity>]`
-- `agentops agent serve [--host <host>] [--port <port>] [--config <path>] [--no-verify] [--workers N]`
-
-Planned CLI stubs (not implemented in this release):
-- `agentops run list|show`
-- `agentops run view <id> [--entry N]`
-- `agentops report show|export`
-- `agentops bundle list|show`
-- `agentops dataset validate|describe|import`
-- `agentops config validate|show`
-- `agentops trace init`
-- `agentops monitor setup|show|configure`
-- `agentops model list`
-- `agentops agent list`
+- `agentops --version`
+- `agentops explain [COMMAND...] [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
+- `agentops init [--force] [--dir PATH] [--no-prompt] [--no-appinsights] [--azd-env NAME] [--project-endpoint URL] [--agent REF] [--dataset PATH] [--appinsights-connection-string STR]`
+- `agentops init show [--dir PATH] [--reveal-secrets]`
+- `agentops init explain [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
+- `agentops eval run [--config PATH] [--baseline PATH] [--output DIR]`
+- `agentops report generate [--in PATH] [--out PATH]`
+- `agentops workflow generate [--force] [--dir PATH] [--kinds pr,dev,qa,prod,watchdog] [--platform github|azure-devops] [--deploy-mode auto|placeholder|azd]`
+- `agentops skills install [--platform copilot|claude] [--from SOURCE] [--prompt] [--force] [--dir PATH]`
+- `agentops mcp serve`
+- `agentops doctor [--workspace PATH] [--config PATH] [--out PATH] [--lookback-days N] [--severity-fail SEVERITY]`
+- `agentops doctor explain [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
+- `agentops cockpit [--host HOST] [--port PORT] [--workspace PATH] [--no-preflight]`
+- `agentops agent serve [--host HOST] [--port PORT] [--config PATH] [--no-verify] [--workers N]`
 
 Exit code contract:
 - `0` = execution succeeded and all thresholds passed
@@ -57,10 +57,12 @@ Exit code contract:
 - **ruamel.yaml**: YAML parsing and serialization
 - **pathlib.Path**: Canonical path handling throughout the codebase
 
-#### Execution Backends
-- **Foundry backend**: Native execution path for Microsoft Foundry Agent Service
-- **HTTP backend**: Execution path for HTTP-deployed agents (LangGraph, LangChain, OpenAI, ACA, custom REST)
-- **Local adapter backend**: Execution path for custom pipelines via stdin/stdout JSON protocol
+#### Execution Engines
+- **Local runtime** (`pipeline/runtime.py`): Invokes the agent row-by-row and
+  runs `azure.ai.evaluation` evaluators locally. Default for HTTP agents,
+  Foundry hosted agents, and raw model deployments.
+- **Cloud runner** (`pipeline/cloud_runner.py`): Submits a Foundry prompt
+  agent run to the OpenAI Evals API via the New Foundry experience.
 
 ### Azure and AI Runtime Integration
 
@@ -71,9 +73,11 @@ These dependencies are runtime integrations used by the Foundry backend and are 
 - **azure-identity**: `DefaultAzureCredential` authentication flow
 - **openai**: OpenAI Evals API types used by cloud evaluation flows
 
-Execution modes in the Foundry backend:
-- **Cloud evaluation**: Uses the OpenAI Evals API through Foundry and writes `cloud_evaluation.json`
-- **Local evaluation**: Uses `azure.ai.evaluation` locally when `AGENTOPS_FOUNDRY_MODE=local`
+Execution modes:
+- **Cloud evaluation**: Uses the OpenAI Evals API through Foundry and writes
+  `cloud_evaluation.json` with a deep-link to the New Foundry Evaluations page
+- **Local evaluation**: Uses `azure.ai.evaluation` locally and optionally
+  publishes to the Classic Foundry Evaluations panel (`publish: true`)
 
 ### Testing and Quality
 - **pytest**: Unit and integration testing
@@ -103,110 +107,155 @@ src/
     ├── __main__.py
     │
     ├── cli/
-    │   └── app.py                     # Typer CLI entrypoints
+    │   └── app.py                     # Typer CLI entry points (init, eval, report,
+    │                                   #  workflow, skills, mcp, doctor, cockpit,
+    │                                   #  agent serve, explain)
     │
     ├── core/
-    │   ├── models.py                  # Pydantic schemas for configs and outputs
-    │   ├── config_loader.py           # YAML -> model loading
-    │   ├── thresholds.py              # Threshold evaluation rules
-    │   └── reporter.py                # Markdown report generation
+    │   ├── agentops_config.py         # Flat 1.0 `agentops.yaml` Pydantic model
+    │   ├── config_loader.py           # YAML → model loading and validation
+    │   ├── evaluators.py              # Evaluator auto-selection rules
+    │   └── results.py                 # `results.json` schema and helpers
     │
     ├── services/
-    │   ├── runner.py                  # Main evaluation orchestration
-    │   ├── initializer.py             # `.agentops/` workspace scaffolding
-    │   ├── reporting.py               # `results.json` -> `report.md`
-    │   ├── skills.py                  # Coding agent skills installation
-    │   └── foundry_evals.py           # Foundry evaluation publishing helpers
+    │   ├── initializer.py             # `agentops.yaml` + `.agentops/` scaffolding
+    │   ├── setup_wizard.py            # azd-style interactive wizard (init flow)
+    │   ├── preflight.py               # Pre-flight checks shared by doctor / cockpit
+    │   ├── skills.py                  # Coding agent skill installation
+    │   └── cicd.py                    # GitHub Actions / Azure DevOps templates
     │
-    ├── backends/
-    │   ├── base.py                    # Backend protocol and shared types
-    │   ├── eval_engine.py             # Shared evaluation engine (evaluators, scoring, dataset utils)
-    │   ├── foundry_backend.py         # Foundry cloud/local execution
-    │   ├── http_backend.py            # HTTP endpoint execution (LangGraph, LangChain, OpenAI, ACA)
-    │   └── local_adapter_backend.py   # Local adapter (subprocess + callable modes)
+    ├── pipeline/
+    │   ├── runtime.py                 # Local-execution engine for one run
+    │   ├── cloud_runner.py            # Cloud-execution (OpenAI Evals API) engine
+    │   ├── orchestrator.py            # End-to-end `eval run` orchestration
+    │   ├── invocations.py             # Foundry/HTTP/model invocation adapters
+    │   ├── publisher.py               # Foundry Evaluations publishing
+    │   ├── reporter.py                # `results.json` → `report.md`
+    │   ├── comparison.py              # Baseline-vs-current diffing
+    │   ├── thresholds.py              # Threshold expression evaluation
+    │   └── diagnostics.py             # Pipeline-level diagnostics
+    │
+    ├── agent/                         # AgentOps Doctor + Cockpit
+    │   ├── analyzer.py                # Doctor analyzer (severity rollup)
+    │   ├── cockpit.py                 # FastAPI cockpit server (read-only UI)
+    │   ├── history.py                 # `.agentops/agent/history.jsonl` writer/reader
+    │   ├── report.py                  # Doctor Markdown report
+    │   ├── production_telemetry.py    # App Insights production card
+    │   ├── checks/                    # Individual doctor checks (foundry config,
+    │   │                              #  regression, opex, spec conformance, …)
+    │   ├── sources/                   # Data sources (results history, Azure
+    │   │                              #  resources, Azure Monitor, Foundry CP)
+    │   ├── llm_assist/                # Optional LLM-assisted findings
+    │   └── knowledge/                 # WAF checklist + curated knowledge
+    │
+    ├── mcp/                           # MCP server (`agentops mcp serve`)
     │
     ├── utils/
+    │   ├── azd_env.py                 # Filesystem-only `.azure/<env>/` management
+    │   ├── dotenv_loader.py           # Auto-load `.agentops/.env` at import time
+    │   ├── foundry_discovery.py       # Foundry endpoint / App Insights discovery
+    │   ├── colors.py                  # ANSI styling helpers
+    │   ├── telemetry.py               # OpenTelemetry exporter wiring
     │   ├── yaml.py                    # YAML IO and interpolation helpers
     │   └── logging.py                 # Logging setup
     │
     └── templates/
-        ├── config.yaml                # Seed workspace config
-        ├── run.yaml                   # Seed run config (model-direct, Foundry)
-        ├── run-rag.yaml               # Seed run config (RAG, Foundry)
-        ├── run-agent.yaml             # Seed run config (agent-with-tools, Foundry)
-        ├── run-http-model.yaml        # Seed run config (model-direct, HTTP)
-        ├── run-http-rag.yaml          # Seed run config (RAG, HTTP)
-        ├── run-http-agent-tools.yaml  # Seed run config (agent-with-tools, HTTP)
-        ├── run-callable.yaml          # Seed run config (callable adapter)
-        ├── callable_adapter.py        # Seed callable adapter function
-        ├── .gitignore                 # Seed `.agentops/.gitignore`
-        ├── bundles/                   # Starter bundle YAML files
-        ├── datasets/                  # Starter dataset YAML configs
-        ├── data/                      # Starter dataset JSONL rows
-        ├── skills/                    # Coding agent skill templates
-        └── workflows/                 # CI/CD workflow templates
-            └── agentops-pr.yml        # PR + 3 deploy templates (dev/qa/prod)
+        ├── agentops.yaml              # Seed flat 1.0 config
+        ├── smoke.jsonl                # Seed JSONL dataset (copied to .agentops/data/)
+        ├── agent.yaml                 # Seed Doctor config
+        ├── waf-checklist.csv          # Doctor WAF AI-security checklist seed
+        ├── waf-checklist.README.md
+        ├── .gitignore                 # Seed workspace `.gitignore`
+        ├── project.gitignore          # Seed project-root `.gitignore` snippet
+        ├── icon.png                   # Cockpit favicon
+        ├── foundry.svg                # Cockpit Foundry mark
+        ├── skills/                    # Coding-agent skill templates
+        ├── workflows/                 # GitHub Actions templates (PR + 3 deploys
+        │                              #  + watchdog)
+        ├── pipelines/                 # Azure DevOps pipeline templates
+        └── agent-server/              # Doctor-as-Copilot-Extension deploy scaffold
+            ├── Dockerfile
+            ├── main.bicep
+            └── README.md
 ```
 
 ### Tests
 
 ```
 tests/
-├── fixtures/
-│   ├── fake_eval_runner.py            # Fake backend used by integration tests
-│   └── fake_adapter.py                # Fake local adapter (stdin/stdout JSON echo + callable)
-├── integration/
-│   └── test_eval_run_integration.py   # End-to-end via local adapter backend
-└── unit/
-    ├── test_models.py                 # Schema validation
-    ├── test_yaml_loader.py            # YAML loading and workspace config checks
-    ├── test_reporter.py               # Report generation and threshold output
-    ├── test_foundry_backend.py        # Foundry backend helpers
-    ├── test_http_backend.py           # HTTP backend helpers
-    ├── test_initializer.py            # `.agentops/` scaffold behavior
-    ├── test_local_adapter_callable.py # Callable adapter unit tests
-    ├── test_cicd.py                   # CI/CD generation tests
-    ├── test_cli_commands.py           # CLI command surface tests
-    ├── test_comparison.py             # Run comparison tests
-    ├── test_skills.py                 # Skills installation tests
-    └── test_subprocess_backend.py     # Subprocess backend tests
+├── fixtures/                          # Shared fakes for evaluator + adapter flows
+├── integration/                       # End-to-end eval and cockpit flows
+└── unit/                              # Pure-Python unit tests (no Azure creds)
 ```
+
+Coverage highlights:
+- `core/` — `agentops.yaml` schema validation, config loader, evaluator inference
+- `pipeline/` — local + cloud runner, comparison, thresholds, reporter
+- `services/` — initializer, setup wizard, skills, CI/CD generators, preflight
+- `agent/` — Doctor checks, history rollup, cockpit endpoints, telemetry sources
+- `cli/` — Typer command surface, explain pages, init banner + wizard
+- `utils/` — azd env bootstrap, dotenv loader, foundry discovery
 
 ### Documentation
 
 ```
 docs/
-├── concepts.md                                # Core concepts, ASCII diagram, evaluation scenarios
+├── concepts.md                                # Core concepts and evaluation scenarios
 ├── how-it-works.md                            # Architecture and request flow
-├── bundles.md                                 # Bundle authoring guide
-├── ci-github-actions.md                       # GitHub Actions CI/CD setup
-├── release-process.md                         # Release and versioning process
-├── tutorial-model-direct.md                  # Model-direct tutorial
-├── tutorial-basic-foundry-agent.md           # Foundry agent tutorial
-├── tutorial-rag.md                           # RAG tutorial
-├── tutorial-http-agent.md                    # HTTP-deployed agent tutorial
-├── tutorial-conversational-agent.md          # Conversational agent (Agent Framework) tutorial
-├── tutorial-agent-workflow.md                # Agent workflow with tools (Agent Framework) tutorial
-├── tutorial-baseline-comparison.md           # Baseline comparison tutorial
-├── tutorial-copilot-skills.md                # Copilot skills tutorial
+├── tutorial-quickstart.md                     # 5-minute quickstart
+├── tutorial-end-to-end.md                     # Full workflow (eval → doctor → cockpit)
+├── tutorial-basic-foundry-agent.md            # Foundry prompt agent
+├── tutorial-conversational-agent.md           # Conversational agent
+├── tutorial-agent-workflow.md                 # Agent with tools
+├── tutorial-rag.md                            # RAG quality
+├── tutorial-model-direct.md                   # Raw model deployment
+├── tutorial-http-agent.md                     # HTTP-deployed agent
+├── tutorial-baseline-comparison.md            # Run-to-run regression detection
+├── tutorial-copilot-skills.md                 # Coding agent skill catalog
+├── tutorial-agent-doctor.md                   # Doctor checks + history
+├── ci-github-actions.md                       # CI/CD setup
+├── release-process.md                         # Release and versioning
 └── foundry-evaluation-sdk-built-in-evaluators.md
 ```
 
 ## Workspace Layout
 
-Running `agentops init` creates the project-local evaluation workspace and installs coding agent skills.
+`agentops init` is the single onboarding command. It is idempotent and combines four phases:
+
+1. **Scaffold** the `.agentops/` workspace and copy seed templates
+2. **Bootstrap** the azd-compatible `.azure/<env>/` environment folder
+3. **Wizard** — azd-style interactive prompts (suppressed with `--no-prompt`
+   or when every required value is supplied via flags)
+4. **Skills** — install coding-agent skills (auto-detect platform; default Copilot)
+
+Each wizard answer is persisted immediately to disk (`.azure/<env>/.env` for
+Azure secrets, `agentops.yaml` for the agent/dataset reference). Re-running
+`init` re-uses existing values and only re-prompts for blanks.
 
 The `.agentops/` directory:
 
 ```
 .agentops/
-├── config.yaml                 # Workspace defaults
-├── run.yaml                    # Default run configuration
-├── .gitignore
-├── bundles/                    # Bundle YAML files
-├── datasets/                   # Dataset YAML configs
-├── data/                       # Dataset JSONL rows
-└── results/                    # Timestamped history + latest pointer
+├── data/                       # JSONL dataset rows (seed: smoke.jsonl)
+├── results/                    # Timestamped run history + `latest/` pointer
+├── agent/                      # Doctor history (history.jsonl + per-run dirs)
+└── .gitignore                  # Local-only artifacts (results, secrets, …)
+```
+
+The project root after `init`:
+
+```
+<project>/
+├── agentops.yaml               # Flat 1.0 config (single source of truth)
+├── .agentops/                  # Local-only run history, datasets, Doctor cache
+├── .azure/                     # azd-compatible env folder (shared with azd)
+│   ├── config.json             # `defaultEnvironment` pointer
+│   ├── .gitignore              # Excludes every <env>/.env
+│   └── <env>/
+│       └── .env                # AZURE_AI_FOUNDRY_PROJECT_ENDPOINT,
+│                                #  APPLICATIONINSIGHTS_CONNECTION_STRING,
+│                                #  AZURE_OPENAI_ENDPOINT, …
+└── (one of) .github/skills/  or  .claude/commands/
 ```
 
 Coding agent skills (installed by `init` and `skills install`):
@@ -220,160 +269,99 @@ Coding agent skills (installed by `init` and `skills install`):
 ├── agentops-regression/SKILL.md
 ├── agentops-trace/SKILL.md
 ├── agentops-monitor/SKILL.md
-└── agentops-workflow/SKILL.md
+├── agentops-workflow/SKILL.md
+└── agentops-agent/SKILL.md
 
 .claude/commands/               # Claude Code (when detected or explicit)
 ├── agentops-eval.md
-├── agentops-config.md
-├── agentops-dataset.md
-├── agentops-report.md
-├── agentops-regression.md
-├── agentops-trace.md
-├── agentops-monitor.md
-└── agentops-workflow.md
+├── …
+└── agentops-agent.md
 ```
 
-Platform auto-detection: `init` checks for `.github/copilot-instructions.md`, `.github/skills/`, `.claude/`, or `CLAUDE.md`. If no platform is detected, GitHub Copilot is used as the silent default. Pass `--prompt` to ask before installing.
-
-Layout conventions:
-- `bundles/` defines evaluation policy and enabled evaluators
-- `datasets/` stores dataset YAML configs
-- `data/` stores JSONL rows referenced by dataset configs
-- `results/` stores immutable run outputs and `latest/`
-
-Starter dataset configs reference JSONL files with relative paths such as:
-
-```yaml
-source:
-  type: file
-  path: ../data/smoke-model-direct.jsonl
-```
+Platform auto-detection: `init` checks for `.github/copilot-instructions.md`,
+`.github/skills/`, `.claude/`, or `CLAUDE.md`. If no platform is detected,
+GitHub Copilot is used as the silent default. Pass `--prompt` to ask before
+installing; pass `agentops skills install --platform copilot|claude` to install
+explicitly later.
 
 ## Configuration Model
 
-The configuration model is layered and YAML-first.
+AgentOps 1.0 uses a single flat `agentops.yaml` file at the project root —
+there are no separate bundles, dataset YAMLs, or run files. Evaluators and
+thresholds are inferred from the agent type and dataset columns, with
+sensible defaults that can be overridden field-by-field.
 
-### 1. Workspace Config
-File: `.agentops/config.yaml`
+### `agentops.yaml`
 
-Purpose:
-- Stores workspace-level paths and default behavior
+Minimal example:
 
-Key sections:
-- `paths.bundles_dir`
-- `paths.datasets_dir`
-- `paths.data_dir`
-- `paths.results_dir`
-- `defaults.backend`
-- `defaults.timeout_seconds`
-- `report.generate_markdown`
+```yaml
+version: 1
+agent: "my-agent:1"
+dataset: .agentops/data/smoke.jsonl
+```
 
-### 2. Bundle Config
-File pattern: `.agentops/bundles/*.yaml`
+Full schema:
 
-Purpose:
-- Defines evaluators and threshold policy
+| Field | Required | Description |
+|---|---|---|
+| `version` | yes | Schema version. Must be `1`. |
+| `agent` | yes | One of: `name:version` (Foundry prompt agent), `https://...` (Foundry hosted endpoint or any HTTP/JSON agent), `model:<deployment>` (raw Foundry model deployment). |
+| `dataset` | yes | Relative path to a JSONL file with one row per evaluation example. |
+| `thresholds` | no | Map of metric → expression (e.g. `coherence: ">=3"`, `avg_latency_seconds: "<=30"`). Missing keys fall back to auto-defaults. |
+| `evaluators` | no | Advanced escape hatch: explicit list of evaluator names that overrides auto-selection. |
+| `project_endpoint` | no | Foundry project endpoint. Wins over `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` when both are set. |
+| `execution` | no | `local` (default) — AgentOps runs the agent row-by-row locally. `cloud` — Foundry runs the agent + evaluators server-side (only valid for `name:version` agents). |
+| `publish` | no | When `execution: local`, set to `true` to also upload results to the Classic Foundry Evaluations panel. With `execution: cloud` publishing is implicit. |
+| `protocol` | no | URL-based agents only. `responses` (default Foundry hosted), `invocations` (Foundry hosted with raw JSON), or `http-json` (default generic HTTP). |
+| `request_field` | no | HTTP / invocations only. JSON key that carries the user prompt (default: `message`). |
+| `response_field` | no | HTTP / invocations only. Dot-path to extract the response text (default: `text`). |
+| `tool_calls_field` | no | HTTP / invocations only. Dot-path to extract tool calls for agent-workflow evaluators. |
+| `headers` | no | HTTP / invocations only. Static extra HTTP headers. |
+| `auth_header_env` | no | HTTP / invocations only. Environment variable that holds a Bearer token. |
 
-Key sections:
-- `evaluators[]`
-- `thresholds[]`
-- `metadata`
+### Agent Type Inference
 
-Supported evaluator sources:
-- `local`
-- `foundry`
+| `agent:` value | Resolved as |
+|---|---|
+| `my-agent:3` | Foundry prompt agent (name + version) |
+| `https://<resource>.services.ai.azure.com/api/projects/<project>/agents/...` | Foundry hosted agent (REST) |
+| `https://api.example.com/chat` | Generic HTTP/JSON agent (ACA / AKS / custom) |
+| `model:gpt-4o` | Raw Foundry model deployment |
 
-### 3. Dataset Config
-File pattern: `.agentops/datasets/*.yaml`
+### Dataset Format
 
-Purpose:
-- Defines dataset metadata, schema mapping, and the JSONL file path
+Datasets are plain JSONL files. Each row is a JSON object; field names are
+free-form and AgentOps adapts evaluators based on which columns are present:
 
-Key sections:
-- `source.type`
-- `source.path`
-- `format.type`
-- `format.input_field`
-- `format.expected_field`
+| Column | Used by |
+|---|---|
+| `input` (required) | Prompt sent to the agent |
+| `expected` | Ground-truth response (similarity, F1, …) |
+| `context` | Retrieval context (RAG evaluators) |
+| `tool_definitions`, `tool_calls` | Agent-workflow evaluators |
 
-Dataset rows live separately in `.agentops/data/*.jsonl`.
+### Environment Variables and `.azure/<env>/.env`
 
-### 4. Run Config
-File: `.agentops/run.yaml`
+`agentops init` writes the canonical Azure variables to
+`.azure/<active-env>/.env`. These names match what the Azure SDKs and `azd`
+read literally — no renaming.
 
-Purpose:
-- Connects one bundle, one dataset, and one target execution specification
+| Variable | Purpose |
+|---|---|
+| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project endpoint URL |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | App Insights for production telemetry |
+| `AZURE_OPENAI_ENDPOINT` | Auto-derived from project endpoint when absent |
+| `AZURE_OPENAI_DEPLOYMENT` | Default deployment for evaluators |
+| `AZURE_OPENAI_API_VERSION` | OpenAI API version override |
 
-Top-level structure:
-- `version: 1` — Required
-- `run` — Optional metadata (`name`, `description`)
-- `target` — What is being evaluated and how (required)
-- `bundle` — Evaluator bundle reference (required)
-- `dataset` — Dataset reference (required)
-- `execution` — Execution settings (optional)
-- `output` — Output settings (optional)
+AgentOps-specific knobs use the `AGENTOPS_` prefix to avoid clashing with
+Azure SDK / azd conventions (`AGENTOPS_FOUNDRY_MODE`,
+`AGENTOPS_NO_UNICODE_BANNER`, `AGENTOPS_NO_COLOR`, …).
 
-`target` section:
-- `type` — `agent` or `model`
-- `hosting` — `local`, `foundry`, `aks`, or `containerapps`
-- `execution_mode` — `local` or `remote`
-- `agent_mode` — `prompt` or `hosted` (Foundry-only, optional)
-- `framework` — `agent_framework`, `langgraph`, or `custom` (agent-only, optional)
-- `endpoint` — Remote endpoint config (required when `execution_mode: remote`)
-- `local` — Local adapter config (required when `execution_mode: local`)
-
-`target.endpoint` fields (remote execution):
-- `kind` — `foundry_agent` or `http`
-
-Foundry agent endpoint fields:
-- `agent_id` — Agent identifier
-- `project_endpoint` — Foundry project URL (inline value)
-- `project_endpoint_env` — Env var name holding the project URL
-- `api_version` — Agent Service API version
-- `poll_interval_seconds` — Polling interval for cloud eval
-- `max_poll_attempts` — Max polling attempts
-- `model` — Deployment name for evaluators
-
-HTTP endpoint fields:
-- `kind: http`
-- `url` — Direct URL to the agent endpoint
-- `url_env` — Environment variable name holding the URL (default: `AGENT_HTTP_URL`)
-- `request_field` — JSON key for the user prompt (default: `message`)
-- `response_field` — Dot-path to extract response text (default: `text`)
-- `headers` — Static extra HTTP headers
-- `auth_header_env` — Environment variable for Bearer token
-- `tool_calls_field` — Dot-path to extract tool calls from response
-- `extra_fields` — JSONL row field names to forward in the request body
-
-`target.local` fields (local execution):
-- `adapter` — Command string to spawn the local adapter process (subprocess mode)
-- `callable` — Python function path as `module:function` (callable mode)
-
-Exactly one of `adapter` or `callable` must be provided.
-
-Adapter protocol: subprocess receives JSON on stdin per row, emits JSON on stdout.
-Callable protocol: `fn(input_text: str, context: dict) -> dict` returning `{"response": "..."}`.
-
-`bundle` and `dataset` references:
-- `name` — Convention-based: resolves to `<workspace>/bundles/<name>.yaml` or `<workspace>/datasets/<name>.yaml`
-- `path` — Explicit path (relative to config file directory)
-
-`execution` section:
-- `concurrency` — Max parallel evaluations (schema-only, default: `1`)
-- `timeout_seconds` — Overall timeout (default: `300`)
-
-`output` section:
-- `path` — Output directory
-- `write_report` — Generate `report.md` (default: `true`)
-- `publish_foundry_evaluation` — Publish results to Foundry (default: `true`)
-- `fail_on_foundry_publish_error` — Fail if Foundry publish fails (default: `false`)
-
-Backend resolution:
-- `execution_mode: local` → `LocalAdapterBackend`
-- `execution_mode: remote` + `endpoint.kind: foundry_agent` → `FoundryBackend`
-- `execution_mode: remote` + `endpoint.kind: http` → `HttpBackend`
-
-Configs missing a `version` field or containing a legacy `backend` key are rejected with an actionable error message.
+At import time, `utils/dotenv_loader.py` loads `.agentops/.env` and
+`.azure/<active-env>/.env` (resolved via `.azure/config.json`'s
+`defaultEnvironment`) so every CLI command sees the same environment.
 
 ## Execution Model
 
@@ -381,156 +369,126 @@ Configs missing a `version` field or containing a legacy `backend` key are rejec
 
 `agentops eval run` follows this sequence:
 
-1. Load run config
-2. Load referenced bundle and dataset configs
-3. Resolve the backend
-4. Execute evaluation
-5. Read or generate backend metrics
-6. Evaluate thresholds per row
-7. Build normalized `results.json`
-8. Generate `report.md`
+1. Load `agentops.yaml`
+2. Resolve the agent target (Foundry prompt / Foundry hosted / HTTP / model)
+3. Infer evaluators from agent type + dataset columns; apply user thresholds
+4. Dispatch to the runner:
+   - `execution: cloud` → `pipeline/cloud_runner.py` (OpenAI Evals API)
+   - `execution: local` (default) → `pipeline/runtime.py`
+5. Stream per-row results into `.agentops/results/<timestamp>/`
+6. Evaluate thresholds and compute aggregate run metrics
+7. Write `results.json`, `report.md`, optionally `cloud_evaluation.json`
+8. Optionally publish to Foundry Evaluations (`publish: true` or cloud mode)
 9. Sync `.agentops/results/latest/`
 10. Return exit code `0`, `1`, or `2`
 
-### Backend Behavior
+### Execution Targets
 
-#### Foundry Backend
-- Native support for Foundry Agent Service
-- Selected when `execution_mode: remote` and `endpoint.kind: foundry_agent`
-- Supports `target.type: agent` and `target.type: model`
-- Cloud mode is the default
-- Local fallback mode is activated with `AGENTOPS_FOUNDRY_MODE=local`
-
-Important runtime rules:
-- Do not hardcode `api_version` in `get_openai_client()` calls
-- Prefer `DefaultAzureCredential(exclude_developer_cli_credential=True)`
-- Azure OpenAI endpoint is derived automatically when possible
-
-#### HTTP Backend
-- Selected when `execution_mode: remote` and `endpoint.kind: http`
-- Calls any HTTP-deployed agent endpoint row by row
-- Supports agents deployed outside Foundry: LangGraph, LangChain, OpenAI, ACA, custom REST
-- POSTs each dataset row as JSON using `request_field` as the prompt key
-- Extracts model response via `response_field` (supports dot-path notation)
-- Extracts tool calls via `tool_calls_field` for agent-with-tools evaluators
-- Forwards extra JSONL row fields via `extra_fields` for session state, user context, etc.
-- Runs local and AI-assisted evaluators using the same evaluation engine as Foundry local mode
-- Produces `backend_metrics.json` with per-row scores
-
-#### Local Adapter Backend
-- Selected when `execution_mode: local`
-- Spawns a local adapter process per dataset row
-- Sends JSON on stdin, reads JSON on stdout
-- Runs local evaluators on the adapter response
-- Useful for custom evaluation pipelines integrated into the normalized AgentOps result contract
+| Target | When | How it executes |
+|---|---|---|
+| Foundry prompt agent (`name:version`) | Default for Foundry-hosted agents | `cloud` runs in OpenAI Evals API; `local` invokes the agent via Agent Service REST and runs `azure.ai.evaluation` evaluators locally |
+| Foundry hosted endpoint (`https://...`) | Container-hosted agents in Foundry | Always `local`; calls the agent HTTP endpoint and runs evaluators locally |
+| Generic HTTP agent (`https://...`) | LangGraph, LangChain, ACA, AKS, custom REST | Always `local`; POSTs each row, extracts `response`, runs local evaluators |
+| Raw model deployment (`model:<name>`) | Direct evaluation of a model deployment | Always `local`; calls the Azure OpenAI deployment, runs evaluators locally |
 
 ### Output Contract
 
-Each run produces:
-- `results.json`
-- `report.md`
+Every run produces:
+- `results.json` — versioned, machine-readable result
+- `report.md` — human-readable summary suitable for PR review
 
-Cloud Foundry runs may also produce:
-- `cloud_evaluation.json`
+Cloud Foundry runs also produce:
+- `cloud_evaluation.json` — includes `eval_id`, `run_id`, and `report_url`
+  (deep-link to the New Foundry Experience Evaluations page)
 
 `results.json` contains:
-- `metrics`
-- `row_metrics`
-- `item_evaluations`
-- `run_metrics`
-- `thresholds`
-- `summary`
+- `run_metrics` — aggregate metrics (`run_pass`, `items_total`,
+  `threshold_pass_rate`, per-metric averages and std-devs)
+- `row_metrics` / `item_evaluations` — per-row scores
+- `thresholds` — pass/fail per threshold
+- `summary` — run-level pass/fail summary
 
-Common derived run metrics:
-- `run_pass`
-- `threshold_pass_rate`
-- `items_total`
-- `items_passed_all`
-- `items_pass_rate`
-- per-metric averages and standard deviations
+`report.md` includes the same data in PR-friendly Markdown plus links to
+Foundry when applicable.
 
 ## Evaluation Scenarios
 
-### Model Quality
-- Target: model deployment (Foundry model, HTTP endpoint, or local adapter)
-- Bundle: `model_quality_baseline.yaml`
-- Typical row fields: `input`, `expected`
-- Evaluators: `SimilarityEvaluator`, `CoherenceEvaluator`, `FluencyEvaluator`, `F1ScoreEvaluator`, `avg_latency_seconds`
+Evaluator selection is **automatic** based on agent type and dataset columns.
+The matrix below documents what AgentOps will pick by default; thresholds
+can always be overridden in `agentops.yaml`.
 
-### RAG Quality
-- Target: agent with retrieval (Foundry agent, HTTP endpoint, or local adapter)
-- Bundle: `rag_quality_baseline.yaml`
-- Typical row fields: `input`, `expected`, `context`
-- Evaluators: `GroundednessEvaluator`, `RelevanceEvaluator`, `RetrievalEvaluator`, `ResponseCompletenessEvaluator`, `CoherenceEvaluator`, `avg_latency_seconds`
-
-### Conversational Agent
-- Target: chatbots, assistants, Q&A agents (Foundry agent, HTTP endpoint, or local adapter)
-- Bundle: `conversational_agent_baseline.yaml`
-- Typical row fields: `input`, `expected`
-- Evaluators: `CoherenceEvaluator`, `FluencyEvaluator`, `RelevanceEvaluator`, `SimilarityEvaluator`, `avg_latency_seconds`
-
-### Agent Workflow (Tools)
-- Target: agent with tool calling (Foundry agent, HTTP endpoint, or local adapter)
-- Bundle: `agent_workflow_baseline.yaml`
-- Typical row fields: `input`, `expected`, `tool_definitions`, `tool_calls`
-- Evaluators: `TaskCompletionEvaluator`, `ToolCallAccuracyEvaluator`, `IntentResolutionEvaluator`, `TaskAdherenceEvaluator`, `ToolSelectionEvaluator`, `ToolInputAccuracyEvaluator`, `avg_latency_seconds`
-
-### Content Safety
-- Target: any agent or model (Foundry agent, Foundry model, HTTP endpoint, or local adapter)
-- Bundle: `safe_agent_baseline.yaml`
-- Typical row fields: `input`, `expected`
-- Evaluators: `ViolenceEvaluator`, `SexualEvaluator`, `SelfHarmEvaluator`, `HateUnfairnessEvaluator`, `ProtectedMaterialEvaluator`, `avg_latency_seconds`
-- Requirements: `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (safety evaluators use `azure_ai_project`, not `model_config`)
-
-### Scenario × Target Matrix
-
-| Scenario | Foundry Agent | Foundry Model | HTTP (LangGraph/LangChain/OpenAI/ACA) | Local Adapter |
-|---|---|---|---|---|
-| Model Quality | — | ✓ run.yaml | ✓ run-http-model.yaml | ✓ (custom) |
-| RAG Quality | ✓ run-rag.yaml | — | ✓ run-http-rag.yaml | ✓ (custom) |
-| Agent Workflow | ✓ run-agent.yaml | — | ✓ run-http-agent-tools.yaml | ✓ (custom) |
-| Content Safety | ✓ (custom) | ✓ (custom) | ✓ (custom) | ✓ (custom) |
+| Scenario | Agent value | Required dataset columns | Auto-selected evaluators |
+|---|---|---|---|
+| Model quality | `model:<deployment>` | `input`, `expected` | Similarity, Coherence, Fluency, F1Score, `avg_latency_seconds` |
+| RAG quality | Any agent with `context` rows | `input`, `expected`, `context` | Groundedness, Relevance, Retrieval, ResponseCompleteness, Coherence, `avg_latency_seconds` |
+| Conversational agent | Any prompt/hosted agent | `input`, `expected` | Coherence, Fluency, Relevance, Similarity, `avg_latency_seconds` |
+| Agent workflow (tools) | Any agent with tool rows | `input`, `expected`, `tool_definitions`, `tool_calls` | TaskCompletion, ToolCallAccuracy, IntentResolution, TaskAdherence, ToolSelection, ToolInputAccuracy, `avg_latency_seconds` |
+| Content safety | Any agent or model | `input`, `expected` | Violence, Sexual, SelfHarm, HateUnfairness, ProtectedMaterial (requires `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`) |
 
 ## Azure Runtime Notes
 
 Authentication:
-- Local development: `az login`
-- CI/CD: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET`
+- Local development: `az login` (Default Azure CLI credential)
+- CI/CD: federated identity via `azure/login` action, or
+  `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_CLIENT_SECRET`
 - Azure-hosted environments: managed identity
 
-Important environment variables:
+Important environment variables (canonical names, not prefixed):
 - `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
-- `AGENTOPS_FOUNDRY_MODE`
-- `AZURE_OPENAI_ENDPOINT`
+- `APPLICATIONINSIGHTS_CONNECTION_STRING`
+- `AZURE_OPENAI_ENDPOINT` (auto-derived when absent)
 - `AZURE_OPENAI_DEPLOYMENT`
-- `AZURE_AI_MODEL_DEPLOYMENT_NAME`
 - `AZURE_OPENAI_API_VERSION`
 
+AgentOps-specific environment variables (`AGENTOPS_` prefix):
+- `AGENTOPS_FOUNDRY_MODE` — `cloud` (default) or `local`
+- `AGENTOPS_NO_UNICODE_BANNER` / `AGENTOPS_UNICODE_BANNER` — banner override
+- `AGENTOPS_NO_COLOR` — disable ANSI styling
+- `AGENTOPS_DEBUG` — verbose logging
+
+Authentication rule (Windows-friendly):
+> Every `DefaultAzureCredential` instantiation passes `process_timeout=30`;
+> the 10s default times out the `az.cmd` cold start on Windows.
+
 Recommended default behavior:
-- Keep Foundry cloud mode as the default path
-- Install Azure runtime dependencies separately from the base package
-- Keep Azure SDK imports inside functions in `backends/` and `services/`
-- Configure model deployments explicitly per project; do not assume a universally available default deployment name in Foundry
+- Keep Foundry cloud mode as the default for `name:version` agents
+- Install Azure runtime dependencies via the `[foundry]` extra
+- Keep Azure SDK imports inside functions (lazy) in `pipeline/` and `agent/`
+- Do not hardcode `api_version` in `get_openai_client()` — the SDK picks it
 
 ## Architectural Constraints
 
 ### Code Organization
-- Keep `cli/app.py` thin
-- Keep `core/` pure: no Azure SDK imports and no network calls
-- Put orchestration in `services/`
-- Put execution engines in `backends/`
-- Use `pathlib.Path` consistently
+- Keep `cli/app.py` thin: each command is a Typer entrypoint that parses
+  arguments and delegates to `services/` or `pipeline/`
+- Keep `core/` pure: no Azure SDK imports, no network calls, no FS writes
+- Put orchestration in `services/` (initializer, wizard, skills, cicd)
+- Put execution engines in `pipeline/` (runtime, cloud_runner, orchestrator)
+- Put Doctor and Cockpit in `agent/`
+- Use `pathlib.Path` consistently; no raw string paths
 - Avoid module-level side effects and hidden global state
+- Lazy-import Azure SDKs from inside functions
 
 ### Public Contracts
-- Do not change exit code meaning
-- Do not add CLI commands or flags unless intentionally expanding the product contract
+- Do not change exit code meaning (`0`, `1`, `2`)
+- Do not add new top-level commands without explicit discussion
 - Preserve `results.json` and `report.md` as stable outputs
+- Preserve the flat `agentops.yaml` 1.0 schema (additive changes only)
+
+### CLI Help & Explain Convention
+- `--help` stays terse: one-sentence purpose, syntax, parameters, defaults
+- Every public command has an `explain` subcommand or is reachable via the
+  universal dispatcher `agentops explain [command path...]`
+- `explain` is the long-form, paged manual with `--no-pager`, `--format
+  markdown|html`, `--out`, and `--open` options
+- Do not add separate `list` / `docs` commands for explanatory content
 
 ### Foundry-Specific Rules
 - Avoid passing explicit `api_version` into `get_openai_client()`
 - Keep Azure imports lazy
 - Preserve support for both cloud evaluation and local fallback
+- Doctor and Cockpit are **read-only by design** — they never create,
+  deploy, mutate, or delete cloud resources
 
 ## Testing
 
@@ -547,35 +505,44 @@ Additional useful commands:
 ```bash
 python -m pytest tests/unit -q
 python -m pytest tests/integration -q
-python -m pytest tests/unit/test_models.py -q
+python -m pytest tests/unit/test_agentops_config.py -q
 ```
 
 Testing rules:
-- Azure SDK calls should be mocked in tests
+- Azure SDK calls must be mocked; tests run without Azure credentials
 - Unit tests go in `tests/unit/`
 - Integration tests go in `tests/integration/`
 - Tests should verify exit code behavior when relevant
+- Use `CliRunner.invoke(...).output` (not `.stdout`) to capture combined
+  stdout+stderr — newer Click separates the streams by default
 
 ## Quick Reference
 
 Read first:
+- `README.md`
+- `docs/concepts.md`
 - `docs/how-it-works.md`
 - `CONTRIBUTING.md`
-- `README.md`
 
 Key source files:
-- `src/agentops/core/models.py`
-- `src/agentops/services/runner.py`
-- `src/agentops/backends/foundry_backend.py`
-- `src/agentops/services/initializer.py`
+- `src/agentops/cli/app.py` — CLI commands + explain pages
+- `src/agentops/core/agentops_config.py` — flat 1.0 schema model
+- `src/agentops/services/initializer.py` — `agentops init` scaffold logic
+- `src/agentops/services/setup_wizard.py` — interactive wizard
+- `src/agentops/utils/azd_env.py` — `.azure/<env>/` filesystem helpers
+- `src/agentops/pipeline/runtime.py` — local evaluation runner
+- `src/agentops/pipeline/cloud_runner.py` — cloud evaluation runner
+- `src/agentops/agent/cockpit.py` — Cockpit FastAPI server
+- `src/agentops/agent/analyzer.py` — Doctor analyzer
 
 Most common local flow:
 
 ```bash
 python -m pip install -e .
-python -m pip install pytest
-agentops init
-agentops eval run
-agentops report generate
-python -m pytest tests/ -x -q
+agentops init                          # scaffold + wizard + skills
+agentops eval run                      # run evaluation
+agentops report generate               # regenerate report.md
+agentops doctor                        # readiness + risk + history
+agentops cockpit                       # localhost UI for the workspace
+python -m pytest tests/ -x -q          # full test suite
 ```

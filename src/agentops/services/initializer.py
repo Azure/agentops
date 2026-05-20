@@ -25,6 +25,8 @@ _TEMPLATE_PACKAGE = "agentops.templates"
 _FLAT_FILES: Dict[str, str] = {
     "agentops.yaml": "agentops.yaml",
     ".agentops/data/smoke.jsonl": "smoke.jsonl",
+    ".agentops/waf-checklist.csv": "waf-checklist.csv",
+    ".agentops/waf-checklist.README.md": "waf-checklist.README.md",
 }
 
 
@@ -66,7 +68,7 @@ def initialize_flat_workspace(directory: Path, force: bool = False) -> InitResul
             result.created_files.append(target)
 
     # Write a starter project-root .gitignore. We never overwrite an existing
-    # one (even with --force) — users often have curated ignores we don't want
+    # one (even with --force) - users often have curated ignores we don't want
     # to clobber.
     gitignore_target = project_root / _PROJECT_GITIGNORE_TARGET
     if not gitignore_target.exists():

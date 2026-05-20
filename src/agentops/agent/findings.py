@@ -14,25 +14,25 @@ class Category(str, Enum):
     grouping the watchdog report. They are independent of severity:
     a `quality` finding can be `critical`, `warning`, or `info`.
 
-    Categories are split between **runtime telemetry** signals (quality,
-    performance, reliability) and **GenAIOps practice** signals (mlops,
-    security, responsible_ai). The latter are the watchdog's main value
-    over Foundry's native Operate -> Compliance surface, which already
-    covers runtime guardrails, security posture, and data governance at
-    the resource level.
+    Categories mirror the **Microsoft Well-Architected Framework for AI**
+    pillars and are the single source of truth shared by doctor findings,
+    ``waf-checklist.csv`` (``pillar`` column), the cockpit rows, and
+    config skip-lists.
 
-    * ``quality``         — eval-driven signals (regression, content-safety)
-    * ``performance``     — latency / throughput signals
-    * ``reliability``     — error / failure signals
-    * ``mlops``           — pipeline / config hygiene (pinning, gates, drift)
-    * ``security``        — repo & identity surface beyond Foundry Compliance
-    * ``responsible_ai``  — prompt + eval-bundle heuristics for RAI practices
+    * ``quality``                - eval-driven signals (regression, content-safety)
+    * ``performance``            - latency / throughput signals
+    * ``reliability``            - error / failure signals
+    * ``operational_excellence`` - workspace + CI hygiene, Foundry config
+      audit, and spec-conformance signals (pinning, gates, drift,
+      versioning, spec-vs-implementation alignment)
+    * ``security``               - repo & identity surface beyond Foundry Compliance
+    * ``responsible_ai``         - prompt + eval-bundle heuristics for RAI practices
     """
 
     QUALITY = "quality"
     PERFORMANCE = "performance"
     RELIABILITY = "reliability"
-    MLOPS = "mlops"
+    OPERATIONAL_EXCELLENCE = "operational_excellence"
     SECURITY = "security"
     RESPONSIBLE_AI = "responsible_ai"
 

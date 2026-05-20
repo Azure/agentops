@@ -204,14 +204,14 @@ AgentOps provides sensible defaults so you don't need to configure extra environ
 
 | Setting | Default | Override |
 |---|---|---|
-| Judge model (AI-assisted evaluators) | A deployment you configure in your project | `backend.model` in `run.yaml` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` env var |
+| Judge model (AI-assisted evaluators) | A deployment you configure in your project | `AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` env var |
 | Authentication | `DefaultAzureCredential` (passwordless) | `az login` locally, Managed Identity in Azure |
 
 ## 7) Known caveats
 
 - Some agent evaluators listed in the latest Foundry docs are preview and can change name/signature.
 - Not all preview evaluators have stable Python API docs with full constructor/call signatures at any given time.
-- When a signature changes, update only evaluator `config` in bundle (no code change needed in AgentOps core, due to generic runtime).
+- When a signature changes, update the evaluator override list in `agentops.yaml` (no code change is needed in AgentOps core; the runtime is generic).
 
 **Last updated:** 2026-03-02 (UTC)
 

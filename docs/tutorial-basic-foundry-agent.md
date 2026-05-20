@@ -1,25 +1,25 @@
 # Tutorial: Foundry Agent Evaluation
 
-This tutorial evaluates a deployed Foundry agent end-to-end — system instructions, tools, retrieval, and all. You send prompts through the agent the same way a real user would, then measure the quality of the responses.
+This tutorial evaluates a deployed Foundry agent end-to-end - system instructions, tools, retrieval, and all. You send prompts through the agent the same way a real user would, then measure the quality of the responses.
 
-Agent evaluation is different from model-direct evaluation in important ways. When you evaluate a model directly, you get the raw model output — concise, predictable, and closely matching expected answers. When you evaluate an agent, you get the *agent's* output, which is shaped by its instructions, may include information gathered from tools, and is phrased in the agent's style. This means agent similarity scores are typically lower than model-direct scores, even when the agent is working correctly.
+Agent evaluation is different from model-direct evaluation in important ways. When you evaluate a model directly, you get the raw model output - concise, predictable, and closely matching expected answers. When you evaluate an agent, you get the *agent's* output, which is shaped by its instructions, may include information gathered from tools, and is phrased in the agent's style. This means agent similarity scores are typically lower than model-direct scores, even when the agent is working correctly.
 
-That difference is not a flaw — it is the point. Agent evaluation tells you whether the complete system behaves the way your users will experience it, not just whether the underlying model knows the right answer.
+That difference is not a flaw - it is the point. Agent evaluation tells you whether the complete system behaves the way your users will experience it, not just whether the underlying model knows the right answer.
 
 ## When to use agent evaluation
 
 Use agent evaluation when you want to:
 
 - **Test the end-to-end experience** your users will actually see, including agent instructions, tool calls, and knowledge base lookups
-- **Catch regressions caused by agent configuration changes** — modified system instructions, added/removed tools, updated knowledge sources
+- **Catch regressions caused by agent configuration changes** - modified system instructions, added/removed tools, updated knowledge sources
 - **Measure real latency** including the agent orchestration overhead (thread creation, tool execution, polling)
-- **Validate that tools work correctly** — if an agent has a calculator tool, does it actually call it and return the right answer?
+- **Validate that tools work correctly** - if an agent has a calculator tool, does it actually call it and return the right answer?
 
 ### How agent scores differ from model-direct
 
 In our testing, the same QA dataset scored **5.0** on model-direct (perfect similarity) and **3.4** on an agent. The agent was answering correctly, but it was rephrasing answers in its own style, adding context, and sometimes including extra details from its system instructions.
 
-A SimilarityEvaluator score of 3.4 on an agent is not a failure — it means the agent is producing responses that capture the core meaning but differ from the exact expected text. Set your thresholds accordingly. A threshold of ≥ 3 is usually appropriate for agents, while model-direct can sustain ≥ 4 or even ≥ 5 on clean datasets.
+A SimilarityEvaluator score of 3.4 on an agent is not a failure - it means the agent is producing responses that capture the core meaning but differ from the exact expected text. Set your thresholds accordingly. A threshold of ≥ 3 is usually appropriate for agents, while model-direct can sustain ≥ 4 or even ≥ 5 on clean datasets.
 
 If you see agent scores drop to 1.0 on questions that the model-direct handles at 5.0, that is worth investigating. It usually means the agent's instructions are conflicting with the question, a tool call failed, or the agent is hallucinating.
 
@@ -60,7 +60,7 @@ You are a factual question-answering assistant.
 
 Rules:
 1. Answer short factual questions clearly and directly.
-2. Keep answers concise — one or two sentences when possible.
+2. Keep answers concise - one or two sentences when possible.
 3. Do not invent facts. If uncertain, say so.
 4. Do not use markdown formatting in responses.
 ```
@@ -85,7 +85,7 @@ Foundry shows `v3`, write `:3` without the `v`.
 
 ### 4) Connect Application Insights (recommended)
 
-Wire an App Insights resource to the project so the agent's traces flow into Azure Monitor and the AgentOps dashboard's live telemetry section lights up.
+Wire an App Insights resource to the project so Foundry traces, Azure Monitor telemetry, and AgentOps Cockpit readiness links all resolve from the same project context.
 
 1. Open the agent, click the **Traces** tab.
 2. On the *Create or connect an App Insights resource* banner, click **Connect**.
@@ -140,7 +140,7 @@ Key points:
   and routes the run to the Foundry Agent Service automatically.
 - The judge model used by AI-assisted evaluators (SimilarityEvaluator) is
   taken from `AZURE_OPENAI_DEPLOYMENT` (set in Part 2).
-- Evaluators are auto-selected from the dataset row shape — `input` +
+- Evaluators are auto-selected from the dataset row shape - `input` +
   `expected` triggers `SimilarityEvaluator`. No `bundle` to maintain.
 - `publish: foundry_cloud` is optional. AgentOps still writes local
   `results.json` and `report.md` first, then submits a server-side Foundry
@@ -208,9 +208,9 @@ If most rows score 4–5, your agent is working well. If most score 1–2, check
 
 ## Part 6: Compare with a baseline
 
-You've only run a single evaluation, so `.agentops/results/` has one timestamped run plus the `latest/` mirror. To compare a future run against it, you don't need to copy anything — just point `--baseline` at the previous result. AgentOps loads the baseline into memory before refreshing `latest/`, so `latest/results.json` works as a shorthand for "the run before this one".
+You've only run a single evaluation, so `.agentops/results/` has one timestamped run plus the `latest/` mirror. To compare a future run against it, you don't need to copy anything - just point `--baseline` at the previous result. AgentOps loads the baseline into memory before refreshing `latest/`, so `latest/results.json` works as a shorthand for "the run before this one".
 
-**1. Change something meaningful** — publish a new Foundry agent version and update `agent: "name:version"`, change the agent instructions, swap the model deployment, or replace the dataset. Re-running the same agent against the same dataset usually produces an unchanged comparison except for latency variance.
+**1. Change something meaningful** - publish a new Foundry agent version and update `agent: "name:version"`, change the agent instructions, swap the model deployment, or replace the dataset. Re-running the same agent against the same dataset usually produces an unchanged comparison except for latency variance.
 
 **2. Re-run with `--baseline`:**
 
@@ -247,7 +247,7 @@ The RAG scenario uses GroundednessEvaluator instead of SimilarityEvaluator becau
 
 ## Next steps
 
-- [Model-Direct Tutorial](tutorial-model-direct.md) — evaluate a model without agents
-- [RAG Tutorial](tutorial-rag.md) — evaluate retrieval-augmented responses
-- [Baseline Comparison Tutorial](tutorial-baseline-comparison.md) — compare runs and detect regressions
-- [Copilot Skills Tutorial](tutorial-copilot-skills.md) — use the installed AgentOps skills to build an eval workflow with Copilot
+- [Model-Direct Tutorial](tutorial-model-direct.md) - evaluate a model without agents
+- [RAG Tutorial](tutorial-rag.md) - evaluate retrieval-augmented responses
+- [Baseline Comparison Tutorial](tutorial-baseline-comparison.md) - compare runs and detect regressions
+- [Copilot Skills Tutorial](tutorial-copilot-skills.md) - use the installed AgentOps skills to build an eval workflow with Copilot

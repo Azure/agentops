@@ -6,8 +6,9 @@ with three deployment environments (`dev`, `qa`, `production`).
 
 `agentops workflow generate --kinds pr` is the safe first step for a new
 repository: it creates only the PR eval gate. Generate the full DEV/QA/PROD
-deploy scaffold after GitHub Environments, Azure OIDC, and real
-build/deploy commands are configured.
+deploy scaffold after GitHub Environments and Azure OIDC are configured.
+If the repo has `azure.yaml`, AgentOps can generate azd-backed deploy
+workflows that delegate provision/deploy to Azure Developer CLI.
 
 The full scaffold ships four templates:
 
@@ -60,8 +61,9 @@ agentops workflow generate --kinds pr
 
 # 4. Commit and push the PR gate.
 
-# 5. Only after deploy wiring is real, generate the full scaffold:
-agentops workflow generate --kinds pr,dev,qa,prod --force
+# 5. Only after deploy wiring is real, generate the full scaffold.
+#    With azure.yaml present, this uses azd provision/deploy templates.
+agentops workflow generate --kinds pr,dev,qa,prod --deploy-mode auto --force
 ```
 
 ## Configuration walkthrough
@@ -105,12 +107,47 @@ In Settings → Environments, create three:
 Environment-level variables override repo-level ones automatically
 when the workflow's `environment:` matches.
 
-### 3. Fill in Build and Deploy
+### 3. Choose deployment mode
 
-Each `agentops-deploy-*.yml` ships with `Build (placeholder)` and
-`Deploy (placeholder)` steps. The DEV template lists commented example
-snippets for the most common patterns. Copy the relevant one into all
-three deploy templates.
+AgentOps is azd-first for deployment: AgentOps runs the evaluation gate,
+while Azure Developer CLI owns infrastructure, packaging, deployment, and
+hooks declared in `azure.yaml`.
+
+Use one of these modes:
+
+| Mode | When to use it |
+|---|---|
+| `--deploy-mode auto` | Default. Uses azd templates when `azure.yaml` exists; otherwise keeps placeholder deploy templates. |
+| `--deploy-mode azd` | Force `azd provision` / `azd deploy` templates. Use this after creating or adapting `azure.yaml` and `infra/`. |
+| `--deploy-mode placeholder` | Keep stack-agnostic build/deploy placeholders for repos that are not azd-managed yet. |
+
+For azd-managed repos:
+
+```bash
+agentops workflow generate --kinds pr,dev,qa,prod --deploy-mode azd --force
+```
+
+The generated deploy workflows:
+
+1. install `azd`;
+2. run `azd env new ... || azd env select ...` on each CI runner;
+3. run `azd provision --no-prompt` for DEV by default;
+4. run `azd provision --no-prompt` for QA/PROD only when manually requested;
+5. run `agentops eval run` as the quality/safety gate;
+6. run `azd env refresh` on the deploy runner;
+7. run `azd deploy --no-prompt`.
+
+Set `AZURE_ENV_NAME` per GitHub Environment if your azd env names differ
+from `dev`, `qa`, and `production`. Set `AZURE_LOCATION` when the azd
+template needs an explicit region.
+
+#### Placeholder mode
+
+When `azure.yaml` is missing or `--deploy-mode placeholder` is selected,
+each `agentops-deploy-*.yml` ships with `Build (placeholder)` and
+`Deploy (placeholder)` steps. Prefer creating an azd deployment first; if
+that is not possible, replace the placeholders with project-specific
+commands.
 
 #### Container Apps
 
@@ -157,18 +194,14 @@ three deploy templates.
 # to manage Foundry agents (project-specific tooling).
 ```
 
-#### azd-managed app
+#### Zero-trust deployment with azd
 
-```yaml
-# Build
-- uses: Azure/setup-azd@v2
-- run: azd package --no-prompt
-
-# Deploy
-- run: azd deploy --no-prompt
-  env:
-    AZURE_ENV_NAME: dev   # or qa / prod
-```
+If you ask a coding agent to generate a zero-trust deployment, have it
+create or adapt `azure.yaml`, `infra/`, and azd-native hooks such as
+`preprovision`, `postprovision`, `predeploy`, and `postdeploy`. Do not
+wire ad-hoc hook scripts directly into AgentOps workflows. After the azd
+path is valid locally, regenerate the workflows with
+`--deploy-mode azd`.
 
 ### 4. Branch protection
 
@@ -193,11 +226,11 @@ The eval step uses the AgentOps exit code contract to gate deploys:
 
 ## Artifacts
 
-Each workflow uploads (always — even on failure):
+Each workflow uploads (always - even on failure):
 
-- `results.json` — machine-readable, versioned
-- `report.md` — human-readable
-- `cloud_evaluation.json` — present when using Foundry cloud evaluation;
+- `results.json` - machine-readable, versioned
+- `report.md` - human-readable
+- `cloud_evaluation.json` - present when using Foundry cloud evaluation;
   contains a deep link to the New Foundry Experience Evaluations page
 
 Artifact names per workflow:
@@ -213,15 +246,19 @@ Artifact names per workflow:
 
 ```bash
 agentops workflow generate --kinds pr          # safe first PR gate
-agentops workflow generate                     # all four templates (default)
+agentops workflow generate                     # all five templates (default)
 agentops workflow generate --kinds pr,dev,prod # subset (trunk-based)
+agentops workflow generate --deploy-mode azd   # delegate deploy to azd
+agentops workflow generate --platform azure-devops
 agentops workflow generate --force             # overwrite existing files
 agentops workflow generate --dir <path>        # different repo root
 ```
 
 | Flag | Description | Default |
 |---|---|---|
-| `--kinds` | Comma-separated subset of `pr,dev,qa,prod` | all four |
+| `--kinds` | Comma-separated subset of `pr,dev,qa,prod,watchdog` | all five |
+| `--platform` | `github` or `azure-devops` | `github` |
+| `--deploy-mode` | `auto`, `placeholder`, or `azd` | `auto` |
 | `--force` | Overwrite existing workflow files | `false` |
 | `--dir` | Repository root | `.` |
 
@@ -231,7 +268,7 @@ agentops workflow generate --dir <path>        # different repo root
   `agentops-qa.yaml` / `agentops-prod.yaml` and tighten the
   `thresholds:` block. Update the `inputs.config` default in the
   matching workflow file.
-- **Scheduled runs** — add a `schedule:` entry in `agentops-pr.yml` (or
+- **Scheduled runs** - add a `schedule:` entry in `agentops-pr.yml` (or
   a new file) to evaluate against `main` nightly.
 - **Matrix per scenario** - if you have multiple AgentOps config files, extend
   the eval job with `strategy.matrix.config:` and reference

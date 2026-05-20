@@ -48,18 +48,20 @@ def test_eval_help_does_not_expose_compare_subcommand() -> None:
 def test_planned_command_groups_removed() -> None:
     """Stub command groups (monitor/model/dataset/config) are gone in 1.0.
 
-    `dashboard` is now the real command that opens the local UI."""
+    `cockpit` is now the real command that opens the local UI."""
     for group in ("monitor", "model", "dataset", "config"):
         result = runner.invoke(app, [group, "--help"])
         assert result.exit_code != 0, f"unexpected: 'agentops {group}' is still wired"
 
 
-def test_dashboard_command_wired() -> None:
-    """`agentops dashboard` exposes the local dashboard server."""
-    result = runner.invoke(app, ["dashboard", "--help"])
+def test_cockpit_command_wired() -> None:
+    """`agentops cockpit` exposes the local cockpit server."""
+    result = runner.invoke(app, ["cockpit", "--help"])
     assert result.exit_code == 0
     stripped = _strip_ansi(result.stdout)
-    assert "dashboard" in stripped.lower()
+    assert "cockpit" in stripped.lower()
+    assert "Reads ``" not in stripped
+    assert "pip install agentops-toolkit" not in stripped
 
 
 def test_agent_command_group_wired() -> None:

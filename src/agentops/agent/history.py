@@ -2,7 +2,7 @@
 
 Each ``agentops doctor`` invocation appends one JSON record to
 ``.agentops/agent/history.jsonl``. The file is the canonical local
-storage for the dashboard (``agentops dashboard``) and for any future
+storage for the cockpit (``agentops cockpit``) and for any future
 trend-based checks. No Azure resource required.
 
 When OpenTelemetry tracing is configured, the same record is also
@@ -27,7 +27,7 @@ _HISTORY_REL_PATH = ".agentops/agent/history.jsonl"
 
 @dataclass
 class AnalysisRecord:
-    """A single watchdog analysis, captured for the dashboard and trend checks."""
+    """A single watchdog analysis, captured for the cockpit and trend checks."""
 
     timestamp: str
     findings_total: int
@@ -118,7 +118,7 @@ def load_analysis_history(
     Returns an empty list when the file does not exist, so callers can
     treat history as "best effort" without special-casing first runs.
     Malformed lines are skipped silently rather than crashing the
-    dashboard or trend checks.
+    cockpit or trend checks.
     """
     path = history_path(workspace)
     if not path.exists():

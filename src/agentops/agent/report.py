@@ -8,25 +8,30 @@ from typing import Dict, List
 
 from agentops.agent.analyzer import AnalysisResult
 from agentops.agent.findings import Category, Finding, Severity, severity_emoji
+from agentops.agent.knowledge import find_waf_item
 
 _CATEGORY_ORDER: List[Category] = [
-    Category.SECURITY,
-    Category.RELIABILITY,
-    Category.PERFORMANCE,
     Category.QUALITY,
+    Category.PERFORMANCE,
+    Category.RELIABILITY,
+    Category.OPERATIONAL_EXCELLENCE,
+    Category.SECURITY,
+    Category.RESPONSIBLE_AI,
 ]
 
 _CATEGORY_LABEL: Dict[Category, str] = {
-    Category.SECURITY: "Security posture (WAF-AI — Security pillar)",
-    Category.RELIABILITY: "Reliability",
-    Category.PERFORMANCE: "Performance",
     Category.QUALITY: "Quality",
+    Category.PERFORMANCE: "Performance Efficiency",
+    Category.RELIABILITY: "Reliability",
+    Category.OPERATIONAL_EXCELLENCE: "Operational Excellence",
+    Category.SECURITY: "Security",
+    Category.RESPONSIBLE_AI: "Responsible AI",
 }
 
 _CATEGORY_FOOTER: Dict[Category, str] = {
     Category.SECURITY: (
         "_Audit reference: Microsoft Well-Architected Framework for AI "
-        "workloads — Security pillar — "
+        "workloads - Security pillar - "
         "https://learn.microsoft.com/azure/well-architected/ai/security_"
     ),
 }
@@ -63,14 +68,19 @@ def _group_by_category(findings: List[Finding]) -> Dict[Category, List[Finding]]
     return grouped
 
 
-def _render_finding_detail(lines: List[str], finding: Finding) -> None:
+def _render_finding_detail(lines: List[str], finding: Finding, workspace=None) -> None:
     lines.append(
-        f"#### {severity_emoji(finding.severity)} `{finding.id}` — {finding.title}"
+        f"#### {severity_emoji(finding.severity)} `{finding.id}` - {finding.title}"
     )
     lines.append("")
     lines.append(f"- **Severity:** `{finding.severity.value}`")
     lines.append(f"- **Category:** `{finding.category.value}`")
     lines.append(f"- **Source:** `{finding.source}`")
+    waf = find_waf_item(finding.id, workspace=workspace)
+    if waf is not None:
+        lines.append(
+            f"- **WAF:** `{waf.pillar}` / `{waf.area}` - [{waf.item_id}]({waf.reference_url})"
+        )
     lines.append("")
     lines.append(finding.summary)
     lines.append("")
@@ -88,7 +98,7 @@ def _render_finding_detail(lines: List[str], finding: Finding) -> None:
 def render_report(result: AnalysisResult) -> str:
     lines: List[str] = []
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    lines.append("# AgentOps Watchdog Report")
+    lines.append("# AgentOps Doctor Report")
     lines.append("")
     lines.append(f"_Generated: {now}_")
     lines.append("")
@@ -142,7 +152,7 @@ def render_report(result: AnalysisResult) -> str:
                 lines.append(_format_finding_row(f))
             lines.append("")
             for f in bucket:
-                _render_finding_detail(lines, f)
+                _render_finding_detail(lines, f, workspace=result.workspace)
             footer = _CATEGORY_FOOTER.get(cat)
             if footer:
                 lines.append(footer)
@@ -150,7 +160,7 @@ def render_report(result: AnalysisResult) -> str:
     else:
         lines.append("## Findings")
         lines.append("")
-        lines.append("_No findings — all configured checks passed._")
+        lines.append("_No findings - all configured checks passed._")
         lines.append("")
 
     # History appendix
@@ -178,12 +188,12 @@ def render_report(result: AnalysisResult) -> str:
 def short_chat_summary(result: AnalysisResult) -> str:
     """Compact one-screen summary used by the Copilot Extension server."""
     if not result.findings:
-        return "✅ No issues detected by the AgentOps watchdog."
+        return "✅ No issues detected by the AgentOps doctor."
     counts = {Severity.CRITICAL: 0, Severity.WARNING: 0, Severity.INFO: 0}
     for f in result.findings:
         counts[f.severity] += 1
     parts = [
-        f"AgentOps watchdog found {len(result.findings)} finding(s): "
+        f"AgentOps doctor found {len(result.findings)} finding(s): "
         f"🚨 {counts[Severity.CRITICAL]} critical, "
         f"⚠️ {counts[Severity.WARNING]} warning, "
         f"ℹ️ {counts[Severity.INFO]} info."
@@ -192,6 +202,6 @@ def short_chat_summary(result: AnalysisResult) -> str:
     parts.append("Top items:")
     for f in result.findings[:5]:
         parts.append(
-            f"- {severity_emoji(f.severity)} **{f.id}** — `{f.category.value}` — {f.title}"
+            f"- {severity_emoji(f.severity)} **{f.id}** - `{f.category.value}` - {f.title}"
         )
     return "\n".join(parts)

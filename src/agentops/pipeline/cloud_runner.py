@@ -10,7 +10,7 @@ The flow:
 1. Build an :class:`azure.ai.projects.AIProjectClient` from the configured
    project endpoint using ``DefaultAzureCredential``.
 2. Get the OpenAI client via ``project_client.get_openai_client()``. We do
-   **not** pass ``api_version`` — the SDK picks the correct one (passing
+   **not** pass ``api_version`` - the SDK picks the correct one (passing
    one explicitly has historically caused 404s in this codebase).
 3. Inline the JSONL dataset rows as a ``file_content`` source.
 4. Create the eval definition with ``client.evals.create(...)``, mapping
@@ -200,15 +200,13 @@ def run_on_foundry_cloud(
             "  pip install azure-ai-projects azure-identity"
         ) from exc
 
-    credential = DefaultAzureCredential(
-        exclude_developer_cli_credential=True,
-    )
+    credential = DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
     project_client = AIProjectClient(
         endpoint=project_endpoint,
         credential=credential,
     )
 
-    # NB: do not pass api_version — the SDK chooses the right one. Passing
+    # NB: do not pass api_version - the SDK chooses the right one. Passing
     # an explicit version has historically caused 404s in this codebase.
     openai_client = project_client.get_openai_client()
 
@@ -618,7 +616,7 @@ def _list_output_items(
     except Exception as exc:  # noqa: BLE001
         logger.debug("could not list output_items: %s", exc)
         progress(
-            f"cloud: WARNING — could not download per-row results "
+            f"cloud: WARNING - could not download per-row results "
             f"({exc.__class__.__name__}); local results.json will record the "
             f"portal URL only."
         )
@@ -634,7 +632,7 @@ def _list_output_items(
     except Exception as exc:  # noqa: BLE001
         logger.debug("could not iterate output_items: %s", exc)
         progress(
-            f"cloud: WARNING — failed to iterate output_items "
+            f"cloud: WARNING - failed to iterate output_items "
             f"({exc.__class__.__name__}); local results.json will be thin."
         )
         return []

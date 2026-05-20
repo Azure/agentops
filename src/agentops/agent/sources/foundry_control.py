@@ -22,11 +22,29 @@ class FoundryAgentSummary:
     name: Optional[str] = None
     model: Optional[str] = None
     updated_at: Optional[str] = None
+    instructions: Optional[str] = None
+
+
+@dataclass
+class EvaluationRuleSummary:
+    """Continuous evaluation rule attached to a Foundry agent.
+
+    The Foundry SDK exposes ``evaluation_rules`` (online evaluation
+    policies) but does **not** today expose a dedicated "Guardrails"
+    config API. Content-filter posture is therefore observed via the
+    ``azure_resources`` source instead.
+    """
+
+    rule_id: str
+    name: Optional[str] = None
+    agent: Optional[str] = None
+    enabled: Optional[bool] = None
 
 
 @dataclass
 class FoundryControlPayload:
     agents: List[FoundryAgentSummary] = field(default_factory=list)
+    evaluation_rules: List[EvaluationRuleSummary] = field(default_factory=list)
     failed_runs: int = 0
     total_runs: int = 0
     diagnostics: Dict[str, Any] = field(default_factory=dict)
@@ -81,7 +99,7 @@ def collect_foundry_control(
     payload = FoundryControlPayload(diagnostics=diagnostics)
 
     try:
-        credential = DefaultAzureCredential(exclude_developer_cli_credential=True)
+        credential = DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
         client = AIProjectClient(endpoint=endpoint, credential=credential)
     except Exception as exc:  # pragma: no cover
         diagnostics["status"] = "error"
@@ -106,11 +124,50 @@ def collect_foundry_control(
                             model=getattr(raw, "model", None),
                             updated_at=str(getattr(raw, "updated_at", "") or "")
                             or None,
+                            instructions=getattr(raw, "instructions", None),
                         )
                     )
     except Exception as exc:  # pragma: no cover
         log.warning("Foundry agents listing failed: %s", exc)
         diagnostics["agents_error"] = str(exc)
+
+    # Best-effort: continuous evaluation rules attached to agents.
+    # The exact accessor varies by SDK version; we try a few attribute
+    # paths and silently skip if none are present.
+    try:
+        rules_accessor = (
+            getattr(client, "evaluation_rules", None)
+            or getattr(client, "evaluations", None)
+        )
+        list_rules = None
+        if rules_accessor is not None:
+            list_rules = (
+                getattr(rules_accessor, "list", None)
+                or getattr(rules_accessor, "list_evaluation_rules", None)
+            )
+        if list_rules is not None:
+            for raw in list_rules():
+                rid = str(getattr(raw, "id", "") or getattr(raw, "name", "") or "")
+                if not rid:
+                    continue
+                enabled = getattr(raw, "enabled", None)
+                if enabled is None:
+                    enabled = getattr(raw, "is_enabled", None)
+                payload.evaluation_rules.append(
+                    EvaluationRuleSummary(
+                        rule_id=rid,
+                        name=getattr(raw, "name", None),
+                        agent=getattr(raw, "agent_name", None)
+                        or getattr(raw, "agent_id", None),
+                        enabled=bool(enabled) if enabled is not None else None,
+                    )
+                )
+            diagnostics["evaluation_rules_count"] = len(payload.evaluation_rules)
+        else:
+            diagnostics["evaluation_rules_status"] = "unavailable"
+    except Exception as exc:  # pragma: no cover - SDK shape varies
+        log.info("Foundry evaluation_rules listing skipped: %s", exc)
+        diagnostics["evaluation_rules_warning"] = str(exc)
 
     diagnostics["status"] = "ok"
     diagnostics["agents_count"] = len(payload.agents)
