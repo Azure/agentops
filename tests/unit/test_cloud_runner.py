@@ -532,7 +532,10 @@ def test_run_on_foundry_cloud_inline_mode_uses_file_content(dataset_file: Path):
     assert "eval-data-*" in published.dataset["foundry_behavior"]
 
 
-def test_run_on_foundry_cloud_required_foundry_mode_does_not_fallback(dataset_file: Path):
+def test_run_on_foundry_cloud_required_foundry_mode_does_not_fallback(
+    dataset_file: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
     fake_openai = _FakeOpenAIClient(statuses=["queued", "completed"])
     fake_project = _FakeProjectClient(
         fake_openai,

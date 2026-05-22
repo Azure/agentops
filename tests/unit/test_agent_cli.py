@@ -61,7 +61,14 @@ def test_doctor_reports_regression_and_exits_two(tmp_path: Path) -> None:
 
     result = runner.invoke(
         app,
-        ["doctor", "--workspace", str(tmp_path), "--severity-fail", "warning"],
+        [
+            "doctor",
+            "--workspace",
+            str(tmp_path),
+            "--severity-fail",
+            "warning",
+            "--no-preflight",
+        ],
     )
 
     assert result.exit_code == 2, result.stdout
@@ -77,9 +84,7 @@ def test_doctor_no_findings_exits_zero(tmp_path: Path) -> None:
     (tmp_path / ".agentops" / "agent.yaml").write_text(
         _agent_yaml(), encoding="utf-8"
     )
-    result = runner.invoke(
-        app, ["doctor", "--workspace", str(tmp_path)]
-    )
+    result = runner.invoke(app, ["doctor", "--workspace", str(tmp_path), "--no-preflight"])
     assert result.exit_code == 0, result.stdout
 
 
