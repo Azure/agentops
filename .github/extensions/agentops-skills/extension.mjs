@@ -87,7 +87,7 @@ Guide through regression investigation using currently available AgentOps output
 
     "observability-triage": {
         keywords: [
-            "tracing", "monitoring", "dashboard", "alerts", "triage",
+            "tracing", "monitoring", "cockpit", "alerts", "triage",
             "observability", "run health", "production triage",
             "monitor evals", "set up tracing", "failed evaluation",
             "quality monitoring",
@@ -119,7 +119,7 @@ Provide honest observability guidance: use current reporting artifacts today, fr
 
 ### Guardrails
 - Do not present tracing or monitoring commands as available.
-- Do not imply real-time dashboards/alerts exist in CLI.
+- Do not imply real-time cockpits/alerts exist in CLI.
 - Always pivot to concrete available outputs (results.json, report.md).`,
     },
 };

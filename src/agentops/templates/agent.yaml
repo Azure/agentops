@@ -1,0 +1,87 @@
+# AgentOps Watchdog Agent configuration.
+#
+# Every section is optional — sources auto-skip with a diagnostic note when
+# they are disabled, missing required config, or missing the optional Azure
+# extras (`pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`).
+#
+# Run:
+#
+#   agentops doctor
+#   agentops agent serve --no-verify   # local dev
+#
+version: 1
+
+# Lookback window applied to production telemetry queries.
+lookback_days: 7
+
+sources:
+  # Reads local `.agentops/results/*/results.json` first. If local history
+  # is missing or too short, Doctor falls back to Foundry cloud evaluations
+  # when `foundry_control` has a reachable project endpoint.
+  results_history:
+    enabled: true
+    path: .agentops/results
+    lookback_runs: 10
+
+  # Azure Monitor / Application Insights for the deployed agent.
+  azure_monitor:
+    enabled: true
+    # Use either app_insights_resource_id (preferred) OR
+    # log_analytics_workspace_id, depending on how telemetry is wired.
+    app_insights_resource_id: ""
+    log_analytics_workspace_id: ""
+
+  # Foundry control plane (agent metadata / recent runs).
+  foundry_control:
+    enabled: true
+    # Inline value, or read from this env var.
+    project_endpoint: ""
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+    # Empty list = consider all agents in the project.
+    agent_ids: []
+
+  # Azure management plane — read-only resource posture audits.
+  # Enabled by default and fail-open: Doctor first reads `.azure/<env>/.env`
+  # from AZD, then falls back to the Foundry project endpoint / Azure
+  # resource scan, then to the fields below. If discovery is not possible,
+  # the source is marked skipped with guidance in the report.
+  # Required RBAC when used: `Reader` on the resource group.
+  azure_resources:
+    enabled: true
+    # subscription_id: "00000000-0000-0000-0000-000000000000"
+    subscription_id_env: AZURE_SUBSCRIPTION_ID
+    # resource_group: "rg-myproject"
+    # cognitive_services_account: "ai-services-myproject"
+
+checks:
+  regression:
+    metrics: [coherence, fluency, similarity, f1_score, groundedness, tool_call_accuracy]
+    threshold_drop: 0.10
+    min_runs: 3
+
+  latency:
+    p95_threshold_seconds: 5.0
+
+  errors:
+    rate_threshold: 0.05
+
+  safety:
+    severity_floor: Medium  # Low | Medium | High
+
+  # WAF-AI posture audit. Enabled by default; it emits findings only when
+  # the `azure_resources` source is successfully discovered/read. When the
+  # source cannot be used, the reason appears in the report's Sources table.
+  # Findings are produced under the `security` category, filterable with
+  # `agentops doctor --categories security`.
+  posture:
+    enabled: true
+    pillar: security
+    # Skip individual rules without disabling the whole check, e.g.
+    # exclude_rules:
+    #   - waf.security.diagnostic_settings
+    exclude_rules: []
+
+server:
+  # GitHub App client id, used to distinguish the Copilot Extension that
+  # is allowed to call this server. Optional for v1.
+  github_app_client_id: ""

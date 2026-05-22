@@ -1,0 +1,4 @@
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+agent-framework==1.2.1
+azure-identity==1.19.0

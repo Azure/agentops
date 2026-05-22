@@ -1,0 +1,58 @@
+# AgentOps configuration — 1.0 flat schema.
+#
+# The four required fields are 'version', 'agent', 'dataset', and (optionally)
+# 'thresholds'. AgentOps infers evaluators from the agent type and dataset
+# columns, so most users only need this much.
+#
+# Examples:
+#
+#   agent: "my-rag:3"                      # Foundry prompt agent (name:version)
+#   agent: "https://...foundry.../agents/" # Foundry hosted endpoint
+#   agent: "https://api.example.com/chat"  # any HTTP/JSON agent (ACA, AKS, custom)
+#   agent: "model:gpt-4o"                  # raw Foundry model deployment
+
+# Schema version of this agentops.yaml file (not the agent version).
+version: 1
+
+# Foundry agent identifier as name:version, where the trailing number is
+# the *agent* version published in Foundry (not the schema version above).
+agent: "my-agent:1"
+
+dataset: .agentops/data/smoke.jsonl
+
+# Optional. Source-controlled instructions file used by prompt-agent CI/CD.
+# Generated prompt-agent deploy workflows create a candidate Foundry version
+# from this file, evaluate that exact version, then record it as deployed only
+# after the gate passes.
+#
+# prompt_file: .agentops/prompts/agent-instructions.md
+
+# Optional. Override the auto-selected pass/fail thresholds. AgentOps fills in
+# sensible defaults for the metrics that are auto-selected.
+#
+# thresholds:
+#   coherence: ">=3"
+#   groundedness: ">=3"
+#   avg_latency_seconds: "<=30"
+
+# Optional. Foundry prompt agents and Foundry publishing need a project
+# endpoint. If both this value and AZURE_AI_FOUNDRY_PROJECT_ENDPOINT are set,
+# this file wins for target invocation and publishing.
+#
+# project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<project>"
+#
+# Optional. Where the agent and evaluators execute.
+#   local (default) — AgentOps runs the agent row-by-row locally.
+#   cloud           — Foundry runs the agent and evaluators server-side
+#                     (only valid for 'name:version' Foundry prompt agents;
+#                     implicitly publishes to the New Foundry panel).
+#
+# execution: local
+#
+# Optional. Publish local results to the Classic Foundry Evaluations panel.
+# Only meaningful when execution: local. With execution: cloud the run is
+# always published (Foundry hosts the run by definition).
+#   false (default) — only local results.json / report.md are written.
+#   true            — execution: local + publish: true → upload to Classic Foundry.
+#
+# publish: false

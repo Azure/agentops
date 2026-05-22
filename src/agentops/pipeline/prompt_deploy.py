@@ -1,0 +1,377 @@
+"""Foundry prompt-agent deployment helper for generated CI/CD workflows.
+
+This module is intentionally not a public ``agentops`` command. Generated
+workflows invoke it with ``python -m`` so AgentOps can keep the CLI surface
+small while still providing a tested prompt-agent deploy path.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import hashlib
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+from agentops.core.agentops_config import AgentOpsConfig, classify_agent
+from agentops.core.config_loader import load_agentops_config
+from agentops.utils.yaml import load_yaml, save_yaml
+
+DEFAULT_PROMPT_FILE = Path(".agentops/prompts/agent-instructions.md")
+DEFAULT_DEPLOYMENT_RECORD = Path(".agentops/deployments/foundry-agent.json")
+DEFAULT_CANDIDATE_CONFIG = Path(".agentops/deployments/agentops.candidate.yaml")
+
+
+def stage_prompt_agent_candidate(
+    *,
+    config_path: Path,
+    prompt_file: Optional[Path] = None,
+    environment: str,
+    output_path: Path = DEFAULT_DEPLOYMENT_RECORD,
+    eval_config_path: Path = DEFAULT_CANDIDATE_CONFIG,
+) -> Dict[str, Any]:
+    """Create or reuse a Foundry prompt-agent version and write eval config.
+
+    The generated eval config points at the candidate version, so the CI gate
+    evaluates the same Foundry agent definition that the deploy stage records.
+    """
+
+    config_path = config_path.resolve()
+    config = load_agentops_config(config_path)
+    target = classify_agent(config.agent, config.protocol)
+    if target.kind != "foundry_prompt" or not target.name or not target.version:
+        raise ValueError(
+            "prompt-agent deployment requires agentops.yaml agent to be a "
+            "Foundry prompt agent in 'name:version' form"
+        )
+
+    resolved_prompt = _resolve_prompt_file(
+        config_path=config_path,
+        config=config,
+        explicit=prompt_file,
+    )
+    instructions = resolved_prompt.read_text(encoding="utf-8")
+    if not instructions.strip():
+        raise ValueError(f"prompt file is empty: {resolved_prompt}")
+
+    endpoint = config.project_endpoint or os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    if not endpoint:
+        raise ValueError(
+            "prompt-agent deployment requires project_endpoint in agentops.yaml "
+            "or AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+        )
+
+    current = _get_agent_version(endpoint, target.name, target.version)
+    definition = getattr(current, "definition", None) or _get_mapping_value(current, "definition")
+    if definition is None:
+        raise ValueError(
+            f"Foundry agent {target.name}:{target.version} did not include a definition"
+        )
+
+    kind = str(_get_definition_value(definition, "kind") or "").lower()
+    if kind != "prompt":
+        raise ValueError(
+            f"Foundry agent {target.name}:{target.version} is kind {kind!r}; "
+            "prompt-agent deployment only supports kind 'prompt'"
+        )
+
+    prompt_hash = hashlib.sha256(instructions.encode("utf-8")).hexdigest()
+    current_instructions = _get_definition_value(definition, "instructions") or ""
+    if str(current_instructions) == instructions:
+        candidate_version = target.version
+        action = "reused"
+        created = current
+    else:
+        candidate_definition = _copy_definition(definition)
+        _set_definition_value(candidate_definition, "instructions", instructions)
+        created = _create_agent_version(
+            endpoint,
+            target.name,
+            candidate_definition,
+            metadata=_deployment_metadata(
+                environment=environment,
+                prompt_hash=prompt_hash,
+            ),
+            description=(
+                f"AgentOps {environment} candidate from "
+                f"{resolved_prompt.as_posix()} ({prompt_hash[:12]})"
+            ),
+        )
+        candidate_version = str(
+            getattr(created, "version", None)
+            or _get_mapping_value(created, "version")
+            or ""
+        )
+        if not candidate_version:
+            raise ValueError("Foundry create_version did not return a version")
+        action = "created"
+
+    eval_config_path = eval_config_path.resolve()
+    output_path = output_path.resolve()
+    _write_candidate_eval_config(
+        source_config_path=config_path,
+        config=config,
+        candidate_agent=f"{target.name}:{candidate_version}",
+        destination=eval_config_path,
+    )
+
+    record = {
+        "version": 1,
+        "type": "foundry_prompt_agent_deployment",
+        "environment": environment,
+        "action": action,
+        "agent_name": target.name,
+        "source_agent": f"{target.name}:{target.version}",
+        "candidate_agent": f"{target.name}:{candidate_version}",
+        "source_version": target.version,
+        "candidate_version": candidate_version,
+        "project_endpoint": endpoint,
+        "prompt_file": str(resolved_prompt),
+        "prompt_sha256": prompt_hash,
+        "eval_config": str(eval_config_path),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "git_sha": _git_sha(),
+        "workflow_url": _workflow_url(),
+        "foundry_agent_version_id": str(
+            getattr(created, "id", None) or _get_mapping_value(created, "id") or ""
+        ),
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    return record
+
+
+def summarize_deployment(record_path: Path, *, environment: str) -> Dict[str, Any]:
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    candidate = record.get("candidate_agent", "unknown")
+    action = record.get("action", "recorded")
+    prompt_hash = str(record.get("prompt_sha256", ""))[:12]
+    message = (
+        f"Foundry prompt agent {candidate} passed the AgentOps gate for "
+        f"{environment} ({action}, prompt {prompt_hash})."
+    )
+    print(message)
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with Path(summary_path).open("a", encoding="utf-8") as handle:
+            handle.write("## Foundry prompt-agent deployment\n\n")
+            handle.write(f"- **Environment:** {environment}\n")
+            handle.write(f"- **Agent version:** `{candidate}`\n")
+            handle.write(f"- **Prompt hash:** `{record.get('prompt_sha256', '')}`\n")
+            if record.get("workflow_url"):
+                handle.write(f"- **Workflow:** {record['workflow_url']}\n")
+    return record
+
+
+def _resolve_prompt_file(
+    *,
+    config_path: Path,
+    config: AgentOpsConfig,
+    explicit: Optional[Path],
+) -> Path:
+    raw = (
+        explicit
+        or _path_from_env("AGENTOPS_AGENT_PROMPT_FILE")
+        or config.prompt_file
+        or DEFAULT_PROMPT_FILE
+    )
+    path = raw if raw.is_absolute() else (config_path.parent / raw)
+    path = path.resolve()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"prompt file not found: {path}. Set prompt_file in agentops.yaml "
+            "or AGENTOPS_AGENT_PROMPT_FILE in the workflow environment."
+        )
+    return path
+
+
+def _path_from_env(name: str) -> Optional[Path]:
+    value = os.environ.get(name)
+    if not value or not value.strip():
+        return None
+    # Azure DevOps leaves undefined variables as literal "$(NAME)" strings.
+    if value.strip().startswith("$(") and value.strip().endswith(")"):
+        return None
+    return Path(value)
+
+
+def _get_agent_version(endpoint: str, agent_name: str, agent_version: str) -> Any:
+    client = _project_client(endpoint)
+    return client.agents.get_version(agent_name, agent_version)
+
+
+def _create_agent_version(
+    endpoint: str,
+    agent_name: str,
+    definition: Any,
+    *,
+    metadata: Dict[str, str],
+    description: str,
+) -> Any:
+    client = _project_client(endpoint)
+    # The current Foundry Agents create_version endpoint validates both a root
+    # `kind` discriminator and the nested `definition` payload.
+    body = {
+        "kind": _get_definition_value(definition, "kind"),
+        "definition": definition,
+        "metadata": metadata,
+        "description": description,
+    }
+    body = {key: value for key, value in body.items() if value is not None}
+    return client.agents.create_version(
+        agent_name,
+        body=body,
+    )
+
+
+def _project_client(endpoint: str) -> Any:
+    try:
+        from azure.ai.projects import AIProjectClient  # noqa: WPS433
+        from azure.identity import DefaultAzureCredential  # noqa: WPS433
+    except ImportError as exc:
+        raise RuntimeError(
+            "prompt-agent deployment requires azure-ai-projects and "
+            "azure-identity; install agentops-toolkit[foundry]"
+        ) from exc
+
+    credential = DefaultAzureCredential(
+        exclude_developer_cli_credential=True,
+        process_timeout=30,
+    )
+    return AIProjectClient(endpoint=endpoint, credential=credential)
+
+
+def _get_definition_value(definition: Any, key: str) -> Any:
+    if hasattr(definition, "get"):
+        value = definition.get(key)
+        if value is not None:
+            return value
+    data = getattr(definition, "_data", None)
+    if isinstance(data, dict):
+        value = data.get(key)
+        if value is not None:
+            return value
+    return getattr(definition, key, None)
+
+
+def _set_definition_value(definition: Any, key: str, value: Any) -> None:
+    if hasattr(definition, "__setitem__"):
+        definition[key] = value
+        return
+    data = getattr(definition, "_data", None)
+    if isinstance(data, dict):
+        data[key] = value
+        return
+    setattr(definition, key, value)
+
+
+def _get_mapping_value(value: Any, key: str) -> Any:
+    if hasattr(value, "get"):
+        return value.get(key)
+    return None
+
+
+def _copy_definition(definition: Any) -> Any:
+    if hasattr(definition, "copy"):
+        try:
+            return definition.copy()
+        except TypeError:
+            pass
+    return copy.deepcopy(definition)
+
+
+def _deployment_metadata(*, environment: str, prompt_hash: str) -> Dict[str, str]:
+    metadata = {
+        "agentops.env": environment[:512],
+        "agentops.prompt_sha256": prompt_hash,
+        "agentops.git_sha": _git_sha()[:512],
+    }
+    workflow_url = _workflow_url()
+    if workflow_url:
+        metadata["agentops.workflow_url"] = workflow_url[:512]
+    return {key: value for key, value in metadata.items() if value}
+
+
+def _git_sha() -> str:
+    return (
+        os.environ.get("GITHUB_SHA")
+        or os.environ.get("BUILD_SOURCEVERSION")
+        or os.environ.get("Build.SourceVersion")
+        or ""
+    )
+
+
+def _workflow_url() -> str:
+    if os.environ.get("GITHUB_SERVER_URL") and os.environ.get("GITHUB_REPOSITORY"):
+        run_id = os.environ.get("GITHUB_RUN_ID")
+        if run_id:
+            return (
+                f"{os.environ['GITHUB_SERVER_URL']}/"
+                f"{os.environ['GITHUB_REPOSITORY']}/actions/runs/{run_id}"
+            )
+    collection_uri = os.environ.get("SYSTEM_COLLECTIONURI")
+    team_project = os.environ.get("SYSTEM_TEAMPROJECT")
+    build_id = os.environ.get("BUILD_BUILDID")
+    if collection_uri and team_project and build_id:
+        return f"{collection_uri}{team_project}/_build/results?buildId={build_id}"
+    return ""
+
+
+def _write_candidate_eval_config(
+    *,
+    source_config_path: Path,
+    config: AgentOpsConfig,
+    candidate_agent: str,
+    destination: Path,
+) -> None:
+    data = load_yaml(source_config_path)
+    data["agent"] = candidate_agent
+    dataset_path = config.dataset
+    if not dataset_path.is_absolute():
+        dataset_path = (source_config_path.parent / dataset_path).resolve()
+    data["dataset"] = str(dataset_path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    save_yaml(destination, data)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    stage = subparsers.add_parser("stage", help="stage a prompt-agent candidate")
+    stage.add_argument("--config", type=Path, default=Path("agentops.yaml"))
+    stage.add_argument("--prompt-file", type=Path)
+    stage.add_argument("--environment", required=True)
+    stage.add_argument("--out", type=Path, default=DEFAULT_DEPLOYMENT_RECORD)
+    stage.add_argument("--eval-config", type=Path, default=DEFAULT_CANDIDATE_CONFIG)
+
+    summarize = subparsers.add_parser("summarize", help="summarize a deployment record")
+    summarize.add_argument("--deployment", type=Path, default=DEFAULT_DEPLOYMENT_RECORD)
+    summarize.add_argument("--environment", required=True)
+    return parser
+
+
+def main(argv: Optional[list[str]] = None) -> None:
+    args = _build_parser().parse_args(argv)
+    if args.command == "stage":
+        record = stage_prompt_agent_candidate(
+            config_path=args.config,
+            prompt_file=args.prompt_file,
+            environment=args.environment,
+            output_path=args.out,
+            eval_config_path=args.eval_config,
+        )
+        print(
+            "AgentOps staged Foundry prompt candidate "
+            f"{record['candidate_agent']} ({record['action']})."
+        )
+        return
+    if args.command == "summarize":
+        summarize_deployment(args.deployment, environment=args.environment)
+
+
+if __name__ == "__main__":
+    main()

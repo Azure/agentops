@@ -1,0 +1,3 @@
+{"input": "What is Microsoft Foundry?", "expected": "Foundry is Microsoft's enterprise AI platform for building, evaluating, and deploying agents."}
+{"input": "What does AgentOps do?", "expected": "AgentOps standardizes evaluation workflows for Foundry agents and models."}
+{"input": "How do I run an evaluation?", "expected": "Run `agentops eval run` after configuring agentops.yaml."}

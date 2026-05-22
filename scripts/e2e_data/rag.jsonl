@@ -1,0 +1,2 @@
+{"input": "What is the capital of France?", "expected": "Paris", "context": "France is a country in Western Europe. Its capital is Paris."}
+{"input": "What language is spoken in Brazil?", "expected": "Portuguese", "context": "Brazil is a South American country. The official language is Portuguese."}

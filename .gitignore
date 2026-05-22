@@ -452,3 +452,15 @@ plugins/agentops/icon.png
 *.msix
 *.msm
 *.msp
+
+evidence/
+
+logs.txt
+.last_run
+
+
+e2e-runs/
+
+tmp-artifacts/
+
+tmp/

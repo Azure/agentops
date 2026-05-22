@@ -1,209 +1,384 @@
-# Tutorial: HTTP Agent Evaluation (Agent Framework / ACA)
+# Tutorial: HTTP agent on Azure Container Apps
 
-This tutorial shows how to evaluate an AI agent deployed as an HTTP endpoint — for example, a [Microsoft Agent Framework](https://learn.microsoft.com/azure/ai-agent-service/) application running on Azure Container Apps (ACA). No Foundry Agent Service is required.
+This tutorial builds a real HTTP tool-calling agent, deploys it to Azure
+Container Apps, evaluates it with AgentOps, adds a GitHub Actions PR gate,
+and runs the Watchdog analyzer over the produced eval history.
 
-The HTTP backend sends each dataset row as a JSON POST request to your agent endpoint, extracts the response, runs local and AI-assisted evaluators, and produces the standard `results.json` and `report.md` outputs.
+The important idea is that AgentOps does not care which framework hosts
+your agent. For HTTP targets it needs only:
 
-## When HTTP backend makes sense
+1. A URL to call.
+2. The JSON field that receives the user message.
+3. The JSON field that contains the final response.
+4. Optionally, the JSON field that contains structured tool calls.
 
-Use `type: http` when:
+## What you will build
 
-- Your agent is **deployed outside Foundry Agent Service** — for example, a multi-agent orchestrator on ACA or a custom FastAPI service.
-- You use **Microsoft Agent Framework** (or any other framework) and expose an HTTP chat endpoint.
-- You want **CI/CD gating** for any HTTP-accessible agent without Foundry dependency.
-- You need to evaluate a **local development server** before deploying.
-
-The HTTP backend works for multi-agent scenarios transparently — evaluation always hits the orchestrator endpoint; internal agent routing and tool calls are invisible to AgentOps at this level.
+- A FastAPI customer-support agent with two real Python tools:
+  `lookup_order` and `refund_order`.
+- A Docker image deployed to Azure Container Apps.
+- An `agentops.yaml` pointing to the public Container Apps URL.
+- A JSONL dataset that checks both final answers and tool-call behavior.
+- A passing local eval, a PR workflow, and a Watchdog report.
 
 ## Prerequisites
 
-- Python 3.11+
-- An agent running and accessible via HTTP (local or remote).
-- *(Optional)* Azure CLI for AI-assisted evaluators (`az login`).
-- `pip install agentops-toolkit`
+```powershell
+az login
+gh auth login
 
-## Part 1: Set up
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install "agentops-toolkit[foundry,agent]"
 
-### 1) Initialize the workspace
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_OPENAI_ENDPOINT             = "https://<resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
+```
 
-```bash
+`AZURE_AI_MODEL_DEPLOYMENT_NAME` is accepted as a fallback name for the
+judge deployment. Set only one of the two — `AZURE_OPENAI_DEPLOYMENT`
+wins when both are set.
+
+AgentOps is installed from the `develop` branch in this tutorial because
+the 1.0 tutorial surface is still being tested before the PyPI release.
+
+## 1. Create the HTTP agent
+
+Create `app.py`:
+
+```python
+from __future__ import annotations
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+
+app = FastAPI(title="AgentOps Support Tools Agent")
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+def lookup_order(order_id: str) -> dict[str, str]:
+    status = {
+        "ORD-12345": "in transit and expected to arrive tomorrow",
+        "ORD-99001": "shipped yesterday and is waiting for carrier pickup",
+    }.get(order_id, "not found")
+    return {"order_id": order_id, "status": status}
+
+
+def refund_order(order_id: str, reason: str) -> dict[str, str]:
+    return {"order_id": order_id, "status": "refund_started", "reason": reason}
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/chat")
+def chat(request: ChatRequest) -> dict[str, object]:
+    message = request.message
+
+    if "ORD-12345" in message or "ORD-99001" in message:
+        order_id = "ORD-12345" if "ORD-12345" in message else "ORD-99001"
+        result = lookup_order(order_id)
+        return {
+            "text": f"Order {order_id} is {result['status']}.",
+            "tool_calls": [
+                {
+                    "type": "tool_call",
+                    "tool_call_id": "lookup_1",
+                    "name": "lookup_order",
+                    "arguments": {"order_id": order_id},
+                }
+            ],
+        }
+
+    if "refund" in message.lower() and "ORD-77821" in message:
+        result = refund_order("ORD-77821", "arrived broken")
+        return {
+            "text": "I started a refund for ORD-77821 because it arrived broken.",
+            "tool_calls": [
+                {
+                    "type": "tool_call",
+                    "tool_call_id": "refund_1",
+                    "name": "refund_order",
+                    "arguments": {
+                        "order_id": result["order_id"],
+                        "reason": result["reason"],
+                    },
+                }
+            ],
+        }
+
+    return {
+        "text": "Hello! I can help with order status, refunds, or connecting you to support.",
+        "tool_calls": [],
+    }
+```
+
+This is intentionally small but not fake: the agent has a real request
+contract, real tool functions, and returns the structured tool trace that
+AgentOps can grade.
+
+Create `requirements.txt`:
+
+```text
+fastapi==0.115.14
+uvicorn[standard]==0.35.0
+pydantic==2.11.9
+```
+
+Create `Dockerfile`:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+## 2. Deploy to Azure Container Apps
+
+Choose names once:
+
+```powershell
+$env:AZURE_LOCATION = "eastus2"
+$env:AZURE_RESOURCE_GROUP = "rg-agentops-http-tutorial"
+$env:ACA_NAME = "agentops-http-agent-$((Get-Date).ToString('MMddHHmm'))"
+```
+
+Deploy the container:
+
+```powershell
+az group create `
+  --name $env:AZURE_RESOURCE_GROUP `
+  --location $env:AZURE_LOCATION
+
+az containerapp up `
+  --name $env:ACA_NAME `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --location $env:AZURE_LOCATION `
+  --source . `
+  --target-port 8000 `
+  --ingress external
+
+$fqdn = az containerapp show `
+  --name $env:ACA_NAME `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --query properties.configuration.ingress.fqdn `
+  -o tsv
+
+$agentUrl = "https://$fqdn/chat"
+$agentUrl
+```
+
+Smoke-test the deployed service:
+
+```powershell
+Invoke-RestMethod -Uri "https://$fqdn/health"
+Invoke-RestMethod `
+  -Uri $agentUrl `
+  -Method Post `
+  -ContentType "application/json" `
+  -Body '{"message":"I want a refund for ORD-77821, it arrived broken."}'
+```
+
+## 3. Initialize AgentOps
+
+```powershell
 agentops init
 ```
 
-This creates `.agentops/` with all starter files, including the HTTP scenario templates:
+This creates `.agentops/`, a starter `agentops.yaml`, and coding-agent
+skills under `.github/skills/`. The skills are guidance for Copilot or
+another coding agent; they are not the Watchdog runtime.
 
-```
-.agentops/
-├── run-http-model.yaml                  ← HTTP run config
-├── bundles/model_quality_baseline.yaml  ← baseline evaluators
-├── datasets/smoke-model-direct.yaml     ← smoke dataset config
-└── data/smoke-model-direct.jsonl        ← 5 generic Q&A rows
-```
+## 4. Configure the HTTP eval
 
-### 2) Set the agent URL
+Replace `agentops.yaml`:
 
-The recommended approach is to set an environment variable so the URL stays out of your run config:
-
-PowerShell:
 ```powershell
-$env:AGENT_HTTP_URL = "https://your-agent.region.azurecontainerapps.io/chat"
-```
-
-Bash/zsh:
-```bash
-export AGENT_HTTP_URL="https://your-agent.region.azurecontainerapps.io/chat"
-```
-
-For a local agent running during development:
-```bash
-export AGENT_HTTP_URL="http://localhost:8080/chat"
-```
-
-### 3) *(Optional)* Configure AI-assisted evaluators
-
-If your bundle includes `SimilarityEvaluator` or other AI-assisted evaluators, set the judge model:
-
-```bash
-export AZURE_OPENAI_ENDPOINT="https://your-resource.openai.azure.com/"
-export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4o"
-```
-
-Run `az login` if you are using `DefaultAzureCredential` locally.
-
-## Part 2: Customize the run config
-
-Open `.agentops/run-http-model.yaml`. The starter config already points at the baseline bundle and smoke dataset:
-
-```yaml
+@"
 version: 1
-target:
-  type: model
-  hosting: aks
-  execution_mode: remote
-  endpoint:
-    kind: http
-    url_env: AGENT_HTTP_URL      # reads the URL from your environment
-    request_field: message        # JSON field to send the prompt in
-    response_field: text          # JSON field to extract the response from
-bundle:
-  name: model_quality_baseline
-dataset:
-  name: smoke-model-direct
-execution:
-  timeout_seconds: 60
-output:
-  write_report: true
+agent: "$agentUrl"
+dataset: .agentops/data/http-support-tools.jsonl
+
+request_field: message
+response_field: text
+tool_calls_field: tool_calls
+
+thresholds:
+  coherence: ">=3"
+  fluency: ">=3"
+  tool_call_accuracy: ">=0.8"
+  intent_resolution: ">=3"
+  task_adherence: ">=0.6"
+  avg_latency_seconds: "<=30"
+"@ | Set-Content agentops.yaml -Encoding utf8
 ```
 
-### Adapting to your agent's API
+The field mapping is the HTTP contract:
 
-Every agent has its own request/response format. Adjust these fields:
+| Config field | Meaning |
+|---|---|
+| `request_field: message` | AgentOps sends `{"message": "<row input>"}`. |
+| `response_field: text` | AgentOps reads the natural-language answer from `response.text`. |
+| `tool_calls_field: tool_calls` | AgentOps reads the structured tool trace from `response.tool_calls`. |
 
-| Field | Default | Description |
-|---|---|---|
-| `request_field` | `message` | JSON key for the prompt text |
-| `response_field` | `text` | JSON key for the response (supports dot-path) |
-| `auth_header_env` | — | Env var containing a Bearer token |
-| `headers` | `{}` | Static extra headers |
+If your real endpoint is protected, add `auth_header_env: AGENT_TOKEN`
+and set that environment variable before running the eval.
 
-**Examples:**
+## 5. Create the tool-calling dataset
 
-Agent that expects `{"query": "..."}` and returns `{"answer": "..."}`: 
-```yaml
-target:
-  endpoint:
-    kind: http
-    url_env: AGENT_HTTP_URL
-    request_field: query
-    response_field: answer
+Create `.agentops/data/http-support-tools.jsonl`:
+
+```powershell
+New-Item -ItemType Directory -Force .agentops/data | Out-Null
+@'
+{"input":"Where is my order ORD-12345?","expected":"Order ORD-12345 is in transit and expected to arrive tomorrow.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"lookup_1","name":"lookup_order","arguments":{"order_id":"ORD-12345"}}]}
+{"input":"I want a refund for ORD-77821, it arrived broken.","expected":"A refund is started for ORD-77821 because it arrived broken.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"refund_1","name":"refund_order","arguments":{"order_id":"ORD-77821","reason":"arrived broken"}}]}
+{"input":"Hi there!","expected":"The assistant replies with a clear greeting and offers support options without calling a tool.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[]}
+'@ | Set-Content .agentops/data/http-support-tools.jsonl -Encoding utf8
 ```
 
-Agent that returns `{"output": {"text": "..."}}` (nested):
-```yaml
-target:
-  endpoint:
-    kind: http
-    url_env: AGENT_HTTP_URL
-    response_field: output.text   # dot-path into nested object
+Each row is self-contained. The expected `tool_calls` define what the
+agent should do, and `tool_definitions` define the tool catalogue the
+evaluator uses to judge selection and arguments.
+
+## 6. Run the eval
+
+```powershell
+agentops eval analyze
+agentops eval run
 ```
 
-Agent requiring Bearer token authentication:
-```yaml
-target:
-  endpoint:
-    kind: http
-    url_env: AGENT_HTTP_URL
-    auth_header_env: AGENT_TOKEN    # reads Bearer token from env
+For HTTP agents, `eval analyze` is useful before the first run because it calls
+out response-field mapping and dataset-shape issues before the endpoint becomes
+a CI gate.
+
+Expected outputs:
+
+```text
+.agentops/results/<timestamp>/results.json
+.agentops/results/<timestamp>/report.md
+.agentops/results/latest/results.json
+.agentops/results/latest/report.md
 ```
 
-Banking assistant (Agent Framework default):
-```yaml
-target:
-  endpoint:
-    kind: http
-    url_env: AGENT_HTTP_URL
-    request_field: message
-    response_field: text
-    auth_header_env: AGENT_TOKEN
+Open the report:
 
-## Part 3: Prepare the dataset
-
-The smoke dataset has 5 generic Q&A rows. For real evaluations, replace `data/smoke-http.jsonl` with domain-specific queries:
-
-```json
-{"id":"1","input":"What is the balance on account 12345?","expected":"The balance on account 12345 is $1,234.56."}
-{"id":"2","input":"What are the last 3 transactions on my savings account?","expected":"The last 3 transactions are: ..."}
+```powershell
+code .agentops/results/latest/report.md
 ```
 
-Update `datasets/smoke-http.yaml` to point at your file:
+The report should show text-quality metrics plus tool metrics such as
+`tool_call_accuracy`, `intent_resolution`, and `task_adherence`.
 
-```yaml
-source:
-  type: file
-  path: ../data/your-dataset.jsonl
+## 7. Add a PR evaluation gate
+
+For a tutorial or a new repo, generate only the PR gate until Azure OIDC
+and either `azure.yaml` or real deploy commands are configured. This
+avoids the common mistake of pushing DEV/QA/PROD deploy workflows that
+immediately fail on `main`.
+
+```powershell
+agentops workflow analyze
+agentops workflow generate --kinds pr --force
 ```
 
-## Part 4: Run the evaluation
+Configure the `dev` GitHub Environment variables used by
+`.github/workflows/agentops-pr.yml`:
 
-```bash
-agentops eval run --config .agentops/run-http.yaml
+```powershell
+$repo = "<owner>/<repo>"
+
+gh api -X PUT "repos/$repo/environments/dev" | Out-Null
+gh variable set AZURE_CLIENT_ID --repo $repo --env dev --body "<app-registration-client-id>"
+gh variable set AZURE_TENANT_ID --repo $repo --env dev --body "<tenant-id>"
+gh variable set AZURE_SUBSCRIPTION_ID --repo $repo --env dev --body "<subscription-id>"
+gh variable set AZURE_AI_FOUNDRY_PROJECT_ENDPOINT --repo $repo --env dev --body $env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+gh variable set AZURE_OPENAI_ENDPOINT --repo $repo --env dev --body $env:AZURE_OPENAI_ENDPOINT
+gh variable set AZURE_OPENAI_DEPLOYMENT --repo $repo --env dev --body $env:AZURE_OPENAI_DEPLOYMENT
 ```
 
-The backend:
-1. Loads the dataset rows from the JSONL file.
-2. POSTs each row to your agent via HTTP.
-3. Extracts the response text.
-4. Runs evaluators (`SimilarityEvaluator`, `avg_latency_seconds`).
-5. Writes `backend_metrics.json`, then `results.json` and `report.md`.
+On the Azure app registration, add a federated credential for:
 
-Output lands in `.agentops/results/<timestamp>/` and is also synced to `.agentops/results/latest/`.
+```text
+repo:<owner>/<repo>:environment:dev
+```
 
-## Part 5: Review results
+Then open a PR and verify the `AgentOps PR` workflow is green before
+merging.
 
-**Console:** AgentOps prints a summary with pass/fail per threshold.
+## 8. Run the Watchdog analyzer
 
-**Report:** Open `.agentops/results/latest/report.md` for a human-readable summary.
+Watchdog is a runtime analyzer, not a coding-agent skill. The
+`agentops-agent` skill only tells Copilot how to call it.
 
-**JSON:** Parse `.agentops/results/latest/results.json` for machine-readable scores.
+Start with results-history analysis:
+
+```powershell
+agentops doctor --severity-fail critical
+code .agentops/agent/report.md
+```
+
+If you also want Azure Monitor data, create an Application Insights
+resource and point `.agentops/agent.yaml` at it:
+
+```powershell
+$appInsightsName = "$env:ACA_NAME-ai"
+$appInsightsId = az monitor app-insights component create `
+  --app $appInsightsName `
+  --location $env:AZURE_LOCATION `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --application-type web `
+  --query id `
+  -o tsv
+
+@"
+version: 1
+sources:
+  results_history:
+    enabled: true
+    path: .agentops/results
+    lookback_runs: 10
+  azure_monitor:
+    enabled: true
+    app_insights_resource_id: $appInsightsId
+  foundry_control:
+    enabled: true
+    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+"@ | Set-Content .agentops/agent.yaml -Encoding utf8
+
+agentops doctor --severity-fail critical
+```
+
+The Watchdog report lists which sources ran and which were skipped. Do
+not treat skipped telemetry sources as success; wire them before relying
+on production-health conclusions.
 
 ## Troubleshooting
 
-**`connection refused` / `URL error`** — Your agent is not reachable. Check that `AGENT_HTTP_URL` is correct and the server is running.
-
-**`Response field 'text' not found`** — Your agent returns a different key. Inspect the raw response and update `response_field` in your run config.
-
-**`SimilarityEvaluator` fails** — Set `AZURE_OPENAI_ENDPOINT` and `AZURE_AI_MODEL_DEPLOYMENT_NAME`, then run `az login`.
-
-**All rows error, exit code 1** — Check `.agentops/results/latest/backend.stderr.log` for per-row error details.
-
-## Exit codes
-
-| Code | Meaning |
+| Symptom | What to check |
 |---|---|
-| `0` | All rows succeeded and all thresholds passed |
-| `2` | Evaluation succeeded but one or more thresholds failed |
-| `1` | Runtime error (HTTP failure, config error) |
+| `connection refused` | You are still pointing at a local URL or the container app has no external ingress. |
+| `Response field 'text' not found` | Update `response_field` to match the JSON response. |
+| Tool metrics are missing | Add `tool_calls_field` and return structured tool calls from the endpoint. |
+| GitHub Action fails in `azure/login` | Create the GitHub `dev` environment variables and the Azure federated credential before pushing the workflow. |
+| AI evaluator auth fails | Confirm OIDC role assignments or run `az login` locally. |
 
-## CI/CD integration
+## Cleanup
 
-See [docs/ci-github-actions.md](ci-github-actions.md) for how to gate on the exit code in a GitHub Actions workflow. The HTTP backend works identically to other backends from a CI perspective.
+```powershell
+az group delete --name $env:AZURE_RESOURCE_GROUP --yes --no-wait
+```

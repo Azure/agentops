@@ -1,0 +1,26 @@
+version: 1
+
+# Pick one of these and remove the others:
+#
+# Foundry prompt agent (name:version):
+agent: "my-rag:1"
+#
+# Foundry hosted endpoint:
+# agent: "https://<resource>.services.ai.azure.com/api/projects/<project>/agents/<id>"
+#
+# Generic HTTP/JSON agent (ACA, AKS, custom server):
+# agent: "https://api.example.com/chat"
+#
+# Raw Foundry model deployment:
+# agent: "model:gpt-4o"
+
+dataset: ./dataset.jsonl
+
+# Optional for Foundry prompt-agent CI/CD:
+# prompt_file: .agentops/prompts/agent-instructions.md
+
+# Optional thresholds (override the auto-selected defaults):
+# thresholds:
+#   coherence: ">=3"
+#   groundedness: ">=3"
+#   avg_latency_seconds: "<=10"

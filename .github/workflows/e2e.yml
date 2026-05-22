@@ -1,0 +1,540 @@
+# AgentOps end-to-end demo workflow.
+#
+# Manual-only: trigger via "Run workflow" on the Actions page.
+# Uploads the resulting evidence/ folder as a downloadable artifact and
+# writes a Markdown summary to the run page.
+#
+# This workflow does NOT contact Azure or Foundry. It validates the
+# CLI surface (init, eval run, eval run --baseline, report generate)
+# against a local in-process HTTP echo agent.
+
+name: E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Which live scenario(s) to run"
+        type: choice
+        default: offline-only
+        options:
+          - offline-only
+          - all
+          - foundry-prompt
+          - foundry-hosted
+          - http-aca
+          - model-direct
+      keep_resources:
+        description: "Skip teardown of per-run resources (debug)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  offline-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+
+      - name: Install AgentOps
+        run: uv sync --group dev
+
+      - name: Install runtime evaluator dependencies
+        run: uv pip install azure-ai-evaluation pandas
+
+      - name: Run offline CLI smoke test
+        run: uv run python scripts/e2e_demo.py
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: offline-smoke
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  unit-tests-with-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Install runtime evaluator dependencies
+        run: uv pip install azure-ai-evaluation pandas
+
+      - name: Run pytest with coverage
+        run: |
+          uv run pytest tests/ \
+            --ignore=tests/unit/test_browse.py \
+            --junitxml=test-results.xml \
+            --cov=agentops \
+            --cov-report=xml \
+            --cov-report=term-missing
+
+      - name: Upload coverage + JUnit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-tests-with-coverage
+          path: |
+            test-results.xml
+            coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+  # =====================================================================
+  # Live Azure scenarios — opt-in via the `scenarios` workflow input.
+  # Auth: OIDC federated credential. No secrets stored in the repo.
+  # See docs/e2e-live-setup.md for the one-time configuration steps.
+  # =====================================================================
+
+  bootstrap-live:
+    if: ${{ github.event.inputs.scenarios != 'offline-only' }}
+    runs-on: ubuntu-latest
+    environment: e2e
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      aca_url: ${{ steps.deploy_perrun.outputs.aca_url }}
+      aca_app_name: ${{ steps.deploy_perrun.outputs.aca_app_name }}
+      hosted_agent_id: ${{ steps.create_hosted_agent.outputs.agent_id }}
+      hosted_agent_name: ${{ steps.create_hosted_agent.outputs.agent_name }}
+      suffix: ${{ steps.suffix.outputs.value }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - id: suffix
+        name: Compute per-run suffix
+        run: echo "value=run${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-oidc-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - id: discover
+        name: Discover ACR + AI Services + UAMI
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'http-aca' }}
+        run: |
+          set -euo pipefail
+          rg="${{ vars.AZURE_E2E_RESOURCE_GROUP }}"
+          acr_name=$(az acr list -g "$rg" --query "[0].name" -o tsv)
+          acr_login=$(az acr show -n "$acr_name" --query loginServer -o tsv)
+          ai_name=$(az cognitiveservices account list -g "$rg" \
+            --query "[?kind=='AIServices'] | [0].name" -o tsv)
+          uami_name=$(az identity list -g "$rg" \
+            --query "[?ends_with(name,'-aca-uami-${{ vars.AZURE_E2E_SUFFIX }}')] | [0].name" -o tsv)
+          if [ -z "$uami_name" ]; then
+            # Fallback: any *-aca-uami-* in the RG (bootstrap creates exactly one)
+            uami_name=$(az identity list -g "$rg" \
+              --query "[?contains(name,'-aca-uami-')] | [0].name" -o tsv)
+          fi
+          if [ -z "$acr_name" ] || [ -z "$ai_name" ] || [ -z "$uami_name" ]; then
+            echo "Could not discover ACR / AI Services / aca-uami in $rg" >&2
+            exit 1
+          fi
+          uami_id=$(az identity show -g "$rg" -n "$uami_name" --query id -o tsv)
+          uami_client_id=$(az identity show -g "$rg" -n "$uami_name" --query clientId -o tsv)
+          echo "acr_name=$acr_name" >> "$GITHUB_OUTPUT"
+          echo "acr_login=$acr_login" >> "$GITHUB_OUTPUT"
+          echo "ai_name=$ai_name" >> "$GITHUB_OUTPUT"
+          echo "uami_id=$uami_id" >> "$GITHUB_OUTPUT"
+          echo "uami_client_id=$uami_client_id" >> "$GITHUB_OUTPUT"
+          echo "Discovered ACR=$acr_login, AI Services=$ai_name, UAMI=$uami_name"
+
+      - name: Build & push hello-agent image (server-side ACR build)
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'http-aca' }}
+        run: |
+          set -euo pipefail
+          tag="run${{ github.run_id }}"
+          az acr build \
+            --registry "${{ steps.discover.outputs.acr_name }}" \
+            --image "agentops-e2e/hello-agent:$tag" \
+            infra/e2e/agent-app
+          echo "Image: ${{ steps.discover.outputs.acr_login }}/agentops-e2e/hello-agent:$tag"
+
+      - id: deploy_perrun
+        name: Deploy per-run ACA hello-agent app
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'http-aca' }}
+        run: |
+          set -euo pipefail
+          deployment_name="agentops-e2e-perrun-${{ github.run_id }}"
+          image="${{ steps.discover.outputs.acr_login }}/agentops-e2e/hello-agent:run${{ github.run_id }}"
+          az deployment group create \
+            --resource-group "${{ vars.AZURE_E2E_RESOURCE_GROUP }}" \
+            --name "$deployment_name" \
+            --template-file infra/e2e/perrun.bicep \
+            --parameters \
+              acaEnvironmentId="${{ vars.AZURE_E2E_ACA_ENV_ID }}" \
+              suffix="${{ steps.suffix.outputs.value }}" \
+              image="$image" \
+              acrLoginServer="${{ steps.discover.outputs.acr_login }}" \
+              uamiResourceId="${{ steps.discover.outputs.uami_id }}" \
+              uamiClientId="${{ steps.discover.outputs.uami_client_id }}" \
+              azureOpenAiEndpoint="${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}" \
+              azureOpenAiDeployment="${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}" \
+            --output json > deployment.json
+          aca_url=$(jq -r '.properties.outputs.agentUrl.value' deployment.json)
+          aca_app=$(jq -r '.properties.outputs.appName.value' deployment.json)
+          echo "aca_url=$aca_url" >> "$GITHUB_OUTPUT"
+          echo "aca_app_name=$aca_app" >> "$GITHUB_OUTPUT"
+          echo "Deployed hello-agent ACA: $aca_url"
+
+      - name: Wait for hello-agent to be ready
+        if: steps.deploy_perrun.outputs.aca_url != ''
+        run: |
+          set -e
+          # Container needs a moment to pull the image, start uvicorn, and
+          # for DefaultAzureCredential to acquire its first token. The /
+          # health endpoint reports ``"ready": true`` once the agent is up.
+          for i in $(seq 1 60); do
+            body=$(curl -fsS --max-time 5 "${{ steps.deploy_perrun.outputs.aca_url }}/" || true)
+            if [ -n "$body" ] && echo "$body" | grep -q '"ready":true'; then
+              echo "hello-agent ready after ${i} attempts: $body"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "hello-agent did not become ready" >&2
+          curl -sS --max-time 5 "${{ steps.deploy_perrun.outputs.aca_url }}/" || true
+          exit 1
+
+      - name: Set up Python (for hosted agent provisioning)
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted' }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install azure-ai-projects (for hosted agent provisioning)
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted' }}
+        run: pip install --quiet "azure-ai-projects>=2.0.1" azure-identity
+
+      - id: create_hosted_agent
+        name: Create transient hosted agent (with get_weather tool)
+        if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted' }}
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+        run: |
+          python scripts/e2e_hosted_agent.py create \
+            --name "e2e-hosted-${{ steps.suffix.outputs.value }}" \
+            --model "${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}"
+
+  live-foundry-prompt:
+    needs: bootstrap-live
+    if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-prompt' }}
+    runs-on: ubuntu-latest
+    environment: e2e
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-oidc-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: uv sync --group dev
+      - run: uv pip install azure-ai-evaluation pandas azure-ai-projects azure-identity
+      - name: Render scenario config
+        env:
+          AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT: ${{ vars.AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT }}
+          AGENTOPS_E2E_MODEL_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        run: uv run python scripts/e2e_render_config.py
+      - name: Run AgentOps eval
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        working-directory: e2e-runs/foundry-prompt
+        run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/foundry-prompt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-foundry-prompt
+          path: |
+            e2e-runs/foundry-prompt/.agentops/results/
+            e2e-runs/foundry-prompt/transcript.md
+            e2e-runs/foundry-prompt/HEADER.md
+            e2e-runs/foundry-prompt/agentops.yaml
+          if-no-files-found: warn
+          retention-days: 14
+
+  live-foundry-hosted:
+    needs: bootstrap-live
+    if: ${{ (github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'foundry-hosted') && needs.bootstrap-live.outputs.hosted_agent_id != '' }}
+    runs-on: ubuntu-latest
+    environment: e2e
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-oidc-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: uv sync --group dev
+      - run: uv pip install azure-ai-evaluation pandas azure-ai-projects azure-identity
+      - name: Render scenario config
+        env:
+          AGENTOPS_E2E_FOUNDRY_HOSTED_AGENT: ${{ needs.bootstrap-live.outputs.hosted_agent_id }}
+          AGENTOPS_E2E_MODEL_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        run: uv run python scripts/e2e_render_config.py
+      - name: Run AgentOps eval
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        working-directory: e2e-runs/foundry-hosted
+        run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/foundry-hosted
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-foundry-hosted
+          path: |
+            e2e-runs/foundry-hosted/.agentops/results/
+            e2e-runs/foundry-hosted/transcript.md
+            e2e-runs/foundry-hosted/HEADER.md
+            e2e-runs/foundry-hosted/agentops.yaml
+            e2e-runs/foundry-hosted/agent-info.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  live-http-aca:
+    needs: bootstrap-live
+    if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'http-aca' }}
+    runs-on: ubuntu-latest
+    environment: e2e
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-oidc-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: uv sync --group dev
+      - run: uv pip install azure-ai-evaluation pandas
+      - name: Render scenario config
+        env:
+          AGENTOPS_E2E_ACA_URL: ${{ needs.bootstrap-live.outputs.aca_url }}
+          AGENTOPS_E2E_MODEL_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        run: uv run python scripts/e2e_render_config.py
+      - name: Run AgentOps eval
+        env:
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        working-directory: e2e-runs/http-aca
+        run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/http-aca
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-http-aca
+          path: |
+            e2e-runs/http-aca/.agentops/results/
+            e2e-runs/http-aca/transcript.md
+            e2e-runs/http-aca/HEADER.md
+            e2e-runs/http-aca/agentops.yaml
+          if-no-files-found: warn
+          retention-days: 14
+
+  live-model-direct:
+    needs: bootstrap-live
+    if: ${{ github.event.inputs.scenarios == 'all' || github.event.inputs.scenarios == 'model-direct' }}
+    runs-on: ubuntu-latest
+    environment: e2e
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: ">=0.9.0"
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-oidc-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - run: uv sync --group dev
+      - run: uv pip install azure-ai-evaluation pandas azure-ai-projects azure-identity
+      - name: Render scenario config
+        env:
+          AGENTOPS_E2E_MODEL_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        run: uv run python scripts/e2e_render_config.py
+      - name: Run AgentOps eval
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_E2E_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_E2E_MODEL_DEPLOYMENT }}
+        working-directory: e2e-runs/model-direct
+        run: uv run agentops eval run --config agentops.yaml
+      - name: Render transcript
+        if: always()
+        run: uv run python scripts/e2e_make_transcript.py e2e-runs/model-direct
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-model-direct
+          path: |
+            e2e-runs/model-direct/.agentops/results/
+            e2e-runs/model-direct/transcript.md
+            e2e-runs/model-direct/HEADER.md
+            e2e-runs/model-direct/agentops.yaml
+          if-no-files-found: warn
+          retention-days: 14
+
+  teardown-live:
+    needs:
+      - bootstrap-live
+      - live-foundry-prompt
+      - live-foundry-hosted
+      - live-http-aca
+      - live-model-direct
+    if: ${{ always() && github.event.inputs.scenarios != 'offline-only' && github.event.inputs.keep_resources != 'true' }}
+    runs-on: ubuntu-latest
+    environment: e2e
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Azure login (OIDC)
+        uses: ./.github/actions/azure-oidc-login
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Delete per-run ACA app
+        if: needs.bootstrap-live.outputs.aca_app_name != ''
+        run: |
+          set -e
+          az containerapp delete \
+            --resource-group "${{ vars.AZURE_E2E_RESOURCE_GROUP }}" \
+            --name "${{ needs.bootstrap-live.outputs.aca_app_name }}" \
+            --yes || true
+      - name: Set up Python (for hosted agent teardown)
+        if: needs.bootstrap-live.outputs.hosted_agent_name != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install azure-ai-projects (for hosted agent teardown)
+        if: needs.bootstrap-live.outputs.hosted_agent_name != ''
+        run: pip install --quiet "azure-ai-projects>=2.0.1" azure-identity
+      - name: Delete transient hosted agent
+        if: needs.bootstrap-live.outputs.hosted_agent_name != ''
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT }}
+        run: |
+          python scripts/e2e_hosted_agent.py delete \
+            --name "${{ needs.bootstrap-live.outputs.hosted_agent_name }}" || true
+      - name: Sweep stale e2e ACA apps (>1d old)
+        run: |
+          set -e
+          cutoff=$(date -u -d '1 day ago' +%FT%TZ)
+          # Sweep stale per-run ACA apps (both legacy 'aca-echo-' and new 'aca-agent-' names).
+          # NOTE: We deliberately do NOT sweep UAMIs here — the *-aca-uami-* identity is
+          # long-lived (created by bootstrap.bicep) and reused across runs to avoid the
+          # multi-minute Entra ID role-assignment propagation delay that would otherwise
+          # 401 every fresh per-run identity against Azure OpenAI.
+          mapfile -t apps < <(az containerapp list \
+            --resource-group "${{ vars.AZURE_E2E_RESOURCE_GROUP }}" \
+            --query "[?(starts_with(name,'aca-echo-run') || starts_with(name,'aca-agent-run')) && properties.latestRevisionFqdn!=null].{name:name,created:systemData.createdAt}" \
+            -o json | jq -r --arg cutoff "$cutoff" '.[] | select(.created < $cutoff) | .name')
+          for app in "${apps[@]}"; do
+            [ -z "$app" ] && continue
+            echo "Deleting stale app: $app"
+            az containerapp delete -g "${{ vars.AZURE_E2E_RESOURCE_GROUP }}" -n "$app" --yes || true
+          done
+
+  summary:
+    # Aggregates artifacts from every job into a single consolidated summary
+    # on the workflow run page. Runs even if upstream jobs failed so partial
+    # outcomes are still visible.
+    needs:
+      - offline-smoke
+      - unit-tests-with-coverage
+      - bootstrap-live
+      - live-foundry-prompt
+      - live-foundry-hosted
+      - live-http-aca
+      - live-model-direct
+      - teardown-live
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+      - name: Render consolidated summary
+        run: |
+          python scripts/e2e_aggregate_summary.py --root artifacts >> "$GITHUB_STEP_SUMMARY"
+

@@ -137,8 +137,9 @@ jobs:
           TMPDIR=$(mktemp -d)
           cd "$TMPDIR"
           agentops init
-          test -f .agentops/config.yaml
-          test -f .agentops/run.yaml
+          test -f agentops.yaml
+          test -f .agentops/data/smoke.jsonl
+          test -f .azure/config.json
           echo "✅ agentops init succeeded"
 
   # Publish to PyPI — requires 'release' environment approval
@@ -159,6 +160,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           verbose: true
+          skip-existing: true
 
   # ── VSIX Stable Publish ──────────────────────────────────────────────
   # Publish the VS Code extension as a stable release to the Marketplace.

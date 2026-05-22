@@ -1,0 +1,3 @@
+{"input": "What is 2+2?", "expected": "4"}
+{"input": "Capital of France?", "expected": "Paris"}
+{"input": "Color of the sky on a clear day?", "expected": "blue"}

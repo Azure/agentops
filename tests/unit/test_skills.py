@@ -1,12 +1,22 @@
+import io
+import json
+import tarfile
 from pathlib import Path
+from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
 from agentops.services.skills import (
     _COPILOT_MARKER_END,
     _COPILOT_MARKER_START,
+    _extract_skill_from_tarball,
+    _parse_github_ref,
+    _parse_skill_frontmatter,
+    _validate_skill_name,
     detect_platforms,
+    install_github_skill,
     install_skills,
     register_skills,
 )
@@ -18,10 +28,8 @@ _COPILOT_SKILL_PATHS = [
     ".github/skills/agentops-config/SKILL.md",
     ".github/skills/agentops-dataset/SKILL.md",
     ".github/skills/agentops-report/SKILL.md",
-    ".github/skills/agentops-regression/SKILL.md",
-    ".github/skills/agentops-trace/SKILL.md",
-    ".github/skills/agentops-monitor/SKILL.md",
     ".github/skills/agentops-workflow/SKILL.md",
+    ".github/skills/agentops-agent/SKILL.md",
 ]
 
 _CLAUDE_SKILL_PATHS = [
@@ -29,10 +37,8 @@ _CLAUDE_SKILL_PATHS = [
     ".claude/commands/agentops-config.md",
     ".claude/commands/agentops-dataset.md",
     ".claude/commands/agentops-report.md",
-    ".claude/commands/agentops-regression.md",
-    ".claude/commands/agentops-trace.md",
-    ".claude/commands/agentops-monitor.md",
     ".claude/commands/agentops-workflow.md",
+    ".claude/commands/agentops-agent.md",
 ]
 
 
@@ -83,7 +89,7 @@ def test_install_creates_copilot_files(tmp_path: Path) -> None:
     result = install_skills(directory=tmp_path, platforms=["copilot"])
 
     assert result.platforms == ["copilot"]
-    assert len(result.created_files) == 8
+    assert len(result.created_files) == 6
     assert len(result.skipped_files) == 0
 
     for rel in _COPILOT_SKILL_PATHS:
@@ -110,7 +116,7 @@ def test_install_creates_claude_files(tmp_path: Path) -> None:
     result = install_skills(directory=tmp_path, platforms=["claude"])
 
     assert result.platforms == ["claude"]
-    assert len(result.created_files) == 8
+    assert len(result.created_files) == 6
 
     for rel in _CLAUDE_SKILL_PATHS:
         skill_file = tmp_path / rel
@@ -133,7 +139,7 @@ def test_claude_files_strip_frontmatter(tmp_path: Path) -> None:
 
 def test_install_multi_platform(tmp_path: Path) -> None:
     result = install_skills(directory=tmp_path, platforms=["copilot", "claude"])
-    assert len(result.created_files) == 16  # 8 per platform
+    assert len(result.created_files) == 12  # 6 per platform
     assert result.platforms == ["copilot", "claude"]
 
 
@@ -150,7 +156,7 @@ def test_install_skips_existing(tmp_path: Path) -> None:
 
     result = install_skills(directory=tmp_path, platforms=["copilot"], force=False)
 
-    assert len(result.skipped_files) == 8
+    assert len(result.skipped_files) == 6
     assert len(result.created_files) == 0
     assert skill.read_text(encoding="utf-8") == "custom content"
 
@@ -163,7 +169,7 @@ def test_install_overwrites_with_force(tmp_path: Path) -> None:
 
     result = install_skills(directory=tmp_path, platforms=["copilot"], force=True)
 
-    assert len(result.overwritten_files) == 8
+    assert len(result.overwritten_files) == 6
     content = skill.read_text(encoding="utf-8")
     assert content != "custom content"
     assert "AgentOps" in content
@@ -232,7 +238,7 @@ def test_cli_init_does_not_install_skills(tmp_path: Path) -> None:
     result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0
-    assert "Initialized workspace" in result.stdout
+    assert "Initialized AgentOps workspace" in result.stdout
     assert "agentops skills install" in result.stdout
 
     # Skills should NOT be created during init
@@ -403,3 +409,348 @@ def test_cli_init_does_not_install_skills_claude(tmp_path: Path) -> None:
 
     for rel in _CLAUDE_SKILL_PATHS:
         assert not (tmp_path / rel).exists(), f"Should not exist after init: {rel}"
+
+
+# ---------------------------------------------------------------------------
+# GitHub ref parsing
+# ---------------------------------------------------------------------------
+
+
+def test_parse_github_ref_simple() -> None:
+    ref = _parse_github_ref("donlee/pptx-designer")
+    assert ref.owner == "donlee"
+    assert ref.repo == "pptx-designer"
+    assert ref.ref == "main"
+
+
+def test_parse_github_ref_with_prefix() -> None:
+    ref = _parse_github_ref("github:org/repo")
+    assert ref.owner == "org"
+    assert ref.repo == "repo"
+    assert ref.ref == "main"
+
+
+def test_parse_github_ref_with_version() -> None:
+    ref = _parse_github_ref("github:org/repo@v1.2.3")
+    assert ref.owner == "org"
+    assert ref.repo == "repo"
+    assert ref.ref == "v1.2.3"
+
+
+def test_parse_github_ref_with_branch() -> None:
+    ref = _parse_github_ref("org/repo@feature/my-branch")
+    assert ref.ref == "feature/my-branch"
+
+
+def test_parse_github_ref_invalid() -> None:
+    with pytest.raises(ValueError, match="Invalid GitHub skill reference"):
+        _parse_github_ref("not-valid")
+
+
+def test_parse_github_ref_empty() -> None:
+    with pytest.raises(ValueError, match="Invalid GitHub skill reference"):
+        _parse_github_ref("")
+
+
+# ---------------------------------------------------------------------------
+# Skill name validation
+# ---------------------------------------------------------------------------
+
+
+def test_validate_skill_name_valid() -> None:
+    assert _validate_skill_name("pptx-designer") == "pptx-designer"
+    assert _validate_skill_name("myskill") == "myskill"
+    assert _validate_skill_name("my-cool-skill") == "my-cool-skill"
+
+
+def test_validate_skill_name_invalid() -> None:
+    with pytest.raises(ValueError, match="Invalid skill name"):
+        _validate_skill_name("My Skill")
+
+    with pytest.raises(ValueError, match="Invalid skill name"):
+        _validate_skill_name("../traversal")
+
+    with pytest.raises(ValueError, match="Invalid skill name"):
+        _validate_skill_name("")
+
+    with pytest.raises(ValueError, match="Invalid skill name"):
+        _validate_skill_name("UPPERCASE")
+
+
+# ---------------------------------------------------------------------------
+# Frontmatter parsing
+# ---------------------------------------------------------------------------
+
+
+_VALID_FRONTMATTER = """\
+---
+name: test-skill
+description: A test skill for unit testing.
+license: MIT
+---
+
+# Test Skill
+
+Instructions here.
+"""
+
+
+def test_parse_frontmatter_valid() -> None:
+    meta = _parse_skill_frontmatter(_VALID_FRONTMATTER)
+    assert meta["name"] == "test-skill"
+    assert "test skill" in meta["description"].lower()
+
+
+def test_parse_frontmatter_missing_name() -> None:
+    content = "---\ndescription: test\n---\n# Body"
+    with pytest.raises(ValueError, match="missing required 'name'"):
+        _parse_skill_frontmatter(content)
+
+
+def test_parse_frontmatter_missing_description() -> None:
+    content = "---\nname: test\n---\n# Body"
+    with pytest.raises(ValueError, match="missing required 'description'"):
+        _parse_skill_frontmatter(content)
+
+
+def test_parse_frontmatter_no_frontmatter() -> None:
+    with pytest.raises(ValueError, match="missing YAML frontmatter"):
+        _parse_skill_frontmatter("# Just a heading")
+
+
+def test_parse_frontmatter_unclosed() -> None:
+    with pytest.raises(ValueError, match="unclosed YAML frontmatter"):
+        _parse_skill_frontmatter("---\nname: test\n")
+
+
+def test_parse_frontmatter_multiline_description() -> None:
+    content = "---\nname: test-skill\ndescription: >\n  A long\n  description here.\n---\n# Body"
+    meta = _parse_skill_frontmatter(content)
+    assert "long" in meta["description"]
+    assert "description here" in meta["description"]
+
+
+# ---------------------------------------------------------------------------
+# Tarball extraction
+# ---------------------------------------------------------------------------
+
+
+def _make_test_tarball(files: dict[str, str], prefix: str = "owner-repo-abc123") -> bytes:
+    """Create a gzipped tarball with the given files for testing."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for path, content in files.items():
+            full_path = f"{prefix}/{path}"
+            data = content.encode("utf-8")
+            info = tarfile.TarInfo(name=full_path)
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
+def test_extract_skill_from_tarball() -> None:
+    tarball = _make_test_tarball({
+        "my-skill/SKILL.md": _VALID_FRONTMATTER,
+        "my-skill/references/guide.md": "# Guide\n\nSome content.",
+    })
+    meta, files = _extract_skill_from_tarball(tarball, "my-skill")
+    assert meta["name"] == "test-skill"
+    assert "SKILL.md" in files
+    assert "references/guide.md" in files
+
+
+def test_extract_skill_prefers_repo_named_dir() -> None:
+    tarball = _make_test_tarball({
+        "my-skill/SKILL.md": _VALID_FRONTMATTER,
+        "other-dir/SKILL.md": _VALID_FRONTMATTER,
+    })
+    meta, files = _extract_skill_from_tarball(tarball, "my-skill")
+    assert meta["name"] == "test-skill"
+
+
+def test_extract_skill_root_skill_md() -> None:
+    tarball = _make_test_tarball({
+        "SKILL.md": _VALID_FRONTMATTER,
+    })
+    meta, files = _extract_skill_from_tarball(tarball, "some-repo")
+    assert meta["name"] == "test-skill"
+    assert "SKILL.md" in files
+
+
+def test_extract_skill_no_skill_md() -> None:
+    tarball = _make_test_tarball({
+        "README.md": "# Hello",
+    })
+    with pytest.raises(ValueError, match="No SKILL.md found"):
+        _extract_skill_from_tarball(tarball, "some-repo")
+
+
+def test_extract_skill_multiple_ambiguous() -> None:
+    tarball = _make_test_tarball({
+        "skill-a/SKILL.md": _VALID_FRONTMATTER,
+        "skill-b/SKILL.md": _VALID_FRONTMATTER.replace("test-skill", "other-skill"),
+    })
+    with pytest.raises(ValueError, match="Multiple skills found"):
+        _extract_skill_from_tarball(tarball, "unrelated-repo")
+
+
+def test_extract_skill_skips_scripts() -> None:
+    tarball = _make_test_tarball({
+        "my-skill/SKILL.md": _VALID_FRONTMATTER,
+        "my-skill/scripts/run.py": "print('hello')",
+        "my-skill/references/ref.md": "# Ref",
+    })
+    _, files = _extract_skill_from_tarball(tarball, "my-skill")
+    assert "references/ref.md" in files
+    assert "scripts/run.py" not in files  # scripts blocked by default
+
+
+def test_extract_skill_blocks_path_traversal() -> None:
+    tarball = _make_test_tarball({
+        "my-skill/SKILL.md": _VALID_FRONTMATTER,
+        "my-skill/../../../etc/passwd": "root:x:0:0",
+    })
+    _, files = _extract_skill_from_tarball(tarball, "my-skill")
+    assert all(".." not in p for p in files)
+
+
+def test_extract_skill_blocks_hidden_files() -> None:
+    tarball = _make_test_tarball({
+        "my-skill/SKILL.md": _VALID_FRONTMATTER,
+        "my-skill/.env": "SECRET=abc",
+        "my-skill/references/guide.md": "# Guide",
+    })
+    _, files = _extract_skill_from_tarball(tarball, "my-skill")
+    assert ".env" not in files
+    assert "references/guide.md" in files
+
+
+# ---------------------------------------------------------------------------
+# install_github_skill (with mocked network)
+# ---------------------------------------------------------------------------
+
+
+def test_install_github_skill_copilot(tmp_path: Path) -> None:
+    tarball = _make_test_tarball({
+        "pptx-designer/SKILL.md": _VALID_FRONTMATTER,
+        "pptx-designer/references/setup.md": "# Setup guide",
+    })
+
+    with patch(
+        "agentops.services.skills._fetch_github_tarball", return_value=tarball
+    ):
+        result = install_github_skill(
+            source="donlee/pptx-designer",
+            directory=tmp_path,
+            platforms=["copilot"],
+            force=True,
+        )
+
+    # SKILL.md installed
+    skill_path = tmp_path / ".github/skills/test-skill/SKILL.md"
+    assert skill_path.exists()
+    content = skill_path.read_text(encoding="utf-8")
+    assert content.startswith("---")  # frontmatter preserved for copilot
+
+    # Reference file installed
+    ref_path = tmp_path / ".github/skills/test-skill/references/setup.md"
+    assert ref_path.exists()
+
+    # Provenance file created
+    prov_path = tmp_path / ".github/skills/test-skill/.installed-from.json"
+    assert prov_path.exists()
+    prov = json.loads(prov_path.read_text())
+    assert prov["source"] == "github:donlee/pptx-designer"
+    assert prov["skill_name"] == "test-skill"
+
+    assert len(result.created_files) >= 2
+
+
+def test_install_github_skill_claude(tmp_path: Path) -> None:
+    tarball = _make_test_tarball({
+        "pptx-designer/SKILL.md": _VALID_FRONTMATTER,
+        "pptx-designer/references/setup.md": "# Setup guide",
+    })
+
+    with patch(
+        "agentops.services.skills._fetch_github_tarball", return_value=tarball
+    ):
+        install_github_skill(
+            source="donlee/pptx-designer",
+            directory=tmp_path,
+            platforms=["claude"],
+        )
+
+    # Claude gets a single .md file with frontmatter stripped
+    skill_path = tmp_path / ".claude/commands/test-skill.md"
+    assert skill_path.exists()
+    content = skill_path.read_text(encoding="utf-8")
+    assert not content.startswith("---")  # frontmatter stripped
+
+    # Claude does NOT get reference files
+    ref_path = tmp_path / ".claude/commands/references/setup.md"
+    assert not ref_path.exists()
+
+
+def test_install_github_skill_skip_existing(tmp_path: Path) -> None:
+    tarball = _make_test_tarball({
+        "my-skill/SKILL.md": _VALID_FRONTMATTER,
+    })
+
+    # Pre-create the file
+    dest = tmp_path / ".github/skills/test-skill/SKILL.md"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("custom content")
+
+    with patch(
+        "agentops.services.skills._fetch_github_tarball", return_value=tarball
+    ):
+        result = install_github_skill(
+            source="org/my-skill",
+            directory=tmp_path,
+            platforms=["copilot"],
+            force=False,
+        )
+
+    assert len(result.skipped_files) >= 1
+    assert dest.read_text() == "custom content"
+
+
+# ---------------------------------------------------------------------------
+# CLI — agentops skills install --from
+# ---------------------------------------------------------------------------
+
+
+def test_cli_skills_install_from_github(tmp_path: Path) -> None:
+    tarball = _make_test_tarball({
+        "pptx-designer/SKILL.md": _VALID_FRONTMATTER,
+    })
+
+    with patch(
+        "agentops.services.skills._fetch_github_tarball", return_value=tarball
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "skills", "install",
+                "--from", "donlee/pptx-designer",
+                "--dir", str(tmp_path),
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert "Installing skill from GitHub" in result.stdout
+    assert "created" in result.stdout
+
+
+def test_cli_skills_install_from_invalid_ref(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "skills", "install",
+            "--from", "not-valid-ref",
+            "--dir", str(tmp_path),
+        ],
+    )
+    assert result.exit_code == 1
+

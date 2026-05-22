@@ -1,0 +1,120 @@
+# AgentOps watchdog — dogfood instance for the agentops repo itself.
+#
+# This is the same template you get from `agentops workflow generate --kinds watchdog`,
+# checked in here so you can see what a real GitHub Actions watchdog looks like
+# without leaving the repo.
+#
+# As shipped, the schedule is **commented out** so this does not run on every
+# fork. To turn it on:
+#
+#   1. Configure the repository / environment variables:
+#        AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#        AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
+#        AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_DEPLOYMENT
+#   2. Make sure a `dev` environment exists.
+#   3. Uncomment the `schedule:` block below (defaults to daily at 06:00 UTC).
+#
+# You can also trigger this manually from the Actions tab via "Run workflow".
+
+name: AgentOps watchdog (demo)
+
+on:
+  # schedule:
+  #   - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      severity_fail:
+        description: "Severity that fails the run (info | warning | critical)"
+        required: false
+        default: "critical"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: agentops-watchdog-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: AgentOps watchdog analyze
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install AgentOps Toolkit (this branch)
+        run: |
+          # Use the in-tree code so this job stays in lockstep with the
+          # template under src/agentops/templates/workflows/.
+          uv pip install --system ".[foundry,agent]"
+
+      # First run has no prior artifact. Using `pattern:` instead of
+      # `name:` makes actions/download-artifact return success with zero
+      # downloads when the artifact does not exist yet, instead of
+      # surfacing a red error annotation on every first run.
+      - name: Restore watchdog history (if any)
+        uses: actions/download-artifact@v8
+        with:
+          pattern: agentops-watchdog-history
+          path: .agentops/agent/
+          merge-multiple: true
+
+      - name: Run AgentOps watchdog
+        id: analyze
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
+          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
+        run: |
+          set +e
+          # `agentops init` writes a default agent.yaml under .agentops/ if
+          # one does not exist yet, so the demo run is self-contained.
+          if [ ! -f .agentops/agent.yaml ]; then
+            agentops init --prompt-skip || true
+          fi
+          agentops doctor --workspace . --out .agentops/agent/report.md \
+            --severity-fail "${{ inputs.severity_fail || 'critical' }}"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload watchdog artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentops-watchdog-history
+          path: |
+            .agentops/agent/report.md
+            .agentops/agent/history.jsonl
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "## AgentOps watchdog"
+            echo
+            if [ -f .agentops/agent/report.md ]; then
+              cat .agentops/agent/report.md
+            else
+              echo "No report.md produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

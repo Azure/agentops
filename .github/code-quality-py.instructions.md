@@ -58,7 +58,7 @@ You are performing a systematic code-quality pass on a Python codebase. Work thr
   ```
 - Simple one-line methods (getters, delegates) get a single-line docstring.
 
-## 5. Comment Cleanup — REMOVE These
+## 5. Comment Cleanup - REMOVE These
 - **Redundant inline comments** that just restate the code:
   `# Create Claim_Process entry in Cosmos DB` above `new_claim_process = Claim_Process(...)`
 - **Banner comments** / section dividers:
@@ -72,7 +72,7 @@ You are performing a systematic code-quality pass on a Python codebase. Work thr
   `# Placeholder for document processing logic`
 - **"For demonstration" / "Here you would typically"** comments.
 
-## 6. Comment Cleanup — KEEP These
+## 6. Comment Cleanup - KEEP These
 - **Actionable TODOs** with clear intent: `# TODO: Make configurable if needed`
 - **Non-obvious "why" comments** that explain a design decision:
   `# Avoid unbounded growth on very chatty endpoints.`

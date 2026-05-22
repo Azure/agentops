@@ -1,6 +1,6 @@
 ---
 name: release-management
-description: Guide maintainers and contributors through branching, versioning, changelog updates, and publishing agentops-toolkit. Trigger when users ask about branching strategy, creating a release, version tagging, publishing to PyPI, updating the changelog, cutting a release, opening a PR, or syncing a fork. Common phrases: "cut a release", "how do I publish", "create release branch", "tag a version", "update changelog", "release process", "bump version", "what branch should I use", "feature branch", "prepare release".
+description: 'Guide maintainers and contributors through branching, versioning, changelog updates, and publishing agentops-toolkit. Trigger when users ask about branching strategy, creating a release, version tagging, publishing to PyPI, updating the changelog, cutting a release, opening a PR, or syncing a fork. Common phrases include "cut a release", "how do I publish", "create release branch", "tag a version", "update changelog", "release process", "bump version", "what branch should I use", "feature branch", "prepare release".'
 ---
 
 # Release Management
@@ -68,7 +68,7 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    - Opens a PR: `release/v0.2.0` → `main`
 4. Wait for staging pipeline to pass (build → TestPyPI → verify).
 5. Get the PR reviewed and merge into `main`.
-6. Tag the release on `main` — this triggers the production release pipeline:
+6. Tag the release on `main` - this triggers the production release pipeline:
    ```bash
    git checkout main
    git pull origin main
@@ -97,7 +97,7 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    git pull origin develop
    git checkout -b release/v0.2.0
    ```
-3. Update `CHANGELOG.md` — see [Changelog Lifecycle](#changelog-lifecycle) below.
+3. Update `CHANGELOG.md` - see [Changelog Lifecycle](#changelog-lifecycle) below.
 4. Commit and push:
    ```bash
    git add CHANGELOG.md
@@ -119,7 +119,7 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
 ### Release PR contract
 - Source: `release/vx.y.z`
 - Target: `main`
-- Do NOT introduce new feature work in a release branch — only changelog updates.
+- Do NOT introduce new feature work in a release branch - only changelog updates.
 
 ## Versioning Rules
 
@@ -131,7 +131,7 @@ Follow [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 | `MINOR` | New backward-compatible features |
 | `MAJOR` | Breaking changes to the CLI contract or output schema |
 
-Version numbers follow a consistent pattern across artifacts. The git tag and GitHub Release use a `v` prefix. The release branch also uses the `v` prefix. Versioning is fully automatic via **setuptools-scm** — there is no `version` field in `pyproject.toml`.
+Version numbers follow a consistent pattern across artifacts. The git tag and GitHub Release use a `v` prefix. The release branch also uses the `v` prefix. Versioning is fully automatic via **setuptools-scm** - there is no `version` field in `pyproject.toml`.
 
 | Artifact | Format | Example |
 |---|---|---|
@@ -140,7 +140,7 @@ Version numbers follow a consistent pattern across artifacts. The git tag and Gi
 | Git tag / GitHub Release | `vx.y.z` | `v2.4.2` |
 | Changelog heading | `## [x.y.z] - YYYY-MM-DD` | `## [2.4.2] - 2026-03-22` |
 
-**Never add `version = "..."` to `pyproject.toml`** — this will conflict with setuptools-scm.
+**Never add `version = "..."` to `pyproject.toml`** - this will conflict with setuptools-scm.
 
 ### Version on `develop`
 - The version on `develop` is derived automatically by setuptools-scm (e.g., `0.1.3.dev12`).
@@ -182,7 +182,7 @@ Use when applicable: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Secu
 
 ### Writing style
 - Start each entry with a **bold title**, followed by a brief technical explanation.
-- Explain what changed and why it matters — include relevant technical context.
+- Explain what changed and why it matters - include relevant technical context.
 - Avoid vague wording: no "minor updates", "improvements", or "fixes" as standalone entries.
 
 ### Safety rules
@@ -207,8 +207,8 @@ Set in GitHub repo Settings → Secrets and variables → Actions:
 
 | Secret | Purpose |
 |---|---|
-| `PIPY_TOKEN` | PyPI API token scoped to `agentops-toolkit` — used on merge to `main` |
-| `TESTPYPI_API_TOKEN` | TestPyPI API token — used on tag push for pre-release validation |
+| `PIPY_TOKEN` | PyPI API token scoped to `agentops-toolkit` - used on merge to `main` |
+| `TESTPYPI_API_TOKEN` | TestPyPI API token - used on tag push for pre-release validation |
 
 ## Default Decision Logic
 

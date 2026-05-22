@@ -1,5 +1,15 @@
 # Evaluation Bundles
 
+> **Historical reference (pre-1.0).** AgentOps 1.0 replaced the layered
+> `bundle.yaml` + `dataset.yaml` + `run.yaml` files with a single flat
+> `agentops.yaml`. Evaluators are now auto-selected from the agent type
+> and dataset columns; thresholds live inline in `agentops.yaml`. See
+> `docs/concepts.md` for the current model. The advanced `evaluators:`
+> escape hatch in `agentops.yaml` can still pin specific evaluators, but
+> the named-bundle catalog described below is no longer how the toolkit
+> ships. This page is retained for users who encounter pre-1.0 references
+> in older blog posts or repos.
+
 An **evaluation bundle** defines which evaluators run against your target and what quality thresholds must be met. Each bundle is a standalone YAML file stored in `.agentops/bundles/`.
 
 ## Predefined Bundles
@@ -99,43 +109,43 @@ metadata:
 ## model\_quality\_baseline
 
 **Category:** Model quality
-**When to use:** Evaluating raw model output quality for any model deployment — Foundry models, HTTP endpoints, or local adapters. No retrieval context or tool calling involved.
+**When to use:** Evaluating raw model output quality for any model deployment - Foundry models, HTTP endpoints, or local adapters. No retrieval context or tool calling involved.
 
 **Evaluators:**
-- `SimilarityEvaluator` — AI-assisted semantic similarity between response and expected answer (score 1–5, threshold ≥ 3)
-- `CoherenceEvaluator` — Logical structure and flow of the response (score 1–5, threshold ≥ 3)
-- `FluencyEvaluator` — Language quality and readability (score 1–5, threshold ≥ 3)
-- `F1ScoreEvaluator` — Token overlap between response and expected answer (0–1, threshold ≥ 0.4)
-- `avg_latency_seconds` — Average response time (threshold ≤ 10s)
+- `SimilarityEvaluator` - AI-assisted semantic similarity between response and expected answer (score 1–5, threshold ≥ 3)
+- `CoherenceEvaluator` - Logical structure and flow of the response (score 1–5, threshold ≥ 3)
+- `FluencyEvaluator` - Language quality and readability (score 1–5, threshold ≥ 3)
+- `F1ScoreEvaluator` - Token overlap between response and expected answer (0–1, threshold ≥ 0.4)
+- `avg_latency_seconds` - Average response time (threshold ≤ 10s)
 
 **Dataset fields:** `input`, `expected`
 
 ## rag\_quality\_baseline
 
 **Category:** RAG quality
-**When to use:** Evaluating retrieval-augmented generation pipelines — agents or models that retrieve context documents before generating a response.
+**When to use:** Evaluating retrieval-augmented generation pipelines - agents or models that retrieve context documents before generating a response.
 
 **Evaluators:**
-- `GroundednessEvaluator` — Whether the response is grounded in the retrieved context (score 1–5, threshold ≥ 3)
-- `RelevanceEvaluator` — Whether the response is relevant to the query given the context (score 1–5, threshold ≥ 3)
-- `RetrievalEvaluator` — Quality of the retrieved context for the query (score 1–5, threshold ≥ 3)
-- `ResponseCompletenessEvaluator` — Whether the response fully addresses the query (score 1–5, threshold ≥ 3)
-- `CoherenceEvaluator` — Logical structure and flow (score 1–5, threshold ≥ 3)
-- `avg_latency_seconds` — Average response time (threshold ≤ 10s)
+- `GroundednessEvaluator` - Whether the response is grounded in the retrieved context (score 1–5, threshold ≥ 3)
+- `RelevanceEvaluator` - Whether the response is relevant to the query given the context (score 1–5, threshold ≥ 3)
+- `RetrievalEvaluator` - Quality of the retrieved context for the query (score 1–5, threshold ≥ 3)
+- `ResponseCompletenessEvaluator` - Whether the response fully addresses the query (score 1–5, threshold ≥ 3)
+- `CoherenceEvaluator` - Logical structure and flow (score 1–5, threshold ≥ 3)
+- `avg_latency_seconds` - Average response time (threshold ≤ 10s)
 
 **Dataset fields:** `input`, `expected`, `context`
 
 ## conversational\_agent\_baseline
 
 **Category:** Conversational
-**When to use:** Evaluating conversational agents — chatbots, virtual assistants, Q&A bots — where the focus is on response quality without tool calling or retrieval context.
+**When to use:** Evaluating conversational agents - chatbots, virtual assistants, Q&A bots - where the focus is on response quality without tool calling or retrieval context.
 
 **Evaluators:**
-- `CoherenceEvaluator` — Logical structure and flow (score 1–5, threshold ≥ 3)
-- `FluencyEvaluator` — Language quality and readability (score 1–5, threshold ≥ 3)
-- `RelevanceEvaluator` — Whether the response is relevant to the query (score 1–5, threshold ≥ 3)
-- `SimilarityEvaluator` — Semantic similarity to expected answer (score 1–5, threshold ≥ 3)
-- `avg_latency_seconds` — Average response time (threshold ≤ 10s)
+- `CoherenceEvaluator` - Logical structure and flow (score 1–5, threshold ≥ 3)
+- `FluencyEvaluator` - Language quality and readability (score 1–5, threshold ≥ 3)
+- `RelevanceEvaluator` - Whether the response is relevant to the query (score 1–5, threshold ≥ 3)
+- `SimilarityEvaluator` - Semantic similarity to expected answer (score 1–5, threshold ≥ 3)
+- `avg_latency_seconds` - Average response time (threshold ≤ 10s)
 
 **Dataset fields:** `input`, `expected`
 
@@ -145,13 +155,13 @@ metadata:
 **When to use:** Evaluating agents that use tool calling (function calling) to complete tasks. Covers task completion, tool accuracy, intent resolution, and adherence.
 
 **Evaluators:**
-- `TaskCompletionEvaluator` — Whether the agent completed the requested task (score 1–5, threshold ≥ 3)
-- `ToolCallAccuracyEvaluator` — Correctness of tool call arguments and sequencing (score 1–5, threshold ≥ 3)
-- `IntentResolutionEvaluator` — Whether the agent correctly identified the user's intent (score 1–5, threshold ≥ 3)
-- `TaskAdherenceEvaluator` — Whether the agent stayed on task (score 1–5, threshold ≥ 3)
-- `ToolSelectionEvaluator` — Whether the agent chose the right tools (score 1–5, threshold ≥ 3)
-- `ToolInputAccuracyEvaluator` — Correctness of inputs passed to tools (score 1–5, threshold ≥ 3)
-- `avg_latency_seconds` — Average response time (threshold ≤ 15s)
+- `TaskCompletionEvaluator` - Whether the agent completed the requested task (score 1–5, threshold ≥ 3)
+- `ToolCallAccuracyEvaluator` - Correctness of tool call arguments and sequencing (score 1–5, threshold ≥ 3)
+- `IntentResolutionEvaluator` - Whether the agent correctly identified the user's intent (score 1–5, threshold ≥ 3)
+- `TaskAdherenceEvaluator` - Whether the agent stayed on task (score 1–5, threshold ≥ 3)
+- `ToolSelectionEvaluator` - Whether the agent chose the right tools (score 1–5, threshold ≥ 3)
+- `ToolInputAccuracyEvaluator` - Correctness of inputs passed to tools (score 1–5, threshold ≥ 3)
+- `avg_latency_seconds` - Average response time (threshold ≤ 15s)
 
 **Dataset fields:** `input`, `expected`, `tool_definitions`, `tool_calls`
 
@@ -161,22 +171,22 @@ metadata:
 **When to use:** Evaluating content safety and responsible AI compliance for any agent or model deployment. Detects violence, sexual content, self-harm, hate/unfairness, and protected material risks in model responses.
 
 **Evaluators:**
-- `ViolenceEvaluator` — Violence risk level (score 0–7, threshold ≤ 2)
-- `SexualEvaluator` — Sexual content risk level (score 0–7, threshold ≤ 2)
-- `SelfHarmEvaluator` — Self-harm risk level (score 0–7, threshold ≤ 2)
-- `HateUnfairnessEvaluator` — Hate and unfairness risk level (score 0–7, threshold ≤ 2)
-- `ProtectedMaterialEvaluator` — Protected material risk level (score 0–7, threshold ≤ 2)
-- `avg_latency_seconds` — Average response time (threshold ≤ 10s)
+- `ViolenceEvaluator` - Violence risk level (score 0–7, threshold ≤ 2)
+- `SexualEvaluator` - Sexual content risk level (score 0–7, threshold ≤ 2)
+- `SelfHarmEvaluator` - Self-harm risk level (score 0–7, threshold ≤ 2)
+- `HateUnfairnessEvaluator` - Hate and unfairness risk level (score 0–7, threshold ≤ 2)
+- `ProtectedMaterialEvaluator` - Protected material risk level (score 0–7, threshold ≤ 2)
+- `avg_latency_seconds` - Average response time (threshold ≤ 10s)
 
 **Dataset fields:** `input`, `expected`
-**Requirements:** `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` — safety evaluators use `azure_ai_project` (auto-injected) instead of `model_config`
+**Requirements:** `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` - safety evaluators use `azure_ai_project` (auto-injected) instead of `model_config`
 
 ## Creating Custom Bundles
 
 Copy any predefined bundle and modify it:
 
 1. Copy a bundle: `cp .agentops/bundles/model_quality_baseline.yaml .agentops/bundles/my_custom.yaml`
-2. Edit evaluators — add, remove, or disable individual evaluators
+2. Edit evaluators - add, remove, or disable individual evaluators
 3. Adjust thresholds to match your quality bar
 4. Reference it in your run config: `bundle: { name: my_custom }`
 

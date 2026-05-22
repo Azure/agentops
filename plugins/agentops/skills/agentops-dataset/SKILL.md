@@ -1,119 +1,82 @@
 ---
 name: agentops-dataset
-description: Generate evaluation datasets (JSONL data + YAML config) tailored to the project. Trigger when users ask to create test data, generate a dataset, or prepare evaluation data. Common phrases include "dataset", "test data", "evaluation data", "JSONL", "generate data", "create dataset", "sample data". Install agentops-toolkit via pip.
+description: Create or extend a JSONL evaluation dataset for AgentOps. Trigger on "create dataset", "generate test data", "JSONL", "more eval rows". Infer the agent's domain from the codebase and produce realistic rows; never fabricate data when the domain is unclear.
 ---
 
 # AgentOps Dataset
 
-Generate a custom evaluation dataset from the codebase. Never offer starter datasets — always create project-specific data.
+Generate a small, realistic JSONL dataset for the agent under
+evaluation. Default location: `.agentops/data/smoke.jsonl` (referenced
+from `agentops.yaml`).
 
-## Step 0 — Prerequisites
+## Step 0 - Prerequisites
 
-1. Run `pip install agentops-toolkit` if `agentops` command is not available.
-2. Run `agentops init` if `.agentops/` directory does not exist.
+1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
+2. Run `agentops eval analyze` first. If it reports missing dataset columns or
+   recommends `agentops-dataset`, use this skill before the first eval run.
+3. If `agentops.yaml` does not exist, run `agentops init` first (the init
+   wizard will prompt for the agent reference, project endpoint, and
+   dataset path, then create a starter `.agentops/data/smoke.jsonl`).
 
-## Step 1 — Understand the domain
+## Step 1 - Pick the columns
 
-Read the codebase: system prompt, tool definitions, README, sample inputs/outputs, test fixtures. Understand the agent's **primary purpose** and identify the scenario:
+Read `agentops.yaml` (and the agent code) to figure out the agent type,
+then choose the row schema:
 
-| Primary purpose | Scenario |
-|---|---|
-| Agent that orchestrates tools to complete tasks | Agent with tools |
-| Agent that retrieves context to answer questions | RAG |
-| Conversational assistant (chat, Q&A, persona) | Conversational |
-| Direct model call with no agent logic | Model quality |
+| Agent type | Required columns | Optional columns |
+|---|---|---|
+| Direct model / Q&A | `input`, `expected` | - |
+| RAG | `input`, `expected`, `context` | - |
+| Conversational | `input`, `expected` | - |
+| Tool-using agent | `input`, `expected`, `tool_calls` | `tool_definitions` |
 
-> A RAG agent that uses a search tool is still primarily RAG. The test is: *what is the agent's main job?*
+`input` is always the user prompt. `expected` is the gold answer.
+`context` is the retrieved passage(s). `tool_calls` is a list of
+`{name, arguments}` describing the expected tool invocations.
 
-## Step 2 — Confirm topics and count
+## Step 2 - Ground the rows in the codebase
 
-1. Ask: *"What topics should the test data cover?"*
-2. Ask: *"How many rows? (suggest 5–10)"*
+- Read the README, system prompt, tool definitions, and any sample
+  fixtures.
+- Generate **5–10 rows** that exercise the agent's actual capabilities.
+- If the domain is unclear, generate a tiny generic draft and clearly
+  flag it as a placeholder.
 
-## Step 3 — Generate JSONL rows
+## Step 3 - Write the JSONL
 
-Use the correct fields for the scenario:
+One JSON object per line, no trailing commas, UTF-8:
 
-| Scenario | JSONL fields |
-|---|---|
-| Model quality | `input`, `expected` |
-| Conversational | `input`, `expected` |
-| RAG | `input`, `expected`, `context` |
-| Agent with tools | `input`, `expected`, `tool_definitions`, `tool_calls` |
-| Content safety | `input`, `expected` |
-
-Write `.agentops/data/data.jsonl` — one JSON object per line. Rows must:
-- Cover distinct use cases from the codebase
-- Include realistic, domain-specific content
-- Have at least one edge case
-- Reflect actual tool schemas and system prompt
-
-## Step 4 — Write dataset YAML config
-
-Write `.agentops/datasets/dataset.yaml` using this **exact** structure — no alternatives:
-```yaml
-version: 1
-name: dataset
-description: <one-line description>
-source:
-  type: file
-  path: ../data/data.jsonl
-format:
-  type: jsonl
-  input_field: input
-  expected_field: expected
-metadata:
-  scenario: <scenario>
-  size_hint: <row_count>
+```json
+{"input": "What is the refund policy?", "expected": "Refunds within 30 days...", "context": "Refund policy: ..."}
 ```
 
-**NEVER** use `path:` or `fields:` at the top level — the correct keys are `source:` and `format:`. If unsure, read an existing starter config from `.agentops/datasets/` as a reference template.
+Save to the path referenced by `dataset:` in `agentops.yaml` (default
+`.agentops/data/smoke.jsonl`).
 
-For RAG scenarios, add `context_field: context` under `format:`:
-```yaml
-format:
-  type: jsonl
-  input_field: input
-  expected_field: expected
-  context_field: context
+This file is the AgentOps source of truth. In Foundry cloud evaluation,
+AgentOps syncs it to a stable Foundry dataset version by default and reuses the
+same Foundry dataset version while the JSONL content is unchanged. If the user
+forces `dataset_sync.mode: inline`, Foundry may show generated `eval-data-*`
+backing assets in the project Data/Datasets page.
+
+## Step 4 - Sanity-check
+
+Run a quick eval and confirm rows are picked up:
+
+```bash
+agentops eval run
 ```
 
-## Step 4.5 — RAG context enrichment
+Open `.agentops/results/latest/report.md` and confirm the row count
+matches.
 
-If the scenario is **RAG** and the generated JSONL has no `context` field:
+## Guardrails
 
-1. **Find the project's retrieval logic** — search the codebase for how it fetches context today:
-   - Look for search/retrieval client initialization, index or collection names, embedding calls
-   - Check `.env` files and code for endpoint URLs, API keys, index names used by the retriever
-   - The project may use Azure AI Search, Cosmos DB vector search, FAISS, Pinecone, or any other store — read the code to find out
-
-2. **Build a retrieval script** at `.agentops/rag_context.py` (**never** in `src/`) that:
-   - Reads the project's own retrieval config (env vars, endpoint, index name) from whatever the project uses
-   - For each row in the JSONL, queries the retrieval backend with `row["input"]` and writes the result into `row["context"]`
-   - Uses only stdlib (`urllib.request`, `json`, `os`) — no third-party dependencies
-   - Accepts the JSONL file path as a CLI argument: `python .agentops/rag_context.py .agentops/data/data.jsonl`
-
-3. Verify: each JSONL row now has a `context` field.
-4. Update dataset YAML to include `context_field: context` under `format:`.
-
-If no retrieval backend can be identified, state: *"RAG context cannot be populated automatically — either add `context` manually to each row or switch to `model_quality_baseline` bundle which does not require it."*
-
-## Step 5 — Present for review
-
-Show the generated rows and say: *"These are starter rows for validation. For production evaluations, use real user queries or domain expert–curated data."*
-
-## Outputs
-
-- `.agentops/data/data.jsonl` — JSONL rows
-- `.agentops/datasets/dataset.yaml` — dataset config
-
-## Rules
-
-- **NEVER** offer starter datasets (`smoke-model-direct.jsonl`, etc.) — always generate custom data.
-- **NEVER** leave `<replace-...>` placeholders in JSONL or YAML.
-- **NEVER** use `path:` or `fields:` at the dataset config top level — the correct structure uses `source:` and `format:`. Read a starter config from `.agentops/datasets/` if unsure.
-- Use generic file names: `data.jsonl`, `dataset.yaml` — not project-specific prefixes.
-- State the scenario assumption: *"Generating dataset for RAG scenario (detected retriever)"*.
-- Mark generated data as draft — not production-grade.
-- Do not run evaluations — delegate to `/agentops-eval`.
-- Do not generate run.yaml — delegate to `/agentops-config`.
+- Do not invent customer data, real names, or sensitive content.
+- Keep rows short - datasets are meant to be quick gates, not full QA
+  suites.
+- If the user already has a domain dataset, prefer pointing
+  `agentops.yaml` at that file rather than generating new rows.
+- If the user asks why Foundry shows `eval-data-*`, explain that those are
+  cloud-eval backing assets from inline compatibility mode; normal cloud runs
+  should use the stable `agentops-*` Foundry dataset.

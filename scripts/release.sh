@@ -105,7 +105,7 @@ else
         echo ">>> Aborted PyPI publish"
         exit 1
     fi
-    uv run twine upload dist/*
+    uv run twine upload --skip-existing dist/*
     echo ">>> Published to PyPI"
 fi
 

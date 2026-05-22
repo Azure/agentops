@@ -1,0 +1,76 @@
+name: Azure OIDC login (composite, no node20 deps)
+description: |
+  Drop-in replacement for azure/login@v2 that performs the OIDC federated
+  token exchange entirely in bash, so it does not pull any Node.js 20
+  JavaScript actions and keeps the Actions run free of "Node.js 20 is
+  deprecated" annotations.
+
+  After this step runs, the az CLI is authenticated and AZURE_* environment
+  variables are exported for downstream tools (azure-identity etc).
+
+inputs:
+  client-id:
+    description: "Microsoft Entra application (client) ID"
+    required: true
+  tenant-id:
+    description: "Microsoft Entra tenant ID"
+    required: true
+  subscription-id:
+    description: "Azure subscription ID"
+    required: true
+  audience:
+    description: "Federated identity audience"
+    required: false
+    default: "api://AzureADTokenExchange"
+
+runs:
+  using: composite
+  steps:
+    - name: Federated OIDC login (bash)
+      shell: bash
+      env:
+        AZURE_CLIENT_ID: ${{ inputs.client-id }}
+        AZURE_TENANT_ID: ${{ inputs.tenant-id }}
+        AZURE_SUBSCRIPTION_ID: ${{ inputs.subscription-id }}
+        OIDC_AUDIENCE: ${{ inputs.audience }}
+      run: |
+        set -euo pipefail
+
+        : "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:?id-token permission missing on the job}"
+        : "${ACTIONS_ID_TOKEN_REQUEST_URL:?id-token permission missing on the job}"
+
+        echo "::group::Requesting OIDC ID token from GitHub"
+        ID_TOKEN_JSON=$(curl -sS \
+          -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+          -H "Accept: application/json" \
+          "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${OIDC_AUDIENCE}")
+        ID_TOKEN=$(printf '%s' "$ID_TOKEN_JSON" | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
+        if [[ -z "${ID_TOKEN}" || "${ID_TOKEN}" == "null" ]]; then
+          echo "Failed to obtain GitHub OIDC ID token. Response was:" >&2
+          echo "$ID_TOKEN_JSON" >&2
+          exit 1
+        fi
+        echo "::endgroup::"
+
+        echo "::group::az login --federated-token"
+        az login \
+          --service-principal \
+          --username "${AZURE_CLIENT_ID}" \
+          --tenant "${AZURE_TENANT_ID}" \
+          --federated-token "${ID_TOKEN}" \
+          --allow-no-subscriptions \
+          --output none
+        az account set --subscription "${AZURE_SUBSCRIPTION_ID}"
+        echo "::endgroup::"
+
+        # Export the same env vars azure/login@v2 sets for DefaultAzureCredential
+        # and other downstream Azure SDKs.
+        {
+          echo "AZURE_CLIENT_ID=${AZURE_CLIENT_ID}"
+          echo "AZURE_TENANT_ID=${AZURE_TENANT_ID}"
+          echo "AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID}"
+          echo "AZURE_FEDERATED_TOKEN=${ID_TOKEN}"
+        } >> "${GITHUB_ENV}"
+
+        # The federated token is short-lived and a secret; mask it.
+        echo "::add-mask::${ID_TOKEN}"

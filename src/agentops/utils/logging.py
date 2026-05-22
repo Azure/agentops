@@ -1,6 +1,6 @@
 """Logging configuration for AgentOps CLI.
 
-No side effects at import time — call setup_logging() explicitly from the
+No side effects at import time - call setup_logging() explicitly from the
 CLI callback before any command runs.
 """
 
@@ -32,13 +32,19 @@ def setup_logging(verbose: bool = False) -> None:
     if not verbose:
         logging.getLogger("urllib3").setLevel(logging.WARNING)
         logging.getLogger("azure").setLevel(logging.WARNING)
-        logging.getLogger("azure.identity").setLevel(logging.WARNING)
+        # azure.identity emits WARNING when individual credential sources
+        # in DefaultAzureCredential fail (e.g. the Azure CLI is locked or
+        # times out). Those failures are usually transient and the chain
+        # still succeeds via another source, so we hide them at the user
+        # level. They are still surfaced if the run fails outright.
+        logging.getLogger("azure.identity").setLevel(logging.ERROR)
         logging.getLogger("azure.core").setLevel(logging.WARNING)
         logging.getLogger("azure.core.pipeline").setLevel(logging.WARNING)
         logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(
             logging.WARNING
         )
-        logging.getLogger("azure.ai.evaluation").setLevel(logging.WARNING)
+        logging.getLogger("azure.ai.evaluation").setLevel(logging.CRITICAL)
+        logging.getLogger("azure.ai.evaluation._legacy").setLevel(logging.CRITICAL)
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("openai").setLevel(logging.WARNING)
 

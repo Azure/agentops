@@ -1,313 +1,296 @@
-# Tutorial: Evaluating an Agent Workflow with Tools (Agent Framework)
+# Tutorial: Build and evaluate a real tool-calling agent
 
-This tutorial shows how to evaluate an **agent with tool calling** built with Microsoft Agent Framework using AgentOps.
+This tutorial is the tool-calling companion to the HTTP tutorial. You
+will build an agent that chooses between support tools, deploy it to
+Azure Container Apps, evaluate both the final answer and the tool trace,
+and add a CI gate.
 
-Workflow agents orchestrate multi-step tasks: they interpret user intent, select the right tools, call them with correct arguments, and synthesize a final response. The evaluation measures **task completion, tool selection accuracy, and intent resolution**.
+Use this tutorial when you care about questions such as:
 
-## When to Use This Scenario
+- Did the agent call the right tool?
+- Did it pass the right arguments?
+- Did it avoid tools when the user only said hello?
+- Did tool quality regress in a pull request?
 
-Use the **agent workflow** evaluation when:
+## How AgentOps grades tool workflows
 
-- Your agent calls external tools or functions (APIs, databases, search, calculations)
-- You want to verify the agent selects the correct tool for each task
-- You want to check that tool call arguments are accurate
-- Your agent is built with Microsoft Agent Framework and runs as local Python code
-- You need CI-friendly quality gates for tool-calling agents
+AgentOps uses normal answer-quality metrics plus tool-specific metrics
+when the dataset includes `tool_calls` or `tool_definitions`.
 
-This tutorial uses the **callable adapter** to invoke the agent directly as a Python function.
+| Dataset field | Purpose |
+|---|---|
+| `tool_definitions` | Tool catalogue available to the agent. Include it on every JSONL row so each row is self-contained. |
+| `tool_calls` | Expected tool trace: tool name, call id, and arguments. |
+| `input` | User message sent to the agent. |
+| `expected` | Reference final answer. |
 
-## Prerequisites
+For HTTP agents, the response also needs a field that contains the
+actual tool trace. In this tutorial that field is `tool_calls`.
 
-- Python 3.11+
-- AgentOps installed: `pip install agentops-toolkit`
-- Microsoft Agent Framework SDK installed (for your agent code)
-- An Azure OpenAI deployment for AI-assisted evaluators
-- `az login` completed
-
-## Part 1: Initialize the Workspace
-
-```bash
-cd your-project-root
-agentops init
-```
-
-Confirm the agent workflow bundle and dataset exist:
-
-```
-.agentops/
-├── bundles/
-│   └── agent_workflow_baseline.yaml
-├── datasets/
-│   └── smoke-agent-tools.yaml
-├── data/
-│   └── smoke-agent-tools.jsonl
-└── callable_adapter.py
-```
-
-## Part 2: Understand the Dataset Format
-
-Agent workflow evaluation requires richer dataset rows. Review `.agentops/data/smoke-agent-tools.jsonl`:
-
-```json
-{
-  "id": "1",
-  "input": "What is the weather in Seattle today?",
-  "expected": "I'll check the weather for Seattle. The current temperature is 55°F with partly cloudy skies.",
-  "tool_definitions": [
-    {
-      "name": "get_weather",
-      "description": "Get current weather for a city",
-      "parameters": {
-        "type": "object",
-        "properties": { "city": { "type": "string" } },
-        "required": ["city"]
-      }
-    }
-  ],
-  "tool_calls": [
-    { "name": "get_weather", "arguments": { "city": "Seattle" } }
-  ]
-}
-```
-
-Each row contains:
-- `input` — The user request
-- `expected` — The expected final response
-- `tool_definitions` — Available tools the agent can choose from
-- `tool_calls` — The expected tool calls (name + arguments)
-
-The evaluators compare what tools the agent **should have called** vs. what it **actually called**.
-
-## Part 3: Point to Your Agent Function
-
-The callable adapter lets you point AgentOps directly to a Python function in your project — no wrapper code needed. Your function just needs to follow this contract:
-
-```
-(input_text: str, context: dict) -> dict
-```
-
-Where the returned dict has at least `{"response": "..."}`, and optionally `{"tool_calls": [...]}`.
-
-### Option A: Point directly to your existing function
-
-If your project already has a function with the right signature (or close to it), just reference it in `run.yaml`:
-
-```yaml
-local:
-  callable: my_agent.workflow:run_evaluation
-```
-
-For example, if your Agent Framework code lives in `my_agent/workflow.py`:
-
-```python
-# my_agent/workflow.py
-
-def run_evaluation(input_text: str, context: dict) -> dict:
-    """Entry point called by AgentOps for each dataset row."""
-    result = my_workflow.invoke(
-        user_message=input_text,
-        available_tools=context.get("tool_definitions", []),
-    )
-    return {
-        "response": result.final_answer,
-        "tool_calls": [
-            {"name": tc.name, "arguments": tc.arguments}
-            for tc in result.tool_calls
-        ],
-    }
-```
-
-### Option B: Use the starter template
-
-`agentops init` already creates `.agentops/callable_adapter.py` with the correct signature and placeholder code. Open it and replace the body with your agent invocation — typically 2-3 lines:
-
-```python
-# .agentops/callable_adapter.py  (created by agentops init)
-
-def run_evaluation(input_text: str, context: dict) -> dict:
-    from my_agent.workflow import run_workflow
-
-    result = run_workflow(
-        user_message=input_text,
-        available_tools=context.get("tool_definitions", []),
-    )
-    return {
-        "response": result.final_answer,
-        "tool_calls": [
-            {"name": tc.name, "arguments": tc.arguments}
-            for tc in result.tool_calls
-        ],
-    }
-```
-
-### Return contract
-
-For the `agent_workflow_baseline` evaluators to work, the return dict should include:
-- `"response"` — The agent's final text response (required)
-- `"tool_calls"` — A list of tool calls the agent made (optional but recommended for tool accuracy evaluators)
-
-## Part 4: Configure the Run
-
-Edit `.agentops/run.yaml` to point to your function and select the workflow bundle:
-
-```yaml
-version: 1
-
-target:
-  type: agent
-  hosting: local
-  execution_mode: local
-  local:
-    # Point to your function: module.path:function_name
-    callable: my_agent.workflow:run_evaluation
-
-bundle:
-  name: agent_workflow_baseline
-
-dataset:
-  name: smoke-agent-tools
-
-execution:
-  timeout_seconds: 300
-
-output:
-  write_report: true
-```
-
-Key fields:
-- `local.callable` — The `module:function` path to your agent function. Use your project's module path (e.g. `my_agent.workflow:run_evaluation`) or point to the starter template (`callable_adapter:run_evaluation`).
-- `target.type: agent` — Identifies this as an agent (not a model)
-- `bundle.name: agent_workflow_baseline` — Uses tool-calling evaluators
-- `dataset.name: smoke-agent-tools` — Dataset with `tool_definitions` and `tool_calls` fields
-
-## Part 5: Set Up AI-Assisted Evaluator Credentials
-
-The workflow evaluators (TaskCompletionEvaluator, IntentResolutionEvaluator, etc.) are **AI-assisted**.
-
-```bash
-export AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://your-project.services.ai.azure.com"
-export AZURE_OPENAI_ENDPOINT="https://your-openai.openai.azure.com/"
-export AZURE_AI_MODEL_DEPLOYMENT_NAME="gpt-4o"
-```
-
-Or on Windows (PowerShell):
+## 1. Create the support-agent project
 
 ```powershell
-$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://your-project.services.ai.azure.com"
-$env:AZURE_OPENAI_ENDPOINT = "https://your-openai.openai.azure.com/"
-$env:AZURE_AI_MODEL_DEPLOYMENT_NAME = "gpt-4o"
+mkdir support-tools-agent
+Set-Location support-tools-agent
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install "agentops-toolkit[foundry,agent]"
 ```
 
-## Part 6: Run the Evaluation
+Create the same FastAPI tool-calling agent used by the HTTP tutorial:
 
-```bash
-agentops eval run --config .agentops/run.yaml
+```powershell
+@'
+from __future__ import annotations
+
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+
+app = FastAPI(title="AgentOps Support Tools Agent")
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+def lookup_order(order_id: str) -> dict[str, str]:
+    status = {
+        "ORD-12345": "in transit and expected to arrive tomorrow",
+        "ORD-99001": "shipped yesterday and is waiting for carrier pickup",
+    }.get(order_id, "not found")
+    return {"order_id": order_id, "status": status}
+
+
+def refund_order(order_id: str, reason: str) -> dict[str, str]:
+    return {"order_id": order_id, "status": "refund_started", "reason": reason}
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/chat")
+def chat(request: ChatRequest) -> dict[str, object]:
+    message = request.message
+
+    if "ORD-12345" in message or "ORD-99001" in message:
+        order_id = "ORD-12345" if "ORD-12345" in message else "ORD-99001"
+        result = lookup_order(order_id)
+        return {
+            "text": f"Order {order_id} is {result['status']}.",
+            "tool_calls": [
+                {
+                    "type": "tool_call",
+                    "tool_call_id": "lookup_1",
+                    "name": "lookup_order",
+                    "arguments": {"order_id": order_id},
+                }
+            ],
+        }
+
+    if "refund" in message.lower() and "ORD-77821" in message:
+        result = refund_order("ORD-77821", "arrived broken")
+        return {
+            "text": "I started a refund for ORD-77821 because it arrived broken.",
+            "tool_calls": [
+                {
+                    "type": "tool_call",
+                    "tool_call_id": "refund_1",
+                    "name": "refund_order",
+                    "arguments": {
+                        "order_id": result["order_id"],
+                        "reason": result["reason"],
+                    },
+                }
+            ],
+        }
+
+    return {
+        "text": "Hello! I can help with order status, refunds, or connecting you to support.",
+        "tool_calls": [],
+    }
+'@ | Set-Content app.py -Encoding utf8
+
+@'
+fastapi==0.115.14
+uvicorn[standard]==0.35.0
+pydantic==2.11.9
+'@ | Set-Content requirements.txt -Encoding utf8
+
+@'
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+
+EXPOSE 8000
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+'@ | Set-Content Dockerfile -Encoding utf8
 ```
 
-### Output
+The implementation is simple enough to inspect but still has the core
+production contract: request JSON, business tools, final answer, and
+structured tool trace.
 
-```
-AgentOps evaluation run
-  Config: .agentops/run.yaml
-  Bundle: agent_workflow_baseline
-  Dataset: smoke-agent-tools (5 rows)
-  Backend: local_adapter (callable)
+## 2. Deploy the agent to Azure
 
-Processing row 1/5
-Processing row 2/5
-...
+```powershell
+az login
 
-Results: .agentops/results/latest/results.json
-Report:  .agentops/results/latest/report.md
+$env:AZURE_LOCATION = "eastus2"
+$env:AZURE_RESOURCE_GROUP = "rg-agentops-tools-tutorial"
+$env:ACA_NAME = "agentops-tools-$((Get-Date).ToString('MMddHHmm'))"
 
-Summary:
-  Overall: PASSED
-  Thresholds: 6/6 passed
-  TaskCompletionEvaluator avg: 4.0
-  ToolCallAccuracyEvaluator avg: 4.5
-  IntentResolutionEvaluator avg: 4.2
-  TaskAdherenceEvaluator avg: 3.8
-  ToolSelectionEvaluator avg: 4.1
-  ToolInputAccuracyEvaluator avg: 4.3
-```
+az group create `
+  --name $env:AZURE_RESOURCE_GROUP `
+  --location $env:AZURE_LOCATION
 
-### Exit Codes
+az containerapp up `
+  --name $env:ACA_NAME `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --location $env:AZURE_LOCATION `
+  --source . `
+  --target-port 8000 `
+  --ingress external
 
-- `0` — All thresholds passed
-- `2` — One or more thresholds failed
-- `1` — Runtime or configuration error
+$fqdn = az containerapp show `
+  --name $env:ACA_NAME `
+  --resource-group $env:AZURE_RESOURCE_GROUP `
+  --query properties.configuration.ingress.fqdn `
+  -o tsv
 
-## Thresholds
-
-The `agent_workflow_baseline` bundle enforces:
-
-| Evaluator | Criteria | Threshold |
-|---|---|---|
-| TaskCompletionEvaluator | ≥ | 3.0 |
-| ToolCallAccuracyEvaluator | ≥ | 3.0 |
-| IntentResolutionEvaluator | ≥ | 3.0 |
-| TaskAdherenceEvaluator | ≥ | 3.0 |
-| ToolSelectionEvaluator | ≥ | 3.0 |
-| ToolInputAccuracyEvaluator | ≥ | 3.0 |
-| avg_latency_seconds | ≤ | 15.0 |
-
-Scores range from 1 to 5. Adjust thresholds in `.agentops/bundles/agent_workflow_baseline.yaml`.
-
-## Building Your Dataset
-
-When creating your own dataset for agent workflow evaluation:
-
-1. **Identify representative tasks** — Cover the main use cases your agent handles
-2. **Define tool definitions** — List all tools the agent has access to for each row
-3. **Specify expected tool calls** — What tools should be called and with what arguments
-4. **Write expected responses** — The ideal final response after tool execution
-5. **Include edge cases** — Tasks where no tool should be called, or multiple tools are needed
-
-Example with multiple tools:
-
-```json
-{
-  "id": "multi-tool-1",
-  "input": "Book a flight from NYC to London and check the weather there",
-  "expected": "I've found flights from NYC to London and the weather in London is 12°C with rain.",
-  "tool_definitions": [
-    {"name": "search_flights", "description": "Search flights", "parameters": {"type": "object", "properties": {"origin": {"type": "string"}, "destination": {"type": "string"}}, "required": ["origin", "destination"]}},
-    {"name": "get_weather", "description": "Get weather", "parameters": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}
-  ],
-  "tool_calls": [
-    {"name": "search_flights", "arguments": {"origin": "NYC", "destination": "London"}},
-    {"name": "get_weather", "arguments": {"city": "London"}}
-  ]
-}
+$agentUrl = "https://$fqdn/chat"
+Invoke-RestMethod -Uri "https://$fqdn/health"
 ```
 
-## Comparing with Foundry Agent Evaluation
+This step matters because a tool workflow eval should exercise the same
+HTTP boundary your production clients use, not a local-only shortcut.
 
-If your agent is also deployed to Foundry, you can run the **same bundle** against different targets:
+## 3. Initialize AgentOps
 
-| Target | Run Config | Execution |
-|---|---|---|
-| Local Agent Framework | `local.callable: my_adapter:run_eval` | In-process, fast |
-| Foundry Agent | `endpoint.kind: foundry_agent` | Cloud, production-like |
+```powershell
+agentops init
 
-Use `agentops eval compare` to compare results across targets:
-
-```bash
-agentops eval compare --runs .agentops/results/local-run,.agentops/results/foundry-run
+$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
+$env:AZURE_OPENAI_ENDPOINT             = "https://<resource>.openai.azure.com"
+$env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
+$env:AZURE_AI_MODEL_DEPLOYMENT_NAME    = "gpt-4o-mini"
 ```
 
-## CI/CD Integration
+## 4. Write `agentops.yaml`
 
-```yaml
-- name: Run agent workflow evaluation
-  run: |
-    pip install agentops-toolkit
-    agentops eval run --config .agentops/run.yaml
+```powershell
+@"
+version: 1
+agent: "$agentUrl"
+dataset: .agentops/data/support-tools.jsonl
+
+request_field: message
+response_field: text
+tool_calls_field: tool_calls
+
+thresholds:
+  coherence: ">=3"
+  fluency: ">=3"
+  tool_call_accuracy: ">=0.8"
+  intent_resolution: ">=3"
+  task_adherence: ">=0.6"
+  avg_latency_seconds: "<=30"
+"@ | Set-Content agentops.yaml -Encoding utf8
 ```
 
-## Notes
+Why each threshold exists:
 
-- **Callable vs HTTP**: Use callable for Agent Framework code that runs in-process. Use HTTP backend (`endpoint.kind: http`) if your agent is deployed as a REST service (LangGraph, ACA, etc.).
-- **Tool calls in response**: If your agent framework provides tool call metadata, include it in the callable return dict. The `ToolCallAccuracyEvaluator` and `ToolSelectionEvaluator` use this data.
-- **Timeout**: The default timeout is 15 seconds per row for agent workflows. Increase `execution.timeout_seconds` if your agent makes slow external calls.
-- **Safety evaluation**: Add the `safe_agent_baseline` bundle as a second evaluation pass to check for content safety issues.
+| Threshold | What it protects |
+|---|---|
+| `coherence`, `fluency` | The final answer remains readable. |
+| `tool_call_accuracy` | The tool name and arguments match the expected trace. |
+| `intent_resolution` | The agent understood the user's task. |
+| `task_adherence` | The agent did not drift away from the requested action. |
+| `avg_latency_seconds` | The deployed endpoint stays responsive. |
+
+## 5. Create the dataset
+
+```powershell
+New-Item -ItemType Directory -Force .agentops/data | Out-Null
+@'
+{"input":"Where is my order ORD-12345?","expected":"Order ORD-12345 is in transit and expected to arrive tomorrow.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"lookup_1","name":"lookup_order","arguments":{"order_id":"ORD-12345"}}]}
+{"input":"I want a refund for ORD-77821, it arrived broken.","expected":"A refund is started for ORD-77821 because it arrived broken.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[{"type":"tool_call","tool_call_id":"refund_1","name":"refund_order","arguments":{"order_id":"ORD-77821","reason":"arrived broken"}}]}
+{"input":"Hi there!","expected":"The assistant replies with a clear greeting and offers support options without calling a tool.","tool_definitions":[{"type":"function","name":"lookup_order","description":"Look up an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"}},"required":["order_id"]}},{"type":"function","name":"refund_order","description":"Refund an order.","parameters":{"type":"object","properties":{"order_id":{"type":"string"},"reason":{"type":"string"}},"required":["order_id","reason"]}}],"tool_calls":[]}
+'@ | Set-Content .agentops/data/support-tools.jsonl -Encoding utf8
+```
+
+The third row is as important as the first two. It asserts that greeting
+messages should not call a business tool.
+
+## 6. Run and inspect the eval
+
+```powershell
+agentops eval analyze
+agentops eval run
+code .agentops/results/latest/report.md
+```
+
+`eval analyze` should identify an agent-workflow scenario from
+`tool_definitions` / `tool_calls` before `eval run` executes the endpoint.
+
+The report should include:
+
+- Aggregate metric values.
+- Threshold pass/fail status.
+- Per-row tool traces.
+- The latency of calls to the deployed Container App.
+
+If the tool-call metrics fail, inspect the row in the report before
+changing thresholds. Usually the bug is an incorrect tool name, missing
+argument, or response mapping mismatch.
+
+## 7. Add a PR gate
+
+```powershell
+agentops workflow analyze
+agentops workflow generate --kinds pr --force
+```
+
+Use PR-only first. Generate DEV/QA/PROD deploy workflows only after you
+have configured GitHub Environments, OIDC federated credentials, and real
+build/deploy commands. Otherwise a push to `main` will create a red
+workflow that proves nothing about agent quality.
+
+Configure the `dev` environment variables and OIDC credential as shown in
+[tutorial-http-agent.md](tutorial-http-agent.md#8-add-a-pr-evaluation-gate).
+
+## 8. Run Watchdog
+
+```powershell
+agentops doctor --severity-fail critical
+code .agentops/agent/report.md
+```
+
+Watchdog reads `.agentops/results/*/results.json` and looks for quality,
+latency, error, and safety findings. If you configure
+`.agentops/agent.yaml` with an Application Insights resource id, it also
+queries Azure Monitor. The coding-agent skill `agentops-agent` is just a
+guided way to run these commands; it is not the runtime analyzer itself.
+
+## 9. Expand the scenario
+
+After this tutorial passes, make the dataset closer to production:
+
+- Add a row for an unknown order and expect a safe escalation.
+- Add a refund row without an order id and expect no `refund_order` call.
+- Add negative rows where the user asks for unrelated help.
+- Save one passing `results.json` as a baseline and compare future runs
+  with `agentops eval run --baseline <path>`.
+
+## Cleanup
+
+```powershell
+az group delete --name $env:AZURE_RESOURCE_GROUP --yes --no-wait
+```

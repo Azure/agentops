@@ -1,15 +1,16 @@
 """Optional OpenTelemetry instrumentation for AgentOps evaluation runs.
 
-All OpenTelemetry imports are **lazy** — they only happen when tracing is
-enabled via the ``AGENTOPS_OTLP_ENDPOINT`` environment variable.  When the
-variable is unset, every public function in this module is a no-op.
+All OpenTelemetry imports are **lazy** - they only happen when tracing is
+enabled via ``APPLICATIONINSIGHTS_CONNECTION_STRING`` (Azure Monitor) or
+the ``AGENTOPS_OTLP_ENDPOINT`` environment variable. When neither variable
+is set, every public function in this module is a no-op.
 
 Schema design follows three OTel semantic convention layers:
 https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-agent-spans/
 
-* **CICD** (``cicd.pipeline.*``)  — the eval run as a pipeline
-* **GenAI** (``gen_ai.*``)        — the agent/model invocation
-* **AgentOps** (``agentops.eval.*``) — evaluation-specific (score, threshold)
+* **CICD** (``cicd.pipeline.*``)  - the eval run as a pipeline
+* **GenAI** (``gen_ai.*``)        - the agent/model invocation
+* **AgentOps** (``agentops.eval.*``) - evaluation-specific (score, threshold)
 """
 
 from __future__ import annotations
@@ -19,19 +20,32 @@ from contextlib import contextmanager
 from typing import Any, Generator, Optional
 
 # ---------------------------------------------------------------------------
-# Lazy globals — initialised on first call to ``init_tracing()``
+# Lazy globals - initialised on first call to ``init_tracing()``
 # ---------------------------------------------------------------------------
 _tracer: Any = None
 _tracing_enabled: bool = False
 
 
 def is_enabled() -> bool:
-    """Return True when OTLP tracing has been initialised."""
+    """Return True when tracing has been initialised."""
     return _tracing_enabled
 
 
 def init_tracing() -> None:
-    """Initialise the OTLP exporter if ``AGENTOPS_OTLP_ENDPOINT`` is set.
+    """Initialise tracing when Azure Monitor or OTLP export is configured.
+
+    Resolution order for the App Insights connection string:
+
+    1. ``APPLICATIONINSIGHTS_CONNECTION_STRING`` (or the AgentOps-prefixed
+       variant) - explicit user configuration always wins.
+    2. ``AGENTOPS_OTLP_ENDPOINT`` - use a generic OTLP/HTTP exporter.
+    3. **Auto-discovery**: when neither of the above is set but
+       ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` is, ask the Foundry project
+       (via the ``azure-ai-projects`` SDK) for the connection string of
+       the Application Insights resource attached to it. This lets
+       eval runs and watchdog analyses emit traces into the same App
+       Insights the Foundry project already uses, without any extra
+       configuration.
 
     Safe to call multiple times; only the first call has an effect.
     """
@@ -40,12 +54,65 @@ def init_tracing() -> None:
     if _tracing_enabled:
         return
 
-    endpoint = os.getenv("AGENTOPS_OTLP_ENDPOINT")
-    if not endpoint:
+    appinsights_connection_string = os.getenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING"
+    ) or os.getenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING")
+    if appinsights_connection_string and not _is_appinsights_connection_string(
+        appinsights_connection_string
+    ):
+        appinsights_connection_string = None
+    otlp_endpoint = os.getenv("AGENTOPS_OTLP_ENDPOINT")
+
+    if not appinsights_connection_string and not otlp_endpoint:
+        # Fallback: ask the Foundry project for the App Insights it owns.
+        try:
+            from agentops.utils.foundry_discovery import (
+                resolve_appinsights_connection_from_env,
+            )
+            appinsights_connection_string = resolve_appinsights_connection_from_env()
+        except Exception:  # noqa: BLE001
+            # Discovery is best-effort - never raise into init_tracing.
+            appinsights_connection_string = None
+
+    if not appinsights_connection_string and not otlp_endpoint:
         return
+
+    # Opt into Azure's "experimental" GenAI tracing flag by default. This
+    # tells the OTel instrumentation to capture prompt + response content
+    # as span attributes (not just metadata), which is exactly what an
+    # eval / watchdog workflow needs to inspect a failing row in the
+    # Foundry portal. The flag is "experimental" only in the sense that
+    # Azure may change the underlying schema - not that it is unsafe.
+    # Users who want to opt out can set the env var to "false" explicitly.
+    os.environ.setdefault("AZURE_EXPERIMENTAL_ENABLE_GENAI_TRACING", "true")
+    os.environ.setdefault("OTEL_SERVICE_NAME", "agentops")
 
     try:
         from opentelemetry import trace
+    except ImportError:
+        # opentelemetry not installed - tracing stays disabled
+        return
+
+    if appinsights_connection_string:
+        try:
+            from azure.monitor.opentelemetry import configure_azure_monitor
+
+            kwargs = {"connection_string": appinsights_connection_string}
+            resource = _agentops_resource()
+            if resource is not None:
+                kwargs["resource"] = resource
+            configure_azure_monitor(**kwargs)
+            _tracer = trace.get_tracer("agentops")
+            _tracing_enabled = True
+            return
+        except ImportError:
+            # Azure Monitor exporter not installed - try OTLP below if configured.
+            pass
+
+    if not otlp_endpoint:
+        return
+
+    try:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
             OTLPSpanExporter,
         )
@@ -63,15 +130,39 @@ def init_tracing() -> None:
         )
 
         provider = TracerProvider(resource=resource)
-        exporter = OTLPSpanExporter(endpoint=endpoint + "/v1/traces")
+        exporter = OTLPSpanExporter(endpoint=otlp_endpoint + "/v1/traces")
         provider.add_span_processor(BatchSpanProcessor(exporter))
         trace.set_tracer_provider(provider)
 
         _tracer = trace.get_tracer("agentops")
         _tracing_enabled = True
     except ImportError:
-        # opentelemetry not installed — tracing stays disabled
+        # OTLP exporter not installed - tracing stays disabled
         pass
+
+
+def _is_appinsights_connection_string(value: str) -> bool:
+    """Return True for real App Insights connection strings.
+
+    CI systems can leave undefined variables as literal placeholders such
+    as ``$(APPLICATIONINSIGHTS_CONNECTION_STRING)``. Treat those as absent
+    so Foundry auto-discovery still has a chance to configure telemetry.
+    """
+    return "InstrumentationKey=" in value or "IngestionEndpoint=" in value
+
+
+def _agentops_resource() -> Optional[Any]:
+    try:
+        from opentelemetry.sdk.resources import Resource
+        import agentops
+    except Exception:  # noqa: BLE001
+        return None
+    return Resource.create(
+        {
+            "service.name": "agentops",
+            "service.version": getattr(agentops, "__version__", "0.0.0"),
+        }
+    )
 
 
 def shutdown() -> None:
@@ -172,11 +263,18 @@ def eval_item_span(
         yield None
         return
 
-    from opentelemetry.trace import SpanKind
+    from opentelemetry.trace import SpanKind, StatusCode
+
+    _label = f"eval_item {row_index}"
+    if input_text:
+        _snippet = input_text[:60].replace("\n", " ")
+        if len(input_text) > 60:
+            _snippet += "\u2026"
+        _label = f"{_label} - '{_snippet}'"
 
     with _tracer.start_as_current_span(
-        f"eval_item {row_index}",
-        kind=SpanKind.INTERNAL,
+        _label,
+        kind=SpanKind.SERVER,
     ) as span:
         # CICD task attributes
         span.set_attribute("cicd.pipeline.task.name", "eval_item")
@@ -189,17 +287,27 @@ def eval_item_span(
         if expected_text:
             span.set_attribute("agentops.eval.item.expected", expected_text)
 
-        yield span
+        try:
+            yield span
+        except Exception as exc:
+            span.set_attribute("cicd.pipeline.task.run.result", "failure")
+            span.set_attribute("agentops.eval.item.passed", False)
+            span.set_status(StatusCode.ERROR, str(exc))
+            span.record_exception(exc)
+            raise
 
 
 def set_eval_item_result(span: Any, *, passed: bool) -> None:
     """Set final result on an eval item span."""
     if span is None:
         return
+    from opentelemetry.trace import StatusCode
+
     span.set_attribute(
         "cicd.pipeline.task.run.result", "success" if passed else "failure"
     )
     span.set_attribute("agentops.eval.item.passed", passed)
+    span.set_status(StatusCode.OK if passed else StatusCode.ERROR)
 
 
 @contextmanager
@@ -289,3 +397,111 @@ def record_evaluator_span(
             span.set_attribute("agentops.eval.evaluator.criteria", criteria)
         if passed is not None:
             span.set_attribute("agentops.eval.evaluator.passed", passed)
+
+
+# ---------------------------------------------------------------------------
+# Doctor finding spans
+# ---------------------------------------------------------------------------
+
+
+def record_agent_finding_span(finding: Any) -> None:
+    """Create a queryable child span for a single ``agentops doctor`` finding."""
+    if not _tracing_enabled or _tracer is None:
+        return
+
+    from opentelemetry.trace import SpanKind, StatusCode
+
+    finding_id = str(getattr(finding, "id", "") or "unknown")
+    severity = getattr(finding, "severity", None)
+    category = getattr(finding, "category", None)
+    severity_value = str(getattr(severity, "value", severity) or "")
+    category_value = str(getattr(category, "value", category) or "")
+
+    with _tracer.start_as_current_span(
+        f"doctor finding {finding_id}",
+        kind=SpanKind.INTERNAL,
+    ) as span:
+        span.set_attribute("agentops.agent.finding.id", finding_id)
+        span.set_attribute("agentops.agent.finding.severity", severity_value)
+        span.set_attribute("agentops.agent.finding.category", category_value)
+        span.set_attribute("agentops.agent.finding.title", str(getattr(finding, "title", "") or ""))
+        span.set_attribute("agentops.agent.finding.summary", str(getattr(finding, "summary", "") or ""))
+        span.set_attribute(
+            "agentops.agent.finding.recommendation",
+            str(getattr(finding, "recommendation", "") or ""),
+        )
+        span.set_attribute("agentops.agent.finding.source", str(getattr(finding, "source", "") or ""))
+        span.set_status(StatusCode.OK)
+
+
+# ---------------------------------------------------------------------------
+# Watchdog agent spans
+# ---------------------------------------------------------------------------
+
+
+@contextmanager
+def agent_analyze_span(
+    *,
+    workspace: str,
+    lookback_days: Optional[int] = None,
+) -> Generator[Optional[Any], None, None]:
+    """Root span for a watchdog ``agentops doctor`` run.
+
+    Mirrors :func:`eval_run_span` for the watchdog: when telemetry is
+    enabled (``APPLICATIONINSIGHTS_CONNECTION_STRING`` or
+    ``AGENTOPS_OTLP_ENDPOINT`` set) the span carries source-collection
+    and finding-distribution attributes so analyses are queryable
+    alongside the evaluation runs they observe.
+    """
+    if not _tracing_enabled or _tracer is None:
+        yield None
+        return
+
+    from opentelemetry.trace import SpanKind, StatusCode
+
+    with _tracer.start_as_current_span(
+        "ANALYZE watchdog",
+        kind=SpanKind.SERVER,
+    ) as span:
+        span.set_attribute("cicd.pipeline.name", "agentops.agent.analyze")
+        span.set_attribute("cicd.pipeline.action.name", "ANALYZE")
+        span.set_attribute("agentops.agent.workspace", workspace)
+        if lookback_days is not None:
+            span.set_attribute("agentops.agent.lookback_days", lookback_days)
+
+        try:
+            yield span
+        except Exception as exc:
+            span.set_status(StatusCode.ERROR, str(exc))
+            span.record_exception(exc)
+            raise
+
+
+def set_agent_analyze_result(
+    span: Any,
+    *,
+    findings_total: int,
+    by_severity: dict,
+    by_category: dict,
+    max_severity: Optional[str],
+    sources_enabled: list,
+) -> None:
+    """Set final attributes on a watchdog analyze span."""
+    if span is None:
+        return
+
+    from opentelemetry.trace import StatusCode
+
+    span.set_attribute("agentops.agent.findings_total", findings_total)
+    for severity, count in by_severity.items():
+        span.set_attribute(f"agentops.agent.findings.severity.{severity}", count)
+    for category, count in by_category.items():
+        span.set_attribute(f"agentops.agent.findings.category.{category}", count)
+    if max_severity is not None:
+        span.set_attribute("agentops.agent.max_severity", max_severity)
+    span.set_attribute(
+        "agentops.agent.sources_enabled", ",".join(sorted(sources_enabled))
+    )
+    # The watchdog itself completes successfully even when findings exist  -
+    # finding severity is observability, not pipeline failure.
+    span.set_status(StatusCode.OK)

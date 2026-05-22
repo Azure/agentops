@@ -1,246 +1,107 @@
 ---
 name: agentops-config
-description: Infer evaluation scenario from codebase and generate run.yaml. Trigger when users ask to configure an evaluation, create a run config, detect the evaluation scenario, or choose a bundle. Common phrases include "configure", "run.yaml", "which bundle", "set up eval", "scenario", "endpoint", "agentops config", "create run config", "what should I evaluate". Install agentops-toolkit via pip.
+description: Generate or update agentops.yaml (flat 1.0 schema) by inspecting the workspace. Trigger on "configure agentops", "agentops.yaml", "set up evaluation", "what should I evaluate". Infer the agent target and dataset from the codebase; ask only when nothing can be found.
 ---
 
 # AgentOps Config
 
-Generate a complete `.agentops/run.yaml` by inspecting the workspace. Infer everything possible — ask only for values that cannot be found.
+Generate `agentops.yaml` at the project root. The flat schema has only a
+handful of fields - most projects need just `version`, `agent`, and
+`dataset`.
 
-## Step 0 — Prerequisites
+## Step 0 - Prerequisites
 
-1. Run `pip install agentops-toolkit` if `agentops` command is not available.
-2. Run `agentops init` if `.agentops/` directory does not exist.
+1. `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
+2. Run `agentops eval analyze` first. If it reports missing or ambiguous
+   target/dataset/scenario signals, use this skill to adapt the config.
+3. If `agentops.yaml` does not exist, run `agentops init` first. The init
+   wizard already collects the agent reference and dataset path, so
+   `agentops-config` is most useful when the user wants to **tweak** an
+   existing config (add thresholds, switch to a different agent target,
+   add HTTP auth headers, etc.) rather than create one from scratch.
 
-## Step 1 — Detect scenario
+## Step 1 - Detect the agent target
 
-Analyze the codebase holistically to understand the agent's **primary purpose**:
+Search the codebase for the strongest signal and pick one:
 
-1. Read the README, system prompt, main entry point, and tool/function definitions.
-2. Identify which patterns are present:
-   - **Tool use**: `@tool`, `tool_definitions`, `function_call`, MCP tools, tool schemas
-   - **Retrieval**: search client, vector store, retriever, embeddings, index references, context fetching
-   - **Conversation**: chat history, multi-turn, session management, assistant persona
-   - **Direct model call**: completion API, no orchestration logic
-
-3. Pick the scenario that best matches the agent's **primary job** — not just the first signal found:
-
-| Primary purpose | `bundle.name` |
+| Signal | `agent:` value |
 |---|---|
-| Agent that orchestrates tools to complete tasks | `agent_workflow_baseline` |
-| Agent that retrieves context to answer questions | `rag_quality_baseline` |
-| Conversational assistant (chat, Q&A, persona) | `conversational_agent_baseline` |
-| Direct model call with no agent logic | `model_quality_baseline` |
+| `AIProjectClient(...)` + agent ID literal `name:N` | `"<name>:<N>"` |
+| Foundry hosted agent URL `https://...services.ai.azure.com/...agents/...` | the full URL |
+| Any other HTTP endpoint your agent serves (FastAPI, Express, ACA, AKS) | the full URL |
+| Direct model use (`openai.chat.completions.create(model=...)`) with no orchestration | `"model:<deployment-name>"` |
 
-> A RAG agent that uses a search tool is still primarily RAG — pick `rag_quality_baseline`, not `agent_workflow_baseline`. The test is: *what is the agent's main job?*
+Look in: `README.md`, `main.py`/`server.py`/`app.ts`, `.env`/`.env.local`,
+`.azure/<env>/.env`, `infra/`, IaC outputs. If nothing is found, ask the
+user once.
 
-4. State what you found: *"Detected RAG scenario — the agent's primary purpose is answering questions using retrieved context (found retriever logic in retriever.py)."*
+## Step 2 - Detect the dataset
 
-5. **Responsible AI (optional)**: Ask *"Do you also want to include safety evaluators (violence, hate/unfairness, self-harm, protected material)?"* If yes, add the safety evaluators from `safe_agent_baseline` to the selected bundle.
+If a JSONL with rows that include `input` already exists in the repo, use
+its path. Otherwise leave the default `.agentops/data/smoke.jsonl` and
+hand off to the `agentops-dataset` skill before the first run.
 
-## Step 2 — Detect endpoint type
+## Step 3 - Write agentops.yaml
 
-| Search for | `endpoint.kind` | `hosting` | `execution_mode` |
-|---|---|---|---|
-| `AIProjectClient`, `azure-ai-projects`, Foundry URL | `foundry_agent` | `foundry` | `remote` |
-| FastAPI, Flask, Django, Express — JSON POST/response | `http` | `containerapps` / `aks` / `local` | `remote` |
-| SSE/streaming, non-standard body, custom auth, no server | — | `local` / `containerapps` / `aks` | `local` (callable) |
+Minimal example:
 
-Also check: `agent_id` references, Dockerfile, bicep, ACA manifests, `.env` files.
-
-**Discover the endpoint URL** — search in this order, stop when found:
-1. Env vars: `$env:AGENT_HTTP_URL`, `$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
-2. `.env` / `.env.local` in project root
-3. `.azure/<env>/.env` files
-4. Azure CLI (if hosting is `containerapps` or ACA-deployed):
-   ```bash
-   az containerapp list -g $RG --subscription $SUB --query "[].{name:name, url:properties.configuration.ingress.fqdn}" -o json
-   ```
-5. Azure CLI (if hosting is App Service / webapp):
-   ```bash
-   az webapp list -g $RG --subscription $SUB --query "[].{name:name, url:defaultHostName}" -o json
-   ```
-
-**Detect auth pattern** — search the codebase:
-- `dapr-api-token` / `APP_API_TOKEN` → Dapr auth
-- `X-API-KEY` / `api_key` / `API_KEY` → API key auth
-- `Authorization` / `Bearer` → Bearer token auth
-- Nothing found → assume no auth needed
-
-## Step 3 — Discover Azure values
-
-Search these locations **in order** — stop as soon as each value is found:
-
-1. Shell environment variables (`$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, etc.)
-2. `.env`, `.env.local` in project root
-3. `.azure/<env>/.env` files (azd environments) — also read `AZURE_RESOURCE_GROUP`, `AZURE_SUBSCRIPTION_ID`
-4. `.azure/config.json` for `defaultEnvironment` to pick the right env folder
-
-If values are **not found** in any file, run Azure CLI discovery:
-```bash
-# 1. Confirm auth and get subscription
-az account show --query "{sub:id, tenant:tenantId}" -o json
-
-# 2. Find AI Services / Foundry accounts and endpoints
-az cognitiveservices account list -o json --query "[].{name:name, rg:resourceGroup, endpoint:properties.endpoint, kind:kind}"
-
-# 3. Find model deployments
-az cognitiveservices account deployment list --name $ACCOUNT -g $RG --subscription $SUB --query "[].{name:name, model:properties.model.name, version:properties.model.version}" -o json
-
-# 4. Find Foundry projects
-az resource list -g $RG --subscription $SUB --resource-type "Microsoft.CognitiveServices/accounts/projects" --query "[].name" -o tsv
-
-# 5. Build endpoints from discovered names
-# Foundry: https://<account>.services.ai.azure.com/api/projects/<project>
-# OpenAI:  https://<account>.openai.azure.com/
-```
-
-**Pre-warm Azure token** (prevents intermittent `AzureCliCredential.get_token failed` errors):
-```bash
-az account get-access-token --resource "https://cognitiveservices.azure.com" --query accessToken -o tsv
-```
-If this fails, Azure CLI auth is not active — ask the user to run `az login`.
-
-**Only ask the user** if no `.azure/` dir exists AND no env vars are set.
-
-## Step 4 — Pick evaluator model
-
-Read the bundle YAML from `.agentops/bundles/<bundle-name>.yaml`. If it contains **any** evaluator with `source: foundry`, then an evaluator model is required.
-
-Pick from available deployments (discovered in Step 3): `gpt-4.1-mini` > `gpt-4o-mini` > `gpt-4o` > `gpt-4.1`. **Never** use reasoning models (`o1`, `o3`, `o4`, `gpt-5`, `gpt-5-nano`).
-
-If no suitable deployment was found, ask: *"Which model deployment should score your agent's responses? (e.g. gpt-4o-mini)"*
-
-## Step 4.5 — Evaluator compatibility check (optional)
-
-This step is **optional** — skip it if the bundle only uses widely available evaluators.
-
-**Key facts:**
-- `SimilarityEvaluator`, `CoherenceEvaluator`, `FluencyEvaluator`, `RelevanceEvaluator`, `GroundednessEvaluator` → **widely available**, no check needed.
-- `F1ScoreEvaluator`, `BleuScoreEvaluator`, `RougeScoreEvaluator`, `GleuScoreEvaluator` → **local text-overlap**, no Azure credentials needed, widely available.
-- `TaskCompletionEvaluator`, `ToolCallAccuracyEvaluator`, `IntentResolutionEvaluator`, `TaskAdherenceEvaluator`, `ToolSelectionEvaluator`, `ToolInputAccuracyEvaluator`, `ResponseCompletenessEvaluator` → **SDK version dependent**, verify before using.
-
-If the bundle uses SDK-version-dependent evaluators, verify they exist. You may check the SDK version, read release notes, or try any efficient approach. Do **not** get stuck in environment path issues — if a quick check fails, proceed and let the evaluation surface any errors.
-
-If an evaluator is missing: set `enabled: false` in the bundle, remove its threshold, and tell the user.
-
-## Step 5 — Write run.yaml
-
-Write `.agentops/run.yaml` using the exact structure below. Fill **every** value — no placeholders.
-
-**Remote (Foundry agent):**
 ```yaml
 version: 1
-target:
-  type: agent
-  hosting: foundry
-  execution_mode: remote
-  endpoint:
-    kind: foundry_agent
-    agent_id: <DISCOVERED_OR_ASK>
-    model: <DISCOVERED_MODEL>
-    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-bundle:
-  name: <DETECTED_BUNDLE>
-dataset:
-  name: dataset
-output:
-  write_report: true
+agent: "my-rag:3"
+dataset: .agentops/data/smoke.jsonl
 ```
 
-**Remote (HTTP):**
+HTTP/JSON example:
+
 ```yaml
 version: 1
-target:
-  type: agent
-  hosting: containerapps
-  execution_mode: remote
-  endpoint:
-    kind: http
-    url_env: AGENT_HTTP_URL
-    request_field: message
-    response_field: text
-bundle:
-  name: <DETECTED_BUNDLE>
-dataset:
-  name: dataset
-output:
-  write_report: true
+agent: "https://my-aca-app.eastus2.azurecontainerapps.io/chat"
+dataset: .agentops/data/smoke.jsonl
+request_field: message      # default is "message"
+response_field: text         # dot-path; default is "text"
+auth_header_env: MY_API_TOKEN
 ```
 
-**Local (callable adapter):**
+Optional extras (only add when the user asks for them):
+
 ```yaml
-version: 1
-target:
-  type: agent
-  hosting: local
-  execution_mode: local
-  local:
-    callable: callable_adapter:run_evaluation
-bundle:
-  name: <DETECTED_BUNDLE>
-dataset:
-  name: dataset
-output:
-  write_report: true
+thresholds:
+  coherence: ">=3"
+  groundedness: ">=3"
+  avg_latency_seconds: "<=30"
+
+# Publish results to the Foundry Evaluations panel.
+# - execution: local + publish: true  → Classic Foundry (uploads metrics)
+# - execution: cloud                  → New Foundry (server-side run;
+#                                       publish is implicit, cloud always publishes)
+execution: local
+publish: true
+# project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
+
+# Cloud dataset submission policy. The local JSONL remains the source of truth;
+# cloud runs sync it to Foundry Data/Datasets by default.
+dataset_sync:
+  mode: auto            # auto | foundry | inline
+  # name: agentops-smoke
+  # version: content-hash
+
+evaluators:           # rare - AgentOps auto-selects from agent + dataset
+  - name: similarity
+    threshold: ">=4"
 ```
 
-## Step 6 — Write callable adapter (if execution_mode is local)
+## Step 4 - Validate
 
-Create `callable_adapter.py` at the **project root**. Use ONLY stdlib (`urllib.request`, `json`, `os`).
+Run `agentops eval run` once. If the config is malformed AgentOps prints a
+clear error pointing at the offending key. Adjust and re-run.
 
-```python
-import json
-import os
-import urllib.request
+## Guardrails
 
-ENDPOINT = os.environ["AGENT_HTTP_URL"]
-# Auth: set APP_API_TOKEN, API_KEY, or remove the auth lines below.
-AUTH_TOKEN = os.environ.get("APP_API_TOKEN", "")
-
-def run_evaluation(input_text: str, context: dict) -> dict:
-    body = json.dumps({"message": input_text}).encode()
-    headers = {"Content-Type": "application/json"}
-    if AUTH_TOKEN:
-        headers["dapr-api-token"] = AUTH_TOKEN  # Change header name if using API_KEY or Bearer
-    req = urllib.request.Request(ENDPOINT, data=body, headers=headers, method="POST")
-    with urllib.request.urlopen(req) as resp:
-        data = json.loads(resp.read())
-    return {"response": data.get("text", data.get("response", ""))}
-```
-
-After writing the file, run: `python -c "from callable_adapter import run_evaluation; print('OK')"`
-
-**Auth detection:** Search codebase for `dapr-api-token`/`APP_API_TOKEN` → Dapr header. `X-API-KEY`/`api_key`/`API_KEY` → API key header. `Authorization`/`Bearer` → recommend HTTP backend with `auth_header_env` instead. Nothing found → remove auth lines.
-
-## Step 7 — Present and confirm
-
-Present a **confirmation table** with all discovered values (do not ask each one separately):
-```
-┌─────────────────────────┬──────────────────────────────────────────┬────────┐
-│ Setting                 │ Value                                    │ Source │
-├─────────────────────────┼──────────────────────────────────────────┼────────┤
-│ Scenario                │ RAG                                      │ code   │
-│ Bundle                  │ rag_quality_baseline                     │ auto   │
-│ Endpoint kind           │ http                                     │ code   │
-│ Endpoint URL            │ https://myapp.azurecontainerapps.io/chat │ .env   │
-│ Auth                    │ dapr-api-token (APP_API_TOKEN)           │ code   │
-│ Evaluator model         │ gpt-4o-mini                              │ Azure  │
-│ Project endpoint        │ https://acct.services.ai.azure.com/...   │ .env   │
-└─────────────────────────┴──────────────────────────────────────────┴────────┘
-```
-
-Ask: *"Everything look correct? (yes / edit)"*
-
-Explain: scenario detected, endpoint type, evaluator model chosen, and any assumptions made.
-
-## Rules
-
-- **NEVER** include `backend:` key in run.yaml — it causes a runtime error.
-- **NEVER** leave `<replace-...>` placeholders in run.yaml.
-- **NEVER** fabricate `agent_id`, model names, or endpoint URLs.
-- **NEVER** use dotted import paths like `.agentops.callable_adapter` — they fail.
-- If a bundle uses SDK-version-dependent evaluators, verify availability before running (Step 4.5). Don't block on this — if verification is hard, proceed and fix on failure.
-- Do not generate datasets — delegate to `/agentops-dataset`.
-- Do not run evaluations — delegate to `/agentops-eval`.
-- Always state what you detected and what you assumed.
+- Do **not** add legacy keys (`bundle`, `target`, `execution`, `output`,
+  `backend`). The 1.0 schema rejects them.
+- Do **not** fabricate agent IDs, endpoint URLs, or model deployment
+  names. Ask the user when uncertain.
+- Keep the file small. Auto-selection covers most metrics.
+- Keep local JSONL canonical. For cloud runs, prefer `dataset_sync.mode: auto`
+  so AgentOps keeps Foundry Data/Datasets in sync; use `inline` only for quick
+  experiments or environments without dataset upload permission.

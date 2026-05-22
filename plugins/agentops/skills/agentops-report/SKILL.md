@@ -1,92 +1,69 @@
 ---
 name: agentops-report
-description: Interpret evaluation reports, explain indicators, and regenerate reports. Trigger when users ask to understand results, explain scores, or regenerate a report. Common phrases include "report", "interpret results", "what does this mean", "explain scores", "report generate", "results.json", "pass rate", "threshold". Install agentops-toolkit via pip.
+description: Read, regenerate, and explain AgentOps evaluation reports. Trigger on "show report", "explain scores", "regenerate report", "what do these metrics mean". Operates on results.json and report.md produced by `agentops eval run`.
 ---
 
 # AgentOps Report
 
-## Purpose
+Help the user understand a finished AgentOps run.
 
-Help users understand evaluation results, explain report indicators, and regenerate reports from existing `results.json` files.
+## Step 0 - Locate the run
 
-## When to Use
+Latest run: `.agentops/results/latest/`. Each run produces:
 
-- User asks what an evaluation result means.
-- User wants to regenerate a report after manual edits.
-- User needs to compare report sections between runs.
-- User asks about pass rates, thresholds, or score meanings.
+- `results.json` - machine-readable metrics, per-row scores, thresholds.
+- `report.md` - human-readable summary suitable for PR comments.
+- `cloud_evaluation.json` (only when `publish: true`) - deep-link to
+  the Foundry Evaluations panel. `mode: classic` when `execution: local`
+  (metrics uploaded to Classic Foundry), `mode: cloud` when
+  `execution: cloud` (preview, server-side run via the OpenAI Evals API).
 
-## Before You Start
+## Step 1 - Regenerate report.md if needed
 
-1. **AgentOps installed?** Check if `agentops` CLI is available. If not: `pip install agentops-toolkit`.
-2. **Workspace exists?** Check for `.agentops/`. If missing: `agentops init`.
-3. **Results exist?** Check for `.agentops/results/latest/results.json`. If missing, run `/agentops-eval` first.
-4. **Foundry endpoint configured?** Search for `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` in environment variables, `.env`, `.env.local`. If not found, ask the user for the endpoint URL and instruct them to set it.
-
-## Commands
-
-| Command | Purpose |
-|---|---|
-| `agentops report generate --in <results.json> [--out <report.md>]` | Regenerate report from results |
-
-## Report Indicators
-
-| Symbol | Meaning |
-|---|---|
-| `●` (green) | Score meets or exceeds threshold |
-| `●` (red) | Score below threshold |
-| `↑` | Score improved vs. baseline |
-| `↓` | Score regressed vs. baseline |
-| `—` | No baseline available |
-
-## Key Metrics
-
-| Metric | Description |
-|---|---|
-| `run_pass` | `true` if all thresholds passed |
-| `threshold_pass_rate` | Fraction of thresholds met |
-| `items_pass_rate` | Fraction of rows passing all evaluators |
-| per-evaluator avg | Mean score across all rows for one evaluator |
-| per-evaluator stddev | Standard deviation (high = inconsistent) |
-
-## Report Sections
-
-### Single Run (`report.md`)
-- **Summary**: overall pass/fail, item counts
-- **Threshold Results**: per-evaluator threshold vs. actual score
-- **Row Details**: per-row scores for each evaluator
-
-### Comparison (`agentops eval compare`)
-- **Side-by-side**: baseline vs. current scores
-- **Delta**: absolute change per evaluator
-- **Direction**: ↑ improved, ↓ regressed, — unchanged
-
-## Steps
-
-### Interpreting results
-1. Open `.agentops/results/latest/report.md`.
-2. Check the summary — is `run_pass: true`?
-3. If false, find which thresholds failed (red dots).
-4. Look at per-row scores to identify weak rows.
-5. For AI evaluators (coherence, groundedness), scores are 1–5.
-6. For content safety evaluators, lower is better (0 = safe).
-
-### Regenerating a report
 ```bash
-agentops report generate --in .agentops/results/latest/results.json
+agentops report generate                   # uses .agentops/results/latest/results.json
+agentops report generate --in <results.json> --out <report.md>
 ```
 
-## Exit Codes
+`report generate` always reads the flat 1.0 results schema and emits
+Markdown. There is no HTML format.
 
-| Code | Meaning |
-|---|---|
-| `0` | Success and all thresholds passed |
-| `2` | Success but threshold(s) failed |
-| `1` | Runtime or configuration error |
+## Step 2 - Explain the metrics
+
+Common metrics and their meaning:
+
+| Metric | Range | Higher is better? | Notes |
+|---|---|---|---|
+| `similarity` | 1-5 | yes | LLM-judged similarity to `expected`. |
+| `coherence` | 1-5 | yes | Answer is internally consistent. |
+| `fluency` | 1-5 | yes | Natural language quality. |
+| `groundedness` | 1-5 | yes | Answer is supported by `context` (RAG). |
+| `relevance` | 1-5 | yes | Answer is on-topic for `input`. |
+| `f1_score` | 0-1 | yes | Token overlap with `expected`. |
+| `tool_call_accuracy` | 0-1 | yes | Predicted tool calls match `tool_calls`. |
+| `intent_resolution` | 0-1 | yes | User intent was resolved. |
+| `task_completion` | 0-1 | yes | Multi-step task finished. |
+| `avg_latency_seconds` | seconds | no | Wall-clock latency per row. |
+
+Pass/fail rows are derived from `thresholds:` in `agentops.yaml`. The
+exit code of the original run reflects the gate:
+
+- `0` → all thresholds passed
+- `2` → one or more thresholds failed
+- `1` → runtime error
+
+## Step 3 - Help the user act on results
+
+- For low scores on a specific metric, point at the lowest-scoring rows
+  in `results.json` (`row_metrics[]` and `item_evaluations[]`) and
+  suggest concrete prompt or retrieval changes.
+- For latency regressions, look at `run_metrics.avg_latency_seconds` and
+  per-row latency.
+- To compare a new run against a previous one, re-run with
+  `agentops eval run --baseline <previous-results.json>` and explain the
+  generated **Comparison vs Baseline** section.
 
 ## Guardrails
 
-- Use actual scores from `results.json` — never guess or estimate.
-- Do not run evaluations — delegate to `/agentops-eval`.
-- Do not modify `results.json` — it is an immutable run artifact.
-- If the user needs different thresholds, delegate to `/agentops-config` to update the bundle.
+- Never invent metric values. If a metric is absent, say so.
+- Do not edit `results.json` by hand - re-run the eval.

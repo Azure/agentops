@@ -1,142 +1,103 @@
 # Concepts
 
-This page explains the core building blocks of AgentOps and how they fit together. For the full schema reference and architecture details, see [how-it-works.md](how-it-works.md).
+This page explains the core AgentOps building blocks. For the full schema
+reference and architecture details, see [how-it-works.md](how-it-works.md).
+
+## AgentOps + Microsoft Foundry
+
+AgentOps is the repo-side workflow layer for teams building on Microsoft
+Foundry. It complements Foundry rather than replacing it:
+
+| Microsoft Foundry is the system of record for... | AgentOps adds... |
+|---|---|
+| Hosted agents, model deployments, runtime traces, monitor views, evaluations, datasets, red teaming, and operations | Source-controlled eval config, local and CI gates, normalized `results.json`, PR-friendly `report.md`, Doctor diagnostics, release evidence, trace-to-dataset promotion, generated workflows, and a local Cockpit |
+
+Use Foundry for the authoritative runtime and cloud-evaluation drilldown.
+Use AgentOps to make the day-to-day developer loop repeatable: initialize
+the workspace, run the same eval locally and in CI, publish or link back to
+Foundry, emit App Insights telemetry, and surface the next repo-side action
+in the Cockpit.
+
+The production-readiness loop is: evaluate the candidate, compare it to a
+baseline, run Doctor, generate release evidence, ship through Foundry/azd, then
+promote reviewed production traces back into regression datasets.
 
 ## How an Evaluation Works
 
-```
-                          ┌─────────────────────────────┐
-                          │         run.yaml            │
-                          │  (what, where, how to eval) │
-                          └──────┬──────────┬───────────┘
-                                 │          │
-                    ┌────────────┘          └────────────┐
-                    ▼                                    ▼
-          ┌─────────────────┐                  ┌─────────────────┐
-          │     Bundle      │                  │     Dataset     │
-          │  (evaluators +  │                  │  (JSONL rows:   │
-          │   thresholds)   │                  │   input,        │
-          └────────┬────────┘                  │   expected)     │
-                   │                           └────────┬────────┘
-                   │                                    │
-                   └──────────┐    ┌────────────────────┘
-                              ▼    ▼
-                       ┌──────────────┐
-                       │    Runner    │
-                       │  (resolves   │
-                       │   backend)   │
-                       └──────┬───────┘
-                              │
-               ┌──────────────┼──────────────┐
-               ▼              ▼              ▼
-        ┌────────────┐ ┌────────────┐ ┌────────────┐
-        │  Foundry   │ │    HTTP    │ │   Local    │
-        │  Backend   │ │  Backend   │ │  Adapter   │
-        └──────┬─────┘ └──────┬─────┘ └──────┬─────┘
-               │              │              │
-               └──────────────┼──────────────┘
-                              ▼
-                    ┌──────────────────┐
-                    │   Evaluators     │
-                    │  (score each     │
-                    │   response)      │
-                    └────────┬─────────┘
-                             │
-                ┌────────────┴────────────┐
-                ▼                         ▼
-        ┌──────────────┐         ┌──────────────┐
-        │ results.json │         │  report.md   │
-        │ (machine)    │         │  (human)     │
-        └──────────────┘         └──────────────┘
+```mermaid
+flowchart TD
+    config["agentops.yaml<br/><i>target, dataset, thresholds</i>"]
+    dataset["Dataset<br/><i>JSONL rows: input, expected</i>"]
+    runner(["Runner<br/><i>resolves target kind</i>"])
+    foundry["Foundry<br/>Backend"]
+    http["HTTP<br/>Backend"]
+    model["Model-direct<br/>Backend"]
+    evals(["Evaluators<br/><i>score each response</i>"])
+    results[/"results.json<br/>(machine)"/]
+    report[/"report.md<br/>(human)"/]
 
-        Exit code: 0 = pass, 2 = threshold fail, 1 = error
+    config --> dataset
+    config --> runner
+    dataset --> runner
+    runner --> foundry
+    runner --> http
+    runner --> model
+    foundry --> evals
+    http --> evals
+    model --> evals
+    evals --> results
+    evals --> report
 ```
+
+> Exit code: `0` = pass, `2` = threshold fail, `1` = error
 
 ## Core Concepts
 
 ### Workspace
 
-The `.agentops/` directory inside your project root. Created by `agentops init`, it holds all evaluation configuration: run configs, bundles, datasets, data files, and results.
+Created by `agentops init`. The evaluation config lives in the flat
+`agentops.yaml` file at the project root; `.agentops/` stores seed data,
+run history, and optional supporting files.
 
-```
+```text
+agentops.yaml          # flat config: agent, dataset, thresholds
 .agentops/
-├── config.yaml          # workspace defaults
-├── run.yaml             # default run config
-├── bundles/             # evaluation policies
-├── datasets/            # dataset definitions (YAML)
-├── data/                # dataset rows (JSONL)
-└── results/             # run outputs + latest/ pointer
+├── data/              # dataset rows (JSONL)
+├── results/           # run outputs + latest/ pointer
+└── release/           # evidence.json/evidence.md when generated
 ```
 
-### Run Config
+### AgentOps Config
 
-A YAML file (typically `run.yaml`) that connects **what** to evaluate, **how** to reach it, and **which evaluators** to apply. It references one bundle and one dataset.
+A YAML file named `agentops.yaml` that connects **what** to evaluate,
+**which dataset** to use, and **which thresholds** gate the run.
 
-A run config has three key dimensions:
-
-| Dimension | Values | Purpose |
-|---|---|---|
-| `target.type` | `agent`, `model` | What is being evaluated |
-| `target.execution_mode` | `local`, `remote` | How AgentOps reaches the target |
-| `target.endpoint.kind` | `foundry_agent`, `http` | Remote endpoint type (when remote) |
-
-Minimal example:
+The minimum is:
 
 ```yaml
 version: 1
-target:
-  type: agent
-  hosting: foundry
-  execution_mode: remote
-  endpoint:
-    kind: foundry_agent
-    agent_id: my-agent:1
-    model: gpt-4o
-    project_endpoint_env: AZURE_AI_FOUNDRY_PROJECT_ENDPOINT
-bundle:
-  name: rag_quality_baseline
-dataset:
-  name: smoke-rag
+agent: "my-agent:1"
+dataset: .agentops/data/smoke.jsonl
 ```
 
-See [how-it-works.md](how-it-works.md) for the full schema, all fields, and validation rules.
+Common `agent:` values:
 
-### Bundle
+| Agent value | Target kind |
+|---|---|
+| `"support-bot:1"` | Foundry prompt agent (`name:version`) |
+| `"https://api.example.com/chat"` | HTTP/JSON agent |
+| `"model:gpt-4o-mini"` | Direct model deployment |
 
-A YAML file that defines **which evaluators** to run and **what thresholds** to enforce. Bundles are reusable — the same bundle can evaluate different targets across environments.
-
-Each bundle contains:
-- A list of evaluators (AI-assisted or local metrics)
-- Threshold rules that determine pass/fail
-
-```yaml
-# .agentops/bundles/model_quality_baseline.yaml
-evaluators:
-  - name: SimilarityEvaluator
-    source: foundry
-    enabled: true
-thresholds:
-  - metric: SimilarityEvaluator
-    operator: ">="
-    value: 3.0
-```
-
-See [bundles.md](bundles.md) for the full bundle authoring guide.
+HTTP targets can add top-level mapping fields such as `request_field`,
+`response_field`, `tool_calls_field`, `auth_header_env`, and
+`extra_fields`.
 
 ### Dataset
 
-A YAML config that points to a JSONL file containing evaluation rows. Each row has an `input` (the prompt) and an `expected` (the reference answer). Some scenarios add extra fields like `context` (RAG) or `tool_calls` (agent workflows).
-
-```yaml
-# .agentops/datasets/smoke-model-direct.yaml
-source:
-  type: file
-  path: ../data/smoke-model-direct.jsonl
-format:
-  type: jsonl
-  input_field: input
-  expected_field: expected
-```
+A JSONL file containing evaluation rows. Each row has an `input` prompt
+and usually an `expected` reference answer. Some scenarios add extra
+fields like `context` (RAG), `tool_definitions`, or `tool_calls` (agent
+workflows).
 
 ```json
 {"id": "1", "input": "What is Python?", "expected": "Python is a programming language."}
@@ -144,34 +105,42 @@ format:
 
 ### Evaluator
 
-A scoring function that measures one aspect of the target's response. Evaluators can be:
+A scoring function that measures one aspect of the target response.
+Evaluators can be:
 
-- **AI-assisted** (Foundry) — use a judge model to score responses on criteria like coherence, fluency, or groundedness (1-5 scale)
-- **Local metrics** — computed without a model, such as `F1ScoreEvaluator` or `avg_latency_seconds`
+- **AI-assisted** (Foundry) - use a judge model to score responses on
+  criteria like coherence, fluency, similarity, or groundedness.
+- **Local metrics** - computed without a judge model, such as
+  `F1ScoreEvaluator` or `avg_latency_seconds`.
 
-Evaluators are configured inside bundles. See [foundry-evaluation-sdk-built-in-evaluators.md](foundry-evaluation-sdk-built-in-evaluators.md) for the complete evaluator reference.
+AgentOps auto-selects evaluators from the target kind and dataset shape.
+Use `evaluators:` in `agentops.yaml` only when you need to override that
+selection. See
+[foundry-evaluation-sdk-built-in-evaluators.md](foundry-evaluation-sdk-built-in-evaluators.md)
+for the complete evaluator reference.
 
-### Backend
+### Target resolver
 
-The execution engine that sends dataset rows to the target and collects responses. The runner automatically selects the backend based on the run config:
+The execution engine sends dataset rows to the target and collects
+responses. AgentOps automatically selects the target kind from `agent:`.
 
-| Execution Mode | Endpoint Kind | Backend | Use case |
-|---|---|---|---|
-| `remote` | `foundry_agent` | Foundry Backend | Foundry agents and models |
-| `remote` | `http` | HTTP Backend | LangGraph, LangChain, ACA, custom REST |
-| `local` | — | Local Adapter | In-process Python functions or subprocess |
+| `agent:` shape | Target kind | Use case |
+|---|---|---|
+| `name:version` | Foundry prompt agent | Foundry Agent Service agents |
+| `https://...` | HTTP/JSON endpoint | LangGraph, Agent Framework, ACA, AKS, custom REST |
+| `model:<deployment>` | Model-direct | Raw model deployment checks |
 
 ## Evaluation Scenarios
 
-AgentOps ships starter bundles for common evaluation patterns. Each bundle pairs specific evaluators with default thresholds:
+AgentOps auto-selects common evaluation patterns from the dataset:
 
-| Scenario | Bundle | Key Evaluators | When to use |
+| Scenario | Dataset signal | Key evaluators | When to use |
 |---|---|---|---|
-| **Model Quality** | `model_quality_baseline` | Similarity, Coherence, Fluency, F1Score | Direct model deployment checks |
-| **RAG** | `rag_quality_baseline` | Groundedness, Relevance, Retrieval, ResponseCompleteness | RAG pipelines with context retrieval |
-| **Conversational** | `conversational_agent_baseline` | Coherence, Fluency, Relevance, Similarity | Chatbots, Q&A assistants |
-| **Agent Workflow** | `agent_workflow_baseline` | TaskCompletion, ToolCallAccuracy, IntentResolution, ToolSelection | Agents with tool calling |
-| **Content Safety** | `safe_agent_baseline` | Violence, Sexual, SelfHarm, HateUnfairness, ProtectedMaterial | Responsible AI checks |
+| **Model Quality** | `input`, `expected` on `model:<deployment>` | Similarity, Coherence, Fluency, F1Score | Direct model deployment checks |
+| **RAG** | `context` | Groundedness, Relevance, Retrieval, ResponseCompleteness | RAG pipelines with context retrieval |
+| **Conversational** | `input`, `expected` on an agent | Coherence, Fluency, Similarity/F1 where applicable | Chatbots, Q&A assistants |
+| **Agent Workflow** | `tool_calls`, `tool_definitions` | ToolCallAccuracy, IntentResolution, TaskAdherence | Agents with tool calling |
+| **Content Safety** | Explicit safety evaluators | Violence, Sexual, SelfHarm, HateUnfairness, ProtectedMaterial | Responsible AI checks |
 
 Each scenario has a dedicated tutorial:
 
@@ -184,16 +153,21 @@ Each scenario has a dedicated tutorial:
 
 ## Configuration Model
 
-Run configs use an orthogonal target model. The three key dimensions — `type`, `execution_mode`, and `endpoint.kind` — are independent. Additional optional fields:
+`agentops.yaml` is the single source of truth. Keep it small and add only
+the fields your target needs:
 
-| Field | Values | When to use |
-|---|---|---|
-| `target.hosting` | `local`, `foundry`, `aks`, `containerapps` | Metadata: where the target runs |
-| `target.framework` | `agent_framework`, `langgraph`, `custom` | Agent targets only |
-| `target.agent_mode` | `prompt`, `hosted` | Foundry agents only |
+```yaml
+version: 1
+agent: "https://api.example.com/chat"
+dataset: .agentops/data/support.jsonl
 
-**Bundle and dataset references** support two resolution modes:
-- `name` — convention-based: resolves to `.agentops/bundles/<name>.yaml` or `.agentops/datasets/<name>.yaml`
-- `path` — explicit relative path to the YAML file
+request_field: message
+response_field: text
 
-See [how-it-works.md](how-it-works.md) for the full schema, all endpoint fields, validation rules, and more configuration examples.
+thresholds:
+  coherence: ">=3"
+  avg_latency_seconds: "<=2"
+```
+
+See [how-it-works.md](how-it-works.md) for the full schema, endpoint
+fields, validation rules, and more examples.

@@ -1,63 +1,86 @@
-# AgentOps Skills for GitHub Copilot
+# AgentOps Skills for Coding Agents
 
-Copilot agent skills for running standardized evaluation workflows with
-[AgentOps Toolkit](https://github.com/Azure/agentops) and Microsoft Foundry agents.
+This extension packages the same AgentOps skills that the CLI installs
+with `agentops skills install`. Skills are **instructions for a coding
+agent** such as GitHub Copilot, Copilot CLI, Cursor, or Claude Code. They
+help the coding agent create config, datasets, reports, and workflows in
+your repository.
 
-## Skills
+They are different from the **AgentOps Watchdog runtime agent**:
+
+- **Skills** live in `.github/skills/` or `.claude/commands/` and guide a
+  coding assistant.
+- **Watchdog** is the runtime CLI/server behind `agentops doctor`
+  and `agentops agent serve`; it reads real eval history, Azure Monitor
+  telemetry, and Foundry metadata.
+- The `agentops-agent` skill is only the coding-agent front door to that
+  Watchdog runtime. It does not fabricate findings.
+
+## Implemented skills
 
 | Skill | What it does |
 |---|---|
-| **agentops-eval** | Run evaluations end to end — single runs, multi-model benchmarks, and N-run comparisons |
-| **agentops-config** | Infer the evaluation scenario from your codebase and generate `run.yaml` |
-| **agentops-dataset** | Generate evaluation datasets (JSONL + YAML config) tailored to the project |
-| **agentops-report** | Interpret evaluation reports, explain scores, and regenerate `report.md` |
-| **agentops-regression** | Investigate regressions — compare runs, analyze per-row scores, identify root causes |
-| **agentops-workflow** | Generate CI/CD pipelines (GitHub Actions) with PR gating and post-merge evaluation |
-| **agentops-trace** | Set up OTLP tracing for evaluation runs |
-| **agentops-monitor** | Guidance on monitoring evaluation quality over time |
+| **agentops-config** | Inspect the workspace and generate or update flat `agentops.yaml`. |
+| **agentops-dataset** | Generate realistic JSONL evaluation rows grounded in the app. |
+| **agentops-eval** | Run `agentops eval run`, handle exit codes, and compare with `--baseline`. |
+| **agentops-report** | Explain `results.json` / `report.md` and suggest concrete next actions. |
+| **agentops-workflow** | Generate the supported GitHub Actions CI/CD scaffold and explain required GitHub/Azure wiring. |
+| **agentops-agent** | Run and interpret the Watchdog runtime (`agentops doctor` / `serve`). |
 
-## Installation
+There are no shipped `agentops-monitor`, `agentops-trace`, or
+`agentops-regression` skills in the current implementation.
+
+## Installation options
+
+### Option 1: VS Code extension
 
 Install from the
 [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit)
-or search **"AgentOps Skills"** in the VS Code Extensions view.
+or search **AgentOps Skills** in the VS Code Extensions view.
+
+Use this when you want Copilot in VS Code to discover the packaged
+skills from the extension/plugin.
+
+### Option 2: CLI install into a repository
+
+Run this from the repository where you want skills checked in:
+
+```bash
+python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
+agentops skills install --platform copilot --force
+```
+
+This writes:
+
+```text
+.github/copilot-instructions.md
+.github/skills/agentops-config/SKILL.md
+.github/skills/agentops-dataset/SKILL.md
+.github/skills/agentops-eval/SKILL.md
+.github/skills/agentops-report/SKILL.md
+.github/skills/agentops-workflow/SKILL.md
+.github/skills/agentops-agent/SKILL.md
+```
+
+Use `--platform claude` for `.claude/commands/*.md`, or omit
+`--platform` and let AgentOps auto-detect the coding agent setup.
 
 ## Usage
 
-Open **Copilot Chat** in VS Code and describe what you want to do.
-Skills are invoked automatically when your request matches their domain.
+Open Copilot Chat or your coding-agent CLI in the project and ask for the
+workflow you need:
 
-### Configure and run an evaluation
-
-```
-> Set up an evaluation for my Foundry agent
-> Generate a dataset for my RAG pipeline
-> Run the default evaluation against my agent
-```
-
-### Benchmark and compare
-
-```
-> Benchmark gpt-4o vs gpt-4o-mini using the smoke dataset
-> Compare the last two runs and tell me what changed
-```
-
-### Understand results
-
-```
-> Explain the scores in my latest report
-> Which rows failed the groundedness threshold?
-> Why did similarity drop between these two runs?
-```
-
-### Automate with CI/CD
-
-```
-> Generate a GitHub Actions workflow that gates PRs on evaluation quality
+```text
+Set up AgentOps evaluation for this app.
+Generate an evaluation dataset for the support-agent tools.
+Run the eval and explain the failing rows.
+Generate the GitHub Actions AgentOps workflow and tell me what Azure/GitHub variables it needs.
+Run the AgentOps watchdog and summarize production latency findings.
 ```
 
 ## Links
 
-- [AgentOps Toolkit](https://github.com/Azure/agentops) — CLI and documentation
-- [Tutorial: Basic Foundry Agent](https://github.com/Azure/agentops/blob/main/docs/tutorial-basic-foundry-agent.md)
-- [How It Works](https://github.com/Azure/agentops/blob/main/docs/how-it-works.md)
+- [AgentOps Toolkit](https://github.com/Azure/agentops)
+- [Copilot skills tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md)
+- [Doctor tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-doctor.md)
+- [How it works](https://github.com/Azure/agentops/blob/main/docs/how-it-works.md)

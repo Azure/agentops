@@ -1,165 +1,343 @@
 ---
 name: agentops-workflow
-description: Generate CI/CD pipelines tailored to the project — PR gating, post-merge CI evaluation, and CD with safety QA + deploy placeholder. Trigger when users ask to automate evaluations in CI, set up PR gating, generate workflow files, or create pipelines for their project. Common phrases include "CI/CD", "GitHub Actions", "pipeline", "workflow", "PR gating", "continuous evaluation", "automate evals", "workflow generate", "CI setup", "generate pipelines", "create pipelines for my project". Install agentops-toolkit via pip.
+description: Set up the full GenAIOps GitFlow CI/CD scaffold for an AgentOps project. Generates four CI/CD workflows (PR gate + Deploy DEV / QA / PROD) for either GitHub Actions or Azure DevOps Pipelines, wired to environment approvals, Azure auth, and AgentOps eval gating. Trigger on "CI", "CD", "pipeline", "workflow", "GitHub Actions", "Azure DevOps", "ADO", "PR gate", "deploy", "environments", "GitFlow", "release branch", "promote to prod", "DevOps", "GenAIOps pipeline".
 ---
 
 # AgentOps Workflow
 
-Generate a complete CI/CD pipeline suite for AgentOps evaluations — tailored to the project's evaluation scenarios, bundles, and Foundry configuration.
+Help the user wire AgentOps into a real GenAIOps GitFlow CI/CD setup with
+three environments (`dev`, `qa`, `production`), automatic eval gates, and
+release evidence for production-readiness reviews.
 
-## Pipeline Types
+**Pick the platform up front.** AgentOps supports two:
 
-`agentops workflow generate` auto-detects which pipelines to create:
+- `--platform github` (default) - writes `.github/workflows/*.yml` using
+  GitHub Actions. Auth via OIDC + GitHub Environments.
+- `--platform azure-devops` - writes `.azuredevops/pipelines/*.yml` using
+  Azure DevOps Pipelines. Auth via a Service Connection + a variable
+  group named `agentops`.
 
-| Pipeline | File | When generated | Purpose |
-|---|---|---|---|
-| **PR Evaluation** | `agentops-eval.yml` | Always | Fast evaluation gate on pull requests |
-| **CI Evaluation** | `agentops-eval-ci.yml` | Multiple bundles or run configs detected | Full evaluation on merge to develop/main |
-| **CD Pipeline** | `agentops-eval-cd.yml` | Multiple bundles or run configs detected | Safety QA gate + deploy placeholder on merge to main |
+The conceptual workflows are identical: one PR gate, three deploy stages
+(dev/qa/prod), and a scheduled Doctor workflow. PR, production, and watchdog
+templates run `agentops doctor --evidence-pack` so reviewers get
+`evidence.json` and `evidence.md` in artifacts.
 
-### Pipeline Flow (GenAIOps-inspired)
+For a new repository or tutorial, start with the PR gate only:
+`agentops workflow generate --kinds pr`. Generate DEV/QA/PROD deploy
+workflows only after environments, Azure auth, and real build/deploy
+commands are configured.
+
+For copied accelerators or unfamiliar repos (for example GPT-RAG, Live Voice
+Practice, AI Landing Zone/Bicep-based apps), run `agentops workflow analyze`
+first and use the findings as the implementation plan before generating or
+editing workflows.
+
+AgentOps is **azd-first** for app/infrastructure deployment and
+**Foundry-native** for prompt-agent deployment. Do not invent a parallel
+deployment system. AgentOps should gate quality; `azd provision`, `azd
+deploy`, and azd hooks should own infrastructure/app packaging, while
+Foundry owns prompt-agent versions created through the Foundry SDK.
+
+## Branch model assumed
 
 ```
-feature/* → PR to develop   → agentops-eval.yml (PR gate)
-             merge to develop → agentops-eval-ci.yml (CI evaluation)
-             release/* → PR to main → agentops-eval.yml (PR gate)
-             merge to main   → agentops-eval-cd.yml (safety QA → deploy)
+feature/* ── PR ──▶ develop                 [agentops-pr]          gate
+                       │
+                       └── merge ─▶ develop  [agentops-deploy-dev]  build + eval + deploy DEV
+release/* ── push                            [agentops-deploy-qa]   build + eval + deploy QA
+release/* ── PR ──▶ main                     [agentops-pr]          gate
+                       │
+                       └── merge ─▶ main     [agentops-deploy-prod] safety eval + build + deploy PROD
 ```
 
-## Step 0 — Prerequisites
+If the user is on trunk-based development, omit `qa` and `release/**`
+and have them generate `--kinds pr,dev,prod`.
 
-1. **AgentOps installed?** Check if `agentops` CLI is available. If not: `pip install agentops-toolkit`.
-2. **Workspace exists?** Check for `.agentops/`. If missing: `agentops init`.
-3. **Foundry endpoint configured?** Search for `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` in environment variables, `.env`, `.env.local`, `.azure/<env>/.env`. If not found, ask the user for the endpoint URL.
-4. **run.yaml ready?** A valid run config is required. If missing, delegate to `/agentops-config`.
+## Step 0 - Prerequisites
 
-## Step 1 — Workspace Inspection
+1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
+2. `agentops eval analyze` has been reviewed, `agentops.yaml` exists at the
+   project root, and `agentops eval run` works locally.
+3. The user's repo follows GitFlow (or is willing to). If not, ask which
+   branches map to dev/qa/prod and adjust the triggers after
+   generation.
 
-Before generating, inspect the workspace to understand what pipelines are needed:
+## Step 1 - Generate the workflows
 
-1. **List bundles**: Read `.agentops/bundles/` — identify which evaluation scenarios are configured.
-2. **List run configs**: Check `.agentops/` for `run*.yaml` files — if multiple configs exist, CI and CD pipelines are appropriate.
-3. **Check Foundry endpoint**: Look for `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` or `project_endpoint` in run.yaml and env vars.
-4. **Detect branches**: Run `git branch -a` to list local and remote branches.
-   - If `main` and `develop` exist → use them (default convention, no question needed).
-   - If branches don't exist yet → use `main`/`develop` convention (no question needed).
-   - If the repo uses different names (e.g. `master` instead of `main`, or no `develop`) → ask the user to confirm which branches to use for PR targets and push triggers.
-
-Present a summary:
-```
-Detected:
-  Bundles: model_quality_baseline, rag_quality_baseline
-  Run configs: run.yaml
-  Foundry endpoint: ✓ (from .env)
-  Branches: main, develop
-  Pipelines: PR (always), CI + CD (multiple bundles detected)
-```
-
-## Step 2 — Ask Only What Cannot Be Inferred
-
-Only ask critical questions that workspace inspection cannot answer:
-
-1. If no Foundry endpoint found: *"What is your Azure AI Foundry project endpoint URL?"*
-2. If branches differ from the `main`/`develop` convention: *"Your repo uses `master` instead of `main`. Should the pipelines target `master`, or do you plan to rename it to `main`?"*
-
-**DO NOT ask about**:
-- Bundle selection (inferred from workspace)
-- Evaluation scenarios (inferred from bundles)
-- Authentication method (always OIDC / Workload Identity Federation)
-- Workflow file locations (standard `.github/workflows/` paths)
-- Which pipelines to generate (auto-detected)
-
-## Step 3 — Generate Workflows
+First analyze the repo shape:
 
 ```bash
-agentops workflow generate [--force] [--dir <path>]
+agentops workflow analyze
+agentops workflow analyze --format markdown --out agentops-workflow-plan.md
 ```
 
-Flags:
-- `--force` — Overwrite existing workflow files.
-- `--dir` — Target directory (default: current directory).
+Use the analysis to decide whether `--deploy-mode auto` is enough or whether
+you need to adapt placeholders/project-specific deployment. The analyzer is
+local-only and looks for `azure.yaml`, Bicep, AgentOps prompt-agent config,
+landing-zone manifests, private-network signals, Docker/Container Apps signals,
+and existing CI folders. Treat README matches as hints only; structural files
+drive the recommendation.
 
-After generation, explain what was created and why:
-- `agentops-eval.yml` — Runs on PRs to main/develop. Gates merges on evaluation thresholds.
-- `agentops-eval-ci.yml` — (if generated) Runs on push to develop/main when `.agentops/`, `src/`, or `pyproject.toml` change. Comprehensive post-merge evaluation with commented-out matrix strategy and baseline comparison.
-- `agentops-eval-cd.yml` — (if generated) Runs on push to main. Two-job pipeline: safety QA evaluation gate → deploy placeholder. The deploy job is a TODO for the team to fill in with their deployment commands.
-
-## Step 4 — Configure Authentication
-
-All pipelines use **Workload Identity Federation (OIDC)** — no client secrets to manage or rotate.
-
-### Azure Setup (one-time)
-
-1. **Create or reuse an App Registration** in Microsoft Entra ID (Azure AD).
-2. **Add a Federated Credential**:
-   - Go to App Registration → Certificates & secrets → Federated credentials → Add credential
-   - Organization: your GitHub org/user
-   - Repository: your repo name
-   - Entity type: select **Pull Request** (for PR pipeline) AND **Branch** (for CI and CD pipelines)
-   - Name: e.g. `github-agentops-eval`
-3. **Grant the app required roles** on the Foundry project resource group:
-   - `Cognitive Services User` — invoke agents and evaluator models
-   - `Azure AI Developer` — access evaluation APIs and Foundry features
-
-### GitHub Setup
-
-Set these as **repository variables** (Settings → Secrets and variables → Actions → Variables tab):
-
-| Variable | Value |
-|---|---|
-| `AZURE_CLIENT_ID` | Application (client) ID from App Registration |
-| `AZURE_TENANT_ID` | Directory (tenant) ID |
-| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
-
-Set this as a **repository secret** (Secrets tab):
-
-| Secret | Value |
-|---|---|
-| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project endpoint URL |
-
-### Verify Auth Locally
+**GitHub Actions (default):**
 
 ```bash
-az login
-az account show --query "{sub:id, tenant:tenantId}" -o json
-az account get-access-token --resource "https://cognitiveservices.azure.com" --query accessToken -o tsv
+agentops workflow generate --kinds pr
+# or full scaffold:
+agentops workflow generate --kinds pr,dev,qa,prod --force
 ```
 
-## Step 5 — Verify Pipelines
+**Azure DevOps Pipelines:**
 
-1. **PR pipeline**: Push a branch and open a PR → check the Actions tab for `AgentOps Evaluation`.
-2. **CI pipeline**: Merge to develop → check Actions tab for `AgentOps CI Evaluation`.
-3. **CD pipeline**: Merge to main → check Actions tab for `AgentOps CD Pipeline`. The safety-qa job runs evaluation; the deploy job prints a placeholder notice.
-4. **Check results**: Download artifacts, review PR comments, inspect job summaries.
+```bash
+agentops workflow generate --platform azure-devops --kinds pr
+# or full scaffold:
+agentops workflow generate --platform azure-devops --kinds pr,dev,qa,prod --force
+```
 
-If any pipeline fails with authentication errors:
-- Verify federated credential entity types match (Pull Request for PRs, Branch for push)
-- Confirm the App Registration has `Cognitive Services User` role on the Foundry resource
-- Check that variables and secrets are set at the repository level (not organization)
+The full scaffold writes:
 
-## Exit Code Gating
+| Kind | GitHub Actions path | Azure DevOps path | Trigger | Environment |
+|---|---|---|---|---|
+| `pr` | `.github/workflows/agentops-pr.yml` | `.azuredevops/pipelines/agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` |
+| `dev` | `.github/workflows/agentops-deploy-dev.yml` | `.azuredevops/pipelines/agentops-deploy-dev.yml` | push to `develop` | `dev` |
+| `qa` | `.github/workflows/agentops-deploy-qa.yml` | `.azuredevops/pipelines/agentops-deploy-qa.yml` | push to `release/**` | `qa` |
+| `prod` | `.github/workflows/agentops-deploy-prod.yml` | `.azuredevops/pipelines/agentops-deploy-prod.yml` | push to `main` | `production` |
+| `watchdog` | `.github/workflows/agentops-watchdog.yml` | `.azuredevops/pipelines/agentops-watchdog.yml` | daily cron (06:00 UTC) | `dev` |
 
-All pipelines use the same exit code contract:
+PR, PROD, and watchdog workflows upload release evidence. Explain that this is
+a projection of existing eval/Doctor/Foundry/monitoring signals, not a separate
+exit-code contract.
 
-| Exit code | CI result | Meaning |
-|---|---|---|
-| `0` | ✅ Pass | All thresholds met |
-| `2` | ❌ Fail | Threshold(s) failed — blocks merge / blocks deploy |
-| `1` | ❌ Fail | Runtime or configuration error |
+Useful flags:
 
-## Customisation After Generation
+- `--platform github | azure-devops` - pick the CI/CD platform.
+- `--force` - overwrite existing workflow files.
+- `--kinds pr,dev,qa,prod` - generate a subset. Prefer `--kinds pr`
+  until deploy environments are configured.
+- `--deploy-mode auto|placeholder|azd|prompt-agent` - `auto` uses azd
+  templates when `azure.yaml` exists, otherwise uses prompt-agent templates
+  when `agentops.yaml` targets a Foundry prompt agent; `azd` forces
+  `azd provision` / `azd deploy`; `prompt-agent` stages/evaluates a Foundry
+  prompt candidate; `placeholder` keeps the generic stack-agnostic scaffold.
+- `--dir <path>` - non-default repo root.
 
-- **Change branch triggers**: Edit `on.pull_request.branches` or `on.push.branches` in the workflow files.
-- **Enable matrix strategy**: Uncomment the `strategy.matrix` block in `agentops-eval-ci.yml` and list your run configs.
-- **Enable baseline comparison**: Uncomment the comparison step in `agentops-eval-ci.yml`.
-- **Add deployment steps**: Edit the `deploy` job in `agentops-eval-cd.yml` — replace the placeholder with your actual deployment commands.
-- **Add environment approval**: Uncomment `environment: production` in the deploy job for manual approval gates.
+## Step 2 - Configure environments and Azure auth
 
-## Rules
+### GitHub Actions
 
-- Do not modify generated workflow files beyond user-requested customisation.
-- Always recommend OIDC / Workload Identity Federation over client secrets.
-- Delegate evaluation configuration to `/agentops-config`.
-- Delegate dataset creation to `/agentops-dataset`.
-- Do not fabricate endpoint URLs, agent IDs, or deployment names.
-- Do not ask about bundle/scenario selection if it can be inferred from the workspace.
+Walk the user through Settings → Environments and create three:
+
+1. **`dev`** - no extra protection. Set any DEV-specific variables here
+   (e.g. `ACA_APP_NAME`, `AZURE_RESOURCE_GROUP` pointing at the dev RG).
+2. **`qa`** - usually no required reviewers, but isolated variables for
+   the QA environment.
+3. **`production`** - set:
+   - **Required reviewers**: at least one (deploys to PROD will pause
+     here until approved).
+   - (Optional) **Wait timer** for an extra delay.
+   - (Optional) **Deployment branches**: restrict to `main`.
+   - PROD-specific variables (e.g. production resource group).
+
+Tell the user that env-specific variables on the `production` environment
+will override repo-level ones automatically inside the prod workflow.
+
+### Azure DevOps
+
+In **Pipelines → Environments**, create three: `dev`, `qa`,
+`production`. On `production`, add a manual approval check (Approvals
+and checks → New check → Approvals).
+
+In **Pipelines → Library**, create a variable group named `agentops`
+with these variables (mark sensitive ones as secret if needed):
+
+- `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
+- `AZURE_OPENAI_ENDPOINT`
+- `AZURE_OPENAI_DEPLOYMENT`
+- `APPLICATIONINSIGHTS_CONNECTION_STRING` - optional fallback if the
+  Foundry project's App Insights connection cannot be auto-discovered.
+
+In **Project settings → Service connections**, create an Azure Resource
+Manager service connection named `agentops-azure` scoped to the
+subscription that hosts your Foundry project.
+
+Grant the build service "Contribute to pull requests" permission on the
+repository (Project settings → Repositories → Security → `Build Service`)
+so the PR-comment step can post.
+
+## Step 3 - Configure Azure auth
+
+### GitHub Actions (OIDC)
+
+At repository level (Settings → Secrets and variables → Actions →
+**Variables** tab), set:
+
+- `AZURE_CLIENT_ID` - App registration / managed identity used for OIDC.
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+- `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` - Foundry project URL used by the
+  eval step.
+- `APPLICATIONINSIGHTS_CONNECTION_STRING` - optional fallback as a
+  variable or secret. Generated workflows first try to auto-discover App
+  Insights from the Foundry project endpoint; this value makes eval and
+  Doctor telemetry explicit.
+
+Then configure Workload Identity Federation on the Azure side
+(`federated-credentials` on the app registration) for **each branch /
+environment** the workflows will run from. See
+`docs/ci-github-actions.md` for the exact `az` commands.
+
+Tell the user that CI evals emit `agentops.eval.*` telemetry and scheduled
+Doctor runs emit `agentops.agent.finding.*` telemetry when App Insights is
+configured or auto-discovered. The Cockpit uses those signals for Azure
+Monitor deep links.
+
+### Azure DevOps (Service Connection)
+
+Already done in Step 2 - the `agentops-azure` service connection
+handles auth. Make sure the underlying service principal or managed
+identity has the **Azure AI User** role on the Foundry account.
+
+## Step 4 - Use azd for deployment
+
+If the repo already has `azure.yaml`, generate azd-backed deployment
+workflows:
+
+```bash
+agentops workflow generate --kinds pr,dev,qa,prod --deploy-mode azd --force
+```
+
+The deploy workflows will:
+
+1. run `azd env new ... || azd env select ...` in CI;
+2. run `azd provision --no-prompt` for DEV by default;
+3. run `azd provision --no-prompt` for QA/PROD only when manually
+   requested (`provision=true` in GitHub Actions or
+   `RUN_AZD_PROVISION=true` in Azure DevOps);
+4. run `agentops eval run` as the quality/safety gate;
+5. run `azd env refresh` on the deploy runner so a fresh CI workspace can
+   recover outputs from the previous infrastructure provision;
+6. run `azd deploy --no-prompt`.
+
+Set `AZURE_ENV_NAME` per GitHub Environment / Azure DevOps variable
+group if the user's azd env names are not exactly `dev`, `qa`, and
+`production`. Set `AZURE_LOCATION` when the azd template needs an
+explicit region.
+
+### If the user asks for "zero-trust deployment"
+
+Do **not** replicate azd. Do this instead:
+
+1. Inspect the app and ask only for missing critical choices (region,
+   target host, private networking yes/no if not obvious).
+2. Prefer an existing azd template or AVM-backed template that already
+   implements managed identity, RBAC-only data access, private endpoints
+   where required, and no secrets in source.
+3. Create or adapt `azure.yaml`, `infra/`, and azd-native hooks declared
+   in `azure.yaml` (`preprovision`, `postprovision`, `predeploy`,
+   `postdeploy`) as needed.
+4. Run `azd provision` to validate the infrastructure path.
+5. Re-run `agentops workflow generate --deploy-mode azd --force` so CI
+   delegates provision/deploy to azd.
+
+Never call ad-hoc hook scripts from the workflow (for example
+`./agentops/deploy.sh` or `./.azd/hooks/*`). If custom behavior is
+needed, put it behind azd's native hook mechanism in `azure.yaml`.
+
+### Copied accelerators / AI Landing Zone apps
+
+For Azure AI accelerators copied from templates, use AgentOps to make the
+landing-zone path actionable:
+
+1. AgentOps owns eval gates, Doctor, reports, Cockpit readiness, and the
+   workflow guardrails around deployment.
+2. Foundry owns hosted agents, evaluations, traces, monitoring, datasets, and
+   operations.
+3. azd/Bicep/AILZ owns app and infrastructure deploy when `azure.yaml` or
+   `infra/*.bicep` exists.
+4. Project-specific steps such as indexing, data seeding, model deployment,
+   container build/push, App Config updates, or private-network post-provision
+   work stay in azd hooks or existing project tooling.
+
+If `scripts/Invoke-PreflightChecks.ps1` exists, keep it in the deployment path:
+AgentOps-generated azd workflows run it with `-Strict` before `azd provision`.
+Doctor surfaces the same path as `AI Landing Zone deployment readiness`, with
+evidence for preflight, `agentops.yaml`, azd workflow coverage, network
+isolation, and the private runner path.
+
+If `agentops workflow analyze` reports network isolation, private endpoints,
+jumpbox/Bastion, Azure Firewall, or ACR Tasks, do not assume GitHub-hosted
+runners can deploy everything. Plan self-hosted runner, jumpbox handoff, or ACR
+Tasks agent-pool execution before enabling DEV/QA/PROD deploy stages.
+
+If `azure.yaml` is missing and the user is not asking to create the
+deployment assets yet, check whether this is a Foundry prompt agent. If
+`agentops.yaml` has `agent: "name:version"`, prefer prompt-agent mode:
+
+```bash
+agentops workflow generate --kinds pr,dev,qa,prod --deploy-mode prompt-agent --force
+```
+
+Prompt-agent workflows:
+
+1. read `prompt_file` from `agentops.yaml` or
+   `AGENTOPS_AGENT_PROMPT_FILE`;
+2. create or reuse a candidate Foundry prompt-agent version from that file;
+3. generate `.agentops/deployments/agentops.candidate.yaml`;
+4. run `agentops eval run` against the candidate version;
+5. record `.agentops/deployments/foundry-agent.json` as a deployment
+   artifact only when the gate passes.
+
+This avoids the bad pattern of evaluating one agent version and deploying a
+different prompt. The invariant is: **evaluated version == deployed version**.
+Foundry remains the system of record for agent versions; AgentOps owns the
+repo-side gate and deployment record.
+
+If this is not a Foundry prompt agent and azd is not ready, generate
+`--kinds pr` only or use `--deploy-mode placeholder`. Do not ship
+DEV/QA/PROD workflows that pretend deployment is wired.
+
+## Step 5 - Branch protection
+
+In Settings → Branches, add a rule for both `develop` and `main`:
+
+- Require a pull request before merging.
+- Require status checks to pass: select **`AgentOps PR / Eval (PR gate)`**
+  (the job name from `agentops-pr.yml`).
+- Optional: require linear history.
+
+This makes the eval gate a hard merge requirement.
+
+## Step 6 - Iterate
+
+Common follow-ups:
+
+- **Tighten thresholds for QA/PROD** - copy `agentops.yaml` to
+  `agentops-qa.yaml` / `agentops-prod.yaml` and tighten the
+  `thresholds:` block. Point each workflow at its own config via the
+  `inputs.config` default.
+- **Scheduled runs** - add a `schedule:` entry in `agentops-pr.yml` (or a
+  new `agentops-nightly.yml`) to evaluate against `main` nightly.
+- **Matrix per scenario** - if the user has multiple AgentOps config files,
+  extend the eval job with `strategy.matrix.config:` and reference
+  `${{ matrix.config }}`.
+- **Regression baseline** - wire the deploy templates to download the
+  previous run's `results.json` artifact and call
+  `agentops eval run --baseline <results.json>`.
+
+## Guardrails
+
+- Do **not** invent CLI flags. The supported `workflow analyze` flags are
+  `--dir`, `--format`, and `--out`. The supported `workflow generate` flags are
+  `--force`, `--dir`, `--kinds`, `--platform`, and `--deploy-mode`.
+- Do **not** push DEV/QA/PROD deploy workflows with placeholder
+  Build/Deploy steps or missing OIDC variables; generate PR-only first.
+- Do **not** create parallel workflow files. Prefer editing the
+  generated ones.
+- Do **not** auto-fill app/infrastructure deployment with raw Azure CLI
+  steps that bypass azd. AgentOps gates; azd provisions and deploys. For
+  Foundry prompt agents, use `--deploy-mode prompt-agent` so the workflow
+  calls the Foundry SDK and evaluates the candidate version before marking
+  it deployed.
+- The four workflow names (`agentops-pr`, `agentops-deploy-dev`,
+  `agentops-deploy-qa`, `agentops-deploy-prod`) are fixed - don't rename
+  them or branch-protection wiring will break.
