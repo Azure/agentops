@@ -3,6 +3,13 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+- Consolidated the tutorial set into two quickstarts plus one end-to-end
+  Foundry + AgentOps workshop, with the quickstarts now covering the broader
+  Foundry build/debug/evaluate/observe journey before AgentOps readiness.
+
 ## [0.2.0] - 2026-05-22
 
 ### Added

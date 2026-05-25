@@ -81,6 +81,7 @@ Run the AgentOps watchdog and summarize production latency findings.
 ## Links
 
 - [AgentOps Toolkit](https://github.com/Azure/agentops)
-- [Copilot skills tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-copilot-skills.md)
-- [Doctor tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-agent-doctor.md)
+- [Prompt Agent quickstart](https://github.com/Azure/agentops/blob/main/docs/tutorial-prompt-agent-quickstart.md)
+- [Hosted Agent quickstart](https://github.com/Azure/agentops/blob/main/docs/tutorial-hosted-agent-quickstart.md)
+- [End-to-end workshop](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md)
 - [How it works](https://github.com/Azure/agentops/blob/main/docs/how-it-works.md)

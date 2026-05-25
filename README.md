@@ -209,20 +209,12 @@ Cockpit sections, in display order:
 
 ## Documentation
 
-- [Quickstart tutorial](docs/tutorial-quickstart.md) - first workspace and eval.
-- [Production readiness tutorial](docs/tutorial-production-readiness.md) - POC-to-production loop.
-- [End-to-end tutorial](docs/tutorial-end-to-end.md) - Foundry agent, baseline, CI/CD, watchdog.
-- [Copilot skills tutorial](docs/tutorial-copilot-skills.md) - configure, run, explain, wire CI.
-- Per-scenario tutorials:
-  - [Foundry prompt agent](docs/tutorial-basic-foundry-agent.md)
-  - [Model-direct](docs/tutorial-model-direct.md)
-  - [RAG](docs/tutorial-rag.md)
-  - [Conversational agent](docs/tutorial-conversational-agent.md)
-  - [Agent with tool calling](docs/tutorial-agent-workflow.md)
-  - [HTTP-deployed agent](docs/tutorial-http-agent.md)
-- [Baseline comparison](docs/tutorial-baseline-comparison.md)
-- [Doctor agent](docs/tutorial-agent-doctor.md)
-  - Concept overview: [Doctor explained](docs/doctor-explained.md)
+- [Prompt Agent quickstart](docs/tutorial-prompt-agent-quickstart.md) - use this when the Foundry target is `agent: name:version`.
+- [Hosted Agent quickstart](docs/tutorial-hosted-agent-quickstart.md) - use this when the target is a Foundry hosted or HTTP endpoint URL.
+- [End-to-end workshop](docs/tutorial-end-to-end.md) - complete Foundry + AgentOps journey: create, debug, evaluate, release, observe, red-team follow-through, and trace regression.
+- [Core concepts](docs/concepts.md)
+- [How it works](docs/how-it-works.md)
+- [Doctor explained](docs/doctor-explained.md)
 - [CI/CD with GitHub Actions](docs/ci-github-actions.md)
 - [Built-in evaluator reference](docs/foundry-evaluation-sdk-built-in-evaluators.md)
 - [Release process](docs/release-process.md)

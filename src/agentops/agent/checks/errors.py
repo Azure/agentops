@@ -270,8 +270,8 @@ def _check_no_runtime_telemetry(
                 "and connect Azure Monitor OpenTelemetry on the agent "
                 "runtime (set `APPLICATIONINSIGHTS_CONNECTION_STRING` "
                 "and call `configure_azure_monitor()` on startup). "
-                "See `docs/tutorial-basic-foundry-agent.md` -> "
-                "'Connect Application Insights'."
+                "See `docs/tutorial-end-to-end.md` -> "
+                "'Wire observability'."
             ),
             source="azure_monitor",
             evidence=evidence,

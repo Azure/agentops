@@ -221,18 +221,10 @@ Coverage highlights:
 docs/
 ├── concepts.md                                # Core concepts and evaluation scenarios
 ├── how-it-works.md                            # Architecture and request flow
-├── tutorial-quickstart.md                     # 5-minute quickstart
-├── tutorial-end-to-end.md                     # Full workflow (eval → doctor → cockpit)
-├── tutorial-production-readiness.md           # POC → production readiness workflow
-├── tutorial-basic-foundry-agent.md            # Foundry prompt agent
-├── tutorial-conversational-agent.md           # Conversational agent
-├── tutorial-agent-workflow.md                 # Agent with tools
-├── tutorial-rag.md                            # RAG quality
-├── tutorial-model-direct.md                   # Raw model deployment
-├── tutorial-http-agent.md                     # HTTP-deployed agent
-├── tutorial-baseline-comparison.md            # Run-to-run regression detection
-├── tutorial-copilot-skills.md                 # Coding agent skill catalog
-├── tutorial-agent-doctor.md                   # Doctor checks + history
+├── tutorial-prompt-agent-quickstart.md        # Quickstart for Foundry Prompt Agents
+├── tutorial-hosted-agent-quickstart.md        # Quickstart for Foundry hosted / HTTP agents
+├── tutorial-end-to-end.md                     # Full Foundry + AgentOps release-readiness workshop
+├── doctor-explained.md                        # Doctor checks, history, and operations model
 ├── ci-github-actions.md                       # CI/CD setup
 ├── release-process.md                         # Release and versioning
 └── foundry-evaluation-sdk-built-in-evaluators.md
