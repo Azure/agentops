@@ -5,48 +5,51 @@ reference and architecture details, see [how-it-works.md](how-it-works.md).
 
 ## AgentOps + Microsoft Foundry
 
-AgentOps is the repo-side workflow layer for teams building on Microsoft
-Foundry. It complements Foundry rather than replacing it:
+AgentOps helps teams answer two release questions for a Foundry agent:
+**can we ship it, and where is the proof?**
 
-| Microsoft Foundry is the system of record for... | AgentOps adds... |
-|---|---|
-| Hosted agents, model deployments, runtime traces, monitor views, evaluations, datasets, red teaming, and operations | Source-controlled eval config, local and CI gates, normalized `results.json`, PR-friendly `report.md`, Doctor diagnostics, release evidence, trace-to-dataset promotion, generated workflows, and a local Cockpit |
+Foundry owns the agent lifecycle: create, deploy, run, trace, monitor, evaluate,
+and investigate. AgentOps adds the repo-controlled proof that a candidate is
+ready to release:
 
-Use Foundry for the authoritative runtime and cloud-evaluation drilldown.
-Use AgentOps to make the day-to-day developer loop repeatable: initialize
-the workspace, run the same eval locally and in CI, publish or link back to
-Foundry, emit App Insights telemetry, and surface the next repo-side action
-in the Cockpit.
+- Source-controlled eval config
+- Local and CI quality gates
+- Stable `results.json` and PR-friendly `report.md`
+- Doctor diagnostics and release evidence
+- Trace-to-dataset promotion
+- Generated workflows and a local Cockpit
 
-The production-readiness loop is: evaluate the candidate, compare it to a
-baseline, run Doctor, generate release evidence, ship through Foundry/azd, then
-promote reviewed production traces back into regression datasets.
+Use Foundry for runtime and official drilldown. Use AgentOps for the
+release-readiness loop: initialize, evaluate, compare, run Doctor, produce
+evidence, and promote reviewed traces back into regression data.
+
+The short version is: **Foundry runs the agent. AgentOps proves the release is
+ready.**
 
 ## How an Evaluation Works
 
 ```mermaid
-flowchart TD
-    config["agentops.yaml<br/><i>target, dataset, thresholds</i>"]
-    dataset["Dataset<br/><i>JSONL rows: input, expected</i>"]
-    runner(["Runner<br/><i>resolves target kind</i>"])
-    foundry["Foundry<br/>Backend"]
-    http["HTTP<br/>Backend"]
-    model["Model-direct<br/>Backend"]
-    evals(["Evaluators<br/><i>score each response</i>"])
-    results[/"results.json<br/>(machine)"/]
-    report[/"report.md<br/>(human)"/]
+graph TD
+    A[agentops.yaml target dataset thresholds]
+    B[JSONL dataset rows]
+    C[AgentOps runner]
+    D[Foundry target]
+    E[HTTP target]
+    F[Model target]
+    G[Evaluators and thresholds]
+    H[results.json]
+    I[report.md]
 
-    config --> dataset
-    config --> runner
-    dataset --> runner
-    runner --> foundry
-    runner --> http
-    runner --> model
-    foundry --> evals
-    http --> evals
-    model --> evals
-    evals --> results
-    evals --> report
+    A --> C
+    B --> C
+    C --> D
+    C --> E
+    C --> F
+    D --> G
+    E --> G
+    F --> G
+    G --> H
+    G --> I
 ```
 
 > Exit code: `0` = pass, `2` = threshold fail, `1` = error
@@ -55,15 +58,17 @@ flowchart TD
 
 ### Workspace
 
-Created by `agentops init`. The evaluation config lives in the flat
-`agentops.yaml` file at the project root; `.agentops/` stores seed data,
-run history, and optional supporting files.
+Created by `agentops init`. The release-gate config lives in the flat
+`agentops.yaml` file at the project root. `.agentops/` is the
+AgentOps-managed workspace for seed inputs, local run history, Doctor cache,
+and generated release evidence. It is not a second `.foundry/` directory.
 
 ```text
 agentops.yaml          # flat config: agent, dataset, thresholds
 .agentops/
 ├── data/              # dataset rows (JSONL)
 ├── results/           # run outputs + latest/ pointer
+├── agent/             # Doctor history and reports
 └── release/           # evidence.json/evidence.md when generated
 ```
 
@@ -85,6 +90,7 @@ Common `agent:` values:
 | Agent value | Target kind |
 |---|---|
 | `"support-bot:1"` | Foundry prompt agent (`name:version`) |
+| `"https://...services.ai.azure.com/.../agents/<id>"` | Foundry hosted agent endpoint |
 | `"https://api.example.com/chat"` | HTTP/JSON agent |
 | `"model:gpt-4o-mini"` | Direct model deployment |
 
@@ -127,20 +133,47 @@ responses. AgentOps automatically selects the target kind from `agent:`.
 | `agent:` shape | Target kind | Use case |
 |---|---|---|
 | `name:version` | Foundry prompt agent | Foundry Agent Service agents |
+| `https://...services.ai.azure.com/.../agents/...` | Foundry hosted agent endpoint | Hosted Agent URL target |
 | `https://...` | HTTP/JSON endpoint | LangGraph, Agent Framework, ACA, AKS, custom REST |
 | `model:<deployment>` | Model-direct | Raw model deployment checks |
+
+### Prompt Agent vs Hosted Agent
+
+| Term | What it means | Who creates/deploys it | How AgentOps uses it |
+|---|---|---|---|
+| **Foundry Prompt Agent** | A Foundry-managed agent version referenced as `name:version`. | Foundry portal, Foundry SDK/Toolkit, or `microsoft-foundry` skill. | Can run locally through AgentOps or server-side with `execution: cloud`. |
+| **Foundry Hosted Agent** | A deployed agent endpoint on a Foundry domain. | Foundry Agent Service / Hosted Agent tooling. | Evaluated as a URL target by the AgentOps local runner. |
+| **HTTP/JSON agent** | A custom endpoint outside the Foundry agent URL shape. | The app's own deployment path, often azd, ACA, AKS, or another host. | Evaluated as a URL target with request/response mapping fields. |
+
+AgentOps does not replace the tools that create or deploy agents. It references
+the candidate that those tools produced and turns the evaluation, Doctor, and
+evidence outputs into a release gate.
+
+### Evaluation path
+
+| Target | Foundry server-side eval through AgentOps | AgentOps local runner | Recommended default |
+|---|---|---|---|
+| Foundry Prompt Agent (`name:version`) | Yes, with `execution: cloud` | Yes | Use cloud for official Foundry-hosted runs; use local for fast feedback or fallback. |
+| Foundry Hosted Agent URL | No | Yes | Use local runner; optionally publish local metrics to Foundry with `publish: true`. |
+| Generic HTTP/JSON endpoint | No | Yes | Use local runner. |
+| Raw model deployment (`model:<name>`) | No | Yes | Use local runner. |
+
+For CI pipelines that only need a supported Foundry-native eval, prefer the
+official AI Agent Evaluation action or Azure DevOps extension. Use AgentOps when
+the repo also needs thresholds, baselines, local fallback, Doctor readiness,
+release evidence, or trace-to-regression review.
 
 ## Evaluation Scenarios
 
 AgentOps auto-selects common evaluation patterns from the dataset:
 
-| Scenario | Dataset signal | Key evaluators | When to use |
-|---|---|---|---|
-| **Model Quality** | `input`, `expected` on `model:<deployment>` | Similarity, Coherence, Fluency, F1Score | Direct model deployment checks |
-| **RAG** | `context` | Groundedness, Relevance, Retrieval, ResponseCompleteness | RAG pipelines with context retrieval |
-| **Conversational** | `input`, `expected` on an agent | Coherence, Fluency, Similarity/F1 where applicable | Chatbots, Q&A assistants |
-| **Agent Workflow** | `tool_calls`, `tool_definitions` | ToolCallAccuracy, IntentResolution, TaskAdherence | Agents with tool calling |
-| **Content Safety** | Explicit safety evaluators | Violence, Sexual, SelfHarm, HateUnfairness, ProtectedMaterial | Responsible AI checks |
+| Scenario | Signal | Purpose |
+|---|---|---|
+| **Model quality** | `model:<deployment>` + `expected` | Direct model checks |
+| **RAG** | `context` | Grounding and retrieval checks |
+| **Conversational** | `input` + `expected` | Chatbot and Q&A quality |
+| **Agent workflow** | `tool_calls` + `tool_definitions` | Tool-use quality |
+| **Content safety** | Safety evaluators | Responsible AI checks |
 
 Each scenario has a dedicated tutorial:
 

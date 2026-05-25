@@ -1,21 +1,17 @@
 # Tutorial: from POC to production-ready Foundry agents
 
-This tutorial shows the AgentOps production-readiness loop: evaluate the
-candidate, compare it to a baseline, run Doctor, generate release evidence,
-wire CI/CD, and promote reviewed production traces into future regression rows.
+This tutorial shows the production-readiness loop: eval, baseline, Doctor,
+release evidence, CI/CD, and trace-backed regression rows.
 
 ## What AgentOps owns
 
-AgentOps is the repo-side readiness layer. Foundry remains the system of record
-for hosted agents, cloud evaluations, runtime traces, monitoring, red teaming,
-datasets, and operations. AgentOps turns those signals into developer workflow:
+AgentOps turns Foundry project signals into developer workflow:
 
 1. `agentops eval analyze` checks whether local eval setup is ready.
 2. `agentops eval run` produces `results.json` and `report.md`.
 3. `agentops doctor --evidence-pack` writes release evidence.
 4. `agentops workflow generate` puts the same gates into CI/CD.
-5. `agentops eval promote-traces` turns reviewed trace exports into regression
-   dataset candidates.
+5. `agentops eval promote-traces` creates regression candidates.
 
 ## 1. Start with a working eval
 

@@ -1,9 +1,10 @@
 # Copilot Instructions for AgentOps
 
 AgentOps Toolkit is a Python 3.11+ CLI, local Cockpit, and coding-agent skill
-set that helps teams move Microsoft Foundry agents from demo/POC to production:
-eval gates, Doctor readiness, CI/CD, release evidence, and trace-driven
-regression loops.
+set that helps teams answer two release questions for Microsoft Foundry agents:
+can we ship it, and where is the proof? Foundry runs the agent. AgentOps proves
+the release is ready with eval gates, Doctor readiness, CI/CD, release evidence,
+and trace-driven regression loops.
 
 Read these first for detailed architecture and product context:
 
@@ -60,11 +61,11 @@ Where to put common changes:
 
 ## Product principles
 
-- Foundry remains the system of record for hosted agents, cloud evaluations,
-  traces, monitoring, red teaming, datasets, and operations.
-- AgentOps owns repo-side workflow: eval config, CI gates, normalized artifacts,
-  Doctor diagnostics, release evidence, trace-to-dataset promotion, and Cockpit
-  links back to Foundry/Azure Monitor.
+- Use Foundry for hosted agents, cloud evaluations, traces, monitoring,
+  red teaming, datasets, and operations.
+- Use AgentOps for repo-controlled release readiness: eval config, CI gates,
+  normalized artifacts, Doctor diagnostics, release evidence,
+  trace-to-dataset promotion, and Cockpit links to Foundry/Azure Monitor.
 - `agentops doctor --evidence-pack` is a readiness projection over existing
   signals; do not create a second exit-code contract.
 - Trace promotion is review-first. `self-similarity` labels support drift

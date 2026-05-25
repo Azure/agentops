@@ -1,13 +1,14 @@
 ---
 name: agentops-workflow
-description: Set up the full GenAIOps GitFlow CI/CD scaffold for an AgentOps project. Generates four CI/CD workflows (PR gate + Deploy DEV / QA / PROD) for either GitHub Actions or Azure DevOps Pipelines, wired to environment approvals, Azure auth, and AgentOps eval gating. Trigger on "CI", "CD", "pipeline", "workflow", "GitHub Actions", "Azure DevOps", "ADO", "PR gate", "deploy", "environments", "GitFlow", "release branch", "promote to prod", "DevOps", "GenAIOps pipeline".
+description: Set up AgentOps release-readiness workflows: PR eval gates, Doctor/evidence artifacts, and safe deploy handoffs to azd or Foundry prompt-agent tooling. Trigger on "CI", "CD", "pipeline", "workflow", "GitHub Actions", "Azure DevOps", "ADO", "PR gate", "deploy", "environments", "GitFlow", "release branch", "promote to prod", "DevOps", "can we ship".
 ---
 
 # AgentOps Workflow
 
-Help the user wire AgentOps into a real GenAIOps GitFlow CI/CD setup with
-three environments (`dev`, `qa`, `production`), automatic eval gates, and
-release evidence for production-readiness reviews.
+Help the user wire AgentOps into the release path so every candidate has a
+clear gate and proof pack. The default starting point is a PR eval gate. Full
+DEV/QA/PROD workflows are useful only after Azure auth, environments, and a real
+deployment owner are configured.
 
 **Pick the platform up front.** AgentOps supports two:
 
@@ -17,7 +18,7 @@ release evidence for production-readiness reviews.
   Azure DevOps Pipelines. Auth via a Service Connection + a variable
   group named `agentops`.
 
-The conceptual workflows are identical: one PR gate, three deploy stages
+The conceptual workflows are identical: one PR gate, optional deploy stages
 (dev/qa/prod), and a scheduled Doctor workflow. PR, production, and watchdog
 templates run `agentops doctor --evidence-pack` so reviewers get
 `evidence.json` and `evidence.md` in artifacts.
@@ -33,10 +34,10 @@ first and use the findings as the implementation plan before generating or
 editing workflows.
 
 AgentOps is **azd-first** for app/infrastructure deployment and
-**Foundry-native** for prompt-agent deployment. Do not invent a parallel
-deployment system. AgentOps should gate quality; `azd provision`, `azd
-deploy`, and azd hooks should own infrastructure/app packaging, while
-Foundry owns prompt-agent versions created through the Foundry SDK.
+**Foundry-native** for prompt-agent candidate workflows. Do not invent a
+parallel deployment system. AgentOps should gate quality and record proof;
+`azd provision`, `azd deploy`, azd hooks, Foundry Toolkit, the
+`microsoft-foundry` skill, and project tooling own lifecycle actions.
 
 ## Branch model assumed
 
@@ -55,7 +56,7 @@ and have them generate `--kinds pr,dev,prod`.
 
 ## Step 0 - Prerequisites
 
-1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
+1. `pip install "agentops-toolkit @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"` if `agentops` is missing.
 2. `agentops eval analyze` has been reviewed, `agentops.yaml` exists at the
    project root, and `agentops eval run` works locally.
 3. The user's repo follows GitFlow (or is willing to). If not, ask which
@@ -250,8 +251,8 @@ landing-zone path actionable:
 
 1. AgentOps owns eval gates, Doctor, reports, Cockpit readiness, and the
    workflow guardrails around deployment.
-2. Foundry owns hosted agents, evaluations, traces, monitoring, datasets, and
-   operations.
+2. Foundry owns hosted agents, prompt-agent versions, evaluations, traces,
+   monitoring, datasets, and operations.
 3. azd/Bicep/AILZ owns app and infrastructure deploy when `azure.yaml` or
    `infra/*.bicep` exists.
 4. Project-specific steps such as indexing, data seeding, model deployment,
@@ -289,8 +290,8 @@ Prompt-agent workflows:
 
 This avoids the bad pattern of evaluating one agent version and deploying a
 different prompt. The invariant is: **evaluated version == deployed version**.
-Foundry remains the system of record for agent versions; AgentOps owns the
-repo-side gate and deployment record.
+Foundry manages agent versions; AgentOps owns the repo-side gate and
+deployment record.
 
 If this is not a Foundry prompt agent and azd is not ready, generate
 `--kinds pr` only or use `--deploy-mode placeholder`. Do not ship
@@ -338,6 +339,9 @@ Common follow-ups:
   Foundry prompt agents, use `--deploy-mode prompt-agent` so the workflow
   calls the Foundry SDK and evaluates the candidate version before marking
   it deployed.
+- Do **not** use AgentOps workflows to create or deploy Foundry Hosted Agents.
+  Use Foundry Toolkit / the `microsoft-foundry` skill / the app's azd path,
+  then point AgentOps at the deployed URL for gates and evidence.
 - The four workflow names (`agentops-pr`, `agentops-deploy-dev`,
   `agentops-deploy-qa`, `agentops-deploy-prod`) are fixed - don't rename
   them or branch-protection wiring will break.

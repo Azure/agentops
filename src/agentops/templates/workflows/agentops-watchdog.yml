@@ -60,7 +60,7 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 
       # First run has no prior artifact. Using `pattern:` instead of
       # `name:` makes actions/download-artifact return success with zero

@@ -1,17 +1,23 @@
 ---
 name: agentops-config
-description: Generate or update agentops.yaml (flat 1.0 schema) by inspecting the workspace. Trigger on "configure agentops", "agentops.yaml", "set up evaluation", "what should I evaluate". Infer the agent target and dataset from the codebase; ask only when nothing can be found.
+description: Generate or update agentops.yaml (flat 1.0 schema) for AgentOps release-readiness gates. Trigger on "configure agentops", "agentops.yaml", "set up evaluation", "what should I evaluate". Infer the agent target and dataset from the codebase; ask only when nothing can be found.
 ---
 
 # AgentOps Config
 
-Generate `agentops.yaml` at the project root. The flat schema has only a
-handful of fields - most projects need just `version`, `agent`, and
+Generate `agentops.yaml` at the project root. This file references the agent
+candidate and dataset used to answer "can we ship it?" The flat schema has only
+a handful of fields - most projects need just `version`, `agent`, and
 `dataset`.
+
+This skill configures AgentOps release gates. It does **not** create or deploy
+Foundry agents. If the user needs to create/deploy a Prompt Agent or Hosted
+Agent first, hand off to Foundry Toolkit / the `microsoft-foundry` skill / azd,
+then return here once there is a `name:version` or URL.
 
 ## Step 0 - Prerequisites
 
-1. `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
+1. `pip install "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"` if `agentops` is missing.
 2. Run `agentops eval analyze` first. If it reports missing or ambiguous
    target/dataset/scenario signals, use this skill to adapt the config.
 3. If `agentops.yaml` does not exist, run `agentops init` first. The init
@@ -26,8 +32,8 @@ Search the codebase for the strongest signal and pick one:
 
 | Signal | `agent:` value |
 |---|---|
-| `AIProjectClient(...)` + agent ID literal `name:N` | `"<name>:<N>"` |
-| Foundry hosted agent URL `https://...services.ai.azure.com/...agents/...` | the full URL |
+| Foundry Prompt Agent ID `name:N` | `"<name>:<N>"` |
+| Foundry Hosted Agent URL `https://...services.ai.azure.com/...agents/...` | the full URL |
 | Any other HTTP endpoint your agent serves (FastAPI, Express, ACA, AKS) | the full URL |
 | Direct model use (`openai.chat.completions.create(model=...)`) with no orchestration | `"model:<deployment-name>"` |
 

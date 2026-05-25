@@ -88,6 +88,7 @@ def build_cockpit_payload(
     production = {"has_data": False, "deferred": telemetry.get("enabled", False), "cards": []}
 
     eval_payload = _build_eval_section(eval_runs)
+    eval_payload["official_eval"] = _official_eval_artifact_status(workspace)
     watchdog_payload = _build_watchdog_section(records)
     deployments_payload = _build_deployments_section(workspace, time_range)
     foundry_connection = _build_foundry_connection(workspace, telemetry)
@@ -1782,13 +1783,10 @@ def _build_open_in_foundry(
     """Build the deep-link panel that sends users from the cockpit
     straight into the equivalent Foundry / Azure Monitor surface.
 
-    Foundry owns the system of record for runtime metrics, traces,
-    evaluations, datasets, agent monitoring, and red teaming.
-    Cockpit surfaces a curated panel of deep-links so users can drill
-    down without manually navigating the portal. The Azure Monitor
-    tile is rendered as a separate subgroup so the visual hierarchy
-    matches the "complement Foundry" story: Foundry first, Azure
-    Monitor as the supporting raw-data tool.
+    Cockpit surfaces a curated panel of Foundry and Azure Monitor links so
+    users can drill down without manually navigating the portal. The Azure
+    Monitor tile is rendered as a separate subgroup to keep runtime views
+    and raw telemetry views easy to distinguish.
     """
     deeplinks = _foundry_deeplinks(workspace)
     portal_url = telemetry.get("portal_url") if isinstance(telemetry, dict) else None
@@ -1950,13 +1948,22 @@ def _build_readiness_checklist(
         }
     )
 
-    cont_eval = _detect_continuous_eval(workspace)
+    eval_workflow = _detect_eval_workflow(workspace)
+    cont_eval = bool(eval_workflow.get("present"))
+    eval_runner = str(eval_workflow.get("runner") or "")
     checks.append(
         {
             "title": "CI eval gate (workflow on PRs)",
             "status": "ok" if cont_eval else "warn",
             "detail": (
-                "Detected an AgentOps workflow that runs <code>agentops eval run</code>."
+                (
+                    "Detected a CI workflow that uses the official Microsoft "
+                    "Foundry AI Agent Evaluation runner. AgentOps prepares "
+                    "<code>.agentops/official-eval/</code> input/result evidence; "
+                    "the Microsoft action/task owns the gate result."
+                )
+                if eval_runner == "official-ai-agent-evaluation"
+                else "Detected an AgentOps workflow that runs <code>agentops eval run</code>."
                 if cont_eval
                 else "<strong>How to complete:</strong> run "
                 "<code>agentops workflow generate --kinds pr</code>, commit "
@@ -1995,19 +2002,36 @@ def _build_readiness_checklist(
         }
     )
 
-    scheduled = _detect_scheduled_eval(workspace)
+    evidence = _release_evidence_status(workspace)
+    evidence_status = evidence.get("status")
+    checks.append(
+        {
+            "title": "Release evidence pack",
+            "status": "ok" if evidence_status == "ready" else "warn",
+            "detail": _release_evidence_detail(evidence),
+        }
+    )
+
+    scheduled = bool(eval_workflow.get("scheduled"))
+    scheduled_runner = str(eval_workflow.get("scheduled_runner") or "")
     checks.append(
         {
             "title": "Scheduled eval (drift watch)",
             "status": "ok" if scheduled else "muted",
             "detail": (
-                "Detected a cron-scheduled AgentOps workflow."
+                (
+                    "Detected a cron-scheduled workflow that uses the official "
+                    "Microsoft Foundry AI Agent Evaluation runner."
+                )
+                if scheduled_runner == "official-ai-agent-evaluation"
+                else "Detected a cron-scheduled AgentOps eval workflow."
                 if scheduled
                 else "<strong>How to complete:</strong> create a scheduled "
                 "quality gate in CI. Add an <code>on.schedule</code> "
                 "cron trigger to an eval workflow that runs "
-                "<code>agentops eval run</code>. Commit the workflow so "
-                "AgentOps catches silent regressions even when no PR is open. "
+                "<code>agentops eval run</code> or the official Microsoft AI "
+                "Agent Evaluation runner for prompt agents. Commit the workflow "
+                "so regressions are caught even when no PR is open. "
                 '<a href="https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#schedule" '
                 'target="_blank" rel="noopener noreferrer">GitHub schedule docs &#x2197;</a>'
             ),
@@ -2151,8 +2175,8 @@ def _build_next_actions(
 ) -> Dict[str, Any]:
     """Surface a short, ordered list of contextual next actions.
 
-    Each action either points back into a cockpit section or hands the
-    user off to Foundry / Azure for the runtime concern.
+    Each action either opens a Cockpit section or links to the relevant
+    Foundry / Azure runtime view.
     """
     actions: List[Dict[str, Any]] = []
 
@@ -2175,8 +2199,9 @@ def _build_next_actions(
             {
                 "title": "Add a CI eval workflow",
                 "detail": (
-                    "Generate a GitHub Actions workflow that runs "
-                    "<code>agentops eval run</code> on every PR."
+                    "Generate a PR workflow. Prompt-agent repos use the "
+                    "official Microsoft eval runner when compatible; hosted "
+                    "and fallback cases use <code>agentops eval run</code>."
                 ),
                 "cta": "agentops workflow generate",
             }
@@ -2194,15 +2219,35 @@ def _build_next_actions(
             }
         )
 
-    if not eval_payload.get("has_runs"):
+    official_eval = _official_eval_artifact_status(workspace)
+    has_eval_proof = (
+        bool(eval_payload.get("has_runs"))
+        or bool(eval_payload.get("runs"))
+        or bool(official_eval.get("present"))
+    )
+    if not has_eval_proof:
         actions.append(
             {
                 "title": "Run your first evaluation",
                 "detail": (
-                    "No local eval history yet. Generate a baseline so "
-                    "regressions become visible."
+                    "No eval gate evidence yet. Run <code>agentops eval run</code> "
+                    "locally, or run the generated official-eval workflow for a "
+                    "compatible Foundry prompt agent."
                 ),
                 "cta": "agentops eval run",
+            }
+        )
+
+    evidence = _release_evidence_status(workspace)
+    if has_eval_proof and evidence.get("status") in {"missing", "unreadable"}:
+        actions.append(
+            {
+                "title": "Generate release evidence",
+                "detail": (
+                    "Package the latest eval gate, Doctor findings, CI/CD "
+                    "status, and Foundry links into the release-review artifact."
+                ),
+                "cta": "agentops doctor --evidence-pack",
             }
         )
 
@@ -2321,34 +2366,192 @@ def _project_endpoint_compact_label(url: str) -> str:
     return _shorten_endpoint(url)
 
 
-def _detect_continuous_eval(workspace: Path) -> bool:
-    """True when a GitHub Actions workflow runs ``agentops eval run``."""
-    workflows = workspace / ".github" / "workflows"
-    if not workflows.is_dir():
-        return False
-    for entry in workflows.glob("*.y*ml"):
-        try:
-            text = entry.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
+_OFFICIAL_EVAL_WORKFLOW_MARKERS = (
+    "microsoft/ai-agent-evals",
+    "AIAgentEvaluation@2",
+    ".agentops/official-eval",
+    "agentops.pipeline.official_eval",
+)
+_AGENTOPS_EVAL_WORKFLOW_MARKERS = (
+    "agentops eval run",
+    "agentops eval",
+)
+
+
+def _detect_eval_workflow(workspace: Path) -> Dict[str, Any]:
+    """Detect local CI workflows that run an eval gate.
+
+    AgentOps can generate two valid gates: the official Microsoft Foundry
+    AI Agent Evaluation runner for compatible prompt agents, or the
+    AgentOps local runner for hosted HTTP/model/fallback cases.
+    """
+
+    result: Dict[str, Any] = {
+        "present": False,
+        "runner": None,
+        "scheduled": False,
+        "scheduled_runner": None,
+        "paths": [],
+    }
+    for entry, text in _iter_workflow_texts(workspace):
+        runner = _classify_eval_workflow(text)
+        if runner is None:
             continue
-        if "agentops eval run" in text or "agentops eval" in text:
-            return True
-    return False
+        result["present"] = True
+        result["paths"].append(str(entry))
+        if runner == "official-ai-agent-evaluation" or result["runner"] is None:
+            result["runner"] = runner
+        if _workflow_has_schedule(text):
+            result["scheduled"] = True
+            if runner == "official-ai-agent-evaluation" or result["scheduled_runner"] is None:
+                result["scheduled_runner"] = runner
+    return result
+
+
+def _iter_workflow_texts(workspace: Path) -> List[Tuple[Path, str]]:
+    candidates = [
+        workspace / ".github" / "workflows",
+        workspace / ".azuredevops" / "pipelines",
+    ]
+    texts: List[Tuple[Path, str]] = []
+    for workflows in candidates:
+        if not workflows.is_dir():
+            continue
+        for entry in workflows.glob("*.y*ml"):
+            try:
+                texts.append((entry, entry.read_text(encoding="utf-8", errors="ignore")))
+            except OSError:
+                continue
+    return texts
+
+
+def _classify_eval_workflow(text: str) -> Optional[str]:
+    if any(marker in text for marker in _OFFICIAL_EVAL_WORKFLOW_MARKERS):
+        return "official-ai-agent-evaluation"
+    if any(marker in text for marker in _AGENTOPS_EVAL_WORKFLOW_MARKERS):
+        return "agentops-local"
+    return None
+
+
+def _workflow_has_schedule(text: str) -> bool:
+    return "schedule:" in text or "schedules:" in text
+
+
+def _detect_continuous_eval(workspace: Path) -> bool:
+    """True when a local CI workflow runs an eval gate."""
+    return bool(_detect_eval_workflow(workspace).get("present"))
 
 
 def _detect_scheduled_eval(workspace: Path) -> bool:
-    """True when a workflow with ``agentops eval`` also has a ``schedule:`` trigger."""
-    workflows = workspace / ".github" / "workflows"
-    if not workflows.is_dir():
-        return False
-    for entry in workflows.glob("*.y*ml"):
-        try:
-            text = entry.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            continue
-        if "agentops eval" in text and "schedule:" in text:
-            return True
-    return False
+    """True when an eval workflow has a schedule trigger."""
+    return bool(_detect_eval_workflow(workspace).get("scheduled"))
+
+
+def _read_json_object(path: Path) -> Dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _official_eval_artifact_status(workspace: Path) -> Dict[str, Any]:
+    base = workspace / ".agentops" / "official-eval"
+    metadata = _read_json_object(base / "metadata.json")
+    result = _read_json_object(base / "result.json")
+    if not metadata and not result:
+        return {"present": False}
+
+    raw_status = str(result.get("status") or "").strip().lower()
+    passed: Optional[bool]
+    if raw_status in {"success", "succeeded", "passed"}:
+        passed = True
+    elif raw_status in {"failure", "failed", "cancelled", "canceled", "skipped"}:
+        passed = False
+    else:
+        passed = None
+
+    return {
+        "present": True,
+        "status": raw_status or "metadata-only",
+        "passed": passed,
+        "runner": result.get("runner") or metadata.get("runner"),
+        "system": result.get("system"),
+        "items_total": metadata.get("items_total"),
+        "machine_readable_thresholds": (
+            result.get("machine_readable_thresholds")
+            if "machine_readable_thresholds" in result
+            else metadata.get("machine_readable_thresholds")
+        ),
+    }
+
+
+def _release_evidence_status(workspace: Path) -> Dict[str, Any]:
+    path = workspace / ".agentops" / "release" / "latest" / "evidence.json"
+    if not path.exists():
+        return {"status": "missing", "path": path}
+    payload = _read_json_object(path)
+    if not payload:
+        return {"status": "unreadable", "path": path}
+
+    latest_eval = payload.get("latest_eval") if isinstance(payload.get("latest_eval"), dict) else {}
+    official_eval = payload.get("official_eval") if isinstance(payload.get("official_eval"), dict) else {}
+    return {
+        "status": payload.get("status") or "unknown",
+        "path": path,
+        "generated_at": payload.get("generated_at"),
+        "blockers_count": len(payload.get("blockers") or []),
+        "warnings_count": len(payload.get("warnings") or []),
+        "ready_count": len(payload.get("ready") or []),
+        "latest_eval_runner": latest_eval.get("runner"),
+        "official_eval_present": bool(official_eval),
+        "official_machine_readable_thresholds": official_eval.get("machine_readable_thresholds"),
+    }
+
+
+def _release_evidence_detail(evidence: Dict[str, Any]) -> str:
+    status = evidence.get("status")
+    if status == "missing":
+        return (
+            "<strong>How to complete:</strong> run "
+            "<code>agentops doctor --evidence-pack</code> after an eval gate. "
+            "This writes <code>.agentops/release/latest/evidence.json</code> "
+            "and <code>evidence.md</code> for release review."
+        )
+    if status == "unreadable":
+        return (
+            "Found <code>.agentops/release/latest/evidence.json</code>, but "
+            "Cockpit could not read it. Regenerate it with "
+            "<code>agentops doctor --evidence-pack</code>."
+        )
+
+    generated = evidence.get("generated_at")
+    generated_text = f" Generated {_html_escape(generated)}." if generated else ""
+    counts = (
+        f"{evidence.get('ready_count', 0)} ready, "
+        f"{evidence.get('warnings_count', 0)} warning(s), "
+        f"{evidence.get('blockers_count', 0)} blocker(s)."
+    )
+    runner = evidence.get("latest_eval_runner")
+    if runner == "official-ai-agent-evaluation":
+        runner_text = (
+            " Latest eval evidence comes from the official Microsoft Foundry "
+            "AI Agent Evaluation CI gate."
+        )
+    elif runner:
+        runner_text = " Latest eval evidence comes from AgentOps normalized results."
+    else:
+        runner_text = ""
+
+    if status == "ready":
+        prefix = "Release evidence is ready."
+    elif status == "ready_with_warnings":
+        prefix = "Release evidence exists with warnings; review before promotion."
+    elif status == "blocked":
+        prefix = "Release evidence is blocked; resolve the blocker(s) before promotion."
+    else:
+        prefix = "Release evidence exists, but its readiness status is unknown."
+    return f"{prefix} {counts}{generated_text}{runner_text}"
 
 
 def _detect_deployment_workflow(workspace: Path) -> Optional[str]:
@@ -3149,9 +3352,8 @@ def _render_open_in_foundry_section(open_panel: Dict[str, Any]) -> str:
 
     groups = open_panel.get("groups")
     if groups:
-        # Render each group with its own subheader. Keeps Foundry tiles
-        # visually distinct from the Azure Monitor tile so the "Foundry
-        # is the system of record" hierarchy is obvious.
+        # Render each group with its own subheader so Foundry tiles stay
+        # visually distinct from the Azure Monitor tile.
         group_html: List[str] = []
         for group in groups:
             label = _html_escape(group.get("label", ""))
@@ -3433,11 +3635,26 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             section_id="section-eval-runs",
         )
     else:
+        official_eval = payload["eval"].get("official_eval") or {}
+        if official_eval.get("present"):
+            status = _html_escape(official_eval.get("status") or "metadata-only")
+            empty_text = (
+                "No AgentOps-normalized eval runs yet under "
+                "<code>.agentops/results/</code>. Official Microsoft Foundry "
+                "AI Agent Evaluation evidence exists under "
+                f"<code>.agentops/official-eval/</code> with status <strong>{status}</strong>. "
+                "Run <code>agentops doctor --evidence-pack</code> to package it "
+                "for release review."
+            )
+        else:
+            empty_text = (
+                "No eval runs yet under <code>.agentops/results/</code>. "
+                "Run <code>agentops eval run</code> to populate this section."
+            )
         eval_body = (
             eval_caption +
             '<div class="empty-state">'
-            "No eval runs yet under <code>.agentops/results/</code>. "
-            "Run <code>agentops eval run</code> to populate this section."
+            f"{empty_text}"
             "</div>"
             + (f'<div class="grid">{telemetry_card}</div>' if telemetry_card else "")
         )
@@ -3522,10 +3739,8 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             f'Open App Insights KQL →</a>'
         )
 
-    # Foundry Monitor is the system of record for runtime telemetry.
-    # The cockpit only surfaces a 2-card teaser (error rate + P95);
-    # this link is the primary call-to-action so users open Foundry
-    # whenever they need the full picture.
+    # Cockpit surfaces a 2-card teaser (error rate + P95); this link is
+    # the primary call-to-action for the full Foundry Monitor view.
     foundry_monitor_url = None
     open_panel = payload.get("open_in_foundry") or {}
     for target in open_panel.get("targets", []):
@@ -4094,8 +4309,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
   }}
   .deeplink-card .deeplink-cta.muted {{ color: var(--text-dim); }}
   /* Subgroups inside "Foundry launchpad". Each group
-     (configured agent / Foundry project / Azure Monitor) gets its own subheader so the visual
-     hierarchy mirrors the "Foundry is the system of record" story. */
+     (configured agent / Foundry project / Azure Monitor) gets its own subheader. */
   .deeplink-group + .deeplink-group {{
     margin-top: 18px;
   }}

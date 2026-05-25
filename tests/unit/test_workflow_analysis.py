@@ -9,6 +9,7 @@ from agentops.cli.app import app
 from agentops.services.workflow_analysis import (
     analyze_workflow_project,
     recommended_deploy_mode,
+    recommended_eval_runner,
     render_workflow_analysis,
 )
 
@@ -50,6 +51,27 @@ def test_analysis_recommends_prompt_agent_without_azd(tmp_path: Path) -> None:
     assert analysis.classification == "Foundry prompt-agent project"
     assert any(signal.key == "prompt_file" for signal in analysis.signals)
     assert any("prompt_deploy stage" in " ".join(stage.commands) for stage in analysis.stages)
+
+
+def test_analysis_recommends_official_eval_for_supported_prompt_agent(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+    rendered = render_workflow_analysis(analysis, "text")
+
+    assert analysis.recommended_deploy_mode == "prompt-agent"
+    assert analysis.recommended_eval_runner == "official-ai-agent-evaluation"
+    assert recommended_eval_runner(tmp_path) == "official-ai-agent-evaluation"
+    assert "builtin.coherence" in analysis.official_evaluators
+    assert any(signal.key == "official_ai_agent_evaluation" for signal in analysis.signals)
+    assert "Recommended eval runner: official-ai-agent-evaluation" in rendered
 
 
 def test_analysis_uses_placeholder_for_generic_repo(tmp_path: Path) -> None:
@@ -129,6 +151,7 @@ def test_json_render_has_stable_version(tmp_path: Path) -> None:
 
     assert data["version"] == 1
     assert data["recommended_deploy_mode"] == "placeholder"
+    assert data["recommended_eval_runner"] == "agentops-local"
     assert isinstance(data["signals"], list)
     assert isinstance(data["stages"], list)
 
@@ -186,4 +209,3 @@ def test_cli_workflow_analyze_invalid_format_fails(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "--format must be text, markdown, or json" in result.output
-

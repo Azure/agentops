@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agentops-toolkit"
 dynamic = ["version"]
-description = "CLI, Cockpit, and agent skills to operationalize AI agents on Microsoft Foundry"
+description = "Release readiness gates and evidence for Microsoft Foundry agents"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

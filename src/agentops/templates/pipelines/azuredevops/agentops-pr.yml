@@ -51,35 +51,24 @@ stages:
             inputs:
               versionSpec: "3.11"
 
+          - bash: |
+              python -m pip install --upgrade pip
+              # NOTE: pinned to the placerda/foundry-operate-readiness preview fork until the upstream PR lands.
+              python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+            displayName: Install AgentOps Toolkit
+
+__EVAL_TASKS__
+
           - task: AzureCLI@2
-            displayName: Install AgentOps Toolkit and run eval
-            name: eval
+            displayName: Run AgentOps doctor
+            condition: always()
             inputs:
               azureSubscription: $(AZURE_SERVICE_CONNECTION)
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                set +e
-                python -m pip install --upgrade pip
-                # NOTE: pinned to develop branch until AgentOps 1.0 lands on PyPI.
-                python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
-                agentops eval run --config "$(AGENTOPS_CONFIG)"
-                ec=$?
-                echo "##vso[task.setvariable variable=evalExitCode;isOutput=true]$ec"
-                if [ $ec -eq 0 ]; then
-                  echo "##vso[task.setvariable variable=evalResult;isOutput=true]pass"
-                elif [ $ec -eq 2 ]; then
-                  echo "##vso[task.setvariable variable=evalResult;isOutput=true]threshold_failed"
-                else
-                  echo "##vso[task.setvariable variable=evalResult;isOutput=true]error"
-                fi
                 agentops doctor --workspace . --out .agentops/agent/report.md \
                   --severity-fail critical --evidence-pack
-                doctor_ec=$?
-                if [ $ec -ne 0 ]; then
-                  exit $ec
-                fi
-                exit $doctor_ec
             env:
               AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
               AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
@@ -90,7 +79,7 @@ stages:
             displayName: Upload AgentOps results
             condition: always()
             inputs:
-              targetPath: .agentops/results/latest
+              targetPath: __EVAL_ARTIFACT_TARGET__
               artifact: agentops-pr-results
               publishLocation: pipeline
 

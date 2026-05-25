@@ -48,7 +48,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 python -m pip install --upgrade pip
-                python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
+                python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
                 python -m agentops.pipeline.prompt_deploy stage \
                   --config "$(AGENTOPS_CONFIG)" \
                   --environment "$(TARGET_ENVIRONMENT)" \
@@ -91,16 +91,21 @@ stages:
                   inputs:
                     versionSpec: "3.11"
 
+                - bash: |
+                    python -m pip install --upgrade pip
+                    python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+                  displayName: Install AgentOps Toolkit
+
+__EVAL_TASKS__
+
                 - task: AzureCLI@2
-                  displayName: Install AgentOps Toolkit and run eval
+                  displayName: Run AgentOps doctor
+                  condition: always()
                   inputs:
                     azureSubscription: $(AZURE_SERVICE_CONNECTION)
                     scriptType: bash
                     scriptLocation: inlineScript
                     inlineScript: |
-                      python -m pip install --upgrade pip
-                      python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
-                      agentops eval run --config ".agentops/deployments/agentops.candidate.yaml"
                       agentops doctor --workspace . --out .agentops/agent/report.md \
                         --severity-fail critical --evidence-pack
                   env:
@@ -113,7 +118,7 @@ stages:
                   displayName: Upload AgentOps results
                   condition: always()
                   inputs:
-                    targetPath: .agentops/results/latest
+                    targetPath: __EVAL_ARTIFACT_TARGET__
                     artifact: agentops-deploy-__ENV_KEY__-results
                     publishLocation: pipeline
 
@@ -148,7 +153,7 @@ stages:
                     versionSpec: "3.11"
 
                 - bash: |
-                    python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
+                    python -m pip install "agentops-toolkit @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
                     python -m agentops.pipeline.prompt_deploy summarize \
                       --deployment ".agentops/deployments/foundry-agent.json" \
                       --environment "$(TARGET_ENVIRONMENT)"

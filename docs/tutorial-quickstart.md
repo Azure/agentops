@@ -29,7 +29,8 @@ the new run against the baseline.
   Doctor findings, CI/CD status, telemetry readiness, and Foundry/Azure
   navigation into one workspace view.
 - CI/CD workflows for GitHub Actions or Azure DevOps Pipelines
-  (`agentops workflow generate`) including a daily Doctor cron.
+  (`agentops workflow generate`) that use the selected eval runner
+  and include a daily Doctor cron.
 
 The former bundle-based, multi-file workspace has been replaced by this flat `agentops.yaml` workflow for the common case.
 
@@ -55,7 +56,7 @@ replacement.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U uv
-uv pip install "agentops-toolkit[foundry,agent]"
+uv pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 agentops --version
 ```
 
@@ -63,13 +64,16 @@ If you'd rather stay on `pip`, swap the last two lines for:
 
 ```powershell
 python -m pip install -U pip
-python -m pip install --upgrade "agentops-toolkit[foundry,agent]"
+python -m pip install --upgrade "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 ```
 
-The `[foundry]` extra brings the Azure SDKs the eval path needs;
-`[agent]` adds the FastAPI/uvicorn runtime used by `agentops cockpit`
-later in the tutorial. Installing both upfront avoids a second install
-later.
+This tutorial intentionally installs the preview branch from
+`placerda/agentops` while the upstream PR is still being refined. After the
+changes land upstream, switch the install line back to
+`agentops-toolkit[foundry,agent]` from PyPI. The `[foundry]` extra brings the
+Azure SDKs the eval path needs; `[agent]` adds the FastAPI/uvicorn runtime used
+by `agentops cockpit` later in the tutorial. Installing both upfront avoids a
+second install later.
 
 ## 2. Bootstrap the project
 
@@ -570,12 +574,27 @@ writes:
 └── agentops-watchdog.yml
 ```
 
-Each workflow installs AgentOps, runs `agentops eval run`, uploads the
-results as a pipeline artifact, and (for the PR gate) posts the
-rendered `report.md` plus release evidence as an idempotent PR comment.
-The PR, production deploy, and watchdog templates also run
-`agentops doctor --evidence-pack` so `.agentops/release/latest/evidence.*`
-is attached to the workflow artifacts.
+Each workflow installs AgentOps from the same preview fork, runs the selected
+eval runner, uploads the results as a pipeline artifact, and (for the PR gate)
+posts the rendered `report.md` and/or release evidence as an idempotent PR
+comment. For this quickstart's Foundry prompt agent, the generated GitHub
+workflow can use the official Microsoft AI Agent Evaluation action; hosted
+endpoints, generic HTTP agents, model targets, or unsupported evaluator shapes
+fall back to `agentops eval run`. The PR, production deploy, and watchdog
+templates also run `agentops doctor --evidence-pack` so
+`.agentops/release/latest/evidence.*` is attached to the workflow artifacts.
+
+If you need the generated GitHub workflow to use the `placerda` fork of the
+official eval action while an upstream action change is still under review,
+set this before running `workflow generate`:
+
+```powershell
+$env:AGENTOPS_OFFICIAL_EVAL_ACTION = "placerda/ai-agent-evals@v3-beta"
+agentops workflow generate --force
+```
+
+Leave the variable unset when you want the workflow to use the Microsoft-owned
+`microsoft/ai-agent-evals@v3-beta` action.
 
 Deployment is azd-first. If you omit `--deploy-mode`, the default is `auto`.
 When `azure.yaml` exists, `auto` writes deploy stages that call
@@ -740,11 +759,14 @@ gh workflow run "agentops-pr.yml" --ref main
 gh run watch
 ```
 
-The expected output is `Threshold status: PASSED` followed by
-`exit code 0`. If you see `failed to load agentops.yaml` validation
-errors, the CI installed an older AgentOps build than your local one
- -  pin the install to a specific tag in the workflow's
-`pip install` step.
+If the workflow selected the AgentOps local runner, the expected output is
+`Threshold status: PASSED` followed by `exit code 0`. If the workflow selected
+the official Microsoft AI Agent Evaluation runner, the expected signal is a
+green official-eval step plus `.agentops/official-eval/result.json` and
+`.agentops/release/latest/evidence.md` in the workflow artifact. If you see
+`failed to load agentops.yaml` validation errors, the CI installed an older
+AgentOps build than your local one - keep the workflow install line pinned to
+`placerda/agentops@foundry-operate-readiness` while using this preview branch.
 
 ## Where evaluators come from
 

@@ -252,6 +252,50 @@ def test_auto_deploy_mode_uses_prompt_agent_for_foundry_prompt_config(tmp_path: 
     assert "Deploy (placeholder)" not in content
 
 
+def test_prompt_agent_config_uses_official_eval_action_when_supported(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+
+    assert result.eval_runner == "official-ai-agent-evaluation"
+    assert isinstance(_read_yaml(tmp_path / _PR_PATH), dict)
+    assert "microsoft/ai-agent-evals@v3-beta" in content
+    assert "python -m agentops.pipeline.official_eval prepare" in content
+    assert ".agentops/official-eval/input.json" in content
+    assert ".agentops/official-eval/result.json" in content
+    assert "Record official eval result" in content
+    assert "agentops eval run" not in content
+
+
+def test_official_eval_action_can_point_to_preview_fork(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENTOPS_OFFICIAL_EVAL_ACTION", "placerda/ai-agent-evals@v3-beta")
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+
+    generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+
+    assert "uses: placerda/ai-agent-evals@v3-beta" in content
+    assert "AGENTOPS_OFFICIAL_EVAL_ACTION: placerda/ai-agent-evals@v3-beta" in content
+
+
 def test_auto_deploy_mode_uses_azd_when_azure_yaml_exists(tmp_path: Path) -> None:
     (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
     (tmp_path / "agentops.yaml").write_text(
@@ -572,6 +616,57 @@ def test_azure_devops_prompt_agent_deploy_mode_uses_candidate_gate(tmp_path: Pat
     assert "dependsOn: stage_candidate" in content
     assert "foundry-agent-dev-deployment" in content
     assert "./agentops/deploy.sh" not in content
+
+
+def test_azure_devops_supported_prompt_agent_uses_official_eval_task(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+
+    result = generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=["dev"],
+    )
+    content = (tmp_path / _ADO_DEV).read_text(encoding="utf-8")
+
+    assert result.eval_runner == "official-ai-agent-evaluation"
+    assert isinstance(_read_yaml(tmp_path / _ADO_DEV), dict)
+    assert "AIAgentEvaluation@2" in content
+    assert "python -m agentops.pipeline.official_eval prepare" in content
+    assert "Record official eval result" in content
+    assert "targetPath: .agentops/official-eval" in content
+    assert "agentops eval run" not in content
+
+
+def test_official_eval_ado_task_can_be_overridden(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("AGENTOPS_OFFICIAL_EVAL_ADO_TASK", "AIAgentEvaluationPreview@2")
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+
+    generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=["dev"],
+    )
+    content = (tmp_path / _ADO_DEV).read_text(encoding="utf-8")
+
+    assert "AIAgentEvaluationPreview@2" in content
+    assert "AGENTOPS_OFFICIAL_EVAL_ADO_TASK: AIAgentEvaluationPreview@2" in content
 
 
 def test_unknown_platform_raises(tmp_path: Path) -> None:

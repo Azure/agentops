@@ -106,23 +106,15 @@ __AILZ_PREFLIGHT_COMMAND__
       - name: Install uv
         uses: astral-sh/setup-uv@v3
       - name: Install AgentOps Toolkit
-        run: uv pip install --system "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
-      - name: Run AgentOps eval
-        env:
-          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
-          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
-          APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}
-        run: agentops eval run --config "${{ inputs.config || 'agentops.yaml' }}"
+        run: uv pip install --system "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+__EVAL_STEPS__
       - name: Upload AgentOps results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: agentops-qa-results
           path: |
-            .agentops/results/latest/results.json
-            .agentops/results/latest/report.md
-            .agentops/results/latest/cloud_evaluation.json
+            __EVAL_ARTIFACT_PATHS__
           if-no-files-found: warn
 
   deploy:

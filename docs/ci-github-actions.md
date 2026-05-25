@@ -4,29 +4,23 @@ This guide shows how to wire AgentOps into a complete GenAIOps CI/CD
 pipeline on GitHub Actions, mapped to a classic GitFlow branching model
 with three deployment environments (`dev`, `qa`, `production`).
 
-`agentops workflow analyze` is the safe first step for a copied accelerator or
-unfamiliar repository: it inspects local files and recommends whether AgentOps
-should generate azd-backed deployment, Foundry prompt-agent deployment, or a
-placeholder scaffold for project-specific adaptation.
+Start with `agentops workflow analyze`. It reads the repo and recommends both
+deployment wiring (azd, prompt-agent, or placeholder) and the eval runner.
 
-`agentops workflow generate --kinds pr` is the safe first generated workflow for
-a new repository: it creates only the PR eval gate. Generate the full DEV/QA/PROD
-deploy scaffold after GitHub Environments and Azure OIDC are configured.
-If the repo has `azure.yaml`, AgentOps can generate azd-backed deploy
-workflows that delegate provision/deploy to Azure Developer CLI. For the
-Quick Start-style Foundry prompt agent, AgentOps can also generate a
-prompt-agent workflow: it creates a candidate Foundry agent version from a
-source-controlled prompt file, evaluates that exact version, then records it
-as deployed only when the gate passes.
+Generate the PR gate first: `agentops workflow generate --kinds pr`. Add
+DEV/QA/PROD after GitHub Environments and Azure OIDC are ready. Repos with
+`azure.yaml` use azd-backed deploys; Foundry prompt agents can use
+prompt-agent deploys and the official Microsoft Foundry AI Agent Evaluation
+runner when the dataset is compatible.
 
 The full scaffold ships five templates:
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate plus release evidence. Fails the PR if thresholds or critical Doctor findings block the candidate. Comments report and evidence on PR. |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate, evidence, PR comment |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
-| `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → release evidence → build → deploy PROD (gated by required reviewers) |
+| `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
 | `agentops-watchdog.yml` | daily cron | `dev` | Scheduled Doctor + release evidence |
 
 ## GitFlow assumed
@@ -95,6 +89,7 @@ In Settings → Secrets and variables → Actions → **Variables**, add:
 | `AZURE_TENANT_ID` | Azure AD tenant |
 | `AZURE_SUBSCRIPTION_ID` | Target subscription |
 | `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project URL (used by the eval step) |
+| `AZURE_OPENAI_DEPLOYMENT` | Model deployment used by local evaluators and the official AI Agent Evaluation runner |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional fallback when the Foundry project's App Insights connection cannot be auto-discovered |
 
 Then on the Azure side, configure Workload Identity Federation
@@ -169,18 +164,20 @@ files, landing-zone manifests, private-network terms, Docker/Container Apps
 signals, and existing CI folders. README matches such as GPT-RAG, Live Voice, or
 AI Landing Zone are treated as hints; structural files drive the recommendation.
 `workflow generate --deploy-mode auto` uses the same recommendation, so the
-analysis and generated templates do not drift. If you omit `--deploy-mode`, the
-default is `auto`; the command output prints the selected effective mode, for
-example `azd (auto default)` or `placeholder (auto default)`.
+analysis and generated templates do not drift. The analyzer also reports the
+eval runner: `official-ai-agent-evaluation` for compatible Foundry prompt
+agents, otherwise `agentops-local`. If you omit `--deploy-mode`, the default is
+`auto`; the command output prints the selected effective mode, for example
+`azd (auto default)` or `placeholder (auto default)`.
 
 Use one of these modes:
 
 | Mode | When to use it |
 |---|---|
-| `--deploy-mode auto` | Default when the flag is omitted. Uses azd templates when `azure.yaml` exists; otherwise uses prompt-agent templates when `agentops.yaml` targets a Foundry prompt agent; otherwise keeps placeholders. |
-| `--deploy-mode azd` | Force `azd provision` / `azd deploy` templates. Use this after creating or adapting `azure.yaml` and `infra/`. |
-| `--deploy-mode prompt-agent` | For Foundry prompt agents. Create/reuse a candidate version from `prompt_file`, evaluate that exact version, then record it as deployed when the gate passes. |
-| `--deploy-mode placeholder` | Keep stack-agnostic build/deploy placeholders for repos that are not azd-managed yet. |
+| `--deploy-mode auto` | Pick azd, prompt-agent, or placeholders from repo signals. |
+| `--deploy-mode azd` | Use `azd provision` / `azd deploy` templates. |
+| `--deploy-mode prompt-agent` | Create, evaluate, and record a Foundry prompt-agent candidate. |
+| `--deploy-mode placeholder` | Keep stack-agnostic build/deploy placeholders. |
 
 For azd-managed repos:
 
@@ -194,7 +191,7 @@ The generated deploy workflows:
 2. run `azd env new ... || azd env select ...` on each CI runner;
 3. run `azd provision --no-prompt` for DEV by default;
 4. run `azd provision --no-prompt` for QA/PROD only when manually requested;
-5. run `agentops eval run` as the quality/safety gate;
+5. run the selected eval runner as the quality/safety gate;
 6. run `azd env refresh` on the deploy runner;
 7. run `azd deploy --no-prompt`.
 
@@ -240,15 +237,28 @@ Each deploy workflow does this:
 1. stages a candidate Foundry prompt-agent version from `prompt_file`;
 2. writes `.agentops/deployments/agentops.candidate.yaml` pointing at the
    candidate `name:version`;
-3. runs `agentops eval run` against that candidate version;
+3. runs the official AI Agent Evaluation runner against that candidate version
+   when supported, or `agentops eval run` as the local fallback;
 4. runs `agentops doctor --evidence-pack` so the exact candidate has release evidence;
 5. records `.agentops/deployments/foundry-agent.json` as a CI artifact only
    after the gate passes.
 
 This keeps the invariant clear: **the evaluated agent version is the deployed
-agent version**. Foundry remains the system of record for the agent and its
-versions; AgentOps supplies the repo-side gate, deployment record, and
-Cockpit visibility.
+agent version**. Foundry manages the candidate agent versions; AgentOps
+prepares the official-eval input under `.agentops/official-eval/` when that
+runner is selected, and always supplies the repo-side gate, deployment record,
+and Cockpit visibility.
+
+Preview branches can temporarily route the generated GitHub workflow to a fork
+of the official eval action before an upstream action PR is merged:
+
+```powershell
+$env:AGENTOPS_OFFICIAL_EVAL_ACTION = "placerda/ai-agent-evals@v3-beta"
+agentops workflow generate --force
+```
+
+Leave the variable unset to use the Microsoft-owned
+`microsoft/ai-agent-evals@v3-beta` action.
 
 #### Container Apps
 
@@ -349,15 +359,20 @@ In Settings → Branches, add a rule for **both `develop` and `main`**:
 
 This makes the AgentOps eval a hard merge requirement.
 
-## Exit codes
+## Gate result
 
-The eval step uses the AgentOps exit code contract to gate deploys:
+When `agentops-local` is selected, the eval step uses the AgentOps exit code
+contract to gate deploys:
 
 | Exit code | Meaning | Job result |
 |---|---|---|
 | `0` | Eval ran, all thresholds passed | ✅ pass |
 | `2` | Eval ran, one or more thresholds failed | ❌ fail (deploy never runs) |
 | `1` | Runtime / config error | ❌ fail |
+
+When `official-ai-agent-evaluation` is selected, the Microsoft action/task owns
+the eval job result. AgentOps still uploads the prepared input and metadata so
+the release has repo-side proof of what was evaluated.
 
 ## Artifacts
 
@@ -367,6 +382,8 @@ Each workflow uploads (always - even on failure):
 - `report.md` - human-readable
 - `cloud_evaluation.json` - present when using Foundry cloud evaluation;
   contains a deep link to the New Foundry Experience Evaluations page
+- `.agentops/official-eval/input.json`, `metadata.json`, and `result.json` -
+  present when using the official AI Agent Evaluation runner
 - `evidence.json` and `evidence.md` - present in PR, PROD, and watchdog
   workflows after `agentops doctor --evidence-pack`
 
@@ -388,7 +405,7 @@ agentops eval promote-traces --source traces.jsonl --apply
 agentops doctor --evidence-pack                # write release evidence
 agentops workflow analyze                      # inspect repo and recommend stages
 agentops workflow analyze --format json        # stable machine-readable analysis
-agentops workflow generate --kinds pr          # safe first PR gate
+agentops workflow generate --kinds pr          # PR gate
 agentops workflow generate                     # all five templates; deploy mode defaults to auto
 agentops workflow generate --kinds pr,dev,prod # subset (trunk-based)
 agentops workflow generate --deploy-mode azd   # delegate deploy to azd

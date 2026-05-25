@@ -3,7 +3,7 @@
 # agentops:deploy-mode=prompt-agent
 #
 # This workflow treats the repo prompt file as the source of truth for agent
-# instructions and Foundry as the system of record for agent versions:
+# instructions and uses Foundry to manage candidate agent versions:
 #   1. create/reuse a candidate Foundry prompt-agent version from prompt_file;
 #   2. run AgentOps eval against that exact candidate version;
 #   3. record the candidate as deployed only after the gate passes.
@@ -58,7 +58,7 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 
       - name: Create candidate agent version from prompt_file
         env:
@@ -113,17 +113,12 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          uv pip install --system "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
+          uv pip install --system "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 
-      - name: Run AgentOps eval against candidate version
-        env:
-          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
-          AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
-          AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
-          APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}
-        run: agentops eval run --config ".agentops/deployments/agentops.candidate.yaml"
+__EVAL_STEPS__
 
       - name: Generate release evidence
+        if: always()
         env:
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}
           AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT }}
@@ -139,9 +134,7 @@ jobs:
         with:
           name: agentops-__ENV_KEY__-results
           path: |
-            .agentops/results/latest/results.json
-            .agentops/results/latest/report.md
-            .agentops/results/latest/cloud_evaluation.json
+            __EVAL_ARTIFACT_PATHS__
             .agentops/agent/report.md
             .agentops/release/latest/evidence.json
             .agentops/release/latest/evidence.md
@@ -184,7 +177,7 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          python -m pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"
+          python -m pip install "agentops-toolkit @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 
       - name: Mark candidate as deployed
         run: |

@@ -2,13 +2,19 @@
 
 AgentOps skills are instructions for a coding agent. They help GitHub
 Copilot, Copilot CLI, Cursor, or Claude Code inspect your repository and
-produce the right AgentOps files and commands.
+produce the AgentOps files and commands that answer: **can we ship this
+Foundry agent, and where is the proof?**
+
+They are intentionally thin. Foundry tools create, deploy, run, observe, and
+debug agents. AgentOps skills prepare the repo-side release gate: config,
+small reviewable datasets, eval commands, reports, workflows, Doctor, and
+evidence.
 
 They are not the same thing as the AgentOps Watchdog runtime:
 
 | Concept | Where it lives | What it does |
 |---|---|---|
-| Coding-agent skills | `.github/skills/` or `.claude/commands/` | Guide Copilot to create config, datasets, workflows, evals, reports, and Watchdog commands. |
+| Coding-agent skills | `.github/skills/` or `.claude/commands/` | Guide Copilot to create AgentOps config, datasets, workflows, evals, reports, and Doctor commands. |
 | Watchdog runtime | `agentops doctor` / `agentops agent serve` | Reads real eval history, Azure Monitor telemetry, and Foundry metadata to produce findings. |
 | `agentops-agent` skill | Installed skill file | The Copilot-facing workflow for invoking Watchdog. It does not invent findings. |
 
@@ -16,19 +22,24 @@ They are not the same thing as the AgentOps Watchdog runtime:
 
 The current CLI installs these skills:
 
-| Skill | Responsibility |
+| Skill | Responsibility | Boundary |
 |---|---|
-| `agentops-config` | Generate or update flat `agentops.yaml` from project context. |
-| `agentops-dataset` | Create realistic JSONL evaluation rows. |
-| `agentops-eval` | Run evals, handle exit codes, and compare against baselines. |
-| `agentops-report` | Explain `results.json` and `report.md`. |
-| `agentops-workflow` | Generate supported GitHub Actions workflows and explain required GitHub/Azure wiring. |
-| `agentops-agent` | Run and interpret Watchdog (`agentops doctor` / `serve`). |
+| `agentops-config` | Generate or update flat `agentops.yaml` from project context. | Setup skill; it references agents, it does not create or deploy them. |
+| `agentops-dataset` | Create small, realistic JSONL evaluation rows. | Setup skill; keep data reviewable and repo-local unless a cloud eval syncs it. |
+| `agentops-eval` | Run evals, handle exit codes, compare baselines, and explain local vs Foundry execution. | Release-gate skill; use official Foundry eval surfaces when they are the better fit. |
+| `agentops-report` | Explain `results.json`, `report.md`, and Foundry eval links. | Evidence skill; it explains artifacts, it does not replace Foundry drilldown. |
+| `agentops-workflow` | Generate PR gates, Doctor/evidence workflows, and supported deploy handoffs. | Release-gate skill; azd, Foundry Toolkit, and project tooling own deployment. |
+| `agentops-agent` | Run and interpret Doctor (`agentops doctor` / `serve`) and Cockpit. | Read-only readiness skill; it does not invent findings or mutate cloud resources. |
 
 There are no shipped `agentops-monitor`, `agentops-trace`, or
 `agentops-regression` skills in this implementation. Monitoring,
 tracing, and regression analysis belong to the Watchdog runtime and
 reports until dedicated skills are implemented.
+
+If the user asks Copilot to create or deploy a Foundry Hosted Agent, use the
+Foundry Toolkit / `microsoft-foundry` skill or the app's azd path first. Bring
+AgentOps in after there is a candidate URL or `name:version` to evaluate and
+prove.
 
 ## Installation options
 

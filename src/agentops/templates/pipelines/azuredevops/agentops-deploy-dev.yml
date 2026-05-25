@@ -48,27 +48,18 @@ stages:
                   inputs:
                     versionSpec: "3.11"
 
-                - task: AzureCLI@2
-                  displayName: Install AgentOps Toolkit and run eval
-                  inputs:
-                    azureSubscription: $(AZURE_SERVICE_CONNECTION)
-                    scriptType: bash
-                    scriptLocation: inlineScript
-                    inlineScript: |
-                      python -m pip install --upgrade pip
-                      python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"
-                      agentops eval run --config "$(AGENTOPS_CONFIG)"
-                  env:
-                    AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
-                    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
-                    AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
-                    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)
+                - bash: |
+                    python -m pip install --upgrade pip
+                    python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+                  displayName: Install AgentOps Toolkit
+
+__EVAL_TASKS__
 
                 - task: PublishPipelineArtifact@1
                   displayName: Upload AgentOps results
                   condition: always()
                   inputs:
-                    targetPath: .agentops/results/latest
+                    targetPath: __EVAL_ARTIFACT_TARGET__
                     artifact: agentops-deploy-$(TARGET_ENVIRONMENT)-results
                     publishLocation: pipeline
 

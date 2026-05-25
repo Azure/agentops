@@ -1,11 +1,13 @@
 ---
 name: agentops-report
-description: Read, regenerate, and explain AgentOps evaluation reports. Trigger on "show report", "explain scores", "regenerate report", "what do these metrics mean". Operates on results.json and report.md produced by `agentops eval run`.
+description: Read, regenerate, and explain AgentOps release-gate reports. Trigger on "show report", "explain scores", "regenerate report", "what do these metrics mean", "where is the proof". Operates on results.json and report.md produced by `agentops eval run`.
 ---
 
 # AgentOps Report
 
-Help the user understand a finished AgentOps run.
+Help the user understand a finished AgentOps run and the evidence it provides
+for the release decision. Reports explain the repo-side gate; they do not
+replace Foundry Evaluations, Traces, or Monitor drilldown.
 
 ## Step 0 - Locate the run
 
@@ -13,10 +15,10 @@ Latest run: `.agentops/results/latest/`. Each run produces:
 
 - `results.json` - machine-readable metrics, per-row scores, thresholds.
 - `report.md` - human-readable summary suitable for PR comments.
-- `cloud_evaluation.json` (only when `publish: true`) - deep-link to
-  the Foundry Evaluations panel. `mode: classic` when `execution: local`
-  (metrics uploaded to Classic Foundry), `mode: cloud` when
-  `execution: cloud` (preview, server-side run via the OpenAI Evals API).
+- `cloud_evaluation.json` (when Foundry visibility is enabled) - deep-link
+  to the Foundry Evaluations panel. `mode: classic` when `execution: local`
+  and `publish: true` upload metrics to Classic Foundry; `mode: cloud` when
+  `execution: cloud` runs server-side via the OpenAI Evals API.
 
 ## Step 1 - Regenerate report.md if needed
 

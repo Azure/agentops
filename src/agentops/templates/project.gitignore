@@ -29,6 +29,7 @@ htmlcov/
 
 # AgentOps runtime artifacts (results are reproducible from the config + dataset)
 .agentops/results/
+.agentops/official-eval/
 .agentops/.resolved/
 
 # Local install scratch space (unpacked plugins, VSIX, editor extras)

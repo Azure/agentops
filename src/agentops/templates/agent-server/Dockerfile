@@ -11,7 +11,7 @@ ARG AGENTOPS_VERSION=
 RUN if [ -n "$AGENTOPS_VERSION" ]; then \
       pip install "agentops-toolkit[agent]==${AGENTOPS_VERSION}"; \
     else \
-      pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"; \
+      pip install "agentops-toolkit[agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"; \
     fi
 
 # Optional: copy a workspace into the image so analyze can find historic

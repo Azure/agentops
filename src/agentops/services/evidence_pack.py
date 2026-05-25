@@ -16,6 +16,7 @@ from agentops.core.release_evidence import (
     ReleaseEvidenceCheck,
     ReleaseEvidenceLink,
 )
+from agentops.pipeline.official_eval import OFFICIAL_EVAL_RUNNER
 from agentops.utils.yaml import load_yaml
 
 
@@ -56,7 +57,8 @@ def build_release_evidence(
     """Collect repo-side release evidence into a stable schema."""
 
     root = workspace.resolve()
-    latest_eval = _latest_eval(root)
+    official_eval = _official_eval_status(root)
+    latest_eval = _latest_eval(root, official_eval=official_eval)
     workflows = _workflow_status(root)
     doctor = _doctor_status(analysis)
     foundry = _foundry_status(analysis)
@@ -70,7 +72,7 @@ def build_release_evidence(
     ready: list[str] = []
 
     _add_eval_check(checks, blockers, warnings, ready, latest_eval)
-    _add_threshold_check(checks, warnings, ready, root)
+    _add_threshold_check(checks, warnings, ready, root, latest_eval)
     _add_baseline_check(checks, warnings, ready, root, latest_eval)
     _add_workflow_checks(checks, warnings, ready, workflows)
     _add_doctor_check(checks, blockers, warnings, ready, doctor)
@@ -95,6 +97,7 @@ def build_release_evidence(
         checks=checks,
         links=links,
         latest_eval=latest_eval,
+        official_eval=official_eval,
         doctor=doctor,
         workflows=workflows,
         foundry=foundry,
@@ -185,7 +188,18 @@ def render_release_evidence_markdown(evidence: ReleaseEvidence) -> str:
     return _redact_text("\n".join(lines).rstrip() + "\n")
 
 
-def _latest_eval(root: Path) -> dict[str, Any]:
+def _latest_eval(root: Path, *, official_eval: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    local_eval = _agentops_eval_status(root)
+    official = official_eval if official_eval is not None else _official_eval_status(root)
+    if _is_eval_available(official) and (
+        not _is_eval_available(local_eval)
+        or _evidence_mtime(official) > _evidence_mtime(local_eval)
+    ):
+        return official
+    return local_eval
+
+
+def _agentops_eval_status(root: Path) -> dict[str, Any]:
     path = root / ".agentops" / "results" / "latest" / "results.json"
     if not path.exists():
         return {"status": "missing", "path": str(path)}
@@ -215,6 +229,7 @@ def _latest_eval(root: Path) -> dict[str, Any]:
 
     return {
         "status": "ok",
+        "runner": "agentops-local",
         "path": str(path),
         "passed": passed,
         "target": target.get("raw") or config.get("agent"),
@@ -227,7 +242,61 @@ def _latest_eval(root: Path) -> dict[str, Any]:
         "has_comparison": isinstance(comparison, dict),
         "foundry_report_url": cloud.get("report_url"),
         "cloud_evaluation": cloud,
+        "machine_readable_thresholds": True,
     }
+
+
+def _official_eval_status(root: Path) -> dict[str, Any]:
+    directory = root / ".agentops" / "official-eval"
+    metadata_path = directory / "metadata.json"
+    result_path = directory / "result.json"
+    if not metadata_path.exists():
+        return {"status": "missing", "metadata_path": str(metadata_path)}
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"status": "invalid", "metadata_path": str(metadata_path), "error": str(exc)}
+    if not isinstance(metadata, dict):
+        return {"status": "invalid", "metadata_path": str(metadata_path), "error": "expected JSON object"}
+
+    result: dict[str, Any] = {}
+    result_error: str | None = None
+    if result_path.exists():
+        try:
+            loaded = json.loads(result_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                result = loaded
+            else:
+                result_error = "expected JSON object"
+        except (OSError, json.JSONDecodeError) as exc:
+            result_error = str(exc)
+
+    passed = _official_eval_passed(result)
+    payload: dict[str, Any] = {
+        "status": "ok",
+        "runner": OFFICIAL_EVAL_RUNNER,
+        "path": str(metadata_path),
+        "metadata_path": str(metadata_path),
+        "result_path": str(result_path) if result_path.exists() else None,
+        "result_recorded": result_path.exists() and result_error is None,
+        "passed": passed,
+        "target": metadata.get("agent_ids"),
+        "target_kind": "foundry_prompt",
+        "deployment_name": metadata.get("deployment_name"),
+        "data_path": metadata.get("data_path"),
+        "items_total": metadata.get("items_total"),
+        "official_evaluators": metadata.get("official_evaluators") if isinstance(metadata.get("official_evaluators"), list) else [],
+        "skipped_agentops_evaluators": metadata.get("skipped_agentops_evaluators") if isinstance(metadata.get("skipped_agentops_evaluators"), list) else [],
+        "warnings": metadata.get("warnings") if isinstance(metadata.get("warnings"), list) else [],
+        "machine_readable_thresholds": False,
+        "has_comparison": False,
+        "action": metadata.get("action"),
+        "azure_devops_task": metadata.get("azure_devops_task"),
+        "result": result,
+    }
+    if result_error:
+        payload["result_error"] = result_error
+    return payload
 
 
 def _workflow_status(root: Path) -> dict[str, Any]:
@@ -336,9 +405,24 @@ def _add_eval_check(
 ) -> None:
     status = latest_eval.get("status")
     if status != "ok":
-        message = "No latest AgentOps evaluation result was found; run `agentops eval run` before treating this agent as production-ready."
+        message = "No latest evaluation result was found; run `agentops eval run` or the generated official-eval workflow before treating this agent as production-ready."
         blockers.append(message)
         checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="blocked", summary=message, evidence=latest_eval))
+        return
+    if latest_eval.get("runner") == OFFICIAL_EVAL_RUNNER:
+        if latest_eval.get("passed") is False:
+            message = "Official AI Agent Evaluation did not complete successfully; review the CI job before promotion."
+            blockers.append(message)
+            checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="blocked", summary=message, evidence=latest_eval))
+            return
+        if latest_eval.get("passed") is True:
+            message = "Official AI Agent Evaluation completed successfully; the Microsoft job result is the release gate."
+            ready.append(message)
+            checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="ready", summary=message, evidence=latest_eval))
+            return
+        message = "Official AI Agent Evaluation input is present, but no pass/fail result was recorded."
+        warnings.append(message)
+        checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="warning", summary=message, evidence=latest_eval))
         return
     if latest_eval.get("passed") is False:
         message = "Latest evaluation failed one or more thresholds."
@@ -360,10 +444,19 @@ def _add_threshold_check(
     warnings: list[str],
     ready: list[str],
     root: Path,
+    latest_eval: dict[str, Any],
 ) -> None:
     config = _agentops_config(root)
     thresholds = config.get("thresholds") if isinstance(config, dict) else None
     if isinstance(thresholds, dict) and thresholds:
+        if latest_eval.get("runner") == OFFICIAL_EVAL_RUNNER:
+            message = (
+                "agentops.yaml declares thresholds, but the official AI Agent Evaluation "
+                "runner does not emit AgentOps-normalized threshold evidence yet."
+            )
+            warnings.append(message)
+            checks.append(ReleaseEvidenceCheck(name="Threshold policy", status="warning", summary=message, evidence={"thresholds": list(thresholds)}))
+            return
         message = "Explicit production thresholds are declared in agentops.yaml."
         ready.append(message)
         checks.append(ReleaseEvidenceCheck(name="Threshold policy", status="ready", summary=message, evidence={"thresholds": list(thresholds)}))
@@ -528,6 +621,36 @@ def _links(latest_eval: dict[str, Any]) -> list[ReleaseEvidenceLink]:
     if report_url:
         links.append(ReleaseEvidenceLink(label="Foundry evaluation report", url=str(report_url)))
     return links
+
+
+def _official_eval_passed(result: dict[str, Any]) -> Optional[bool]:
+    for key in ("status", "outcome", "conclusion", "job_status"):
+        value = result.get(key)
+        if value is None:
+            continue
+        normalized = str(value).strip().lower().replace("_", "").replace("-", "")
+        if normalized in {"success", "succeeded"}:
+            return True
+        if normalized in {"failure", "failed", "cancelled", "canceled", "timedout"}:
+            return False
+    return None
+
+
+def _is_eval_available(eval_status: dict[str, Any]) -> bool:
+    return eval_status.get("status") == "ok"
+
+
+def _evidence_mtime(eval_status: dict[str, Any]) -> float:
+    for key in ("result_path", "metadata_path", "path"):
+        value = eval_status.get(key)
+        if not value:
+            continue
+        path = Path(str(value))
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            continue
+    return 0.0
 
 
 def _agentops_config(root: Path) -> dict[str, Any]:

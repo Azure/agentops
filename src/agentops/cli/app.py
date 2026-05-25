@@ -224,21 +224,18 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         ),
         summary=(
             "AgentOps Toolkit — a CLI, local Cockpit, and agent skills "
-            "that help teams operationalize AI agents on Microsoft Foundry "
-            "with standardized evaluation, observability, tracing, and "
-            "operational practices.",
-            "The CLI runs reproducible evaluations from YAML bundles for "
-            "agents and models, gates them in CI, regenerates reports, and "
-            "installs AgentOps skills into GitHub Copilot or Claude Code. "
-            "The Cockpit brings your project, Foundry, and Azure Monitor "
-            "together in a local browser view. Doctor adds a readiness "
-            "analysis grouped by the Microsoft AI Well-Architected Framework.",
-            "AgentOps complements Foundry instead of replacing it: Foundry "
-            "is the system of record for hosted agents, cloud evaluations, "
-            "runtime traces, monitoring, red teaming, and operations; "
-            "AgentOps provides the repo-side CLI workflow, CI gates, "
-            "normalized artifacts, Doctor diagnostics, and deep links back "
-            "to the right Foundry or Azure Monitor surface.",
+            "that help teams answer two release questions for Microsoft "
+            "Foundry agents: can we ship it, and where is the proof?",
+            "The CLI runs reproducible release gates for agents and models, "
+            "writes stable artifacts, regenerates reports, and installs "
+            "AgentOps skills into GitHub Copilot or Claude Code. The Cockpit "
+            "brings your project, Foundry, and Azure Monitor together in a "
+            "local browser view. Doctor adds readiness analysis grouped by "
+            "the Microsoft AI Well-Architected Framework.",
+            "Foundry runs the agent. AgentOps proves the release is ready: "
+            "CLI configuration, CI gates, normalized artifacts, Doctor "
+            "diagnostics, release evidence, and links to the right Foundry "
+            "or Azure Monitor surface for runtime drilldown.",
             "Use `--help` for the terse syntax. Use `explain` for the "
             "bigger picture — what each command does, what it reads, what "
             "it writes, and where it takes you.",
@@ -595,17 +592,11 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "touching anything in the cloud.",
         ),
         how_it_works=(
-            "Runs pre-flight checks unless `--no-preflight` is used, so missing packages, authentication, or telemetry configuration are surfaced before the browser opens.",
-            "Reads `.agentops/results/*/results.json`, `.agentops/results/latest/report.md`, `.agentops/agent/history.jsonl`, CI workflow metadata, and Doctor diagnostics from the workspace.",
-            "Resolves the configured Foundry project, the linked Application Insights connection, the tenant context for deep-links, and any RBAC posture information already available locally.",
-            "Renders six sections aligned to the AgentOps operating model:",
-            "  1. Foundry connection — project endpoint, agent name/version when available, App Insights status, RBAC posture.",
-            "  2. Foundry launchpad — direct deep-links grouped by configured agent, project-wide Foundry surfaces, and the linked Application Insights resource.",
-            "  3. Observability readiness — checklist for tracing connected, continuous evaluation, scheduled evaluation, red team scans, and alerts.",
-            "  4. AgentOps Doctor — local findings, WAF-AI gaps, and repo/config/CI issues that Foundry does not surface.",
-            "  5. Local eval history — latest `results.json`, PR-friendly reports, and CI gate status.",
-            "  6. Next actions — contextual recommendations such as Enable continuous eval, Full view in Foundry Monitor, or Fix missing App Insights.",
-            "Starts a localhost Uvicorn server and opens a browser tab; auto-refresh is configurable from the page and persists across reloads.",
+            "Runs pre-flight checks unless `--no-preflight` is used.",
+            "Reads eval results, Doctor history, reports, workflows, and telemetry metadata.",
+            "Resolves Foundry, App Insights, tenant, and RBAC context when configured.",
+            "Renders focused sections: connection, launchpad, observability, Doctor, eval gates, quality gates, production signal, CI/CD, and next actions.",
+            "Starts a localhost Uvicorn server and opens a browser tab.",
         ),
         inputs=(
             "`.agentops/results/` evaluation history and latest report",
@@ -615,7 +606,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         ),
         outputs=(
             "Local web server, default `http://127.0.0.1:8090`",
-            "Cockpit page with Foundry connection, Foundry launchpad deep-links, observability readiness, Doctor findings, local eval history, production telemetry, CI/CD pipelines, and next actions",
+            "Cockpit page with connection, launchpad, readiness, Doctor, eval, telemetry, CI/CD, and next actions",
         ),
         examples=("agentops cockpit", "agentops cockpit --port 8091", "agentops cockpit --no-preflight", "agentops cockpit explain"),
         see_also=("agentops explain doctor", "agentops explain eval run", "agentops explain workflow generate"),
@@ -2184,6 +2175,7 @@ def cmd_workflow_generate(
         else result.deploy_mode
     )
     typer.echo(f"{_cli_label('Deploy mode')}: {_cli_value(deploy_mode_note)}")
+    typer.echo(f"{_cli_label('Eval runner')}: {_cli_value(result.eval_runner)}")
     for created in result.created_files:
         typer.echo(_cli_created(created))
     for overwritten in result.overwritten_files:
@@ -2198,7 +2190,8 @@ def cmd_workflow_generate(
             typer.echo(
                 "  1. Configure Azure Workload Identity Federation (OIDC) and set "
                 "repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, "
-                "AZURE_SUBSCRIPTION_ID, AZURE_AI_FOUNDRY_PROJECT_ENDPOINT."
+                "AZURE_SUBSCRIPTION_ID, AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, "
+                "AZURE_OPENAI_DEPLOYMENT."
             )
             typer.echo(
                 "  2. Create three GitHub Environments: 'dev', 'qa', 'production'. "

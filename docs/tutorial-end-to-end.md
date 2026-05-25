@@ -108,9 +108,13 @@ $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry]"
+python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 agentops --version
 ```
+
+This tutorial installs the preview branch from `placerda/agentops` while the
+upstream PR is still being refined. After the changes land upstream, switch the
+install line back to `agentops-toolkit[foundry]` from PyPI.
 
 > The `[foundry]` extra installs the Azure SDK dependencies needed by
 > the helper script and by the local evaluator runtime. `azure-ai-evaluation`
@@ -443,7 +447,7 @@ Five files appear under `.github/workflows/`:
 
 | Workflow | Trigger | Purpose |
 |---|---|---|
-| `agentops-pr.yml` | Pull request opened against `develop` or `main` | Runs `agentops eval run` against the baseline; comments the report on the PR; gates merge on threshold pass/fail. |
+| `agentops-pr.yml` | Pull request opened against `develop` or `main` | Runs the selected eval runner against the baseline; comments the report/evidence on the PR; gates merge on threshold pass/fail. |
 | `agentops-deploy-dev.yml` | Push to `develop` | Deploys to the **dev** environment after a passing eval. |
 | `agentops-deploy-qa.yml` | Push to a `release/*` branch | Deploys to **qa**. |
 | `agentops-deploy-prod.yml` | Push to `main` | Deploys to **prod** after a passing eval. |
@@ -451,6 +455,18 @@ Five files appear under `.github/workflows/`:
 
 Read [`ci-github-actions.md`](ci-github-actions.md) for the full
 reference. The defaults are sane: you do not need to edit them yet.
+For this hosted support-agent path, the selected runner is usually
+`agentops eval run`. For Foundry prompt-agent configs, AgentOps can route the
+workflow to the official Microsoft AI Agent Evaluation runner instead.
+
+If you need a GitHub workflow to use the `placerda` fork of the official eval
+action while an upstream action change is still under review, set the override
+before generating workflows:
+
+```powershell
+$env:AGENTOPS_OFFICIAL_EVAL_ACTION = "placerda/ai-agent-evals@v3-beta"
+agentops workflow generate --force
+```
 
 ## 8. Push to GitHub and watch it run
 
@@ -687,8 +703,11 @@ gh pr create --base develop --fill
 The `agentops-pr.yml` workflow runs. When it finishes you will see:
 
 - A green or red check on the PR.
-- A bot comment with the verdict, threshold table (including the
-  tool-call metrics), and a link to the full `report.md` artifact.
+- A bot comment with the verdict and release evidence. When the workflow uses
+  the AgentOps local runner, the comment also includes the threshold table
+  (including the tool-call metrics) and a link to the full `report.md` artifact.
+  When the workflow uses the official Microsoft AI Agent Evaluation runner,
+  the release evidence points at `.agentops/official-eval/result.json` instead.
   The tutorial's latency threshold is intentionally broad; after a few
   real runs, tighten it in `agentops.yaml` or enforce p95 latency with
   Watchdog in step 9.
@@ -851,7 +870,7 @@ Application Insights connection string, and run one more eval. AgentOps
 will emit OpenTelemetry spans for each dataset row and agent invocation.
 
 ```powershell
-python -m pip install "agentops-toolkit[foundry,agent]"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 
 $env:APPLICATIONINSIGHTS_CONNECTION_STRING = $appInsightsConnectionString
 agentops eval run

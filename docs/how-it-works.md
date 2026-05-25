@@ -4,32 +4,30 @@ This document is the single source of truth for understanding the AgentOps archi
 
 ## What Is AgentOps?
 
-AgentOps is a **standalone Python CLI** that runs **standardized evaluation workflows** for AI agents and models. It:
+AgentOps is a **standalone Python CLI, local Cockpit, and skill set** that helps
+teams answer the Foundry release question: **can we ship this agent, and where
+is the proof?** It:
 
 1. Reads the flat `agentops.yaml` configuration plus JSONL dataset rows.
 2. Executes evaluation against a target (Foundry agent, model deployment, HTTP endpoint, or local adapter).
 3. Produces normalized outputs: `results.json` (machine-readable) and `report.md` (human-readable).
-4. Returns **CI-friendly exit codes** (`0` = pass, `2` = threshold failure, `1` = error) so pipelines can gate on quality.
-5. Optionally writes release evidence (`evidence.json`, `evidence.md`) through `agentops doctor --evidence-pack` so a release reviewer can see eval, Doctor, workflow, Foundry, monitoring, AI Landing Zone, and trace-regression readiness in one place.
+4. Returns CI-friendly exit codes: `0` pass, `2` threshold failure, `1` error.
+5. Writes release evidence with `agentops doctor --evidence-pack`.
 
-AgentOps is intentionally a **Foundry companion**, not a competing portal.
-Microsoft Foundry remains the system of record for hosted agents, model
-deployments, cloud evaluations, datasets, runtime traces, monitoring,
-red teaming, active alerts, and operations. AgentOps owns the developer
-workflow around Foundry: source-controlled eval configuration, local and CI
-quality gates, normalized artifacts, PR reports, Doctor diagnostics,
-workflow generation, App Insights telemetry for CI/Doctor signals, and a
-local Cockpit that deep-links back into Foundry or Azure Monitor for
-drilldown.
+Foundry owns agent creation, deployment, runtime, traces, monitoring,
+red-teaming, datasets, and official evaluation drilldown. AgentOps references
+the candidate those tools produced and adds the repo-controlled release proof:
+config, gates, artifacts, PR reports, Doctor diagnostics, release evidence,
+trace-to-regression promotion, and Cockpit links back to Foundry/Azure Monitor.
 
 ### Key Principles
 
 | Principle | What It Means in Practice |
 |---|---|
-| **Thin CLI** | `cli/app.py` only parses args and calls services. No business logic here. |
-| **Core is pure** | `core/` has zero Azure imports, zero network calls. It only transforms data. |
-| **Lazy Azure imports** | All `azure-*` SDK imports happen inside functions in `backends/` and `services/`, never at the module top level. This keeps the CLI fast and allows tests to run without Azure credentials. |
-| **Pydantic v2 everywhere** | Every YAML config and every JSON output is validated by a Pydantic model in `core/models.py`. |
+| **Thin CLI** | `cli/app.py` parses args and delegates to services. |
+| **Core is pure** | `core/` transforms data without Azure imports or network calls. |
+| **Lazy Azure imports** | Azure SDK imports stay inside runtime functions. |
+| **Pydantic v2** | YAML configs and JSON outputs use Pydantic models. |
 | **pathlib.Path only** | No raw string paths anywhere in the codebase. |
 | **No global state** | No singletons, no module-level side effects. |
 
@@ -93,12 +91,12 @@ src/
 | Add a field to `agentops.yaml` | `core/agentops_config.py` |
 | Add a new evaluator preset | `core/evaluators.py` (catalog) |
 | Change pre-flight checks | `pipeline/runtime.py` |
-| Add a new invocation strategy (new target kind) | `pipeline/invocations.py` + `core/agentops_config.py::classify_agent` |
+| Add a target kind | `pipeline/invocations.py` + `core/agentops_config.py` |
 | Tweak the report layout | `pipeline/reporter.py` |
-| Add or change a publish destination | `pipeline/publisher.py` (Classic) or `pipeline/cloud_runner.py` (New Foundry); register in `pipeline/orchestrator.py` |
-| Add a new CLI command | `cli/app.py` (keep it thin - delegate to `pipeline/` or `services/`) |
+| Add a publish destination | `pipeline/publisher.py` or `pipeline/cloud_runner.py` |
+| Add a CLI command | `cli/app.py` + a service/pipeline helper |
 | Add a starter template | `templates/` + update `pyproject.toml` package-data |
-| Add a coding agent skill | `templates/skills/<name>/SKILL.md` + sync to `plugins/agentops/skills/` (`scripts/sync-skills.{sh,ps1}`) |
+| Add a coding agent skill | `templates/skills/<name>/SKILL.md` + sync script |
 
 ## Request Flow (eval run)
 
@@ -313,14 +311,16 @@ That's a complete config. AgentOps:
 | `version` | yes | Schema version. Must be `1`. |
 | `agent` | yes | Target identifier. See "Target kinds" below. |
 | `dataset` | yes | Relative path to a JSONL file with one evaluation row per line. |
-| `thresholds` | no | Dict of `metric_name: criteria_expression`. Examples: `">=3"`, `"<=10"`, `"true"`, raw number `3` (treated as `>=3`). Defaults from catalog if omitted. |
-| `protocol` | no | Wire protocol for URL-based agents: `responses` (Foundry hosted), `invocations` (Knative), `http-json` (default for arbitrary HTTPS). |
-| `request_field` / `response_field` / `tool_calls_field` | no | JSON keys / dot-paths used to marshal each row into the request and extract the response. Defaults are sensible for OpenAI-compatible / ACA endpoints. |
+| `thresholds` | no | Metric gates such as `">=3"` or `"<=10"`. |
+| `protocol` | no | URL protocol: `responses`, `invocations`, or `http-json`. |
+| `request_field` / `response_field` / `tool_calls_field` | no | Request/response JSON keys or dot-paths. |
 | `headers` | no | Static HTTP headers (dict). |
 | `auth_header_env` | no | Env var name holding a Bearer token. |
 | `evaluators` | no | Escape-hatch list of evaluator names that overrides auto-selection. |
-| `publish` | no | `foundry` (Classic upload) or `foundry_cloud` (also submit server-side). See [Publishing](#publishing-to-foundry-evaluations). |
-| `project_endpoint` | no | Foundry project URL used by `publish:`. Falls back to `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. |
+| `publish` | no | Boolean. With `execution: local`, `true` uploads local metrics to Classic Foundry. With `execution: cloud`, publishing is implicit. |
+| `execution` | no | `local` (default) runs through AgentOps locally. `cloud` runs a Foundry prompt agent server-side through the OpenAI Evals API. |
+| `project_endpoint` | no | Foundry project URL used by Foundry invocation and publishing. Falls back to `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. |
+| `dataset_sync` | no | Cloud-evaluation dataset policy: `auto`, `foundry`, or `inline`. |
 
 ### Target kinds
 
@@ -337,6 +337,11 @@ The kind drives both invocation strategy (`pipeline/invocations.py`) and
 which fields make sense (e.g. `protocol` is rejected for
 `foundry_prompt` and `model_direct`).
 
+Foundry Prompt Agents are created and versioned by Foundry. Foundry Hosted
+Agents are deployed endpoints on a Foundry domain. AgentOps evaluates both, but
+it does not replace the Foundry Toolkit, Foundry SDK, `microsoft-foundry` skill,
+or azd paths that create and deploy them.
+
 ### Examples
 
 **Foundry prompt agent (RAG evaluators auto-selected from dataset rows):**
@@ -349,7 +354,7 @@ thresholds:
   groundedness: ">=3"
   coherence: ">=3"
   avg_latency_seconds: "<=10"
-publish: foundry      # local run, then upload metrics to Classic Foundry
+publish: true         # local run, then upload metrics to Classic Foundry
 ```
 
 **HTTP-deployed agent (LangGraph / ACA / custom REST):**
@@ -374,13 +379,13 @@ thresholds:
   avg_latency_seconds: "<=8"
 ```
 
-**Also submit to New Foundry server-side (preview):**
+**Run in New Foundry server-side (preview):**
 
 ```yaml
 version: 1
 agent: my-rag:3                   # name:version is required for cloud mode
 dataset: .agentops/data/qa.jsonl
-publish: foundry_cloud
+execution: cloud
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
 
@@ -399,13 +404,17 @@ Optional fields drive evaluator auto-selection:
 
 | Field | Triggers |
 |---|---|
-| `context` | RAG evaluators (`GroundednessEvaluator`, `RelevanceEvaluator`, `RetrievalEvaluator`, `ResponseCompletenessEvaluator`) |
-| `tool_calls` + `tool_definitions` | Tool-use evaluators (`ToolCallAccuracyEvaluator`, `IntentResolutionEvaluator`, `TaskAdherenceEvaluator`, …) |
+| `context` | RAG evaluators |
+| `tool_calls` + `tool_definitions` | Tool-use evaluators |
 
 Example RAG row:
 
 ```json
-{"input": "What is the refund policy?", "expected": "Refunds within 30 days.", "context": "Our policy: refunds available within 30 days of purchase."}
+{
+  "input": "What is the refund policy?",
+  "expected": "Refunds within 30 days.",
+  "context": "Our policy: refunds are available within 30 days."
+}
 ```
 
 ### Local JSONL vs Foundry Data/Datasets
@@ -501,18 +510,18 @@ if every threshold passes. The run passes only if every row passes
 
 ## Publishing to Foundry Evaluations
 
-`publish:` is opt-in and controls Foundry visibility. AgentOps always writes
-local `results.json` and `report.md` first. `publish: foundry_cloud` then also
-submits a second, server-side Foundry evaluation. Both modes are best-effort:
-if publish fails, the local artifacts remain the canonical record and the exit
-code reflects only thresholds, not publish failures.
+`execution:` decides where the run happens. `publish:` controls Foundry
+visibility for local runs. AgentOps always writes `results.json` and
+`report.md`; cloud runs also write `cloud_evaluation.json` with the Foundry
+link.
 
-| Mode | What runs | Where results land | Target restriction |
+| Config | What runs | Foundry visibility | Targets |
 |---|---|---|---|
-| `publish: foundry` | Locally in AgentOps, then uploads computed metrics via OneDP. | **Classic** Foundry Evaluations panel. | Any target kind. |
-| `publish: foundry_cloud` (preview) | Locally in AgentOps first, then server-side in Foundry via the OpenAI Evals API. | Local artifacts plus **New** Foundry Evaluations panel. | `foundry_prompt` only (`name:version` Foundry agents). |
+| `execution: local`, `publish: false` | AgentOps invokes target and evaluators locally | None; local artifacts only | Any target |
+| `execution: local`, `publish: true` | AgentOps local run, then metric upload | Classic Foundry Evaluations panel | Any target |
+| `execution: cloud` | Foundry runs agent + evaluators server-side through the OpenAI Evals API | New Foundry Evaluations panel; publish is implicit | Foundry Prompt Agent (`name:version`) |
 
-Both modes:
+Foundry-visible modes:
 
 * Require either `project_endpoint` in `agentops.yaml` or
   `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` in the environment.
@@ -520,9 +529,9 @@ Both modes:
   managed identity, or service principal).
 * Write `cloud_evaluation.json` next to `results.json` containing
   `mode` (`classic` or `cloud`), `evaluation_name`, `report_url`, and
-  (for `foundry_cloud`) the `eval_id` / `run_id` / terminal `status`.
+  (for cloud execution) the `eval_id` / `run_id` / terminal `status`.
 
-The cloud-mode trade-offs (so you can decide consciously):
+The `execution: cloud` trade-offs (so you can decide consciously):
 
 * Foundry-side latency replaces the locally-measured wall-clock latency.
 * Judges are opaque (Foundry-managed); custom evaluators are skipped.
@@ -530,6 +539,12 @@ The cloud-mode trade-offs (so you can decide consciously):
   compatibility remains available and may show `eval-data-*` backing assets.
 * Evaluator runs cost against your Azure OpenAI deployment.
 * Polling adds ~5 s × N to the total wall-clock time.
+
+For CI pipelines that only need a supported Foundry-native eval and do not need
+AgentOps artifacts, baselines, Doctor readiness, or release evidence, the
+official AI Agent Evaluation GitHub Action or Azure DevOps extension may be the
+cleaner entry point. AgentOps is the wrapper when the repo needs a release gate
+and proof pack around those signals.
 
 Implementation lives in [src/agentops/pipeline/publisher.py](../src/agentops/pipeline/publisher.py)
 (Classic) and [src/agentops/pipeline/cloud_runner.py](../src/agentops/pipeline/cloud_runner.py)
@@ -543,7 +558,7 @@ runs a short series of checks and reports **all** failures at once:
 
 * Required Python packages installed (`azure-identity`,
   `azure-ai-evaluation` for AI-assisted evaluators, `azure-ai-projects`
-  if `publish: foundry_cloud`).
+  for Foundry invocation, publishing, or `execution: cloud`).
 * Required env vars set (`AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`,
   `AZURE_OPENAI_*` deployment fields).
 * Azure CLI credential acquires a token within 30 s

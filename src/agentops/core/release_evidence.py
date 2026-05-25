@@ -45,6 +45,7 @@ class ReleaseEvidence(BaseModel):
     checks: List[ReleaseEvidenceCheck] = Field(default_factory=list)
     links: List[ReleaseEvidenceLink] = Field(default_factory=list)
     latest_eval: Dict[str, Any] = Field(default_factory=dict)
+    official_eval: Dict[str, Any] = Field(default_factory=dict)
     doctor: Dict[str, Any] = Field(default_factory=dict)
     workflows: Dict[str, Any] = Field(default_factory=dict)
     foundry: Dict[str, Any] = Field(default_factory=dict)

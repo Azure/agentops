@@ -1,6 +1,6 @@
 ---
 name: agentops-agent
-description: AgentOps Doctor - surface regressions, latency spikes, error rates, and safety hits across AgentOps eval history, Azure Monitor traces, and Foundry control plane.
+description: AgentOps Doctor - surface release-readiness findings, regressions, latency spikes, error rates, and safety hits across AgentOps eval history, Azure Monitor traces, and Foundry control plane.
 ---
 
 # `agentops-agent` - Doctor skill
@@ -20,6 +20,10 @@ findings - it shells out to the CLI which reads real data from:
 1. `.agentops/results/*/results.json` (eval history)
 2. Application Insights traces emitted by Foundry agents
 3. Foundry control plane (`azure-ai-projects`)
+
+Doctor and Cockpit are read-only readiness tools. They help answer "can we ship
+it, and where is the proof?" They do not create, deploy, mutate, or delete
+Foundry or Azure resources.
 
 ## Workflow
 
@@ -76,7 +80,7 @@ For a workspace-level operations view the user can open a local
 Cockpit:
 
 ```bash
-pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"
+pip install "agentops-toolkit[agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 agentops cockpit
 # → http://127.0.0.1:8090
 ```
@@ -106,7 +110,7 @@ Resolution order:
 If the user wants the watchdog inside Copilot Chat, they can:
 
 ```bash
-pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"
+pip install "agentops-toolkit[agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
 agentops agent serve --no-verify       # local dev
 ```
 

@@ -1,15 +1,21 @@
 ---
 name: agentops-eval
-description: Run AgentOps evaluations end-to-end against any agent (Foundry hosted/prompt agent, HTTP/JSON endpoint, or raw model deployment). Trigger on phrases like "run eval", "evaluate my agent", "benchmark", "agentops eval", "compare runs". Uses the flat agentops.yaml schema.
+description: Run AgentOps release-readiness evaluations against Foundry prompt agents, Foundry hosted endpoints, HTTP/JSON agents, or raw model deployments. Trigger on phrases like "run eval", "evaluate my agent", "benchmark", "agentops eval", "compare runs", "can we ship". Uses the flat agentops.yaml schema.
 ---
 
 # AgentOps Eval
 
-End-to-end workflow: install → init → configure → run → read report.
+End-to-end release-gate workflow: install -> init -> configure -> run -> read
+report -> decide whether the candidate is ready to ship.
+
+AgentOps evaluates an existing candidate. It does **not** create or deploy
+Foundry agents. If the user still needs a Prompt Agent or Hosted Agent, hand off
+to Foundry Toolkit / the `microsoft-foundry` skill / azd first, then come back
+with a `name:version` or URL.
 
 ## Step 0 - Setup
 
-1. Install if missing: `pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@develop"`.
+1. Install if missing: `pip install "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"`.
 2. If `agentops.yaml` does not exist at the project root, run `agentops init`.
    The init wizard prompts (azd-style) for the Foundry project endpoint,
    agent reference, and dataset path, persists each answer to
@@ -39,8 +45,8 @@ for the `agent:` field of `agentops.yaml`:
 
 | Pattern in code / env | `agent:` value |
 |---|---|
-| `AIProjectClient`, `azure-ai-projects`, Foundry agent ID like `name:1` | `"<name>:<version>"` (Foundry prompt agent) |
-| Foundry hosted agent endpoint URL ending in `/agents/...` | `"https://<resource>.services.ai.azure.com/api/projects/<p>/agents/..."` |
+| Foundry Prompt Agent ID like `name:1` | `"<name>:<version>"` |
+| Foundry Hosted Agent endpoint URL ending in `/agents/...` | `"https://<resource>.services.ai.azure.com/api/projects/<p>/agents/..."` |
 | Plain HTTP/JSON endpoint (FastAPI, Express, ACA, AKS) | `"https://<host>/<path>"` |
 | Raw Foundry/Azure OpenAI model deployment | `"model:<deployment-name>"` |
 
@@ -71,6 +77,20 @@ Exit codes:
 - `0` - succeeded and all thresholds passed
 - `2` - succeeded but at least one threshold failed (gate-friendly)
 - `1` - runtime/configuration error
+
+## Step 4b - Pick the right execution path
+
+| Target | Foundry server-side eval through AgentOps | AgentOps local runner | Default guidance |
+|---|---|---|---|
+| Foundry Prompt Agent (`name:version`) | `execution: cloud` | yes | Use cloud when the user wants the official Foundry-hosted eval record; use local for fast feedback or fallback. |
+| Foundry Hosted Agent URL | no | yes | Use local runner; optionally set `publish: true` to upload local metrics to Classic Foundry. |
+| Generic HTTP/JSON endpoint | no | yes | Use local runner. |
+| Raw model deployment | no | yes | Use local runner. |
+
+If a CI pipeline only needs a supported Foundry-native eval and does not need
+AgentOps baselines, reports, Doctor readiness, release evidence, or local
+fallback, recommend the official AI Agent Evaluation GitHub Action or Azure
+DevOps extension instead of wrapping it in AgentOps.
 
 ## Step 5 - Inspect results and release evidence
 

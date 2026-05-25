@@ -1,17 +1,19 @@
 ---
 name: agentops-dataset
-description: Create or extend a JSONL evaluation dataset for AgentOps. Trigger on "create dataset", "generate test data", "JSONL", "more eval rows". Infer the agent's domain from the codebase and produce realistic rows; never fabricate data when the domain is unclear.
+description: Create or extend a small JSONL dataset for AgentOps release-readiness gates. Trigger on "create dataset", "generate test data", "JSONL", "more eval rows". Infer the agent's domain from the codebase and produce realistic rows; never fabricate data when the domain is unclear.
 ---
 
 # AgentOps Dataset
 
-Generate a small, realistic JSONL dataset for the agent under
-evaluation. Default location: `.agentops/data/smoke.jsonl` (referenced
-from `agentops.yaml`).
+Generate a small, realistic JSONL dataset for the agent under evaluation.
+Default location: `.agentops/data/smoke.jsonl` (referenced from
+`agentops.yaml`). These rows are repo-side release-gate inputs: keep them
+reviewable and deterministic, not a full replacement for Foundry dataset
+management.
 
 ## Step 0 - Prerequisites
 
-1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@develop"` if `agentops` is missing.
+1. `pip install "agentops-toolkit @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"` if `agentops` is missing.
 2. Run `agentops eval analyze` first. If it reports missing dataset columns or
    recommends `agentops-dataset`, use this skill before the first eval run.
 3. If `agentops.yaml` does not exist, run `agentops init` first (the init

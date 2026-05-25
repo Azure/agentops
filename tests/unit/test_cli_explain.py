@@ -19,11 +19,12 @@ def test_root_explain_renders_cli_manual() -> None:
 
     assert result.exit_code == 0, result.stdout
     stripped = _strip_ansi(result.stdout)
+    normalized = " ".join(stripped.split())
     assert "AgentOps CLI" in stripped
     assert "AGENTOPS EXPLAIN / detailed command guide" in stripped
     assert "AgentOps Toolkit" in stripped
-    assert "operationalize AI agents on Microsoft Foundry" in stripped
-    assert "complements Foundry instead of replacing it" in stripped
+    assert "can we ship it, and where is the proof" in normalized
+    assert "Foundry runs the agent. AgentOps proves the release is ready" in normalized
     assert "COMMAND" in stripped
     assert "WHAT IT DOES" in stripped
     assert "COMMANDS" in stripped
@@ -111,4 +112,3 @@ def test_unknown_explain_path_errors_cleanly() -> None:
 
     assert result.exit_code == 1
     assert "unknown command path" in result.output
-

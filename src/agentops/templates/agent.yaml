@@ -2,7 +2,7 @@
 #
 # Every section is optional — sources auto-skip with a diagnostic note when
 # they are disabled, missing required config, or missing the optional Azure
-# extras (`pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@develop"`).
+# extras (`pip install "agentops-toolkit[agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"`).
 #
 # Run:
 #

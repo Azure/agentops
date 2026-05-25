@@ -556,6 +556,103 @@ def test_next_actions_do_not_suggest_workflow_when_ci_gate_exists(tmp_path: Path
     )
 
 
+def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "agentops-pr.yml").write_text(
+        "\n".join(
+            [
+                "name: AgentOps PR",
+                "on:",
+                "  schedule:",
+                "    - cron: '0 3 * * *'",
+                "jobs:",
+                "  eval:",
+                "    steps:",
+                "      - uses: microsoft/ai-agent-evals@v3-beta",
+                "      - run: python -m agentops.pipeline.official_eval prepare",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    evidence_dir = tmp_path / ".agentops" / "release" / "latest"
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "evidence.json").write_text(
+        json.dumps(
+            {
+                "status": "ready",
+                "generated_at": "2025-01-01T00:00:00Z",
+                "ready": ["Latest eval gate"],
+                "warnings": [],
+                "blockers": [],
+                "latest_eval": {"runner": "official-ai-agent-evaluation"},
+                "official_eval": {"machine_readable_thresholds": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog={"has_history": True, "latest_findings": []},
+    )
+
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    assert by_title["CI eval gate (workflow on PRs)"]["status"] == "ok"
+    assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
+        "CI eval gate (workflow on PRs)"
+    ]["detail"]
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
+        "Scheduled eval (drift watch)"
+    ]["detail"]
+    assert by_title["Release evidence pack"]["status"] == "ok"
+    assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
+        "Release evidence pack"
+    ]["detail"]
+
+
+def test_cockpit_surfaces_official_eval_artifacts_without_local_runs(tmp_path: Path):
+    official_dir = tmp_path / ".agentops" / "official-eval"
+    official_dir.mkdir(parents=True)
+    (official_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "runner": "official-ai-agent-evaluation",
+                "items_total": 2,
+                "machine_readable_thresholds": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (official_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "runner": "official-ai-agent-evaluation",
+                "status": "success",
+                "system": "github-actions",
+                "machine_readable_thresholds": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
+    html = render_cockpit_html(payload)
+
+    assert payload["eval"]["has_runs"] is False
+    assert payload["eval"]["official_eval"]["present"] is True
+    assert "Official Microsoft Foundry AI Agent Evaluation evidence exists" in html
+    assert "agentops doctor --evidence-pack" in html
+    action_titles = [action["title"] for action in payload["next_actions"]["actions"]]
+    assert "Run your first evaluation" not in action_titles
+    assert "Generate release evidence" in action_titles
+
+
 def test_readiness_detects_prompt_agent_deploy_workflow(tmp_path: Path):
     from agentops.agent.cockpit import _build_readiness_checklist
 
@@ -608,8 +705,8 @@ def test_readiness_continuous_eval_ok_when_doctor_finds_no_problem(
 def test_production_section_is_a_teaser_into_foundry_monitor(tmp_path: Path, monkeypatch):
     """Production telemetry now ships as a 2-card teaser (error rate +
     P95 latency) with a prominent "Full view in Foundry Monitor" CTA. The
-    cockpit deliberately delegates invocations and tokens to Foundry
-    Monitor so AgentOps does not compete with the system of record."""
+    cockpit keeps the quick health snapshot next to the full Foundry
+    Monitor drilldown."""
     _set_appinsights_env(monkeypatch)
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     html = render_cockpit_html(payload)
@@ -630,8 +727,8 @@ def test_production_section_is_a_teaser_into_foundry_monitor(tmp_path: Path, mon
     )
 
     # The production grid renders exactly two skeleton placeholder cards
-    # (Error rate / P95 latency). Invocations and tokens are intentionally
-    # delegated to Foundry Monitor so AgentOps does not compete with it.
+    # (Error rate / P95 latency). Invocations and tokens stay in the full
+    # Foundry Monitor drilldown.
     # The ``skeleton-card`` class is unique to the deferred production
     # grid, so counting it across the full HTML is sufficient.
     assert html.count("skeleton-card") == 2

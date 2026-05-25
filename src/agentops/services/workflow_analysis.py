@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from agentops.core.agentops_config import classify_agent
+from agentops.pipeline.official_eval import (
+    AGENTOPS_LOCAL_RUNNER,
+    OFFICIAL_EVAL_RUNNER,
+    analyze_official_eval_support,
+    official_eval_action_ref,
+)
 from agentops.utils.yaml import load_yaml
 
 _TEXT_LIMIT = 200_000
@@ -79,11 +85,15 @@ class WorkflowAnalysis:
     directory: str
     classification: str
     recommended_deploy_mode: str
+    recommended_eval_runner: str
     deployment_strategy: str
+    eval_strategy: str
     complexity: str
     requires_copilot_adaptation: bool
     copilot_skills_installed: bool
     copilot_prompt: Optional[str] = None
+    official_eval_reasons: List[str] = field(default_factory=list)
+    official_evaluators: List[str] = field(default_factory=list)
     signals: List[WorkflowSignal] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     recommended_commands: List[str] = field(default_factory=list)
@@ -96,11 +106,15 @@ class WorkflowAnalysis:
             "directory": self.directory,
             "classification": self.classification,
             "recommended_deploy_mode": self.recommended_deploy_mode,
+            "recommended_eval_runner": self.recommended_eval_runner,
             "deployment_strategy": self.deployment_strategy,
+            "eval_strategy": self.eval_strategy,
             "complexity": self.complexity,
             "requires_copilot_adaptation": self.requires_copilot_adaptation,
             "copilot_skills_installed": self.copilot_skills_installed,
             "copilot_prompt": self.copilot_prompt,
+            "official_eval_reasons": list(self.official_eval_reasons),
+            "official_evaluators": list(self.official_evaluators),
             "signals": [signal.to_dict() for signal in self.signals],
             "warnings": list(self.warnings),
             "recommended_commands": list(self.recommended_commands),
@@ -237,10 +251,35 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
             "No agentops.yaml found. Run `agentops init` and prove `agentops eval run` locally before making the pipeline blocking."
         )
 
+    official_eval_reasons: List[str] = []
+    official_evaluators: List[str] = []
+    recommended_eval_runner = AGENTOPS_LOCAL_RUNNER
+    if (root / "agentops.yaml").exists():
+        official_support = analyze_official_eval_support(root / "agentops.yaml")
+        official_eval_reasons = list(official_support.reasons)
+        official_evaluators = list(official_support.official_evaluators)
+        if official_support.eligible:
+            recommended_eval_runner = OFFICIAL_EVAL_RUNNER
+            signals.append(
+                WorkflowSignal(
+                    "official_ai_agent_evaluation",
+                    "Official AI Agent Evaluation",
+                    "agentops.yaml can use Microsoft Foundry AI Agent Evaluation for prompt-agent CI gates.",
+                    "agentops.yaml",
+                )
+            )
+            warnings.extend(official_support.warnings)
+        else:
+            warnings.append(
+                "Official AI Agent Evaluation not selected: "
+                + " ".join(official_support.reasons)
+            )
+
     recommended_deploy_mode = _recommended_deploy_mode(has_azd, prompt_agent)
     classification = _classification(has_azd, prompt_agent, network_isolated, ailz_manifest, accelerator_hint)
     complexity = _complexity(network_isolated, has_azd, bicep_files, accelerator_hint, ailz_manifest)
     deployment_strategy = _deployment_strategy(recommended_deploy_mode, network_isolated, ailz_preflight)
+    eval_strategy = _eval_strategy(recommended_eval_runner)
     requires_copilot = (
         recommended_deploy_mode == "placeholder"
         or network_isolated
@@ -262,19 +301,36 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
         recommended_commands.append("azd provision")
         recommended_commands.append("azd deploy")
 
-    stages = _stages(recommended_deploy_mode, network_isolated, prompt_agent, ailz_preflight)
-    next_steps = _next_steps(recommended_deploy_mode, requires_copilot, network_isolated, skills_installed, ailz_preflight)
+    stages = _stages(
+        recommended_deploy_mode,
+        recommended_eval_runner,
+        network_isolated,
+        prompt_agent,
+        ailz_preflight,
+    )
+    next_steps = _next_steps(
+        recommended_deploy_mode,
+        recommended_eval_runner,
+        requires_copilot,
+        network_isolated,
+        skills_installed,
+        ailz_preflight,
+    )
 
     return WorkflowAnalysis(
         version=1,
         directory=str(root),
         classification=classification,
         recommended_deploy_mode=recommended_deploy_mode,
+        recommended_eval_runner=recommended_eval_runner,
         deployment_strategy=deployment_strategy,
+        eval_strategy=eval_strategy,
         complexity=complexity,
         requires_copilot_adaptation=requires_copilot,
         copilot_skills_installed=skills_installed,
         copilot_prompt=copilot_prompt,
+        official_eval_reasons=official_eval_reasons,
+        official_evaluators=official_evaluators,
         signals=signals,
         warnings=warnings,
         recommended_commands=recommended_commands,
@@ -286,6 +342,11 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
 def recommended_deploy_mode(directory: Path) -> str:
     """Return the same deploy-mode decision used by workflow generation."""
     return analyze_workflow_project(directory).recommended_deploy_mode
+
+
+def recommended_eval_runner(directory: Path) -> str:
+    """Return the same eval-runner decision used by workflow generation."""
+    return analyze_workflow_project(directory).recommended_eval_runner
 
 
 def has_ailz_preflight(directory: Path) -> bool:
@@ -311,7 +372,9 @@ def _render_text(analysis: WorkflowAnalysis) -> str:
         f"Directory: {analysis.directory}",
         f"Classification: {analysis.classification}",
         f"Recommended deploy mode: {analysis.recommended_deploy_mode}",
+        f"Recommended eval runner: {analysis.recommended_eval_runner}",
         f"Strategy: {analysis.deployment_strategy}",
+        f"Eval strategy: {analysis.eval_strategy}",
         f"Complexity: {analysis.complexity}",
         f"Copilot adaptation: {'yes' if analysis.requires_copilot_adaptation else 'no'}",
         f"Copilot skills installed: {'yes' if analysis.copilot_skills_installed else 'no'}",
@@ -326,6 +389,12 @@ def _render_text(analysis: WorkflowAnalysis) -> str:
         lines.append("")
         lines.append("Warnings:")
         lines.extend(f"- {warning}" for warning in analysis.warnings)
+    if analysis.official_eval_reasons:
+        lines.append("")
+        lines.append("Official eval decision:")
+        lines.extend(f"- {reason}" for reason in analysis.official_eval_reasons)
+        if analysis.official_evaluators:
+            lines.append("- Evaluators: " + ", ".join(analysis.official_evaluators))
     if analysis.copilot_prompt:
         lines.append("")
         lines.append("Copilot handoff:")
@@ -350,7 +419,9 @@ def _render_markdown(analysis: WorkflowAnalysis) -> str:
         f"- **Directory:** `{analysis.directory}`",
         f"- **Classification:** {analysis.classification}",
         f"- **Recommended deploy mode:** `{analysis.recommended_deploy_mode}`",
+        f"- **Recommended eval runner:** `{analysis.recommended_eval_runner}`",
         f"- **Strategy:** {analysis.deployment_strategy}",
+        f"- **Eval strategy:** {analysis.eval_strategy}",
         f"- **Complexity:** {analysis.complexity}",
         f"- **Copilot adaptation:** {'yes' if analysis.requires_copilot_adaptation else 'no'}",
         f"- **Copilot skills installed:** {'yes' if analysis.copilot_skills_installed else 'no'}",
@@ -369,6 +440,11 @@ def _render_markdown(analysis: WorkflowAnalysis) -> str:
     if analysis.warnings:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {warning}" for warning in analysis.warnings)
+    if analysis.official_eval_reasons:
+        lines.extend(["", "## Official eval decision", ""])
+        lines.extend(f"- {reason}" for reason in analysis.official_eval_reasons)
+        if analysis.official_evaluators:
+            lines.append("- Evaluators: " + ", ".join(f"`{e}`" for e in analysis.official_evaluators))
     if analysis.copilot_prompt:
         lines.extend(["", "## Copilot handoff", ""])
         lines.extend(["Copy/paste this into Copilot:", "", "```text", analysis.copilot_prompt, "```"])
@@ -609,14 +685,43 @@ def _deployment_strategy(mode: str, network_isolated: bool, ailz_preflight: bool
     return "AgentOps writes gates/placeholders; Copilot must adapt project-specific build/deploy steps."
 
 
-def _stages(mode: str, network_isolated: bool, prompt_agent: bool, ailz_preflight: bool) -> List[WorkflowStage]:
-    stages = [
-        WorkflowStage(
+def _eval_strategy(eval_runner: str) -> str:
+    if eval_runner == OFFICIAL_EVAL_RUNNER:
+        return (
+            "Use Microsoft Foundry AI Agent Evaluation for prompt-agent execution, "
+            "then keep AgentOps Doctor/evidence as the release-readiness record."
+        )
+    return "Use AgentOps local eval as the CI gate and normalized results artifact."
+
+
+def _eval_stage(eval_runner: str) -> WorkflowStage:
+    if eval_runner == OFFICIAL_EVAL_RUNNER:
+        return WorkflowStage(
             "PR evaluation gate",
-            "AgentOps",
-            "Run repeatable evals before merge and publish report artifacts.",
-            ["agentops eval run"],
-        ),
+            "Microsoft Foundry + AgentOps",
+            "Run the official AI Agent Evaluation action/task and publish AgentOps-prepared inputs.",
+            [
+                "python -m agentops.pipeline.official_eval prepare",
+                official_eval_action_ref(),
+            ],
+        )
+    return WorkflowStage(
+        "PR evaluation gate",
+        "AgentOps",
+        "Run repeatable evals before merge and publish report artifacts.",
+        ["agentops eval run"],
+    )
+
+
+def _stages(
+    mode: str,
+    eval_runner: str,
+    network_isolated: bool,
+    prompt_agent: bool,
+    ailz_preflight: bool,
+) -> List[WorkflowStage]:
+    stages = [
+        _eval_stage(eval_runner),
         WorkflowStage(
             "Operational readiness",
             "AgentOps Doctor",
@@ -654,7 +759,14 @@ def _stages(mode: str, network_isolated: bool, prompt_agent: bool, ailz_prefligh
                 "Foundry prompt candidate deploy",
                 "Foundry + AgentOps",
                 "Create/reuse candidate prompt-agent version, evaluate it, then record deployment.",
-                ["python -m agentops.pipeline.prompt_deploy stage", "agentops eval run"],
+                [
+                    "python -m agentops.pipeline.prompt_deploy stage",
+                    (
+                        "python -m agentops.pipeline.official_eval prepare"
+                        if eval_runner == OFFICIAL_EVAL_RUNNER
+                        else "agentops eval run"
+                    ),
+                ],
             )
         )
     else:
@@ -671,6 +783,7 @@ def _stages(mode: str, network_isolated: bool, prompt_agent: bool, ailz_prefligh
 
 def _next_steps(
     mode: str,
+    eval_runner: str,
     requires_copilot: bool,
     network_isolated: bool,
     skills_installed: bool,
@@ -680,6 +793,11 @@ def _next_steps(
         "Run `agentops eval run` locally and commit agentops.yaml plus datasets.",
         f"Generate workflows with `agentops workflow generate --deploy-mode {mode}`.",
     ]
+    if eval_runner == OFFICIAL_EVAL_RUNNER:
+        steps.insert(
+            1,
+            "Set AZURE_OPENAI_DEPLOYMENT so the official AI Agent Evaluation runner can judge responses.",
+        )
     if ailz_preflight:
         steps.insert(0, "Run `pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict` before provisioning the AI Landing Zone.")
     if requires_copilot:

@@ -1,6 +1,10 @@
 ## Solution Overview
 
-AgentOps Toolkit is a CLI, local Cockpit, and agent skills that help teams move Microsoft Foundry agents from demo/POC to production with standardized evaluation, CI/CD gates, readiness diagnostics, release evidence, and trace-driven regression loops.
+AgentOps Toolkit is a CLI, local Cockpit, and agent skills that help teams
+answer two release questions for Microsoft Foundry agents: can we ship it, and
+where is the proof? Foundry runs the agent. AgentOps proves the release is ready
+with standardized evaluation gates, readiness diagnostics, release evidence, and
+trace-driven regression loops.
 
 The repository provides:
 - A single flat `agentops.yaml` configuration file at the project root
