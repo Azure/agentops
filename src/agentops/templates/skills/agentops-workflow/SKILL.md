@@ -56,7 +56,7 @@ and have them generate `--kinds pr,dev,prod`.
 
 ## Step 0 - Prerequisites
 
-1. `pip install "agentops-toolkit @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"` if `agentops` is missing.
+1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@main"` if `agentops` is missing.
 2. `agentops eval analyze` has been reviewed, `agentops.yaml` exists at the
    project root, and `agentops eval run` works locally.
 3. The user's repo follows GitFlow (or is willing to). If not, ask which

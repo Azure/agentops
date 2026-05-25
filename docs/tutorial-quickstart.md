@@ -56,7 +56,7 @@ replacement.
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U uv
-uv pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+uv pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
 agentops --version
 ```
 
@@ -64,16 +64,15 @@ If you'd rather stay on `pip`, swap the last two lines for:
 
 ```powershell
 python -m pip install -U pip
-python -m pip install --upgrade "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+python -m pip install --upgrade "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
 ```
 
-This tutorial intentionally installs the preview branch from
-`placerda/agentops` while the upstream PR is still being refined. After the
-changes land upstream, switch the install line back to
-`agentops-toolkit[foundry,agent]` from PyPI. The `[foundry]` extra brings the
-Azure SDKs the eval path needs; `[agent]` adds the FastAPI/uvicorn runtime used
-by `agentops cockpit` later in the tutorial. Installing both upfront avoids a
-second install later.
+This tutorial installs the current AgentOps source from GitHub so you can
+validate the latest readiness flow before the next package release. After that
+release, switch the install line back to `agentops-toolkit[foundry,agent]` from
+PyPI. The `[foundry]` extra brings the Azure SDKs the eval path needs; `[agent]`
+adds the FastAPI/uvicorn runtime used by `agentops cockpit` later in the
+tutorial. Installing both upfront avoids a second install later.
 
 ## 2. Bootstrap the project
 
@@ -574,7 +573,7 @@ writes:
 └── agentops-watchdog.yml
 ```
 
-Each workflow installs AgentOps from the same preview fork, runs the selected
+Each workflow installs AgentOps from the current GitHub source, runs the selected
 eval runner, uploads the results as a pipeline artifact, and (for the PR gate)
 posts the rendered `report.md` and/or release evidence as an idempotent PR
 comment. For this quickstart's Foundry prompt agent, the generated GitHub
@@ -766,7 +765,7 @@ green official-eval step plus `.agentops/official-eval/result.json` and
 `.agentops/release/latest/evidence.md` in the workflow artifact. If you see
 `failed to load agentops.yaml` validation errors, the CI installed an older
 AgentOps build than your local one - keep the workflow install line pinned to
-`placerda/agentops@foundry-operate-readiness` while using this preview branch.
+`Azure/agentops@main` until the next package release includes this flow.
 
 ## Where evaluators come from
 

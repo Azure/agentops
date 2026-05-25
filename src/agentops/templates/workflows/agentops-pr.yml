@@ -67,9 +67,9 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          # NOTE: pinned to the placerda/foundry-operate-readiness preview fork until the upstream PR lands.
-          # Switch to `uv pip install --system "agentops-toolkit[foundry,agent]"` after the 1.0 release.
-          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+          # NOTE: pinned to GitHub main until the next package release includes this flow.
+          # Switch to `uv pip install --system "agentops-toolkit[foundry,agent]"` after release.
+          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
 
 __EVAL_STEPS__
 

@@ -53,8 +53,8 @@ stages:
 
           - bash: |
               python -m pip install --upgrade pip
-              # NOTE: pinned to the placerda/foundry-operate-readiness preview fork until the upstream PR lands.
-              python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+              # NOTE: pinned to GitHub main until the next package release includes this flow.
+              python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
             displayName: Install AgentOps Toolkit
 
 __EVAL_TASKS__

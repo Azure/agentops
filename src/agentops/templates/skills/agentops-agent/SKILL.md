@@ -80,7 +80,7 @@ For a workspace-level operations view the user can open a local
 Cockpit:
 
 ```bash
-pip install "agentops-toolkit[agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@main"
 agentops cockpit
 # → http://127.0.0.1:8090
 ```
@@ -110,7 +110,7 @@ Resolution order:
 If the user wants the watchdog inside Copilot Chat, they can:
 
 ```bash
-pip install "agentops-toolkit[agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@main"
 agentops agent serve --no-verify       # local dev
 ```
 

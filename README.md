@@ -74,11 +74,12 @@ Exit code contract:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@main"
 ```
 
-This branch is a preview fork. After the upstream PR lands, switch the install
-line back to `agentops-toolkit[foundry]` from PyPI.
+This installs the current AgentOps source from GitHub. After the next package
+release, you can switch the install line back to `agentops-toolkit[foundry]`
+from PyPI.
 
 ### 2) Bootstrap
 

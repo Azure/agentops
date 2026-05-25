@@ -108,13 +108,13 @@ $env:AZURE_OPENAI_DEPLOYMENT           = "gpt-4o-mini"
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@main"
 agentops --version
 ```
 
-This tutorial installs the preview branch from `placerda/agentops` while the
-upstream PR is still being refined. After the changes land upstream, switch the
-install line back to `agentops-toolkit[foundry]` from PyPI.
+This tutorial installs the current AgentOps source from GitHub so you can
+validate the latest readiness flow before the next package release. After that
+release, switch the install line back to `agentops-toolkit[foundry]` from PyPI.
 
 > The `[foundry]` extra installs the Azure SDK dependencies needed by
 > the helper script and by the local evaluator runtime. `azure-ai-evaluation`
@@ -870,7 +870,7 @@ Application Insights connection string, and run one more eval. AgentOps
 will emit OpenTelemetry spans for each dataset row and agent invocation.
 
 ```powershell
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@foundry-operate-readiness"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
 
 $env:APPLICATIONINSIGHTS_CONNECTION_STRING = $appInsightsConnectionString
 agentops eval run
