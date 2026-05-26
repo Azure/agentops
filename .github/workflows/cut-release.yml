@@ -68,13 +68,27 @@ jobs:
       - name: Update CHANGELOG
         run: |
           DATE=$(date +%Y-%m-%d)
-          # Only insert versioned section if it doesn't already exist
           if grep -q "## \[${{ env.version }}\]" CHANGELOG.md; then
             echo "CHANGELOG already has [${{ env.version }}] entry — skipping insertion"
-          else
-            sed -i "/adheres to \[Semantic Versioning\]/a \\\n## [${{ env.version }}] - $DATE\n" CHANGELOG.md
-            echo "CHANGELOG updated with [${{ env.version }}] - $DATE"
+            exit 0
           fi
+          VERSION="${{ env.version }}" DATE="$DATE" python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          path = Path("CHANGELOG.md")
+          text = path.read_text(encoding="utf-8")
+          marker = "## [Unreleased]"
+          version = os.environ["VERSION"]
+          date = os.environ["DATE"]
+          if marker not in text:
+              print("::error::CHANGELOG.md is missing the ## [Unreleased] section.")
+              sys.exit(1)
+          replacement = f"{marker}\n\n## [{version}] - {date}"
+          path.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
+          PY
+          echo "CHANGELOG updated with [${{ env.version }}] - $DATE"
 
       - name: Sync plugin versions
         run: |

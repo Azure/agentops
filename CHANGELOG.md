@@ -3,10 +3,17 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.2.1] - 2026-05-26
-
-
 ## [Unreleased]
+
+## [0.2.2] - 2026-05-26
+
+### Fixed
+- **Release workflow verification.** Release builds now pin package versions from
+  the release tag, assert the generated distribution matches that version, and
+  fail TestPyPI verification immediately when the expected package is not
+  available.
+
+## [0.2.1] - 2026-05-26
 
 ### Changed
 - Consolidated the tutorial set into two quickstarts plus one end-to-end
