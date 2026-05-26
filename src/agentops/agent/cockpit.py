@@ -22,7 +22,7 @@ import shutil
 import subprocess
 from importlib.resources import files as _pkg_files
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
@@ -2494,8 +2494,18 @@ def _release_evidence_status(workspace: Path) -> Dict[str, Any]:
     if not payload:
         return {"status": "unreadable", "path": path}
 
-    latest_eval = payload.get("latest_eval") if isinstance(payload.get("latest_eval"), dict) else {}
-    official_eval = payload.get("official_eval") if isinstance(payload.get("official_eval"), dict) else {}
+    latest_eval_raw = payload.get("latest_eval")
+    latest_eval = (
+        cast(Dict[str, Any], latest_eval_raw)
+        if isinstance(latest_eval_raw, dict)
+        else {}
+    )
+    official_eval_raw = payload.get("official_eval")
+    official_eval = (
+        cast(Dict[str, Any], official_eval_raw)
+        if isinstance(official_eval_raw, dict)
+        else {}
+    )
     return {
         "status": payload.get("status") or "unknown",
         "path": path,
@@ -2878,9 +2888,9 @@ def _sparkline_svg(
         return ""
     window = series[-12:]
     label_window = (labels or [])[-12:]
-    link_window = (links or [])[-12:]
-    alt_link_window = (alt_links or [])[-12:]
-    alt_label_window = (alt_labels or [])[-12:]
+    link_window: List[Optional[str]] = list((links or [])[-12:])
+    alt_link_window: List[Optional[str]] = list((alt_links or [])[-12:])
+    alt_label_window: List[Optional[str]] = list((alt_labels or [])[-12:])
     # Align label/link count with the window.
     if len(label_window) < len(window):
         label_window = label_window + [""] * (len(window) - len(label_window))

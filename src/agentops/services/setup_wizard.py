@@ -426,7 +426,7 @@ def run_wizard(
 
     # 1) Foundry project endpoint
     if not _should_prompt("project_endpoint", defaults.project_endpoint):
-        _confirm_existing(PROJECT_ENDPOINT_TITLE, defaults.project_endpoint)
+        _confirm_existing(PROJECT_ENDPOINT_TITLE, defaults.project_endpoint or "")
         skipped.append("project_endpoint")
     else:
         echo("")
@@ -448,7 +448,7 @@ def run_wizard(
 
     # 2) Agent
     if not _should_prompt("agent", defaults.agent):
-        _confirm_existing(AGENT_TITLE, defaults.agent)
+        _confirm_existing(AGENT_TITLE, defaults.agent or "")
         skipped.append("agent")
     else:
         echo("")
@@ -470,7 +470,7 @@ def run_wizard(
 
     # 3) Dataset
     if not _should_prompt("dataset", defaults.dataset):
-        _confirm_existing(DATASET_TITLE, defaults.dataset)
+        _confirm_existing(DATASET_TITLE, defaults.dataset or "")
         skipped.append("dataset")
     else:
         echo("")

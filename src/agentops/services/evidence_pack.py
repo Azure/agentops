@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from agentops.agent.analyzer import AnalysisResult
 from agentops.agent.findings import Severity
@@ -210,12 +210,23 @@ def _agentops_eval_status(root: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return {"status": "invalid", "path": str(path), "error": "expected JSON object"}
 
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    target = payload.get("target") if isinstance(payload.get("target"), dict) else {}
-    config = payload.get("config") if isinstance(payload.get("config"), dict) else {}
-    metrics = payload.get("aggregate_metrics") or payload.get("metrics") or payload.get("run_metrics") or {}
-    thresholds = payload.get("thresholds") if isinstance(payload.get("thresholds"), list) else []
-    cloud = config.get("cloud_evaluation") if isinstance(config.get("cloud_evaluation"), dict) else {}
+    summary_raw = payload.get("summary")
+    summary = cast(dict[str, Any], summary_raw) if isinstance(summary_raw, dict) else {}
+    target_raw = payload.get("target")
+    target = cast(dict[str, Any], target_raw) if isinstance(target_raw, dict) else {}
+    config_raw = payload.get("config")
+    config = cast(dict[str, Any], config_raw) if isinstance(config_raw, dict) else {}
+    raw_metrics = (
+        payload.get("aggregate_metrics")
+        or payload.get("metrics")
+        or payload.get("run_metrics")
+        or {}
+    )
+    metrics: dict[str, Any] = raw_metrics if isinstance(raw_metrics, dict) else {}
+    thresholds_raw = payload.get("thresholds")
+    thresholds = cast(list[Any], thresholds_raw) if isinstance(thresholds_raw, list) else []
+    cloud_raw = config.get("cloud_evaluation")
+    cloud = cast(dict[str, Any], cloud_raw) if isinstance(cloud_raw, dict) else {}
     comparison = payload.get("comparison")
 
     passed = summary.get("overall_passed")

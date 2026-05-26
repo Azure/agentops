@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from agentops.agent.config import FoundryControlSourceConfig, ResultsHistorySourceConfig
 
@@ -435,7 +435,7 @@ def _extract_item_scores(item: Dict[str, Any]) -> Dict[str, float]:
     scores: Dict[str, float] = {}
     results = item.get("results")
     if isinstance(results, dict):
-        iterator = results.items()
+        iterator: Iterable[tuple[Any, Any]] = results.items()
     elif isinstance(results, list):
         iterator = ((_get_dict(entry, "name") or _get_dict(entry, "key") or "", entry) for entry in results)
     else:

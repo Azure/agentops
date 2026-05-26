@@ -862,20 +862,20 @@ def _extend_text_section(
         lines.extend(_manual_item_lines(prefix, item))
 
 
-_ASCII_TRANSLITERATION = {
-    "\u2014": "-",   # em dash
-    "\u2013": "-",   # en dash
-    "\u2212": "-",   # minus sign
-    "\u2018": "'",   # left single quote
-    "\u2019": "'",   # right single quote
-    "\u201c": '"',   # left double quote
-    "\u201d": '"',   # right double quote
-    "\u2026": "...", # horizontal ellipsis
-    "\u00a0": " ",   # non-breaking space
-    "\u2192": "->",  # rightwards arrow
-    "\u2197": "^",   # north-east arrow
-    "\u2022": "*",   # bullet
-    "\u00b7": "*",   # middle dot
+_ASCII_TRANSLITERATION: dict[int, str] = {
+    ord("\u2014"): "-",   # em dash
+    ord("\u2013"): "-",   # en dash
+    ord("\u2212"): "-",   # minus sign
+    ord("\u2018"): "'",   # left single quote
+    ord("\u2019"): "'",   # right single quote
+    ord("\u201c"): '"',   # left double quote
+    ord("\u201d"): '"',   # right double quote
+    ord("\u2026"): "...", # horizontal ellipsis
+    ord("\u00a0"): " ",   # non-breaking space
+    ord("\u2192"): "->",  # rightwards arrow
+    ord("\u2197"): "^",   # north-east arrow
+    ord("\u2022"): "*",   # bullet
+    ord("\u00b7"): "*",   # middle dot
 }
 
 
@@ -889,7 +889,7 @@ def _downgrade_to_ascii(text: str) -> str:
     """
     if not text:
         return text
-    return text.translate(str.maketrans(_ASCII_TRANSLITERATION))
+    return text.translate(_ASCII_TRANSLITERATION)
 
 
 def _emit_manual_output(
@@ -3884,15 +3884,15 @@ def _read_single_key() -> str:
         try:
             import msvcrt  # type: ignore[import-not-found]
 
-            ch = msvcrt.getch()
-            if ch in (b"\xe0", b"\x00"):
+            ch_win = msvcrt.getch()  # type: ignore[attr-defined]
+            if ch_win in (b"\xe0", b"\x00"):
                 try:
-                    msvcrt.getch()
+                    msvcrt.getch()  # type: ignore[attr-defined]
                 except Exception:  # noqa: BLE001
                     pass
                 return ""
             try:
-                return ch.decode("utf-8", errors="ignore")
+                return ch_win.decode("utf-8", errors="ignore")
             except Exception:  # noqa: BLE001
                 return ""
         except Exception:  # noqa: BLE001
@@ -3902,13 +3902,13 @@ def _read_single_key() -> str:
         import tty  # type: ignore[import-not-found]
 
         fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
+        old = termios.tcgetattr(fd)  # type: ignore[attr-defined]
         try:
-            tty.setraw(fd)
-            ch = sys.stdin.read(1)
+            tty.setraw(fd)  # type: ignore[attr-defined]
+            ch_posix = sys.stdin.read(1)
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        return ch
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)  # type: ignore[attr-defined]
+        return ch_posix
     except Exception:  # noqa: BLE001
         return ""
 
@@ -4584,13 +4584,14 @@ def cmd_cockpit(
         _time.sleep(0.05)
 
     if bind_error:
-        exc = bind_error[0]
+        bind_exc = bind_error[0]
+        bind_errno = getattr(bind_exc, "errno", None)
         # WinError 10048 / EADDRINUSE / EACCES on the bind syscall.
         is_port_collision = (
-            isinstance(exc, OSError)
+            isinstance(bind_exc, OSError)
             and (
-                getattr(exc, "winerror", None) == 10048
-                or getattr(exc, "errno", None) in (48, 98, 13)
+                getattr(bind_exc, "winerror", None) == 10048
+                or (isinstance(bind_errno, int) and bind_errno in (48, 98, 13))
             )
         )
         if is_port_collision:
@@ -4611,7 +4612,7 @@ def cmd_cockpit(
                 err=True,
             )
             raise typer.Exit(code=1)
-        typer.echo(f"{_cli_error('Failed to start cockpit')}: {exc}", err=True)
+        typer.echo(f"{_cli_error('Failed to start cockpit')}: {bind_exc}", err=True)
         raise typer.Exit(code=1)
 
     try:
