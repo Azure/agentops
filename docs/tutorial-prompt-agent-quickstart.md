@@ -25,6 +25,23 @@ reference, and skill guidance aligned in one cohesive demo environment.
 | `microsoft/azure-skills` | Connects Copilot guidance to Foundry observe, CI/CD, regression, and trace follow-through. |
 | `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference for the Foundry Observe/Optimize/Protect loop: traces, App Insights, Ask AI, evaluations, and red-team follow-through. |
 
+## Before you run the tutorial
+
+Do this once before a live walkthrough or guided session. The goal is to keep the
+demo focused on the Foundry plus AgentOps flow, not on unexpected permission
+prompts.
+
+| Check | Why it matters |
+|---|---|
+| Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry project. | AgentOps, Foundry SDK calls, and CI setup all need the same Azure identity context. |
+| You can create or publish a prompt agent in the Foundry project. | The tutorial starts from a real `travel-agent:<version>` target. |
+| You can create or attach Application Insights for the Foundry project, or you already have one connected. | Foundry Traces, Ask AI, Doctor, and Cockpit need telemetry to tell the observability story. |
+| You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate and scheduled Doctor workflow only run after the repo is pushed. |
+| GitHub CLI is authenticated with `gh auth login` if you use the PR commands in this tutorial. | The regression step opens a PR and sends the reader directly to the workflow run. |
+| You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth and evaluator settings. |
+| You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure. |
+| Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills. | The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps. |
+
 ## Journey you will exercise
 
 | Step | Main tool | What you do | AgentOps role |
@@ -232,6 +249,8 @@ OIDC.
 
 Recommended path: let Copilot use the installed AgentOps workflow skill as the
 guide, because this step crosses repo, GitHub, and Azure permissions.
+Have the Entra app-registration permission or the admin-provided OIDC values
+ready before you start this handoff.
 
 Refresh the Copilot skills with AgentOps instead of checking folders manually:
 

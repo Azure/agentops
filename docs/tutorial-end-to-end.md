@@ -34,16 +34,22 @@ review.
 
 ## Prerequisites
 
-- Azure CLI signed in with access to a Foundry project.
-- A Foundry project endpoint.
-- Access to create one Travel Agent target:
-  - Prompt agent: `travel-agent:<version>`, or
-  - Hosted/HTTP endpoint: `http://127.0.0.1:8000/chat` locally or a deployed
-    HTTPS endpoint for CI.
-- One Azure OpenAI deployment for evaluator calls, for example `gpt-4o-mini`.
-- Application Insights connected to the Foundry project or agent runtime.
-  If Foundry needs to create or attach it from the Traces view, your identity
-  needs the required Azure permissions.
+Do this once before a live walkthrough or guided session. The goal is to keep the
+tutorial focused on the release-readiness loop, not on unexpected permission
+prompts.
+
+| Check | Why it matters |
+|---|---|
+| Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry project. | AgentOps, Foundry SDK calls, Doctor, Cockpit, and CI setup all need the same Azure identity context. |
+| You have the Foundry project endpoint and can create or publish one Travel Agent target. | The target is either `travel-agent:<version>` for prompt agents or an HTTP endpoint for hosted agents. |
+| You have a chat-capable Azure OpenAI deployment, for example `gpt-4o-mini`. | Local evals and CI variables need a judge model for evaluator calls. |
+| Application Insights is connected to the Foundry project or agent runtime, or you can create/attach it. | Foundry Traces, Ask AI, Azure Monitor, Doctor, Cockpit, and evidence links need telemetry. |
+| You can deploy or expose any hosted endpoint that CI will call. | `localhost` works for local eval; remote CI needs a reachable HTTPS URL. |
+| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | PR, environment, and scheduled Doctor workflows only run after the repo is published. |
+| GitHub CLI is authenticated with `gh auth login` if you use GitHub PR commands while testing CI. | The regression and release-gate steps are smoother when repo, PR, and Actions access are already confirmed. |
+| You can create GitHub environments such as `dev`, `qa`, and `production`, or the equivalent Azure DevOps variables/service connections. | The full lifecycle workflow separates PR checks from environment release gates. |
+| You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI/CD cannot authenticate to Azure. |
+| Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills. | The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps. |
 
 Install AgentOps in a clean tutorial workspace:
 

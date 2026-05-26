@@ -24,6 +24,24 @@ Azure services, and AgentOps workflow remain the actual runtime path.
 | `microsoft/azure-skills` | Shows where the Microsoft Foundry skill can guide hosted-agent CI/CD, observe, and trace-regression follow-through. |
 | `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference for the Foundry Observe/Optimize/Protect loop: OpenTelemetry traces, App Insights, Ask AI, evaluations, and red-team follow-through. |
 
+## Before you run the tutorial
+
+Do this once before a live walkthrough or guided session. The goal is to keep the
+demo focused on the hosted-agent, observability, and AgentOps flow, not on
+unexpected permission prompts.
+
+| Check | Why it matters |
+|---|---|
+| Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry project. | AgentOps discovery, Doctor, Cockpit, and telemetry setup all use that Azure context. |
+| You can create or use a Foundry project and a chat-capable Azure OpenAI deployment. | Local endpoint evals still need a judge model for quality scoring. |
+| You can create or attach Application Insights, or you already have an App Insights connection string. | The local FastAPI sample emits OpenTelemetry spans only after telemetry is configured. |
+| You can deploy or expose the hosted endpoint that CI will call. | `localhost` is fine for local eval, but GitHub Actions or Azure Pipelines need a reachable HTTPS URL. |
+| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | The PR gate and scheduled Doctor workflow only run after the repo is published. |
+| GitHub CLI is authenticated with `gh auth login` if you use GitHub PR commands while testing CI. | The workflow handoff is smoother when repo, PR, and Actions access are already confirmed. |
+| You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth, endpoint settings, and evaluator settings. |
+| You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure. |
+| Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills. | The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps. |
+
 Unlike the Prompt Agent quickstart, this endpoint tutorial does not point the
 generated PR workflow at `ai-agent-evals`. Hosted and HTTP agents are evaluated
 through the AgentOps local runner because CI must invoke your endpoint, extract
@@ -459,7 +477,9 @@ code .agentops\release\latest\evidence.md
 
 The generated PR gate runs `agentops eval run`. Before using that workflow in
 GitHub Actions or Azure Pipelines, replace any localhost agent URL with the
-deployed Foundry Hosted or cloud endpoint.
+deployed Foundry Hosted or cloud endpoint. Have the Entra app-registration
+permission or the admin-provided OIDC values ready before using a workflow skill
+to connect the repo to Azure.
 
 Open both Doctor outputs. The report explains the findings; the evidence pack
 summarizes what a reviewer needs to decide whether the endpoint is releasable.
