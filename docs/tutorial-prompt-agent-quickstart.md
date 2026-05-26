@@ -110,8 +110,9 @@ Before leaving Foundry, turn that playground call into an observability check:
    Explain what happened in this trace and call out any latency or quality risks.
    ```
 
-6. Open the **Conversation ID** for the same interaction. Use the Trace ID for one
-   request and the Conversation ID for the broader multi-turn context.
+6. If Foundry shows a **Conversation ID** for the same interaction, open it to
+   see the broader multi-turn context. If it is not shown, keep the Trace ID;
+   that is enough for the rest of this tutorial.
 
 This is the Foundry side of Operate. AgentOps does not replace it; later Doctor,
 Cockpit, and release evidence check whether the repo can point reviewers back to
@@ -182,10 +183,9 @@ Answer the prompts as the wizard asks them:
 | Agent | `travel-agent:1`, or the exact published version from Foundry |
 | Dataset path | `.agentops/data/travel-smoke.jsonl` |
 
-The wizard does not ask for App Insights. Later runtime commands such as eval,
-Doctor, and Cockpit use the Foundry project endpoint to ask the Azure AI
-Projects SDK for the App Insights resource attached to that Foundry project. If
-discovery is unavailable and you want to force a value, run
+The wizard does not ask for App Insights. Later runtime commands try to discover
+the connected App Insights resource through the Azure AI Projects SDK. If the
+project has no resource attached, or your identity cannot read it, run
 `agentops init --appinsights-connection-string "<connection-string>"` or set
 `APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
 
@@ -230,7 +230,7 @@ Recommendation
   deploy          prompt-agent
   evaluate        Microsoft Foundry AI Agent Evaluation
   workflow edits  not needed - generated workflow should work as-is
-  Copilot skills  not needed - no Copilot handoff for this project shape
+  Copilot skills  installed - available for workflow adaptation handoff
 ```
 
 That means generated CI uses the Microsoft Foundry AI Agent Evaluation
@@ -284,9 +284,10 @@ For this PR gate plus scheduled Doctor quickstart, the generated workflows use
 the `dev` environment for OIDC and variables. You do **not** need `qa` or
 `production` yet; add them when you generate deploy workflows later.
 
-The workflow skill will copy the needed CI variables from your local
-AgentOps/azd configuration into the GitHub `dev` environment. If a value such
-as the evaluator model deployment is missing, it will ask you.
+The workflow skill will propose the GitHub environment variables and secrets to
+copy from your local AgentOps/azd configuration into the GitHub `dev`
+environment. Review and approve those changes. If a value such as the evaluator
+model deployment is missing, it will ask you.
 
 The PR workflow should contain the Microsoft Foundry eval action:
 
@@ -330,14 +331,32 @@ ship a worse prompt, watch the eval gate or metrics move, then recover.
 
 This walkthrough assumes this concrete sequence:
 
-- `travel-agent:2` is the last good version that already has a green run.
-- `travel-agent:3` is the intentionally regressed version you are about to test.
-- `travel-agent:4` is the restored version you publish after the regression
+- `travel-agent:1` is the last good version that already has a green run.
+- `travel-agent:2` is the intentionally regressed version you are about to test.
+- `travel-agent:3` is the restored version you publish after the regression
   test.
 
 If your Foundry project publishes different numbers because you saved or
 published extra times, use the exact `travel-agent:<version>` values shown in
 your GitHub summary and Foundry run pages.
+
+Before you create the regression, make sure the baseline state is already on the
+remote default branch and has run once:
+
+```powershell
+git status
+git add agentops.yaml .agentops\data\travel-smoke.jsonl .github\workflows
+git commit -m "Add AgentOps prompt agent gate"
+git push -u origin main
+gh workflow run agentops-pr.yml --ref main
+Start-Sleep -Seconds 10
+$runId = gh run list --workflow agentops-pr.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
+gh run watch $runId --exit-status
+```
+
+If the commit already exists, skip the `git commit` line and just push/run the
+workflow. This manual `workflow_dispatch` run is the green baseline you will use
+for comparison.
 
 1. In Foundry, edit the `travel-agent` instructions to this intentionally bad
    version:
@@ -347,7 +366,7 @@ your GitHub summary and Foundry run pages.
    plans, practical notes, constraints, or booking caveats.
    ```
 
-2. Publish it as the next version, for example `travel-agent:3`.
+2. Publish it as the next version, for example `travel-agent:2`.
 3. Re-run the wizard and update only the agent value:
 
    ```powershell
@@ -355,7 +374,7 @@ your GitHub summary and Foundry run pages.
    ```
 
    Keep the same endpoint and dataset, but answer `Agent` with
-   `travel-agent:3`.
+   `travel-agent:2`.
 4. Create a regression branch, push it, and open a PR to `main`:
 
    ```powershell
@@ -366,7 +385,7 @@ your GitHub summary and Foundry run pages.
    gh pr create --base main --head feature/regress-travel-agent --title "Test AgentOps regression gate" --body "Evaluates the intentionally regressed travel-agent prompt."
    ```
 
-   The PR gate reads `agent: travel-agent:3` from `agentops.yaml` in that
+   The PR gate reads `agent: travel-agent:2` from `agentops.yaml` in that
    branch and evaluates the regressed version. Open the PR in GitHub and watch
    **Checks** -> **AgentOps PR / Eval (PR gate)**:
 
@@ -380,13 +399,13 @@ your GitHub summary and Foundry run pages.
      finish, then click **Details**.
    - Still in GitHub, on the workflow run **Summary**, find **Azure AI
      Evaluation**. The table shows the exact regressed Agent ID and its pass
-     rates. Confirm it says `travel-agent:3`.
+     rates. Confirm it says `travel-agent:2`.
    - Still in GitHub, click **View run results** in that table. This opens
      Foundry in a new page for the regressed agent run. Keep this Foundry page
      open and use **Overall metric results** as the quality source of truth; the
      GitHub artifact is only provenance.
    - Now in Foundry, click the back arrow to return to **Evaluations**. Open the
-     earlier green run for `travel-agent:2` in another browser tab.
+     earlier green run for `travel-agent:1` in another browser tab.
    - Compare the two Foundry pages side by side: pass rate and average score in
      **Overall metric results**, then the same three rows in **Detailed metrics
      result**. If you need row-level explanations, click **Analyze Results** on
@@ -395,7 +414,7 @@ your GitHub summary and Foundry run pages.
      day-by-day plans, practical notes, constraints, or booking caveats.
 
 5. Restore the original Travel Agent instructions from step 1, publish again
-   as the next version, for example `travel-agent:4`.
+   as the next version, for example `travel-agent:3`.
 6. Point the repo at the fixed version:
 
    ```powershell
@@ -403,7 +422,7 @@ your GitHub summary and Foundry run pages.
    ```
 
    Keep the same endpoint and dataset, but answer `Agent` with
-   `travel-agent:4`.
+   `travel-agent:3`.
 7. Create a fix branch, push it, and open a PR to `main`:
 
    ```powershell
@@ -416,9 +435,9 @@ your GitHub summary and Foundry run pages.
    gh pr create --base main --head fix/restore-travel-agent --title "Restore Travel Agent eval target" --body "Points AgentOps at the restored travel-agent prompt version."
    ```
 
-   The new PR gate should evaluate `travel-agent:4`. In the GitHub Actions
+   The new PR gate should evaluate `travel-agent:3`. In the GitHub Actions
    summary, click **View run results** and confirm the Foundry metrics recover
-   relative to the regressed `travel-agent:3` run.
+   relative to the regressed `travel-agent:2` run.
 
 The learning loop is the point: Foundry owns prompt versioning and the managed
 evaluation run; AgentOps keeps the repo pointed at the exact version under

@@ -51,7 +51,7 @@ the response, apply repo thresholds, and write the normalized `results.json`.
 
 | Step | Main tool | What you do | AgentOps role |
 |---|---|---|---|
-| Build the hosted agent | VS Code, Foundry Toolkit, Agent Framework, Agent Inspector, or `microsoft-foundry` skill | Build, debug, and expose a Travel Agent endpoint. | No ownership of scaffold/deploy. |
+| Create/deploy the hosted agent | VS Code, Foundry Toolkit, Agent Framework, Agent Inspector, or `microsoft-foundry` skill | Create, debug, and expose a Travel Agent endpoint. | No ownership of scaffold/deploy. |
 | Observe runtime | Foundry Operate, Azure Monitor, Application Insights | Confirm traces, latency, errors, and metrics exist. | Checks whether telemetry is wired. |
 | Evaluate endpoint | AgentOps local runner | Invoke the URL and normalize results. | Primary eval path for hosted endpoints. |
 | Review readiness | AgentOps Doctor and Cockpit | Check CI, eval, telemetry, evidence, and links. | Primary owner of repo-side release proof. |
@@ -244,10 +244,9 @@ Answer the prompts as the wizard asks them:
 | Agent | The value in `$env:TRAVEL_AGENT_ENDPOINT`, for example `http://127.0.0.1:8000/chat` |
 | Dataset path | `.agentops/data/travel-smoke.jsonl` |
 
-The wizard does not ask for App Insights. Later runtime commands such as eval,
-Doctor, and Cockpit use the Foundry project endpoint to ask the Azure AI
-Projects SDK for the App Insights resource attached to that Foundry project. If
-discovery is unavailable and you want to force a value, run
+The wizard does not ask for App Insights. Later runtime commands try to discover
+the connected App Insights resource through the Azure AI Projects SDK. If the
+project has no resource attached, or your identity cannot read it, run
 `agentops init --appinsights-connection-string "<connection-string>"` or set
 `APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
 
@@ -303,8 +302,8 @@ Install the Azure Monitor OpenTelemetry distro when you reach this step:
 python -m pip install azure-monitor-opentelemetry
 ```
 
-Make sure the active azd env has an App Insights connection string. If automatic
-discovery did not populate it, store the value once:
+Make sure the active azd env has an App Insights connection string. If it is not
+present yet, store the value once:
 
 ```powershell
 agentops init --appinsights-connection-string "<connection-string>"
@@ -393,7 +392,11 @@ agentops workflow analyze --format text
 For hosted endpoints, AgentOps should recommend:
 
 ```text
-recommended_eval_runner: agentops-local
+Recommendation
+  deploy          placeholder
+  evaluate        AgentOps local eval
+  workflow edits  needed - review project-specific build/deploy steps
+  Copilot skills  installed - available for workflow adaptation handoff
 ```
 
 That is expected. The official Microsoft AI Agent Evaluation runner is used for
@@ -480,6 +483,26 @@ GitHub Actions or Azure Pipelines, replace any localhost agent URL with the
 deployed Foundry Hosted or cloud endpoint. Have the Entra app-registration
 permission or the admin-provided OIDC values ready before using a workflow skill
 to connect the repo to Azure.
+
+Use the same workflow-skill handoff pattern as the Prompt Agent quickstart, but
+keep the scope to the hosted endpoint:
+
+```powershell
+agentops skills install --platform copilot
+```
+
+Then ask Copilot:
+
+```text
+Use the AgentOps workflow skill to get the generated PR gate and scheduled
+Doctor workflow running for this hosted-agent project.
+
+Create or connect the GitHub repo if needed, replace the localhost agent URL
+with the deployed HTTPS endpoint, wire Azure OIDC and required Actions variables
+in the `dev` environment, and set any required endpoint token as a secret. Show
+me the plan before changing GitHub or Azure, and call out anything that needs
+owner/admin permission.
+```
 
 Open both Doctor outputs. The report explains the findings; the evidence pack
 summarizes what a reviewer needs to decide whether the endpoint is releasable.

@@ -1,7 +1,7 @@
 # End-to-end tutorial: release readiness for Foundry agents
 
 This tutorial is the full path. Use it after one of the quickstarts when you
-want to validate the complete build -> evaluate -> release -> observe loop.
+want to validate the complete develop -> evaluate -> release -> observe loop.
 
 It is inspired by the Azure Samples repo
 [Mind the Gap In Your AI Agent Observability](https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe).
@@ -217,7 +217,7 @@ To make this a real Foundry Hosted Agent for CI:
 If the deployed Foundry Hosted Agent follows the Responses API shape, use
 `protocol: responses` in `agentops.yaml`.
 
-If you want the notebook-style Foundry build path, follow the Azure Samples repo
+If you want the notebook-style Foundry create/debug path, follow the Azure Samples repo
 for creating agents, tools, tracing, evaluation, and red-team scans:
 
 ```text
@@ -249,10 +249,9 @@ Answer the prompts as the wizard asks them:
 | Agent | The value in `$env:TRAVEL_AGENT_TARGET`, such as `travel-agent:1` or `http://127.0.0.1:8000/chat` |
 | Dataset path | `.agentops/data/travel-smoke.jsonl` |
 
-The wizard does not ask for App Insights. Later runtime commands such as eval,
-Doctor, and Cockpit use the Foundry project endpoint to ask the Azure AI
-Projects SDK for the App Insights resource attached to that Foundry project. If
-discovery is unavailable and you want to force a value, run
+The wizard does not ask for App Insights. Later runtime commands try to discover
+the connected App Insights resource through the Azure AI Projects SDK. If the
+project has no resource attached, or your identity cannot read it, run
 `agentops init --appinsights-connection-string "<connection-string>"` or set
 `APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
 
@@ -315,14 +314,31 @@ For prompt agents, generate the workflow and let CI call the official runner:
 agentops workflow generate --kinds pr --force
 ```
 
-Before running that workflow, set the CI variable:
+Before running that workflow, make the PR gate runnable in GitHub. Install the
+AgentOps workflow skill if needed:
+
+```powershell
+agentops skills install --platform copilot
+```
+
+Then ask Copilot:
+
+```text
+Use the AgentOps workflow skill to make the generated PR workflow runnable for
+this Foundry prompt-agent repo.
+
+Create or connect the GitHub repo if needed, create the `dev` environment, wire
+Azure OIDC, set AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini as a GitHub `dev`
+environment variable or equivalent Azure DevOps pipeline variable, and show me
+the plan before changing GitHub or Azure.
+```
+
+That value is not an `agentops init` answer. It tells the Microsoft Foundry AI
+Agent Evaluation runner which model deployment should judge responses:
 
 ```text
 AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 ```
-
-This value is not an `agentops init` answer. It tells the Microsoft Foundry AI
-Agent Evaluation runner which model deployment should judge responses.
 
 The generated workflow prepares Microsoft Foundry eval input under:
 
@@ -358,11 +374,16 @@ release evidence. The detailed quality scores stay in Foundry Evaluations.
 
 ## 6. Force a regression and recover
 
-Run one deliberate failure before you build the release path. It makes the
+Run one deliberate failure before you assemble the release path. It makes the
 tutorial concrete: you compare a worse agent against a known-good run, fix it,
 and rerun the same gate.
 
 ### Prompt Agent regression
+
+Make sure the original prompt version has one green workflow run before you
+change it. For example, commit the generated workflow and `agentops.yaml`, run
+`gh workflow run agentops-pr.yml --ref main`, and keep that Foundry evaluation
+page open as the baseline.
 
 1. In Foundry, edit the `travel-agent` instructions to this intentionally bad
    version:
@@ -435,11 +456,40 @@ Generate the common release path:
 agentops workflow generate --kinds pr,dev,qa,prod,watchdog --force
 ```
 
+Because `--force` rewrites the PR workflow, reapply the tutorial action override
+from step 5 if you plan to run the prompt-agent PR gate again:
+
+```powershell
+(Get-Content .github\workflows\agentops-pr.yml) `
+  -replace 'microsoft/ai-agent-evals@v3-beta', 'placerda/ai-agent-evals@main' |
+  Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
+```
+
 The generated workflows are intentionally boring:
 
 - PR gate: evaluate and publish report/evidence.
 - Dev/QA/Prod: deploy with azd or placeholders, then run readiness checks.
 - Scheduled Doctor: run Doctor on a schedule and upload the report.
+
+Before you run the generated workflows, hand the broader environment wiring to
+the AgentOps workflow skill:
+
+```powershell
+agentops skills install --platform copilot
+```
+
+Then ask Copilot:
+
+```text
+Use the AgentOps workflow skill to get the generated PR, Dev, QA, Prod, and
+scheduled Doctor workflows running for this Foundry agent repo.
+
+Extend the PR/dev setup if it already exists, wire Azure OIDC for the `qa` and
+`production` environments, confirm required Actions variables such as
+AZURE_OPENAI_DEPLOYMENT, and keep deploy placeholders unless this repo already
+has an azd deployment path. Show me the plan before changing GitHub or Azure,
+and call out anything that needs owner/admin permission.
+```
 
 Use this moment in the video to connect the four repos: Foundry Toolkit creates
 and deploys the agent, `ai-agent-evals` runs the official prompt-agent CI gate,
@@ -464,8 +514,8 @@ Use this loop in the video:
 | Eval context | From a Foundry eval run, inspect row-level explanations and, when available, the trace attached to the interaction. | The repo keeps the exact target, dataset, gate, and evidence together. |
 | Trace learning | Export or curate traces that represent real issues. | `agentops eval promote-traces` turns reviewed traces into regression candidates. |
 
-If runtime discovery does not find the connected App Insights resource, set the
-connection string in the active azd env:
+If runtime discovery does not find a connected App Insights resource, or your
+identity cannot read it, set the connection string in the active azd env:
 
 ```powershell
 agentops init --appinsights-connection-string "<connection-string>"
@@ -595,6 +645,13 @@ managed scan results.
 
 Export reviewed Foundry or Application Insights traces to JSON/JSONL. Preview
 the conversion first:
+
+```powershell
+New-Item -ItemType Directory -Force .agentops\traces | Out-Null
+```
+
+Export or copy the reviewed trace rows into
+`.agentops\traces\candidate-traces.jsonl`, then preview the conversion:
 
 ```powershell
 agentops eval promote-traces --source .agentops\traces\candidate-traces.jsonl
