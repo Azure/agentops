@@ -53,6 +53,7 @@ def test_kinds_filter_subset(tmp_path: Path) -> None:
         "agentops-pr.yml",
         "agentops-deploy-dev.yml",
     }
+    assert result.kinds == ["pr", "dev"]
     assert (tmp_path / _PR_PATH).exists()
     assert (tmp_path / _DEV_PATH).exists()
     assert not (tmp_path / _QA_PATH).exists()
@@ -514,10 +515,49 @@ def test_cli_next_steps_mention_environments(tmp_path: Path) -> None:
     out = result.stdout
     assert "Deploy mode" in out
     assert "placeholder (auto default)" in out
-    assert "Next steps" in out
+    assert "Next" in out
     assert "dev" in out and "qa" in out and "production" in out
     assert "OIDC" in out or "Workload Identity Federation" in out
     assert "branch" in out.lower()
+
+
+def test_cli_next_steps_for_pr_watchdog_only_do_not_request_deploy_envs(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: travel-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    data_path = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    data_path.parent.mkdir(parents=True)
+    data_path.write_text(
+        '{"input": "Plan a trip", "expected": "A useful itinerary"}\n',
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "workflow",
+            "generate",
+            "--dir",
+            str(tmp_path),
+            "--kinds",
+            "pr,watchdog",
+        ],
+    )
+
+    assert result.exit_code == 0
+    out = result.stdout
+    assert "Microsoft Foundry AI Agent Evaluation" in out
+    assert "used only by deploy workflows" in out
+    assert "create GitHub environment: dev" in out
+    assert "qa" not in out
+    assert "production" not in out
+    assert "deploy    not needed yet" in out
+    assert "agentops skills install --platform copilot" in out
+    assert "/skills" in out and "agentops-workflow" in out
+    assert "gh repo create <repo-name>" in out
 
 
 # ---------------------------------------------------------------------------

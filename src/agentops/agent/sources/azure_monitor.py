@@ -7,9 +7,13 @@ not installed, returns an empty payload with a diagnostic note.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from urllib import error, request
 
 from agentops.agent.config import AzureMonitorSourceConfig
 
@@ -107,11 +111,24 @@ def collect_azure_monitor(
         return AzureMonitorPayload(diagnostics=diagnostics)
 
     if not config.app_insights_resource_id and not config.log_analytics_workspace_id:
+        application_id, source, reason = _resolve_application_id()
+        if application_id:
+            diagnostics["target"] = application_id
+            diagnostics["target_kind"] = "application_id"
+            diagnostics["target_source"] = source
+            return _collect_application_insights_by_app_id(
+                application_id,
+                lookback_days,
+                diagnostics,
+            )
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
             "neither app_insights_resource_id nor log_analytics_workspace_id "
-            "is configured"
+            "is configured, and no App Insights ApplicationId could be "
+            "discovered from the connection string or Foundry project"
         )
+        if reason:
+            diagnostics["discovery_reason"] = reason
         return AzureMonitorPayload(diagnostics=diagnostics)
 
     try:
@@ -132,7 +149,10 @@ def collect_azure_monitor(
     diagnostics["target"] = workspace_or_resource
 
     try:
-        credential = DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
+        credential = DefaultAzureCredential(
+            exclude_developer_cli_credential=True,
+            process_timeout=30,
+        )
         client = LogsQueryClient(credential)
         kql = _REQUESTS_KQL.format(lookback_days=int(lookback_days))
         if config.log_analytics_workspace_id:
@@ -302,3 +322,202 @@ def collect_azure_monitor(
         log.info("Rate-limit KQL probe failed (non-fatal): %s", exc)
 
     return payload
+
+
+def _resolve_application_id() -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """Resolve an App Insights ApplicationId for REST API queries."""
+    last_reason: Optional[str] = None
+    for env_name in (
+        "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        "AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING",
+    ):
+        connection_string = os.getenv(env_name)
+        if not connection_string:
+            continue
+        application_id = _extract_application_id(connection_string)
+        if application_id:
+            return application_id, env_name, None
+        last_reason = f"{env_name} has no ApplicationId segment"
+
+    try:
+        from agentops.utils.foundry_discovery import (
+            resolve_appinsights_connection_from_env_with_reason,
+        )
+
+        connection_string, reason = resolve_appinsights_connection_from_env_with_reason()
+    except Exception as exc:  # noqa: BLE001
+        return None, None, f"Foundry App Insights discovery failed: {exc}"
+
+    if connection_string:
+        application_id = _extract_application_id(connection_string)
+        if application_id:
+            return application_id, "foundry_project_telemetry", None
+        return (
+            None,
+            None,
+            "Foundry App Insights connection string has no ApplicationId segment",
+        )
+    return None, None, reason or last_reason
+
+
+def _extract_application_id(connection_string: Optional[str]) -> Optional[str]:
+    if not connection_string:
+        return None
+    match = re.search(r"(?:^|;)ApplicationId=([^;]+)", connection_string)
+    return match.group(1).strip() if match else None
+
+
+def _collect_application_insights_by_app_id(
+    application_id: str,
+    lookback_days: int,
+    diagnostics: Dict[str, Any],
+) -> AzureMonitorPayload:
+    """Query App Insights by ApplicationId when no ARM resource id is configured."""
+    try:
+        bearer = _acquire_application_insights_token()
+    except ImportError as exc:
+        diagnostics["status"] = "skipped"
+        diagnostics["reason"] = "azure-identity not installed (install agentops-toolkit[agent])"
+        log.info("azure-identity unavailable: %s", exc)
+        return AzureMonitorPayload(diagnostics=diagnostics)
+    except Exception as exc:  # pragma: no cover - network / auth errors
+        diagnostics["status"] = "error"
+        diagnostics["reason"] = str(exc)
+        log.warning("App Insights token acquisition failed: %s", exc)
+        return AzureMonitorPayload(diagnostics=diagnostics)
+
+    payload = AzureMonitorPayload(diagnostics=diagnostics)
+    kql = _REQUESTS_KQL.format(lookback_days=int(lookback_days))
+    summary = _query_application_insights(application_id, bearer, kql)
+    if summary is None:
+        diagnostics["status"] = "error"
+        diagnostics["reason"] = "Application Insights query failed"
+        return payload
+
+    diagnostics["status"] = "ok"
+    row = _first_rest_row(summary)
+    if row:
+        _apply_summary_row(payload, row)
+
+    try:
+        safety_kql = _SAFETY_KQL.format(lookback_days=int(lookback_days))
+        safety = _query_application_insights(application_id, bearer, safety_kql)
+        if safety is None:
+            diagnostics["safety_status"] = "error"
+            diagnostics["safety_reason"] = "query failed"
+        else:
+            hits = int((_first_rest_row(safety) or {}).get("hits", 0) or 0)
+            diagnostics["safety_status"] = "ok"
+            diagnostics["safety_hits"] = hits
+            if hits > 0:
+                payload.safety_violations.append(
+                    {"signal": "content_filter", "hits": hits}
+                )
+    except Exception as exc:  # pragma: no cover - best effort
+        diagnostics["safety_status"] = "error"
+        diagnostics["safety_reason"] = str(exc)
+        log.info("Safety App Insights probe failed (non-fatal): %s", exc)
+
+    try:
+        token_kql = _TOKEN_USAGE_KQL.format(lookback_days=int(lookback_days))
+        token = _query_application_insights(application_id, bearer, token_kql)
+        if token is None:
+            diagnostics["token_status"] = "error"
+            diagnostics["token_reason"] = "query failed"
+        else:
+            token_row = _first_rest_row(token) or {}
+            in_t = token_row.get("input_tokens")
+            out_t = token_row.get("output_tokens")
+            payload.input_token_count = int(in_t) if in_t is not None else 0
+            payload.output_token_count = int(out_t) if out_t is not None else 0
+            diagnostics["token_status"] = "ok"
+    except Exception as exc:  # pragma: no cover - best effort
+        diagnostics["token_status"] = "error"
+        diagnostics["token_reason"] = str(exc)
+        log.info("Token-usage App Insights probe failed (non-fatal): %s", exc)
+
+    try:
+        rl_kql = _RATE_LIMIT_KQL.format(lookback_days=int(lookback_days))
+        rate_limit = _query_application_insights(application_id, bearer, rl_kql)
+        if rate_limit is None:
+            diagnostics["rate_limit_status"] = "error"
+            diagnostics["rate_limit_reason"] = "query failed"
+        else:
+            hits = int((_first_rest_row(rate_limit) or {}).get("hits", 0) or 0)
+            payload.rate_limit_429_count = hits
+            diagnostics["rate_limit_status"] = "ok"
+            diagnostics["rate_limit_hits"] = hits
+    except Exception as exc:  # pragma: no cover - best effort
+        diagnostics["rate_limit_status"] = "error"
+        diagnostics["rate_limit_reason"] = str(exc)
+        log.info("Rate-limit App Insights probe failed (non-fatal): %s", exc)
+
+    return payload
+
+
+def _acquire_application_insights_token() -> str:
+    from azure.identity import DefaultAzureCredential
+
+    credential = DefaultAzureCredential(
+        exclude_developer_cli_credential=True,
+        process_timeout=30,
+    )
+    token = credential.get_token("https://api.applicationinsights.io/.default")
+    return token.token
+
+
+def _query_application_insights(
+    application_id: str,
+    bearer: str,
+    kql: str,
+) -> Optional[Dict[str, Any]]:
+    body = json.dumps({"query": kql}).encode("utf-8")
+    req = request.Request(
+        url=f"https://api.applicationinsights.io/v1/apps/{application_id}/query",
+        data=body,
+        headers={
+            "Authorization": f"Bearer {bearer}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            parsed = json.loads(resp.read())
+    except (error.URLError, ValueError, KeyError) as exc:
+        log.debug("App Insights REST query failed: %s", exc)
+        return None
+
+    if isinstance(parsed, dict) and parsed.get("error"):
+        err = parsed["error"]
+        msg = err.get("message") if isinstance(err, dict) else str(err)
+        log.debug("App Insights REST query reported error: %s", msg)
+        return None
+    return parsed
+
+
+def _first_rest_row(result: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    if not result:
+        return None
+    tables = result.get("tables") or []
+    if not tables:
+        return None
+    table = tables[0]
+    columns = [col.get("name") for col in (table.get("columns") or [])]
+    rows = table.get("rows") or []
+    if not rows:
+        return None
+    return dict(zip(columns, rows[0]))
+
+
+def _apply_summary_row(payload: AzureMonitorPayload, data: Dict[str, Any]) -> None:
+    payload.request_count = int(data.get("request_count", 0) or 0)
+    payload.error_count = int(data.get("error_count", 0) or 0)
+    avg_ms = data.get("avg_duration_ms")
+    p95_ms = data.get("p95_duration_ms")
+    if avg_ms is not None:
+        payload.avg_duration_seconds = float(avg_ms) / 1000.0
+    if p95_ms is not None:
+        payload.p95_duration_seconds = float(p95_ms) / 1000.0
+    if payload.request_count > 0:
+        payload.error_rate = payload.error_count / payload.request_count

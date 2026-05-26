@@ -35,7 +35,7 @@ def test_analyze_official_eval_support_for_prompt_agent(tmp_path: Path) -> None:
     assert support.agent_ids == "support-agent:4"
     assert "builtin.coherence" in support.official_evaluators
     assert "builtin.text_similarity" in support.official_evaluators
-    assert any("avg_latency_seconds" in warning for warning in support.warnings)
+    assert support.warnings == ()
 
 
 def test_prepare_official_eval_writes_data_and_metadata(tmp_path: Path) -> None:
@@ -59,6 +59,7 @@ def test_prepare_official_eval_writes_data_and_metadata(tmp_path: Path) -> None:
     assert metadata["deployment_name"] == "gpt-4o-mini"
     assert metadata["items_total"] == 1
     assert metadata["machine_readable_thresholds"] is False
+    assert metadata["skipped_agentops_evaluators"] == ["avg_latency_seconds"]
 
 
 def test_prepare_official_eval_records_preview_runner_refs(

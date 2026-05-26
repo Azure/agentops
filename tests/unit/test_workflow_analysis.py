@@ -65,13 +65,28 @@ def test_analysis_recommends_official_eval_for_supported_prompt_agent(tmp_path: 
 
     analysis = analyze_workflow_project(tmp_path)
     rendered = render_workflow_analysis(analysis, "text")
+    markdown = render_workflow_analysis(analysis, "markdown")
 
     assert analysis.recommended_deploy_mode == "prompt-agent"
     assert analysis.recommended_eval_runner == "official-ai-agent-evaluation"
     assert recommended_eval_runner(tmp_path) == "official-ai-agent-evaluation"
     assert "builtin.coherence" in analysis.official_evaluators
     assert any(signal.key == "official_ai_agent_evaluation" for signal in analysis.signals)
-    assert "Recommended eval runner: official-ai-agent-evaluation" in rendered
+    assert "Recommendation" in rendered
+    assert "evaluate" in rendered
+    assert "Microsoft Foundry AI Agent Evaluation" in rendered
+    assert "prompt agent and dataset are compatible" in rendered
+    assert "evaluation. (agentops.yaml)" in rendered
+    assert "workflow edits" in rendered
+    assert "not needed - generated workflow should work as-is" in rendered
+    assert "Copilot skills" in rendered
+    assert "not needed - no Copilot handoff for this project shape" in rendered
+    assert "Foundry eval" in rendered
+    assert "- [x]" not in rendered
+    assert "builtin." not in rendered
+    assert "| Check" not in rendered
+    assert "JSON shape" not in rendered
+    assert "| Check | Status | Explanation |" in markdown
 
 
 def test_analysis_uses_placeholder_for_generic_repo(tmp_path: Path) -> None:
@@ -163,8 +178,11 @@ def test_cli_workflow_analyze_text(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.stdout
     assert "AgentOps workflow analysis" in result.stdout
-    assert "Recommended deploy mode: azd" in result.stdout
-    assert "Copilot skills installed: no" in result.stdout
+    assert "Recommendation" in result.stdout
+    assert "deploy" in result.stdout
+    assert "azd" in result.stdout
+    assert "no Copilot handoff" in result.stdout
+    assert "- [x]" not in result.stdout
 
 
 def test_cli_workflow_analyze_json(tmp_path: Path) -> None:

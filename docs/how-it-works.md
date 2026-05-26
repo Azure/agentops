@@ -15,8 +15,9 @@ is the proof?** It:
 5. Writes release evidence with `agentops doctor --evidence-pack`.
 
 Foundry owns agent creation, deployment, runtime, traces, monitoring,
-red-teaming, datasets, and official evaluation drilldown. AgentOps references
-the candidate those tools produced and adds the repo-controlled release proof:
+red-teaming, datasets, and Microsoft-hosted evaluation drilldown. AgentOps
+references the candidate those tools produced and adds the repo-controlled
+release proof:
 config, gates, artifacts, PR reports, Doctor diagnostics, release evidence,
 trace-to-regression promotion, and Cockpit links back to Foundry/Azure Monitor.
 
@@ -542,9 +543,9 @@ The `execution: cloud` trade-offs (so you can decide consciously):
 
 For CI pipelines that only need a supported Foundry-native eval and do not need
 AgentOps artifacts, baselines, Doctor readiness, or release evidence, the
-official AI Agent Evaluation GitHub Action or Azure DevOps extension may be the
-cleaner entry point. AgentOps is the wrapper when the repo needs a release gate
-and proof pack around those signals.
+Microsoft Foundry AI Agent Evaluation GitHub Action or Azure DevOps extension
+may be the cleaner entry point. AgentOps is the wrapper when the repo needs a
+release gate and proof pack around those signals.
 
 Implementation lives in [src/agentops/pipeline/publisher.py](../src/agentops/pipeline/publisher.py)
 (Classic) and [src/agentops/pipeline/cloud_runner.py](../src/agentops/pipeline/cloud_runner.py)

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import textwrap
 from dataclasses import dataclass, field
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from agentops.core.agentops_config import classify_agent
 from agentops.utils.yaml import load_yaml
@@ -15,6 +16,7 @@ from agentops.utils.yaml import load_yaml
 _TEXT_LIMIT = 200_000
 _SCAN_LIMIT = 80
 _DATASET_ROW_LIMIT = 20
+_TEXT_WRAP_WIDTH = 92
 _TEXT_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".bicep", ".yaml", ".yml"}
 _WALK_FILE_LIMIT = 2_000
 _IGNORE_PARTS = {
@@ -557,44 +559,169 @@ def _classification(config_info: _ConfigInfo, scenario_hint: str) -> str:
 def _render_text(analysis: EvalAnalysis) -> str:
     lines = [
         "AgentOps eval analysis",
-        f"Directory: {analysis.directory}",
-        f"Classification: {analysis.classification}",
-        f"Config status: {analysis.config_status}",
-        f"Dataset status: {analysis.dataset_status}",
-        f"Target kind: {analysis.target_kind or 'unknown'}",
-        f"Scenario hint: {analysis.scenario_hint}",
-        f"Complexity: {analysis.complexity}",
-        f"Skill-assisted setup: {'yes' if analysis.requires_copilot_adaptation else 'no'}",
-        f"Copilot skills installed: {'yes' if analysis.copilot_skills_installed else 'no'}",
+        f"Workspace: {analysis.directory}",
+        f"Project: {_soften_text(analysis.classification)}",
         "",
-        "Detected signals:",
+        "Readiness",
     ]
+    lines.extend(_render_text_readiness(analysis))
+    lines.append("")
+    lines.append("Signals")
     if analysis.signals:
-        lines.extend(
-            f"- {s.label}: {s.detail}" + (f" ({s.path})" if s.path else "")
-            for s in analysis.signals
-        )
+        lines.extend(_render_text_signals(analysis.signals))
     else:
-        lines.append("- No strong evaluation setup signals detected.")
+        lines.extend(
+            _wrapped_status_line(
+                "todo",
+                "Signals",
+                "No strong evaluation setup signals detected.",
+            )
+        )
     if analysis.warnings:
         lines.append("")
-        lines.append("Warnings:")
-        lines.extend(f"- {warning}" for warning in analysis.warnings)
+        lines.append("Warnings")
+        for warning in analysis.warnings:
+            lines.extend(_wrapped_status_line("warn", "warning", warning))
     if analysis.recommended_skills:
         lines.append("")
-        lines.append("Recommended skills:")
-        lines.extend(f"- /{skill}" for skill in analysis.recommended_skills)
+        lines.append("Recommended skills")
+        for skill in analysis.recommended_skills:
+            lines.extend(_wrapped_status_line("todo", "skill", f"/{skill}"))
     if analysis.copilot_prompt:
         lines.append("")
-        lines.append("Copilot handoff:")
-        lines.append(f"- Copy/paste: {analysis.copilot_prompt}")
+        lines.append("Copilot handoff")
+        lines.extend(_wrapped_status_line("todo", "copy/paste", analysis.copilot_prompt))
     lines.append("")
-    lines.append("Recommended commands:")
-    lines.extend(f"- {command}" for command in analysis.recommended_commands)
+    lines.append("Commands")
+    lines.extend(f"  {command}" for command in analysis.recommended_commands)
     lines.append("")
-    lines.append("Next steps:")
-    lines.extend(f"- {step}" for step in analysis.next_steps)
+    lines.append("Next")
+    for index, step in enumerate(analysis.next_steps, start=1):
+        lines.extend(_wrapped_numbered_step(index, step))
     return "\n".join(lines) + "\n"
+
+
+def _render_text_readiness(analysis: EvalAnalysis) -> List[str]:
+    setup_value = (
+        "needs setup help - use recommended skills before making eval blocking"
+        if analysis.requires_copilot_adaptation
+        else "ready - current eval setup can run directly"
+    )
+    skills_value = (
+        "installed - available for setup handoff"
+        if analysis.copilot_skills_installed
+        else (
+            "missing - install if you want Copilot-guided setup"
+            if analysis.requires_copilot_adaptation
+            else "not needed - no Copilot handoff for eval setup"
+        )
+    )
+    return _render_text_fields(
+        [
+            ("config", _friendly_status(analysis.config_status)),
+            ("dataset", _friendly_status(analysis.dataset_status)),
+            ("target", _friendly_target(analysis.target_kind)),
+            ("scenario", _friendly_status(analysis.scenario_hint)),
+            ("complexity", analysis.complexity),
+            ("setup help", setup_value),
+            ("Copilot skills", skills_value),
+        ]
+    )
+
+
+def _render_text_signals(signals: Sequence[EvalSignal]) -> List[str]:
+    lines: List[str] = []
+    for signal in signals:
+        status = "ok" if signal.confidence == "high" else "hint"
+        detail = _soften_text(signal.detail + (f" ({signal.path})" if signal.path else ""))
+        lines.extend(_wrapped_status_line(status, _signal_label(signal.key, signal.label), detail))
+    return lines
+
+
+def _render_text_fields(rows: Sequence[tuple[str, str]]) -> List[str]:
+    width = max(len(label) for label, _ in rows)
+    lines: List[str] = []
+    for label, value in rows:
+        lines.extend(_wrap_text(value, indent=f"  {label.ljust(width)}  "))
+    return lines
+
+
+def _wrapped_status_line(status: str, label: str, text: str) -> List[str]:
+    prefix = f"  {status.ljust(4)} {label.ljust(20)} "
+    wrapped = textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=prefix,
+        subsequent_indent=" " * len(prefix),
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped or [prefix.rstrip()]
+
+
+def _wrapped_numbered_step(index: int, text: str) -> List[str]:
+    prefix = f"  {index}. "
+    wrapped = textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=prefix,
+        subsequent_indent=" " * len(prefix),
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped or [prefix.rstrip()]
+
+
+def _wrap_text(text: str, *, indent: str) -> List[str]:
+    return textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=indent,
+        subsequent_indent=indent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    ) or [indent.rstrip()]
+
+
+def _friendly_target(target_kind: Optional[str]) -> str:
+    if not target_kind:
+        return "unknown"
+    return {
+        "foundry_prompt": "Foundry prompt agent",
+        "foundry_hosted": "Foundry hosted agent",
+        "http_json": "HTTP/JSON agent",
+        "model_deployment": "model deployment",
+        "model_direct": "direct model",
+    }.get(target_kind, _friendly_status(target_kind))
+
+
+def _friendly_status(value: str) -> str:
+    return value.replace("_", " ")
+
+
+def _soften_text(text: str) -> str:
+    return (
+        text.replace("foundry_prompt", "Foundry prompt agent")
+        .replace("model_direct", "direct model")
+        .replace("model_quality", "model quality")
+        .replace("agent_workflow", "agent workflow")
+        .replace("http_json", "HTTP/JSON agent")
+    )
+
+
+def _signal_label(key: str, fallback: str) -> str:
+    return {
+        "agentops_config": "Config",
+        "dataset_ref": "Dataset",
+        "dataset_columns": "Columns",
+        "scenario_hint": "Scenario",
+        "azd_project": "azd",
+        "container_or_http_app": "Host",
+        "rag_signal": "RAG",
+        "tool_signal": "Tools",
+        "foundry_signal": "Foundry",
+        "model_signal": "Model",
+    }.get(key, fallback)
 
 
 def _render_markdown(analysis: EvalAnalysis) -> str:
@@ -719,4 +846,3 @@ def _rel(root: Path, path: Optional[Path]) -> Optional[str]:
         return str(path.relative_to(root))
     except ValueError:
         return str(path)
-

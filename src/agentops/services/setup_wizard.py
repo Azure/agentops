@@ -2,19 +2,21 @@
 
 The wizard asks the user one question at a time for the values AgentOps
 needs to evaluate, observe, and analyze a Foundry agent — the project
-endpoint, the agent identifier, the dataset path, and the Application
-Insights connection string.
+endpoint, the agent identifier, and the dataset path.
 
 Storage model (azd-first):
 
 * ``agent`` and ``dataset`` are declarative project config and stay in
   ``agentops.yaml``. They are version-controlled and rarely change
   between environments.
-* ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` and
-  ``APPLICATIONINSIGHTS_CONNECTION_STRING`` are environment-specific and
-  land in ``.azure/<active-env>/.env`` — the same file ``azd`` uses, so
-  Doctor, the Cockpit, and ``agentops eval run`` all see one source of
-  truth. The file is git-ignored via ``.azure/.gitignore``.
+* ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` is environment-specific and lands
+  in ``.azure/<active-env>/.env`` — the same file ``azd`` uses, so Doctor,
+  the Cockpit, and ``agentops eval run`` all see one source of truth. The
+  file is git-ignored via ``.azure/.gitignore``.
+* ``APPLICATIONINSIGHTS_CONNECTION_STRING`` can still be saved to the same
+  env file when supplied non-interactively, but the interactive wizard does
+  not ask for it; runtime commands can discover it from the Foundry project
+  later.
 * Canonical Azure variable names are preserved so the Azure SDKs and
   ``azd`` templates can read them directly.
 
@@ -30,7 +32,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Collection, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -57,13 +59,6 @@ DATASET_HELP = (
     "Path to the JSONL dataset, relative to the project root.\n"
     "Default: .agentops/data/smoke.jsonl"
 )
-
-APPINSIGHTS_TITLE = "Application Insights connection string (optional)"
-APPINSIGHTS_HELP = (
-    "Press Enter to auto-discover it from the Foundry project.\n"
-    "Paste one only to force a specific App Insights resource."
-)
-
 
 # Canonical environment-variable names AgentOps reads. We never rename
 # variables that the Azure SDKs and azd templates expect — only AgentOps-
@@ -377,9 +372,9 @@ def run_wizard(
     prompt: PromptFn,
     echo: Callable[[str], None],
     *,
-    include_appinsights: bool = True,
     on_answer: Optional[OnAnswerFn] = None,
     reconfigure: bool = False,
+    force_prompt_fields: Optional[Collection[str]] = None,
 ) -> WizardAnswers:
     """Drive the interactive question loop.
 
@@ -398,12 +393,21 @@ def run_wizard(
     environment, or the process env — is reused silently with a single
     confirmation line. Set ``reconfigure=True`` to force the wizard to
     re-ask every question even when defaults are present.
+
+    ``force_prompt_fields`` is narrower than ``reconfigure``: it re-asks only
+    selected fields while still reusing other existing defaults. The CLI uses
+    this on a first interactive run so starter ``agentops.yaml`` values remain
+    visible defaults instead of being accepted as real user choices.
     """
     defaults = discover_defaults(workspace)
     answers = WizardAnswers()
     skipped: list[str] = []
+    forced_fields = set(force_prompt_fields or ())
     unicode_ok = _can_encode("✓•")
     ok_glyph = "✓" if unicode_ok else "*"
+
+    def _should_prompt(field_name: str, value: Optional[str]) -> bool:
+        return reconfigure or field_name in forced_fields or not value
 
     def _persist(field_name: str, value: str) -> None:
         if on_answer is not None:
@@ -421,8 +425,8 @@ def run_wizard(
         echo(f"  {ok_glyph} {label}: {display}")
 
     # 1) Foundry project endpoint
-    if not reconfigure and defaults.project_endpoint:
-        _confirm_existing(PROJECT_ENDPOINT_TITLE, defaults.project_endpoint)
+    if not _should_prompt("project_endpoint", defaults.project_endpoint):
+        _confirm_existing(PROJECT_ENDPOINT_TITLE, defaults.project_endpoint or "")
         skipped.append("project_endpoint")
     else:
         echo("")
@@ -443,8 +447,8 @@ def run_wizard(
             break
 
     # 2) Agent
-    if not reconfigure and defaults.agent:
-        _confirm_existing(AGENT_TITLE, defaults.agent)
+    if not _should_prompt("agent", defaults.agent):
+        _confirm_existing(AGENT_TITLE, defaults.agent or "")
         skipped.append("agent")
     else:
         echo("")
@@ -465,8 +469,8 @@ def run_wizard(
             break
 
     # 3) Dataset
-    if not reconfigure and defaults.dataset:
-        _confirm_existing(DATASET_TITLE, defaults.dataset)
+    if not _should_prompt("dataset", defaults.dataset):
+        _confirm_existing(DATASET_TITLE, defaults.dataset or "")
         skipped.append("dataset")
     else:
         echo("")
@@ -486,41 +490,9 @@ def run_wizard(
                 _persist("dataset", value)
             break
 
-    # 4) Application Insights
-    if include_appinsights:
-        if not reconfigure and defaults.appinsights_connection_string:
-            _confirm_existing(
-                APPINSIGHTS_TITLE,
-                defaults.appinsights_connection_string,
-                secret=True,
-            )
-            skipped.append("appinsights_connection_string")
-        else:
-            echo("")
-            echo(APPINSIGHTS_TITLE)
-            echo(_indent(APPINSIGHTS_HELP))
-            if defaults.appinsights_connection_string:
-                echo(
-                    "  Current: "
-                    f"{_mask_secret(defaults.appinsights_connection_string)} "
-                    "(Enter keeps it)."
-                )
-            else:
-                echo("  Enter = auto-discover.")
-            raw = prompt(
-                "Application Insights connection string",
-                None,
-            )
-            value = raw.strip()
-            if value and value != (defaults.appinsights_connection_string or ""):
-                answers.appinsights_connection_string = value
-                _persist("appinsights_connection_string", value)
-
     # Surface a hint only when EVERY managed value was already set, so the
     # user knows how to edit values without thinking the wizard "did nothing".
     expected = ["project_endpoint", "agent", "dataset"]
-    if include_appinsights:
-        expected.append("appinsights_connection_string")
     if not reconfigure and set(skipped) == set(expected):
         echo("")
         echo("All values already configured. Re-run with --reconfigure to change them.")

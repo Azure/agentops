@@ -109,4 +109,4 @@ def test_promote_traces_cli_does_not_double_bullet_truncated_rows(tmp_path: Path
 
     assert result.exit_code == 0, result.stdout
     assert "\n-- word" not in result.stdout
-    assert "\n- word" in result.stdout
+    assert "\n  1. word" in result.stdout

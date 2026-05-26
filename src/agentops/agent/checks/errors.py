@@ -266,10 +266,10 @@ def _check_no_runtime_telemetry(
             summary=summary,
             recommendation=(
                 "Configure `sources.azure_monitor.app_insights_resource_id` "
-                "in `.agentops/agent.yaml`, install the `[agent]` extra, "
-                "and connect Azure Monitor OpenTelemetry on the agent "
-                "runtime (set `APPLICATIONINSIGHTS_CONNECTION_STRING` "
-                "and call `configure_azure_monitor()` on startup). "
+                "or set `APPLICATIONINSIGHTS_CONNECTION_STRING` with an "
+                "`ApplicationId`, install the `[agent]` extra, and connect "
+                "Azure Monitor OpenTelemetry on the agent runtime "
+                "(call `configure_azure_monitor()` on startup). "
                 "See `docs/tutorial-end-to-end.md` -> "
                 "'Wire observability'."
             ),

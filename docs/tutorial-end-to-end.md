@@ -225,11 +225,21 @@ Answer the prompts as the wizard asks them:
 | Foundry project endpoint | `https://<resource>.services.ai.azure.com/api/projects/<project>` |
 | Agent | The value in `$env:TRAVEL_AGENT_TARGET`, such as `travel-agent:1` or `http://127.0.0.1:8000/chat` |
 | Dataset path | `.agentops/data/travel-smoke.jsonl` |
-| Application Insights connection string | Paste it if you have one, or press Enter to let AgentOps auto-discover/leave it blank |
+
+The wizard does not ask for App Insights. Later runtime commands such as eval,
+Doctor, and Cockpit use the Foundry project endpoint to ask the Azure AI
+Projects SDK for the App Insights resource attached to that Foundry project. If
+discovery is unavailable and you want to force a value, run
+`agentops init --appinsights-connection-string "<connection-string>"` or set
+`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
+
+If the first run shows starter defaults such as `Agent [my-agent:1]` or
+`Dataset path [.agentops/data/smoke.jsonl]`, replace them with your Travel Agent
+target and dataset. Those defaults only come from the scaffolded starter file.
 
 The wizard saves `agent` and `dataset` to `agentops.yaml`. It saves the Foundry
-project endpoint and App Insights connection string to `.azure/dev/.env`, which
-is git-ignored and compatible with azd.
+project endpoint to `.azure/dev/.env`, which is git-ignored and compatible with
+azd. If you force an App Insights connection string later, it is saved there too.
 
 For a hosted HTTP endpoint, add the endpoint protocol fields:
 
@@ -252,13 +262,14 @@ Expected result:
 
 | Agent target | Runner |
 |---|---|
-| `agent: name:version` | `official-ai-agent-evaluation` |
+| `agent: name:version` | Microsoft Foundry AI Agent Evaluation |
 | `agent: https://...` | `agentops-local` |
 | `agent: model:<deployment>` | `agentops-local` |
 
-This is the key alignment rule. Foundry-native prompt agents use the official
-runner where possible. AgentOps keeps the local path for hosted endpoints,
-models, unsupported evaluator mappings, and repo-specific threshold evidence.
+This is the key alignment rule. Foundry-native prompt agents use the Microsoft
+Foundry AI Agent Evaluation action/task where possible. AgentOps keeps the local
+path for hosted endpoints, models, unsupported evaluator mappings, and
+repo-specific threshold evidence.
 
 ## 5. Run the first eval
 
@@ -287,10 +298,10 @@ Before running that workflow, set the CI variable:
 AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 ```
 
-This value is not an `agentops init` answer. It tells the official eval runner
-which model deployment should judge responses.
+This value is not an `agentops init` answer. It tells the Microsoft Foundry AI
+Agent Evaluation runner which model deployment should judge responses.
 
-The generated workflow prepares official eval input under:
+The generated workflow prepares Microsoft Foundry eval input under:
 
 ```text
 .agentops/official-eval/
@@ -331,8 +342,8 @@ and rerun the same gate.
    version such as `travel-agent:3`, re-run `agentops init --reconfigure`, and
    run the pipeline again.
 
-This exercises Foundry prompt versioning, the official AI Agent Evaluation
-runner, and AgentOps evidence for the exact version under release review.
+This exercises Foundry prompt versioning, Microsoft Foundry AI Agent Evaluation,
+and AgentOps evidence for the exact version under release review.
 
 ### Hosted/HTTP regression
 
@@ -388,7 +399,8 @@ The generated workflows are intentionally boring:
 Foundry and Azure Monitor own live observability. AgentOps only checks whether
 the repo and runtime are wired to those signals.
 
-Set the Application Insights connection string in the active azd env:
+If runtime discovery does not find the connected App Insights resource, set the
+connection string in the active azd env:
 
 ```powershell
 agentops init show --reveal-secrets
@@ -482,7 +494,7 @@ agentops cockpit --workspace .
 Use Cockpit as the local command center:
 
 - Foundry connection and deep links;
-- official eval or local eval gate status;
+- Microsoft Foundry eval or AgentOps local eval gate status;
 - Doctor findings;
 - release evidence;
 - local eval history;
@@ -496,7 +508,8 @@ You are ready for a release review when:
 
 - The agent target is explicit in `agentops.yaml`.
 - CI uses the expected runner for the target.
-- Eval results or official eval metadata are attached to the workflow artifact.
+- Eval results or Microsoft Foundry eval metadata are attached to the workflow
+  artifact.
 - The workshop includes one deliberate regression and one fixed rerun, either
   through Foundry prompt versions or AgentOps local baseline comparison.
 - `agentops doctor --evidence-pack` writes `evidence.md`.

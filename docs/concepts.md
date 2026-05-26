@@ -158,10 +158,10 @@ evidence outputs into a release gate.
 | Generic HTTP/JSON endpoint | No | Yes | Use local runner. |
 | Raw model deployment (`model:<name>`) | No | Yes | Use local runner. |
 
-For CI pipelines that only need a supported Foundry-native eval, prefer the
-official AI Agent Evaluation action or Azure DevOps extension. Use AgentOps when
-the repo also needs thresholds, baselines, local fallback, Doctor readiness,
-release evidence, or trace-to-regression review.
+For CI pipelines that only need a supported Foundry-native eval, prefer
+Microsoft Foundry AI Agent Evaluation. Use AgentOps when the repo also needs
+thresholds, baselines, local fallback, Doctor readiness, release evidence, or
+trace-to-regression review.
 
 ## Evaluation Scenarios
 

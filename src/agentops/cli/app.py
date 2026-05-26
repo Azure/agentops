@@ -130,6 +130,25 @@ def _cli_value(text: str) -> str:
     return text
 
 
+def _workflow_eval_runner_label(eval_runner: str) -> str:
+    if eval_runner == "official-ai-agent-evaluation":
+        return "Microsoft Foundry AI Agent Evaluation"
+    if eval_runner == "agentops-local":
+        return "AgentOps local eval"
+    return eval_runner
+
+
+def _workflow_environment_names(kinds: list[str]) -> list[str]:
+    environments: list[str] = []
+    if any(kind in kinds for kind in ("pr", "watchdog", "dev")):
+        environments.append("dev")
+    if "qa" in kinds:
+        environments.append("qa")
+    if "prod" in kinds:
+        environments.append("production")
+    return environments
+
+
 def _colorize_analysis_text(text: str) -> str:
     """Apply restrained terminal color to text analysis output only."""
     lines: list[str] = []
@@ -139,24 +158,54 @@ def _colorize_analysis_text(text: str) -> str:
         if not stripped:
             lines.append(line)
             continue
+        if stripped in {"Warnings", "Warnings:"}:
+            section = "Warnings"
+            lines.append(_cli_warn(line))
+            continue
         if stripped in {
             "AgentOps eval analysis",
             "AgentOps trace-to-dataset preview",
             "AgentOps workflow analysis",
+            "Workflow decision checklist:",
+            "Recommendation",
+            "Readiness",
             "Detected signals:",
+            "Signals",
+            "Foundry eval checks:",
+            "Foundry eval",
             "Recommended skills:",
+            "Recommended skills",
             "Copilot handoff:",
+            "Copilot handoff",
             "Recommended commands:",
+            "Commands",
             "Pipeline stages:",
+            "Pipeline plan",
             "Next steps:",
+            "Next",
             "Sample rows:",
+            "Sample rows",
+            "Summary",
         }:
             section = stripped.rstrip(":")
             lines.append(_cli_heading(line))
             continue
-        if stripped == "Warnings:":
-            section = "Warnings"
-            lines.append(_cli_warn(line))
+        if section == "Commands" and stripped.startswith("agentops "):
+            prefix = line[: len(line) - len(line.lstrip())]
+            lines.append(f"{prefix}{_cli_command(stripped)}")
+            continue
+        status = stripped.split(maxsplit=1)[0].lower() if stripped else ""
+        if status in {"ok", "hint", "todo", "warn"}:
+            prefix = line[: len(line) - len(line.lstrip())]
+            body = line[len(prefix) :]
+            rest = body[len(status) :]
+            if status == "ok":
+                rendered_status = _cli_ok(body[: len(status)])
+            elif status == "warn":
+                rendered_status = _cli_warn(body[: len(status)])
+            else:
+                rendered_status = style(body[: len(status)], "bold", "yellow")
+            lines.append(f"{prefix}{rendered_status}{rest}")
             continue
         if stripped.startswith("- "):
             bullet = style("-", "dim")
@@ -283,7 +332,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "scaffolds `agentops.yaml` plus the `.agentops/` starter files, "
             "ensures a `.azure/` directory shaped the way `azd` expects, and "
             "runs an azd-style question loop that fills in project endpoint, "
-            "agent, dataset, and Application Insights connection string.",
+            "agent, and dataset.",
             "Every answer is persisted as soon as it is validated, so a "
             "Ctrl+C mid-wizard never loses values that were already entered. "
             "Re-running `agentops init` is idempotent: questions whose values "
@@ -304,9 +353,12 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "`.azure/<env>/.env`, and the process environment. Each question "
             "shows the current value as its default; pressing Enter keeps it.",
             "Persists `agent` and `dataset` to `agentops.yaml` (declarative, "
-            "version-controlled). Persists the Foundry project endpoint and "
-            "Application Insights connection string to `.azure/<env>/.env` "
-            "(git-ignored). Canonical Azure variable names "
+            "version-controlled). Persists the Foundry project endpoint to "
+            "`.azure/<env>/.env` (git-ignored). App Insights is not asked in "
+            "the wizard; runtime commands try to discover the Foundry project's "
+            "attached resource through the Azure AI Projects SDK, and "
+            "`--appinsights-connection-string` remains available when you need "
+            "to force a value explicitly. Canonical Azure variable names "
             "(`AZURE_*`, `APPLICATIONINSIGHTS_*`) are preserved so Azure SDKs "
             "and azd templates read them directly. Only AgentOps-specific "
             "knobs use the `AGENTOPS_` prefix.",
@@ -810,20 +862,20 @@ def _extend_text_section(
         lines.extend(_manual_item_lines(prefix, item))
 
 
-_ASCII_TRANSLITERATION = {
-    "\u2014": "-",   # em dash
-    "\u2013": "-",   # en dash
-    "\u2212": "-",   # minus sign
-    "\u2018": "'",   # left single quote
-    "\u2019": "'",   # right single quote
-    "\u201c": '"',   # left double quote
-    "\u201d": '"',   # right double quote
-    "\u2026": "...", # horizontal ellipsis
-    "\u00a0": " ",   # non-breaking space
-    "\u2192": "->",  # rightwards arrow
-    "\u2197": "^",   # north-east arrow
-    "\u2022": "*",   # bullet
-    "\u00b7": "*",   # middle dot
+_ASCII_TRANSLITERATION: dict[int, str] = {
+    ord("\u2014"): "-",   # em dash
+    ord("\u2013"): "-",   # en dash
+    ord("\u2212"): "-",   # minus sign
+    ord("\u2018"): "'",   # left single quote
+    ord("\u2019"): "'",   # right single quote
+    ord("\u201c"): '"',   # left double quote
+    ord("\u201d"): '"',   # right double quote
+    ord("\u2026"): "...", # horizontal ellipsis
+    ord("\u00a0"): " ",   # non-breaking space
+    ord("\u2192"): "->",  # rightwards arrow
+    ord("\u2197"): "^",   # north-east arrow
+    ord("\u2022"): "*",   # bullet
+    ord("\u00b7"): "*",   # middle dot
 }
 
 
@@ -837,7 +889,7 @@ def _downgrade_to_ascii(text: str) -> str:
     """
     if not text:
         return text
-    return text.translate(str.maketrans(_ASCII_TRANSLITERATION))
+    return text.translate(_ASCII_TRANSLITERATION)
 
 
 def _emit_manual_output(
@@ -1085,7 +1137,10 @@ def cmd_init(
         bool,
         typer.Option(
             "--no-appinsights",
-            help="Skip the Application Insights question.",
+            help=(
+                "Deprecated no-op; App Insights is no longer asked in the "
+                "interactive wizard."
+            ),
         ),
     ] = False,
     project_endpoint: Annotated[
@@ -1136,10 +1191,12 @@ def cmd_init(
     evaluate, observe, and analyze a Foundry agent.
 
     ``agent`` and ``dataset`` land in ``agentops.yaml`` (version-
-    controlled). The Foundry project endpoint and the App Insights
-    connection string land in the active ``.azure/<env>/.env`` file
-    (git-ignored) — the same file ``azd`` already manages — so a single
-    source of truth feeds Doctor, the Cockpit, and ``agentops eval run``.
+    controlled). The Foundry project endpoint lands in the active
+    ``.azure/<env>/.env`` file (git-ignored) — the same file ``azd``
+    already manages — so a single source of truth feeds Doctor, the
+    Cockpit, and ``agentops eval run``. App Insights can be supplied
+    explicitly with ``--appinsights-connection-string`` if runtime discovery
+    is not enough.
 
     The wizard persists each answer immediately as it is validated, so a
     Ctrl+C mid-wizard never discards what the user already entered.
@@ -1150,7 +1207,6 @@ def cmd_init(
     from agentops.services.initializer import initialize_flat_workspace
     from agentops.services.setup_wizard import (
         AGENT_TITLE,
-        APPINSIGHTS_TITLE,
         DATASET_TITLE,
         PROJECT_ENDPOINT_TITLE,
         WizardAnswers,
@@ -1180,10 +1236,11 @@ def cmd_init(
             raise typer.Exit(code=1) from exc
 
     log.debug(
-        "cmd_init called force=%s dir=%s no_prompt=%s any_flag=%s",
+        "cmd_init called force=%s dir=%s no_prompt=%s no_appinsights=%s any_flag=%s",
         force,
         workspace,
         no_prompt,
+        no_appinsights,
         any(
             v is not None
             for v in (project_endpoint, agent, dataset, appinsights_connection_string)
@@ -1223,6 +1280,12 @@ def cmd_init(
         typer.echo(_cli_overwritten(overwritten))
     for skipped in result.skipped_files:
         typer.echo(_cli_skipped(skipped))
+
+    config_path = workspace / "agentops.yaml"
+    config_seeded_this_run = (
+        config_path in result.created_files
+        or config_path in result.overwritten_files
+    )
 
     # ----- Phase 2: ensure a .azure/<env>/ baseline exists ----------------
     target_env_name = azd_env_name or "dev"
@@ -1328,13 +1391,15 @@ def cmd_init(
         # Only show the prompt hint when at least one question will actually
         # be asked. When everything is already configured (idempotent re-run),
         # the wizard emits compact confirmation lines instead.
-        will_prompt = reconfigure or any(
+        force_prompt_fields = {"agent", "dataset"} if config_seeded_this_run else set()
+        prompt_values = [
+            defaults.project_endpoint,
+            defaults.agent,
+            defaults.dataset,
+        ]
+        will_prompt = reconfigure or bool(force_prompt_fields) or any(
             v is None or not str(v).strip()
-            for v in (
-                defaults.project_endpoint,
-                defaults.agent,
-                defaults.dataset,
-            )
+            for v in prompt_values
         )
         if will_prompt:
             typer.echo(style("Press Enter to accept the value in brackets.", "dim"))
@@ -1349,7 +1414,6 @@ def cmd_init(
             PROJECT_ENDPOINT_TITLE,
             AGENT_TITLE,
             DATASET_TITLE,
-            APPINSIGHTS_TITLE,
         }
 
         def _on_answer(field_name: str, value: str) -> None:
@@ -1382,9 +1446,9 @@ def cmd_init(
             workspace,
             prompt=_prompt,
             echo=_wizard_echo,
-            include_appinsights=not no_appinsights,
             on_answer=_on_answer,
             reconfigure=reconfigure,
+            force_prompt_fields=force_prompt_fields,
         )
 
     # ----- Phase 4: apply (idempotent — covers scripted mode and any
@@ -2169,13 +2233,17 @@ def cmd_workflow_generate(
         raise typer.Exit(code=1) from exc
 
     typer.echo(f"{_cli_label('Platform')}: {result.platform}")
-    deploy_mode_note = (
-        f"{result.deploy_mode} (auto default)"
-        if deploy_mode == "auto"
-        else result.deploy_mode
-    )
+    deploy_kinds = [kind for kind in result.kinds if kind in {"dev", "qa", "prod"}]
+    deploy_mode_note = result.deploy_mode
+    if deploy_mode == "auto":
+        deploy_mode_note = f"{deploy_mode_note} (auto default)"
+    if not deploy_kinds:
+        deploy_mode_note = f"{deploy_mode_note}; used only by deploy workflows"
     typer.echo(f"{_cli_label('Deploy mode')}: {_cli_value(deploy_mode_note)}")
-    typer.echo(f"{_cli_label('Eval runner')}: {_cli_value(result.eval_runner)}")
+    typer.echo(
+        f"{_cli_label('Eval runner')}: "
+        f"{_cli_value(_workflow_eval_runner_label(result.eval_runner))}"
+    )
     for created in result.created_files:
         typer.echo(_cli_created(created))
     for overwritten in result.overwritten_files:
@@ -2185,59 +2253,90 @@ def cmd_workflow_generate(
 
     if result.created_files or result.overwritten_files:
         typer.echo("")
-        typer.echo(_cli_heading("Next steps:"))
+        typer.echo(_cli_heading("Next"))
         if result.platform == "github":
+            environments = _workflow_environment_names(result.kinds)
+            typer.echo("  repo      publish this folder before CI can run")
+            typer.echo("            If this is not a GitHub repo yet:")
+            typer.echo(f"            {_cli_command('git init')}")
+            typer.echo(f"            {_cli_command('git add .')}")
             typer.echo(
-                "  1. Configure Azure Workload Identity Federation (OIDC) and set "
-                "repository variables AZURE_CLIENT_ID, AZURE_TENANT_ID, "
-                "AZURE_SUBSCRIPTION_ID, AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, "
-                "AZURE_OPENAI_DEPLOYMENT."
+                "            "
+                + _cli_command('git commit -m "Add AgentOps workflows"')
             )
             typer.echo(
-                "  2. Create three GitHub Environments: 'dev', 'qa', 'production'. "
-                "Add required reviewers to 'production'."
+                f"            {_cli_command('gh repo create <repo-name> --source . --private --push')}"
             )
+            typer.echo("  Copilot   smoother path: use the AgentOps workflow skill")
+            typer.echo(
+                f"            {_cli_command('agentops skills install --platform copilot')}"
+            )
+            typer.echo("            In Copilot, run /skills and confirm agentops-workflow loaded.")
+            typer.echo(
+                "            Ask it to wire GitHub, Azure OIDC, variables, "
+                "environments, and branch rules."
+            )
+            typer.echo(
+                "  CI vars   AZURE_CLIENT_ID, AZURE_TENANT_ID, "
+                "AZURE_SUBSCRIPTION_ID"
+            )
+            typer.echo(
+                "            AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, "
+                "AZURE_OPENAI_DEPLOYMENT"
+            )
+            if environments:
+                typer.echo(
+                    "  envs      create GitHub environment"
+                    f"{'' if len(environments) == 1 else 's'}: "
+                    f"{', '.join(environments)}"
+                )
+                if "production" in environments:
+                    typer.echo(
+                        "            add required reviewers to production before "
+                        "enabling prod deploys"
+                    )
         else:
-            typer.echo(
-                "  1. Create the Azure DevOps service connection "
-                "'agentops-azure' and a variable group named 'agentops'."
-            )
-            typer.echo(
-                "  2. Create Azure DevOps Environments: 'dev', 'qa', "
-                "'production'. Add approval checks to 'production'."
-            )
+            environments = _workflow_environment_names(result.kinds)
+            typer.echo("  repo      publish this folder before pipelines can run")
+            typer.echo("  service   create service connection: agentops-azure")
+            typer.echo("  vars      create variable group: agentops")
+            if environments:
+                typer.echo(
+                    "  envs      create Azure DevOps environment"
+                    f"{'' if len(environments) == 1 else 's'}: "
+                    f"{', '.join(environments)}"
+                )
+                if "production" in environments:
+                    typer.echo("            add approval checks to production")
         if result.deploy_mode == "azd":
-            typer.echo(
-                "  3. Confirm azure.yaml, infra/, and azd hooks are committed. "
-                "The deploy workflows delegate provision/deploy to azd."
-            )
-            typer.echo(
-                "     Set AZURE_ENV_NAME and AZURE_LOCATION per environment if "
-                "your azd env names differ from dev/qa/production."
-            )
+            if deploy_kinds:
+                typer.echo("  azd       commit azure.yaml, infra/, and azd hooks")
+                typer.echo(
+                    "            set AZURE_ENV_NAME/AZURE_LOCATION if env names differ"
+                )
         elif result.deploy_mode == "prompt-agent":
-            typer.echo(
-                "  3. Commit a prompt/instructions file and set `prompt_file` "
-                "in agentops.yaml (or AGENTOPS_AGENT_PROMPT_FILE in CI)."
-            )
-            typer.echo(
-                "     The deploy workflow stages a Foundry prompt-agent "
-                "candidate, evaluates that exact version, then records it "
-                "as deployed when the gate passes."
-            )
+            if deploy_kinds:
+                typer.echo("  prompt    commit a prompt/instructions file")
+                typer.echo(
+                    "            set prompt_file or AGENTOPS_AGENT_PROMPT_FILE in CI"
+                )
+                typer.echo(
+                    "            deploy evaluates that exact candidate version first"
+                )
+            else:
+                typer.echo("  deploy    not needed yet; PR/watchdog can run first")
+                typer.echo(
+                    "            add deploy workflows when you are ready to deploy"
+                )
         else:
-            typer.echo(
-                "  3. No azure.yaml was detected. Ask your coding agent to "
-                "generate a zero-trust azd deployment, or use "
-                "`--deploy-mode prompt-agent` for a Foundry prompt agent."
-            )
-        typer.echo(
-            "  4. In Settings -> Branches, require the 'AgentOps PR' status check "
-            "on develop and main."
-        )
-        typer.echo(
-            "  5. Commit and push. See docs/ci-github-actions.md for the full guide."
-        )
+            if deploy_kinds:
+                typer.echo("  deploy    placeholder workflows need project-specific edits")
+                typer.echo(
+                    "            ask your coding agent to wire azd or prompt-agent deploy"
+                )
+        if "pr" in result.kinds:
+            typer.echo("  gate      after the first run, require the AgentOps PR check")
+        typer.echo("  guide     docs/ci-github-actions.md")
     elif result.skipped_files:
         typer.echo(_cli_warn("No files written. Use --force to overwrite existing workflows."))
 
@@ -3785,15 +3884,15 @@ def _read_single_key() -> str:
         try:
             import msvcrt  # type: ignore[import-not-found]
 
-            ch = msvcrt.getch()
-            if ch in (b"\xe0", b"\x00"):
+            ch_win = msvcrt.getch()  # type: ignore[attr-defined]
+            if ch_win in (b"\xe0", b"\x00"):
                 try:
-                    msvcrt.getch()
+                    msvcrt.getch()  # type: ignore[attr-defined]
                 except Exception:  # noqa: BLE001
                     pass
                 return ""
             try:
-                return ch.decode("utf-8", errors="ignore")
+                return ch_win.decode("utf-8", errors="ignore")
             except Exception:  # noqa: BLE001
                 return ""
         except Exception:  # noqa: BLE001
@@ -3803,13 +3902,13 @@ def _read_single_key() -> str:
         import tty  # type: ignore[import-not-found]
 
         fd = sys.stdin.fileno()
-        old = termios.tcgetattr(fd)
+        old = termios.tcgetattr(fd)  # type: ignore[attr-defined]
         try:
-            tty.setraw(fd)
-            ch = sys.stdin.read(1)
+            tty.setraw(fd)  # type: ignore[attr-defined]
+            ch_posix = sys.stdin.read(1)
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old)
-        return ch
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)  # type: ignore[attr-defined]
+        return ch_posix
     except Exception:  # noqa: BLE001
         return ""
 
@@ -4485,13 +4584,14 @@ def cmd_cockpit(
         _time.sleep(0.05)
 
     if bind_error:
-        exc = bind_error[0]
+        bind_exc = bind_error[0]
+        bind_errno = getattr(bind_exc, "errno", None)
         # WinError 10048 / EADDRINUSE / EACCES on the bind syscall.
         is_port_collision = (
-            isinstance(exc, OSError)
+            isinstance(bind_exc, OSError)
             and (
-                getattr(exc, "winerror", None) == 10048
-                or getattr(exc, "errno", None) in (48, 98, 13)
+                getattr(bind_exc, "winerror", None) == 10048
+                or (isinstance(bind_errno, int) and bind_errno in (48, 98, 13))
             )
         )
         if is_port_collision:
@@ -4512,7 +4612,7 @@ def cmd_cockpit(
                 err=True,
             )
             raise typer.Exit(code=1)
-        typer.echo(f"{_cli_error('Failed to start cockpit')}: {exc}", err=True)
+        typer.echo(f"{_cli_error('Failed to start cockpit')}: {bind_exc}", err=True)
         raise typer.Exit(code=1)
 
     try:

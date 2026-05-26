@@ -319,7 +319,6 @@ def test_run_wizard_calls_on_answer_for_each_validated_input(
             "https://acct.services.ai.azure.com/api/projects/p",  # project_endpoint
             "my-agent:1",  # agent
             ".agentops/data/smoke.jsonl",  # dataset
-            "",  # appinsights -> skip
         ]
     )
 
@@ -332,7 +331,6 @@ def test_run_wizard_calls_on_answer_for_each_validated_input(
         tmp_path,
         prompt=_prompt,
         echo=lambda _msg: None,
-        include_appinsights=True,
         on_answer=lambda field, value: captured.append((field, value)),
     )
 
@@ -364,7 +362,9 @@ def test_run_wizard_skips_questions_when_defaults_present(
     monkeypatch.delenv(ENV_KEY_PROJECT_ENDPOINT, raising=False)
     monkeypatch.delenv(ENV_KEY_APPINSIGHTS, raising=False)
 
-    # Pre-populate agentops.yaml and the active azd env so all 4 values resolve.
+    # Pre-populate agentops.yaml and the active azd env so all interactive
+    # values resolve. App Insights may exist, but the wizard no longer manages
+    # it interactively.
     (tmp_path / "agentops.yaml").write_text(
         "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
         encoding="utf-8",
@@ -391,32 +391,20 @@ def test_run_wizard_skips_questions_when_defaults_present(
         prompt_calls.append(question)
         return ""
 
-    run_wizard(
-        tmp_path,
-        prompt=_prompt,
-        echo=echo_lines.append,
-        include_appinsights=True,
-    )
+    run_wizard(tmp_path, prompt=_prompt, echo=echo_lines.append)
 
     # Zero questions asked — every default was satisfied.
     assert prompt_calls == [], (
         f"Wizard should not prompt when all defaults are present, asked: {prompt_calls}"
     )
-    # All four confirmation lines emitted, plus the closing hint.
+    # All three interactive confirmation lines emitted, plus the closing hint.
     # The leading glyph is "✓" on UTF-8 stdouts and "*" on cp1252; accept either.
     confirmations = [
         line for line in echo_lines if line.startswith(("  ✓ ", "  * "))
     ]
-    assert len(confirmations) == 4, echo_lines
+    assert len(confirmations) == 3, echo_lines
     assert any("--reconfigure" in line for line in echo_lines), echo_lines
-
-    # AppInsights confirmation must mask the secret (no raw key visible).
-    appinsights_line = next(
-        line for line in confirmations if "Application Insights" in line
-    )
-    assert "InstrumentationKey" not in appinsights_line
-    # Bullet glyph is either "•" (Unicode) or "*" (cp1252 fallback).
-    assert ("•" in appinsights_line) or ("*" in appinsights_line)
+    assert "Application Insights" not in "\n".join(echo_lines)
 
 
 def test_run_wizard_reconfigure_forces_questions_even_when_defaults_present(
@@ -462,7 +450,6 @@ def test_run_wizard_reconfigure_forces_questions_even_when_defaults_present(
         tmp_path,
         prompt=_prompt,
         echo=lambda _msg: None,
-        include_appinsights=True,
         reconfigure=True,
     )
 
@@ -470,6 +457,4 @@ def test_run_wizard_reconfigure_forces_questions_even_when_defaults_present(
         "Foundry project endpoint",
         "Agent",
         "Dataset path",
-        "Application Insights connection string",
     ]
-

@@ -109,6 +109,7 @@ class CicdResult:
     platform: str = "github"
     deploy_mode: str = "placeholder"
     eval_runner: str = AGENTOPS_LOCAL_RUNNER
+    kinds: List[str] = field(default_factory=list)
     created_files: List[Path] = field(default_factory=list)
     overwritten_files: List[Path] = field(default_factory=list)
     skipped_files: List[Path] = field(default_factory=list)
@@ -493,6 +494,7 @@ def generate_cicd_workflows(
         if kind in seen or kind not in template_map:
             continue
         seen.add(kind)
+        result.kinds.append(kind)
         substitutions: dict[str, str] = {}
         eval_config = (
             "${{ inputs.config || 'agentops.yaml' }}"

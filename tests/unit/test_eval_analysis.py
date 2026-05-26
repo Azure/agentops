@@ -119,8 +119,11 @@ def test_cli_eval_analyze_text(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.stdout
     assert "AgentOps eval analysis" in result.stdout
-    assert "Config status: ready" in result.stdout
-    assert "Copilot skills installed: no" in result.stdout
+    assert "Readiness" in result.stdout
+    assert "config" in result.stdout
+    assert "ready" in result.stdout
+    assert "Copilot skills" in result.stdout
+    assert "not needed - no Copilot handoff for eval setup" in result.stdout
 
 
 def test_cli_eval_analyze_json(tmp_path: Path) -> None:
@@ -165,4 +168,3 @@ def test_cli_eval_analyze_invalid_format_fails(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "--format must be text, markdown, or json" in result.output
-

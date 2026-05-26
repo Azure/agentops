@@ -1,6 +1,6 @@
 ---
 name: agentops-workflow
-description: Set up AgentOps release-readiness workflows: PR eval gates, Doctor/evidence artifacts, and safe deploy handoffs to azd or Foundry prompt-agent tooling. Trigger on "CI", "CD", "pipeline", "workflow", "GitHub Actions", "Azure DevOps", "ADO", "PR gate", "deploy", "environments", "GitFlow", "release branch", "promote to prod", "DevOps", "can we ship".
+description: "Set up AgentOps release-readiness workflows: PR eval gates, Doctor/evidence artifacts, and safe deploy handoffs to azd or Foundry prompt-agent tooling. Trigger on CI, CD, pipeline, workflow, GitHub Actions, Azure DevOps, ADO, PR gate, deploy, environments, GitFlow, release branch, promote to prod, DevOps, can we ship."
 ---
 
 # AgentOps Workflow
@@ -38,6 +38,80 @@ AgentOps is **azd-first** for app/infrastructure deployment and
 parallel deployment system. AgentOps should gate quality and record proof;
 `azd provision`, `azd deploy`, azd hooks, Foundry Toolkit, the
 `microsoft-foundry` skill, and project tooling own lifecycle actions.
+
+## Fast path - generated GitHub setup
+
+Use this path when the user already generated GitHub workflows or asks to get
+the PR gate/watchdog running. Stay local-first and deterministic; do not start
+by discovering the whole Azure subscription.
+
+1. Inspect the repo before cloud discovery:
+   - `agentops init show --dir .` without `--reveal-secrets`.
+   - `agentops.yaml`.
+   - `.azure/config.json`, then the active `.azure/<env>/.env`.
+   - `azd env get-values` when `azure.yaml` exists and azd is available.
+   - `.github/workflows/agentops-*.yml`.
+2. Read the generated workflows to determine exactly which GitHub environments
+   and variables are needed. For the prompt-agent quickstart, `pr,watchdog`
+   normally means only `environment: dev`.
+3. Treat `dev` here as a GitHub Actions environment for OIDC and variables. It
+   normally points at the Foundry project already configured by `agentops init`;
+   it does not require creating a new Foundry project.
+4. Proceed only when these values are known or deliberately chosen:
+   - GitHub `owner/repo`.
+   - workflow environment names from `jobs.*.environment`.
+   - `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`.
+   - `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`.
+   - `AZURE_OPENAI_DEPLOYMENT`.
+   - optional `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+5. Prefer existing values and exact checks:
+   - `git remote get-url origin` and `gh repo view --json nameWithOwner`.
+   - `gh variable list --env <env>` and `gh secret list --env <env>`.
+   - `agentops init show`, local `.azure/<env>/.env`, and `azd env get-values`
+     values before `az account show`.
+   - `az account show` only as a proposal for tenant/subscription; confirm
+     before writing it to GitHub variables.
+6. Copy CI variables from local AgentOps/azd configuration into the GitHub
+   environment used by the workflow. Reuse local values for
+   `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, `AZURE_OPENAI_ENDPOINT`,
+   `AZURE_OPENAI_DEPLOYMENT`, and optional
+   `APPLICATIONINSIGHTS_CONNECTION_STRING` instead of asking the user to type
+   them again. Explain `AZURE_OPENAI_DEPLOYMENT` only if it is missing: it is
+   the Azure OpenAI deployment used as the evaluator/judge model, not the
+   user's agent.
+7. Do not enumerate subscriptions, Foundry projects, Azure OpenAI resources, or
+   model deployments to guess missing values. If `AZURE_SUBSCRIPTION_ID`,
+   `AZURE_TENANT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, or
+   `AZURE_OPENAI_DEPLOYMENT` is absent from AgentOps/azd/local env, ask the user
+   to choose or provide it. Only run a scoped Azure query after the user confirms
+   the subscription and the exact missing value.
+8. For GitHub OIDC, derive the federated credential subject from the generated
+   workflow. If the job has `environment: dev`, the subject is normally
+   `repo:<owner>/<repo>:environment:dev`. Do not assume branch or
+   `pull_request` subjects without reading the workflow.
+9. Ask before creating or updating GitHub repos, GitHub environments,
+   variables/secrets, Entra app registrations/service principals, federated
+   credentials, managed identities, or Azure RBAC assignments.
+10. When creating federated credentials from PowerShell, avoid fragile
+   interpolation. Do **not** write `"repo:$repo:environment:$envName"` because
+   `$repo:` can be parsed as a scoped variable. Use
+   `"repo:${repo}:environment:${envName}"` or
+   `("repo:{0}:environment:{1}" -f $repo, $envName)`, then build JSON from a
+   PowerShell object with `ConvertTo-Json`.
+11. After creating or updating a federated credential, read it back and verify
+    before triggering a workflow:
+    - `subject` exactly matches the generated workflow subject.
+    - `issuer` is `https://token.actions.githubusercontent.com`.
+    - `audiences` includes `api://AzureADTokenExchange`.
+    If any value differs, fix the credential before running GitHub Actions.
+12. Do not dispatch `gh workflow run` as a surprise validation step. First show
+    that the GitHub environment, variables/secrets, federated credential, and
+    Azure RBAC are ready, then ask the user before triggering workflows.
+13. Avoid broad discovery unless local config is missing. Do **not** run broad
+   `az resource list`, `az graph query`, SDK inspection, or web search to find
+   the Foundry project when `agentops.yaml` or `.azure/<env>/.env` already has
+   `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. If the endpoint is missing, say exactly
+   what is missing and ask the user before scanning the subscription.
 
 ## Branch model assumed
 
@@ -126,21 +200,18 @@ Useful flags:
 
 ### GitHub Actions
 
-Walk the user through Settings → Environments and create three:
+Read the generated workflow files and create only the GitHub Environments used
+by `jobs.*.environment`. For `pr,watchdog`, that is usually only **`dev`**. For
+the full scaffold, create **`dev`**, **`qa`**, and **`production`**.
 
-1. **`dev`** - no extra protection. Set any DEV-specific variables here
-   (e.g. `ACA_APP_NAME`, `AZURE_RESOURCE_GROUP` pointing at the dev RG).
-2. **`qa`** - usually no required reviewers, but isolated variables for
-   the QA environment.
-3. **`production`** - set:
-   - **Required reviewers**: at least one (deploys to PROD will pause
-     here until approved).
-   - (Optional) **Wait timer** for an extra delay.
-   - (Optional) **Deployment branches**: restrict to `main`.
-   - PROD-specific variables (e.g. production resource group).
+- **`dev`** - no extra protection. Store the OIDC variables here when the
+  generated jobs use `environment: dev`.
+- **`qa`** - usually no required reviewers, but isolated variables for QA.
+- **`production`** - set required reviewers, optional wait timer, optional
+  deployment branch restriction to `main`, and production-specific variables.
 
-Tell the user that env-specific variables on the `production` environment
-will override repo-level ones automatically inside the prod workflow.
+Tell the user that environment-level variables override repository-level ones
+inside jobs that declare that environment.
 
 ### Azure DevOps
 
@@ -169,14 +240,17 @@ so the PR-comment step can post.
 
 ### GitHub Actions (OIDC)
 
-At repository level (Settings → Secrets and variables → Actions →
-**Variables** tab), set:
+At the GitHub Environment level when the workflow declares an environment
+(preferred for the quickstart), or at repository level when intentionally shared
+across environments, set:
 
 - `AZURE_CLIENT_ID` - App registration / managed identity used for OIDC.
 - `AZURE_TENANT_ID`
 - `AZURE_SUBSCRIPTION_ID`
 - `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` - Foundry project URL used by the
   eval step.
+- `AZURE_OPENAI_DEPLOYMENT` - existing Azure OpenAI deployment used as the
+  evaluator/judge model. Reuse the local AgentOps/azd value when available.
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` - optional fallback as a
   variable or secret. Generated workflows first try to auto-discover App
   Insights from the Foundry project endpoint; this value makes eval and

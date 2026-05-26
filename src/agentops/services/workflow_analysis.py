@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from agentops.core.agentops_config import classify_agent
 from agentops.pipeline.official_eval import (
@@ -18,6 +19,7 @@ from agentops.utils.yaml import load_yaml
 
 _TEXT_LIMIT = 200_000
 _SCAN_LIMIT = 80
+_TEXT_WRAP_WIDTH = 92
 _IGNORE_PARTS = {
     ".agentops",
     ".azure",
@@ -263,15 +265,15 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
             signals.append(
                 WorkflowSignal(
                     "official_ai_agent_evaluation",
-                    "Official AI Agent Evaluation",
-                    "agentops.yaml can use Microsoft Foundry AI Agent Evaluation for prompt-agent CI gates.",
+                    "Foundry eval runner",
+                    "prompt agent and dataset are compatible; CI can use Microsoft Foundry evaluation.",
                     "agentops.yaml",
                 )
             )
             warnings.extend(official_support.warnings)
         else:
             warnings.append(
-                "Official AI Agent Evaluation not selected: "
+                "Microsoft Foundry AI Agent Evaluation not selected: "
                 + " ".join(official_support.reasons)
             )
 
@@ -349,6 +351,14 @@ def recommended_eval_runner(directory: Path) -> str:
     return analyze_workflow_project(directory).recommended_eval_runner
 
 
+def _display_eval_runner(eval_runner: str) -> str:
+    if eval_runner == OFFICIAL_EVAL_RUNNER:
+        return "Microsoft Foundry AI Agent Evaluation"
+    if eval_runner == AGENTOPS_LOCAL_RUNNER:
+        return "AgentOps local eval"
+    return eval_runner
+
+
 def has_ailz_preflight(directory: Path) -> bool:
     """Return True when the official AI Landing Zone preflight script exists."""
     root = directory.resolve()
@@ -369,46 +379,42 @@ def render_workflow_analysis(analysis: WorkflowAnalysis, output_format: str = "t
 def _render_text(analysis: WorkflowAnalysis) -> str:
     lines = [
         "AgentOps workflow analysis",
-        f"Directory: {analysis.directory}",
-        f"Classification: {analysis.classification}",
-        f"Recommended deploy mode: {analysis.recommended_deploy_mode}",
-        f"Recommended eval runner: {analysis.recommended_eval_runner}",
-        f"Strategy: {analysis.deployment_strategy}",
-        f"Eval strategy: {analysis.eval_strategy}",
-        f"Complexity: {analysis.complexity}",
-        f"Copilot adaptation: {'yes' if analysis.requires_copilot_adaptation else 'no'}",
-        f"Copilot skills installed: {'yes' if analysis.copilot_skills_installed else 'no'}",
+        f"Workspace: {analysis.directory}",
+        f"Project: {analysis.classification}",
         "",
-        "Detected signals:",
+        "Recommendation",
     ]
-    lines.extend(
-        f"- {s.label}: {s.detail}" + (f" ({s.path})" if s.path else "")
-        for s in analysis.signals
-    )
+    lines.extend(_render_text_recommendation(analysis))
+    lines.append("")
+    lines.append("Signals")
+    lines.extend(_render_text_signal_rows(_signal_rows(analysis)))
     if analysis.warnings:
         lines.append("")
-        lines.append("Warnings:")
-        lines.extend(f"- {warning}" for warning in analysis.warnings)
+        lines.append("Warnings")
+        for warning in analysis.warnings:
+            lines.extend(_wrapped_status_line("warn", "warning", warning))
     if analysis.official_eval_reasons:
         lines.append("")
-        lines.append("Official eval decision:")
-        lines.extend(f"- {reason}" for reason in analysis.official_eval_reasons)
-        if analysis.official_evaluators:
-            lines.append("- Evaluators: " + ", ".join(analysis.official_evaluators))
+        lines.append("Foundry eval")
+        lines.extend(_render_text_foundry_eval_rows(_foundry_eval_rows(analysis)))
     if analysis.copilot_prompt:
         lines.append("")
-        lines.append("Copilot handoff:")
-        lines.append(f"- Copy/paste: {analysis.copilot_prompt}")
+        lines.append("Copilot handoff")
+        lines.extend(_wrapped_status_line("todo", "copy/paste", analysis.copilot_prompt))
     lines.append("")
-    lines.append("Recommended commands:")
-    lines.extend(f"- {command}" for command in analysis.recommended_commands)
+    lines.append("Pipeline plan")
+    for index, stage in enumerate(analysis.stages, start=1):
+        lines.append(f"  {index}. {stage.name}")
+        lines.extend(_wrap_text(stage.purpose, indent="     "))
+    commands = _text_commands(analysis.recommended_commands)
+    if commands:
+        lines.append("")
+        lines.append("Commands")
+        lines.extend(f"  {command}" for command in commands)
     lines.append("")
-    lines.append("Pipeline stages:")
-    for stage in analysis.stages:
-        lines.append(f"- {stage.name} [{stage.owner}]: {stage.purpose}")
-    lines.append("")
-    lines.append("Next steps:")
-    lines.extend(f"- {step}" for step in analysis.next_steps)
+    lines.append("Next")
+    for index, step in enumerate(analysis.next_steps, start=1):
+        lines.extend(_wrapped_numbered_step(index, step))
     return "\n".join(lines) + "\n"
 
 
@@ -418,33 +424,25 @@ def _render_markdown(analysis: WorkflowAnalysis) -> str:
         "",
         f"- **Directory:** `{analysis.directory}`",
         f"- **Classification:** {analysis.classification}",
-        f"- **Recommended deploy mode:** `{analysis.recommended_deploy_mode}`",
-        f"- **Recommended eval runner:** `{analysis.recommended_eval_runner}`",
-        f"- **Strategy:** {analysis.deployment_strategy}",
-        f"- **Eval strategy:** {analysis.eval_strategy}",
-        f"- **Complexity:** {analysis.complexity}",
-        f"- **Copilot adaptation:** {'yes' if analysis.requires_copilot_adaptation else 'no'}",
-        f"- **Copilot skills installed:** {'yes' if analysis.copilot_skills_installed else 'no'}",
         "",
-        "## Detected signals",
+        "## Workflow decision checklist",
         "",
     ]
-    if analysis.signals:
-        lines.extend(
-            f"- **{s.label}** ({s.confidence}): {s.detail}"
-            + (f" — `{s.path}`" if s.path else "")
-            for s in analysis.signals
-        )
-    else:
-        lines.append("- No strong accelerator or deployment signals detected.")
+    lines.extend(_render_markdown_table(("Check", "Status", "Explanation"), _decision_checklist_rows(analysis)))
+    lines.extend(
+        [
+            "",
+            "## Detected signals",
+            "",
+        ]
+    )
+    lines.extend(_render_markdown_table(("Status", "Type", "Finding", "Evidence"), _signal_rows(analysis)))
     if analysis.warnings:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {warning}" for warning in analysis.warnings)
     if analysis.official_eval_reasons:
-        lines.extend(["", "## Official eval decision", ""])
-        lines.extend(f"- {reason}" for reason in analysis.official_eval_reasons)
-        if analysis.official_evaluators:
-            lines.append("- Evaluators: " + ", ".join(f"`{e}`" for e in analysis.official_evaluators))
+        lines.extend(["", "## Foundry eval checks", ""])
+        lines.extend(_render_markdown_table(("Status", "Check", "Explanation"), _foundry_eval_rows(analysis)))
     if analysis.copilot_prompt:
         lines.extend(["", "## Copilot handoff", ""])
         lines.extend(["Copy/paste this into Copilot:", "", "```text", analysis.copilot_prompt, "```"])
@@ -464,6 +462,270 @@ def _render_markdown(analysis: WorkflowAnalysis) -> str:
     lines.extend(["## Next steps", ""])
     lines.extend(f"- {step}" for step in analysis.next_steps)
     return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_text_recommendation(analysis: WorkflowAnalysis) -> List[str]:
+    adaptation_value = (
+        "needed - review project-specific build/deploy steps"
+        if analysis.requires_copilot_adaptation
+        else "not needed - generated workflow should work as-is"
+    )
+    skills_value = (
+        "installed - available for workflow adaptation handoff"
+        if analysis.copilot_skills_installed
+        else (
+            "missing - run `agentops skills install --platform copilot` for handoff"
+            if analysis.requires_copilot_adaptation
+            else "not needed - no Copilot handoff for this project shape"
+        )
+    )
+    return _render_text_fields(
+        [
+            ("deploy", analysis.recommended_deploy_mode),
+            ("evaluate", _display_eval_runner(analysis.recommended_eval_runner)),
+            ("workflow edits", adaptation_value),
+            ("Copilot skills", skills_value),
+        ]
+    )
+
+
+def _text_commands(commands: Sequence[str]) -> List[str]:
+    return [command for command in commands if command != "agentops workflow analyze --format markdown"]
+
+
+def _render_text_fields(rows: Sequence[tuple[str, str]]) -> List[str]:
+    width = max(len(label) for label, _ in rows)
+    lines: List[str] = []
+    for label, value in rows:
+        lines.extend(_wrap_text(value, indent=f"  {label.ljust(width)}  "))
+    return lines
+
+
+def _render_text_signal_rows(rows: Sequence[Sequence[str]]) -> List[str]:
+    lines: List[str] = []
+    for status, signal_type, _finding, evidence in rows:
+        marker, _ = _split_status_value(str(status))
+        detail = _soften_text(str(evidence))
+        lines.extend(_wrapped_status_line(_status_word(marker), str(signal_type), detail))
+    return lines
+
+
+def _render_text_foundry_eval_rows(rows: Sequence[Sequence[str]]) -> List[str]:
+    lines: List[str] = []
+    for status, check, explanation in rows:
+        marker, _ = _split_status_value(str(status))
+        lines.extend(
+            _wrapped_status_line(
+                _status_word(marker),
+                str(check),
+                _friendly_foundry_eval_text(str(check), str(explanation)),
+            )
+        )
+    return lines
+
+
+def _split_status_value(status: str) -> tuple[str, str]:
+    if status.startswith("[") and "]" in status:
+        marker, _, value = status.partition(" ")
+        return marker, value.strip()
+    return status, ""
+
+
+def _status_word(marker: str) -> str:
+    if marker == "[x]":
+        return "ok"
+    if marker == "[?]":
+        return "hint"
+    if marker == "[ ]":
+        return "todo"
+    return marker.strip("[]").lower() or "info"
+
+
+def _wrapped_status_line(status: str, label: str, text: str) -> List[str]:
+    prefix = f"  {status.ljust(4)} {label.ljust(13)} "
+    wrapped = textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=prefix,
+        subsequent_indent=" " * len(prefix),
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped or [prefix.rstrip()]
+
+
+def _wrapped_numbered_step(index: int, text: str) -> List[str]:
+    prefix = f"  {index}. "
+    wrapped = textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=prefix,
+        subsequent_indent=" " * len(prefix),
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped or [prefix.rstrip()]
+
+
+def _friendly_foundry_eval_text(check: str, text: str) -> str:
+    if check == "Agent target":
+        return "Foundry prompt agent (`name:version`)."
+    if check == "Evaluators":
+        return _friendly_evaluator_list(text.split(", "))
+    return _soften_text(text)
+
+
+def _friendly_evaluator_list(evaluators: Iterable[str]) -> str:
+    return ", ".join(
+        evaluator.removeprefix("builtin.").replace("_", " ")
+        for evaluator in evaluators
+        if evaluator
+    )
+
+
+def _soften_text(text: str) -> str:
+    return text.replace("foundry_prompt", "Foundry prompt agent")
+
+
+def _wrap_text(text: str, *, indent: str) -> List[str]:
+    return textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=indent,
+        subsequent_indent=indent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    ) or [indent.rstrip()]
+
+
+def _render_markdown_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> List[str]:
+    normalized = [[_escape_markdown_cell(str(cell)) for cell in row] for row in rows]
+    if not normalized:
+        normalized = [["-" for _ in headers]]
+    header_line = "| " + " | ".join(_escape_markdown_cell(str(header)) for header in headers) + " |"
+    separator = "| " + " | ".join("---" for _ in headers) + " |"
+    body = ["| " + " | ".join(row) + " |" for row in normalized]
+    return [header_line, separator, *body]
+
+
+def _escape_markdown_cell(value: str) -> str:
+    return value.replace("|", "\\|")
+
+
+def _decision_checklist_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]:
+    if analysis.requires_copilot_adaptation:
+        adaptation_status = "[ ] needs edits"
+        adaptation_detail = (
+            "Detected project-specific topology or deploy signals; review generated "
+            "workflow before making it blocking."
+        )
+    else:
+        adaptation_status = "[x] not needed"
+        adaptation_detail = "Generated workflow should be directly usable for this project shape."
+
+    if analysis.requires_copilot_adaptation:
+        skills_status = "[x] installed" if analysis.copilot_skills_installed else "[ ] missing"
+        skills_detail = "Needed only for the Copilot workflow-adaptation handoff."
+    else:
+        skills_status = "[x] not required"
+        skills_detail = "No workflow handoff is required for the current recommendation."
+
+    return [
+        (
+            "Deploy mode",
+            f"[x] {analysis.recommended_deploy_mode}",
+            _deploy_mode_check_detail(analysis.recommended_deploy_mode),
+        ),
+        (
+            "Eval runner",
+            f"[x] {_display_eval_runner(analysis.recommended_eval_runner)}",
+            _eval_runner_check_detail(analysis.recommended_eval_runner),
+        ),
+        ("Complexity", "[x] " + analysis.complexity, "Used to decide whether CI needs extra review."),
+        ("Workflow adaptation", adaptation_status, adaptation_detail),
+        ("Copilot skills", skills_status, skills_detail),
+    ]
+
+
+def _deploy_mode_check_detail(mode: str) -> str:
+    if mode == "azd":
+        return "Use azd for provision/deploy; AgentOps supplies gates and evidence."
+    if mode == "prompt-agent":
+        return "Stage and evaluate a Foundry prompt candidate, then record deployment."
+    return "Generate CI placeholders; add the project-specific build/deploy steps."
+
+
+def _eval_runner_check_detail(eval_runner: str) -> str:
+    if eval_runner == OFFICIAL_EVAL_RUNNER:
+        return "Prompt agent plus dataset fit Foundry eval; AgentOps keeps evidence."
+    return "AgentOps runs local eval and writes normalized results/report artifacts."
+
+
+def _signal_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str, str]]:
+    if not analysis.signals:
+        return [
+            (
+                "[ ]",
+                "Signals",
+                "No strong project signals",
+                "No accelerator, azd, AgentOps, or CI files were detected.",
+            )
+        ]
+    return [
+        (
+            "[x]" if signal.confidence == "high" else "[?]",
+            _signal_type(signal.key),
+            signal.label,
+            signal.detail + (f" ({signal.path})" if signal.path else ""),
+        )
+        for signal in analysis.signals
+    ]
+
+
+def _foundry_eval_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]:
+    selected = analysis.recommended_eval_runner == OFFICIAL_EVAL_RUNNER
+    if selected:
+        rows = [
+            (
+                "[x]",
+                "Agent target",
+                analysis.official_eval_reasons[0]
+                if analysis.official_eval_reasons
+                else "Foundry prompt agent.",
+            ),
+            (
+                "[x]",
+                "Dataset",
+                analysis.official_eval_reasons[1]
+                if len(analysis.official_eval_reasons) > 1
+                else "Compatible with Microsoft Foundry eval.",
+            ),
+        ]
+        if analysis.official_evaluators:
+            rows.append(("[x]", "Evaluators", ", ".join(analysis.official_evaluators)))
+        return rows
+
+    return [
+        ("[ ]", "Microsoft Foundry eval", reason)
+        for reason in analysis.official_eval_reasons
+    ]
+
+
+def _signal_type(key: str) -> str:
+    return {
+        "agentops_config": "Config",
+        "official_ai_agent_evaluation": "Eval runner",
+        "azd_project": "Deploy mode",
+        "prompt_file": "Prompt source",
+        "bicep_infra": "Infrastructure",
+        "ailz_manifest": "Landing zone",
+        "ailz_preflight": "Preflight",
+        "network_isolation": "Runner topology",
+        "network_isolation_hint": "Runner topology",
+        "container_app": "Application host",
+        "accelerator_hint": "Accelerator",
+        "existing_ci": "Existing CI",
+    }.get(key, "Signal")
 
 
 def _agentops_signal(root: Path) -> Dict[str, Any]:
@@ -699,7 +961,7 @@ def _eval_stage(eval_runner: str) -> WorkflowStage:
         return WorkflowStage(
             "PR evaluation gate",
             "Microsoft Foundry + AgentOps",
-            "Run the official AI Agent Evaluation action/task and publish AgentOps-prepared inputs.",
+            "Run Microsoft Foundry AI Agent Evaluation and publish AgentOps-prepared inputs.",
             [
                 "python -m agentops.pipeline.official_eval prepare",
                 official_eval_action_ref(),
@@ -796,7 +1058,7 @@ def _next_steps(
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         steps.insert(
             1,
-            "Set AZURE_OPENAI_DEPLOYMENT so the official AI Agent Evaluation runner can judge responses.",
+            "Set AZURE_OPENAI_DEPLOYMENT so Microsoft Foundry AI Agent Evaluation can judge responses.",
         )
     if ailz_preflight:
         steps.insert(0, "Run `pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict` before provisioning the AI Landing Zone.")

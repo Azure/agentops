@@ -80,3 +80,4 @@ local_scheme = "no-local-version"
 
 [tool.mypy]
 plugins = ["pydantic.mypy"]
+disable_error_code = ["import-untyped"]

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Literal, Optional
+
+_TEXT_WRAP_WIDTH = 92
 
 
 LabelMode = Literal["self-similarity", "pending"]
@@ -102,23 +105,76 @@ def render_trace_promotion_preview(preview: TracePromotionPreview) -> str:
 
     lines = [
         "AgentOps trace-to-dataset preview",
-        "",
         f"Source: {preview.source}",
         f"Output: {preview.output_path}",
-        f"Rows: {len(preview.rows)}",
-        f"Skipped: {preview.skipped}",
-        f"Label mode: {preview.label_mode}",
+        "",
+        "Summary",
     ]
+    lines.extend(
+        _render_text_fields(
+            [
+                ("rows", str(len(preview.rows))),
+                ("skipped", str(preview.skipped)),
+                ("label mode", preview.label_mode),
+            ]
+        )
+    )
     if preview.warnings:
         lines.append("")
-        lines.append("Warnings:")
-        lines.extend(f"- {warning}" for warning in preview.warnings)
+        lines.append("Warnings")
+        for warning in preview.warnings:
+            lines.extend(_wrapped_status_line("warn", "warning", warning))
     if preview.rows:
         lines.append("")
-        lines.append("Sample rows:")
-        for row in preview.rows[:3]:
-            lines.append(f"- {row['input'][:100]}")
+        lines.append("Sample rows")
+        for index, row in enumerate(preview.rows[:3], start=1):
+            lines.extend(_wrapped_numbered_line(index, str(row["input"])[:100]))
     return "\n".join(lines) + "\n"
+
+
+def _render_text_fields(rows: list[tuple[str, str]]) -> list[str]:
+    width = max(len(label) for label, _ in rows)
+    lines: list[str] = []
+    for label, value in rows:
+        lines.extend(_wrap_text(value, indent=f"  {label.ljust(width)}  "))
+    return lines
+
+
+def _wrapped_status_line(status: str, label: str, text: str) -> list[str]:
+    prefix = f"  {status.ljust(4)} {label.ljust(10)} "
+    wrapped = textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=prefix,
+        subsequent_indent=" " * len(prefix),
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped or [prefix.rstrip()]
+
+
+def _wrapped_numbered_line(index: int, text: str) -> list[str]:
+    prefix = f"  {index}. "
+    wrapped = textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=prefix,
+        subsequent_indent=" " * len(prefix),
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    return wrapped or [prefix.rstrip()]
+
+
+def _wrap_text(text: str, *, indent: str) -> list[str]:
+    return textwrap.wrap(
+        text,
+        width=_TEXT_WRAP_WIDTH,
+        initial_indent=indent,
+        subsequent_indent=indent,
+        break_long_words=False,
+        break_on_hyphens=False,
+    ) or [indent.rstrip()]
 
 
 def _load_trace_export(source: Path) -> Iterable[dict[str, Any]]:

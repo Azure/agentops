@@ -536,6 +536,144 @@ def test_azure_monitor_queries_requests_and_dependencies(
     assert payload.p95_duration_seconds == 2.5
 
 
+def test_azure_monitor_uses_connection_string_application_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    queries: list[str] = []
+
+    def fake_query(application_id: str, bearer: str, query: str) -> dict[str, object]:
+        assert application_id == "app-from-env"
+        assert bearer == "fake-bearer"
+        queries.append(query)
+        if "request_count" in query:
+            return _app_insights_result(
+                {
+                    "request_count": 4,
+                    "error_count": 1,
+                    "avg_duration_ms": 1500.0,
+                    "p95_duration_ms": 3200.0,
+                }
+            )
+        if "content_filter" in query:
+            return _app_insights_result({"hits": 2})
+        if "input_tokens" in query:
+            return _app_insights_result(
+                {"input_tokens": 120, "output_tokens": 45}
+            )
+        return _app_insights_result({"hits": 3})
+
+    monkeypatch.setenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        "InstrumentationKey=ikey;ApplicationId=app-from-env",
+    )
+    monkeypatch.setattr(
+        azure_monitor,
+        "_acquire_application_insights_token",
+        lambda: "fake-bearer",
+    )
+    monkeypatch.setattr(
+        azure_monitor,
+        "_query_application_insights",
+        fake_query,
+    )
+
+    payload = azure_monitor.collect_azure_monitor(
+        AzureMonitorSourceConfig(enabled=True),
+        lookback_days=7,
+    )
+
+    assert payload.diagnostics["status"] == "ok"
+    assert payload.diagnostics["target_kind"] == "application_id"
+    assert payload.diagnostics["target_source"] == "APPLICATIONINSIGHTS_CONNECTION_STRING"
+    assert payload.request_count == 4
+    assert payload.error_count == 1
+    assert payload.error_rate == 0.25
+    assert payload.avg_duration_seconds == 1.5
+    assert payload.p95_duration_seconds == 3.2
+    assert payload.safety_violations == [{"signal": "content_filter", "hits": 2}]
+    assert payload.input_token_count == 120
+    assert payload.output_token_count == 45
+    assert payload.rate_limit_429_count == 3
+    assert any("union isfuzzy=true requests, dependencies" in q for q in queries)
+
+
+def test_azure_monitor_uses_foundry_discovered_application_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentops.utils import foundry_discovery
+
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.setattr(
+        foundry_discovery,
+        "resolve_appinsights_connection_from_env_with_reason",
+        lambda: ("InstrumentationKey=ikey;ApplicationId=app-from-foundry", None),
+    )
+    monkeypatch.setattr(
+        azure_monitor,
+        "_acquire_application_insights_token",
+        lambda: "fake-bearer",
+    )
+    monkeypatch.setattr(
+        azure_monitor,
+        "_query_application_insights",
+        lambda *_args: _app_insights_result(
+            {
+                "request_count": 1,
+                "error_count": 0,
+                "avg_duration_ms": 100.0,
+                "p95_duration_ms": 100.0,
+            }
+        ),
+    )
+
+    payload = azure_monitor.collect_azure_monitor(
+        AzureMonitorSourceConfig(enabled=True),
+        lookback_days=7,
+    )
+
+    assert payload.diagnostics["status"] == "ok"
+    assert payload.diagnostics["target"] == "app-from-foundry"
+    assert payload.diagnostics["target_source"] == "foundry_project_telemetry"
+    assert payload.request_count == 1
+
+
+def test_azure_monitor_skipped_when_connection_string_lacks_application_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentops.utils import foundry_discovery
+
+    monkeypatch.setenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        "InstrumentationKey=ikey",
+    )
+    monkeypatch.setattr(
+        foundry_discovery,
+        "resolve_appinsights_connection_from_env_with_reason",
+        lambda: (None, "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT is not set"),
+    )
+
+    payload = azure_monitor.collect_azure_monitor(
+        AzureMonitorSourceConfig(enabled=True),
+        lookback_days=7,
+    )
+
+    assert payload.diagnostics["status"] == "skipped"
+    assert "no App Insights ApplicationId" in payload.diagnostics["reason"]
+    assert payload.diagnostics["discovery_reason"]
+
+
+def _app_insights_result(row: dict[str, object]) -> dict[str, object]:
+    return {
+        "tables": [
+            {
+                "columns": [{"name": name} for name in row],
+                "rows": [list(row.values())],
+            }
+        ]
+    }
+
+
 def test_run_evaluation_flushes_telemetry_on_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

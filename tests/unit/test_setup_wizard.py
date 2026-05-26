@@ -349,10 +349,10 @@ def _scripted_prompt(answers: list[str]):
     return _prompt
 
 
-def test_run_wizard_collects_all_four_answers(
+def test_run_wizard_collects_core_answers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    # Isolate from the developer shell so all four questions are asked.
+    # Isolate from the developer shell so all interactive questions are asked.
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
 
@@ -362,21 +362,20 @@ def test_run_wizard_collects_all_four_answers(
             "https://acct.services.ai.azure.com/api/projects/p",
             "my-bot:9",
             "data.jsonl",
-            "InstrumentationKey=zzz",
         ]
     )
     answers = run_wizard(tmp_path, prompt=prompt, echo=lambda _msg: None)
     assert answers.project_endpoint == "https://acct.services.ai.azure.com/api/projects/p"
     assert answers.agent == "my-bot:9"
     assert answers.dataset == "data.jsonl"
-    assert answers.appinsights_connection_string == "InstrumentationKey=zzz"
+    assert answers.appinsights_connection_string is None
 
 
-def test_run_wizard_skips_appinsights_when_disabled(
+def test_run_wizard_does_not_prompt_for_appinsights(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
-    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.setenv("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=zzz")
 
     (tmp_path / "data.jsonl").write_text("{}\n", encoding="utf-8")
     prompt = _scripted_prompt(
@@ -386,10 +385,10 @@ def test_run_wizard_skips_appinsights_when_disabled(
             "data.jsonl",
         ]
     )
-    answers = run_wizard(
-        tmp_path, prompt=prompt, echo=lambda _msg: None, include_appinsights=False
-    )
+    messages: list[str] = []
+    answers = run_wizard(tmp_path, prompt=prompt, echo=messages.append)
     assert answers.appinsights_connection_string is None
+    assert "Application Insights" not in "\n".join(messages)
 
 
 def test_run_wizard_empty_input_keeps_current(
@@ -404,9 +403,9 @@ def test_run_wizard_empty_input_keeps_current(
     )
     (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
     # With idempotent skip-on-default, agent/dataset are silently reused.
-    # Only the 2 still-empty questions (project_endpoint, appinsights) get
-    # asked, and the user presses Enter on both — yielding zero updates.
-    prompt = _scripted_prompt(["", ""])
+    # Only the still-empty project endpoint gets asked; App Insights is left
+    # for runtime discovery or explicit non-interactive configuration.
+    prompt = _scripted_prompt([""])
     answers = run_wizard(
         tmp_path, prompt=prompt, echo=lambda _msg: None, reconfigure=False
     )
@@ -416,33 +415,79 @@ def test_run_wizard_empty_input_keeps_current(
     assert answers.appinsights_connection_string is None
 
 
-def test_run_wizard_appinsights_prompt_guides_autodiscovery(
+def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """The optional App Insights prompt should tell users they can press
-    Enter and rely on Foundry project auto-discovery instead of forcing a
-    connection string they may not know."""
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    _seed_azd_env(
+        tmp_path,
+        "dev",
+        {
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": (
+                "https://acct.services.ai.azure.com/api/projects/p"
+            ),
+            "APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=zzz",
+        },
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / ".agentops" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "smoke.jsonl").write_text("{}\n", encoding="utf-8")
+    (data_dir / "travel-smoke.jsonl").write_text("{}\n", encoding="utf-8")
+
+    replies = iter(["travel-agent:1", ".agentops/data/travel-smoke.jsonl"])
+    prompt_calls: list[tuple[str, object]] = []
+
+    def prompt(question: str, default):  # noqa: ANN001
+        prompt_calls.append((question, default))
+        return next(replies)
+
+    answers = run_wizard(
+        tmp_path,
+        prompt=prompt,
+        echo=lambda _msg: None,
+        force_prompt_fields={"agent", "dataset"},
+    )
+
+    assert prompt_calls == [
+        ("Agent", "my-agent:1"),
+        ("Dataset path", ".agentops/data/smoke.jsonl"),
+    ]
+    assert answers.project_endpoint is None
+    assert answers.agent == "travel-agent:1"
+    assert answers.dataset == ".agentops/data/travel-smoke.jsonl"
+    assert answers.appinsights_connection_string is None
+
+
+def test_run_wizard_appinsights_is_not_interactive_even_when_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The wizard should not ask for App Insights just to leave it blank."""
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
 
     messages: list[str] = []
-    prompt_defaults: list[object] = []
+    prompt_calls: list[str] = []
 
-    def prompt(_question: str, default):  # noqa: ANN001
-        prompt_defaults.append(default)
+    def prompt(question: str, _default):  # noqa: ANN001
+        prompt_calls.append(question)
         return ""
 
     run_wizard(tmp_path, prompt=prompt, echo=messages.append)
 
-    assert any("auto-discover it from the Foundry project" in m for m in messages)
-    assert prompt_defaults[-1] is None
+    output = "\n".join(messages)
+    assert "Application Insights" not in output
+    assert "Application Insights connection string" not in prompt_calls
 
 
-def test_run_wizard_appinsights_reconfigure_masks_existing_secret(
+def test_run_wizard_reconfigure_does_not_echo_appinsights_secret(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Reconfigure mode should not echo the full App Insights connection
-    string as a prompt default."""
+    """Reconfigure mode should not surface App Insights in the wizard."""
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     _seed_azd_env(
@@ -464,18 +509,18 @@ def test_run_wizard_appinsights_reconfigure_masks_existing_secret(
     (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
 
     messages: list[str] = []
-    prompt_defaults: list[object] = []
+    prompt_calls: list[str] = []
 
-    def prompt(_question: str, default):  # noqa: ANN001
-        prompt_defaults.append(default)
+    def prompt(question: str, _default):  # noqa: ANN001
+        prompt_calls.append(question)
         return ""
 
     run_wizard(tmp_path, prompt=prompt, echo=messages.append, reconfigure=True)
 
-    assert prompt_defaults[-1] is None
+    assert "Application Insights connection string" not in prompt_calls
     output = "\n".join(messages)
     assert "secret1234" not in output
-    assert "1234" in output
+    assert "Application Insights" not in output
 
 
 def test_run_wizard_re_prompts_on_invalid_input(
@@ -492,7 +537,6 @@ def test_run_wizard_re_prompts_on_invalid_input(
             "bare-name",
             "my-bot:2",
             "data.jsonl",
-            "",
         ]
     )
     errors: list[str] = []

@@ -43,24 +43,24 @@ _GROUND_TRUTH_EVALUATORS = {
 
 
 def official_eval_action_ref() -> str:
-    """Return the GitHub Action ref used for official eval workflows."""
+    """Return the GitHub Action ref used for Microsoft Foundry eval workflows."""
 
     return os.getenv(OFFICIAL_EVAL_ACTION_ENV, OFFICIAL_EVAL_ACTION)
 
 
 def official_eval_ado_task_ref() -> str:
-    """Return the Azure DevOps task ref used for official eval workflows."""
+    """Return the Azure DevOps task ref used for Microsoft Foundry eval workflows."""
 
     return os.getenv(OFFICIAL_EVAL_ADO_TASK_ENV, OFFICIAL_EVAL_ADO_TASK)
 
 
 class OfficialEvalUnsupported(ValueError):
-    """Raised when an AgentOps config cannot use official AI Agent Evaluation."""
+    """Raised when an AgentOps config cannot use Microsoft Foundry AI Agent Evaluation."""
 
 
 @dataclass(frozen=True)
 class OfficialEvalSupport:
-    """Eligibility result for the official Microsoft Foundry evaluation runner."""
+    """Eligibility result for the Microsoft Foundry evaluation runner."""
 
     eligible: bool
     runner: str
@@ -73,7 +73,7 @@ class OfficialEvalSupport:
 
 @dataclass(frozen=True)
 class OfficialEvalPreparation:
-    """Prepared official evaluation input and metadata."""
+    """Prepared Microsoft Foundry evaluation input and metadata."""
 
     data_path: Path
     metadata_path: Path
@@ -95,7 +95,7 @@ class _EvalPlan:
 
 
 def analyze_official_eval_support(config_path: Path) -> OfficialEvalSupport:
-    """Report whether ``config_path`` can use the official Foundry eval runner."""
+    """Report whether ``config_path`` can use the Microsoft Foundry eval runner."""
 
     try:
         plan = _build_plan(config_path)
@@ -113,7 +113,7 @@ def analyze_official_eval_support(config_path: Path) -> OfficialEvalSupport:
         return OfficialEvalSupport(
             eligible=False,
             runner=AGENTOPS_LOCAL_RUNNER,
-            reasons=(f"agentops.yaml cannot be prepared for official eval: {exc}",),
+            reasons=(f"agentops.yaml cannot be prepared for Microsoft Foundry eval: {exc}",),
             warnings=(),
             official_evaluators=(),
             agent_ids=None,
@@ -124,8 +124,8 @@ def analyze_official_eval_support(config_path: Path) -> OfficialEvalSupport:
         eligible=True,
         runner=OFFICIAL_EVAL_RUNNER,
         reasons=(
-            "agentops.yaml targets a Foundry prompt agent in name:version format.",
-            "The dataset can be converted to the official AI Agent Evaluation JSON shape.",
+            "Agent target is a Foundry prompt agent (`name:version`).",
+            "Dataset columns are compatible with Microsoft Foundry eval.",
         ),
         warnings=plan.warnings,
         official_evaluators=plan.official_evaluators,
@@ -147,7 +147,7 @@ def prepare_official_eval(
     *,
     deployment_name: str | None = None,
 ) -> OfficialEvalPreparation:
-    """Convert AgentOps JSONL config into the official AI Agent Evaluation JSON."""
+    """Convert AgentOps JSONL config into Microsoft Foundry AI Agent Evaluation JSON."""
 
     plan = _build_plan(config_path)
     deployment = _resolve_deployment_name(deployment_name)
@@ -200,7 +200,7 @@ def _build_plan(config_path: Path) -> _EvalPlan:
     target = classify_agent(config.agent, config.protocol)
     if target.kind != "foundry_prompt":
         raise OfficialEvalUnsupported(
-            "official AI Agent Evaluation only evaluates Foundry prompt agents "
+            "Microsoft Foundry AI Agent Evaluation only evaluates Foundry prompt agents "
             "(`agent: name:version`); use AgentOps local eval for hosted endpoints, "
             "HTTP agents, and model targets."
         )
@@ -212,7 +212,7 @@ def _build_plan(config_path: Path) -> _EvalPlan:
     official_evaluators, skipped, warnings = _map_evaluators(presets)
     if not official_evaluators:
         raise OfficialEvalUnsupported(
-            "no AgentOps evaluators could be mapped to official Foundry evaluators."
+            "no AgentOps evaluators could be mapped to Microsoft Foundry evaluators."
         )
 
     _validate_dataset_for_official_runner(dataset_path, official_evaluators)
@@ -238,11 +238,6 @@ def _map_evaluators(
     for preset in presets:
         if preset.name == _LATENCY_PRESET:
             skipped.append(preset.name)
-            warnings.append(
-                "avg_latency_seconds remains an AgentOps local gate; the official "
-                "runner records latency in its summary but does not expose a stable "
-                "threshold artifact yet."
-            )
             continue
 
         official_name = _OFFICIAL_EVALUATORS.get(preset.name)
@@ -316,7 +311,7 @@ def _validate_dataset_for_official_runner(
         if needs_ground_truth and not row.get("ground_truth"):
             raise OfficialEvalUnsupported(
                 f"{dataset_path}: line {line_number} needs `expected` or "
-                "`ground_truth` for the selected official evaluators."
+                "`ground_truth` for the selected Microsoft Foundry evaluators."
             )
 
 

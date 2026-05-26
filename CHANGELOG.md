@@ -15,6 +15,24 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Updated the tutorials to prefer the interactive `agentops init` wizard,
   explain evaluator deployment separately from initialization, and include
   forced regression/fix loops for prompt and hosted agent paths.
+- Re-ask starter `agent` and `dataset` values during the first interactive
+  `agentops init` run so tutorial users replace `my-agent:1` with their target.
+- Removed the interactive App Insights question from `agentops init`; runtime
+  commands discover it from the Foundry project when possible, and
+  `--appinsights-connection-string` remains available for explicit setup.
+- Made `workflow analyze` output use a lighter PowerShell-friendly summary,
+  Markdown tables, and user-facing Foundry eval labels; also removed a
+  non-actionable latency warning from the normal analysis output.
+- Made `workflow generate` next steps gentler for PowerShell and tutorial users:
+  PR/watchdog-only output now asks for only the `dev` environment, explains
+  that deploy setup can wait, and points users to Copilot-assisted GitHub/OIDC
+  setup.
+
+### Fixed
+- **Doctor App Insights discovery.** The `azure_monitor` source now falls back
+  to an App Insights `ApplicationId` from `APPLICATIONINSIGHTS_CONNECTION_STRING`
+  or Foundry project telemetry discovery, so Doctor no longer reports runtime
+  telemetry as unconfigured when Cockpit can already resolve App Insights.
 
 ## [0.2.0] - 2026-05-22
 

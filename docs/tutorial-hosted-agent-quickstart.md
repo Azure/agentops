@@ -171,7 +171,7 @@ You need:
 | Foundry project endpoint | optional, but recommended for links and evaluators |
 | Azure OpenAI endpoint | `https://<resource>.openai.azure.com`, used later by local AI-assisted evaluators |
 | Evaluator model deployment | `gpt-4o-mini`, used later by local AI-assisted evaluators |
-| Application Insights connection string | optional, but recommended |
+| Application Insights connection string | optional later, for observability |
 
 If the deployed endpoint needs a bearer token:
 
@@ -192,7 +192,17 @@ Answer the prompts as the wizard asks them:
 | Foundry project endpoint | `https://<resource>.services.ai.azure.com/api/projects/<project>`, or press Enter if you are only testing the local endpoint |
 | Agent | The value in `$env:TRAVEL_AGENT_ENDPOINT`, for example `http://127.0.0.1:8000/chat` |
 | Dataset path | `.agentops/data/travel-smoke.jsonl` |
-| Application Insights connection string | Paste it if you have one, or press Enter to let AgentOps auto-discover/leave it blank |
+
+The wizard does not ask for App Insights. Later runtime commands such as eval,
+Doctor, and Cockpit use the Foundry project endpoint to ask the Azure AI
+Projects SDK for the App Insights resource attached to that Foundry project. If
+discovery is unavailable and you want to force a value, run
+`agentops init --appinsights-connection-string "<connection-string>"` or set
+`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
+
+If the first run shows starter defaults such as `Agent [my-agent:1]` or
+`Dataset path [.agentops/data/smoke.jsonl]`, replace them with the hosted Travel
+Agent values above. Those defaults only come from the scaffolded starter file.
 
 If you want an azd environment name other than the default `dev`, run
 `agentops init --azd-env <name>`.
@@ -208,8 +218,8 @@ request_field: message
 response_field: text
 ```
 
-The Foundry project endpoint and App Insights connection string live in
-`.azure/dev/.env`, not in source control.
+The Foundry project endpoint lives in `.azure/dev/.env`, not in source control.
+If you force an App Insights connection string later, it is saved there too.
 
 For a deployed endpoint protected by a bearer token, add:
 
