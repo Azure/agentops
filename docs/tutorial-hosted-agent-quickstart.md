@@ -13,11 +13,11 @@ This path validates the AgentOps local route:
 ## Repository set used in this tutorial
 
 This tutorial intentionally connects the hosted-agent path to the Microsoft
-projects that make the Operate story complete. The forks give the recording a
-stable set of references while the official Foundry extension, Azure services,
+projects that make the Operate story complete. The repository set gives the
+tutorial stable references while the official Foundry extension, Azure services,
 and AgentOps workflow remain the actual runtime path.
 
-| Repository | Workshop fork | Role in the journey |
+| Repository | Tutorial reference | Role in the journey |
 |---|---|---|
 | `Azure/agentops` | `placerda/agentops` | Provides endpoint evaluation, thresholds, `results.json`, Doctor, Cockpit, and evidence. |
 | `microsoft/ai-agent-evals` | `placerda/ai-agent-evals` | Provides the Foundry prompt-agent gate contract used as contrast for why hosted endpoints use AgentOps local eval. |
@@ -45,9 +45,9 @@ python -m pip install "agentops-toolkit[foundry,agent]" fastapi "uvicorn[standar
 agentops --version
 ```
 
-For normal usage, prefer the published package above. For the recorded workshop
-path, install from Paulo's fork so the CLI, generated workflows, and tutorial
-steps stay in sync:
+For normal usage, prefer the published package above. For this tutorial path,
+install the aligned reference branch so the CLI, generated workflows, and
+tutorial steps stay in sync:
 
 ```powershell
 python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
@@ -162,11 +162,11 @@ The endpoint used in CI must be reachable by the CI runner. If the deployed
 Foundry Hosted Agent follows the Responses API shape, use `protocol: responses`
 later in `agentops.yaml`.
 
-For the workshop narrative, keep
+For the tutorial narrative, keep
 `https://github.com/placerda/foundry-toolkit` open alongside the official
-extension. You do not install the extension from that fork; use it as the
-reference point for the Operate handoff after Hosted Agent deploy: evaluation
-gate, telemetry readiness, trace links, and release evidence.
+extension. You do not install the extension from that repository reference; use
+it as the reference point for the Operate handoff after Hosted Agent deploy:
+evaluation gate, telemetry readiness, trace links, and release evidence.
 
 ## 3. Create the travel eval dataset
 
@@ -364,7 +364,7 @@ local endpoint becomes an operated service.
 The watchdog workflow runs Doctor on a schedule so release evidence can include
 recent readiness signals.
 
-This is also where the `placerda/azure-skills` fork fits the story. AgentOps
+This is also where `placerda/azure-skills` fits the story. AgentOps
 generates the repo-side gate and evidence; the Microsoft Foundry skill is the
 natural guidance layer to teach Copilot/agents how to connect Foundry Toolkit,
 Azure Monitor, trace regression, and CI/CD readiness without making the tutorial

@@ -14,13 +14,13 @@ This path validates the Foundry-native route:
 ## Repository set used in this tutorial
 
 This tutorial intentionally shows the broader Foundry ecosystem, not only
-AgentOps. For the recorded workshop path, use Paulo's fork set so the CLI,
-workflow runner, Toolkit reference, and skill guidance stay aligned in one
+AgentOps. For this tutorial path, use the repository references below so the
+CLI, workflow runner, Toolkit reference, and skill guidance stay aligned in one
 cohesive demo environment.
 
-| Repository | Workshop fork | Role in the journey |
+| Repository | Tutorial reference | Role in the journey |
 |---|---|---|
-| `Azure/agentops` | `placerda/agentops` | Provides the workshop CLI, workflow generation, Doctor, Cockpit, and release evidence flow. |
+| `Azure/agentops` | `placerda/agentops` | Provides the AgentOps CLI, workflow generation, Doctor, Cockpit, and release evidence flow. |
 | `microsoft/ai-agent-evals` | `placerda/ai-agent-evals` | Provides the Foundry-native PR evaluation gate used by the generated workflow. |
 | `microsoft/foundry-toolkit` | `placerda/foundry-toolkit` | Frames the VS Code create/debug experience and the Operate handoff after a prompt version is ready. |
 | `microsoft/azure-skills` | `placerda/azure-skills` | Connects Copilot guidance to Foundry observe, CI/CD, regression, and trace follow-through. |
@@ -88,9 +88,9 @@ python -m pip install "agentops-toolkit[foundry,agent]"
 agentops --version
 ```
 
-For normal usage, prefer the published package above. For the recorded workshop
-path, install from Paulo's fork so the CLI, generated workflows, and tutorial
-steps stay in sync:
+For normal usage, prefer the published package above. For this tutorial path,
+install the aligned reference branch so the CLI, generated workflows, and
+tutorial steps stay in sync:
 
 ```powershell
 python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
@@ -251,8 +251,8 @@ The PR workflow should contain the Microsoft Foundry eval action:
 microsoft/ai-agent-evals@v3-beta
 ```
 
-For the recorded workshop branch, keep the PR gate aligned with the repository
-set by pointing the generated workflow at Paulo's `ai-agent-evals` fork:
+For the tutorial branch, keep the PR gate aligned with the repository set by
+pointing the generated workflow at the tutorial reference action:
 
 ```powershell
 (Get-Content .github\workflows\agentops-pr.yml) `
@@ -260,9 +260,9 @@ set by pointing the generated workflow at Paulo's `ai-agent-evals` fork:
   Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
 ```
 
-Use this override only in the workshop branch. Product and release branches
+Use this override only in the tutorial branch. Product and release branches
 should use the Microsoft Action reference unless your team intentionally pins a
-controlled fork.
+controlled reference.
 
 The workflow also records provenance and release-evidence files. The detailed
 quality scores stay in Foundry Evaluations:
@@ -411,7 +411,7 @@ You are done when:
 - `agentops workflow analyze` selects Microsoft Foundry AI Agent Evaluation.
 - `agentops workflow generate` creates a PR workflow with
   `microsoft/ai-agent-evals@v3-beta`, or `placerda/ai-agent-evals@main` only
-  for the recorded workshop branch.
+  for the tutorial branch.
 - You published a deliberately regressed prompt version, saw the eval/pipeline
   signal move, restored the prompt, and reran the gate.
 - `agentops doctor --evidence-pack` writes

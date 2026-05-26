@@ -1,12 +1,12 @@
-# End-to-end workshop: release readiness for Foundry agents
+# End-to-end tutorial: release readiness for Foundry agents
 
-This workshop is the full path. Use it after one of the quickstarts when you
+This tutorial is the full path. Use it after one of the quickstarts when you
 want to validate the complete build -> evaluate -> release -> observe loop.
 
-It is inspired by the Azure Samples workshop
+It is inspired by the Azure Samples repo
 [Mind the Gap In Your AI Agent Observability](https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe).
-That workshop goes deep on Foundry SDK notebooks, tracing, evaluation, and
-red-team scans. This AgentOps workshop does not copy those labs. It shows where
+That sample goes deep on Foundry SDK notebooks, tracing, evaluation, and
+red-team scans. This AgentOps tutorial does not copy those labs. It shows where
 AgentOps fits around the same lifecycle as the repo-side readiness and evidence
 layer.
 
@@ -43,11 +43,11 @@ review.
 - One Azure OpenAI deployment for evaluator calls, for example `gpt-4o-mini`.
 - Application Insights connected to the Foundry project or agent runtime.
 
-Install AgentOps in a clean workshop workspace:
+Install AgentOps in a clean tutorial workspace:
 
 ```powershell
-mkdir agentops-workshop
-cd agentops-workshop
+mkdir agentops-end-to-end
+cd agentops-end-to-end
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
@@ -55,9 +55,9 @@ python -m pip install "agentops-toolkit[foundry,agent]" fastapi "uvicorn[standar
 az login
 ```
 
-For normal usage, prefer the published package above. For the recorded workshop
-path, install from Paulo's fork so the CLI, generated workflows, and tutorial
-steps stay in sync:
+For normal usage, prefer the published package above. For this tutorial path,
+install the aligned reference branch so the CLI, generated workflows, and
+tutorial steps stay in sync:
 
 ```powershell
 python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
@@ -67,14 +67,14 @@ You will provide the target values through the interactive `agentops init`
 wizard. The evaluator endpoint/deployment is separate: set it only when running
 local evals or configuring CI variables.
 
-## Repository set for the workshop recording
+## Repository set for this tutorial
 
-This workshop is meant to show the power of Foundry plus repo-side operations,
+This tutorial is meant to show the power of Foundry plus repo-side operations,
 not a self-contained AgentOps-only workflow. Use this repository set for a
-coherent recording that connects the official Foundry product surfaces, the
-CI/CD evaluation runner, skill guidance, and AgentOps readiness evidence.
+coherent path that connects the official Foundry product surfaces, the CI/CD
+evaluation runner, skill guidance, and AgentOps readiness evidence.
 
-| Repository | Workshop fork | Role in the combined story |
+| Repository | Tutorial reference | Role in the combined story |
 |---|---|---|
 | `Azure/agentops` | `placerda/agentops` | Repo-side release readiness, Doctor, Cockpit, and evidence layer. |
 | `microsoft/ai-agent-evals` | `placerda/ai-agent-evals` | Foundry-native CI/CD evaluation runner for prompt-agent gates and compare links. |
@@ -83,7 +83,7 @@ CI/CD evaluation runner, skill guidance, and AgentOps readiness evidence.
 
 ## 1. Create the Travel Agent target
 
-Choose one path. The rest of the workshop works with either target.
+Choose one path. The rest of the tutorial works with either target.
 
 ### Option A: create a Prompt Agent in Foundry
 
@@ -176,7 +176,7 @@ def chat(request: ChatRequest) -> dict[str, str]:
 Start it in a second terminal:
 
 ```powershell
-cd agentops-workshop
+cd agentops-end-to-end
 .\.venv\Scripts\Activate.ps1
 python -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
@@ -196,7 +196,7 @@ To make this a real Foundry Hosted Agent for CI:
 3. In VS Code, run `Microsoft Foundry: Create a New Hosted Agent`.
 4. Choose a single-agent template, Python or C#, and the model deployment.
 5. Replace the generated instructions or source logic with the Travel Agent
-   behavior from this workshop.
+   behavior from this tutorial.
 6. Press F5 to debug locally with Agent Inspector.
 7. Run `Microsoft Foundry: Deploy Hosted Agent`.
 8. Copy the deployed endpoint URL and set:
@@ -208,9 +208,8 @@ To make this a real Foundry Hosted Agent for CI:
 If the deployed Foundry Hosted Agent follows the Responses API shape, use
 `protocol: responses` in `agentops.yaml`.
 
-If you want the notebook-style Foundry build path, follow the Azure Samples
-workshop labs for creating agents, tools, tracing, evaluation, and red-team
-scans:
+If you want the notebook-style Foundry build path, follow the Azure Samples repo
+for creating agents, tools, tracing, evaluation, and red-team scans:
 
 ```text
 https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe
@@ -324,8 +323,8 @@ The generated workflow prepares Microsoft Foundry eval input under:
 
 and records release evidence after the gate.
 
-For the recorded workshop branch, point the generated PR workflow at Paulo's
-`ai-agent-evals` fork so the CI gate stays aligned with the repository set:
+For the tutorial branch, point the generated PR workflow at the tutorial
+reference action so the CI gate stays aligned with the repository set:
 
 ```powershell
 (Get-Content .github\workflows\agentops-pr.yml) `
@@ -333,14 +332,14 @@ For the recorded workshop branch, point the generated PR workflow at Paulo's
   Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
 ```
 
-Use this override only in the workshop branch. Product and release branches
+Use this override only in the tutorial branch. Product and release branches
 should use the Microsoft Action reference unless your team intentionally pins a
-controlled fork.
+controlled reference.
 
 ## 6. Force a regression and recover
 
 Run one deliberate failure before you build the release path. It makes the
-workshop concrete: you compare a worse agent against a known-good run, fix it,
+tutorial concrete: you compare a worse agent against a known-good run, fix it,
 and rerun the same gate.
 
 ### Prompt Agent regression
@@ -473,7 +472,7 @@ The evidence pack is not a second gate. It summarizes existing signals:
 - trace-regression status;
 - links back to Foundry and Azure Monitor.
 
-In a fresh workshop, some findings should still be missing: production telemetry
+In a fresh tutorial, some findings should still be missing: production telemetry
 may not have live traffic, scheduled workflows may not have history, and trace
 regression candidates may not exist yet. That is useful tutorial feedback, not
 a failure of Doctor.
@@ -544,7 +543,7 @@ You are ready for a release review when:
 - CI uses the expected runner for the target.
 - Eval results or Microsoft Foundry eval metadata are attached to the workflow
   artifact.
-- The workshop includes one deliberate regression and one fixed rerun, either
+- The tutorial includes one deliberate regression and one fixed rerun, either
   through Foundry prompt versions or AgentOps local baseline comparison.
 - `agentops doctor --evidence-pack` writes `evidence.md`.
 - Application Insights is connected or the evidence clearly says it is missing.
