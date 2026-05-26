@@ -169,14 +169,19 @@ jobs:
         run: |
           for i in 1 2 3 4 5; do
             echo "Attempt $i: installing agentops-toolkit==${{ steps.version.outputs.version }}"
-            pip install \
+            if pip install \
               "agentops-toolkit==${{ steps.version.outputs.version }}" \
               --index-url https://test.pypi.org/simple/ \
-              --extra-index-url https://pypi.org/simple/ \
-              && break
-            echo "Not available yet, waiting 30s..."
-            sleep 30
+              --extra-index-url https://pypi.org/simple/; then
+              exit 0
+            fi
+            if [ "$i" -lt 5 ]; then
+              echo "Not available yet, waiting 30s..."
+              sleep 30
+            fi
           done
+          echo "::error::agentops-toolkit==${{ steps.version.outputs.version }} was not available from TestPyPI after 5 attempts."
+          exit 1
 
       - name: Smoke test
         run: |

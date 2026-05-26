@@ -5,6 +5,14 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **Release workflow verification.** Release builds now pin package versions from
+  the release tag, assert the generated distribution matches that version, and
+  fail TestPyPI verification immediately when the expected package is not
+  available.
+
+## [0.2.1] - 2026-05-26
+
 ### Changed
 - Consolidated the tutorial set into two quickstarts plus one end-to-end
   Foundry + AgentOps workshop, with the quickstarts now covering the broader

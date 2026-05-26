@@ -23,6 +23,17 @@ name: _build
 
 on:
   workflow_call:
+    inputs:
+      checkout_ref:
+        description: "Optional ref to check out, used by manual release reruns."
+        required: false
+        type: string
+        default: ""
+      release_tag:
+        description: "Optional v-prefixed tag that should define the package version."
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build:
@@ -30,7 +41,22 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.checkout_ref || github.ref }}
           fetch-depth: 0 # Full history required for setuptools-scm
+
+      - name: Pin package version for release tags
+        if: ${{ inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          TAG="${TAG:-$GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag '$TAG' did not resolve to a semver package version."
+            exit 1
+          fi
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AGENTOPS_TOOLKIT=$VERSION" >> "$GITHUB_ENV"
+          echo "EXPECTED_PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "Release package version pinned to $VERSION from $TAG"
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -51,6 +77,33 @@ jobs:
 
       - name: Build package
         run: uv build
+
+      - name: Assert release artifact version
+        run: |
+          if [ -z "${EXPECTED_PACKAGE_VERSION:-}" ]; then
+            echo "No release package version was pinned; skipping artifact version assertion."
+            exit 0
+          fi
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          expected = os.environ["EXPECTED_PACKAGE_VERSION"]
+          dist = Path("dist")
+          matches = [
+              *sorted(dist.glob(f"agentops_toolkit-{expected}.tar.gz")),
+              *sorted(dist.glob(f"agentops_toolkit-{expected}-*.whl")),
+          ]
+          if not matches:
+              print(f"::error::Expected dist artifact for version {expected}, found:")
+              for artifact in sorted(dist.iterdir()):
+                  print(f"  - {artifact.name}")
+              sys.exit(1)
+          print("Release artifacts:")
+          for artifact in matches:
+              print(f"  - {artifact.name}")
+          PY
 
       - name: Show build info
         run: |
