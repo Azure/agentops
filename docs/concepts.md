@@ -8,9 +8,9 @@ reference and architecture details, see [how-it-works.md](how-it-works.md).
 AgentOps helps teams answer two release questions for a Foundry agent:
 **can we ship it, and where is the proof?**
 
-Foundry owns the agent lifecycle: create, deploy, run, trace, monitor, evaluate,
-and investigate. AgentOps adds the repo-controlled proof that a candidate is
-ready to release:
+Foundry is the agent control plane: create, deploy, run, trace, monitor,
+evaluate, and investigate. AgentOps is the repo-side operating layer that turns
+those signals into a repeatable release loop:
 
 - Source-controlled eval config
 - Local and CI quality gates
@@ -19,12 +19,13 @@ ready to release:
 - Trace-to-dataset promotion
 - Generated workflows and a local Cockpit
 
-Use Foundry for runtime and official drilldown. Use AgentOps for the
-release-readiness loop: initialize, evaluate, compare, run Doctor, produce
-evidence, and promote reviewed traces back into regression data.
+Use Foundry for runtime, evaluation, observability, and official drilldown. Use
+AgentOps to keep the release contract close to the code: initialize, evaluate,
+compare, run Doctor, produce evidence, and promote reviewed traces back into
+regression data.
 
-The short version is: **Foundry runs the agent. AgentOps proves the release is
-ready.**
+The short version is: **Foundry operates the agent; AgentOps turns that operating
+signal into repo-side release proof.**
 
 ## How an Evaluation Works
 

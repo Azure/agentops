@@ -11,6 +11,20 @@ This path validates the Foundry-native route:
 - AgentOps owns repo-side readiness: `agentops.yaml`, CI gates, Doctor,
   release evidence, and Cockpit.
 
+## Repository set used in this tutorial
+
+This tutorial intentionally shows the broader Foundry ecosystem, not only
+AgentOps. For the recorded workshop path, use Paulo's fork set so the CLI,
+workflow runner, Toolkit reference, and skill guidance stay aligned in one
+cohesive demo environment.
+
+| Repository | Workshop fork | Role in the journey |
+|---|---|---|
+| `Azure/agentops` | `placerda/agentops` | Provides the workshop CLI, workflow generation, Doctor, Cockpit, and release evidence flow. |
+| `microsoft/ai-agent-evals` | `placerda/ai-agent-evals` | Provides the Foundry-native PR evaluation gate used by the generated workflow. |
+| `microsoft/foundry-toolkit` | `placerda/foundry-toolkit` | Frames the VS Code create/debug experience and the Operate handoff after a prompt version is ready. |
+| `microsoft/azure-skills` | `placerda/azure-skills` | Connects Copilot guidance to Foundry observe, CI/CD, regression, and trace follow-through. |
+
 ## Journey you will exercise
 
 | Step | Main tool | What you do | AgentOps role |
@@ -74,11 +88,12 @@ python -m pip install "agentops-toolkit[foundry,agent]"
 agentops --version
 ```
 
-If you need the latest unreleased changes from the repository instead of the
-published package, use:
+For normal usage, prefer the published package above. For the recorded workshop
+path, install from Paulo's fork so the CLI, generated workflows, and tutorial
+steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
 ```
 
 ## 3. Create the travel eval dataset
@@ -236,8 +251,21 @@ The PR workflow should contain the Microsoft Foundry eval action:
 microsoft/ai-agent-evals@v3-beta
 ```
 
-It also records provenance and release-evidence files. The detailed quality
-scores stay in Foundry Evaluations:
+For the recorded workshop branch, keep the PR gate aligned with the repository
+set by pointing the generated workflow at Paulo's `ai-agent-evals` fork:
+
+```powershell
+(Get-Content .github\workflows\agentops-pr.yml) `
+  -replace 'microsoft/ai-agent-evals@v3-beta', 'placerda/ai-agent-evals@main' |
+  Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
+```
+
+Use this override only in the workshop branch. Product and release branches
+should use the Microsoft Action reference unless your team intentionally pins a
+controlled fork.
+
+The workflow also records provenance and release-evidence files. The detailed
+quality scores stay in Foundry Evaluations:
 
 ```text
 .agentops/official-eval/metadata.json
@@ -382,7 +410,8 @@ You are done when:
 - The Travel Agent exists in Foundry and has a published `travel-agent:<version>` reference.
 - `agentops workflow analyze` selects Microsoft Foundry AI Agent Evaluation.
 - `agentops workflow generate` creates a PR workflow with
-  `microsoft/ai-agent-evals@v3-beta`.
+  `microsoft/ai-agent-evals@v3-beta`, or `placerda/ai-agent-evals@main` only
+  for the recorded workshop branch.
 - You published a deliberately regressed prompt version, saw the eval/pipeline
   signal move, restored the prompt, and reran the gate.
 - `agentops doctor --evidence-pack` writes

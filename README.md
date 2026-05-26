@@ -20,9 +20,9 @@ Answer the release question for Microsoft Foundry agents: can we ship it, and wh
 ## Overview
 
 AgentOps Toolkit helps teams turn Foundry agent work into a clear release
-decision. Foundry runs the agent. AgentOps proves the release is ready with
-repeatable eval gates, Doctor readiness, release evidence, and trace-driven
-regression loops.
+decision. Foundry is the agent control plane; AgentOps turns Foundry signals and
+repo checks into repeatable gates, Doctor readiness, release evidence, and
+trace-driven regression loops.
 
 The project enables:
 
@@ -39,20 +39,21 @@ The project enables:
 
 ## AgentOps and Microsoft Foundry
 
-Use Foundry to create, deploy, run, observe, and investigate agents. Use
-AgentOps when the repo needs a source-controlled gate and evidence that the
-candidate is ready to release.
+Foundry and AgentOps are designed to meet at the release boundary. Foundry is
+where teams create, deploy, run, observe, and investigate agents. AgentOps is
+the repo-side operating layer that turns those signals into a repeatable
+ship/no-ship workflow.
 
-| Surface | Official Foundry / Azure tooling | AgentOps role |
+| Moment | Foundry / Azure does | AgentOps adds |
 |---|---|---|
-| Agent creation and deployment | Foundry portal, Foundry SDK/Toolkit, `microsoft-foundry` skill, azd | Reference the released candidate and gate it; do not replace lifecycle tooling |
-| Evaluations | Foundry Evaluations and official CI actions/extensions | Repo config, thresholds, local/fallback runs, reports, baselines |
-| Observability | Foundry Monitor, Traces, Azure Monitor, App Insights | Cockpit links, telemetry readiness, Doctor findings |
-| Release decision | Branch protection, environments, approvals | `evidence.json` / `evidence.md` for promotion review |
-| Improvement loop | Production traces and Foundry datasets | Review-first trace-to-dataset promotion |
+| Build and version | Foundry portal, Foundry SDK/Toolkit, `microsoft-foundry` skill, azd | Pins the exact candidate in `agentops.yaml` and generates the PR/release gate around it |
+| Evaluate and compare | Foundry Evaluations and official CI actions/extensions | Keeps datasets and thresholds in the repo, records evidence, and provides local/fallback runs for non-prompt targets |
+| Observe and investigate | Foundry Monitor, Traces, Azure Monitor, App Insights | Surfaces deep links, telemetry readiness, Doctor findings, and Cockpit navigation |
+| Decide release | Branch protection, environments, approvals | Packages `evidence.json` / `evidence.md` for promotion review |
+| Improve from production | Production traces and Foundry datasets | Promotes reviewed trace learnings into regression candidates |
 
-The design goal is simple: **Foundry runs the agent. AgentOps proves the
-release is ready.**
+The rhythm is simple: build and operate the agent in Foundry, keep the release
+contract in the repo, and let AgentOps connect the two into a clean review loop.
 
 Core outputs:
 

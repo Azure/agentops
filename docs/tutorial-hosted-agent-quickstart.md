@@ -10,6 +10,20 @@ This path validates the AgentOps local route:
 - AgentOps invokes the endpoint from CI, applies repo thresholds, writes
   normalized `results.json`, and produces release evidence.
 
+## Repository set used in this tutorial
+
+This tutorial intentionally connects the hosted-agent path to the Microsoft
+projects that make the Operate story complete. The forks give the recording a
+stable set of references while the official Foundry extension, Azure services,
+and AgentOps workflow remain the actual runtime path.
+
+| Repository | Workshop fork | Role in the journey |
+|---|---|---|
+| `Azure/agentops` | `placerda/agentops` | Provides endpoint evaluation, thresholds, `results.json`, Doctor, Cockpit, and evidence. |
+| `microsoft/ai-agent-evals` | `placerda/ai-agent-evals` | Provides the Foundry prompt-agent gate contract used as contrast for why hosted endpoints use AgentOps local eval. |
+| `microsoft/foundry-toolkit` | `placerda/foundry-toolkit` | Frames the Hosted Agent create/debug/deploy flow and the Operate handoff in VS Code. |
+| `microsoft/azure-skills` | `placerda/azure-skills` | Shows where the Microsoft Foundry skill can guide hosted-agent CI/CD, observe, and trace-regression follow-through. |
+
 ## Journey you will exercise
 
 | Step | Main tool | What you do | AgentOps role |
@@ -31,11 +45,12 @@ python -m pip install "agentops-toolkit[foundry,agent]" fastapi "uvicorn[standar
 agentops --version
 ```
 
-If you need the latest unreleased AgentOps changes from the repository instead
-of the published package, use:
+For normal usage, prefer the published package above. For the recorded workshop
+path, install from Paulo's fork so the CLI, generated workflows, and tutorial
+steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
 ```
 
 ## 2. Create the Travel Agent endpoint
@@ -146,6 +161,12 @@ Toolkit path instead of leaving the endpoint on localhost:
 The endpoint used in CI must be reachable by the CI runner. If the deployed
 Foundry Hosted Agent follows the Responses API shape, use `protocol: responses`
 later in `agentops.yaml`.
+
+For the workshop narrative, keep
+`https://github.com/placerda/foundry-toolkit` open alongside the official
+extension. You do not install the extension from that fork; use it as the
+reference point for the Operate handoff after Hosted Agent deploy: evaluation
+gate, telemetry readiness, trace links, and release evidence.
 
 ## 3. Create the travel eval dataset
 
@@ -342,6 +363,12 @@ local endpoint becomes an operated service.
 
 The watchdog workflow runs Doctor on a schedule so release evidence can include
 recent readiness signals.
+
+This is also where the `placerda/azure-skills` fork fits the story. AgentOps
+generates the repo-side gate and evidence; the Microsoft Foundry skill is the
+natural guidance layer to teach Copilot/agents how to connect Foundry Toolkit,
+Azure Monitor, trace regression, and CI/CD readiness without making the tutorial
+look self-contained inside AgentOps.
 
 ## 10. Open Cockpit
 

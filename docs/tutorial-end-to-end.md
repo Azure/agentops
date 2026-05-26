@@ -55,16 +55,31 @@ python -m pip install "agentops-toolkit[foundry,agent]" fastapi "uvicorn[standar
 az login
 ```
 
-If you need the latest unreleased changes from the repository instead of the
-published package, use:
+For normal usage, prefer the published package above. For the recorded workshop
+path, install from Paulo's fork so the CLI, generated workflows, and tutorial
+steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
 ```
 
 You will provide the target values through the interactive `agentops init`
 wizard. The evaluator endpoint/deployment is separate: set it only when running
 local evals or configuring CI variables.
+
+## Repository set for the workshop recording
+
+This workshop is meant to show the power of Foundry plus repo-side operations,
+not a self-contained AgentOps-only workflow. Use this repository set for a
+coherent recording that connects the official Foundry product surfaces, the
+CI/CD evaluation runner, skill guidance, and AgentOps readiness evidence.
+
+| Repository | Workshop fork | Role in the combined story |
+|---|---|---|
+| `Azure/agentops` | `placerda/agentops` | Repo-side release readiness, Doctor, Cockpit, and evidence layer. |
+| `microsoft/ai-agent-evals` | `placerda/ai-agent-evals` | Foundry-native CI/CD evaluation runner for prompt-agent gates and compare links. |
+| `microsoft/foundry-toolkit` | `placerda/foundry-toolkit` | VS Code create/debug/deploy surface for the Operate/readiness handoff. |
+| `microsoft/azure-skills` | `placerda/azure-skills` | Microsoft Foundry skill guidance for observe, CI/CD monitoring, regression, and trace follow-through. |
 
 ## 1. Create the Travel Agent target
 
@@ -309,6 +324,19 @@ The generated workflow prepares Microsoft Foundry eval input under:
 
 and records release evidence after the gate.
 
+For the recorded workshop branch, point the generated PR workflow at Paulo's
+`ai-agent-evals` fork so the CI gate stays aligned with the repository set:
+
+```powershell
+(Get-Content .github\workflows\agentops-pr.yml) `
+  -replace 'microsoft/ai-agent-evals@v3-beta', 'placerda/ai-agent-evals@main' |
+  Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
+```
+
+Use this override only in the workshop branch. Product and release branches
+should use the Microsoft Action reference unless your team intentionally pins a
+controlled fork.
+
 ## 6. Force a regression and recover
 
 Run one deliberate failure before you build the release path. It makes the
@@ -393,6 +421,12 @@ The generated workflows are intentionally boring:
 - PR gate: evaluate and publish report/evidence.
 - Dev/QA/Prod: deploy with azd or placeholders, then run readiness checks.
 - Watchdog: run Doctor on a schedule and upload the report.
+
+Use this moment in the video to connect the four repos: Foundry Toolkit creates
+and deploys the agent, `ai-agent-evals` runs the official prompt-agent CI gate,
+AgentOps captures the release-readiness evidence, and the Microsoft Foundry
+skill is the cross-repo guidance layer that teaches the same Operate loop to
+coding agents.
 
 ## 8. Wire observability
 
