@@ -196,7 +196,7 @@ That means generated CI uses the Microsoft Foundry AI Agent Evaluation
 action/task for the eval step, then uses AgentOps to collect evidence and
 readiness signals.
 
-## 7. Generate the PR gate
+## 7. Generate the PR gate and scheduled Doctor workflow
 
 ```powershell
 agentops workflow generate --kinds pr,watchdog --force
@@ -226,20 +226,20 @@ Confirm `agentops-workflow` is loaded before continuing.
 When the skill is loaded, paste:
 
 ```text
-Use the AgentOps workflow skill to get the generated PR gate and watchdog
-workflows running on GitHub Actions for this Foundry prompt-agent project.
+Use the AgentOps workflow skill to get the generated PR gate and scheduled
+Doctor workflow running on GitHub Actions for this Foundry prompt-agent project.
 
 This may be a brand-new folder with no Git repo or GitHub remote yet. Keep the
-scope to the PR gate and watchdog only: create or connect the GitHub repo if
-needed, wire Azure OIDC and required Actions variables, create only the `dev`
-environment, and do not set up `qa`, `production`, or deploy workflows yet.
-Show me the plan before changing GitHub or Azure, and call out anything that
-needs owner/admin permission.
+scope to the PR gate and scheduled Doctor workflow only: create or connect the
+GitHub repo if needed, wire Azure OIDC and required Actions variables, create
+only the `dev` environment, and do not set up `qa`, `production`, or deploy
+workflows yet. Show me the plan before changing GitHub or Azure, and call out
+anything that needs owner/admin permission.
 ```
 
-For the `pr,watchdog` quickstart, the generated workflows use the `dev`
-environment for OIDC and variables. You do **not** need `qa` or `production`
-yet; add them when you generate deploy workflows later.
+For this PR gate plus scheduled Doctor quickstart, the generated workflows use
+the `dev` environment for OIDC and variables. You do **not** need `qa` or
+`production` yet; add them when you generate deploy workflows later.
 
 The workflow skill will copy the needed CI variables from your local
 AgentOps/azd configuration into the GitHub `dev` environment. If a value such
@@ -251,8 +251,14 @@ The PR workflow should contain the Microsoft Foundry eval action:
 microsoft/ai-agent-evals@v3-beta
 ```
 
-For the tutorial branch, keep the PR gate aligned with the repository set by
-pointing the generated workflow at the tutorial reference action:
+The generator uses the Microsoft Action reference by default because that is the
+right baseline for product and release branches. The tutorial branch has a
+narrower goal: keep the whole walkthrough aligned with the repository set.
+AgentOps comes from the tutorial reference, the PR gate uses the matching
+tutorial eval action, and Foundry remains the place where the evaluation run is
+executed and reviewed.
+
+For that reason, point the generated workflow at the tutorial reference action:
 
 ```powershell
 (Get-Content .github\workflows\agentops-pr.yml) `
@@ -261,11 +267,12 @@ pointing the generated workflow at the tutorial reference action:
 ```
 
 Use this override only in the tutorial branch. Product and release branches
-should use the Microsoft Action reference unless your team intentionally pins a
+should keep the Microsoft Action reference unless your team intentionally pins a
 controlled reference.
 
-The workflow also records provenance and release-evidence files. The detailed
-quality scores stay in Foundry Evaluations:
+After the replacement, the workflow contract stays the same: it prepares the
+Foundry eval input, records provenance for review, and lets AgentOps attach
+release evidence. The detailed quality scores stay in Foundry Evaluations:
 
 ```text
 .agentops/official-eval/metadata.json
@@ -409,8 +416,8 @@ You are done when:
 
 - The Travel Agent exists in Foundry and has a published `travel-agent:<version>` reference.
 - `agentops workflow analyze` selects Microsoft Foundry AI Agent Evaluation.
-- `agentops workflow generate` creates a PR workflow with
-  `microsoft/ai-agent-evals@v3-beta`, or `placerda/ai-agent-evals@main` only
+- `agentops workflow generate` creates a PR workflow with the Microsoft Action
+  reference for product/release branches, and the tutorial reference action only
   for the tutorial branch.
 - You published a deliberately regressed prompt version, saw the eval/pipeline
   signal move, restored the prompt, and reran the gate.

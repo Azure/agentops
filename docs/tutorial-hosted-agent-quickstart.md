@@ -24,6 +24,11 @@ and AgentOps workflow remain the actual runtime path.
 | `microsoft/foundry-toolkit` | `placerda/foundry-toolkit` | Frames the Hosted Agent create/debug/deploy flow and the Operate handoff in VS Code. |
 | `microsoft/azure-skills` | `placerda/azure-skills` | Shows where the Microsoft Foundry skill can guide hosted-agent CI/CD, observe, and trace-regression follow-through. |
 
+Unlike the Prompt Agent quickstart, this endpoint tutorial does not point the
+generated PR workflow at `ai-agent-evals`. Hosted and HTTP agents are evaluated
+through the AgentOps local runner because CI must invoke your endpoint, extract
+the response, apply repo thresholds, and write the normalized `results.json`.
+
 ## Journey you will exercise
 
 | Step | Main tool | What you do | AgentOps role |
@@ -361,7 +366,7 @@ In a fresh quickstart, warnings about production telemetry, CI history, or trace
 regression history are expected and useful: they show what remains before this
 local endpoint becomes an operated service.
 
-The watchdog workflow runs Doctor on a schedule so release evidence can include
+The scheduled Doctor workflow runs on a cadence so release evidence can include
 recent readiness signals.
 
 This is also where `placerda/azure-skills` fits the story. AgentOps

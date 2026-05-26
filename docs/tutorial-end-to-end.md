@@ -27,7 +27,7 @@ review.
 | 4 | Test and debug | Foundry playground, VS Code debugger, Agent Inspector, Copilot Chat | Optional quick eval after target exists. | Working dev-loop agent |
 | 5 | Configure release checks | AgentOps CLI and skills | Creates `agentops.yaml` and repo-side release contract. | Release checklist in repo |
 | 6 | Evaluate | Official AI Agent Evaluation or AgentOps local runner | Routes to the right runner and normalizes proof. | Eval gate signal |
-| 7 | Create operations workflow | GitHub Actions, Azure Pipelines, azd | Generates PR, environment, and watchdog workflows. | CI/CD gates |
+| 7 | Create operations workflow | GitHub Actions, Azure Pipelines, azd | Generates PR, environment, and scheduled Doctor workflows. | CI/CD gates |
 | 8 | Observe production | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
 | 9 | Review readiness | AgentOps Doctor, Cockpit, evidence pack | Answers "can we ship it, and where is the proof?" | `evidence.md` |
 | 10 | Learn from traces | Foundry/App Insights exports, AgentOps trace promotion | Turns reviewed traces into regression candidates. | Future eval rows |
@@ -323,8 +323,15 @@ The generated workflow prepares Microsoft Foundry eval input under:
 
 and records release evidence after the gate.
 
-For the tutorial branch, point the generated PR workflow at the tutorial
-reference action so the CI gate stays aligned with the repository set:
+The generator uses the Microsoft Action reference by default because that is the
+right baseline for product and release branches. The tutorial branch has a
+narrower goal: keep the full ecosystem walkthrough aligned with the repository
+set. AgentOps comes from the tutorial reference, the prompt-agent gate uses the
+matching tutorial eval action, and Foundry remains the place where the
+evaluation run is executed and reviewed.
+
+For that reason, point the generated PR workflow at the tutorial reference
+action:
 
 ```powershell
 (Get-Content .github\workflows\agentops-pr.yml) `
@@ -333,8 +340,12 @@ reference action so the CI gate stays aligned with the repository set:
 ```
 
 Use this override only in the tutorial branch. Product and release branches
-should use the Microsoft Action reference unless your team intentionally pins a
+should keep the Microsoft Action reference unless your team intentionally pins a
 controlled reference.
+
+After the replacement, the workflow contract stays the same: it prepares the
+Foundry eval input, records provenance for review, and lets AgentOps attach
+release evidence. The detailed quality scores stay in Foundry Evaluations.
 
 ## 6. Force a regression and recover
 
@@ -419,7 +430,7 @@ The generated workflows are intentionally boring:
 
 - PR gate: evaluate and publish report/evidence.
 - Dev/QA/Prod: deploy with azd or placeholders, then run readiness checks.
-- Watchdog: run Doctor on a schedule and upload the report.
+- Scheduled Doctor: run Doctor on a schedule and upload the report.
 
 Use this moment in the video to connect the four repos: Foundry Toolkit creates
 and deploys the agent, `ai-agent-evals` runs the official prompt-agent CI gate,
