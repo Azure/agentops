@@ -525,6 +525,22 @@ Use this loop in the video:
 | Eval context | From a Foundry eval run, inspect row-level explanations and, when available, the trace attached to the interaction. | The repo keeps the exact target, dataset, gate, and evidence together. |
 | Trace learning | Export or curate traces that represent real issues. | `agentops eval promote-traces` turns reviewed traces into regression candidates. |
 
+For the screen recording, make the Foundry side visible before opening AgentOps
+Cockpit:
+
+| Panel | Show | Say |
+|---|---|---|
+| Project overview / connected resources | Foundry project plus attached App Insights. | "This is where runtime telemetry is connected." |
+| Agent or endpoint Traces | One Trace ID, span tree, input/output, metadata, latency, model/tool call, and conversation context if present. | "This is the single interaction drilldown." |
+| Foundry Evaluations | The managed eval run and row-level scoring. | "This is the quality evidence for the candidate." |
+| Operate overview | Aggregate health, errors, latency, usage, and Ask AI when available. | "This is the production operations view." |
+| Application Insights Logs | KQL for the same operation or trace. | "This is the raw Azure Monitor investigation path." |
+| Red Teaming / safety | Scan entry point or linked scan result. | "This is the managed safety review path." |
+
+Then open AgentOps Doctor/Cockpit to show the complement: repo-side gates,
+workflow state, evidence, findings, and links back to those official Foundry and
+Azure Monitor surfaces.
+
 If runtime discovery does not find a connected App Insights resource, or your
 identity cannot read it, set the connection string in the AgentOps local env:
 

@@ -128,6 +128,22 @@ This is the Foundry side of Operate. AgentOps does not replace it; later Doctor,
 Cockpit, and release evidence check whether the repo can point reviewers back to
 these official runtime signals.
 
+For a recording, make this a short Foundry observability tour before you move
+back to the terminal:
+
+| Foundry / Azure surface | What to show | Why it matters |
+|---|---|---|
+| Project overview / connected resources | The Foundry project and attached App Insights resource. | Confirms telemetry has an official place to land. |
+| Agent Traces | The latest playground run, Trace ID, spans, input/output, metadata, latency, token/model details, and any Conversation ID. | Shows runtime behavior for one concrete interaction. |
+| Foundry Evaluations | The managed eval run and row-level details after CI runs. | Shows quality scoring where Foundry executes the prompt-agent eval. |
+| Operate overview | Aggregate latency, failures, usage, and Ask AI when available. | Shows service-level health, not just one trace. |
+| Application Insights Logs | The same operation from the Azure Monitor side when you need raw KQL drilldown. | Gives engineers the low-level query path behind the dashboard. |
+| Red Teaming / safety scans | The managed scan entry point, if your project has it enabled. | Frames safety work as Foundry-managed evidence that AgentOps later links into release review. |
+
+The transition line for the tutorial is: Foundry tells you what happened in the
+runtime; AgentOps checks whether the repo, CI, and release evidence are wired so
+reviewers can act on those signals.
+
 ## 2. Create a clean workspace and install AgentOps
 
 ```powershell

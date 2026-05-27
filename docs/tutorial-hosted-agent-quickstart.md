@@ -381,6 +381,20 @@ union traces, requests, dependencies
 | order by timestamp desc
 ```
 
+If you are demonstrating a real Foundry Hosted Agent instead of the local
+FastAPI sample, spend a minute in the Foundry observability panels too:
+
+| Foundry / Azure surface | What to show | Why it matters |
+|---|---|---|
+| Hosted agent / endpoint page | The deployed endpoint or agent reference that `agentops.yaml` calls. | Connects the repo target to the runtime being observed. |
+| Agent Traces | A recent request, Trace ID, spans, input/output, metadata, latency, model call, tool calls, and conversation context when present. | Shows the richer Foundry-managed runtime trace that the local sample cannot emit. |
+| Operate overview | Aggregate latency, failures, usage, and Ask AI when available. | Shows service health beyond one request. |
+| Application Insights Logs | KQL for the same operation ID or trace ID. | Gives the raw Azure Monitor drilldown path. |
+
+The transition is the same as the prompt-agent tutorial: Foundry and Azure
+Monitor own live observability; AgentOps checks whether those signals are wired
+into eval gates, Doctor findings, Cockpit, and release evidence.
+
 Those attributes are tutorial conventions, not special Foundry fields. A
 deployed Foundry Hosted Agent uses the same App Insights backend and Foundry
 trace surface, but its runtime spans include richer agent, tool, model, and
