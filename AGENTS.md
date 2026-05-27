@@ -8,8 +8,8 @@ trace-driven regression loops.
 
 The repository provides:
 - A single flat `agentops.yaml` configuration file at the project root
-- An interactive `agentops init` wizard that bootstraps the workspace and the
-  azd-compatible `.azure/<env>/.env` environment
+- An interactive `agentops init` wizard that bootstraps the workspace and local
+  AgentOps environment values, with azd environment support when requested
 - Native Foundry execution with cloud (OpenAI Evals API) and local fallback
 - A normalized output contract (`results.json`, `report.md`) for CI and PRs
 - A release evidence contract (`evidence.json`, `evidence.md`) for production promotion reviews
@@ -45,7 +45,7 @@ Public CLI contract:
 - `agentops eval promote-traces --source PATH [--out PATH] [--max-rows N] [--label-mode self-similarity|pending] [--apply]`
 - `agentops report generate [--in PATH] [--out PATH]`
 - `agentops workflow analyze [--dir PATH] [--format text|markdown|json] [--out PATH]`
-- `agentops workflow generate [--force] [--dir PATH] [--kinds pr,dev,qa,prod,watchdog] [--platform github|azure-devops] [--deploy-mode auto|placeholder|azd|prompt-agent]`
+- `agentops workflow generate [--force] [--dir PATH] [--kinds pr,dev,qa,prod,doctor] [--platform github|azure-devops] [--deploy-mode auto|placeholder|azd|prompt-agent]`
 - `agentops skills install [--platform copilot|claude] [--from SOURCE] [--prompt] [--force] [--dir PATH]`
 - `agentops mcp serve`
 - `agentops doctor [--workspace PATH] [--config PATH] [--out PATH] [--lookback-days N] [--severity-fail SEVERITY] [--evidence-pack] [--evidence-out PATH]`
@@ -190,7 +190,7 @@ src/
         ├── foundry.svg                # Cockpit Foundry mark
         ├── skills/                    # Coding-agent skill templates
         ├── workflows/                 # GitHub Actions templates (PR + 3 deploys
-        │                              #  + watchdog)
+        │                              #  + scheduled Doctor)
         ├── pipelines/                 # Azure DevOps pipeline templates
         └── agent-server/              # Doctor-as-Copilot-Extension deploy scaffold
             ├── Dockerfile
@@ -235,20 +235,22 @@ docs/
 `agentops init` is the single onboarding command. It is idempotent and combines four phases:
 
 1. **Scaffold** the `.agentops/` workspace and copy seed templates
-2. **Bootstrap** the azd-compatible `.azure/<env>/` environment folder
-3. **Wizard** — azd-style interactive prompts (suppressed with `--no-prompt`
+2. **Wizard** — azd-style interactive prompts (suppressed with `--no-prompt`
    or when every required value is supplied via flags)
-4. **Skills** — install coding-agent skills (auto-detect platform; default Copilot)
+3. **Skills** — install coding-agent skills on demand with `agentops skills install`
 
-Each wizard answer is persisted immediately to disk (`.azure/<env>/.env` for
-Azure secrets, `agentops.yaml` for the agent/dataset reference). Re-running
-`init` re-uses existing values and only re-prompts for blanks.
+Each wizard answer is persisted immediately to disk (`.agentops/.env` for
+AgentOps-owned local Azure values, or `.azure/<env>/.env` when an azd env is
+already active or `--azd-env` is explicit; `agentops.yaml` for the agent/dataset
+reference). Re-running `init` re-uses existing values and only re-prompts for
+blanks.
 
 The `.agentops/` directory:
 
 ```
 .agentops/
 ├── data/                       # JSONL dataset rows (seed: smoke.jsonl)
+├── .env                        # Local Azure values (ignored)
 ├── results/                    # Timestamped run history + `latest/` pointer
 ├── agent/                      # Doctor history (history.jsonl + per-run dirs)
 └── .gitignore                  # Local-only artifacts (results, secrets, …)
@@ -260,7 +262,7 @@ The project root after `init`:
 <project>/
 ├── agentops.yaml               # Flat 1.0 config (single source of truth)
 ├── .agentops/                  # Local-only run history, datasets, Doctor cache
-├── .azure/                     # azd-compatible env folder (shared with azd)
+├── .azure/                     # Optional azd-compatible env folder
 │   ├── config.json             # `defaultEnvironment` pointer
 │   ├── .gitignore              # Excludes every <env>/.env
 │   └── <env>/
@@ -270,7 +272,7 @@ The project root after `init`:
 └── (one of) .github/skills/  or  .claude/commands/
 ```
 
-Coding agent skills (installed by `init` and `skills install`):
+Coding agent skills (installed by `skills install`):
 
 ```
 .github/skills/                 # GitHub Copilot (default platform)
@@ -353,11 +355,12 @@ free-form and AgentOps adapts evaluators based on which columns are present:
 | `context` | Retrieval context (RAG evaluators) |
 | `tool_definitions`, `tool_calls` | Agent-workflow evaluators |
 
-### Environment Variables and `.azure/<env>/.env`
+### Environment Variables and `.agentops/.env`
 
-`agentops init` writes the canonical Azure variables to
-`.azure/<active-env>/.env`. These names match what the Azure SDKs and `azd`
-read literally — no renaming.
+`agentops init` writes the canonical Azure variables to `.agentops/.env` by
+default. Existing azd workspaces, or runs that pass `--azd-env`, use
+`.azure/<active-env>/.env` instead. These names match what the Azure SDKs and
+`azd` read literally — no renaming.
 
 | Variable | Purpose |
 |---|---|
@@ -371,9 +374,9 @@ AgentOps-specific knobs use the `AGENTOPS_` prefix to avoid clashing with
 Azure SDK / azd conventions (`AGENTOPS_FOUNDRY_MODE`,
 `AGENTOPS_NO_UNICODE_BANNER`, `AGENTOPS_NO_COLOR`, …).
 
-At import time, `utils/dotenv_loader.py` loads `.agentops/.env` and
-`.azure/<active-env>/.env` (resolved via `.azure/config.json`'s
-`defaultEnvironment`) so every CLI command sees the same environment.
+At import time, `utils/dotenv_loader.py` loads the active
+`.azure/<active-env>/.env` first when present, then `.agentops/.env`, so every
+CLI command sees the same environment without overriding azd-managed values.
 
 ## Execution Model
 
@@ -551,7 +554,8 @@ Most common local flow:
 
 ```bash
 python -m pip install -e .
-agentops init                          # scaffold + wizard + skills
+agentops init                          # scaffold + wizard
+agentops skills install --platform copilot
 agentops eval analyze                  # inspect eval setup before first run
 agentops eval run                      # run evaluation
 agentops report generate               # regenerate report.md

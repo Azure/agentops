@@ -242,12 +242,19 @@ def _resolve_target(
         account_name = _first_value(azd_values, _ACCOUNT_NAME_ENV_KEYS)
         discovery["account"] = "azd" if account_name else None
 
-    resolved_project_endpoint = project_endpoint or _first_value(
-        azd_values, _PROJECT_ENDPOINT_ENV_KEYS
+    azd_project_endpoint = _first_value(azd_values, _PROJECT_ENDPOINT_ENV_KEYS)
+    env_project_endpoint = _first_value(os.environ, _PROJECT_ENDPOINT_ENV_KEYS)
+    resolved_project_endpoint = (
+        project_endpoint or azd_project_endpoint or env_project_endpoint
     )
-    discovery["project_endpoint"] = (
-        "argument" if project_endpoint else "azd" if resolved_project_endpoint else None
-    )
+    if project_endpoint:
+        discovery["project_endpoint"] = "argument"
+    elif azd_project_endpoint:
+        discovery["project_endpoint"] = "azd"
+    elif env_project_endpoint:
+        discovery["project_endpoint"] = "env"
+    else:
+        discovery["project_endpoint"] = None
 
     return _ResolvedTarget(
         subscription_id=subscription_id,

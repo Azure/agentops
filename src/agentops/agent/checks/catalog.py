@@ -67,8 +67,9 @@ SOURCE_DESCRIPTIONS: Dict[str, str] = {
         "account: local auth, managed identity, deployments, and diagnostic "
         "settings. This source is enabled by default and fail-open. Doctor "
         "uses explicit `.agentops/agent.yaml` fields when present; otherwise "
-        "it reads AZD's `.azure/<env>/.env` and uses the Foundry project "
-        "endpoint to match the backing Azure AI account."
+        "it reads AZD's `.azure/<env>/.env` when present, then the Foundry "
+        "project endpoint from the environment to match the backing Azure AI "
+        "account."
     ),
     "spec_workspace": (
         "Spec-driven-development documents such as `.specify/spec.md`, "

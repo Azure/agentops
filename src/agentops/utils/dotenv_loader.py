@@ -1,14 +1,14 @@
 """Lightweight ``.env`` loader for the AgentOps workspace.
 
-AgentOps reads configuration from the same place ``azd`` writes it:
-``.azure/<active-env>/.env``. The CLI auto-loads that file at startup so
-contributors do not have to ``export`` env vars in every shell session.
+AgentOps auto-loads the workspace env file at startup so contributors do not
+have to ``export`` env vars in every shell session. New AgentOps-only
+workspaces use ``.agentops/.env``; repositories that already have an active
+``azd`` environment keep using ``.azure/<active-env>/.env``.
 
 Lookup order (first file that contributes at least one new variable wins):
 
-1. ``.azure/<active-env>/.env`` — the canonical azd-managed env file.
-2. ``.agentops/.env`` — legacy compat for workspaces that were configured
-   before the azd-first refactor.
+1. ``.azure/<active-env>/.env`` — when an azd environment is already active.
+2. ``.agentops/.env`` — AgentOps-owned local env file.
 3. ``./.env`` — project-root fallback for hand-managed setups.
 
 Design choices:
@@ -83,11 +83,11 @@ def parse_env_file(path: Path) -> dict[str, str]:
 def load_workspace_dotenv(workspace: Path | None = None) -> Tuple[Path, int] | None:
     """Load the active workspace ``.env`` file into ``os.environ``.
 
-    Tries the azd environment file first, then ``.agentops/.env``, then
-    project-root ``.env``. Values already set in the process environment
-    win — this loader only *adds* missing keys. Returns ``(path, count)``
-    for the file that contributed at least one new variable, or ``None``
-    when nothing was loaded.
+    Tries the active azd environment file first, then AgentOps' local
+    ``.agentops/.env``, then project-root ``.env``. Values already set in
+    the process environment win — this loader only *adds* missing keys.
+    Returns ``(path, count)`` for the file that contributed at least one new
+    variable, or ``None`` when nothing was loaded.
     """
     base = (workspace or Path.cwd()).resolve()
     for path in _candidate_paths(base):

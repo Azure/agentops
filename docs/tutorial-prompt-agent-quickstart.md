@@ -197,22 +197,23 @@ The wizard does not ask for App Insights. Later runtime commands try to discover
 the connected App Insights resource through the Azure AI Projects SDK. If the
 project has no resource attached, or your identity cannot read it, run
 `agentops init --appinsights-connection-string "<connection-string>"` or set
-`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
+`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.agentops/.env`.
 
 If the first run shows starter defaults such as `Agent [my-agent:1]` or
 `Dataset path [.agentops/data/smoke.jsonl]`, replace them with the Travel Agent
 values above. Those defaults only come from the scaffolded starter file.
 
 The interactive path is intentional: you see what each value means, and each
-answer is saved as soon as it validates. If you want an azd environment name
-other than the default `dev`, run `agentops init --azd-env <name>`.
+answer is saved as soon as it validates. By default, local Azure values go to
+`.agentops/.env`. If this repo already uses `azd`, or you want AgentOps to write
+to an azd env, run `agentops init --azd-env <name>`.
 
 This creates:
 
 ```text
 agentops.yaml
 .agentops/
-.azure/dev/.env
+.agentops/.env
 ```
 
 `agentops.yaml` should stay small:
@@ -223,11 +224,11 @@ agent: travel-agent:2
 dataset: .agentops/data/travel-smoke.jsonl
 ```
 
-The `.azure/dev/.env` file is intentional: AgentOps uses the same environment
-layout as `azd`, so local Azure values stay out of source control while eval,
-Doctor, and Cockpit commands resolve the same active environment. The Foundry
-project endpoint lives there instead of in `agentops.yaml`; if you force an App
-Insights connection string later, it is saved there too.
+The `.agentops/.env` file is intentional: AgentOps keeps local Azure values out
+of source control while eval, Doctor, and Cockpit commands resolve the same
+workspace environment. The Foundry project endpoint lives there instead of in
+`agentops.yaml`; if you force an App Insights connection string later, it is
+saved there too. Existing azd workspaces keep using `.azure/<env>/.env`.
 The Copilot skills are installed later, in step 7, with
 `agentops skills install --platform copilot`.
 
@@ -251,10 +252,11 @@ That means generated CI uses the Microsoft Foundry AI Agent Evaluation
 action/task for the eval step, then uses AgentOps to collect evidence and
 readiness signals.
 
-## 7. Generate the PR gate and scheduled Doctor workflow
+## 7. Generate the PR gate and Doctor evidence
 
 ```powershell
-agentops workflow generate --kinds pr,watchdog --force
+agentops workflow generate --kinds pr --force
+agentops doctor --workspace . --evidence-pack
 ```
 
 At this point the workflow files exist only on your machine. CI will not run

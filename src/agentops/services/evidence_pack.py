@@ -315,12 +315,19 @@ def _workflow_status(root: Path) -> dict[str, Any]:
     ado = root / ".azuredevops" / "pipelines"
     pr = (github / "agentops-pr.yml").exists() or (ado / "agentops-pr.yml").exists()
     deploy_files = list(github.glob("agentops-deploy-*.yml")) + list(ado.glob("agentops-deploy-*.yml"))
-    watchdog = (github / "agentops-watchdog.yml").exists() or (ado / "agentops-watchdog.yml").exists()
+    scheduled_doctor = (
+        (github / "agentops-doctor.yml").exists()
+        or (ado / "agentops-doctor.yml").exists()
+        or (github / "agentops-watchdog.yml").exists()
+        or (ado / "agentops-watchdog.yml").exists()
+    )
     return {
         "pr_gate": pr,
         "deploy_workflows": [str(p.relative_to(root)) for p in deploy_files],
         "deploy_count": len(deploy_files),
-        "watchdog": watchdog,
+        "scheduled_doctor": scheduled_doctor,
+        # Legacy key kept so existing evidence consumers do not break.
+        "watchdog": scheduled_doctor,
         "github_workflows": github.is_dir(),
         "azure_devops_pipelines": ado.is_dir(),
     }
@@ -519,10 +526,8 @@ def _add_workflow_checks(
         warnings.append(message)
         checks.append(ReleaseEvidenceCheck(name="Deploy workflows", status="warning", summary=message, evidence=workflows))
 
-    if workflows.get("watchdog"):
-        ready.append("Scheduled AgentOps Doctor watchdog workflow is present.")
-    else:
-        warnings.append("No scheduled AgentOps Doctor watchdog workflow was found.")
+    if workflows.get("scheduled_doctor") or workflows.get("watchdog"):
+        ready.append("Optional scheduled AgentOps Doctor workflow is present.")
 
 
 def _add_doctor_check(

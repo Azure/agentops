@@ -46,7 +46,7 @@ without creating a second exit-code contract.
 | `results_history` | Local `.agentops/results/*/results.json`; Foundry cloud evaluation runs as fallback | `regression`, `latency` (eval), `safety` (eval layer), `opex` (stale + flaky) | At least one local run or a reachable Foundry project with cloud evaluations. |
 | `azure_monitor` | App Insights / Log Analytics via KQL | `latency` (p95), `errors` (rate + no-telemetry), `safety` (runtime layer) | Source `enabled: true` + connection reachable. |
 | `foundry_control` | Agents, runs, evaluation rules via `azure-ai-projects` | `errors` (Foundry runs), `safety` (continuous-eval rules), `operational_excellence` (Foundry config audit) | `enabled: true` + project endpoint set. |
-| `azure_resources` | Cognitive Services account + diagnostic settings via `azure-mgmt-*` | `posture` (WAF-AI Security pillar) | Enabled by default. Doctor uses explicit config first, then AZD `.azure/<env>/.env`, then Foundry endpoint/account matching. Reader RBAC is required on the resource group. |
+| `azure_resources` | Cognitive Services account + diagnostic settings via `azure-mgmt-*` | `posture` (WAF-AI Security pillar) | Enabled by default. Doctor uses explicit config first, then AZD `.azure/<env>/.env` when present, then Foundry endpoint/account matching. Reader RBAC is required on the resource group. |
 
 Each source **fails open**: if it's not configured, cannot be inferred, or
 its SDK isn't installed, the Doctor reports it as `skipped` in the

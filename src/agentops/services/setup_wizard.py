@@ -4,19 +4,20 @@ The wizard asks the user one question at a time for the values AgentOps
 needs to evaluate, observe, and analyze a Foundry agent — the project
 endpoint, the agent identifier, and the dataset path.
 
-Storage model (azd-first):
+Storage model:
 
 * ``agent`` and ``dataset`` are declarative project config and stay in
   ``agentops.yaml``. They are version-controlled and rarely change
   between environments.
 * ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` is environment-specific and lands
-  in ``.azure/<active-env>/.env`` — the same file ``azd`` uses, so Doctor,
-  the Cockpit, and ``agentops eval run`` all see one source of truth. The
-  file is git-ignored via ``.azure/.gitignore``.
+  in the AgentOps-owned ``.agentops/.env`` by default. If the workspace
+  already has an active azd environment, or the user explicitly passes
+  ``--azd-env``, AgentOps writes the same value to ``.azure/<env>/.env``
+  instead.
 * ``APPLICATIONINSIGHTS_CONNECTION_STRING`` can still be saved to the same
-  env file when supplied non-interactively, but the interactive wizard does
-  not ask for it; runtime commands can discover it from the Foundry project
-  later.
+  selected env file when supplied non-interactively, but the interactive
+  wizard does not ask for it; runtime commands can discover it from the
+  Foundry project later.
 * Canonical Azure variable names are preserved so the Azure SDKs and
   ``azd`` templates can read them directly.
 
@@ -181,19 +182,20 @@ def apply_answers(
     answers: WizardAnswers,
     *,
     default_env_name: str = "dev",
-    bootstrap_azd_env: bool = True,
+    azd_env_name: Optional[str] = None,
+    bootstrap_azd_env: bool = False,
 ) -> WizardResult:
-    """Write the user's answers to ``agentops.yaml`` and the active env file.
+    """Write the user's answers to ``agentops.yaml`` and the selected env file.
 
     Behavior:
 
     * ``agent`` and ``dataset`` are persisted to ``agentops.yaml`` only.
     * ``project_endpoint`` and ``appinsights_connection_string`` are
-      persisted as environment variables in ``.azure/<env>/.env`` (the
-      active azd environment).
-    * When no azd environment exists yet and ``bootstrap_azd_env`` is
-      ``True`` (the default), one is created named ``default_env_name``
-      so the wizard always has somewhere safe to write the secret.
+      persisted as environment variables in the active azd environment when
+      one exists, or in ``.agentops/.env`` otherwise.
+    * ``azd_env_name`` explicitly opts into creating/updating
+      ``.azure/<env>/.env``. ``bootstrap_azd_env`` preserves the old internal
+      behavior for callers that deliberately want to create an azd env.
 
     Only fields that the user actually provided (non-empty, non-``None``)
     are touched. Existing values not covered by an answer are preserved.
@@ -202,6 +204,7 @@ def apply_answers(
         AzdEnvLocation,
         discover_azd_env,
         ensure_azd_env,
+        set_default_azd_env,
         set_env_values,
     )
 
@@ -234,7 +237,7 @@ def apply_answers(
         _write_agentops_yaml(yaml_path, yaml_data)
         result.yaml_updated = True
 
-    # --- .azure/<env>/.env ---------------------------------------------
+    # --- environment file ----------------------------------------------
     env_updates: dict[str, str] = {}
     if answers.project_endpoint is not None:
         env_updates[ENV_KEY_PROJECT_ENDPOINT] = answers.project_endpoint
@@ -244,25 +247,44 @@ def apply_answers(
     if not env_updates:
         return result
 
-    location: AzdEnvLocation = discover_azd_env(workspace)
-    if not location.found:
-        if not bootstrap_azd_env:
-            return result
-        if location.status == "ambiguous":
+    location: Optional[AzdEnvLocation] = None
+    if azd_env_name:
+        azd_env_path = workspace / ".azure" / azd_env_name / ".env"
+        azd_env_preexisted = azd_env_path.is_file()
+        location = ensure_azd_env(workspace, azd_env_name)
+        set_default_azd_env(workspace, azd_env_name)
+        result.azd_env_created = not azd_env_preexisted
+    else:
+        discovered = discover_azd_env(workspace)
+        if discovered.found:
+            location = discovered
+        elif bootstrap_azd_env:
+            if discovered.status == "ambiguous":
+                raise RuntimeError(
+                    "Multiple azd environments found but no default is set. "
+                    "Set AZURE_ENV_NAME or write defaultEnvironment to "
+                    ".azure/config.json, then re-run `agentops init`."
+                )
+            env_name = discovered.name or default_env_name
+            location = ensure_azd_env(workspace, env_name)
+            result.azd_env_created = True
+        elif discovered.status == "ambiguous":
+            location = None
+
+    if location is not None:
+        if not location.found and location.status == "ambiguous":
             raise RuntimeError(
                 "Multiple azd environments found but no default is set. "
                 "Set AZURE_ENV_NAME or write defaultEnvironment to "
                 ".azure/config.json, then re-run `agentops init`."
             )
-        env_name = location.name or default_env_name
-        location = ensure_azd_env(workspace, env_name)
-        result.azd_env_created = True
+        assert location.env_path is not None  # narrowing for type checkers
+        result.env_path = location.env_path
+        result.azd_env_name = location.name
+    else:
+        result.env_path = ensure_agentops_env(workspace)
 
-    assert location.env_path is not None  # narrowing for type checkers
-    result.env_path = location.env_path
-    result.azd_env_name = location.name
-
-    changed_keys = set_env_values(location.env_path, env_updates)
+    changed_keys = set_env_values(result.env_path, env_updates)
     if changed_keys:
         result.env_updated = True
         result.env_keys.extend(sorted(changed_keys))
@@ -318,18 +340,67 @@ def _write_agentops_yaml(path: Path, data: dict) -> None:
     )
 
 
+_AGENTOPS_ENV_HEADER = (
+    "# Managed by AgentOps. Run `agentops init` to update values here.\n"
+    "# Local environment values in this file are git-ignored via .agentops/.gitignore.\n"
+)
+
+
+def ensure_agentops_env(workspace: Path) -> Path:
+    """Create the AgentOps-owned local env file and protect it from git."""
+    agentops_dir = workspace.resolve() / ".agentops"
+    agentops_dir.mkdir(parents=True, exist_ok=True)
+    ensure_agentops_gitignore(agentops_dir)
+    env_path = agentops_dir / ".env"
+    if not env_path.exists():
+        env_path.write_text(_AGENTOPS_ENV_HEADER, encoding="utf-8")
+    return env_path
+
+
+def ensure_agentops_gitignore(agentops_dir: Path) -> bool:
+    """Ensure ``.agentops/.gitignore`` excludes the local env file."""
+    agentops_dir.mkdir(parents=True, exist_ok=True)
+    gitignore = agentops_dir / ".gitignore"
+    needed = ".env"
+    if gitignore.is_file():
+        try:
+            existing = gitignore.read_text(encoding="utf-8")
+        except OSError:
+            existing = ""
+        stripped = {
+            ln.strip() for ln in existing.splitlines() if ln.strip() and not ln.startswith("#")
+        }
+        if needed in stripped or ".env*" in stripped or "*.env" in stripped:
+            return False
+        with gitignore.open("a", encoding="utf-8") as fh:
+            if existing and not existing.endswith("\n"):
+                fh.write("\n")
+            fh.write(".env\n")
+        return True
+    gitignore.write_text(
+        "# Generated by agentops init\n"
+        "# Keep local AgentOps environment values out of source control\n"
+        ".env\n"
+        ".env.*\n"
+        "!.env.example\n"
+        "results/**\n"
+        "official-eval/**\n"
+        ".resolved/**\n",
+        encoding="utf-8",
+    )
+    return True
+
+
 def _read_active_env(workspace: Path) -> dict[str, str]:
-    """Read the active env file (azd env first, then legacy locations)."""
+    """Read the active env file (azd env first, then AgentOps local env)."""
     from agentops.utils.azd_env import discover_azd_env, parse_env_file  # noqa: PLC0415
 
     location = discover_azd_env(workspace)
     if location.found and location.env_path is not None:
         return parse_env_file(location.env_path)
-    # Legacy compat — still read .agentops/.env so users mid-migration
-    # see their old values as defaults.
-    legacy = workspace / ".agentops" / ".env"
-    if legacy.is_file():
-        return parse_env_file(legacy)
+    agentops_env = workspace / ".agentops" / ".env"
+    if agentops_env.is_file():
+        return parse_env_file(agentops_env)
     return {}
 
 
@@ -515,7 +586,7 @@ class SetupSnapshotVar:
 
     key: str
     value: Optional[str]
-    source: str  # "azd-env" | "process-env" | "agentops.yaml" | "default" | "not set"
+    source: str  # "azd-env" | "agentops-env" | "process-env" | "default" | "not set"
     secret: bool = False
     required: bool = False
     description: str = ""
@@ -530,6 +601,7 @@ class SetupSnapshot:
     azd_env_path: Optional[Path]
     azd_status: str
     azd_reason: Optional[str]
+    agentops_env_path: Optional[Path]
     yaml_path: Path
     yaml_present: bool
     yaml_agent: Optional[str]
@@ -580,20 +652,20 @@ def collect_snapshot(workspace: Path) -> SetupSnapshot:
     if location.found and location.env_path is not None:
         env_values = parse_env_file(location.env_path)
 
-    legacy = workspace / ".agentops" / ".env"
-    legacy_env_path: Optional[Path] = legacy if legacy.is_file() else None
-    legacy_values = parse_env_file(legacy) if legacy_env_path else {}
+    agentops_env = workspace / ".agentops" / ".env"
+    agentops_env_path: Optional[Path] = agentops_env if agentops_env.is_file() else None
+    agentops_values = parse_env_file(agentops_env) if agentops_env_path else {}
 
     variables: List[SetupSnapshotVar] = []
     for key, is_secret, is_required, description in _MANAGED_VARS:
         proc_value = os.environ.get(key)
-        env_value = env_values.get(key) or legacy_values.get(key)
+        env_value = env_values.get(key) or agentops_values.get(key)
         # Process env wins only when it actually differs from the file —
         # otherwise we attribute the value to the (more durable) env file.
         if proc_value is not None and proc_value != env_value:
             value, source = proc_value, "process-env"
         elif env_value:
-            value, source = env_value, "azd-env" if env_values.get(key) else "legacy-.agentops/.env"
+            value, source = env_value, "azd-env" if env_values.get(key) else "agentops-env"
         elif proc_value:
             value, source = proc_value, "process-env"
         elif key == "AGENTOPS_FOUNDRY_MODE":
@@ -617,13 +689,14 @@ def collect_snapshot(workspace: Path) -> SetupSnapshot:
         azd_env_path=location.env_path,
         azd_status=location.status,
         azd_reason=location.reason,
+        agentops_env_path=agentops_env_path,
         yaml_path=yaml_path,
         yaml_present=yaml_path.exists(),
         yaml_agent=_as_str(yaml_data.get("agent")),
         yaml_dataset=_as_str(yaml_data.get("dataset")),
         yaml_project_endpoint=_as_str(yaml_data.get("project_endpoint")),
         variables=variables,
-        legacy_env_path=legacy_env_path,
+        legacy_env_path=None,
     )
 
 

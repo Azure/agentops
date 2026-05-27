@@ -37,9 +37,9 @@ Search the codebase for the strongest signal and pick one:
 | Any other HTTP endpoint your agent serves (FastAPI, Express, ACA, AKS) | the full URL |
 | Direct model use (`openai.chat.completions.create(model=...)`) with no orchestration | `"model:<deployment-name>"` |
 
-Look in: `README.md`, `main.py`/`server.py`/`app.ts`, `.env`/`.env.local`,
-`.azure/<env>/.env`, `infra/`, IaC outputs. If nothing is found, ask the
-user once.
+Look in: `README.md`, `main.py`/`server.py`/`app.ts`, `.agentops/.env`,
+`.env`/`.env.local`, `.azure/<env>/.env`, `infra/`, IaC outputs. If nothing is
+found, ask the user once.
 
 ## Step 2 - Detect the dataset
 

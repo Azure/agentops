@@ -140,7 +140,7 @@ def _workflow_eval_runner_label(eval_runner: str) -> str:
 
 def _workflow_environment_names(kinds: list[str]) -> list[str]:
     environments: list[str] = []
-    if any(kind in kinds for kind in ("pr", "watchdog", "dev")):
+    if any(kind in kinds for kind in ("pr", "doctor", "dev")):
         environments.append("dev")
     if "qa" in kinds:
         environments.append("qa")
@@ -290,7 +290,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "it writes, and where it takes you.",
         ),
         how_it_works=(
-            "`init` creates a reproducible workspace layout: config, starter data, skills, and result folders.",
+            "`init` creates a reproducible workspace layout: config, starter data, local env values, and result folders.",
             "`eval run` executes local or Foundry-backed evaluation workflows and writes stable `results.json` plus `report.md` artifacts.",
             "`doctor` collects local history, workspace configuration, Foundry control-plane metadata, Azure telemetry, and Azure resource posture, then emits actionable readiness findings grouped by WAF-AI pillar.",
             "`cockpit` opens a local browser cockpit: Foundry connection, one-click links to Foundry Monitor, Evaluations, Traces, Red Teaming, and App Insights, an observability readiness checklist, Doctor findings, local eval history, and recommended next actions.",
@@ -330,8 +330,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "values needed to evaluate, observe, and analyze a Foundry agent.",
             "It is the single entrypoint for setting up a project: it "
             "scaffolds `agentops.yaml` plus the `.agentops/` starter files, "
-            "ensures a `.azure/` directory shaped the way `azd` expects, and "
-            "runs an azd-style question loop that fills in project endpoint, "
+            "and runs a question loop that fills in project endpoint, "
             "agent, and dataset.",
             "Every answer is persisted as soon as it is validated, so a "
             "Ctrl+C mid-wizard never loses values that were already entered. "
@@ -344,18 +343,16 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "`agentops.yaml`, `.agentops/data/smoke.jsonl`, and a starter "
             "project `.gitignore` (when one does not already exist). Existing "
             "files are preserved unless `--force` is provided.",
-            "Bootstraps `.azure/<env>/` directly on the filesystem when no "
-            "azd environment exists yet — creating `.azure/<env>/.env`, "
-            "`.azure/.gitignore`, and `.azure/config.json`. The `azd` CLI is "
-            "not required; AgentOps writes the same shape `azd` expects, so "
-            "the two tools coexist cleanly.",
             "Reads current effective values from `agentops.yaml`, the active "
-            "`.azure/<env>/.env`, and the process environment. Each question "
-            "shows the current value as its default; pressing Enter keeps it.",
+            "azd env when one already exists, `.agentops/.env`, and the "
+            "process environment. Each question shows the current value as "
+            "its default; pressing Enter keeps it.",
             "Persists `agent` and `dataset` to `agentops.yaml` (declarative, "
             "version-controlled). Persists the Foundry project endpoint to "
-            "`.azure/<env>/.env` (git-ignored). App Insights is not asked in "
-            "the wizard; runtime commands try to discover the Foundry project's "
+            "`.agentops/.env` by default, or to `.azure/<env>/.env` when an "
+            "azd environment already exists or `--azd-env` is provided. App "
+            "Insights is not asked in the wizard; runtime commands try to "
+            "discover the Foundry project's "
             "attached resource through the Azure AI Projects SDK, and "
             "`--appinsights-connection-string` remains available when you need "
             "to force a value explicitly. Canonical Azure variable names "
@@ -367,8 +364,9 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "`--azd-env` flags. The wizard is skipped automatically when any "
             "of those flags is provided, or when `--no-prompt` is passed.",
             "`agentops init show` prints the active configuration: azd "
-            "environment, agentops.yaml fields, and each managed variable "
-            "with its source and whether it is set.",
+            "environment when present, AgentOps local env, agentops.yaml "
+            "fields, and each managed variable with its source and whether it "
+            "is set.",
         ),
         inputs=(
             "Workspace directory (defaults to the current directory).",
@@ -377,9 +375,8 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         outputs=(
             "`agentops.yaml` — version, agent, dataset.",
             "`.agentops/` — starter data and asset folders.",
-            "`.azure/<env>/.env` — AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, APPLICATIONINSIGHTS_CONNECTION_STRING.",
-            "`.azure/.gitignore` — ensures per-environment `.env` files stay out of git.",
-            "`.azure/config.json` — `defaultEnvironment` is set when missing.",
+            "`.agentops/.env` — local AgentOps env values when no azd env is active.",
+            "`.azure/<env>/.env` — only when an azd env already exists or `--azd-env` is provided.",
         ),
         examples=(
             "agentops init",
@@ -531,7 +528,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
     ("workflow", "generate"): ExplainPage(
         title="Generate CI/CD workflows",
         command="agentops workflow generate",
-        synopsis=("agentops workflow generate [--force] [--dir PATH] [--kinds pr,dev,qa,prod,watchdog] [--platform github|azure-devops] [--deploy-mode auto|placeholder|azd|prompt-agent]", "agentops workflow generate explain"),
+        synopsis=("agentops workflow generate [--force] [--dir PATH] [--kinds pr,dev,qa,prod,doctor] [--platform github|azure-devops] [--deploy-mode auto|placeholder|azd|prompt-agent]", "agentops workflow generate explain"),
         summary=(
             "Writes CI/CD workflow templates that run AgentOps gates in pull requests and environment deployments.",
             "Deployment mode defaults to `auto`. Deployment is azd-first when the repo already has `azure.yaml`: generated deploy workflows call `azd provision` / `azd deploy` instead of asking AgentOps to own infrastructure. Repos without `azure.yaml` can use prompt-agent mode when `agentops.yaml` targets a Foundry prompt agent, or placeholders for custom stacks.",
@@ -1168,7 +1165,7 @@ def cmd_init(
         Optional[str],
         typer.Option(
             "--appinsights-connection-string",
-            help="Set the App Insights connection string non-interactively (saved to .azure/<env>/.env).",
+            help="Set the App Insights connection string non-interactively.",
         ),
     ] = None,
     azd_env_name: Annotated[
@@ -1176,8 +1173,7 @@ def cmd_init(
         typer.Option(
             "--azd-env",
             help=(
-                "Name of the azd environment to write into. Defaults to "
-                "the active azd environment, or 'dev' when bootstrapping."
+                "Opt into writing local Azure values to the named azd environment."
             ),
         ),
     ] = None,
@@ -1185,18 +1181,17 @@ def cmd_init(
     """Initialise an AgentOps workspace and configure endpoints.
 
     Scaffolds the minimal workspace layout (``agentops.yaml`` plus a tiny
-    seed dataset under ``.agentops/data/``), prepares a ``.azure/``
-    directory shaped the way ``azd`` expects, and walks the user through
-    an azd-style question loop to fill in the values AgentOps needs to
-    evaluate, observe, and analyze a Foundry agent.
+    seed dataset under ``.agentops/data/``), then walks the user through a
+    question loop to fill in the values AgentOps needs to evaluate, observe,
+    and analyze a Foundry agent.
 
     ``agent`` and ``dataset`` land in ``agentops.yaml`` (version-
-    controlled). The Foundry project endpoint lands in the active
-    ``.azure/<env>/.env`` file (git-ignored) — the same file ``azd``
-    already manages — so a single source of truth feeds Doctor, the
-    Cockpit, and ``agentops eval run``. App Insights can be supplied
-    explicitly with ``--appinsights-connection-string`` if runtime discovery
-    is not enough.
+    controlled). The Foundry project endpoint lands in ``.agentops/.env`` by
+    default. If the workspace already has an active azd environment, or the
+    user passes ``--azd-env``, AgentOps writes the endpoint to
+    ``.azure/<env>/.env`` instead. App Insights can be supplied explicitly
+    with ``--appinsights-connection-string`` if runtime discovery is not
+    enough.
 
     The wizard persists each answer immediately as it is validated, so a
     Ctrl+C mid-wizard never discards what the user already entered.
@@ -1217,11 +1212,7 @@ def cmd_init(
         validate_dataset,
         validate_project_endpoint,
     )
-    from agentops.utils.azd_env import (
-        discover_azd_env,
-        ensure_azd_env,
-        set_default_azd_env,
-    )
+    from agentops.utils.azd_env import ensure_azd_env, set_default_azd_env
 
     workspace = directory.resolve()
     if not workspace.exists():
@@ -1287,43 +1278,28 @@ def cmd_init(
         or config_path in result.overwritten_files
     )
 
-    # ----- Phase 2: ensure a .azure/<env>/ baseline exists ----------------
+    # ----- Phase 2: use azd only when it is explicit or already present ----
     target_env_name = azd_env_name or "dev"
     if azd_env_name:
-        # User explicitly named an azd env — create it if missing AND
-        # promote it to the active default so subsequent reads/writes
-        # target the right directory. This is the persistent equivalent
-        # of `azd env select <name>` and does not pollute the process
-        # environment (so test isolation remains clean).
+        # User explicitly named an azd env — create it if missing and promote
+        # it to the active default. Without this flag, AgentOps no longer
+        # bootstraps .azure just to hold its own local values.
         try:
             location = ensure_azd_env(workspace, azd_env_name)
             set_default_azd_env(workspace, azd_env_name)
+            typer.echo(
+                f" {_cli_ok('+')} {_cli_ok('prepared azd environment')} "
+                f"'{azd_env_name}' at {_cli_path(location.env_path.parent)}"
+                if location.env_path is not None
+                else f" {_cli_ok('+')} {_cli_ok('prepared azd environment')} "
+                f"'{azd_env_name}'"
+            )
         except Exception as exc:  # noqa: BLE001
             typer.echo(
                 f" {_cli_warn('!')} {_cli_warn('could not prepare')} "
                 f"{_cli_path(f'.azure/{azd_env_name}')}: {exc}",
                 err=True,
             )
-            location = discover_azd_env(workspace)
-    else:
-        location = discover_azd_env(workspace)
-        if not location.found and location.status != "ambiguous":
-            env_name = location.name or target_env_name
-            try:
-                location = ensure_azd_env(workspace, env_name)
-                typer.echo(
-                    f" {_cli_ok('+')} {_cli_ok('bootstrapped azd environment')} "
-                    f"'{env_name}' at {_cli_path(location.env_path.parent)}"
-                    if location.env_path is not None
-                    else f" {_cli_ok('+')} {_cli_ok('bootstrapped azd environment')} "
-                    f"'{env_name}'"
-                )
-            except Exception as exc:  # noqa: BLE001
-                typer.echo(
-                    f" {_cli_warn('!')} {_cli_warn('could not bootstrap')} "
-                    f"{_cli_path(f'.azure/{env_name}')}: {exc}",
-                    err=True,
-                )
 
     # ----- Phase 3: collect values (scripted, interactive, or skip) ------
     flag_values = {
@@ -1423,6 +1399,7 @@ def cmd_init(
                     workspace,
                     partial,
                     default_env_name=target_env_name,
+                    azd_env_name=azd_env_name,
                 )
             except Exception as exc:  # noqa: BLE001
                 typer.echo(
@@ -1463,6 +1440,7 @@ def cmd_init(
             workspace,
             answers,
             default_env_name=target_env_name,
+            azd_env_name=azd_env_name,
         )
     except RuntimeError as exc:
         typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
@@ -1550,6 +1528,15 @@ def cmd_init_show(
     typer.echo(style("──────────────────────" if unicode_ok else "----------------------", "dim"))
     typer.echo(f"{_config_label('Workspace')}: {snapshot.workspace}")
 
+    # AgentOps local env block --------------------------------------------
+    typer.echo("")
+    typer.echo(_config_label("AgentOps local env"))
+    if snapshot.agentops_env_path is not None:
+        typer.echo(f"  {ok} {snapshot.agentops_env_path}")
+    else:
+        typer.echo("  - not created yet")
+        typer.echo("    created when AgentOps needs local env values and no azd env is active")
+
     # azd environment block ------------------------------------------------
     typer.echo("")
     typer.echo(_config_label("azd environment"))
@@ -1559,10 +1546,10 @@ def cmd_init_show(
         typer.echo(f"    {_config_label('path')}: {snapshot.azd_env_path}")
         typer.echo(f"    {_config_label('status')}: {snapshot.azd_status}")
     else:
-        typer.echo(f"  {warn} no azd environment found")
+        typer.echo("  - no azd environment found")
         if snapshot.azd_reason:
             typer.echo(f"    {_config_label('reason')}: {snapshot.azd_reason}")
-        typer.echo("    run `agentops init` to bootstrap one")
+        typer.echo("    pass `--azd-env <name>` to opt into azd env storage")
 
     # agentops.yaml block --------------------------------------------------
     typer.echo("")
@@ -1596,16 +1583,6 @@ def cmd_init_show(
         typer.echo(f"    {_config_label('source')}: {var.source}")
         if var.description:
             typer.echo(f"    {_config_label('info')}:   {var.description}")
-
-    # Migration notice -----------------------------------------------------
-    if snapshot.legacy_env_path is not None:
-        typer.echo("")
-        typer.echo(
-            f"{_cli_warn('Note')}: legacy {_cli_path(snapshot.legacy_env_path)} "
-            "is still being read for "
-            "backward compatibility. The wizard now writes to the active "
-            "azd environment instead — re-run `agentops init` to migrate."
-        )
 
     # Exit code: 1 if a required variable is missing.
     if snapshot.missing_required:
@@ -2131,8 +2108,8 @@ def cmd_workflow_generate(
         "--kinds",
         help=(
             "Comma-separated subset of workflow kinds to generate. "
-            "Valid values: pr, dev, qa, prod, watchdog. "
-            "Default (empty) generates all five."
+            "Valid values: pr, dev, qa, prod, doctor. "
+            "Default (empty) generates pr, dev, qa, prod."
         ),
     ),
     platform: str = typer.Option(
@@ -2160,19 +2137,18 @@ def cmd_workflow_generate(
 ) -> None:
     """Generate the AgentOps GitFlow CI/CD workflows.
 
-    By default writes the five templates that map to a classic GitFlow
-    setup with three deploy environments (dev, qa, production) plus a
-    scheduled watchdog:
+    By default writes the four templates that map to a classic GitFlow
+    setup with three deploy environments (dev, qa, production):
 
       - agentops-pr           (PR gate; PRs to develop, release/**, main)
       - agentops-deploy-dev   (push to develop  -> environment: dev)
       - agentops-deploy-qa    (push to release/** -> environment: qa)
       - agentops-deploy-prod  (push to main      -> environment: production)
-      - agentops-watchdog      (scheduled Doctor + eval health check)
 
-    Use --kinds to opt into a subset (e.g. --kinds pr,dev), and
-    --platform to target either GitHub Actions or Azure DevOps Pipelines.
-    The conceptual workflows are identical across platforms.
+    Use --kinds to opt into a subset (e.g. --kinds pr,dev). Add
+    --kinds doctor only when you want a scheduled Doctor run separate from
+    the PR/release gates. --platform targets either GitHub Actions or Azure
+    DevOps Pipelines. The conceptual workflows are identical across platforms.
     """
     if _maybe_explain_leaf(("workflow", "generate"), explain):
         return
@@ -2180,8 +2156,10 @@ def cmd_workflow_generate(
     from agentops.services.cicd import (
         ALL_KINDS,
         DEPLOY_MODES,
+        LEGACY_KIND_ALIASES,
         PLATFORMS,
         generate_cicd_workflows,
+        normalize_workflow_kind,
     )
 
     log.debug(
@@ -2206,8 +2184,9 @@ def cmd_workflow_generate(
 
     selected: list[str] | None = None
     if kinds.strip():
-        selected = [k.strip() for k in kinds.split(",") if k.strip()]
-        invalid = [k for k in selected if k not in ALL_KINDS]
+        requested = [k.strip() for k in kinds.split(",") if k.strip()]
+        valid_inputs = set(ALL_KINDS) | set(LEGACY_KIND_ALIASES)
+        invalid = [k for k in requested if k not in valid_inputs]
         if invalid:
             typer.echo(
                 f"{_cli_error('Error')}: unknown --kinds value(s): "
@@ -2216,6 +2195,7 @@ def cmd_workflow_generate(
                 err=True,
             )
             raise typer.Exit(code=1)
+        selected = [normalize_workflow_kind(k) for k in requested]
 
     try:
         result = generate_cicd_workflows(
@@ -2324,7 +2304,7 @@ def cmd_workflow_generate(
                     "            deploy evaluates that exact candidate version first"
                 )
             else:
-                typer.echo("  deploy    not needed yet; PR/watchdog can run first")
+                typer.echo("  deploy    not needed yet; PR gate can run first")
                 typer.echo(
                     "            add deploy workflows when you are ready to deploy"
                 )

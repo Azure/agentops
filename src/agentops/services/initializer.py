@@ -24,6 +24,7 @@ _TEMPLATE_PACKAGE = "agentops.templates"
 # run-*.yaml variants) was removed in the revamp.
 _FLAT_FILES: Dict[str, str] = {
     "agentops.yaml": "agentops.yaml",
+    ".agentops/.gitignore": ".gitignore",
     ".agentops/data/smoke.jsonl": "smoke.jsonl",
     ".agentops/traces/sample-traces.jsonl": "sample-traces.jsonl",
     ".agentops/waf-checklist.csv": "waf-checklist.csv",
@@ -40,7 +41,8 @@ _PROJECT_GITIGNORE_TARGET = ".gitignore"
 def initialize_flat_workspace(directory: Path, force: bool = False) -> InitResult:
     """Bootstrap the AgentOps 1.0 workspace.
 
-    Creates ``agentops.yaml`` at the project root and a tiny seed dataset at
+    Creates ``agentops.yaml`` at the project root, an AgentOps-local
+    ``.agentops/.gitignore``, and a tiny seed dataset at
     ``.agentops/data/smoke.jsonl``. Also drops a starter ``.gitignore`` at the
     project root if one does not exist yet (covers ``.venv/``, Python build
     artifacts, and the ``.agentops/results/`` runtime output).

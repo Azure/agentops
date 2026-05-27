@@ -263,6 +263,45 @@ def test_collect_azure_resources_can_match_account_from_foundry_endpoint(
     assert payload.diagnostics["discovery"]["account"] == "subscription_scan"
 
 
+def test_collect_azure_resources_can_match_account_from_env_project_endpoint(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "sub-1")
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://project-prod.services.ai.azure.com/projects/demo",
+    )
+    account = _account(
+        "ai-prod",
+        endpoint="https://project-prod.services.ai.azure.com/",
+        resource_group="rg-foundry",
+    )
+    cs_client = SimpleNamespace(
+        accounts=SimpleNamespace(
+            list=lambda: [account],
+            list_by_resource_group=lambda resource_group_name: [account],
+        ),
+        deployments=SimpleNamespace(list=lambda resource_group_name, account_name: []),
+    )
+    monitor_client = SimpleNamespace(
+        diagnostic_settings=SimpleNamespace(list=lambda resource_uri: [])
+    )
+    _install_fake_azure_identity(monkeypatch)
+    monkeypatch.setattr(
+        azure_resources,
+        "_build_clients",
+        lambda credential, subscription_id: (cs_client, monitor_client),
+    )
+
+    payload = collect_azure_resources(AzureResourcesSourceConfig(), workspace=tmp_path)
+
+    assert payload.account is not None
+    assert payload.account.name == "ai-prod"
+    assert payload.diagnostics["status"] == "ok"
+    assert payload.diagnostics["resource_group"] == "rg-foundry"
+    assert payload.diagnostics["discovery"]["project_endpoint"] == "env"
+
+
 def _install_fake_azure_identity(monkeypatch) -> None:
     azure_module = sys.modules.get("azure") or types.ModuleType("azure")
     identity_module = types.ModuleType("azure.identity")
@@ -274,4 +313,3 @@ def _install_fake_azure_identity(monkeypatch) -> None:
     identity_module.DefaultAzureCredential = FakeCredential
     monkeypatch.setitem(sys.modules, "azure", azure_module)
     monkeypatch.setitem(sys.modules, "azure.identity", identity_module)
-

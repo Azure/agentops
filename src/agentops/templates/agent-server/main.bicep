@@ -9,12 +9,12 @@ param location string = resourceGroup().location
 param environmentName string
 
 @description('Container app name.')
-param appName string = 'agentops-watchdog'
+param appName string = 'agentops-doctor'
 
-@description('Fully qualified image reference, e.g. myacr.azurecr.io/agentops-watchdog:1.0.0.')
+@description('Fully qualified image reference, e.g. myacr.azurecr.io/agentops-doctor:1.0.0.')
 param image string
 
-@description('Application Insights resource id consumed by the watchdog.')
+@description('Application Insights resource id consumed by the Doctor.')
 param appInsightsResourceId string = ''
 
 @description('Foundry project endpoint.')
@@ -50,7 +50,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     template: {
       containers: [
         {
-          name: 'watchdog'
+          name: 'doctor'
           image: image
           resources: {
             cpu: json('0.5')

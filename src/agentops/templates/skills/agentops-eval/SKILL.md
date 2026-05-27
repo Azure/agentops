@@ -19,8 +19,9 @@ with a `name:version` or URL.
 2. If `agentops.yaml` does not exist at the project root, run `agentops init`.
    The init wizard prompts (azd-style) for the Foundry project endpoint,
    agent reference, and dataset path, persists each answer to
-   `.azure/<env>/.env` + `agentops.yaml` as it goes, and installs coding
-   skills. Pass `--no-prompt` plus the explicit flags
+   `.agentops/.env` + `agentops.yaml` as it goes. Existing azd workspaces, or
+   runs with `--azd-env`, use `.azure/<env>/.env` instead. Pass `--no-prompt`
+   plus the explicit flags
    (`--project-endpoint`, `--agent`, `--dataset`, …) for non-interactive
    runs. Run `agentops init show` later to inspect the resolved config.
 

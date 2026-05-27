@@ -13,7 +13,8 @@ DEV/QA/PROD after GitHub Environments and Azure OIDC are ready. Repos with
 prompt-agent deploys and the Microsoft Foundry AI Agent Evaluation runner when
 the dataset is compatible.
 
-The full scaffold ships five templates:
+The default scaffold ships four release-path templates. A scheduled Doctor
+workflow is available separately when you explicitly generate `--kinds doctor`.
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
@@ -21,7 +22,7 @@ The full scaffold ships five templates:
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
 | `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
-| `agentops-watchdog.yml` | daily cron | `dev` | Scheduled Doctor + release evidence |
+| `agentops-doctor.yml` | daily cron | `dev` | Optional scheduled Doctor + release evidence |
 
 ## GitFlow assumed
 
@@ -402,7 +403,7 @@ and metadata so the release has repo-side proof of what was evaluated.
 
 ## Artifacts
 
-Each workflow uploads (always - even on failure):
+Eval and deploy workflows upload (always - even on failure):
 
 - `results.json` - machine-readable, versioned
 - `report.md` - human-readable
@@ -410,7 +411,7 @@ Each workflow uploads (always - even on failure):
   contains a deep link to the New Foundry Experience Evaluations page
 - `.agentops/official-eval/input.json`, `metadata.json`, and `result.json` -
   present when using Microsoft Foundry AI Agent Evaluation
-- `evidence.json` and `evidence.md` - present in PR, PROD, and watchdog
+- `evidence.json` and `evidence.md` - present in PR, PROD, and optional Doctor
   workflows after `agentops doctor --evidence-pack`
 
 Artifact names per workflow:
@@ -421,7 +422,7 @@ Artifact names per workflow:
 | `agentops-deploy-dev.yml` | `agentops-dev-results` |
 | `agentops-deploy-qa.yml` | `agentops-qa-results` |
 | `agentops-deploy-prod.yml` | `agentops-prod-results` plus release evidence |
-| `agentops-watchdog.yml` | `agentops-watchdog-history` plus release evidence |
+| `agentops-doctor.yml` | `agentops-doctor-history` plus release evidence |
 
 ## CLI reference
 
@@ -432,8 +433,9 @@ agentops doctor --evidence-pack                # write release evidence
 agentops workflow analyze                      # inspect repo and recommend stages
 agentops workflow analyze --format json        # stable machine-readable analysis
 agentops workflow generate --kinds pr          # PR gate
-agentops workflow generate                     # all five templates; deploy mode defaults to auto
+agentops workflow generate                     # PR + DEV/QA/PROD; deploy mode defaults to auto
 agentops workflow generate --kinds pr,dev,prod # subset (trunk-based)
+agentops workflow generate --kinds doctor      # optional scheduled Doctor workflow
 agentops workflow generate --deploy-mode azd   # delegate deploy to azd
 agentops workflow generate --deploy-mode prompt-agent # Foundry prompt deployment
 agentops workflow generate --platform azure-devops
@@ -443,7 +445,7 @@ agentops workflow generate --dir <path>        # different repo root
 
 | Flag | Description | Default |
 |---|---|---|
-| `--kinds` | Comma-separated subset of `pr,dev,qa,prod,watchdog` | all five |
+| `--kinds` | Comma-separated subset of `pr,dev,qa,prod,doctor` | `pr,dev,qa,prod` |
 | `--platform` | `github` or `azure-devops` | `github` |
 | `--deploy-mode` | `auto`, `placeholder`, `azd`, or `prompt-agent` | `auto` |
 | `--force` | Overwrite existing workflow files | `false` |

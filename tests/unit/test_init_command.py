@@ -3,8 +3,8 @@
 These tests cover the behaviours that landed when `agentops setup` was
 merged into `agentops init`:
 
-* scaffold + bootstrap `.azure/<env>/.env` baseline (no `azd` CLI needed)
-* scripted mode persists values to `agentops.yaml` + `.azure/<env>/.env`
+* scaffold the AgentOps workspace without requiring or creating azd state
+* scripted mode persists values to `agentops.yaml` + `.agentops/.env` by default
 * `agentops init show` mirrors the old `setup show`
 * `agentops init explain` emits the long-form manual
 * no `agentops setup` command exists anymore
@@ -28,12 +28,12 @@ def _strip_ansi(text: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# init scaffolds the workspace and bootstraps .azure/<env>/ baseline
+# init scaffolds the workspace without bootstrapping azd
 # ---------------------------------------------------------------------------
 
 
-def test_init_scaffolds_workspace_and_bootstraps_azure(tmp_path: Path) -> None:
-    """`agentops init` with no flags (non-TTY) scaffolds + creates .azure/dev/."""
+def test_init_scaffolds_workspace_without_bootstrapping_azure(tmp_path: Path) -> None:
+    """`agentops init` with no flags (non-TTY) scaffolds AgentOps files only."""
     result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0, result.stdout
@@ -41,16 +41,15 @@ def test_init_scaffolds_workspace_and_bootstraps_azure(tmp_path: Path) -> None:
 
     # Workspace scaffolded
     assert (tmp_path / "agentops.yaml").exists()
+    assert (tmp_path / ".agentops" / ".gitignore").exists()
     assert (tmp_path / ".agentops" / "data" / "smoke.jsonl").exists()
 
-    # .azure/<env>/ baseline bootstrapped without the azd CLI
-    assert (tmp_path / ".azure" / "dev" / ".env").exists()
-    assert (tmp_path / ".azure" / ".gitignore").exists()
-    assert (tmp_path / ".azure" / "config.json").exists()
+    # Fresh AgentOps-only workspaces should not get azd files until requested.
+    assert not (tmp_path / ".azure").exists()
 
-    # .gitignore protects the env file
-    gitignore_text = (tmp_path / ".azure" / ".gitignore").read_text(encoding="utf-8")
-    assert "*/.env" in gitignore_text or "/*/.env" in gitignore_text
+    # .agentops/.gitignore protects the local env file
+    gitignore_text = (tmp_path / ".agentops" / ".gitignore").read_text(encoding="utf-8")
+    assert ".env" in gitignore_text
 
 
 def test_init_no_prompt_skips_wizard(tmp_path: Path) -> None:
@@ -65,8 +64,8 @@ def test_init_no_prompt_skips_wizard(tmp_path: Path) -> None:
     assert "stdin is not a TTY" not in result.stdout
 
 
-def test_init_scripted_mode_persists_endpoint_to_azure_env(tmp_path: Path) -> None:
-    """Scripted mode writes project endpoint to .azure/<env>/.env."""
+def test_init_scripted_mode_persists_endpoint_to_agentops_env(tmp_path: Path) -> None:
+    """Scripted mode writes project endpoint to .agentops/.env by default."""
     endpoint = "https://acct.services.ai.azure.com/api/projects/proj-default"
     smoke = tmp_path / ".agentops" / "data" / "smoke.jsonl"
 
@@ -96,10 +95,11 @@ def test_init_scripted_mode_persists_endpoint_to_azure_env(tmp_path: Path) -> No
     assert "my-agent:1" in yaml_text
     assert "smoke.jsonl" in yaml_text
 
-    # .azure/<env>/.env has the endpoint
-    env_text = (tmp_path / ".azure" / "dev" / ".env").read_text(encoding="utf-8")
+    # .agentops/.env has the endpoint
+    env_text = (tmp_path / ".agentops" / ".env").read_text(encoding="utf-8")
     assert "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT" in env_text
     assert endpoint in env_text
+    assert not (tmp_path / ".azure").exists()
 
 
 def test_init_scripted_validates_project_endpoint(tmp_path: Path) -> None:
@@ -120,7 +120,7 @@ def test_init_scripted_validates_project_endpoint(tmp_path: Path) -> None:
 
 
 def test_init_scripted_with_custom_azd_env(tmp_path: Path) -> None:
-    """`--azd-env qa` writes to .azure/qa/.env instead of .azure/dev/.env."""
+    """`--azd-env qa` writes to the explicit azd env instead of the local env."""
     runner.invoke(app, ["init", "--dir", str(tmp_path), "--no-prompt"])
 
     result = runner.invoke(
@@ -140,6 +140,36 @@ def test_init_scripted_with_custom_azd_env(tmp_path: Path) -> None:
     assert (tmp_path / ".azure" / "qa" / ".env").exists()
     env_text = (tmp_path / ".azure" / "qa" / ".env").read_text(encoding="utf-8")
     assert "https://acct.services.ai.azure.com/api/projects/p" in env_text
+    assert not (tmp_path / ".agentops" / ".env").exists()
+
+
+def test_init_scripted_uses_existing_azd_env_when_present(tmp_path: Path) -> None:
+    """Existing azd workspaces keep writing to the active azd env."""
+    azure_env = tmp_path / ".azure" / "dev" / ".env"
+    azure_env.parent.mkdir(parents=True, exist_ok=True)
+    azure_env.write_text("# existing azd env\n", encoding="utf-8")
+    (tmp_path / ".azure" / "config.json").write_text(
+        '{"version": 1, "defaultEnvironment": "dev"}\n',
+        encoding="utf-8",
+    )
+    runner.invoke(app, ["init", "--dir", str(tmp_path), "--no-prompt"])
+
+    result = runner.invoke(
+        app,
+        [
+            "init",
+            "--dir",
+            str(tmp_path),
+            "--project-endpoint",
+            "https://acct.services.ai.azure.com/api/projects/p",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "https://acct.services.ai.azure.com/api/projects/p" in azure_env.read_text(
+        encoding="utf-8"
+    )
+    assert not (tmp_path / ".agentops" / ".env").exists()
 
 
 def test_init_is_idempotent(tmp_path: Path) -> None:
@@ -357,8 +387,8 @@ def test_run_wizard_skips_questions_when_defaults_present(
         run_wizard,
     )
 
-    # Resolve defaults exclusively from agentops.yaml + .azure/<env>/.env,
-    # not from the developer's shell env.
+    # Resolve defaults exclusively from persisted workspace files, not from the
+    # developer's shell env.
     monkeypatch.delenv(ENV_KEY_PROJECT_ENDPOINT, raising=False)
     monkeypatch.delenv(ENV_KEY_APPINSIGHTS, raising=False)
 

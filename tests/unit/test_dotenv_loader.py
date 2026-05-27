@@ -1,4 +1,4 @@
-"""Tests for :mod:`agentops.utils.dotenv_loader` (azd-first refactor)."""
+"""Tests for :mod:`agentops.utils.dotenv_loader`."""
 
 from __future__ import annotations
 
@@ -71,10 +71,10 @@ def test_loader_skips_existing_env_vars(
     assert os.environ["NEW_ONE"] == "from-file"
 
 
-def test_loader_prefers_azd_env_over_legacy(
+def test_loader_prefers_active_azd_env_over_agentops_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """The active azd env file wins over the legacy .agentops/.env."""
+    """The active azd env file wins when the workspace has opted into azd."""
     monkeypatch.delenv("AGENTOPS_X", raising=False)
     monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
     _seed_azd_env(tmp_path, "dev", "AGENTOPS_X=from-azd\n")
@@ -87,7 +87,7 @@ def test_loader_prefers_azd_env_over_legacy(
     assert os.environ["AGENTOPS_X"] == "from-azd"
 
 
-def test_loader_falls_back_to_legacy_when_no_azd_env(
+def test_loader_falls_back_to_agentops_env_when_no_azd_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("AGENTOPS_LEGACY_X", raising=False)

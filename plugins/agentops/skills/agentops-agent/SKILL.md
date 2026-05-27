@@ -92,7 +92,7 @@ readiness and links to the matching Foundry and Azure Monitor views.
 It is read-only and bound to localhost.
 
 When telemetry is enabled the analyzer **also** emits OpenTelemetry
-spans (`ANALYZE watchdog`) with per-severity / per-category counters,
+spans for the Doctor run with per-severity / per-category counters,
 useful for long-term retention in App Insights or any OTel backend.
 Resolution order:
 
@@ -107,7 +107,7 @@ Resolution order:
 
 ## Copilot Extension server
 
-If the user wants the watchdog inside Copilot Chat, they can:
+If the user wants the Doctor inside Copilot Chat, they can:
 
 ```bash
 pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@main"
@@ -120,7 +120,7 @@ For production, point them at:
 - `src/agentops/templates/agent-server/main.bicep`
 - `src/agentops/templates/agent-server/README.md`
 
-These are the deploy scaffold for hosting the watchdog as a Copilot
+These are the deploy scaffold for hosting the Doctor as a Copilot
 Extension on Azure Container Apps.
 
 ## Guardrails

@@ -1,4 +1,4 @@
-"""Tests for `agentops workflow generate` (5-template GenAIOps GitFlow scaffold)."""
+"""Tests for `agentops workflow generate`."""
 
 from pathlib import Path
 
@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from agentops.cli.app import app
 from agentops.services.cicd import (
     ALL_KINDS,
+    DEFAULT_KINDS,
     DEPLOY_MODES,
     generate_cicd_workflow,
     generate_cicd_workflows,
@@ -22,17 +23,18 @@ _DEV_PATH = f"{_WORKFLOW_DIR}/agentops-deploy-dev.yml"
 _QA_PATH = f"{_WORKFLOW_DIR}/agentops-deploy-qa.yml"
 _PROD_PATH = f"{_WORKFLOW_DIR}/agentops-deploy-prod.yml"
 
-_WATCHDOG_PATH = f"{_WORKFLOW_DIR}/agentops-watchdog.yml"
+_DOCTOR_PATH = f"{_WORKFLOW_DIR}/agentops-doctor.yml"
 
-ALL_PATHS = (_PR_PATH, _DEV_PATH, _QA_PATH, _PROD_PATH, _WATCHDOG_PATH)
+DEFAULT_PATHS = (_PR_PATH, _DEV_PATH, _QA_PATH, _PROD_PATH)
+ALL_PATHS = (*DEFAULT_PATHS, _DOCTOR_PATH)
 
 
 # ---------------------------------------------------------------------------
-# generate_cicd_workflows — defaults to all four
+# generate_cicd_workflows
 # ---------------------------------------------------------------------------
 
 
-def test_default_generates_all_five_templates(tmp_path: Path) -> None:
+def test_default_generates_release_path_templates(tmp_path: Path) -> None:
     result = generate_cicd_workflows(directory=tmp_path)
 
     assert {p.name for p in result.created_files} == {
@@ -40,10 +42,10 @@ def test_default_generates_all_five_templates(tmp_path: Path) -> None:
         "agentops-deploy-dev.yml",
         "agentops-deploy-qa.yml",
         "agentops-deploy-prod.yml",
-        "agentops-watchdog.yml",
     }
-    for rel in ALL_PATHS:
+    for rel in DEFAULT_PATHS:
         assert (tmp_path / rel).exists()
+    assert not (tmp_path / _DOCTOR_PATH).exists()
 
 
 def test_kinds_filter_subset(tmp_path: Path) -> None:
@@ -58,6 +60,15 @@ def test_kinds_filter_subset(tmp_path: Path) -> None:
     assert (tmp_path / _DEV_PATH).exists()
     assert not (tmp_path / _QA_PATH).exists()
     assert not (tmp_path / _PROD_PATH).exists()
+    assert not (tmp_path / _DOCTOR_PATH).exists()
+
+
+def test_legacy_watchdog_kind_aliases_to_doctor(tmp_path: Path) -> None:
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["watchdog"])
+
+    assert result.kinds == ["doctor"]
+    assert {p.name for p in result.created_files} == {"agentops-doctor.yml"}
+    assert (tmp_path / _DOCTOR_PATH).exists()
 
 
 def test_kinds_unknown_value_is_ignored(tmp_path: Path) -> None:
@@ -84,16 +95,16 @@ def test_skips_existing_without_force(tmp_path: Path) -> None:
 
 
 def test_force_overwrites_all(tmp_path: Path) -> None:
-    for rel in ALL_PATHS:
+    for rel in DEFAULT_PATHS:
         wf = tmp_path / rel
         wf.parent.mkdir(parents=True, exist_ok=True)
         wf.write_text("old", encoding="utf-8")
 
     result = generate_cicd_workflows(directory=tmp_path, force=True)
 
-    assert len(result.overwritten_files) == len(ALL_PATHS)
+    assert len(result.overwritten_files) == len(DEFAULT_PATHS)
     assert len(result.skipped_files) == 0
-    for rel in ALL_PATHS:
+    for rel in DEFAULT_PATHS:
         assert (tmp_path / rel).read_text(encoding="utf-8") != "old"
 
 
@@ -114,7 +125,7 @@ def _read_yaml(path: Path) -> dict:
 
 
 def test_all_templates_are_valid_yaml(tmp_path: Path) -> None:
-    generate_cicd_workflows(directory=tmp_path)
+    generate_cicd_workflows(directory=tmp_path, kinds=ALL_KINDS)
     for rel in ALL_PATHS:
         data = _read_yaml(tmp_path / rel)
         assert isinstance(data, dict)
@@ -126,7 +137,7 @@ def test_all_templates_are_valid_yaml(tmp_path: Path) -> None:
 
 
 def test_all_templates_pass_foundry_and_evaluator_environment(tmp_path: Path) -> None:
-    generate_cicd_workflows(directory=tmp_path)
+    generate_cicd_workflows(directory=tmp_path, kinds=ALL_KINDS)
     expected_env = (
         "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: "
         "${{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}",
@@ -143,13 +154,14 @@ def test_all_templates_pass_foundry_and_evaluator_environment(tmp_path: Path) ->
             assert env_line in content
 
 
-def test_watchdog_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -> None:
-    generate_cicd_workflows(directory=tmp_path, kinds=["watchdog"])
+def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -> None:
+    generate_cicd_workflows(directory=tmp_path, kinds=["doctor"])
 
-    content = (tmp_path / _WATCHDOG_PATH).read_text(encoding="utf-8")
+    content = (tmp_path / _DOCTOR_PATH).read_text(encoding="utf-8")
     assert 'agentops-toolkit[foundry,agent]' in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
+    assert "watchdog" not in content.lower()
     assert (
         "APPLICATIONINSIGHTS_CONNECTION_STRING: "
         "${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || "
@@ -160,13 +172,14 @@ def test_watchdog_templates_emit_doctor_findings_to_app_insights(tmp_path: Path)
     generate_cicd_workflows(
         directory=tmp_path,
         platform="azure-devops",
-        kinds=["watchdog"],
+        kinds=["doctor"],
         force=True,
     )
-    ado_content = (tmp_path / _ADO_WATCHDOG).read_text(encoding="utf-8")
+    ado_content = (tmp_path / _ADO_DOCTOR).read_text(encoding="utf-8")
     assert 'agentops-toolkit[foundry,agent]' in ado_content
     assert "--evidence-pack" in ado_content
-    assert "agentops-watchdog-release-evidence" in ado_content
+    assert "agentops-doctor-release-evidence" in ado_content
+    assert "watchdog" not in ado_content.lower()
     assert (
         "APPLICATIONINSIGHTS_CONNECTION_STRING: "
         "$(APPLICATIONINSIGHTS_CONNECTION_STRING)"
@@ -174,7 +187,7 @@ def test_watchdog_templates_emit_doctor_findings_to_app_insights(tmp_path: Path)
 
 
 def test_azure_devops_templates_pass_app_insights_for_eval_telemetry(tmp_path: Path) -> None:
-    generate_cicd_workflows(directory=tmp_path, platform="azure-devops")
+    generate_cicd_workflows(directory=tmp_path, platform="azure-devops", kinds=ALL_KINDS)
 
     for rel in _ADO_PATHS:
         content = (tmp_path / rel).read_text(encoding="utf-8")
@@ -438,7 +451,11 @@ def test_prod_template_triggers_and_environment_with_reviewer_hint(tmp_path: Pat
 
 
 def test_all_kinds_constant_matches_documented_set() -> None:
-    assert set(ALL_KINDS) == {"pr", "dev", "qa", "prod", "watchdog"}
+    assert set(ALL_KINDS) == {"pr", "dev", "qa", "prod", "doctor"}
+
+
+def test_default_kinds_exclude_scheduled_doctor() -> None:
+    assert set(DEFAULT_KINDS) == {"pr", "dev", "qa", "prod"}
 
 
 def test_deploy_modes_constant_matches_documented_set() -> None:
@@ -450,13 +467,14 @@ def test_deploy_modes_constant_matches_documented_set() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_default_creates_all_five(tmp_path: Path) -> None:
+def test_cli_default_creates_release_path_workflows(tmp_path: Path) -> None:
     result = runner.invoke(app, ["workflow", "generate", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0, result.stdout
-    assert result.stdout.count("+ created") == 5
-    for rel in ALL_PATHS:
+    assert result.stdout.count("+ created") == 4
+    for rel in DEFAULT_PATHS:
         assert (tmp_path / rel).exists()
+    assert not (tmp_path / _DOCTOR_PATH).exists()
 
 
 def test_cli_kinds_subset(tmp_path: Path) -> None:
@@ -470,6 +488,17 @@ def test_cli_kinds_subset(tmp_path: Path) -> None:
     assert (tmp_path / _PROD_PATH).exists()
     assert not (tmp_path / _DEV_PATH).exists()
     assert not (tmp_path / _QA_PATH).exists()
+
+
+def test_cli_legacy_watchdog_kind_aliases_to_doctor(tmp_path: Path) -> None:
+    result = runner.invoke(
+        app,
+        ["workflow", "generate", "--dir", str(tmp_path), "--kinds", "watchdog"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / _DOCTOR_PATH).exists()
+    assert "agentops-doctor.yml" in result.output
 
 
 def test_cli_kinds_invalid_value_fails(tmp_path: Path) -> None:
@@ -521,7 +550,7 @@ def test_cli_next_steps_mention_environments(tmp_path: Path) -> None:
     assert "branch" in out.lower()
 
 
-def test_cli_next_steps_for_pr_watchdog_only_do_not_request_deploy_envs(
+def test_cli_next_steps_for_pr_only_do_not_request_deploy_envs(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "agentops.yaml").write_text(
@@ -543,7 +572,7 @@ def test_cli_next_steps_for_pr_watchdog_only_do_not_request_deploy_envs(
             "--dir",
             str(tmp_path),
             "--kinds",
-            "pr,watchdog",
+            "pr",
         ],
     )
 
@@ -570,16 +599,18 @@ _ADO_PR = f"{_ADO_DIR}/agentops-pr.yml"
 _ADO_DEV = f"{_ADO_DIR}/agentops-deploy-dev.yml"
 _ADO_QA = f"{_ADO_DIR}/agentops-deploy-qa.yml"
 _ADO_PROD = f"{_ADO_DIR}/agentops-deploy-prod.yml"
-_ADO_WATCHDOG = f"{_ADO_DIR}/agentops-watchdog.yml"
-_ADO_PATHS = (_ADO_PR, _ADO_DEV, _ADO_QA, _ADO_PROD, _ADO_WATCHDOG)
+_ADO_DOCTOR = f"{_ADO_DIR}/agentops-doctor.yml"
+_ADO_DEFAULT_PATHS = (_ADO_PR, _ADO_DEV, _ADO_QA, _ADO_PROD)
+_ADO_PATHS = (*_ADO_DEFAULT_PATHS, _ADO_DOCTOR)
 
 
 def test_azure_devops_platform_writes_pipelines(tmp_path: Path) -> None:
     result = generate_cicd_workflows(directory=tmp_path, platform="azure-devops")
 
     assert result.platform == "azure-devops"
-    for rel in _ADO_PATHS:
+    for rel in _ADO_DEFAULT_PATHS:
         assert (tmp_path / rel).exists(), f"missing {rel}"
+    assert not (tmp_path / _ADO_DOCTOR).exists()
     # GitHub workflows must NOT be created when ADO is selected.
     for rel in ALL_PATHS:
         assert not (tmp_path / rel).exists(), f"unexpected {rel}"

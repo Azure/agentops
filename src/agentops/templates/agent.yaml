@@ -41,9 +41,9 @@ sources:
     agent_ids: []
 
   # Azure management plane — read-only resource posture audits.
-  # Enabled by default and fail-open: Doctor first reads `.azure/<env>/.env`
-  # from AZD, then falls back to the Foundry project endpoint / Azure
-  # resource scan, then to the fields below. If discovery is not possible,
+  # Enabled by default and fail-open: Doctor reads `.azure/<env>/.env` when
+  # AZD metadata exists, then falls back to the Foundry project endpoint /
+  # Azure resource scan, then to the fields below. If discovery is not possible,
   # the source is marked skipped with guidance in the report.
   # Required RBAC when used: `Reader` on the resource group.
   azure_resources:

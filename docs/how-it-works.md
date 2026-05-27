@@ -70,7 +70,7 @@ src/
     │   ├── evidence_pack.py   # Release evidence aggregation/writer
     │   └── trace_promotion.py # Trace export → dataset candidates
     │
-    ├── agent/                 # `agentops doctor|serve` watchdog
+    ├── agent/                 # Doctor, Cockpit, and agent server
     ├── mcp/                   # `agentops mcp serve` Model Context Protocol server
     │
     ├── utils/                 # Shared helpers (yaml load, logging, colors)
@@ -216,8 +216,8 @@ flowchart LR
 |---|---|
 | `agentops --version` | Print the installed version |
 | `agentops explain [COMMAND...]` | Long-form, paged manual for any command (top-level dispatcher) |
-| `agentops init` | Idempotent scaffold + azd-style wizard + skill install (the only onboarding command) |
-| `agentops init show` | Inspect resolved config (`agentops.yaml` + `.azure/<env>/.env`) |
+| `agentops init` | Idempotent scaffold + setup wizard (the only onboarding command) |
+| `agentops init show` | Inspect resolved config (`agentops.yaml` + local env values) |
 | `agentops init explain` | Long-form `init` manual |
 | `agentops eval analyze` | Inspect eval setup and recommend direct run vs skill-assisted configuration |
 | `agentops eval run` | Run an evaluation; the main command |
@@ -247,12 +247,13 @@ Exit codes are part of the public API. **Do not change their meaning.**
 | `2` | Execution succeeded **but** one or more thresholds failed |
 | `1` | Runtime or configuration error |
 
-## User Workspace Structure (`agentops.yaml` + `.agentops/` + `.azure/`)
+## User Workspace Structure (`agentops.yaml` + `.agentops/`)
 
 The flat 1.0 schema places **one config file** at the project root and a
-small directory for datasets, run history, and (optionally) skills.
-`agentops init` also bootstraps an azd-compatible `.azure/<env>/.env`
-file so the same workspace can be driven by AgentOps and `azd`.
+small directory for datasets, local environment values, run history, and
+(optionally) skills. `agentops init` writes AgentOps-owned local Azure values to
+`.agentops/.env` by default. Existing or explicitly requested azd workspaces
+continue to use `.azure/<env>/.env`.
 
 ```
 <project root>/
@@ -260,6 +261,7 @@ file so the same workspace can be driven by AgentOps and `azd`.
 ├── .agentops/
 │   ├── data/
 │   │   └── smoke.jsonl        # Sample dataset (created by `agentops init`)
+│   ├── .env                   # Local Azure values; ignored by `.agentops/.gitignore`
 │   ├── results/
 │   │   ├── 2026-05-06T14-30-22Z/  # Timestamped run (immutable history)
 │   │   │   ├── results.json
@@ -267,7 +269,7 @@ file so the same workspace can be driven by AgentOps and `azd`.
 │   │   │   └── cloud_evaluation.json   # only when `publish:` was set
 │   │   └── latest/                # Mirror of the most recent run
 │   └── agent/                 # Doctor history (history.jsonl + report.md)
-├── .azure/                    # azd-compatible env folder (shared with azd)
+├── .azure/                    # Optional: existing or explicit azd env folder
 │   ├── config.json            # `defaultEnvironment` pointer
 │   ├── .gitignore
 │   └── dev/

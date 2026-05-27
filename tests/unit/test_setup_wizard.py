@@ -1,4 +1,4 @@
-"""Tests for :mod:`agentops.services.setup_wizard` (azd-first refactor)."""
+"""Tests for :mod:`agentops.services.setup_wizard`."""
 
 from __future__ import annotations
 
@@ -171,7 +171,7 @@ def test_apply_answers_writes_agent_and_dataset_to_yaml(tmp_path: Path):
 
 
 def test_apply_answers_does_not_write_project_endpoint_to_yaml(tmp_path: Path):
-    """The azd-first refactor stops persisting endpoints in agentops.yaml."""
+    """Environment-specific endpoints stay out of agentops.yaml."""
     answers = WizardAnswers(
         project_endpoint="https://acct.services.ai.azure.com/api/projects/p"
     )
@@ -181,7 +181,7 @@ def test_apply_answers_does_not_write_project_endpoint_to_yaml(tmp_path: Path):
         assert "project_endpoint" not in yaml_path.read_text(encoding="utf-8")
 
 
-def test_apply_answers_writes_endpoint_to_azd_env(
+def test_apply_answers_writes_endpoint_to_agentops_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
@@ -190,16 +190,17 @@ def test_apply_answers_writes_endpoint_to_azd_env(
     )
     result = apply_answers(tmp_path, answers)
     assert result.env_updated is True
-    assert result.azd_env_created is True
-    assert result.azd_env_name == "dev"
-    assert result.env_path == (tmp_path / ".azure" / "dev" / ".env").resolve()
+    assert result.azd_env_created is False
+    assert result.azd_env_name is None
+    assert result.env_path == (tmp_path / ".agentops" / ".env").resolve()
     parsed = parse_env_file(result.env_path)
     assert parsed["AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"] == (
         "https://acct.services.ai.azure.com/api/projects/p"
     )
+    assert not (tmp_path / ".azure").exists()
 
 
-def test_apply_answers_writes_appinsights_to_azd_env(
+def test_apply_answers_writes_appinsights_to_agentops_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
@@ -218,25 +219,26 @@ def test_apply_answers_writes_appinsights_to_azd_env(
 def test_apply_answers_creates_gitignore_for_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Bootstrapping .azure must drop a .gitignore so secrets cannot leak."""
+    """Writing .agentops/.env must drop a .gitignore so secrets cannot leak."""
     monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
     apply_answers(
         tmp_path,
         WizardAnswers(appinsights_connection_string="InstrumentationKey=zzz"),
     )
-    gitignore = tmp_path / ".azure" / ".gitignore"
+    gitignore = tmp_path / ".agentops" / ".gitignore"
     assert gitignore.is_file()
     contents = gitignore.read_text(encoding="utf-8")
-    assert "*/.env" in contents
+    assert ".env" in contents
 
 
-def test_apply_answers_sets_default_env_in_config_json(
+def test_apply_answers_explicit_azd_env_sets_default_env_in_config_json(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
     apply_answers(
         tmp_path,
         WizardAnswers(project_endpoint="https://acct.services.ai.azure.com/api/projects/p"),
+        azd_env_name="dev",
     )
     config = json.loads((tmp_path / ".azure" / "config.json").read_text(encoding="utf-8"))
     assert config["defaultEnvironment"] == "dev"
@@ -558,7 +560,7 @@ def test_run_wizard_re_prompts_on_invalid_input(
 def test_apply_then_load_round_trip(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """The wizard writes into the azd env and the auto-loader picks it up."""
+    """The wizard writes into the AgentOps env and the auto-loader picks it up."""
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
     apply_answers(
@@ -571,7 +573,7 @@ def test_apply_then_load_round_trip(
     loaded = load_workspace_dotenv(tmp_path)
     assert loaded is not None
     path, count = loaded
-    assert path == (tmp_path / ".azure" / "dev" / ".env").resolve()
+    assert path == (tmp_path / ".agentops" / ".env").resolve()
     assert count >= 1
     assert os.environ["APPLICATIONINSIGHTS_CONNECTION_STRING"] == "InstrumentationKey=zzz"
 
@@ -630,7 +632,7 @@ def test_collect_snapshot_attributes_process_env(
     assert proj_var.source == "process-env"
 
 
-def test_collect_snapshot_flags_legacy_env(
+def test_collect_snapshot_reports_agentops_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
@@ -640,7 +642,11 @@ def test_collect_snapshot_flags_legacy_env(
         encoding="utf-8",
     )
     snapshot = collect_snapshot(tmp_path)
-    assert snapshot.legacy_env_path is not None
+    assert snapshot.agentops_env_path is not None
+    appinsights_var = next(
+        v for v in snapshot.variables if v.key == "APPLICATIONINSIGHTS_CONNECTION_STRING"
+    )
+    assert appinsights_var.source == "agentops-env"
 
 
 def test_mask_secret_handles_short_and_long_values():

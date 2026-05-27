@@ -18,10 +18,11 @@ deployment owner are configured.
   Azure DevOps Pipelines. Auth via a Service Connection + a variable
   group named `agentops`.
 
-The conceptual workflows are identical: one PR gate, optional deploy stages
-(dev/qa/prod), and a scheduled Doctor workflow. PR, production, and watchdog
-templates run `agentops doctor --evidence-pack` so reviewers get
-`evidence.json` and `evidence.md` in artifacts.
+The conceptual workflows are identical: one PR gate and optional deploy stages
+(dev/qa/prod). The PR and production templates already run
+`agentops doctor --evidence-pack` so reviewers get `evidence.json` and
+`evidence.md` in artifacts. A separate scheduled Doctor workflow is optional
+for periodic health checks, not the default release path.
 
 For a new repository or tutorial, start with the PR gate only:
 `agentops workflow generate --kinds pr`. Generate DEV/QA/PROD deploy
@@ -33,27 +34,29 @@ Practice, AI Landing Zone/Bicep-based apps), run `agentops workflow analyze`
 first and use the findings as the implementation plan before generating or
 editing workflows.
 
-AgentOps is **azd-first** for app/infrastructure deployment and
-**Foundry-native** for prompt-agent candidate workflows. Do not invent a
-parallel deployment system. AgentOps should gate quality and record proof;
-`azd provision`, `azd deploy`, azd hooks, Foundry Toolkit, the
-`microsoft-foundry` skill, and project tooling own lifecycle actions.
+AgentOps reuses **azd** for app/infrastructure deployment when the repo already
+has an azd project, and stays **Foundry-native** for prompt-agent candidate
+workflows. Do not invent a parallel deployment system. AgentOps should gate
+quality and record proof; `azd provision`, `azd deploy`, azd hooks, Foundry
+Toolkit, the `microsoft-foundry` skill, and project tooling own lifecycle
+actions.
 
 ## Fast path - generated GitHub setup
 
 Use this path when the user already generated GitHub workflows or asks to get
-the PR gate/watchdog running. Stay local-first and deterministic; do not start
+the PR gate running. Stay local-first and deterministic; do not start
 by discovering the whole Azure subscription.
 
 1. Inspect the repo before cloud discovery:
    - `agentops init show --dir .` without `--reveal-secrets`.
    - `agentops.yaml`.
-   - `.azure/config.json`, then the active `.azure/<env>/.env`.
+   - `.agentops/.env`, plus `.azure/config.json` and active `.azure/<env>/.env`
+     when the repo uses azd.
    - `azd env get-values` when `azure.yaml` exists and azd is available.
    - `.github/workflows/agentops-*.yml`.
 2. Read the generated workflows to determine exactly which GitHub environments
-   and variables are needed. For the prompt-agent quickstart, `pr,watchdog`
-   normally means only `environment: dev`.
+   and variables are needed. For the prompt-agent quickstart, `pr` normally
+   means only `environment: dev`.
 3. Treat `dev` here as a GitHub Actions environment for OIDC and variables. It
    normally points at the Foundry project already configured by `agentops init`;
    it does not require creating a new Foundry project.
@@ -67,8 +70,8 @@ by discovering the whole Azure subscription.
 5. Prefer existing values and exact checks:
    - `git remote get-url origin` and `gh repo view --json nameWithOwner`.
    - `gh variable list --env <env>` and `gh secret list --env <env>`.
-   - `agentops init show`, local `.azure/<env>/.env`, and `azd env get-values`
-     values before `az account show`.
+   - `agentops init show`, local `.agentops/.env` or `.azure/<env>/.env`, and
+     `azd env get-values` values before `az account show`.
    - `az account show` only as a proposal for tenant/subscription; confirm
      before writing it to GitHub variables.
 6. Copy CI variables from local AgentOps/azd configuration into the GitHub
@@ -109,9 +112,10 @@ by discovering the whole Azure subscription.
     Azure RBAC are ready, then ask the user before triggering workflows.
 13. Avoid broad discovery unless local config is missing. Do **not** run broad
    `az resource list`, `az graph query`, SDK inspection, or web search to find
-   the Foundry project when `agentops.yaml` or `.azure/<env>/.env` already has
-   `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. If the endpoint is missing, say exactly
-   what is missing and ask the user before scanning the subscription.
+   the Foundry project when `agentops init show`, `.agentops/.env`, or
+   `.azure/<env>/.env` already has `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. If the
+   endpoint is missing, say exactly what is missing and ask the user before
+   scanning the subscription.
 
 ## Branch model assumed
 
@@ -177,11 +181,13 @@ The full scaffold writes:
 | `dev` | `.github/workflows/agentops-deploy-dev.yml` | `.azuredevops/pipelines/agentops-deploy-dev.yml` | push to `develop` | `dev` |
 | `qa` | `.github/workflows/agentops-deploy-qa.yml` | `.azuredevops/pipelines/agentops-deploy-qa.yml` | push to `release/**` | `qa` |
 | `prod` | `.github/workflows/agentops-deploy-prod.yml` | `.azuredevops/pipelines/agentops-deploy-prod.yml` | push to `main` | `production` |
-| `watchdog` | `.github/workflows/agentops-watchdog.yml` | `.azuredevops/pipelines/agentops-watchdog.yml` | daily cron (06:00 UTC) | `dev` |
+| `doctor` | `.github/workflows/agentops-doctor.yml` | `.azuredevops/pipelines/agentops-doctor.yml` | daily cron (06:00 UTC) | `dev` |
 
-PR, PROD, and watchdog workflows upload release evidence. Explain that this is
-a projection of existing eval/Doctor/Foundry/monitoring signals, not a separate
-exit-code contract.
+PR and PROD workflows upload release evidence. Explain that this is a
+projection of existing eval/Doctor/Foundry/monitoring signals, not a separate
+exit-code contract. Generate the optional scheduled Doctor workflow only when
+the team explicitly wants periodic health-check artifacts outside PR/release
+events.
 
 Useful flags:
 
@@ -189,6 +195,8 @@ Useful flags:
 - `--force` - overwrite existing workflow files.
 - `--kinds pr,dev,qa,prod` - generate a subset. Prefer `--kinds pr`
   until deploy environments are configured.
+- `--kinds doctor` - optional scheduled Doctor-only workflow for periodic
+  checks. Do not use it as a substitute for the PR gate.
 - `--deploy-mode auto|placeholder|azd|prompt-agent` - `auto` uses azd
   templates when `azure.yaml` exists, otherwise uses prompt-agent templates
   when `agentops.yaml` targets a Foundry prompt agent; `azd` forces
@@ -201,8 +209,8 @@ Useful flags:
 ### GitHub Actions
 
 Read the generated workflow files and create only the GitHub Environments used
-by `jobs.*.environment`. For `pr,watchdog`, that is usually only **`dev`**. For
-the full scaffold, create **`dev`**, **`qa`**, and **`production`**.
+by `jobs.*.environment`. For `pr`, that is usually only **`dev`**. For the full
+scaffold, create **`dev`**, **`qa`**, and **`production`**.
 
 - **`dev`** - no extra protection. Store the OIDC variables here when the
   generated jobs use `environment: dev`.

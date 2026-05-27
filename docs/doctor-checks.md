@@ -42,7 +42,7 @@ The Doctor reaches Azure through five sources, all configured in
 | `results_history` | Local `.agentops/results/*/results.json` first; Foundry cloud evaluation runs as fallback when local history is missing or too short |
 | `azure_monitor` | Application Insights / Log Analytics via REST (KQL) |
 | `foundry_control` | Foundry project / agents / evaluation rules via `azure-ai-projects` |
-| `azure_resources` | Cognitive Services account properties via `azure-mgmt-cognitiveservices`; inferred from explicit config, AZD `.azure/<env>/.env`, or Foundry endpoint/account matching |
+| `azure_resources` | Cognitive Services account properties via `azure-mgmt-cognitiveservices`; inferred from explicit config, AZD `.azure/<env>/.env` when present, or Foundry endpoint/account matching |
 
 The LLM-judged rules additionally use the Foundry project's OpenAI
 client (auto-discovered) as the judge model.

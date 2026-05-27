@@ -248,13 +248,14 @@ The wizard does not ask for App Insights. Later runtime commands try to discover
 the connected App Insights resource through the Azure AI Projects SDK. If the
 project has no resource attached, or your identity cannot read it, run
 `agentops init --appinsights-connection-string "<connection-string>"` or set
-`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
+`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.agentops/.env`.
 
 If the first run shows starter defaults such as `Agent [my-agent:1]` or
 `Dataset path [.agentops/data/smoke.jsonl]`, replace them with the hosted Travel
 Agent values above. Those defaults only come from the scaffolded starter file.
 
-If you want an azd environment name other than the default `dev`, run
+By default, local Azure values go to `.agentops/.env`. If this repo already uses
+`azd`, or you want AgentOps to write to an azd env, run
 `agentops init --azd-env <name>`.
 
 Then edit `agentops.yaml` so AgentOps knows how to call the endpoint:
@@ -268,11 +269,11 @@ request_field: message
 response_field: text
 ```
 
-The `.azure/dev/.env` file is intentional: AgentOps uses the same environment
-layout as `azd`, so local Azure values stay out of source control while eval,
-Doctor, and Cockpit commands resolve the same active environment. The Foundry
-project endpoint lives there instead of in `agentops.yaml`; if you force an App
-Insights connection string later, it is saved there too.
+The `.agentops/.env` file is intentional: AgentOps keeps local Azure values out
+of source control while eval, Doctor, and Cockpit commands resolve the same
+workspace environment. The Foundry project endpoint lives there instead of in
+`agentops.yaml`; if you force an App Insights connection string later, it is
+saved there too. Existing azd workspaces keep using `.azure/<env>/.env`.
 
 For a deployed endpoint protected by a bearer token, add:
 
@@ -305,8 +306,8 @@ Install the Azure Monitor OpenTelemetry distro when you reach this step:
 python -m pip install azure-monitor-opentelemetry
 ```
 
-Make sure the active azd env has an App Insights connection string. If it is not
-present yet, store the value once:
+Make sure the AgentOps local env has an App Insights connection string. If it
+is not present yet, store the value once:
 
 ```powershell
 agentops init --appinsights-connection-string "<connection-string>"
@@ -316,7 +317,7 @@ Load that value into the terminal that will run `uvicorn`:
 
 ```powershell
 $env:APPLICATIONINSIGHTS_CONNECTION_STRING = (
-  Get-Content .azure\dev\.env |
+  Get-Content .agentops\.env |
   Where-Object { $_ -like "APPLICATIONINSIGHTS_CONNECTION_STRING=*" } |
   Select-Object -First 1
 ) -replace "^APPLICATIONINSIGHTS_CONNECTION_STRING=", ""
@@ -474,7 +475,7 @@ rerun the same gate before a PR or release.
 ## 10. Generate CI and Doctor evidence
 
 ```powershell
-agentops workflow generate --kinds pr,watchdog --force
+agentops workflow generate --kinds pr --force
 agentops doctor --workspace . --evidence-pack
 code .agentops\agent\report.md
 code .agentops\release\latest\evidence.md

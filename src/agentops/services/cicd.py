@@ -38,20 +38,23 @@ DEPLOY_MODES: Tuple[str, ...] = ("auto", "placeholder", "azd", "prompt-agent")
 # Per-platform mapping of workflow kind -> (template path inside package,
 # output path in repo).
 #
-# The five templates form a complete GenAIOps GitFlow scaffold:
+# The default templates form a complete GenAIOps GitFlow scaffold:
 #
 #   pr   -> agentops-pr            (PR gate; PRs to develop, release/**, main)
 #   dev  -> agentops-deploy-dev    (push to develop -> environment: dev)
 #   qa   -> agentops-deploy-qa     (push to release/** -> environment: qa)
 #   prod -> agentops-deploy-prod   (push to main -> environment: production)
-#   watchdog -> agentops-watchdog  (scheduled Doctor + eval health check)
+#
+# A scheduled Doctor workflow is also available as an explicit optional kind:
+#
+#   doctor -> agentops-doctor      (scheduled Doctor + eval health check)
 _TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
     "github": {
         "pr": ("workflows/agentops-pr.yml", ".github/workflows/agentops-pr.yml"),
         "dev": ("workflows/agentops-deploy-dev.yml", ".github/workflows/agentops-deploy-dev.yml"),
         "qa": ("workflows/agentops-deploy-qa.yml", ".github/workflows/agentops-deploy-qa.yml"),
         "prod": ("workflows/agentops-deploy-prod.yml", ".github/workflows/agentops-deploy-prod.yml"),
-        "watchdog": ("workflows/agentops-watchdog.yml", ".github/workflows/agentops-watchdog.yml"),
+        "doctor": ("workflows/agentops-watchdog.yml", ".github/workflows/agentops-doctor.yml"),
     },
     "azure-devops": {
         "pr": (
@@ -70,9 +73,9 @@ _TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
             "pipelines/azuredevops/agentops-deploy-prod.yml",
             ".azuredevops/pipelines/agentops-deploy-prod.yml",
         ),
-        "watchdog": (
+        "doctor": (
             "pipelines/azuredevops/agentops-watchdog.yml",
-            ".azuredevops/pipelines/agentops-watchdog.yml",
+            ".azuredevops/pipelines/agentops-doctor.yml",
         ),
     },
 }
@@ -99,7 +102,9 @@ _AZD_TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
     },
 }
 
-ALL_KINDS: tuple[str, ...] = ("pr", "dev", "qa", "prod", "watchdog")
+ALL_KINDS: tuple[str, ...] = ("pr", "dev", "qa", "prod", "doctor")
+DEFAULT_KINDS: tuple[str, ...] = ("pr", "dev", "qa", "prod")
+LEGACY_KIND_ALIASES: Mapping[str, str] = {"watchdog": "doctor"}
 
 
 @dataclass
@@ -426,6 +431,11 @@ def _indent_block(block: str, spaces: int) -> str:
     return "\n".join(prefix + line if line else "" for line in block.splitlines())
 
 
+def normalize_workflow_kind(kind: str) -> str:
+    """Return the canonical workflow kind, accepting legacy aliases."""
+    return LEGACY_KIND_ALIASES.get(kind, kind)
+
+
 def generate_cicd_workflows(
     directory: Path,
     force: bool = False,
@@ -435,15 +445,15 @@ def generate_cicd_workflows(
 ) -> CicdResult:
     """Generate AgentOps GitFlow CI/CD workflows.
 
-    By default writes all five templates (``pr``, ``dev``, ``qa``,
-    ``prod``, ``watchdog``) for the requested *platform*. Pass *kinds* to opt into a
-    subset.
+    By default writes the release-path templates (``pr``, ``dev``, ``qa``,
+    ``prod``) for the requested *platform*. Pass *kinds* to opt into a subset,
+    including the optional scheduled ``doctor`` workflow.
 
     Args:
         directory: Root directory of the consumer repository.
         force: When True, overwrite existing workflow files.
         kinds: Optional explicit list of workflow kinds. ``None`` means
-            "generate all five". Unknown kinds are ignored.
+            "generate the default release-path templates". Unknown kinds are ignored.
         platform: ``"github"`` (default) writes ``.github/workflows/*.yml``
             using GitHub Actions; ``"azure-devops"`` writes
             ``.azuredevops/pipelines/*.yml`` using Azure DevOps Pipelines.
@@ -470,7 +480,7 @@ def generate_cicd_workflows(
         )
 
     if kinds is None:
-        kinds = ALL_KINDS
+        kinds = DEFAULT_KINDS
 
     directory = directory.resolve()
     effective_deploy_mode = deploy_mode
@@ -490,7 +500,8 @@ def generate_cicd_workflows(
     azd_substitutions = _azd_substitutions(platform, has_ailz_preflight(directory))
 
     seen: set[str] = set()
-    for kind in kinds:
+    for requested_kind in kinds:
+        kind = normalize_workflow_kind(requested_kind)
         if kind in seen or kind not in template_map:
             continue
         seen.add(kind)

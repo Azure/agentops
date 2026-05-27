@@ -254,18 +254,18 @@ The wizard does not ask for App Insights. Later runtime commands try to discover
 the connected App Insights resource through the Azure AI Projects SDK. If the
 project has no resource attached, or your identity cannot read it, run
 `agentops init --appinsights-connection-string "<connection-string>"` or set
-`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.azure/dev/.env`.
+`APPLICATIONINSIGHTS_CONNECTION_STRING` manually in `.agentops/.env`.
 
 If the first run shows starter defaults such as `Agent [my-agent:1]` or
 `Dataset path [.agentops/data/smoke.jsonl]`, replace them with your Travel Agent
 target and dataset. Those defaults only come from the scaffolded starter file.
 
-The wizard saves `agent` and `dataset` to `agentops.yaml`. The `.azure/dev/.env`
-file is intentional: AgentOps uses the same environment layout as `azd`, so local
-Azure values stay out of source control while eval, Doctor, and Cockpit commands
-resolve the same active environment. The Foundry project endpoint lives there
-instead of in `agentops.yaml`; if you force an App Insights connection string
-later, it is saved there too.
+The wizard saves `agent` and `dataset` to `agentops.yaml`. The `.agentops/.env`
+file is intentional: AgentOps keeps local Azure values out of source control
+while eval, Doctor, and Cockpit commands resolve the same workspace environment.
+The Foundry project endpoint lives there instead of in `agentops.yaml`; if you
+force an App Insights connection string later, it is saved there too. Existing
+azd workspaces keep using `.azure/<env>/.env`.
 
 For a hosted HTTP endpoint, add the endpoint protocol fields:
 
@@ -457,7 +457,7 @@ This exercises the AgentOps local runner, baseline comparison, normalized
 Generate the common release path:
 
 ```powershell
-agentops workflow generate --kinds pr,dev,qa,prod,watchdog --force
+agentops workflow generate --kinds pr,dev,qa,prod --force
 ```
 
 Because `--force` rewrites the PR workflow, reapply the tutorial action override
@@ -519,12 +519,12 @@ Use this loop in the video:
 | Trace learning | Export or curate traces that represent real issues. | `agentops eval promote-traces` turns reviewed traces into regression candidates. |
 
 If runtime discovery does not find a connected App Insights resource, or your
-identity cannot read it, set the connection string in the active azd env:
+identity cannot read it, set the connection string in the AgentOps local env:
 
 ```powershell
 agentops init --appinsights-connection-string "<connection-string>"
 agentops init show --reveal-secrets
-notepad .azure\dev\.env
+notepad .agentops\.env
 ```
 
 The env file should include:
@@ -574,7 +574,7 @@ Then load the connection string into the server terminal:
 
 ```powershell
 $env:APPLICATIONINSIGHTS_CONNECTION_STRING = (
-  Get-Content .azure\dev\.env |
+  Get-Content .agentops\.env |
   Where-Object { $_ -like "APPLICATIONINSIGHTS_CONNECTION_STRING=*" } |
   Select-Object -First 1
 ) -replace "^APPLICATIONINSIGHTS_CONNECTION_STRING=", ""

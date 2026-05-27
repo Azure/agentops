@@ -1,8 +1,9 @@
 """azd environment integration for AgentOps.
 
-AgentOps stores wizard-collected configuration in the same place ``azd``
-keeps environment variables: ``.azure/<env-name>/.env``. This module is the
-single source of truth for:
+AgentOps can share wizard-collected configuration with ``azd`` when a workspace
+already has, or explicitly requests, an azd environment. Fresh AgentOps-only
+workspaces use ``.agentops/.env`` instead. This module is the single source of
+truth for:
 
 * **Discovery** — find the active ``azd`` environment using the same rules
   Doctor already uses (``AZURE_ENV_NAME`` env var first, then
@@ -12,16 +13,16 @@ single source of truth for:
   ``KEY=VALUE`` rules as our :mod:`agentops.utils.dotenv_loader`.
 * **Writing** — line-preserving updates that keep comments, ordering, and
   untouched keys intact. Newly added keys go to the end of the file.
-* **Bootstrap** — when no ``.azure/`` exists yet, optionally create the
+* **Bootstrap** — when the caller deliberately opts into azd, create the
   minimal layout (``.azure/<name>/.env`` + ``.azure/config.json`` +
-  ``.azure/.gitignore``) so the AgentOps wizard never silently writes a
-  secret to a git-tracked file.
+  ``.azure/.gitignore``) so AgentOps never writes secrets to a git-tracked
+  file.
 
 Notes for reviewers:
 
 * **No new dependencies.** The parser/writer here use the same micro-format
   rules as ``dotenv_loader.parse_env_file``.
-* **azd-first, not azd-required.** If ``azd`` is installed we can call its
+* **azd-compatible, not azd-required.** If ``azd`` is installed we can call its
   CLI to mutate envs; if not, we fall back to direct line-preserving edits.
 * **Secret safety.** Whenever we create the ``.azure/`` directory we also
   drop a ``.gitignore`` that excludes ``*/.env`` so the wizard cannot leak

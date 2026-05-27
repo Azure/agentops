@@ -16,7 +16,7 @@ on **Azure Container Apps** as a GitHub Copilot Extension.
 # 1. Build & push the image (server-side build avoids local Docker).
 az acr build \
   --registry <your-acr> \
-  --image agentops-watchdog:1.0.0 \
+  --image agentops-doctor:1.0.0 \
   --file Dockerfile .
 
 # 2. Provision the Container App.
@@ -25,7 +25,7 @@ az deployment group create \
   --template-file main.bicep \
   --parameters \
       environmentName=<aca-environment> \
-      image=<your-acr>.azurecr.io/agentops-watchdog:1.0.0 \
+      image=<your-acr>.azurecr.io/agentops-doctor:1.0.0 \
       userAssignedIdentityId=<umi-resource-id> \
       appInsightsResourceId=<app-insights-resource-id> \
       foundryProjectEndpoint=<https://...>
@@ -50,7 +50,7 @@ Local development bypasses the GitHub signature check via
 
 ## What the agent does
 
-The container runs the watchdog analyzer on every chat turn,
+The container runs the Doctor analyzer on every chat turn,
 combining:
 
 1. AgentOps eval history (mounted at `/app/.agentops` or pulled at
