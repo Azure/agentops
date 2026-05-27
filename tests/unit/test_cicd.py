@@ -31,6 +31,7 @@ _DEPRECATED_NODE20_ACTION_REFS = (
     "actions/checkout@v4",
     "actions/setup-python@v5",
     "actions/upload-artifact@v4",
+    "actions/github-script@v7",
     "astral-sh/setup-uv@v3",
     "azure/login@v2",
 )
@@ -152,6 +153,20 @@ def test_github_templates_use_node24_ready_action_versions() -> None:
         content = path.read_text(encoding="utf-8")
         for ref in _DEPRECATED_NODE20_ACTION_REFS:
             assert ref not in content, f"{path.name} still uses {ref}"
+
+
+def test_github_templates_disable_setup_uv_cache_without_dependency_manifest() -> None:
+    template_dir = (
+        Path(__file__).parents[2] / "src" / "agentops" / "templates" / "workflows"
+    )
+
+    for path in template_dir.glob("*.yml"):
+        content = path.read_text(encoding="utf-8")
+        setup_uv_steps = content.count("uses: astral-sh/setup-uv@v7")
+        if setup_uv_steps:
+            assert content.count("enable-cache: false") == setup_uv_steps, (
+                f"{path.name} should disable setup-uv cache for every setup-uv step"
+            )
 
 
 def test_all_templates_pass_foundry_and_evaluator_environment(tmp_path: Path) -> None:
@@ -286,7 +301,7 @@ def test_auto_deploy_mode_uses_prompt_agent_for_foundry_prompt_config(tmp_path: 
     assert "Deploy (placeholder)" not in content
 
 
-def test_prompt_agent_config_uses_official_eval_action_when_supported(tmp_path: Path) -> None:
+def test_prompt_agent_config_uses_agentops_cloud_eval_when_supported(tmp_path: Path) -> None:
     (tmp_path / "agentops.yaml").write_text(
         "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
         encoding="utf-8",
@@ -299,17 +314,19 @@ def test_prompt_agent_config_uses_official_eval_action_when_supported(tmp_path: 
     result = generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
     content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
 
-    assert result.eval_runner == "official-ai-agent-evaluation"
+    assert result.eval_runner == "agentops-cloud"
     assert isinstance(_read_yaml(tmp_path / _PR_PATH), dict)
-    assert "microsoft/ai-agent-evals@v3-beta" in content
-    assert "python -m agentops.pipeline.official_eval prepare" in content
-    assert ".agentops/official-eval/input.json" in content
-    assert ".agentops/official-eval/result.json" in content
-    assert "Record official eval result" in content
-    assert "agentops eval run" not in content
+    assert "Prepare AgentOps cloud eval config" in content
+    assert "Run AgentOps Foundry cloud eval" in content
+    assert 'data["execution"] = "cloud"' in content
+    assert 'data["publish"] = True' in content
+    assert 'agentops eval run --config "$AGENTOPS_CI_CONFIG" --output ".agentops/results/latest"' in content
+    assert ".agentops/results/latest/results.json" in content
+    assert "microsoft/ai-agent-evals@v3-beta" not in content
+    assert "python -m agentops.pipeline.official_eval prepare" not in content
 
 
-def test_official_eval_action_can_point_to_preview_fork(
+def test_official_eval_action_override_does_not_affect_default_cloud_gate(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -326,8 +343,8 @@ def test_official_eval_action_can_point_to_preview_fork(
     generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
     content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
 
-    assert "uses: placerda/ai-agent-evals@v3-beta" in content
-    assert "AGENTOPS_OFFICIAL_EVAL_ACTION: placerda/ai-agent-evals@v3-beta" in content
+    assert "placerda/ai-agent-evals@v3-beta" not in content
+    assert "Run AgentOps Foundry cloud eval" in content
 
 
 def test_auto_deploy_mode_uses_azd_when_azure_yaml_exists(tmp_path: Path) -> None:
@@ -611,7 +628,7 @@ def test_cli_next_steps_for_pr_only_do_not_request_deploy_envs(
 
     assert result.exit_code == 0
     out = result.stdout
-    assert "Microsoft Foundry AI Agent Evaluation" in out
+    assert "AgentOps cloud eval in Foundry" in out
     assert "used only by deploy workflows" in out
     assert "create GitHub environment: dev" in out
     assert "qa" not in out
@@ -723,7 +740,7 @@ def test_azure_devops_prompt_agent_deploy_mode_uses_candidate_gate(tmp_path: Pat
     assert "./agentops/deploy.sh" not in content
 
 
-def test_azure_devops_supported_prompt_agent_uses_official_eval_task(tmp_path: Path) -> None:
+def test_azure_devops_supported_prompt_agent_uses_agentops_cloud_eval(tmp_path: Path) -> None:
     (tmp_path / "agentops.yaml").write_text(
         "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
         encoding="utf-8",
@@ -740,16 +757,18 @@ def test_azure_devops_supported_prompt_agent_uses_official_eval_task(tmp_path: P
     )
     content = (tmp_path / _ADO_DEV).read_text(encoding="utf-8")
 
-    assert result.eval_runner == "official-ai-agent-evaluation"
+    assert result.eval_runner == "agentops-cloud"
     assert isinstance(_read_yaml(tmp_path / _ADO_DEV), dict)
-    assert "AIAgentEvaluation@2" in content
-    assert "python -m agentops.pipeline.official_eval prepare" in content
-    assert "Record official eval result" in content
-    assert "targetPath: .agentops/official-eval" in content
-    assert "agentops eval run" not in content
+    assert "Prepare AgentOps cloud eval config" in content
+    assert "Run AgentOps Foundry cloud eval" in content
+    assert 'data["execution"] = "cloud"' in content
+    assert 'agentops eval run --config "$(AGENTOPS_CI_CONFIG)" --output ".agentops/results/latest"' in content
+    assert "targetPath: .agentops/results/latest" in content
+    assert "AIAgentEvaluation@2" not in content
+    assert "python -m agentops.pipeline.official_eval prepare" not in content
 
 
-def test_official_eval_ado_task_can_be_overridden(
+def test_official_eval_ado_task_override_does_not_affect_default_cloud_gate(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -770,8 +789,8 @@ def test_official_eval_ado_task_can_be_overridden(
     )
     content = (tmp_path / _ADO_DEV).read_text(encoding="utf-8")
 
-    assert "AIAgentEvaluationPreview@2" in content
-    assert "AGENTOPS_OFFICIAL_EVAL_ADO_TASK: AIAgentEvaluationPreview@2" in content
+    assert "AIAgentEvaluationPreview@2" not in content
+    assert "Run AgentOps Foundry cloud eval" in content
 
 
 def test_unknown_platform_raises(tmp_path: Path) -> None:

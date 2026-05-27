@@ -61,6 +61,8 @@ jobs:
       # wheels so the speed-up is very visible in CI.
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
 
       - name: Install AgentOps Toolkit
         run: |

@@ -20,6 +20,7 @@ OFFICIAL_EVAL_ADO_TASK = "AIAgentEvaluation@2"
 OFFICIAL_EVAL_ACTION_ENV = "AGENTOPS_OFFICIAL_EVAL_ACTION"
 OFFICIAL_EVAL_ADO_TASK_ENV = "AGENTOPS_OFFICIAL_EVAL_ADO_TASK"
 AGENTOPS_LOCAL_RUNNER = "agentops-local"
+AGENTOPS_CLOUD_RUNNER = "agentops-cloud"
 
 _LATENCY_PRESET = "avg_latency_seconds"
 _OFFICIAL_EVALUATORS: dict[str, str] = {
@@ -138,7 +139,7 @@ def recommended_eval_runner(directory: Path) -> str:
     """Return the safest evaluation runner for generated CI/CD workflows."""
 
     support = analyze_official_eval_support(directory / "agentops.yaml")
-    return support.runner if support.eligible else AGENTOPS_LOCAL_RUNNER
+    return AGENTOPS_CLOUD_RUNNER if support.eligible else AGENTOPS_LOCAL_RUNNER
 
 
 def prepare_official_eval(

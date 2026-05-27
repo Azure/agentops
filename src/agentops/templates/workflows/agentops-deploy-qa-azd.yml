@@ -105,6 +105,9 @@ __AILZ_PREFLIGHT_COMMAND__
           python-version: "3.11"
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
+
       - name: Install AgentOps Toolkit
         run: uv pip install --system "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@main"
 __EVAL_STEPS__

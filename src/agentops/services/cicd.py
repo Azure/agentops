@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Mapping, Sequence, Tuple
 
 from agentops.pipeline.official_eval import (
+    AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
     OFFICIAL_EVAL_ACTION_ENV,
     OFFICIAL_EVAL_ADO_TASK_ENV,
@@ -23,6 +24,8 @@ from agentops.services.workflow_analysis import (
 
 
 _TEMPLATE_PACKAGE = "agentops.templates"
+_CLOUD_EVAL_CONFIG_NAME = ".agentops.cloud.yaml"
+_CI_EVAL_OUTPUT = ".agentops/results/latest"
 
 # CI/CD platforms supported by ``agentops workflow generate``.
 PLATFORMS: Tuple[str, ...] = ("github", "azure-devops")
@@ -237,6 +240,52 @@ def _eval_substitutions(
 
 
 def _github_eval_substitutions(eval_runner: str, config_path: str) -> Mapping[str, str]:
+    if eval_runner == AGENTOPS_CLOUD_RUNNER:
+        return {
+            "__EVAL_STEPS__": f"""      - name: Prepare AgentOps cloud eval config
+        env:
+          AGENTOPS_SOURCE_CONFIG: "{config_path}"
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from agentops.utils.yaml import load_yaml, save_yaml
+
+          source = Path(os.environ["AGENTOPS_SOURCE_CONFIG"])
+          target = source.with_name("{_CLOUD_EVAL_CONFIG_NAME}")
+          data = load_yaml(source)
+          data["execution"] = "cloud"
+          data["publish"] = True
+          save_yaml(target, data)
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env_file:
+              env_file.write(f"AGENTOPS_CI_CONFIG={{target}}\\n")
+          print(f"Prepared AgentOps cloud eval config: {{target}}")
+          PY
+
+      - name: Run AgentOps Foundry cloud eval
+        id: eval
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{{{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}}}
+          AZURE_OPENAI_ENDPOINT: ${{{{ vars.AZURE_OPENAI_ENDPOINT }}}}
+          AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
+          APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
+        run: |
+          set +e
+          agentops eval run --config "$AGENTOPS_CI_CONFIG" --output "{_CI_EVAL_OUTPUT}"
+          ec=$?
+          echo "exit_code=$ec" >> "$GITHUB_OUTPUT"
+          if [ $ec -eq 0 ]; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          elif [ $ec -eq 2 ]; then
+            echo "result=threshold_failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=error" >> "$GITHUB_OUTPUT"
+          fi
+          exit $ec""",
+            "__EVAL_ARTIFACT_PATHS__": f"""{_CI_EVAL_OUTPUT}/results.json
+            {_CI_EVAL_OUTPUT}/report.md
+            {_CI_EVAL_OUTPUT}/cloud_evaluation.json""",
+        }
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         official_action = official_eval_action_ref()
         return {
@@ -339,6 +388,49 @@ def _ado_eval_substitutions(
     *,
     base_indent: int,
 ) -> Mapping[str, str]:
+    if eval_runner == AGENTOPS_CLOUD_RUNNER:
+        return {
+            "__EVAL_TASKS__": _indent_block(
+                f"""- bash: |
+    python - <<'PY'
+    import os
+    from pathlib import Path
+    from agentops.utils.yaml import load_yaml, save_yaml
+
+    source = Path(os.environ["AGENTOPS_SOURCE_CONFIG"])
+    target = source.with_name("{_CLOUD_EVAL_CONFIG_NAME}")
+    data = load_yaml(source)
+    data["execution"] = "cloud"
+    data["publish"] = True
+    save_yaml(target, data)
+    print(f"##vso[task.setvariable variable=AGENTOPS_CI_CONFIG]{{target}}")
+    print(f"Prepared AgentOps cloud eval config: {{target}}")
+    PY
+  displayName: Prepare AgentOps cloud eval config
+  env:
+    AGENTOPS_SOURCE_CONFIG: "{config_path}"
+
+- task: AzureCLI@2
+  displayName: Run AgentOps Foundry cloud eval
+  inputs:
+    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      set +e
+      agentops eval run --config "$(AGENTOPS_CI_CONFIG)" --output "{_CI_EVAL_OUTPUT}"
+      code=$?
+      echo "##vso[task.setvariable variable=AGENTOPS_EVAL_EXIT_CODE]$code"
+      exit $code
+  env:
+    AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
+    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+    AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
+                base_indent,
+            ),
+            "__EVAL_ARTIFACT_TARGET__": _CI_EVAL_OUTPUT,
+        }
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         official_task = official_eval_ado_task_ref()
         return {

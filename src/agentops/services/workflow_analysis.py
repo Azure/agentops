@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from agentops.core.agentops_config import classify_agent
 from agentops.pipeline.official_eval import (
+    AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
     OFFICIAL_EVAL_RUNNER,
     analyze_official_eval_support,
@@ -261,12 +262,12 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
         official_eval_reasons = list(official_support.reasons)
         official_evaluators = list(official_support.official_evaluators)
         if official_support.eligible:
-            recommended_eval_runner = OFFICIAL_EVAL_RUNNER
+            recommended_eval_runner = AGENTOPS_CLOUD_RUNNER
             signals.append(
                 WorkflowSignal(
-                    "official_ai_agent_evaluation",
-                    "Foundry eval runner",
-                    "prompt agent and dataset are compatible; CI can use Microsoft Foundry evaluation.",
+                    "agentops_cloud_evaluation",
+                    "AgentOps cloud eval runner",
+                    "prompt agent and dataset are compatible; CI can run Foundry cloud eval with AgentOps threshold enforcement.",
                     "agentops.yaml",
                 )
             )
@@ -352,6 +353,8 @@ def recommended_eval_runner(directory: Path) -> str:
 
 
 def _display_eval_runner(eval_runner: str) -> str:
+    if eval_runner == AGENTOPS_CLOUD_RUNNER:
+        return "AgentOps cloud eval in Foundry"
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         return "Microsoft Foundry AI Agent Evaluation"
     if eval_runner == AGENTOPS_LOCAL_RUNNER:
@@ -656,6 +659,8 @@ def _deploy_mode_check_detail(mode: str) -> str:
 
 
 def _eval_runner_check_detail(eval_runner: str) -> str:
+    if eval_runner == AGENTOPS_CLOUD_RUNNER:
+        return "Foundry executes the eval; AgentOps downloads results, applies thresholds, and writes evidence."
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         return "Prompt agent plus dataset fit Foundry eval; AgentOps keeps evidence."
     return "AgentOps runs local eval and writes normalized results/report artifacts."
@@ -683,7 +688,7 @@ def _signal_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str, str]]:
 
 
 def _foundry_eval_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]:
-    selected = analysis.recommended_eval_runner == OFFICIAL_EVAL_RUNNER
+    selected = analysis.recommended_eval_runner in {AGENTOPS_CLOUD_RUNNER, OFFICIAL_EVAL_RUNNER}
     if selected:
         rows = [
             (
@@ -698,7 +703,7 @@ def _foundry_eval_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]
                 "Dataset",
                 analysis.official_eval_reasons[1]
                 if len(analysis.official_eval_reasons) > 1
-                else "Compatible with Microsoft Foundry eval.",
+                else "Compatible with Foundry cloud eval.",
             ),
         ]
         if analysis.official_evaluators:
@@ -715,6 +720,7 @@ def _signal_type(key: str) -> str:
     return {
         "agentops_config": "Config",
         "official_ai_agent_evaluation": "Eval runner",
+        "agentops_cloud_evaluation": "Eval runner",
         "azd_project": "Deploy mode",
         "prompt_file": "Prompt source",
         "bicep_infra": "Infrastructure",
@@ -948,20 +954,32 @@ def _deployment_strategy(mode: str, network_isolated: bool, ailz_preflight: bool
 
 
 def _eval_strategy(eval_runner: str) -> str:
+    if eval_runner == AGENTOPS_CLOUD_RUNNER:
+        return (
+            "Use AgentOps cloud eval so Foundry executes the prompt-agent eval "
+            "and AgentOps applies thresholds to normalized results."
+        )
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         return (
             "Use Microsoft Foundry AI Agent Evaluation for prompt-agent execution, "
-            "then keep AgentOps Doctor/evidence as the release-readiness record."
+            "then keep AgentOps Doctor/evidence as advisory provenance."
         )
     return "Use AgentOps local eval as the CI gate and normalized results artifact."
 
 
 def _eval_stage(eval_runner: str) -> WorkflowStage:
+    if eval_runner == AGENTOPS_CLOUD_RUNNER:
+        return WorkflowStage(
+            "PR evaluation gate",
+            "Foundry + AgentOps",
+            "Run Foundry cloud evaluation and let AgentOps enforce thresholds before merge.",
+            ["agentops eval run --config <cloud-eval-config> --output .agentops/results/latest"],
+        )
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         return WorkflowStage(
             "PR evaluation gate",
             "Microsoft Foundry + AgentOps",
-            "Run Microsoft Foundry AI Agent Evaluation and publish AgentOps-prepared inputs.",
+            "Run Microsoft Foundry AI Agent Evaluation as advisory provenance.",
             [
                 "python -m agentops.pipeline.official_eval prepare",
                 official_eval_action_ref(),
@@ -1026,6 +1044,8 @@ def _stages(
                     (
                         "python -m agentops.pipeline.official_eval prepare"
                         if eval_runner == OFFICIAL_EVAL_RUNNER
+                        else "agentops eval run --config <cloud-eval-config>"
+                        if eval_runner == AGENTOPS_CLOUD_RUNNER
                         else "agentops eval run"
                     ),
                 ],
@@ -1055,7 +1075,12 @@ def _next_steps(
         "Run `agentops eval run` locally and commit agentops.yaml plus datasets.",
         f"Generate workflows with `agentops workflow generate --deploy-mode {mode}`.",
     ]
-    if eval_runner == OFFICIAL_EVAL_RUNNER:
+    if eval_runner == AGENTOPS_CLOUD_RUNNER:
+        steps.insert(
+            1,
+            "Set AZURE_OPENAI_DEPLOYMENT so Foundry cloud eval can judge responses, then review AgentOps results.json/report.md after the run.",
+        )
+    elif eval_runner == OFFICIAL_EVAL_RUNNER:
         steps.insert(
             1,
             "Set AZURE_OPENAI_DEPLOYMENT so Microsoft Foundry AI Agent Evaluation can judge responses.",

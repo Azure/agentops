@@ -236,10 +236,9 @@ def _append_doctor_finding_summary(lines: list[str], doctor: dict[str, Any]) -> 
 def _latest_eval(root: Path, *, official_eval: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     local_eval = _agentops_eval_status(root)
     official = official_eval if official_eval is not None else _official_eval_status(root)
-    if _is_eval_available(official) and (
-        not _is_eval_available(local_eval)
-        or _evidence_mtime(official) > _evidence_mtime(local_eval)
-    ):
+    if _is_eval_available(local_eval):
+        return local_eval
+    if _is_eval_available(official):
         return official
     return local_eval
 
@@ -283,9 +282,10 @@ def _agentops_eval_status(root: Path) -> dict[str, Any]:
         except (TypeError, ValueError):
             passed = None
 
+    runner = "agentops-cloud" if cloud else "agentops-local"
     return {
         "status": "ok",
-        "runner": "agentops-local",
+        "runner": runner,
         "path": str(path),
         "passed": passed,
         "target": target.get("raw") or config.get("agent"),
@@ -468,7 +468,7 @@ def _add_eval_check(
 ) -> None:
     status = latest_eval.get("status")
     if status != "ok":
-        message = "No latest evaluation result was found; run `agentops eval run` or the generated official-eval workflow before treating this agent as production-ready."
+        message = "No latest evaluation result was found; run `agentops eval run` or the generated eval workflow before treating this agent as production-ready."
         blockers.append(message)
         checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="blocked", summary=message, evidence=latest_eval))
         return
@@ -479,13 +479,20 @@ def _add_eval_check(
             checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="blocked", summary=message, evidence=latest_eval))
             return
         if latest_eval.get("passed") is True:
-            message = "Official AI Agent Evaluation completed successfully; the Microsoft job result is the release gate."
-            ready.append(message)
-            checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="ready", summary=message, evidence=latest_eval))
+            message = (
+                "Official AI Agent Evaluation completed, but it does not emit "
+                "AgentOps-normalized threshold evidence; run `agentops eval run` "
+                "so release evidence can enforce quality thresholds."
+            )
+            blockers.append(message)
+            checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="blocked", summary=message, evidence=latest_eval))
             return
-        message = "Official AI Agent Evaluation input is present, but no pass/fail result was recorded."
-        warnings.append(message)
-        checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="warning", summary=message, evidence=latest_eval))
+        message = (
+            "Official AI Agent Evaluation input is present, but no "
+            "AgentOps-normalized pass/fail result was recorded."
+        )
+        blockers.append(message)
+        checks.append(ReleaseEvidenceCheck(name="Latest eval gate", status="blocked", summary=message, evidence=latest_eval))
         return
     if latest_eval.get("passed") is False:
         message = "Latest evaluation failed one or more thresholds."

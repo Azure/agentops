@@ -53,7 +53,7 @@ def test_analysis_recommends_prompt_agent_without_azd(tmp_path: Path) -> None:
     assert any("prompt_deploy stage" in " ".join(stage.commands) for stage in analysis.stages)
 
 
-def test_analysis_recommends_official_eval_for_supported_prompt_agent(tmp_path: Path) -> None:
+def test_analysis_recommends_cloud_eval_for_supported_prompt_agent(tmp_path: Path) -> None:
     (tmp_path / "agentops.yaml").write_text(
         "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
         encoding="utf-8",
@@ -68,15 +68,15 @@ def test_analysis_recommends_official_eval_for_supported_prompt_agent(tmp_path: 
     markdown = render_workflow_analysis(analysis, "markdown")
 
     assert analysis.recommended_deploy_mode == "prompt-agent"
-    assert analysis.recommended_eval_runner == "official-ai-agent-evaluation"
-    assert recommended_eval_runner(tmp_path) == "official-ai-agent-evaluation"
+    assert analysis.recommended_eval_runner == "agentops-cloud"
+    assert recommended_eval_runner(tmp_path) == "agentops-cloud"
     assert "builtin.coherence" in analysis.official_evaluators
-    assert any(signal.key == "official_ai_agent_evaluation" for signal in analysis.signals)
+    assert any(signal.key == "agentops_cloud_evaluation" for signal in analysis.signals)
     assert "Recommendation" in rendered
     assert "evaluate" in rendered
-    assert "Microsoft Foundry AI Agent Evaluation" in rendered
-    assert "prompt agent and dataset are compatible" in rendered
-    assert "evaluation. (agentops.yaml)" in rendered
+    assert "AgentOps cloud eval in Foundry" in rendered
+    assert "Foundry cloud eval" in rendered
+    assert "AgentOps threshold enforcement" in rendered
     assert "workflow edits" in rendered
     assert "not needed - generated workflow should work as-is" in rendered
     assert "Copilot skills" in rendered

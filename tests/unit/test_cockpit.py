@@ -616,6 +616,67 @@ def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
     ]["detail"]
 
 
+def test_readiness_detects_agentops_cloud_eval_workflow_and_evidence(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "agentops-pr.yml").write_text(
+        "\n".join(
+            [
+                "name: AgentOps PR",
+                "on:",
+                "  schedule:",
+                "    - cron: '0 3 * * *'",
+                "jobs:",
+                "  eval:",
+                "    steps:",
+                "      - name: Prepare AgentOps cloud eval config",
+                "        run: data[\"execution\"] = \"cloud\"",
+                "      - name: Run AgentOps Foundry cloud eval",
+                "        run: agentops eval run --config \"$AGENTOPS_CI_CONFIG\"",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    evidence_dir = tmp_path / ".agentops" / "release" / "latest"
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "evidence.json").write_text(
+        json.dumps(
+            {
+                "status": "ready",
+                "generated_at": "2025-01-01T00:00:00Z",
+                "ready": ["Latest eval gate"],
+                "warnings": [],
+                "blockers": [],
+                "latest_eval": {"runner": "agentops-cloud"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog={"has_history": True, "latest_findings": []},
+    )
+
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    assert by_title["CI eval gate (workflow on PRs)"]["status"] == "ok"
+    assert "AgentOps cloud eval" in by_title["CI eval gate (workflow on PRs)"][
+        "detail"
+    ]
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert "AgentOps cloud eval" in by_title["Scheduled eval (drift watch)"][
+        "detail"
+    ]
+    assert by_title["Release evidence pack"]["status"] == "ok"
+    assert "AgentOps cloud eval in Foundry" in by_title["Release evidence pack"][
+        "detail"
+    ]
+
+
 def test_cockpit_surfaces_official_eval_artifacts_without_local_runs(tmp_path: Path):
     official_dir = tmp_path / ".agentops" / "official-eval"
     official_dir.mkdir(parents=True)

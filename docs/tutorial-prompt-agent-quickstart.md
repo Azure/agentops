@@ -7,9 +7,10 @@ and Cockpit.
 
 This path validates the Foundry-native route:
 
-- Foundry owns the prompt agent runtime and Microsoft Foundry AI Agent Evaluation.
+- Foundry owns the prompt agent runtime, cloud evaluation execution, traces, and
+  Operate dashboards.
 - AgentOps owns repo-side readiness: `agentops.yaml`, CI gates, Doctor,
-  release evidence, and Cockpit.
+  release evidence, threshold enforcement, and Cockpit.
 
 ## Repository set used in this tutorial
 
@@ -20,7 +21,7 @@ reference, and skill guidance aligned in one cohesive demo environment.
 | Repository | Role in the journey |
 |---|---|
 | `Azure/agentops` | Provides the AgentOps CLI, workflow generation, Doctor, Cockpit, and release evidence flow. |
-| `microsoft/ai-agent-evals` | Provides the Foundry-native PR evaluation gate used by the generated workflow. |
+| `microsoft/ai-agent-evals` | Reference for the Foundry-native eval Action/task. AgentOps now invokes Foundry cloud eval directly for the default PR gate so it can enforce thresholds and write normalized evidence. |
 | `microsoft/foundry-toolkit` | Frames the VS Code create/debug experience and the Operate handoff after a prompt version is ready. |
 | `microsoft/azure-skills` | Connects Copilot guidance to Foundry observe, CI/CD, regression, and trace follow-through. |
 | `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference for the Foundry Observe/Optimize/Protect loop: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
@@ -49,7 +50,7 @@ prompts.
 | Create the agent | Foundry portal, Foundry SDK, Foundry Toolkit, or `microsoft-foundry` skill | Create and publish `travel-agent`. | No ownership; AgentOps consumes the published target. |
 | Try and debug | Foundry playground, VS Code, Copilot Chat | Validate behavior before adding release gates. | Optional quick eval later. |
 | Observe the run | Foundry Traces, Application Insights, Foundry Operate | Inspect the first trace, quality signals, and conversation context. | Later checks telemetry wiring and links evidence back to Foundry. |
-| Evaluate in CI | Official Microsoft AI Agent Evaluation | Run Foundry-native evaluation for `travel-agent:<version>`. | Generates routing and records evidence. |
+| Evaluate in CI | AgentOps cloud eval in Foundry | Run Foundry-native evaluation for `travel-agent:<version>`. | Generates the gate, enforces thresholds, writes `results.json`/`report.md`, and records evidence. |
 | Review readiness | AgentOps Doctor and Cockpit | Check CI, eval, telemetry, evidence, and links. | Primary owner of repo-side release proof. |
 
 ## 1. Create the Travel Agent in Foundry
@@ -254,19 +255,21 @@ The Copilot skills are installed later, in step 7, with
 agentops workflow analyze --format text
 ```
 
-For `agent: name:version`, AgentOps should recommend the Foundry eval runner:
+For `agent: name:version`, AgentOps should recommend AgentOps cloud eval in
+Foundry:
 
 ```text
 Recommendation
   deploy          prompt-agent
-  evaluate        Microsoft Foundry AI Agent Evaluation
+  evaluate        AgentOps cloud eval in Foundry
   workflow edits  not needed - generated workflow should work as-is
   Copilot skills  installed - available for workflow adaptation handoff
 ```
 
-That means generated CI uses the Microsoft Foundry AI Agent Evaluation
-action/task for the eval step, then uses AgentOps to collect evidence and
-readiness signals.
+That means generated CI asks Foundry to execute the prompt-agent evaluation, but
+the gate still runs through `agentops eval run`. AgentOps writes
+`.agentops/results/latest/results.json` and `report.md`, applies thresholds, and
+returns exit code `2` when quality fails so the PR cannot merge silently.
 
 ## 7. Generate the PR gate and Doctor evidence
 
@@ -364,42 +367,28 @@ If you want a different repo, environment name, or secret/variable source, say
 that in the prompt before it starts. If a required value such as the evaluator
 model deployment is missing, it will ask you.
 
-The PR workflow should contain the Microsoft Foundry eval action:
+The PR workflow should contain the AgentOps cloud-eval steps:
 
 ```text
-microsoft/ai-agent-evals@v3-beta
+Prepare AgentOps cloud eval config
+Run AgentOps Foundry cloud eval
+agentops eval run --config "$AGENTOPS_CI_CONFIG" --output ".agentops/results/latest"
 ```
 
-The generated workflow uses the official Microsoft Action by default. Keep that
-default for product and release branches. In this tutorial branch only, switch
-the Action reference so the CLI, tutorial steps, and eval Action all come from
-the same tutorial-aligned repository set while you are walking through the demo.
-The evaluation still runs and is reviewed in Foundry; this change only controls
-which GitHub Action implementation the PR gate calls.
+No tutorial-only Action replacement is needed. The workflow creates a temporary
+`.agentops.cloud.yaml` beside `agentops.yaml`, sets `execution: cloud`, and runs
+the normal AgentOps evaluator command. That gives you both views: Foundry owns
+the managed evaluation run, and AgentOps owns the PR threshold decision.
 
-For this tutorial branch, point the generated workflow at the tutorial reference
-action:
-
-```powershell
-(Get-Content .github\workflows\agentops-pr.yml) `
-  -replace 'microsoft/ai-agent-evals@v3-beta', 'placerda/ai-agent-evals@main' |
-  Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
-```
-
-Use this override only for the tutorial walkthrough. In real product or release
-branches, keep `microsoft/ai-agent-evals@v3-beta` unless your team intentionally
-pins a different controlled reference.
-
-After the replacement, the workflow contract stays the same: it prepares the
-Foundry eval input, records provenance for review, and lets AgentOps attach
-release evidence. The GitHub run summary shows the Doctor finding summary from
-`evidence.md`, so a blocked readiness result names the critical items to fix
-without hunting through logs. The detailed quality scores stay in Foundry
-Evaluations:
+The GitHub run summary shows `report.md` first, including pass/fail thresholds
+and the Foundry cloud-session link, then appends the Doctor finding summary from
+`evidence.md`. If readiness is blocked, the summary names the critical Doctor
+items to fix without hunting through logs. The relevant artifacts are:
 
 ```text
-.agentops/official-eval/metadata.json
-.agentops/official-eval/result.json
+.agentops/results/latest/results.json
+.agentops/results/latest/report.md
+.agentops/results/latest/cloud_evaluation.json
 .agentops/release/latest/evidence.md
 ```
 
@@ -447,7 +436,7 @@ Foundry.
 Do not continue to the intentional regression until this baseline run is green.
 It is okay if the run summary includes `Release readiness: blocked` in the
 Doctor evidence section; for this PR-gate tutorial, that section is advisory.
-If the failed step is **Run official AI Agent Evaluation** and the log says the
+If the failed step is **Run AgentOps Foundry cloud eval** and the log says the
 principal `lacks the required data action`
 `Microsoft.CognitiveServices/accounts/AIServices/agents/read`, the workflow
 authenticated to Azure but the GitHub OIDC app/service principal cannot read
@@ -495,13 +484,14 @@ Reader alone is not enough for this data-plane call.
 
    - In GitHub, wait for **Checks** -> **AgentOps PR / Eval (PR gate)** to
      finish, then click **Details**.
-   - Still in GitHub, on the workflow run **Summary**, find **Azure AI
-     Evaluation**. The table shows the exact regressed Agent ID and its pass
-     rates. Confirm it says `travel-agent:3`.
-   - Still in GitHub, click **View run results** in that table. This opens
-     Foundry in a new page for the regressed agent run. Keep this Foundry page
-     open and use **Overall metric results** as the quality source of truth; the
-     GitHub artifact is only provenance.
+   - Still in GitHub, on the workflow run **Summary**, find **AgentOps PR Eval**.
+     Confirm the **Target** is `travel-agent:3`, then review the **Metrics** and
+     **Thresholds** tables. A regression should show failed threshold rows here,
+     not only a generic failed job.
+   - In the same summary, open the **Foundry URL** under **Foundry Cloud
+     Session**. This opens Foundry for the regressed eval run. Keep this page
+     open and use **Overall metric results** as the managed-eval view; the
+     AgentOps report is the repo-side gate and evidence.
    - Now in Foundry, click the back arrow to return to **Evaluations**. Open the
      earlier green run for `travel-agent:2` in another browser tab.
    - Compare the two Foundry pages side by side: pass rate and average score in
@@ -574,8 +564,8 @@ agentops cockpit --workspace .
 ```
 
 Open the local URL printed by the command. The Cockpit should show Foundry
-connection, Microsoft Foundry eval readiness, Doctor findings, release
-evidence, CI/CD, and next actions.
+connection, AgentOps cloud-eval readiness, Doctor findings, release evidence,
+CI/CD, and next actions.
 
 ## Success criteria
 
@@ -584,10 +574,9 @@ You are done when:
 - The Travel Agent exists in Foundry and has a published `travel-agent:<version>` reference.
 - At least one playground interaction appears in Foundry Traces, and you can
   open the Trace ID to inspect the spans and input/output details.
-- `agentops workflow analyze` selects Microsoft Foundry AI Agent Evaluation.
-- `agentops workflow generate` creates a PR workflow with the Microsoft Action
-  reference for product/release branches, and the tutorial reference action only
-  for the tutorial branch.
+- `agentops workflow analyze` selects AgentOps cloud eval in Foundry.
+- `agentops workflow generate` creates a PR workflow that runs
+  `agentops eval run` in cloud mode and publishes normalized AgentOps results.
 - You published a deliberately regressed prompt version, saw the eval/pipeline
   signal move, restored the prompt, and reran the gate.
 - `agentops doctor --evidence-pack` writes

@@ -88,10 +88,13 @@ Exit codes:
 | Generic HTTP/JSON endpoint | no | yes | Use local runner. |
 | Raw model deployment | no | yes | Use local runner. |
 
-If a CI pipeline only needs a supported Foundry-native eval and does not need
-AgentOps baselines, reports, Doctor readiness, release evidence, or local
-fallback, recommend the official AI Agent Evaluation GitHub Action or Azure
-DevOps extension instead of wrapping it in AgentOps.
+For prompt-agent CI gates, prefer AgentOps cloud eval because Foundry executes
+the managed eval while AgentOps enforces thresholds and writes normalized
+`results.json` / `report.md` artifacts. The official AI Agent Evaluation GitHub
+Action or Azure DevOps extension is still useful for standalone platform-native
+validation, but do not substitute it for the AgentOps PR gate when the user needs
+threshold enforcement, baselines, Doctor readiness, release evidence, or local
+fallback.
 
 ## Step 5 - Inspect results and release evidence
 

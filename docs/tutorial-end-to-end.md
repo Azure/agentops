@@ -85,7 +85,7 @@ evaluation runner, skill guidance, and AgentOps readiness evidence.
 | Repository | Role in the combined story |
 |---|---|
 | `Azure/agentops` | Repo-side release readiness, Doctor, Cockpit, and evidence layer. |
-| `microsoft/ai-agent-evals` | Foundry-native CI/CD evaluation runner for prompt-agent gates and compare links. |
+| `microsoft/ai-agent-evals` | Reference for Foundry-native eval Action/task behavior. AgentOps cloud eval is the default prompt-agent gate so threshold failures become normalized PR evidence. |
 | `microsoft/foundry-toolkit` | VS Code create/debug/deploy surface for the Operate/readiness handoff. |
 | `microsoft/azure-skills` | Microsoft Foundry skill guidance for observe, CI/CD monitoring, regression, and trace follow-through. |
 | `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference path for Foundry Observe/Optimize/Protect: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
@@ -288,14 +288,14 @@ Expected result:
 
 | Agent target | Runner |
 |---|---|
-| `agent: name:version` | Microsoft Foundry AI Agent Evaluation |
+| `agent: name:version` | AgentOps cloud eval in Foundry |
 | `agent: https://...` | `agentops-local` |
 | `agent: model:<deployment>` | `agentops-local` |
 
-This is the key alignment rule. Foundry-native prompt agents use the Microsoft
-Foundry AI Agent Evaluation action/task where possible. AgentOps keeps the local
-path for hosted endpoints, models, unsupported evaluator mappings, and
-repo-specific threshold evidence.
+This is the key alignment rule. Foundry-native prompt agents run cloud eval in
+Foundry through `agentops eval run`, so AgentOps can enforce thresholds and write
+repo-side evidence. AgentOps keeps the local path for hosted endpoints, models,
+unsupported evaluator mappings, and fallback cases.
 
 ## 5. Run the first eval
 
@@ -312,7 +312,8 @@ agentops eval run --output .agentops\results\manual-smoke
 code .agentops\results\manual-smoke\report.md
 ```
 
-For prompt agents, generate the workflow and let CI call the official runner:
+For prompt agents, generate the workflow and let CI call AgentOps cloud eval in
+Foundry:
 
 ```powershell
 agentops workflow generate --kinds pr --force
@@ -338,48 +339,30 @@ OIDC principal has Foundry User access, and show me the plan before changing
 GitHub or Azure.
 ```
 
-That value is not an `agentops init` answer. It tells the Microsoft Foundry AI
-Agent Evaluation runner which model deployment should judge responses:
+That value is not an `agentops init` answer. It tells the Foundry cloud eval
+which model deployment should judge responses:
 
 ```text
 AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
 ```
 
-The generated workflow prepares Microsoft Foundry eval input under:
+The generated workflow prepares a temporary cloud config, runs
+`agentops eval run`, and writes normalized results under:
 
 ```text
-.agentops/official-eval/
+.agentops/results/latest/
 ```
 
-and records release evidence after the gate.
+It also records release evidence after the gate.
 
 In PR workflows, that Doctor evidence is advisory: the eval step is the merge
 gate, and `Release readiness: blocked` means the evidence found release work to
 review. Production deploy workflows still run Doctor as a critical release gate.
 
-The generator uses the Microsoft Action reference by default because that is the
-right baseline for product and release branches. The tutorial branch has a
-narrower goal: keep the full ecosystem walkthrough aligned with the repository
-set. AgentOps comes from the tutorial reference, the prompt-agent gate uses the
-matching tutorial eval action, and Foundry remains the place where the
-evaluation run is executed and reviewed.
-
-For that reason, point the generated PR workflow at the tutorial reference
-action:
-
-```powershell
-(Get-Content .github\workflows\agentops-pr.yml) `
-  -replace 'microsoft/ai-agent-evals@v3-beta', 'placerda/ai-agent-evals@main' |
-  Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
-```
-
-Use this override only in the tutorial branch. Product and release branches
-should keep the Microsoft Action reference unless your team intentionally pins a
-controlled reference.
-
-After the replacement, the workflow contract stays the same: it prepares the
-Foundry eval input, records provenance for review, and lets AgentOps attach
-release evidence. The detailed quality scores stay in Foundry Evaluations.
+No tutorial-only Action replacement is needed. The generated workflow keeps the
+evaluation in Foundry while AgentOps owns the CI threshold decision and the
+`results.json` / `report.md` artifacts. The detailed managed-eval view stays in
+Foundry Evaluations through the link in the AgentOps report.
 
 ## 6. Force a regression and recover
 
@@ -419,8 +402,8 @@ page open as the baseline.
    version such as `travel-agent:4`, re-run `agentops init --reconfigure`, and
    run the pipeline again.
 
-This exercises Foundry prompt versioning, Microsoft Foundry AI Agent Evaluation,
-and AgentOps evidence for the exact version under release review.
+This exercises Foundry prompt versioning, AgentOps cloud eval in Foundry, and
+AgentOps evidence for the exact version under release review.
 
 ### Hosted/HTTP regression
 
@@ -463,15 +446,6 @@ Generate the common release path:
 
 ```powershell
 agentops workflow generate --kinds pr,dev,qa,prod --force
-```
-
-Because `--force` rewrites the PR workflow, reapply the tutorial action override
-from step 5 if you plan to run the prompt-agent PR gate again:
-
-```powershell
-(Get-Content .github\workflows\agentops-pr.yml) `
-  -replace 'microsoft/ai-agent-evals@v3-beta', 'placerda/ai-agent-evals@main' |
-  Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
 ```
 
 The generated workflows are intentionally boring:

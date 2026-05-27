@@ -1957,6 +1957,12 @@ def _build_readiness_checklist(
             "status": "ok" if cont_eval else "warn",
             "detail": (
                 (
+                    "Detected a CI workflow that uses AgentOps cloud eval. "
+                    "Foundry executes the prompt-agent eval, and AgentOps "
+                    "enforces thresholds from normalized results."
+                )
+                if eval_runner == "agentops-cloud"
+                else (
                     "Detected a CI workflow that uses the official Microsoft "
                     "Foundry AI Agent Evaluation runner. AgentOps prepares "
                     "<code>.agentops/official-eval/</code> input/result evidence; "
@@ -2020,6 +2026,11 @@ def _build_readiness_checklist(
             "status": "ok" if scheduled else "muted",
             "detail": (
                 (
+                    "Detected a cron-scheduled workflow that uses AgentOps "
+                    "cloud eval in Foundry."
+                )
+                if scheduled_runner == "agentops-cloud"
+                else (
                     "Detected a cron-scheduled workflow that uses the official "
                     "Microsoft Foundry AI Agent Evaluation runner."
                 )
@@ -2372,6 +2383,13 @@ _OFFICIAL_EVAL_WORKFLOW_MARKERS = (
     ".agentops/official-eval",
     "agentops.pipeline.official_eval",
 )
+_AGENTOPS_CLOUD_EVAL_WORKFLOW_MARKERS = (
+    "Run AgentOps Foundry cloud eval",
+    "AgentOps cloud eval",
+    ".agentops.cloud.yaml",
+    'data["execution"] = "cloud"',
+    "execution: cloud",
+)
 _AGENTOPS_EVAL_WORKFLOW_MARKERS = (
     "agentops eval run",
     "agentops eval",
@@ -2381,9 +2399,8 @@ _AGENTOPS_EVAL_WORKFLOW_MARKERS = (
 def _detect_eval_workflow(workspace: Path) -> Dict[str, Any]:
     """Detect local CI workflows that run an eval gate.
 
-    AgentOps can generate two valid gates: the official Microsoft Foundry
-    AI Agent Evaluation runner for compatible prompt agents, or the
-    AgentOps local runner for hosted HTTP/model/fallback cases.
+    AgentOps can generate Foundry cloud eval gates for prompt agents, legacy
+    official-eval gates, or local eval gates for hosted HTTP/model/fallback cases.
     """
 
     result: Dict[str, Any] = {
@@ -2399,11 +2416,18 @@ def _detect_eval_workflow(workspace: Path) -> Dict[str, Any]:
             continue
         result["present"] = True
         result["paths"].append(str(entry))
-        if runner == "official-ai-agent-evaluation" or result["runner"] is None:
+        if runner == "agentops-cloud" or result["runner"] is None:
+            result["runner"] = runner
+        elif runner == "official-ai-agent-evaluation" and result["runner"] == "agentops-local":
             result["runner"] = runner
         if _workflow_has_schedule(text):
             result["scheduled"] = True
-            if runner == "official-ai-agent-evaluation" or result["scheduled_runner"] is None:
+            if runner == "agentops-cloud" or result["scheduled_runner"] is None:
+                result["scheduled_runner"] = runner
+            elif (
+                runner == "official-ai-agent-evaluation"
+                and result["scheduled_runner"] == "agentops-local"
+            ):
                 result["scheduled_runner"] = runner
     return result
 
@@ -2426,6 +2450,8 @@ def _iter_workflow_texts(workspace: Path) -> List[Tuple[Path, str]]:
 
 
 def _classify_eval_workflow(text: str) -> Optional[str]:
+    if any(marker in text for marker in _AGENTOPS_CLOUD_EVAL_WORKFLOW_MARKERS):
+        return "agentops-cloud"
     if any(marker in text for marker in _OFFICIAL_EVAL_WORKFLOW_MARKERS):
         return "official-ai-agent-evaluation"
     if any(marker in text for marker in _AGENTOPS_EVAL_WORKFLOW_MARKERS):
@@ -2543,7 +2569,12 @@ def _release_evidence_detail(evidence: Dict[str, Any]) -> str:
         f"{evidence.get('blockers_count', 0)} blocker(s)."
     )
     runner = evidence.get("latest_eval_runner")
-    if runner == "official-ai-agent-evaluation":
+    if runner == "agentops-cloud":
+        runner_text = (
+            " Latest eval evidence comes from AgentOps cloud eval in Foundry "
+            "with normalized threshold results."
+        )
+    elif runner == "official-ai-agent-evaluation":
         runner_text = (
             " Latest eval evidence comes from the official Microsoft Foundry "
             "AI Agent Evaluation CI gate."

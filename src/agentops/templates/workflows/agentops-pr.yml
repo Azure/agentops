@@ -64,6 +64,8 @@ jobs:
       # wheels so the speed-up is very visible in CI.
       - name: Install uv
         uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: false
 
       - name: Install AgentOps Toolkit
         run: |
@@ -118,7 +120,7 @@ __EVAL_STEPS__
 
       - name: Comment AgentOps report on PR
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');

@@ -4,11 +4,13 @@ import json
 from pathlib import Path
 
 from agentops.pipeline.official_eval import (
+    AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
     OFFICIAL_EVAL_RUNNER,
     analyze_official_eval_support,
     main,
     prepare_official_eval,
+    recommended_eval_runner,
 )
 
 
@@ -36,6 +38,7 @@ def test_analyze_official_eval_support_for_prompt_agent(tmp_path: Path) -> None:
     assert "builtin.coherence" in support.official_evaluators
     assert "builtin.text_similarity" in support.official_evaluators
     assert support.warnings == ()
+    assert recommended_eval_runner(tmp_path) == AGENTOPS_CLOUD_RUNNER
 
 
 def test_prepare_official_eval_writes_data_and_metadata(tmp_path: Path) -> None:

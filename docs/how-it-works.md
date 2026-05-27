@@ -543,11 +543,12 @@ The `execution: cloud` trade-offs (so you can decide consciously):
 * Evaluator runs cost against your Azure OpenAI deployment.
 * Polling adds ~5 s × N to the total wall-clock time.
 
-For CI pipelines that only need a supported Foundry-native eval and do not need
-AgentOps artifacts, baselines, Doctor readiness, or release evidence, the
-Microsoft Foundry AI Agent Evaluation GitHub Action or Azure DevOps extension
-may be the cleaner entry point. AgentOps is the wrapper when the repo needs a
-release gate and proof pack around those signals.
+For prompt-agent CI pipelines, AgentOps cloud eval is the default gate when the
+repo needs artifacts, baselines, Doctor readiness, or release evidence. Foundry
+executes the managed eval; AgentOps enforces thresholds and writes the proof
+pack. The standalone Microsoft Foundry AI Agent Evaluation GitHub Action or
+Azure DevOps extension remains useful for platform-native validation outside the
+AgentOps release-readiness flow.
 
 Implementation lives in [src/agentops/pipeline/publisher.py](../src/agentops/pipeline/publisher.py)
 (Classic) and [src/agentops/pipeline/cloud_runner.py](../src/agentops/pipeline/cloud_runner.py)

@@ -282,6 +282,8 @@ def _doctor_findings_summary_lines(findings: list[object]) -> list[str]:
 
 
 def _workflow_eval_runner_label(eval_runner: str) -> str:
+    if eval_runner == "agentops-cloud":
+        return "AgentOps cloud eval in Foundry"
     if eval_runner == "official-ai-agent-evaluation":
         return "Microsoft Foundry AI Agent Evaluation"
     if eval_runner == "agentops-local":

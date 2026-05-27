@@ -19,7 +19,7 @@ Azure services, and AgentOps workflow remain the actual runtime path.
 | Repository | Role in the journey |
 |---|---|
 | `Azure/agentops` | Provides endpoint evaluation, thresholds, `results.json`, Doctor, Cockpit, and evidence. |
-| `microsoft/ai-agent-evals` | Provides the Foundry prompt-agent gate contract used as contrast for why hosted endpoints use AgentOps local eval. |
+| `microsoft/ai-agent-evals` | Reference for Foundry prompt-agent eval behavior; hosted endpoints use AgentOps local eval because CI must invoke your endpoint directly. |
 | `microsoft/foundry-toolkit` | Frames the Hosted Agent create/debug/deploy flow and the Operate handoff in VS Code. |
 | `microsoft/azure-skills` | Shows where the Microsoft Foundry skill can guide hosted-agent CI/CD, observe, and trace-regression follow-through. |
 | `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference for the Foundry Observe/Optimize/Protect loop: OpenTelemetry traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
@@ -416,10 +416,9 @@ Recommendation
   Copilot skills  installed - available for workflow adaptation handoff
 ```
 
-That is expected. The official Microsoft AI Agent Evaluation runner is used for
-Foundry prompt agents. Hosted agents use AgentOps local eval so the repo can
-invoke the endpoint, normalize results, apply thresholds, and keep a stable
-`results.json` contract.
+That is expected. Foundry prompt agents can use AgentOps cloud eval in Foundry;
+hosted endpoints use AgentOps local eval so the repo can invoke the endpoint,
+normalize results, apply thresholds, and keep a stable `results.json` contract.
 
 ## 8. Run a local eval
 

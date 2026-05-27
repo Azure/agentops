@@ -14,25 +14,28 @@ from agentops.services.evidence_pack import (
 )
 
 
-def _write_latest_results(workspace: Path, *, passed: bool = True) -> None:
+def _write_latest_results(workspace: Path, *, passed: bool = True, cloud: bool = False) -> None:
     latest = workspace / ".agentops" / "results" / "latest"
     latest.mkdir(parents=True, exist_ok=True)
-    (latest / "results.json").write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "target": {"kind": "foundry_prompt", "raw": "support-agent:7"},
-                "summary": {
-                    "overall_passed": passed,
-                    "items_total": 2,
-                    "items_passed_all": 2 if passed else 1,
-                },
-                "thresholds": [{"metric": "coherence", "passed": passed}],
-                "metrics": {"coherence": 4.2, "run_pass": 1.0 if passed else 0.0},
+    payload = {
+        "version": 1,
+        "target": {"kind": "foundry_prompt", "raw": "support-agent:7"},
+        "summary": {
+            "overall_passed": passed,
+            "items_total": 2,
+            "items_passed_all": 2 if passed else 1,
+        },
+        "thresholds": [{"metric": "coherence", "passed": passed}],
+        "metrics": {"coherence": 4.2, "run_pass": 1.0 if passed else 0.0},
+    }
+    if cloud:
+        payload["config"] = {
+            "cloud_evaluation": {
+                "run_id": "evalrun_123",
+                "report_url": "https://ai.azure.com/evaluations/evalrun_123",
             }
-        ),
-        encoding="utf-8",
-    )
+        }
+    (latest / "results.json").write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _write_official_eval(
@@ -168,7 +171,7 @@ def test_release_evidence_markdown_includes_doctor_finding_summary(tmp_path: Pat
     ) in markdown
 
 
-def test_build_release_evidence_accepts_successful_official_eval(tmp_path: Path) -> None:
+def test_build_release_evidence_blocks_successful_official_eval_without_threshold_evidence(tmp_path: Path) -> None:
     _write_official_eval(tmp_path, status="success")
     (tmp_path / "agentops.yaml").write_text(
         "version: 1\n"
@@ -182,11 +185,10 @@ def test_build_release_evidence_accepts_successful_official_eval(tmp_path: Path)
     evidence = build_release_evidence(tmp_path)
 
     assert evidence.latest_eval["runner"] == OFFICIAL_EVAL_RUNNER
-    assert evidence.latest_eval["passed"] is True
     assert evidence.official_eval["machine_readable_thresholds"] is False
     assert evidence.target == "support-agent:7"
-    assert not any("No latest evaluation result" in item for item in evidence.blockers)
-    assert any("Microsoft job result is the release gate" in item for item in evidence.ready)
+    assert evidence.status == "blocked"
+    assert any("does not emit AgentOps-normalized threshold evidence" in item for item in evidence.blockers)
     assert any("does not emit AgentOps-normalized threshold evidence" in item for item in evidence.warnings)
 
 
@@ -208,11 +210,11 @@ def test_build_release_evidence_warns_when_official_eval_result_is_missing(tmp_p
 
     assert evidence.latest_eval["runner"] == OFFICIAL_EVAL_RUNNER
     assert evidence.latest_eval["passed"] is None
-    assert evidence.status == "ready_with_warnings"
-    assert any("no pass/fail result was recorded" in item for item in evidence.warnings)
+    assert evidence.status == "blocked"
+    assert any("no AgentOps-normalized pass/fail result was recorded" in item for item in evidence.blockers)
 
 
-def test_build_release_evidence_prefers_newer_official_eval_over_stale_results(tmp_path: Path) -> None:
+def test_build_release_evidence_prefers_normalized_results_over_newer_official_eval(tmp_path: Path) -> None:
     _write_latest_results(tmp_path, passed=False)
     _write_official_eval(tmp_path, status="success")
     os.utime(tmp_path / ".agentops" / "results" / "latest" / "results.json", (100, 100))
@@ -220,5 +222,14 @@ def test_build_release_evidence_prefers_newer_official_eval_over_stale_results(t
 
     evidence = build_release_evidence(tmp_path)
 
-    assert evidence.latest_eval["runner"] == OFFICIAL_EVAL_RUNNER
-    assert evidence.latest_eval["passed"] is True
+    assert evidence.latest_eval["runner"] == "agentops-local"
+    assert evidence.latest_eval["passed"] is False
+
+
+def test_build_release_evidence_marks_cloud_eval_runner(tmp_path: Path) -> None:
+    _write_latest_results(tmp_path, passed=True, cloud=True)
+
+    evidence = build_release_evidence(tmp_path)
+
+    assert evidence.latest_eval["runner"] == "agentops-cloud"
+    assert evidence.latest_eval["foundry_report_url"] == "https://ai.azure.com/evaluations/evalrun_123"

@@ -8,8 +8,8 @@
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$SrcDir = Join-Path $RepoRoot "src" "agentops" "templates" "skills"
-$DestDir = Join-Path $RepoRoot "plugins" "agentops" "skills"
+$SrcDir = Join-Path (Join-Path (Join-Path (Join-Path $RepoRoot "src") "agentops") "templates") "skills"
+$DestDir = Join-Path (Join-Path (Join-Path $RepoRoot "plugins") "agentops") "skills"
 
 if (-not (Test-Path $SrcDir)) {
     Write-Error "Source directory not found: $SrcDir"

@@ -42,6 +42,12 @@ quality and record proof; `azd provision`, `azd deploy`, azd hooks, Foundry
 Toolkit, the `microsoft-foundry` skill, and project tooling own lifecycle
 actions.
 
+For Foundry prompt-agent configs (`agent: name:version`), the generated eval gate
+should use **AgentOps cloud eval in Foundry**: a temporary cloud config plus
+`agentops eval run`, not the legacy official Action/task. Foundry still executes
+the managed eval; AgentOps enforces thresholds, writes `results.json` /
+`report.md`, and makes PR failures explainable in the summary.
+
 ## Fast path - generated GitHub setup
 
 Use this path when the user already generated GitHub workflows or asks to get
