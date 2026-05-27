@@ -260,9 +260,12 @@ If the first run shows starter defaults such as `Agent [my-agent:1]` or
 `Dataset path [.agentops/data/smoke.jsonl]`, replace them with your Travel Agent
 target and dataset. Those defaults only come from the scaffolded starter file.
 
-The wizard saves `agent` and `dataset` to `agentops.yaml`. It saves the Foundry
-project endpoint to `.azure/dev/.env`, which is git-ignored and compatible with
-azd. If you force an App Insights connection string later, it is saved there too.
+The wizard saves `agent` and `dataset` to `agentops.yaml`. The `.azure/dev/.env`
+file is intentional: AgentOps uses the same environment layout as `azd`, so local
+Azure values stay out of source control while eval, Doctor, and Cockpit commands
+resolve the same active environment. The Foundry project endpoint lives there
+instead of in `agentops.yaml`; if you force an App Insights connection string
+later, it is saved there too.
 
 For a hosted HTTP endpoint, add the endpoint protocol fields:
 

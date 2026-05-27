@@ -268,8 +268,11 @@ request_field: message
 response_field: text
 ```
 
-The Foundry project endpoint lives in `.azure/dev/.env`, not in source control.
-If you force an App Insights connection string later, it is saved there too.
+The `.azure/dev/.env` file is intentional: AgentOps uses the same environment
+layout as `azd`, so local Azure values stay out of source control while eval,
+Doctor, and Cockpit commands resolve the same active environment. The Foundry
+project endpoint lives there instead of in `agentops.yaml`; if you force an App
+Insights connection string later, it is saved there too.
 
 For a deployed endpoint protected by a bearer token, add:
 
