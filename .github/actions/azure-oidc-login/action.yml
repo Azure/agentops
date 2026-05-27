@@ -1,9 +1,8 @@
 name: Azure OIDC login (composite, no node20 deps)
 description: |
-  Drop-in replacement for azure/login@v2 that performs the OIDC federated
-  token exchange entirely in bash, so it does not pull any Node.js 20
-  JavaScript actions and keeps the Actions run free of "Node.js 20 is
-  deprecated" annotations.
+  Drop-in replacement for azure/login that performs the OIDC federated token
+  exchange entirely in bash, so it does not pull JavaScript action runtime
+  dependencies into the login step.
 
   After this step runs, the az CLI is authenticated and AZURE_* environment
   variables are exported for downstream tools (azure-identity etc).
@@ -63,7 +62,7 @@ runs:
         az account set --subscription "${AZURE_SUBSCRIPTION_ID}"
         echo "::endgroup::"
 
-        # Export the same env vars azure/login@v2 sets for DefaultAzureCredential
+        # Export the same env vars azure/login sets for DefaultAzureCredential
         # and other downstream Azure SDKs.
         {
           echo "AZURE_CLIENT_ID=${AZURE_CLIENT_ID}"

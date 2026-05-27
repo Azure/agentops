@@ -20,7 +20,7 @@ manual workflow dispatch, while keeping per-run cost and time bounded.
 ## Auth
 
 GitHub Actions ↔ Entra federated credential. The workflow declares
-`permissions: id-token: write` and uses `azure/login@v2` with
+`permissions: id-token: write` and uses `azure/login@v3` with
 `client-id` / `tenant-id` / `subscription-id` from repo Actions
 **Variables**. No client secrets exist anywhere. The login propagates to
 `az`, `DefaultAzureCredential` (Python), and `azure-ai-projects` via the

@@ -316,7 +316,7 @@ Leave the variable unset to use the Microsoft-owned
 
 ```yaml
 # Build
-- uses: actions/setup-python@v5
+- uses: actions/setup-python@v6
   with: { python-version: "3.11" }
 - run: pip install -r requirements.txt -t ./dist
 - run: cp -r src ./dist/

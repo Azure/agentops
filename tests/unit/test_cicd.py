@@ -27,6 +27,13 @@ _DOCTOR_PATH = f"{_WORKFLOW_DIR}/agentops-doctor.yml"
 
 DEFAULT_PATHS = (_PR_PATH, _DEV_PATH, _QA_PATH, _PROD_PATH)
 ALL_PATHS = (*DEFAULT_PATHS, _DOCTOR_PATH)
+_DEPRECATED_NODE20_ACTION_REFS = (
+    "actions/checkout@v4",
+    "actions/setup-python@v5",
+    "actions/upload-artifact@v4",
+    "astral-sh/setup-uv@v3",
+    "azure/login@v2",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +143,17 @@ def test_all_templates_are_valid_yaml(tmp_path: Path) -> None:
         assert "\non:" in text
 
 
+def test_github_templates_use_node24_ready_action_versions() -> None:
+    template_dir = (
+        Path(__file__).parents[2] / "src" / "agentops" / "templates" / "workflows"
+    )
+
+    for path in template_dir.glob("*.yml"):
+        content = path.read_text(encoding="utf-8")
+        for ref in _DEPRECATED_NODE20_ACTION_REFS:
+            assert ref not in content, f"{path.name} still uses {ref}"
+
+
 def test_all_templates_pass_foundry_and_evaluator_environment(tmp_path: Path) -> None:
     generate_cicd_workflows(directory=tmp_path, kinds=ALL_KINDS)
     expected_env = (
@@ -214,8 +232,8 @@ def test_pr_template_triggers_and_no_environment(tmp_path: Path) -> None:
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
     assert "agentops-toolkit" in content
-    assert "azure/login@v2" in content
-    assert "actions/setup-python@v5" in content
+    assert "azure/login@v3" in content
+    assert "actions/setup-python@v6" in content
     assert "3.11" in content
 
     # PR template runs inside the dev environment so the OIDC token subject

@@ -39,22 +39,22 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Azure login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Install AgentOps Toolkit
         run: |
@@ -72,7 +72,7 @@ jobs:
             --eval-config ".agentops/deployments/agentops.candidate.yaml"
 
       - name: Upload candidate deployment record
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: foundry-agent-__ENV_KEY__-candidate
           path: |
@@ -88,7 +88,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download candidate deployment record
         uses: actions/download-artifact@v4
@@ -97,19 +97,19 @@ jobs:
           path: .agentops/deployments
 
       - name: Azure login (OIDC)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v7
 
       - name: Install AgentOps Toolkit
         run: |
@@ -130,7 +130,7 @@ __EVAL_STEPS__
 
       - name: Upload AgentOps results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agentops-__ENV_KEY__-results
           path: |
@@ -171,7 +171,7 @@ __EVAL_STEPS__
           path: .agentops/deployments
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -186,7 +186,7 @@ __EVAL_STEPS__
             --environment "__ENV_NAME__"
 
       - name: Upload Foundry deployment record
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: foundry-agent-__ENV_KEY__-deployment
           path: .agentops/deployments/foundry-agent.json
