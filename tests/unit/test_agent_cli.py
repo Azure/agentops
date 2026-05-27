@@ -72,6 +72,9 @@ def test_doctor_reports_regression_and_exits_two(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 2, result.stdout
+    assert "Findings:" in result.output
+    assert "Finding summary:" in result.output
+    assert "regression.coherence" in result.output
     report_path = tmp_path / ".agentops" / "agent" / "report.md"
     assert report_path.exists()
     body = report_path.read_text(encoding="utf-8")

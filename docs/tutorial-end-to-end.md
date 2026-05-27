@@ -27,7 +27,7 @@ review.
 | 4 | Test and debug | Foundry playground, VS Code debugger, Agent Inspector, Copilot Chat | Optional quick eval after target exists. | Working dev-loop agent |
 | 5 | Configure release checks | AgentOps CLI and skills | Creates `agentops.yaml` and repo-side release contract. | Release checklist in repo |
 | 6 | Evaluate | Official AI Agent Evaluation or AgentOps local runner | Routes to the right runner and normalizes proof. | Eval gate signal |
-| 7 | Create operations workflow | GitHub Actions, Azure Pipelines, azd | Generates PR, environment, and scheduled Doctor workflows. | CI/CD gates |
+| 7 | Create operations workflow | GitHub Actions, Azure Pipelines, azd | Generates PR and environment workflows with Doctor evidence in the gate. | CI/CD gates |
 | 8 | Observe production | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
 | 9 | Review readiness | AgentOps Doctor, Cockpit, evidence pack | Answers "can we ship it, and where is the proof?" | `evidence.md` |
 | 10 | Learn from traces | Foundry/App Insights exports, AgentOps trace promotion | Turns reviewed traces into regression candidates. | Future eval rows |
@@ -45,7 +45,7 @@ prompts.
 | You have a chat-capable Azure OpenAI deployment, for example `gpt-4o-mini`. | Local evals and CI variables need a judge model for evaluator calls. |
 | Application Insights is connected to the Foundry project or agent runtime, or you can create/attach it. | Foundry Traces, Operate metrics/Ask AI when available, Azure Monitor, Doctor, Cockpit, and evidence links need telemetry. |
 | You can deploy or expose any hosted endpoint that CI will call. | `localhost` works for local eval; remote CI needs a reachable HTTPS URL. |
-| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | PR, environment, and scheduled Doctor workflows only run after the repo is published. |
+| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | PR and environment workflows only run after the repo is published. |
 | GitHub CLI is authenticated with `gh auth login` if you use GitHub PR commands while testing CI. | The regression and release-gate steps are smoother when repo, PR, and Actions access are already confirmed. |
 | You can create GitHub environments such as `dev`, `qa`, and `production`, or the equivalent Azure DevOps variables/service connections. | The full lifecycle workflow separates PR checks from environment release gates. |
 | You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI/CD cannot authenticate to Azure. |
@@ -473,7 +473,8 @@ The generated workflows are intentionally boring:
 
 - PR gate: evaluate and publish report/evidence.
 - Dev/QA/Prod: deploy with azd or placeholders, then run readiness checks.
-- Scheduled Doctor: run Doctor on a schedule and upload the report.
+- Optional Doctor cadence: generate `--kinds doctor` separately if you want a
+  scheduled readiness run outside PRs.
 
 Before you run the generated workflows, hand the broader environment wiring to
 the AgentOps workflow skill:
@@ -485,8 +486,8 @@ agentops skills install --platform copilot
 Then ask Copilot:
 
 ```text
-Use the AgentOps workflow skill to get the generated PR, Dev, QA, Prod, and
-scheduled Doctor workflows running for this Foundry agent repo.
+Use the AgentOps workflow skill to get the generated PR, Dev, QA, and Prod
+workflows running for this Foundry agent repo.
 
 Extend the PR/dev setup if it already exists, wire Azure OIDC for the `qa` and
 `production` environments, confirm required Actions variables such as
@@ -607,6 +608,39 @@ code .agentops\agent\report.md
 code .agentops\release\latest\evidence.md
 ```
 
+`agentops doctor` can take a few minutes here because it checks Azure auth,
+Foundry discovery, Azure Monitor/App Insights, local eval history, workflow
+evidence, and readiness rules. The terminal progress line should keep moving
+while those sources are collected.
+
+Read the output in this order: `AgentOps pre-flight` lists the local auth and
+telemetry-discovery checks, `Release readiness` is the verdict to discuss,
+`Findings` / `Finding summary` names the blocking or warning items, and
+`Evidence pack` / `Evidence report` are the review files. Warnings are advisory
+unless strict pre-flight is enabled; `blocked` means review the findings, not
+that Doctor crashed. If App Insights is connected in Foundry but AgentOps cannot
+discover it, run `az login`, confirm Reader on the Foundry project resource
+group, or set `APPLICATIONINSIGHTS_CONNECTION_STRING` explicitly.
+
+Use this quick readout while presenting the terminal output:
+
+| Output | How to explain it |
+|---|---|
+| `AgentOps pre-flight   4 ok` | The workspace, Azure auth, Foundry project, and App Insights discovery checks are all usable. |
+| `Wrote` | The local Doctor diagnostic report was generated. |
+| `Release readiness: blocked` | The command succeeded, but the current evidence has findings that block release readiness. |
+| `Evidence pack` / `Evidence report` | These are the release-review artifacts to open or attach to the PR/release discussion. |
+| `Findings: ...` | This is the severity rollup; critical items are what you discuss first. |
+| `Finding summary` | This is the terminal triage list. Explain production latency/errors and eval regressions as release blockers, then use workflow, threshold, RAI, and trace-regression warnings to show the remaining operational hardening work. |
+
+The useful story is the insight list, not the fact that a file was written.
+Doctor connects the whole operating model: production telemetry findings show
+whether the live agent is healthy, regression findings show whether quality moved
+backward, RAI/safety findings show governance gaps, and operational findings
+show whether the repo has the release machinery reviewers expect. Use critical
+findings as release blockers and warning/info findings as the backlog that turns
+the POC into an operated service.
+
 Open both files. The Doctor report is the diagnostic view: it tells you which
 signals are present, which are missing, and whether the finding is blocking or
 informational. The evidence pack is the reviewer view: it turns those signals
@@ -642,6 +676,10 @@ Use AgentOps for the repo-side follow-through:
 ```powershell
 agentops doctor --workspace . --evidence-pack
 ```
+
+Use the same Doctor output rules from step 9: a multi-minute run is normal,
+pre-flight warnings explain access or telemetry-discovery gaps, and `blocked`
+means the evidence needs review.
 
 Cockpit links back to Foundry Red Teaming so reviewers can drill into the
 managed scan results.

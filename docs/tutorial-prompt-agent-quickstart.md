@@ -36,7 +36,7 @@ prompts.
 | Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry project. | AgentOps, Foundry SDK calls, and CI setup all need the same Azure identity context. |
 | You can create or publish a prompt agent in the Foundry project. | The tutorial starts from a real `travel-agent:<version>` target. |
 | You can create or attach Application Insights for the Foundry project, or you already have one connected. | Foundry Traces, the Operate dashboard, Doctor, and Cockpit need telemetry to tell the observability story. |
-| You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate and scheduled Doctor workflow only run after the repo is pushed. |
+| You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate only runs after the repo is pushed. |
 | GitHub CLI is authenticated with `gh auth login` if you use the PR commands in this tutorial. | The regression step opens a PR and sends the reader directly to the workflow run. |
 | You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth and evaluator settings. |
 | You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure. |
@@ -259,6 +259,41 @@ agentops workflow generate --kinds pr --force
 agentops doctor --workspace . --evidence-pack
 ```
 
+`agentops doctor` can take a few minutes in a fresh workspace because it checks
+Azure auth, Foundry discovery, Azure Monitor/App Insights, local eval history,
+and repo workflow evidence. Watch the terminal progress line; the command is
+still running while it reports elapsed time.
+
+Read the output in this order: `AgentOps pre-flight` shows which local auth and
+discovery checks passed, `Release readiness` gives the shippability verdict,
+`Findings` / `Finding summary` names the blocking or warning items, and
+`Evidence pack` / `Evidence report` show the files to open. Warnings are
+advisory unless you run with strict pre-flight; `blocked` means the report has
+findings to review, not that the command crashed. If App Insights is connected
+in Foundry but AgentOps warns about discovery, run `az login`, confirm Reader on
+the Foundry project resource group, or set
+`APPLICATIONINSIGHTS_CONNECTION_STRING` explicitly.
+
+Use this quick readout while presenting the terminal output:
+
+| Output | How to explain it |
+|---|---|
+| `AgentOps pre-flight   4 ok` | The workspace, Azure auth, Foundry project, and App Insights discovery checks are all usable. |
+| `Wrote` | The local Doctor diagnostic report was generated. |
+| `Release readiness: blocked` | The command succeeded, but the current evidence has findings that block release readiness. |
+| `Evidence pack` / `Evidence report` | These are the release-review artifacts to open or attach to the PR/release discussion. |
+| `Findings: 13 (3 critical ...)` | This is the severity rollup; critical items are what you discuss first. |
+| `Finding summary` | This is the terminal triage list. In a demo output like latency plus `regression.coherence` / `regression.f1_score`, explain that production performance and eval regressions block release, while workflow, threshold, RAI, and trace-regression warnings are hardening follow-ups. |
+
+The useful story is the insight list, not the fact that a file was written.
+In the sample output, Doctor is telling you that this agent is not release-ready
+for three concrete reasons: production telemetry shows latency/error risk, eval
+history shows quality regression on metrics such as `coherence` and `f1_score`,
+and the repo still has operational hardening gaps such as missing deploy
+workflow, explicit thresholds, continuous eval, action SHA pinning, and
+trace-to-regression feedback. Use the critical findings as release blockers and
+the warning/info findings as the backlog for making the agent production-ready.
+
 At this point the workflow files exist only on your machine. CI will not run
 until the folder is a GitHub repository, pushed, and connected to Azure with
 OIDC.
@@ -285,20 +320,20 @@ Confirm `agentops-workflow` is loaded before continuing.
 When the skill is loaded, paste:
 
 ```text
-Use the AgentOps workflow skill to get the generated PR gate and scheduled
-Doctor workflow running on GitHub Actions for this Foundry prompt-agent project.
+Use the AgentOps workflow skill to get the generated PR gate running on GitHub
+Actions for this Foundry prompt-agent project.
 
 This may be a brand-new folder with no Git repo or GitHub remote yet. Keep the
-scope to the PR gate and scheduled Doctor workflow only: create or connect the
-GitHub repo if needed, wire Azure OIDC and required Actions variables, create
-only the `dev` environment, and do not set up `qa`, `production`, or deploy
-workflows yet. Show me the plan before changing GitHub or Azure, and call out
-anything that needs owner/admin permission.
+scope to the PR gate only: create or connect the GitHub repo if needed, wire
+Azure OIDC and required Actions variables, create only the `dev` environment,
+and do not set up `qa`, `production`, scheduled Doctor, or deploy workflows yet.
+Show me the plan before changing GitHub or Azure, and call out anything that
+needs owner/admin permission.
 ```
 
-For this PR gate plus scheduled Doctor quickstart, the generated workflows use
-the `dev` environment for OIDC and variables. You do **not** need `qa` or
-`production` yet; add them when you generate deploy workflows later.
+For this PR-gate quickstart, the generated workflow uses the `dev` environment
+for OIDC and variables. You do **not** need `qa` or `production` yet; add them
+when you generate deploy workflows later.
 
 The workflow skill will propose the GitHub environment variables and secrets to
 copy from your local AgentOps/azd configuration into the GitHub `dev`
@@ -466,6 +501,11 @@ agentops doctor --workspace . --evidence-pack
 code .agentops\agent\report.md
 code .agentops\release\latest\evidence.md
 ```
+
+Use the same Doctor readout rules from step 7: a multi-minute run is normal,
+pre-flight warnings explain missing local access or telemetry discovery, and
+`Release readiness: blocked` means review the findings rather than retrying the
+command.
 
 Open both files. The Doctor report explains what is ready and what is missing;
 the evidence pack is the reviewer-friendly summary. If the Foundry trace from

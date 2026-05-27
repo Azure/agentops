@@ -36,7 +36,7 @@ unexpected permission prompts.
 | You can create or use a Foundry project and a chat-capable Azure OpenAI deployment. | Local endpoint evals still need a judge model for quality scoring. |
 | You can create or attach Application Insights, or you already have an App Insights connection string. | The local FastAPI sample emits OpenTelemetry spans only after telemetry is configured. |
 | You can deploy or expose the hosted endpoint that CI will call. | `localhost` is fine for local eval, but GitHub Actions or Azure Pipelines need a reachable HTTPS URL. |
-| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | The PR gate and scheduled Doctor workflow only run after the repo is published. |
+| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | The PR gate only runs after the repo is published. |
 | GitHub CLI is authenticated with `gh auth login` if you use GitHub PR commands while testing CI. | The workflow handoff is smoother when repo, PR, and Actions access are already confirmed. |
 | You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth, endpoint settings, and evaluator settings. |
 | You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure. |
@@ -481,6 +481,39 @@ code .agentops\agent\report.md
 code .agentops\release\latest\evidence.md
 ```
 
+`agentops doctor` can take a few minutes because it checks Azure auth, Foundry
+discovery, Azure Monitor/App Insights, local eval history, and repo workflow
+evidence. The terminal progress line should keep moving while those sources are
+collected.
+
+Read the output in this order: `AgentOps pre-flight` lists the local access and
+telemetry-discovery checks, `Release readiness` is the readiness verdict,
+`Findings` / `Finding summary` names the blocking or warning items, and the
+evidence paths are the files to open. Warnings are advisory unless strict
+pre-flight is enabled; `blocked` means the report has findings to review, not
+that Doctor failed. If App Insights is already connected but AgentOps cannot
+discover it, run `az login`, confirm Reader on the Foundry project resource
+group, or set `APPLICATIONINSIGHTS_CONNECTION_STRING` explicitly.
+
+Use this quick readout while presenting the terminal output:
+
+| Output | How to explain it |
+|---|---|
+| `AgentOps pre-flight   4 ok` | The workspace, Azure auth, Foundry project, and App Insights discovery checks are all usable. |
+| `Wrote` | The local Doctor diagnostic report was generated. |
+| `Release readiness: blocked` | The command succeeded, but the current evidence has findings that block release readiness. |
+| `Evidence pack` / `Evidence report` | These are the release-review artifacts to open or attach to the PR/release discussion. |
+| `Findings: ...` | This is the severity rollup; critical items are what you discuss first. |
+| `Finding summary` | This is the terminal triage list. For hosted endpoints, explain production latency/errors and eval regressions first, then treat workflow, threshold, RAI, and trace-regression warnings as hardening follow-ups. |
+
+The useful story is the insight list, not the fact that a file was written.
+For hosted endpoints, Doctor connects runtime signals and repo readiness: latency
+or error findings point to production behavior, regression findings point to eval
+quality loss, and operational findings point to the missing release machinery
+such as deploy workflows, thresholds, continuous eval, action SHA pinning, and
+trace-to-regression feedback. Use critical findings as release blockers and
+warnings as the hardening backlog.
+
 The generated PR gate runs `agentops eval run`. Before using that workflow in
 GitHub Actions or Azure Pipelines, replace any localhost agent URL with the
 deployed Foundry Hosted or cloud endpoint. Have the Entra app-registration
@@ -497,13 +530,14 @@ agentops skills install --platform copilot
 Then ask Copilot:
 
 ```text
-Use the AgentOps workflow skill to get the generated PR gate and scheduled
-Doctor workflow running for this hosted-agent project.
+Use the AgentOps workflow skill to get the generated PR gate running for this
+hosted-agent project.
 
 Create or connect the GitHub repo if needed, replace the localhost agent URL
 with the deployed HTTPS endpoint, wire Azure OIDC and required Actions variables
-in the `dev` environment, and set any required endpoint token as a secret. Show
-me the plan before changing GitHub or Azure, and call out anything that needs
+in the `dev` environment, and set any required endpoint token as a secret. Do
+not add scheduled Doctor, deploy, QA, or production workflows yet. Show me the
+plan before changing GitHub or Azure, and call out anything that needs
 owner/admin permission.
 ```
 
@@ -513,8 +547,9 @@ In a fresh quickstart, warnings about production telemetry, CI history, or trace
 regression history are expected and useful: they show what remains before this
 local endpoint becomes an operated service.
 
-The scheduled Doctor workflow runs on a cadence so release evidence can include
-recent readiness signals.
+If you later want a separate cadence outside PRs, generate the optional Doctor
+workflow with `agentops workflow generate --kinds doctor --force`.
+
 
 This is also where `placerda/azure-skills` fits the story. AgentOps
 generates the repo-side gate and evidence; the Microsoft Foundry skill is the

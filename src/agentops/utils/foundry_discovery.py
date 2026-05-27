@@ -57,6 +57,45 @@ def reset_cache() -> None:
         _cache.clear()
 
 
+def _summarize_discovery_exception(exc: Exception, *, context: str) -> str:
+    text = str(exc)
+    lower = text.lower()
+    auth_markers = (
+        "defaultazurecredential failed to retrieve a token",
+        "azureclicredential: failed to invoke the azure cli",
+        "azurepowershellcredential: failed to invoke powershell",
+        "environmentcredential authentication unavailable",
+        "sharedtokencachecredential authentication unavailable",
+        "clientauthenticationerror",
+    )
+    if type(exc).__name__ == "ClientAuthenticationError" or any(
+        marker in lower for marker in auth_markers
+    ):
+        return (
+            "Foundry authentication failed while reading telemetry metadata. "
+            "Run `az login` in this shell, confirm the active account has "
+            "Reader on the Foundry project resource group, then re-run."
+        )
+
+    permission_markers = (
+        "authorizationfailed",
+        "forbidden",
+        "does not have authorization",
+        "insufficient privileges",
+    )
+    if any(marker in lower for marker in permission_markers):
+        return (
+            "Foundry telemetry metadata is not readable by the signed-in "
+            "identity. Grant Reader on the Foundry project resource group "
+            "or set APPLICATIONINSIGHTS_CONNECTION_STRING manually."
+        )
+
+    snippet = text.splitlines()[0].strip() if text else type(exc).__name__
+    if len(snippet) > 220:
+        snippet = snippet[:217] + "..."
+    return f"{context} failed ({type(exc).__name__}: {snippet})."
+
+
 def resolve_appinsights_connection_with_reason(
     project_endpoint: str,
 ) -> Tuple[Optional[str], Optional[str]]:
@@ -99,9 +138,9 @@ def resolve_appinsights_connection_with_reason(
             credential=credential,
         )
     except Exception as exc:  # noqa: BLE001
-        reason = (
-            f"could not build AIProjectClient ({type(exc).__name__}: "
-            f"{exc}). Check `az login` and the project endpoint URL."
+        reason = _summarize_discovery_exception(
+            exc,
+            context="Could not build AIProjectClient",
         )
         log.debug(reason)
         _store(project_endpoint, None, reason)
@@ -145,11 +184,9 @@ def resolve_appinsights_connection_with_reason(
             return value, None
 
     if last_exc is not None:
-        reason = (
-            f"Foundry telemetry call raised "
-            f"{type(last_exc).__name__}: {last_exc}. Check that the "
-            "signed-in identity has Reader on the project resource "
-            "group."
+        reason = _summarize_discovery_exception(
+            last_exc,
+            context="Foundry telemetry discovery",
         )
     else:
         reason = (
@@ -190,4 +227,3 @@ def resolve_appinsights_connection_from_env_with_reason() -> Tuple[
     if not endpoint:
         return None, "no AZURE_AI_FOUNDRY_PROJECT_ENDPOINT set"
     return resolve_appinsights_connection_with_reason(endpoint)
-

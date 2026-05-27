@@ -5,6 +5,8 @@ import re
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import webbrowser
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -128,6 +130,155 @@ def _cli_value(text: str) -> str:
     if lowered in {"azd", "prompt-agent", "placeholder", "auto"} or "(auto default)" in lowered:
         return style(text, "bold")
     return text
+
+
+class _CliStatusIndicator:
+    """Small terminal heartbeat for long-running CLI phases."""
+
+    _FRAMES = ("|", "/", "-", "\\")
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        err: bool = True,
+        interval_seconds: float = 0.25,
+    ) -> None:
+        self._message = message
+        self._err = err
+        self._interval_seconds = interval_seconds
+        self._done = threading.Event()
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._stream = sys.stderr if err else sys.stdout
+        self._interactive = _stream_is_interactive(self._stream)
+        self._started = 0.0
+        self._last_render_length = 0
+
+    def __enter__(self) -> "_CliStatusIndicator":
+        self._started = time.perf_counter()
+        if self._interactive:
+            self._thread = threading.Thread(
+                target=self._render_loop,
+                name="agentops-cli-status",
+                daemon=True,
+            )
+            self._thread.start()
+        else:
+            typer.echo(self._message, err=self._err)
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self._done.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+        if self._interactive:
+            self._clear()
+
+    def update(self, message: str) -> None:
+        with self._lock:
+            if message == self._message:
+                return
+            self._message = message
+        if not self._interactive:
+            typer.echo(message, err=self._err)
+
+    def _render_loop(self) -> None:
+        frame_index = 0
+        while not self._done.is_set():
+            self._render(self._FRAMES[frame_index % len(self._FRAMES)])
+            frame_index += 1
+            self._done.wait(self._interval_seconds)
+
+    def _render(self, frame: str) -> None:
+        with self._lock:
+            message = self._message
+        elapsed_seconds = int(time.perf_counter() - self._started)
+        text = f"\r{frame} {message} ({elapsed_seconds}s elapsed)"
+        padding = " " * max(0, self._last_render_length - len(text))
+        try:
+            self._stream.write(text + padding)
+            self._stream.flush()
+        except (OSError, ValueError):
+            self._done.set()
+            return
+        self._last_render_length = max(self._last_render_length, len(text))
+
+    def _clear(self) -> None:
+        try:
+            self._stream.write("\r" + (" " * self._last_render_length) + "\r")
+            self._stream.flush()
+        except (OSError, ValueError):
+            return
+
+
+def _stream_is_interactive(stream: object) -> bool:
+    if os.environ.get("CI") or os.environ.get("AGENTOPS_NO_PROGRESS"):
+        return False
+    isatty = getattr(stream, "isatty", None)
+    if not callable(isatty):
+        return False
+    try:
+        return bool(isatty())
+    except (OSError, ValueError):
+        return False
+
+
+def _doctor_findings_summary_lines(findings: list[object]) -> list[str]:
+    if not findings:
+        return [f"{_cli_label('Findings')}: {_cli_ok('0')}"]
+
+    counts = {"critical": 0, "warning": 0, "info": 0}
+    for finding in findings:
+        severity = getattr(getattr(finding, "severity", ""), "value", "info")
+        counts[severity] = counts.get(severity, 0) + 1
+
+    count_parts = []
+    if counts.get("critical"):
+        count_parts.append(_cli_error(f"{counts['critical']} critical"))
+    if counts.get("warning"):
+        count_parts.append(_cli_warn(f"{counts['warning']} warning"))
+    if counts.get("info"):
+        count_parts.append(_cli_ok(f"{counts['info']} info"))
+    count_text = " · ".join(count_parts)
+
+    lines = [
+        f"{_cli_label('Findings')}: {len(findings)} ({count_text})",
+        f"{_cli_label('Finding summary')}:",
+    ]
+    max_items = 20
+    for index, finding in enumerate(findings[:max_items], start=1):
+        severity = getattr(getattr(finding, "severity", ""), "value", "info")
+        category = getattr(getattr(finding, "category", ""), "value", "")
+        category = category.replace("_", " ") if category else "uncategorized"
+        finding_id = getattr(finding, "id", "unknown")
+        title = getattr(finding, "title", "")
+        tone = (
+            "red"
+            if severity == "critical"
+            else "yellow"
+            if severity == "warning"
+            else "green"
+        )
+        plain_prefix = f"  {index}. {severity} [{category}] {finding_id} - "
+        marker = style(f"{index}.", "dim")
+        severity_label = style(severity, "bold", tone)
+        head = (
+            f"  {marker} {severity_label} "
+            f"[{category}] {style(finding_id, 'bold')} - "
+        )
+        title_lines = wrap(title, width=max(32, 110 - len(plain_prefix)))
+        if title_lines:
+            lines.append(f"{head}{title_lines[0]}")
+            continuation_indent = " " * len(plain_prefix)
+            for continuation in title_lines[1:]:
+                lines.append(f"{continuation_indent}{continuation}")
+        else:
+            lines.append(head.rstrip())
+    remaining = len(findings) - max_items
+    if remaining > 0:
+        lines.append(f"  ... {remaining} more finding(s) in the Doctor report.")
+    return lines
 
 
 def _workflow_eval_runner_label(eval_runner: str) -> str:
@@ -2754,7 +2905,6 @@ def _run_doctor_analyze(
         run_preflight,
     )
     from agentops.utils import telemetry
-    import time as _time
 
     workspace = workspace.resolve()
     resolved_config = _resolve_agent_config_path(workspace, config_path)
@@ -2767,12 +2917,11 @@ def _run_doctor_analyze(
         raise typer.Exit(code=1)
 
     if not no_preflight:
-        typer.echo(
-            "doctor: running pre-flight checks (workspace, Azure auth, Foundry discovery)",
-            err=True,
-        )
-        report = run_preflight(workspace, scope="doctor")
-        typer.echo(format_report(report), err=True)
+        with _CliStatusIndicator(
+            "doctor: running pre-flight checks (workspace, Azure auth, Foundry discovery)"
+        ):
+            report = run_preflight(workspace, scope="doctor")
+        typer.echo(format_report(report, show_ok_details=True), err=True)
         if report.has_failures or (strict_preflight and report.has_warnings):
             typer.echo(
                 f"{_cli_error('Pre-flight failed')}. Resolve the issues above or re-run "
@@ -2801,33 +2950,36 @@ def _run_doctor_analyze(
         raise typer.Exit(code=1) from exc
 
     telemetry.init_tracing()
-    started_perf = _time.perf_counter()
+    started_perf = time.perf_counter()
     try:
         with telemetry.agent_analyze_span(
             workspace=str(workspace),
             lookback_days=config.lookback_days,
         ) as analyze_span:
             try:
-                result = analyze(
-                    workspace,
-                    config,
-                    categories=(
-                        [c for c in categories.split(",") if c.strip()]
-                        if categories
-                        else None
-                    ),
-                    exclude_rules=(
-                        [r for r in exclude_rules.split(",") if r.strip()]
-                        if exclude_rules
-                        else None
-                    ),
-                    progress=lambda msg: typer.echo(msg, err=True),
-                )
+                with _CliStatusIndicator(
+                    "doctor: collecting local history, Azure Monitor, and Foundry control plane"
+                ) as status:
+                    result = analyze(
+                        workspace,
+                        config,
+                        categories=(
+                            [c for c in categories.split(",") if c.strip()]
+                            if categories
+                            else None
+                        ),
+                        exclude_rules=(
+                            [r for r in exclude_rules.split(",") if r.strip()]
+                            if exclude_rules
+                            else None
+                        ),
+                        progress=status.update,
+                    )
             except Exception as exc:  # pragma: no cover
                 typer.echo(f"{_cli_error('Error running analyzer')}: {exc}", err=True)
                 raise typer.Exit(code=1) from exc
 
-            duration_seconds = _time.perf_counter() - started_perf
+            duration_seconds = time.perf_counter() - started_perf
 
             # Persist the analysis history (always - works without Azure).
             sources_enabled = _sources_enabled(config)
@@ -2895,11 +3047,15 @@ def _run_doctor_analyze(
         )
     if history_file is not None:
         typer.echo(f"{_cli_label('Appended history')}: {_cli_path(history_file)}")
-    typer.echo(f"{_cli_label('Findings')}: {len(result.findings)}")
+    finding_lines = _doctor_findings_summary_lines(result.findings)
+    if finding_lines:
+        typer.echo(finding_lines[0])
     if result.max_severity is not None:
         severity = result.max_severity.value
         tone = "red" if severity == "critical" else "yellow" if severity == "warning" else "green"
         typer.echo(f"{_cli_label('Max severity')}: {style(severity, 'bold', tone)}")
+    for line in finding_lines[1:]:
+        typer.echo(line)
 
     if result.max_severity is not None and result.max_severity >= severity_floor:
         raise typer.Exit(code=2)

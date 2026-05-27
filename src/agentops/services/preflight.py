@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+import textwrap
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -220,7 +221,9 @@ def _check_foundry_project() -> PreflightCheck:
     )
 
 
-def _check_application_insights_env() -> PreflightCheck:
+def _check_application_insights_env(
+    foundry_check: Optional[PreflightCheck] = None,
+) -> PreflightCheck:
     """Heads-up when neither env var nor Foundry discovery yields a
     connection string. The production telemetry tile will stay grey."""
     started = time.time()
@@ -234,6 +237,38 @@ def _check_application_insights_env() -> PreflightCheck:
             message="APPLICATIONINSIGHTS_CONNECTION_STRING is set.",
             duration_seconds=time.time() - started,
         )
+
+    if foundry_check and foundry_check.status == "ok":
+        return PreflightCheck(
+            name="app_insights",
+            display_name="Application Insights",
+            status="ok",
+            message="Resolved via Foundry discovery.",
+            duration_seconds=time.time() - started,
+        )
+
+    if (
+        foundry_check
+        and foundry_check.status == "warn"
+        and "discovery failed" in foundry_check.message.lower()
+        and "returned no application insights connection"
+        not in foundry_check.message.lower()
+    ):
+        return PreflightCheck(
+            name="app_insights",
+            display_name="Application Insights",
+            status="warn",
+            message=(
+                "Could not verify the Foundry App Insights connection because "
+                "Foundry discovery did not complete."
+            ),
+            remediation=(
+                "Fix the Foundry project warning above, or set "
+                "APPLICATIONINSIGHTS_CONNECTION_STRING explicitly."
+            ),
+            duration_seconds=time.time() - started,
+        )
+
     # Try Foundry discovery as a fallback (uses the same cached helper).
     endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
     if endpoint:
@@ -261,7 +296,7 @@ def _check_application_insights_env() -> PreflightCheck:
         ),
         remediation=(
             "Wire App Insights to your Foundry project (Project details "
-            "→ Connected resources → Add connection → Application "
+            "> Connected resources > Add connection > Application "
             "Insights) or set APPLICATIONINSIGHTS_CONNECTION_STRING."
         ),
         duration_seconds=time.time() - started,
@@ -292,8 +327,9 @@ def run_preflight(
     # Foundry / App Insights probes are advisory; they help the user
     # understand *why* certain sources will be silent rather than
     # blocking the run.
-    checks.append(_check_foundry_project())
-    checks.append(_check_application_insights_env())
+    foundry_check = _check_foundry_project()
+    checks.append(foundry_check)
+    checks.append(_check_application_insights_env(foundry_check))
 
     return PreflightReport(checks=checks)
 
@@ -302,6 +338,7 @@ def format_report(
     report: PreflightReport,
     *,
     color: Optional[bool] = None,
+    show_ok_details: bool = False,
 ) -> str:
     """Render the report as a human-friendly multi-line summary.
 
@@ -323,7 +360,9 @@ def format_report(
                                   → Wire App Insights in Foundry or set APPLICATIONINSIGHTS_CONNECTION_STRING.
 
     When every check is ``ok`` the body is collapsed to a single
-    one-liner so a healthy run does not clutter the terminal.
+    one-liner by default so a healthy run does not clutter the terminal.
+    Set ``show_ok_details`` when the caller wants to show which checks
+    passed even on a healthy run.
     """
     if color is None:
         import sys
@@ -367,7 +406,12 @@ def format_report(
     lines = [f"AgentOps pre-flight   {summary}"]
 
     # Healthy-run short circuit: no per-check rows when everything passed.
-    if not report.has_failures and not report.has_warnings and counts["skip"] == 0:
+    if (
+        not show_ok_details
+        and not report.has_failures
+        and not report.has_warnings
+        and counts["skip"] == 0
+    ):
         return lines[0]
 
     lines.append("")
@@ -381,11 +425,28 @@ def format_report(
     for c in report.checks:
         glyph = _color(glyphs[c.status], c.status)
         label = (c.display_name or c.name).ljust(label_w)
-        lines.append(f"  {glyph} {label}  {c.message}")
+        indent = " " * (label_w + 5)
+        available_width = max(60, 100 - len(indent))
+        message_lines = textwrap.wrap(
+            c.message,
+            width=available_width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        ) or [""]
+        lines.append(f"  {glyph} {label}  {message_lines[0]}")
+        for continuation in message_lines[1:]:
+            lines.append(f"{indent}  {continuation}")
         # Show the remediation hint for warn / fail (action required)
         # AND for skip (so the user knows how to enable the check).
         if c.remediation and c.status in ("warn", "fail", "skip"):
-            indent = " " * (label_w + 5)
-            lines.append(f"{indent}\u2192 {c.remediation}")
+            remediation_lines = textwrap.wrap(
+                c.remediation,
+                width=available_width,
+                break_long_words=False,
+                break_on_hyphens=False,
+            ) or [""]
+            lines.append(f"{indent}\u2192 {remediation_lines[0]}")
+            for continuation in remediation_lines[1:]:
+                lines.append(f"{indent}  {continuation}")
 
     return "\n".join(lines)

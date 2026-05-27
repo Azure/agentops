@@ -15,6 +15,7 @@ from agentops.services.preflight import (
     format_report,
     run_preflight,
 )
+from agentops.utils.foundry_discovery import _summarize_discovery_exception
 
 
 def test_workspace_check_passes_for_init_workspace(tmp_path: Path) -> None:
@@ -82,6 +83,42 @@ def test_application_insights_warns_when_unconfigured(monkeypatch) -> None:
     assert "App Insights" in c.remediation
 
 
+def test_application_insights_warns_when_foundry_auth_blocks_discovery(monkeypatch) -> None:
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    c = _check_application_insights_env(
+        PreflightCheck(
+            name="foundry_project",
+            display_name="Foundry project",
+            status="warn",
+            message=(
+                "Discovery failed - Foundry authentication failed while reading "
+                "telemetry metadata."
+            ),
+        )
+    )
+    assert c.status == "warn"
+    assert "could not verify" in c.message.lower()
+    assert "no connection string available" not in c.message.lower()
+    assert "APPLICATIONINSIGHTS_CONNECTION_STRING" in c.remediation
+
+
+def test_foundry_discovery_auth_error_is_summarized() -> None:
+    reason = _summarize_discovery_exception(
+        RuntimeError(
+            "DefaultAzureCredential failed to retrieve a token from the included "
+            "credentials.\nAttempted credentials:\nEnvironmentCredential: "
+            "EnvironmentCredential authentication unavailable.\n"
+            "AzureCliCredential: Failed to invoke the Azure CLI."
+        ),
+        context="Foundry telemetry discovery",
+    )
+    assert "Foundry authentication failed" in reason
+    assert "DefaultAzureCredential" not in reason
+    assert "Attempted credentials" not in reason
+    assert "EnvironmentCredential" not in reason
+
+
 def test_run_preflight_collects_all_checks(tmp_path: Path, monkeypatch) -> None:
     (tmp_path / ".agentops").mkdir()
     # Force every Azure-dependent check into a deterministic state.
@@ -143,3 +180,16 @@ def test_format_report_collapses_to_one_line_when_all_ok() -> None:
     # Single line summary, no per-check rows.
     assert "\n" not in text
     assert "2 ok" in text
+
+
+def test_format_report_can_show_ok_details() -> None:
+    report = PreflightReport(checks=[
+        PreflightCheck(name="workspace", display_name="Workspace",
+                       status="ok", message="/tmp/x"),
+        PreflightCheck(name="azure_auth", display_name="Azure authentication",
+                       status="ok", message="ARM token acquired"),
+    ])
+    text = format_report(report, color=False, show_ok_details=True)
+    assert "2 ok" in text
+    assert "Workspace" in text
+    assert "Azure authentication" in text
