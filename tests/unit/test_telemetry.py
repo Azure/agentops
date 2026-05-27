@@ -414,6 +414,51 @@ def test_application_insights_connection_string_initializes_azure_monitor(
     assert os.environ.get("OTEL_SERVICE_NAME") == "agentops"
 
 
+def test_init_tracing_disables_azure_monitor_when_exporter_rejects_connection_string(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    trace_module = types.ModuleType("opentelemetry.trace")
+    trace_module.get_tracer = lambda name: ("tracer", name)  # type: ignore[attr-defined]
+    opentelemetry_module = types.ModuleType("opentelemetry")
+    opentelemetry_module.trace = trace_module  # type: ignore[attr-defined]
+
+    azure_module = types.ModuleType("azure")
+    azure_monitor_module = types.ModuleType("azure.monitor")
+    azure_monitor_otel_module = types.ModuleType("azure.monitor.opentelemetry")
+
+    def configure_azure_monitor(**_kwargs: object) -> None:
+        raise ValueError("Invalid connection string")
+
+    setattr(
+        azure_monitor_otel_module,
+        "configure_azure_monitor",
+        configure_azure_monitor,
+    )
+    monkeypatch.setitem(sys.modules, "opentelemetry", opentelemetry_module)
+    monkeypatch.setitem(sys.modules, "opentelemetry.trace", trace_module)
+    monkeypatch.setitem(sys.modules, "azure", azure_module)
+    monkeypatch.setitem(sys.modules, "azure.monitor", azure_monitor_module)
+    monkeypatch.setitem(
+        sys.modules, "azure.monitor.opentelemetry", azure_monitor_otel_module
+    )
+    monkeypatch.setattr(telemetry, "_tracer", None)
+    monkeypatch.setattr(telemetry, "_tracing_enabled", False)
+    monkeypatch.setenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        (
+            "InstrumentationKey=00000000-0000-0000-0000-000000000000;"
+            "IngestionEndpoint=https://example.monitor.azure.com/"
+        ),
+    )
+    monkeypatch.delenv("AGENTOPS_OTLP_ENDPOINT", raising=False)
+
+    init_tracing()
+
+    assert is_enabled() is False
+    assert "Azure Monitor tracing disabled" in caplog.text
+
+
 def test_genai_tracing_env_var_not_overwritten_if_user_set_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -443,7 +488,7 @@ def test_genai_tracing_env_var_not_overwritten_if_user_set_it(
     monkeypatch.setattr(telemetry, "_tracing_enabled", False)
     monkeypatch.setenv(
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
-        "InstrumentationKey=test",
+        "InstrumentationKey=00000000-0000-0000-0000-000000000000",
     )
     monkeypatch.setenv("AZURE_EXPERIMENTAL_ENABLE_GENAI_TRACING", "false")
     monkeypatch.delenv("AGENTOPS_OTLP_ENDPOINT", raising=False)

@@ -209,6 +209,8 @@ def test_pr_template_triggers_and_no_environment(tmp_path: Path) -> None:
 
     assert "agentops eval run" in content
     assert "agentops doctor --workspace ." in content
+    assert "--severity-fail none" in content
+    assert "--severity-fail critical" not in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
     assert "agentops-toolkit" in content
@@ -332,6 +334,18 @@ def test_auto_deploy_mode_uses_azd_when_azure_yaml_exists(tmp_path: Path) -> Non
     assert "Invoke-PreflightChecks.ps1" not in content
 
 
+def test_azd_prod_template_writes_release_evidence_to_step_summary(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["prod"])
+    content = (tmp_path / _PROD_PATH).read_text(encoding="utf-8")
+
+    assert result.deploy_mode == "azd"
+    assert "GITHUB_STEP_SUMMARY" in content
+    assert "cat .agentops/release/latest/evidence.md" in content
+    assert "AgentOps Safety Eval (PROD gate)" in content
+
+
 def test_azd_mode_runs_ailz_preflight_when_script_exists(tmp_path: Path) -> None:
     (tmp_path / "azure.yaml").write_text("name: azure-ai-lz\n", encoding="utf-8")
     scripts = tmp_path / "scripts"
@@ -443,6 +457,7 @@ def test_prod_template_triggers_and_environment_with_reviewer_hint(tmp_path: Pat
     assert "environment: production" in content
     assert "agentops eval run" in content
     assert "agentops doctor --workspace ." in content
+    assert "--severity-fail critical" in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.json" in content
     # Prod uses safety-eval as the gate name and warns about reviewers
@@ -632,6 +647,7 @@ def test_azure_devops_pr_template_uses_ado_idioms(tmp_path: Path) -> None:
     assert "AZURE_SERVICE_CONNECTION" in content
     # PR comment marker preserved across platforms.
     assert "<!-- agentops-pr-report -->" in content
+    assert "--severity-fail none" in content
     assert "--evidence-pack" in content
     assert "agentops-pr-release-evidence" in content
 

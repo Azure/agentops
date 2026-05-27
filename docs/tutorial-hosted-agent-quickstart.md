@@ -520,6 +520,14 @@ deployed Foundry Hosted or cloud endpoint. Have the Entra app-registration
 permission or the admin-provided OIDC values ready before using a workflow skill
 to connect the repo to Azure.
 
+In the generated PR workflow, Doctor evidence is advisory and the eval step is
+the merge gate. A green PR run can still include
+`Release readiness: blocked` in `evidence.md`; that means "not production-ready
+yet," not "the CI job broke." Production deploy workflows run Doctor as a
+critical release gate. The GitHub run summary includes the Doctor finding
+summary from `evidence.md`, so a blocked readiness result names the critical
+items to fix without digging through raw logs.
+
 Use the same workflow-skill handoff pattern as the Prompt Agent quickstart, but
 keep the scope to the hosted endpoint:
 
@@ -579,5 +587,6 @@ You are done when:
 - You forced the endpoint into regressed mode, compared it with the baseline,
   fixed it, and reran the comparison.
 - `agentops doctor --evidence-pack` writes
-  `.agentops/release/latest/evidence.md`.
+  `.agentops/release/latest/evidence.md`, and the workflow summary surfaces its
+  Doctor finding summary.
 - Cockpit opens and shows the local eval history plus Doctor readiness.

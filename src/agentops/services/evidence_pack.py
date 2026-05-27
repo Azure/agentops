@@ -169,6 +169,8 @@ def render_release_evidence_markdown(evidence: ReleaseEvidence) -> str:
             lines.append(f"- ✅ {item}")
         lines.append("")
 
+    _append_doctor_finding_summary(lines, evidence.doctor)
+
     lines.append("## Readiness checks")
     lines.append("")
     lines.append("| Check | Status | Summary |")
@@ -186,6 +188,49 @@ def render_release_evidence_markdown(evidence: ReleaseEvidence) -> str:
         lines.append("")
 
     return _redact_text("\n".join(lines).rstrip() + "\n")
+
+
+def _append_doctor_finding_summary(lines: list[str], doctor: dict[str, Any]) -> None:
+    if doctor.get("status") != "ok":
+        return
+    top_findings = _as_list(doctor.get("top_findings"))
+    if not top_findings:
+        return
+
+    counts = doctor.get("counts")
+    counts = counts if isinstance(counts, dict) else {}
+    total = doctor.get("findings_total")
+    try:
+        total_count = int(total)
+    except (TypeError, ValueError):
+        total_count = len(top_findings)
+
+    count_parts = []
+    for severity in ("critical", "warning", "info"):
+        count = counts.get(severity)
+        if count:
+            count_parts.append(f"{count} {severity}")
+    count_text = f" ({' · '.join(count_parts)})" if count_parts else ""
+
+    lines.append("## Doctor finding summary")
+    lines.append("")
+    lines.append(f"**Findings:** {total_count}{count_text}")
+    lines.append("")
+    for index, raw_finding in enumerate(top_findings, start=1):
+        if not isinstance(raw_finding, dict):
+            continue
+        severity = _cell(str(raw_finding.get("severity") or "info"))
+        category = _cell(str(raw_finding.get("category") or "uncategorized")).replace("_", " ")
+        finding_id = _cell(str(raw_finding.get("id") or "unknown"))
+        title = _cell(str(raw_finding.get("title") or ""))
+        lines.append(
+            f"{index}. **{severity}** [{category}] `{finding_id}` - {title}"
+        )
+    if total_count > len(top_findings):
+        lines.append(
+            f"{len(top_findings)} shown; see `.agentops/agent/report.md` for all findings."
+        )
+    lines.append("")
 
 
 def _latest_eval(root: Path, *, official_eval: Optional[dict[str, Any]] = None) -> dict[str, Any]:

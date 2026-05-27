@@ -73,6 +73,16 @@ def test_application_insights_ok_when_env_var_set(monkeypatch) -> None:
     assert c.status == "ok"
 
 
+def test_application_insights_warns_when_env_var_is_invalid(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        "InstrumentationKey=not-a-guid;IngestionEndpoint=garbage",
+    )
+    c = _check_application_insights_env()
+    assert c.status == "warn"
+    assert "not a valid App Insights connection string" in c.message
+
+
 def test_application_insights_warns_when_unconfigured(monkeypatch) -> None:
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)

@@ -21,8 +21,9 @@ deployment owner are configured.
 The conceptual workflows are identical: one PR gate and optional deploy stages
 (dev/qa/prod). The PR and production templates already run
 `agentops doctor --evidence-pack` so reviewers get `evidence.json` and
-`evidence.md` in artifacts. A separate scheduled Doctor workflow is optional
-for periodic health checks, not the default release path.
+`evidence.md` in artifacts and, for GitHub Actions, in the run summary with the
+Doctor finding summary. A separate scheduled Doctor workflow is optional for
+periodic health checks, not the default release path.
 
 For a new repository or tutorial, start with the PR gate only:
 `agentops workflow generate --kinds pr`. Generate DEV/QA/PROD deploy
@@ -148,6 +149,12 @@ release/* ── PR ──▶ main                     [agentops-pr]          ga
 
 If the user is on trunk-based development, omit `qa` and `release/**`
 and have them generate `--kinds pr,dev,prod`.
+
+The PR workflow uses the eval step as the hard merge gate. Doctor still writes
+release evidence in that workflow, but it is advisory there (`--severity-fail
+none`): `Release readiness: blocked` should be explained as production-readiness
+work, not as a PR failure. DEV/QA/PROD deploy workflows keep Doctor as a
+critical release gate.
 
 ## Step 0 - Prerequisites
 

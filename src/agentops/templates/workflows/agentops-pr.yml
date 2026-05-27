@@ -81,8 +81,9 @@ __EVAL_STEPS__
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}
         run: |
+          # PR evidence is advisory; the eval step above remains the merge gate.
           agentops doctor --workspace . --out .agentops/agent/report.md \
-            --severity-fail critical --evidence-pack
+            --severity-fail none --evidence-pack
 
       - name: Upload AgentOps results
         if: always()

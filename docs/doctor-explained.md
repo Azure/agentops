@@ -37,7 +37,9 @@ agentops doctor --evidence-pack
 That writes `.agentops/release/latest/evidence.json` and `evidence.md`. The
 evidence pack summarizes eval, baseline, Doctor, CI/CD workflow, Foundry
 continuous-eval, monitoring, AI Landing Zone, and trace-regression readiness
-without creating a second exit-code contract.
+without creating a second exit-code contract. Its Markdown report includes a
+Doctor finding summary with severity, category, finding ID, and title; generated
+GitHub workflows append that report to the run summary for quick triage.
 
 ## 2. The four signal sources
 
@@ -257,13 +259,15 @@ Severities are **independent of category**: a `quality` finding can be
 
 | Exit code | Meaning |
 |---|---|
-| `0` | Doctor ran and either found nothing, or nothing at or above the configured `--severity-fail` floor. |
+| `0` | Doctor ran and either found nothing, nothing at or above the configured `--severity-fail` floor, or the finding gate was disabled with `--severity-fail none`. |
 | `2` | Doctor ran and at least one finding is at or above the floor. Treat as a CI failure. |
 | `1` | Doctor itself failed (bad config, unreachable source, internal error). |
 
-The default `--severity-fail critical` is good for "fail the PR".
-`--severity-fail warning` is good for nightly cron jobs that want to
-catch drift before it gets bad.
+The default `--severity-fail critical` is good for production release gates.
+`--severity-fail warning` is good for nightly cron jobs that want to catch drift
+before it gets bad. Use `--severity-fail none` when Doctor is evidence-only,
+such as a PR workflow where the eval step is the hard merge gate. Runtime or
+configuration errors still return `1`.
 
 ## 7. LLM-judged checks
 

@@ -127,6 +127,23 @@ __EVAL_STEPS__
             .agentops/release/latest/evidence.md
           if-no-files-found: warn
 
+      - name: Step summary
+        if: always()
+        run: |
+          {
+            echo "## AgentOps Safety Eval (PROD gate)"
+            echo
+            if [ -f .agentops/results/latest/report.md ]; then
+              cat .agentops/results/latest/report.md
+            fi
+            if [ -f .agentops/release/latest/evidence.md ]; then
+              echo
+              echo "---"
+              echo
+              cat .agentops/release/latest/evidence.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   deploy:
     name: azd deploy (PROD)
     needs: safety-eval

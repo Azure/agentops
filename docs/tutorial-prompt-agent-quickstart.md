@@ -294,6 +294,12 @@ workflow, explicit thresholds, continuous eval, action SHA pinning, and
 trace-to-regression feedback. Use the critical findings as release blockers and
 the warning/info findings as the backlog for making the agent production-ready.
 
+In the generated PR workflow, the eval step is the merge gate and Doctor is
+evidence-only. That means the Actions run can be green while the evidence report
+still says `Release readiness: blocked`; use that as the didactic point that PR
+quality passed, but production readiness still has work to do. Later production
+deploy workflows run Doctor as a critical release gate.
+
 At this point the workflow files exist only on your machine. CI will not run
 until the folder is a GitHub repository, pushed, and connected to Azure with
 OIDC.
@@ -370,7 +376,10 @@ pins a different controlled reference.
 
 After the replacement, the workflow contract stays the same: it prepares the
 Foundry eval input, records provenance for review, and lets AgentOps attach
-release evidence. The detailed quality scores stay in Foundry Evaluations:
+release evidence. The GitHub run summary shows the Doctor finding summary from
+`evidence.md`, so a blocked readiness result names the critical items to fix
+without hunting through logs. The detailed quality scores stay in Foundry
+Evaluations:
 
 ```text
 .agentops/official-eval/metadata.json
@@ -420,6 +429,8 @@ Actions page shows which step failed, the summary table, and the link back to
 Foundry.
 
 Do not continue to the intentional regression until this baseline run is green.
+It is okay if the run summary includes `Release readiness: blocked` in the
+Doctor evidence section; for this PR-gate tutorial, that section is advisory.
 If the failed step is **Run official AI Agent Evaluation** and the log says the
 principal `lacks the required data action`
 `Microsoft.CognitiveServices/accounts/AIServices/agents/read`, the workflow
@@ -564,5 +575,6 @@ You are done when:
 - You published a deliberately regressed prompt version, saw the eval/pipeline
   signal move, restored the prompt, and reran the gate.
 - `agentops doctor --evidence-pack` writes
-  `.agentops/release/latest/evidence.md`.
+  `.agentops/release/latest/evidence.md`, and the GitHub run summary shows its
+  Doctor finding summary.
 - Cockpit opens and links the repo-side readiness view back to Foundry.

@@ -18,7 +18,7 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate, evidence, PR comment |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate, advisory Doctor evidence, PR comment |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
 | `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
@@ -230,8 +230,8 @@ The generated deploy workflows:
 For production deploys, generated templates also run
 `agentops doctor --evidence-pack` after the eval gate and upload
 `.agentops/release/latest/evidence.json` plus `evidence.md`. Warnings do not
-change the exit-code contract; critical Doctor findings block when
-`--severity-fail critical` is used.
+change the exit-code contract; critical Doctor findings block because the
+production templates run with `--severity-fail critical`.
 
 Set `AZURE_ENV_NAME` per GitHub Environment if your azd env names differ
 from `dev`, `qa`, and `production`. Set `AZURE_LOCATION` when the azd
@@ -392,6 +392,17 @@ In Settings → Branches, add a rule for **both `develop` and `main`**:
 This makes the AgentOps eval a hard merge requirement.
 
 ## Gate result
+
+The PR workflow uses the eval step as the hard merge gate. It still runs
+Doctor and uploads `evidence.json` / `evidence.md`, but that PR-stage Doctor
+evidence is advisory: it can say `Release readiness: blocked` without failing
+the PR. Treat that as release-review guidance. Production deploy workflows still
+run Doctor with a critical finding gate.
+
+The GitHub run summary includes the same `evidence.md` content, including the
+Doctor finding summary. When a release gate blocks, start there: the summary
+lists the critical and warning finding IDs, categories, and titles before you
+open the full artifact.
 
 When `agentops-local` is selected, the eval step uses the AgentOps exit code
 contract to gate deploys:

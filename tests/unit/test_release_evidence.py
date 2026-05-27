@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 
+from agentops.agent.analyzer import AnalysisResult
+from agentops.agent.findings import Category, Finding, Severity
 from agentops.core.release_evidence import ReleaseEvidence
 from agentops.pipeline.official_eval import OFFICIAL_EVAL_RUNNER
 from agentops.services.evidence_pack import (
@@ -125,6 +127,45 @@ def test_write_release_evidence_redacts_secret_values(tmp_path: Path) -> None:
     assert "super-secret" not in payload
     assert "InstrumentationKey=<redacted>" in payload
     assert "<redacted>" in markdown
+
+
+def test_release_evidence_markdown_includes_doctor_finding_summary(tmp_path: Path) -> None:
+    analysis = AnalysisResult(
+        findings=[
+            Finding(
+                id="regression.coherence",
+                severity=Severity.CRITICAL,
+                category=Category.QUALITY,
+                title="Regression detected on `coherence`",
+                summary="Current run is below baseline.",
+                recommendation="Review the prompt change and rerun the eval.",
+                source="results_history",
+            ),
+            Finding(
+                id="opex.no_thresholds",
+                severity=Severity.WARNING,
+                category=Category.OPERATIONAL_EXCELLENCE,
+                title="agentops.yaml has no explicit thresholds",
+                summary="Defaults are being used.",
+                recommendation="Add explicit release thresholds.",
+                source="workspace",
+            ),
+        ]
+    )
+
+    result = write_release_evidence(tmp_path, analysis=analysis)
+    markdown = result.markdown_path.read_text(encoding="utf-8")
+
+    assert "## Doctor finding summary" in markdown
+    assert "**Findings:** 2 (1 critical · 1 warning)" in markdown
+    assert (
+        "1. **critical** [quality] `regression.coherence` - "
+        "Regression detected on `coherence`"
+    ) in markdown
+    assert (
+        "2. **warning** [operational excellence] `opex.no_thresholds` - "
+        "agentops.yaml has no explicit thresholds"
+    ) in markdown
 
 
 def test_build_release_evidence_accepts_successful_official_eval(tmp_path: Path) -> None:

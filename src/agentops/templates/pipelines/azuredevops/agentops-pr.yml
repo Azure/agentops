@@ -67,8 +67,9 @@ __EVAL_TASKS__
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
+                # PR evidence is advisory; the eval task above remains the merge gate.
                 agentops doctor --workspace . --out .agentops/agent/report.md \
-                  --severity-fail critical --evidence-pack
+                  --severity-fail none --evidence-pack
             env:
               AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
               AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)

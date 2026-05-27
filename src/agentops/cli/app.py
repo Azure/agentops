@@ -2798,7 +2798,10 @@ def cmd_doctor(
         str,
         typer.Option(
             "--severity-fail",
-            help="Exit 2 when a finding at or above this severity is produced.",
+            help=(
+                "Exit 2 when a finding at or above this severity is produced "
+                "(info, warning, critical, or none)."
+            ),
         ),
     ] = "critical",
     categories: Annotated[
@@ -2939,15 +2942,19 @@ def _run_doctor_analyze(
     if lookback_days is not None:
         config = config.model_copy(update={"lookback_days": lookback_days})
 
-    try:
-        severity_floor = Severity(severity_fail.lower())
-    except ValueError as exc:
-        typer.echo(
-            f"{_cli_error('Error')}: invalid --severity-fail '{severity_fail}'. "
-            "Use one of: info, warning, critical.",
-            err=True,
-        )
-        raise typer.Exit(code=1) from exc
+    severity_fail_normalized = severity_fail.strip().lower()
+    if severity_fail_normalized == "none":
+        severity_floor: Severity | None = None
+    else:
+        try:
+            severity_floor = Severity(severity_fail_normalized)
+        except ValueError as exc:
+            typer.echo(
+                f"{_cli_error('Error')}: invalid --severity-fail '{severity_fail}'. "
+                "Use one of: info, warning, critical, none.",
+                err=True,
+            )
+            raise typer.Exit(code=1) from exc
 
     telemetry.init_tracing()
     started_perf = time.perf_counter()
@@ -3056,6 +3063,10 @@ def _run_doctor_analyze(
         typer.echo(f"{_cli_label('Max severity')}: {style(severity, 'bold', tone)}")
     for line in finding_lines[1:]:
         typer.echo(line)
+
+    if severity_floor is None:
+        typer.echo(f"{_cli_label('Finding gate')}: disabled (--severity-fail none)")
+        return
 
     if result.max_severity is not None and result.max_severity >= severity_floor:
         raise typer.Exit(code=2)
@@ -3387,7 +3398,7 @@ def _build_doctor_explain_text(
     section("EXIT CODES")
     lines.extend(
         [
-            "  0  Analyzer ran successfully and no finding met `--severity-fail`.",
+            "  0  Analyzer ran successfully and no finding met `--severity-fail`, or `--severity-fail none` disabled the finding gate.",
             "  1  Runtime or configuration error.",
             "  2  Analyzer ran successfully, but at least one finding met `--severity-fail`.",
         ]
@@ -3399,6 +3410,7 @@ def _build_doctor_explain_text(
             f"  {style('$', 'dim')} {style('agentops doctor', 'bold')}",
             f"  {style('$', 'dim')} {style('agentops doctor --categories security,responsible_ai', 'bold')}",
             f"  {style('$', 'dim')} {style('agentops doctor --severity-fail warning', 'bold')}",
+            f"  {style('$', 'dim')} {style('agentops doctor --severity-fail none --evidence-pack', 'bold')}",
             f"  {style('$', 'dim')} {style('agentops doctor explain --no-pager', 'bold')}",
         ]
     )
@@ -3565,7 +3577,7 @@ def _build_doctor_explain_markdown(
             "",
             "| Code | Meaning |",
             "|---|---|",
-            "| `0` | Analyzer ran successfully and no finding met `--severity-fail`. |",
+            "| `0` | Analyzer ran successfully and no finding met `--severity-fail`, or `--severity-fail none` disabled the finding gate. |",
             "| `1` | Runtime or configuration error. |",
             "| `2` | Analyzer ran successfully, but at least one finding met `--severity-fail`. |",
             "",
@@ -3575,6 +3587,7 @@ def _build_doctor_explain_markdown(
             "agentops doctor",
             "agentops doctor --categories security,responsible_ai",
             "agentops doctor --severity-fail warning",
+            "agentops doctor --severity-fail none --evidence-pack",
             "agentops doctor explain --no-pager",
             "agentops doctor explain --format markdown --out doctor.md",
             "agentops doctor explain --open",

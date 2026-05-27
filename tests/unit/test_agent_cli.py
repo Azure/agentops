@@ -81,6 +81,29 @@ def test_doctor_reports_regression_and_exits_two(tmp_path: Path) -> None:
     assert "regression.coherence" in body
 
 
+def test_doctor_can_disable_finding_gate(tmp_path: Path) -> None:
+    _seed_regression(tmp_path)
+    (tmp_path / ".agentops" / "agent.yaml").write_text(
+        _agent_yaml(), encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "doctor",
+            "--workspace",
+            str(tmp_path),
+            "--severity-fail",
+            "none",
+            "--no-preflight",
+        ],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    assert "Finding gate" in result.output
+    assert "regression.coherence" in result.output
+
+
 def test_doctor_no_findings_exits_zero(tmp_path: Path) -> None:
     # Empty workspace -> no runs -> no findings.
     (tmp_path / ".agentops").mkdir()

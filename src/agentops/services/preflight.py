@@ -227,9 +227,27 @@ def _check_application_insights_env(
     """Heads-up when neither env var nor Foundry discovery yields a
     connection string. The production telemetry tile will stay grey."""
     started = time.time()
-    if os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING") or os.getenv(
-        "AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING"
-    ):
+    explicit_connection_string = os.getenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING"
+    ) or os.getenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING")
+    if explicit_connection_string:
+        from agentops.utils.telemetry import is_appinsights_connection_string
+
+        if not is_appinsights_connection_string(explicit_connection_string):
+            return PreflightCheck(
+                name="app_insights",
+                display_name="Application Insights",
+                status="warn",
+                message=(
+                    "APPLICATIONINSIGHTS_CONNECTION_STRING is set but is not "
+                    "a valid App Insights connection string."
+                ),
+                remediation=(
+                    "Set the full App Insights connection string from the "
+                    "Azure portal or let Foundry discovery resolve it."
+                ),
+                duration_seconds=time.time() - started,
+            )
         return PreflightCheck(
             name="app_insights",
             display_name="Application Insights",

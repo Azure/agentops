@@ -240,7 +240,8 @@ def test_with_reason_surfaces_telemetry_call_failure():
             "https://x.services.ai.azure.com/api/projects/with-reason-403"
         )
     assert conn is None
-    assert reason and "RuntimeError" in reason and "403" in reason
+    assert reason and "telemetry metadata is not readable" in reason
+    assert "Reader on the Foundry project resource group" in reason
 
 
 def test_successful_discovery_is_cached_in_process():

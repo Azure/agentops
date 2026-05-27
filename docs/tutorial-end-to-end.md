@@ -353,6 +353,10 @@ The generated workflow prepares Microsoft Foundry eval input under:
 
 and records release evidence after the gate.
 
+In PR workflows, that Doctor evidence is advisory: the eval step is the merge
+gate, and `Release readiness: blocked` means the evidence found release work to
+review. Production deploy workflows still run Doctor as a critical release gate.
+
 The generator uses the Microsoft Action reference by default because that is the
 right baseline for product and release branches. The tutorial branch has a
 narrower goal: keep the full ecosystem walkthrough aligned with the repository
@@ -643,6 +647,11 @@ show whether the repo has the release machinery reviewers expect. Use critical
 findings as release blockers and warning/info findings as the backlog that turns
 the POC into an operated service.
 
+If those same Doctor findings appear inside a PR workflow, treat them as
+evidence attached to the PR rather than as the merge gate. The eval step gates
+the PR; production deploy workflows are where critical Doctor findings block the
+release path.
+
 Open both files. The Doctor report is the diagnostic view: it tells you which
 signals are present, which are missing, and whether the finding is blocking or
 informational. The evidence pack is the reviewer view: it turns those signals
@@ -742,6 +751,8 @@ You are ready for a release review when:
 - The tutorial includes one deliberate regression and one fixed rerun, either
   through Foundry prompt versions or AgentOps local baseline comparison.
 - `agentops doctor --evidence-pack` writes `evidence.md`.
+- The workflow summary surfaces the Doctor finding summary from `evidence.md`,
+  so blocked readiness names the critical items to fix.
 - Application Insights is connected or the evidence clearly says it is missing.
 - At least one trace or operation was inspected in Foundry Traces or App
   Insights, and Operate Ask AI was used for an aggregate summary when available.

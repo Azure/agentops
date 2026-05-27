@@ -18,6 +18,12 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from typing import Any, Generator, Optional
+from urllib.parse import urlparse
+from uuid import UUID
+
+from agentops.utils.logging import get_logger
+
+log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Lazy globals - initialised on first call to ``init_tracing()``
@@ -57,7 +63,7 @@ def init_tracing() -> None:
     appinsights_connection_string = os.getenv(
         "APPLICATIONINSIGHTS_CONNECTION_STRING"
     ) or os.getenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING")
-    if appinsights_connection_string and not _is_appinsights_connection_string(
+    if appinsights_connection_string and not is_appinsights_connection_string(
         appinsights_connection_string
     ):
         appinsights_connection_string = None
@@ -108,6 +114,9 @@ def init_tracing() -> None:
         except ImportError:
             # Azure Monitor exporter not installed - try OTLP below if configured.
             pass
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Azure Monitor tracing disabled: %s", exc)
+            appinsights_connection_string = None
 
     if not otlp_endpoint:
         return
@@ -139,16 +148,54 @@ def init_tracing() -> None:
     except ImportError:
         # OTLP exporter not installed - tracing stays disabled
         pass
+    except Exception as exc:  # noqa: BLE001
+        log.warning("OTLP tracing disabled: %s", exc)
 
 
-def _is_appinsights_connection_string(value: str) -> bool:
+def is_appinsights_connection_string(value: str) -> bool:
     """Return True for real App Insights connection strings.
 
     CI systems can leave undefined variables as literal placeholders such
     as ``$(APPLICATIONINSIGHTS_CONNECTION_STRING)``. Treat those as absent
     so Foundry auto-discovery still has a chance to configure telemetry.
     """
-    return "InstrumentationKey=" in value or "IngestionEndpoint=" in value
+    parts = _appinsights_connection_string_parts(value)
+    instrumentation_key = parts.get("instrumentationkey")
+    if not instrumentation_key:
+        return False
+    try:
+        UUID(instrumentation_key)
+    except ValueError:
+        return False
+    ingestion_endpoint = parts.get("ingestionendpoint")
+    if ingestion_endpoint:
+        parsed = urlparse(ingestion_endpoint)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return False
+    return True
+
+
+def _is_appinsights_connection_string(value: str) -> bool:
+    return is_appinsights_connection_string(value)
+
+
+def _appinsights_connection_string_parts(value: str) -> dict[str, str]:
+    value = value.strip()
+    if not value or "$(" in value or "${{" in value:
+        return {}
+    parts: dict[str, str] = {}
+    for segment in value.split(";"):
+        segment = segment.strip()
+        if not segment:
+            continue
+        if "=" not in segment:
+            return {}
+        key, part_value = segment.split("=", 1)
+        key = key.strip().lower()
+        if not key:
+            return {}
+        parts[key] = part_value.strip()
+    return parts
 
 
 def _agentops_resource() -> Optional[Any]:
