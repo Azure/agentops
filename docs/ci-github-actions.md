@@ -85,7 +85,7 @@ GitHub Environments, and branch protection. For a smoother first run, install
 the AgentOps workflow skill and hand this setup to Copilot:
 
 ```bash
-agentops skills install --platform copilot
+agentops skills install --platform copilot --force
 ```
 
 Then open Copilot and run `/skills`. Confirm `agentops-workflow` is loaded
@@ -99,9 +99,9 @@ workflows running end to end.
 
 This may be a new folder with no Git repo or GitHub remote yet. Create or
 connect the GitHub repo if needed, wire Azure OIDC and required Actions
-variables, create only the environments used by the generated workflows, show me
-the plan before changing GitHub or Azure, and call out anything that needs
-owner/admin permission.
+variables, verify the OIDC principal has Foundry User access, create only the
+environments used by the generated workflows, show me the plan before changing
+GitHub or Azure, and call out anything that needs owner/admin permission.
 ```
 
 ## Configuration walkthrough
@@ -123,6 +123,11 @@ Then on the Azure side, configure Workload Identity Federation
 (federated credentials) on the app registration so it can be assumed
 from GitHub Actions runs. See
 [Microsoft's WIF docs](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp).
+
+For Foundry prompt-agent gates, the same app registration / service principal
+also needs **Foundry User** on the Foundry project or Foundry resource. Azure
+`Reader` is not enough because the eval step calls Foundry data-plane APIs such
+as `Microsoft.CognitiveServices/accounts/AIServices/agents/read`.
 
 The generated eval and doctor workflows install AgentOps telemetry support.
 When `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` is set, AgentOps first tries to

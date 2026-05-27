@@ -322,7 +322,7 @@ Before running that workflow, make the PR gate runnable in GitHub. Install the
 AgentOps workflow skill if needed:
 
 ```powershell
-agentops skills install --platform copilot
+agentops skills install --platform copilot --force
 ```
 
 Then ask Copilot:
@@ -333,8 +333,9 @@ this Foundry prompt-agent repo.
 
 Create or connect the GitHub repo if needed, create the `dev` environment, wire
 Azure OIDC, set AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini as a GitHub `dev`
-environment variable or equivalent Azure DevOps pipeline variable, and show me
-the plan before changing GitHub or Azure.
+environment variable or equivalent Azure DevOps pipeline variable, verify the
+OIDC principal has Foundry User access, and show me the plan before changing
+GitHub or Azure.
 ```
 
 That value is not an `agentops init` answer. It tells the Microsoft Foundry AI
@@ -480,7 +481,7 @@ Before you run the generated workflows, hand the broader environment wiring to
 the AgentOps workflow skill:
 
 ```powershell
-agentops skills install --platform copilot
+agentops skills install --platform copilot --force
 ```
 
 Then ask Copilot:
@@ -491,9 +492,10 @@ workflows running for this Foundry agent repo.
 
 Extend the PR/dev setup if it already exists, wire Azure OIDC for the `qa` and
 `production` environments, confirm required Actions variables such as
-AZURE_OPENAI_DEPLOYMENT, and keep deploy placeholders unless this repo already
-has an azd deployment path. Show me the plan before changing GitHub or Azure,
-and call out anything that needs owner/admin permission.
+AZURE_OPENAI_DEPLOYMENT, verify the OIDC principals have Foundry User access,
+and keep deploy placeholders unless this repo already has an azd deployment
+path. Show me the plan before changing GitHub or Azure, and call out anything
+that needs owner/admin permission.
 ```
 
 Use this moment in the video to connect the four repos: Foundry Toolkit creates

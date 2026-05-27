@@ -306,7 +306,7 @@ ready before you start this handoff.
 Refresh the Copilot skills with AgentOps instead of checking folders manually:
 
 ```powershell
-agentops skills install --platform copilot
+agentops skills install --platform copilot --force
 ```
 
 Then open Copilot in this repo and run:
@@ -326,6 +326,7 @@ Actions for this Foundry prompt-agent project.
 This may be a brand-new folder with no Git repo or GitHub remote yet. Keep the
 scope to the PR gate only: create or connect the GitHub repo if needed, wire
 Azure OIDC and required Actions variables, create only the `dev` environment,
+verify the OIDC principal has Foundry User access before running the workflow,
 and do not set up `qa`, `production`, scheduled Doctor, or deploy workflows yet.
 Show me the plan before changing GitHub or Azure, and call out anything that
 needs owner/admin permission.

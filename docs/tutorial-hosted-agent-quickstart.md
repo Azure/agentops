@@ -524,7 +524,7 @@ Use the same workflow-skill handoff pattern as the Prompt Agent quickstart, but
 keep the scope to the hosted endpoint:
 
 ```powershell
-agentops skills install --platform copilot
+agentops skills install --platform copilot --force
 ```
 
 Then ask Copilot:

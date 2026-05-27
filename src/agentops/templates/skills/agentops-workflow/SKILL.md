@@ -92,25 +92,42 @@ by discovering the whole Azure subscription.
    workflow. If the job has `environment: dev`, the subject is normally
    `repo:<owner>/<repo>:environment:dev`. Do not assume branch or
    `pull_request` subjects without reading the workflow.
-9. Ask before creating or updating GitHub repos, GitHub environments,
+9. Before triggering a Foundry prompt-agent workflow, make sure the OIDC app /
+   service principal has Foundry data-plane access. It needs **Foundry User**
+   (role id `53ca6127-db72-4b80-b1b0-d745d6d5456d`, formerly Azure AI User) at
+   the Foundry project scope, or at the Foundry resource scope if that is the
+   team's standard. Azure **Reader** is not enough; without this role the eval
+   step fails on
+   `Microsoft.CognitiveServices/accounts/AIServices/agents/read`.
+10. If the Foundry RBAC assignment is missing, do not run the workflow yet.
+   Show the exact GitHub OIDC client ID / service principal, desired role, and
+   target Foundry scope, then ask the user to approve the role assignment or
+   get an Azure/Foundry admin to grant it. After assignment, read it back or ask
+   the user to confirm before dispatching the workflow.
+   When the user approves and you know the Foundry scope, use the role id to
+   avoid rename drift:
+   - `az ad sp show --id <AZURE_CLIENT_ID> --query id -o tsv`
+   - `az role assignment list --assignee <sp-object-id> --scope <foundry-scope> --include-inherited`
+   - `az role assignment create --assignee-object-id <sp-object-id> --assignee-principal-type ServicePrincipal --role 53ca6127-db72-4b80-b1b0-d745d6d5456d --scope <foundry-scope>`
+11. Ask before creating or updating GitHub repos, GitHub environments,
    variables/secrets, Entra app registrations/service principals, federated
    credentials, managed identities, or Azure RBAC assignments.
-10. When creating federated credentials from PowerShell, avoid fragile
+12. When creating federated credentials from PowerShell, avoid fragile
    interpolation. Do **not** write `"repo:$repo:environment:$envName"` because
    `$repo:` can be parsed as a scoped variable. Use
    `"repo:${repo}:environment:${envName}"` or
    `("repo:{0}:environment:{1}" -f $repo, $envName)`, then build JSON from a
    PowerShell object with `ConvertTo-Json`.
-11. After creating or updating a federated credential, read it back and verify
+13. After creating or updating a federated credential, read it back and verify
     before triggering a workflow:
     - `subject` exactly matches the generated workflow subject.
     - `issuer` is `https://token.actions.githubusercontent.com`.
     - `audiences` includes `api://AzureADTokenExchange`.
     If any value differs, fix the credential before running GitHub Actions.
-12. Do not dispatch `gh workflow run` as a surprise validation step. First show
+14. Do not dispatch `gh workflow run` as a surprise validation step. First show
     that the GitHub environment, variables/secrets, federated credential, and
-    Azure RBAC are ready, then ask the user before triggering workflows.
-13. Avoid broad discovery unless local config is missing. Do **not** run broad
+    Foundry RBAC are ready, then ask the user before triggering workflows.
+15. Avoid broad discovery unless local config is missing. Do **not** run broad
    `az resource list`, `az graph query`, SDK inspection, or web search to find
    the Foundry project when `agentops init show`, `.agentops/.env`, or
    `.azure/<env>/.env` already has `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. If the
@@ -269,6 +286,12 @@ Then configure Workload Identity Federation on the Azure side
 environment** the workflows will run from. See
 `docs/ci-github-actions.md` for the exact `az` commands.
 
+Also grant the same app registration / service principal **Foundry User** on the
+Foundry project or Foundry resource before the first workflow run. The PR gate
+uses Foundry data-plane APIs to read prompt agents; Azure `Reader` only proves
+ARM access and will still fail the eval step with
+`Microsoft.CognitiveServices/accounts/AIServices/agents/read`.
+
 Tell the user that CI evals emit `agentops.eval.*` telemetry and scheduled
 Doctor runs emit `agentops.agent.finding.*` telemetry when App Insights is
 configured or auto-discovered. The Cockpit uses those signals for Azure
@@ -278,7 +301,7 @@ Monitor deep links.
 
 Already done in Step 2 - the `agentops-azure` service connection
 handles auth. Make sure the underlying service principal or managed
-identity has the **Azure AI User** role on the Foundry account.
+identity has the **Foundry User** role on the Foundry project or resource.
 
 ## Step 4 - Use azd for deployment
 
