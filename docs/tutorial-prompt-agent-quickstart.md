@@ -335,9 +335,10 @@ For this PR-gate quickstart, the generated workflow uses the `dev` environment
 for OIDC and variables. You do **not** need `qa` or `production` yet; add them
 when you generate deploy workflows later.
 
-The workflow skill will propose the GitHub environment variables and secrets to
-copy from your local AgentOps/azd configuration into the GitHub `dev`
-environment. Review and approve those changes. If a value such as the evaluator
+The workflow skill may move ahead using reasonable defaults, such as the current
+folder or remote name for the GitHub repository and `dev` for the environment.
+If you want a different repo, environment name, or secret/variable source, say
+that in the prompt before it starts. If a required value such as the evaluator
 model deployment is missing, it will ask you.
 
 The PR workflow should contain the Microsoft Foundry eval action:
@@ -346,14 +347,15 @@ The PR workflow should contain the Microsoft Foundry eval action:
 microsoft/ai-agent-evals@v3-beta
 ```
 
-The generator uses the Microsoft Action reference by default because that is the
-right baseline for product and release branches. The tutorial branch has a
-narrower goal: keep the whole walkthrough aligned with the repository set.
-AgentOps comes from the tutorial reference, the PR gate uses the matching
-tutorial eval action, and Foundry remains the place where the evaluation run is
-executed and reviewed.
+The generated workflow uses the official Microsoft Action by default. Keep that
+default for product and release branches. In this tutorial branch only, switch
+the Action reference so the CLI, tutorial steps, and eval Action all come from
+the same tutorial-aligned repository set while you are walking through the demo.
+The evaluation still runs and is reviewed in Foundry; this change only controls
+which GitHub Action implementation the PR gate calls.
 
-For that reason, point the generated workflow at the tutorial reference action:
+For this tutorial branch, point the generated workflow at the tutorial reference
+action:
 
 ```powershell
 (Get-Content .github\workflows\agentops-pr.yml) `
@@ -361,9 +363,9 @@ For that reason, point the generated workflow at the tutorial reference action:
   Set-Content -Encoding utf8 .github\workflows\agentops-pr.yml
 ```
 
-Use this override only in the tutorial branch. Product and release branches
-should keep the Microsoft Action reference unless your team intentionally pins a
-controlled reference.
+Use this override only for the tutorial walkthrough. In real product or release
+branches, keep `microsoft/ai-agent-evals@v3-beta` unless your team intentionally
+pins a different controlled reference.
 
 After the replacement, the workflow contract stays the same: it prepares the
 Foundry eval input, records provenance for review, and lets AgentOps attach
