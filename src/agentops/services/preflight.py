@@ -126,7 +126,7 @@ def _check_azure_cli() -> PreflightCheck:
             display_name="Azure authentication",
             status="skip",
             message="azure-identity SDK not installed.",
-            remediation="Install the agent extra: pip install agentops-toolkit[agent].",
+            remediation="Install the agent extra: pip install agentops-accelerator[agent].",
             duration_seconds=time.time() - started,
         )
     try:

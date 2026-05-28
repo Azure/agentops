@@ -9,6 +9,6 @@
         "Azure/agentops"
     ],
     "chat.plugins.enabledPlugins": [
-        "agentops-toolkit"
+        "agentops-accelerator"
     ]
 }
