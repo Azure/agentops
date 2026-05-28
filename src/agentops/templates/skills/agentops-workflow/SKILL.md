@@ -169,7 +169,7 @@ release gate; the `--doctor-gate` flag only controls the PR template.
 
 ## Step 0 - Prerequisites
 
-1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@main"` if `agentops` is missing.
+1. `pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"` if `agentops` is missing.
 2. `agentops eval analyze` has been reviewed, `agentops.yaml` exists at the
    project root, and `agentops eval run` works locally.
 3. The user's repo follows GitFlow (or is willing to). If not, ask which

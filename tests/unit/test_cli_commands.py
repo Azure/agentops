@@ -64,7 +64,7 @@ def test_cockpit_command_wired() -> None:
     stripped = _strip_ansi(result.stdout)
     assert "cockpit" in stripped.lower()
     assert "Reads ``" not in stripped
-    assert "pip install agentops-toolkit" not in stripped
+    assert "pip install agentops-accelerator" not in stripped
 
 
 def test_workflow_command_exposes_analyze_and_generate() -> None:

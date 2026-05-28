@@ -191,7 +191,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
     generate_cicd_workflows(directory=tmp_path, kinds=["doctor"])
 
     content = (tmp_path / _DOCTOR_PATH).read_text(encoding="utf-8")
-    assert 'agentops-toolkit[foundry,agent]' in content
+    assert 'agentops-accelerator[foundry,agent]' in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
     assert "watchdog" not in content.lower()
@@ -209,7 +209,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
         force=True,
     )
     ado_content = (tmp_path / _ADO_DOCTOR).read_text(encoding="utf-8")
-    assert 'agentops-toolkit[foundry,agent]' in ado_content
+    assert 'agentops-accelerator[foundry,agent]' in ado_content
     assert "--evidence-pack" in ado_content
     assert "agentops-doctor-release-evidence" in ado_content
     assert "watchdog" not in ado_content.lower()
@@ -248,7 +248,7 @@ def test_pr_template_triggers_and_no_environment(tmp_path: Path) -> None:
     assert "--severity-fail none" not in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
-    assert "agentops-toolkit" in content
+    assert "agentops-accelerator" in content
     assert "azure/login@v3" in content
     assert "actions/setup-python@v6" in content
     assert "3.11" in content

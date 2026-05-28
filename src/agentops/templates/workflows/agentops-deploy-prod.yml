@@ -74,8 +74,8 @@ jobs:
       - name: Install AgentOps Toolkit
         run: |
           # NOTE: pinned to GitHub main until the next package release includes this flow.
-          # Switch to `uv pip install --system "agentops-toolkit[foundry,agent]"` after release.
-          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+          # Switch to `uv pip install --system "agentops-accelerator[foundry,agent]"` after release.
+          uv pip install --system "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
 
 __EVAL_STEPS__
 
