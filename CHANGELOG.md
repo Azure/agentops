@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-28
+
 ### Added
 - **`--doctor-gate` flag on `agentops workflow generate`.** New option
   `--doctor-gate critical|warning|none` controls the Doctor severity floor
