@@ -113,6 +113,42 @@ jobs:
             echo "$mp → $VERSION"
           done
 
+          # tombstones/vscode/package.json (legacy publisher VSIX tombstone)
+          jq --arg v "$VERSION" '.version = $v' \
+            tombstones/vscode/package.json > tombstones/vscode/package.json.tmp
+          mv tombstones/vscode/package.json.tmp tombstones/vscode/package.json
+          echo "tombstones/vscode/package.json → $VERSION"
+
+          # tombstones/pypi/pyproject.toml (legacy distribution PyPI tombstone)
+          VERSION="$VERSION" python - <<'PY'
+          import os, re, pathlib
+          v = os.environ["VERSION"]
+          p = pathlib.Path("tombstones/pypi/pyproject.toml")
+          t = p.read_text(encoding="utf-8")
+          new_t = re.sub(r'^version = "[^"]+"', f'version = "{v}"', t, count=1, flags=re.MULTILINE)
+          if new_t == t:
+              raise SystemExit("::error::tombstones/pypi/pyproject.toml version was not updated; check the regex anchor.")
+          p.write_text(new_t, encoding="utf-8")
+          PY
+          echo "tombstones/pypi/pyproject.toml → $VERSION"
+
+          # tombstones/vscode/CHANGELOG.md (rewrite single entry's version, preserve YYYY-MM-DD sentinel for publish-time substitution)
+          VERSION="$VERSION" python - <<'PY'
+          import os, re, pathlib
+          v = os.environ["VERSION"]
+          p = pathlib.Path("tombstones/vscode/CHANGELOG.md")
+          text = p.read_text(encoding="utf-8")
+          new_text = re.sub(
+              r"^## \[\d+\.\d+\.\d+\] - (?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})",
+              f"## [{v}] - YYYY-MM-DD",
+              text, count=1, flags=re.MULTILINE,
+          )
+          if new_text == text:
+              raise SystemExit("::error::tombstones/vscode/CHANGELOG.md heading was not updated; check the regex anchor.")
+          p.write_text(new_text, encoding="utf-8")
+          PY
+          echo "tombstones/vscode/CHANGELOG.md → [$VERSION] (date sentinel preserved)"
+
       - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
@@ -120,7 +156,10 @@ jobs:
 
       - name: Commit and push
         run: |
-          git add CHANGELOG.md plugins/agentops/package.json plugins/agentops/plugin.json .github/plugin/marketplace.json .claude-plugin/marketplace.json
+          git add CHANGELOG.md plugins/agentops/package.json plugins/agentops/plugin.json \
+                  .github/plugin/marketplace.json .claude-plugin/marketplace.json \
+                  tombstones/vscode/package.json tombstones/pypi/pyproject.toml \
+                  tombstones/vscode/CHANGELOG.md
           git commit -m "chore: prepare release ${{ env.version }}"
           git push origin "release/v${{ env.version }}"
 
@@ -140,7 +179,9 @@ jobs:
           - Branch \`release/v${{ env.version }}\` created from \`develop\`
           - \`CHANGELOG.md\` updated: versioned section \`[${{ env.version }}]\` added
           - Plugin versions synced to \`${{ env.version }}\` (package.json, plugin.json, marketplace.json)
-          - Staging pipeline triggered automatically (build → TestPyPI + VSIX pre-release → verify)
+          - Tombstone versions synced to \`${{ env.version }}\` (tombstones/vscode/package.json, tombstones/pypi/pyproject.toml)
+          - \`tombstones/vscode/CHANGELOG.md\` heading rewritten to \`[${{ env.version }}]\` (date sentinel left for publish-time substitution)
+          - Staging pipeline triggered automatically (build → TestPyPI + VSIX pre-release → verify, plus tombstone TestPyPI + VSIX pre-release)
 
           ### Next steps
           1. Wait for the **Staging** pipeline to pass

@@ -28,14 +28,20 @@
 #   and TestPyPI.
 #
 # Required GitHub secrets (environment: staging):
-#   VSCE_PAT — VS Code Marketplace Personal Access Token
+#   VSCE_PAT — VS Code Marketplace PAT. MUST have "Marketplace: Manage" scope covering
+#              BOTH the AgentOpsAccelerator and AgentOpsToolkit publishers.
 #
 # Setup (Trusted Publishing + VSCE):
 #   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
-#   2. GitHub repo → Settings → Environments → Create "staging" environment (optional approval)
-#   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
-#   4. Add VSCE_PAT to staging environment
+#   2. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
+#      (Required for the deprecation tombstone re-publish of agentops-toolkit on TestPyPI.)
+#   3. GitHub repo → Settings → Environments → Create "staging" environment (optional approval)
+#   4. https://dev.azure.com/ → PAT with Marketplace scope on the AzDO account that
+#      owns BOTH the AgentOpsAccelerator AND AgentOpsToolkit publishers → Create VSCE_PAT.
+#      Verify scope with: vsce ls-publishers -p $VSCE_PAT (must list BOTH publishers).
+#   5. Add VSCE_PAT to staging environment
 
 name: Staging
 
@@ -49,6 +55,69 @@ jobs:
   # Reusable build: test + package
   build:
     uses: ./.github/workflows/_build.yml
+
+  # Build the tombstone metapackage (agentops-toolkit → agentops-accelerator redirect).
+  # Version is hardcoded in tombstones/pypi/pyproject.toml; no setuptools-scm involvement.
+  build-pypi-tombstone:
+    runs-on: ubuntu-latest
+    outputs:
+      tombstone_version: ${{ steps.tver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve tombstone version
+        id: tver
+        run: |
+          VERSION=$(python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('tombstones/pypi/pyproject.toml').read_text())['project']['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tombstone version resolved: $VERSION"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build
+
+      - name: Build tombstone distribution
+        run: python -m build tombstones/pypi --outdir dist-pypi-tombstone
+
+      - name: Assert tombstone artifact filenames
+        env:
+          TOMBSTONE_VERSION: ${{ steps.tver.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          version = os.environ["TOMBSTONE_VERSION"]
+          dist = Path("dist-pypi-tombstone")
+          expected = {
+              f"agentops_toolkit-{version}.tar.gz",
+              f"agentops_toolkit-{version}-py3-none-any.whl",
+          }
+          actual = {p.name for p in dist.iterdir() if p.is_file()}
+          missing = expected - actual
+          if missing:
+              print(f"::error::Tombstone build is missing expected artifacts: {sorted(missing)}")
+              print("Contents of dist-pypi-tombstone/:")
+              for artifact in sorted(dist.iterdir()):
+                  print(f"  - {artifact.name}")
+              sys.exit(1)
+          print("Tombstone artifacts:")
+          for name in sorted(actual):
+              print(f"  - {name}")
+          PY
+
+      - name: Upload tombstone build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-pypi-tombstone
+          path: dist-pypi-tombstone/
 
   # Publish to TestPyPI
   publish-testpypi:
@@ -70,6 +139,30 @@ jobs:
           repository-url: https://test.pypi.org/legacy/
           verbose: true
           skip-existing: true # Allow re-pushes without failure
+
+  # Publish the tombstone metapackage to TestPyPI.
+  # Gated AFTER publish-testpypi so the real package lands first; if the
+  # tombstone fails, hotfix it later — never the other way around.
+  publish-tombstone-testpypi:
+    needs: [build-pypi-tombstone, publish-testpypi]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write # Required for PyPI Trusted Publishing (OIDC)
+    steps:
+      - name: Download tombstone build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-pypi-tombstone
+          path: dist-pypi-tombstone/
+
+      - name: Publish tombstone to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist-pypi-tombstone/
+          verbose: true
+          skip-existing: true
 
   # Install from TestPyPI and smoke-test the CLI
   verify-testpypi:
@@ -125,6 +218,48 @@ jobs:
           test -f .agentops/data/smoke.jsonl
           test -f .azure/config.json
           echo "✅ agentops init succeeded"
+
+  # Install the tombstone from TestPyPI and verify it redirects to agentops-accelerator.
+  verify-tombstone-testpypi:
+    needs: [build-pypi-tombstone, publish-tombstone-testpypi]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install agentops-toolkit==${{ needs.build-pypi-tombstone.outputs.tombstone_version }} from TestPyPI
+        env:
+          TOMBSTONE_VERSION: ${{ needs.build-pypi-tombstone.outputs.tombstone_version }}
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "Attempt $i: installing agentops-toolkit==${TOMBSTONE_VERSION} from TestPyPI"
+            if pip install \
+              "agentops-toolkit==${TOMBSTONE_VERSION}" \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/; then
+              exit 0
+            fi
+            if [ "$i" -lt 5 ]; then
+              echo "Not available yet, waiting 30s..."
+              sleep 30
+            fi
+          done
+          echo "::error::agentops-toolkit==${TOMBSTONE_VERSION} was not available from TestPyPI after 5 attempts."
+          exit 1
+
+      - name: Verify tombstone redirects to agentops-accelerator
+        run: |
+          # The tombstone declares agentops-accelerator as its sole dependency; pip show must list it under Requires.
+          if ! pip show agentops-toolkit | grep -E '^Requires:' | grep -q 'agentops-accelerator'; then
+            echo "::error::agentops-toolkit does not declare agentops-accelerator under Requires."
+            pip show agentops-toolkit
+            exit 1
+          fi
+          # Importing agentops must resolve via the real package shipped by agentops-accelerator.
+          python -c "import agentops; print(agentops.__file__)"
+          echo "✅ tombstone redirect verified"
 
   # ── VSIX Pre-release ─────────────────────────────────────────────────
   # Publish the VS Code extension as a pre-release to the Marketplace.
@@ -184,3 +319,80 @@ jobs:
         with:
           name: vsix
           path: plugins/agentops/agentops-skills.vsix
+
+  # ── VSIX Pre-release Tombstone ───────────────────────────────────────
+  # Publish the deprecated AgentOpsToolkit publisher VSIX as pre-release.
+  # Gated AFTER publish-vsix-prerelease so the replacement is on the
+  # pre-release channel before the tombstone redirects users to it.
+  # No dependency on build-pypi-tombstone: this is a separate (VSIX) channel
+  # and does not consume the PyPI tombstone artifact.
+  publish-tombstone-vsix-prerelease:
+    needs: publish-vsix-prerelease
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      VSIX_FILE: agentops-toolkit-tombstone.vsix
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Substitute CHANGELOG date placeholder
+        working-directory: tombstones/vscode
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          sed -i "s/YYYY-MM-DD/$TODAY/g" CHANGELOG.md
+          if grep -q "YYYY-MM-DD" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md still contains the YYYY-MM-DD placeholder after substitution."
+            exit 1
+          fi
+          echo "CHANGELOG date set to $TODAY"
+
+      - name: Sync tombstone VSIX version from branch name
+        run: |
+          # Derive version from the release branch name (e.g. release/v0.1.8 → 0.1.8).
+          BRANCH="${GITHUB_REF_NAME}"
+          VERSION="${BRANCH#release/v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Could not derive semver from branch '$BRANCH'. Expected release/vX.Y.Z format."
+            exit 1
+          fi
+          jq --arg v "$VERSION" '.version = $v' \
+            tombstones/vscode/package.json > tombstones/vscode/package.json.tmp
+          mv tombstones/vscode/package.json.tmp tombstones/vscode/package.json
+          echo "Tombstone VSIX version set to $VERSION (from branch $BRANCH)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Install tombstone npm dependencies
+        working-directory: tombstones/vscode
+        run: npm install --no-audit --no-fund
+
+      - name: Compile tombstone TypeScript
+        working-directory: tombstones/vscode
+        run: npm run compile
+
+      - name: Package tombstone VSIX (pre-release)
+        working-directory: tombstones/vscode
+        run: vsce package --pre-release -o "${VSIX_FILE}"
+
+      - name: Publish pre-release tombstone to VS Code Marketplace
+        continue-on-error: true # Tolerate "already exists" for pre-release builds
+        working-directory: tombstones/vscode
+        run: vsce publish --pre-release --packagePath "${VSIX_FILE}" -p "${{ secrets.VSCE_PAT }}"
+
+      - name: Show tombstone VSIX info
+        working-directory: tombstones/vscode
+        run: |
+          ls -lh "${VSIX_FILE}"
+          echo "✅ Tombstone VSIX pre-release published to Marketplace"
+
+      - name: Upload tombstone VSIX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vsix-tombstone-prerelease
+          path: tombstones/vscode/${{ env.VSIX_FILE }}
