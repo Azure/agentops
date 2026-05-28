@@ -5083,7 +5083,7 @@ def create_app(workspace: Path):
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
             "agentops cockpit requires the [agent] extra. "
-            "Install with: pip install 'agentops-toolkit[agent]'"
+            "Install with: pip install 'agentops-accelerator[agent]'"
         ) from exc
 
     app = FastAPI(title="AgentOps Cockpit", docs_url=None, redoc_url=None)

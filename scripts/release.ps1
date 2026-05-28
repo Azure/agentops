@@ -80,8 +80,8 @@ if (-not $env:TESTPYPI_TOKEN) {
 } else {
     $maxAttempts = 5
     for ($i = 1; $i -le $maxAttempts; $i++) {
-        Write-Host "    Attempt ${i}: installing agentops-toolkit==$version"
-        $result = pip install "agentops-toolkit==$version" `
+        Write-Host "    Attempt ${i}: installing agentops-accelerator==$version"
+        $result = pip install "agentops-accelerator==$version" `
             --index-url https://test.pypi.org/simple/ `
             --extra-index-url https://pypi.org/simple/ 2>&1
         if ($LASTEXITCODE -eq 0) { break }
@@ -170,8 +170,8 @@ if ($syncConfirm -eq "yes") {
 # ── Summary ─────────────────────────────────────────────────────────
 Write-Host "`n✅ Release v$version complete!" -ForegroundColor Green
 Write-Host "  Tag:      v$version" -ForegroundColor Cyan
-Write-Host "  PyPI:     https://pypi.org/project/agentops-toolkit/$version/" -ForegroundColor Cyan
+Write-Host "  PyPI:     https://pypi.org/project/agentops-accelerator/$version/" -ForegroundColor Cyan
 Write-Host "  GitHub:   https://github.com/Azure/agentops/releases/tag/v$version" -ForegroundColor Cyan
 if (-not $skipVSIX) {
-    Write-Host "  VSIX:     https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit" -ForegroundColor Cyan
+    Write-Host "  VSIX:     https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator" -ForegroundColor Cyan
 }

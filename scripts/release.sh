@@ -79,8 +79,8 @@ if [ -z "${TESTPYPI_TOKEN:-}" ]; then
     echo ">>> Skipped (no TestPyPI publish)"
 else
     for i in 1 2 3 4 5; do
-        echo "    Attempt $i: installing agentops-toolkit==$version"
-        if pip install "agentops-toolkit==$version" \
+        echo "    Attempt $i: installing agentops-accelerator==$version"
+        if pip install "agentops-accelerator==$version" \
             --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/; then
             break
@@ -167,6 +167,6 @@ fi
 # ── Summary ─────────────────────────────────────────────────────────
 echo -e "\n✅ Release v$version complete!"
 echo "  Tag:      v$version"
-echo "  PyPI:     https://pypi.org/project/agentops-toolkit/$version/"
+echo "  PyPI:     https://pypi.org/project/agentops-accelerator/$version/"
 echo "  GitHub:   https://github.com/Azure/agentops/releases/tag/v$version"
-$skip_vsix || echo "  VSIX:     https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit"
+$skip_vsix || echo "  VSIX:     https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator"

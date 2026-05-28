@@ -5,7 +5,7 @@ on **Azure Container Apps** as a GitHub Copilot Extension.
 
 ## Files
 
-- `Dockerfile` - installs `agentops-toolkit[agent]` and runs
+- `Dockerfile` - installs `agentops-accelerator[agent]` and runs
   `agentops agent serve --host 0.0.0.0 --port 8080`.
 - `main.bicep` - single-resource ACA app with HTTPS ingress, a
   user-assigned managed identity, and a `/healthz` liveness probe.

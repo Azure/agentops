@@ -1,6 +1,6 @@
 # GitOps Guide: Building and Releasing AgentOps Toolkit
 
-This guide is a comprehensive instruction manual for engineers working on the **agentops-toolkit** project. It covers the full GitOps lifecycle - from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.
+This guide is a comprehensive instruction manual for engineers working on the **agentops-accelerator** project. It covers the full GitOps lifecycle - from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.
 
 ## Table of Contents
 
@@ -314,7 +314,7 @@ After the staging pipeline passes, you can manually test the package:
 
 ```bash
 # Install the specific dev version from TestPyPI
-pip install "agentops-toolkit==0.2.1.dev3" \
+pip install "agentops-accelerator==0.2.1.dev3" \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/
 
@@ -384,7 +384,7 @@ Confirm the test package appeared on TestPyPI:
 python -m setuptools_scm
 
 # Install and test manually
-pip install "agentops-toolkit==$(python -m setuptools_scm)" \
+pip install "agentops-accelerator==$(python -m setuptools_scm)" \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/
 
@@ -610,7 +610,7 @@ git branch -d release/v0.2.0
 
 ```bash
 # Install from PyPI
-pip install agentops-toolkit==0.2.0
+pip install agentops-accelerator==0.2.0
 
 # Verify
 agentops --version    # Should show 0.2.0
@@ -618,7 +618,7 @@ agentops --help
 ```
 
 Check the published package:
-- PyPI: https://pypi.org/project/agentops-toolkit/0.2.0/
+- PyPI: https://pypi.org/project/agentops-accelerator/0.2.0/
 - GitHub Release: https://github.com/Azure/agentops/releases/tag/v0.2.0
 
 ## 10. Infrastructure Setup
@@ -648,7 +648,7 @@ Create two environments in **Settings → Environments → New environment**:
 
   | Secret       | Value                                         | How to get it                                                           |
   | ------------ | --------------------------------------------- | ----------------------------------------------------------------------- |
-  | `PYPI_TOKEN` | PyPI API token (scoped to `agentops-toolkit`) | [pypi.org/manage/account/token](https://pypi.org/manage/account/token/) |
+  | `PYPI_TOKEN` | PyPI API token (scoped to `agentops-accelerator`) | [pypi.org/manage/account/token](https://pypi.org/manage/account/token/) |
 
 ### 10.2 PyPI and TestPyPI Accounts
 
@@ -666,12 +666,12 @@ Create two environments in **Settings → Environments → New environment**:
 
 1. Go to [pypi.org/account/register](https://pypi.org/account/register/) or log in
 2. Go to [pypi.org/manage/account/token](https://pypi.org/manage/account/token/)
-3. Create an API token scoped to the `agentops-toolkit` project
+3. Create an API token scoped to the `agentops-accelerator` project
 4. Add the token as `PYPI_TOKEN` secret in the GitHub `release` environment
 
 ### 10.3 First-Time Package Registration
 
-The first time you publish to TestPyPI or PyPI, the project name (`agentops-toolkit`) is registered automatically. After the first upload:
+The first time you publish to TestPyPI or PyPI, the project name (`agentops-accelerator`) is registered automatically. After the first upload:
 
 - Scope your API tokens to the specific project for better security
 - Add collaborators/maintainers on the PyPI/TestPyPI project page if needed
@@ -767,7 +767,7 @@ Use this checklist when cutting a release:
 - [ ] Release pipeline runs: build + TestPyPI + verify pass
 - [ ] PyPI publish approved in GitHub Actions
 - [ ] GitHub Release created with artifacts
-- [ ] Published package verified: `pip install agentops-toolkit==0.X.Y`
+- [ ] Published package verified: `pip install agentops-accelerator==0.X.Y`
 
 **Cleanup**
 - [ ] `main` merged back to `develop`

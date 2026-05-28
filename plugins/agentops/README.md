@@ -35,7 +35,7 @@ There are no shipped `agentops-monitor`, `agentops-trace`, or
 ### Option 1: VS Code extension
 
 Install from the
-[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit)
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator)
 or search **AgentOps Skills** in the VS Code Extensions view.
 
 Use this when you want Copilot in VS Code to discover the packaged
@@ -46,7 +46,7 @@ skills from the extension/plugin.
 Run this from the repository where you want skills checked in:
 
 ```bash
-python -m pip install "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@main"
+python -m pip install "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"
 agentops skills install --platform copilot --force
 ```
 
@@ -80,7 +80,7 @@ Run the AgentOps watchdog and summarize production latency findings.
 
 ## Links
 
-- [AgentOps Toolkit](https://github.com/Azure/agentops)
+- [AgentOps Accelerator](https://github.com/Azure/agentops)
 - [Prompt Agent quickstart](https://github.com/Azure/agentops/blob/main/docs/tutorial-prompt-agent-quickstart.md)
 - [Hosted Agent quickstart](https://github.com/Azure/agentops/blob/main/docs/tutorial-hosted-agent-quickstart.md)
 - [End-to-end workshop](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md)

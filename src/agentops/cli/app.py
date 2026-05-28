@@ -2643,7 +2643,7 @@ def cmd_mcp_serve(
 
     Requires the optional ``mcp`` extra:
 
-        pip install agentops-toolkit[mcp]
+        pip install agentops-accelerator[mcp]
     """
     if _maybe_explain_leaf(("mcp", "serve"), explain):
         return
@@ -4586,7 +4586,7 @@ def cmd_agent_serve(
     Exposes ``POST /agents/messages`` (Copilot Extensions protocol),
     ``GET /healthz`` and ``GET /``. Requires the ``[agent]`` extra:
 
-        pip install agentops-toolkit[agent]
+        pip install agentops-accelerator[agent]
     """
     if _maybe_explain_leaf(("agent", "serve"), explain):
         return
@@ -4596,7 +4596,7 @@ def cmd_agent_serve(
     except ImportError as exc:
         typer.echo(
             f"{_cli_error('Error')}: agent extras not installed. "
-            "Run `pip install agentops-toolkit[agent]`.",
+            "Run `pip install agentops-accelerator[agent]`.",
             err=True,
         )
         raise typer.Exit(code=1) from exc
@@ -4662,7 +4662,7 @@ def cmd_cockpit(
     except ImportError as exc:
         typer.echo(
             f"{_cli_error('Error')}: cockpit requires the [agent] extra. "
-            "Run `pip install agentops-toolkit[agent]`.",
+            "Run `pip install agentops-accelerator[agent]`.",
             err=True,
         )
         raise typer.Exit(code=1) from exc

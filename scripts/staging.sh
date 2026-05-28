@@ -63,7 +63,7 @@ else
     echo "    Expected version: $scm_version"
     for i in 1 2 3 4 5; do
         echo "    Attempt $i..."
-        if pip install "agentops-toolkit==$scm_version" \
+        if pip install "agentops-accelerator==$scm_version" \
             --index-url https://test.pypi.org/simple/ \
             --extra-index-url https://pypi.org/simple/; then
             break

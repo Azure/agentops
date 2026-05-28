@@ -65,7 +65,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 python -m pip install --upgrade pip
-                python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+                python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
                 agentops doctor --workspace . --out .agentops/agent/report.md \
                   --severity-fail critical --evidence-pack
             env:

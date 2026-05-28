@@ -1,0 +1,42 @@
+{
+  "name": "agentops-skills",
+  "displayName": "[DEPRECATED] AgentOps Toolkit — Migrate to AgentOps Accelerator",
+  "description": "Deprecated. This extension was renamed to 'AgentOps Accelerator — Skills for GitHub Copilot' (AgentOpsAccelerator.agentops-skills). Please install the new extension and uninstall this one.",
+  "version": "0.3.0",
+  "publisher": "AgentOpsToolkit",
+  "license": "MIT",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "deprecated",
+    "agentops",
+    "agentops-toolkit",
+    "migration",
+    "copilot"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {},
+  "scripts": {
+    "compile": "tsc -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Azure/agentops.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Azure/agentops/issues"
+  }
+}

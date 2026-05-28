@@ -64,7 +64,7 @@ if ($skipTestPyPI) {
     $maxAttempts = 5
     for ($i = 1; $i -le $maxAttempts; $i++) {
         Write-Host "    Attempt ${i}..."
-        $result = pip install "agentops-toolkit==$scmVersion" `
+        $result = pip install "agentops-accelerator==$scmVersion" `
             --index-url https://test.pypi.org/simple/ `
             --extra-index-url https://pypi.org/simple/ 2>&1
         if ($LASTEXITCODE -eq 0) {
