@@ -28,6 +28,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   project across PRs and may need periodic cleanup.
 
 ### Changed
+- **Renamed PyPI distribution and VS Code publisher.** The PyPI
+  distribution name changed from `agentops-toolkit` to
+  `agentops-accelerator`, and the VS Code Marketplace publisher
+  changed from `AgentOpsToolkit` to `AgentOpsAccelerator`. The
+  resulting extension ID flips from
+  `AgentOpsToolkit.agentops-toolkit` to
+  `AgentOpsAccelerator.agentops-accelerator`. The Python import
+  (`import agentops`) and CLI command (`agentops ...`) are
+  unchanged — only the install/distribution identifier changed.
+  Install with `pip install agentops-accelerator` or
+  `uv pip install agentops-accelerator`. The previous
+  `pip install agentops-toolkit` command continues to work via a
+  tombstone metapackage published alongside this release that
+  pins `agentops-accelerator>=0.3.0`. (#181)
 - **Default PR Doctor behavior is now blocking.** Generating workflows
   without `--doctor-gate` produces a PR template that blocks on critical
   Doctor findings. Existing workflows continue to work unchanged; only
@@ -43,6 +57,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - Prompt and hosted agent eval defaults now use judge-based response
   completeness instead of token-overlap F1, keeping F1 as the default for
   exact-reference `model:<deployment>` checks or explicit evaluator overrides.
+
+### Notes for developers
+- **Editable install cleanup after rebrand.** Developers with an
+  existing local editable install (`uv pip install -e .` or
+  `pip install -e .`) may have a stale
+  `src/agentops_toolkit.egg-info/` directory or stale
+  `importlib.metadata` entries pointing to the old distribution
+  name after pulling this release. Clean up with:
+  `rm -rf src/*.egg-info && uv pip install -e .` (or
+  `rm -rf src/*.egg-info && pip install -e .` for pip). This is
+  a one-time, dev-only step; CI runs are unaffected because they
+  create fresh virtual environments, and end users installing
+  from PyPI are unaffected because wheels carry the new
+  `dist-info` directory directly. (#181)
 
 ## [0.2.2] - 2026-05-26
 
