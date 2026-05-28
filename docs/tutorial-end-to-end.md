@@ -41,7 +41,7 @@ review.
 .azure/
 ├── config.json            # defaultEnvironment: sandbox
 ├── .gitignore             # excludes */.env
-├── sandbox/.env           # author's safe space (private Foundry project or local app)
+├── sandbox/.env           # team authoring / experimentation space (Foundry project for prompts, or local/shared app for hosted agents)
 ├── dev/.env               # team-shared dev project / endpoint (PR + deploy gate)
 ├── qa/.env                # qa project / endpoint
 └── prod/.env              # production project / endpoint
@@ -54,10 +54,13 @@ the agent URL (`AGENTOPS_AGENT_ENDPOINT`) differs per environment because the
 hosted endpoint itself is the per-environment artifact.
 
 > **Why a separate sandbox?** When authors save in the Foundry playground,
-> the platform auto-increments the version every save. If everyone saves to
-> the same project, dev fills up with experimental versions, making
-> traceability and rollback messy. Sandbox is the personal/team author
-> space; dev is the gated, shared promotion target.
+> the platform auto-increments the version every save. If experimentation
+> happens in the same project that CI promotes from, dev fills up with
+> half-baked versions and traceability and rollback become messy. Sandbox
+> is the team's authoring and experimentation space (one project works
+> for most teams; split per-stream or per-developer only if save
+> collisions become a real problem); dev is the gated promotion target
+> CI writes to.
 
 ## The cross-environment identity story (versioning callout)
 
@@ -834,8 +837,8 @@ You are ready for a release review when:
   (prompt SHA + git SHA). For hosted agents, the git commit SHA is the
   identity recorded in `results.json` and evidence.
 - `.azure/` separates sandbox from dev (and qa / prod if you provisioned
-  them); the sandbox is the author's safe space and dev is the shared
-  promotion target.
+  them); the sandbox is the team's authoring and experimentation space
+  and dev is the shared promotion target.
 - CI uses the expected runner for the target (cloud Foundry eval for
   prompt agents in CI, local runner for hosted endpoints).
 - Eval results or Microsoft Foundry eval metadata are attached to the

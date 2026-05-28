@@ -67,7 +67,7 @@ applies. For this tutorial you will work with two of them:
 
 | Environment | What it is in this tutorial | Purpose |
 |---|---|---|
-| **sandbox** | The local FastAPI endpoint on your machine (`http://127.0.0.1:8000`). For a more realistic setup, this can also be a dedicated Foundry Hosted Agent or ACA revision per developer. | Author-side experimentation. Iterate, regress, fix, and validate with `agentops eval run` locally. No shared blast radius. |
+| **sandbox** | The local FastAPI endpoint on your machine (`http://127.0.0.1:8000`). For a more realistic setup, this can also be a Foundry Hosted Agent or ACA revision shared by the team (or per-stream/per-developer if your team prefers that). | Author-side experimentation. Iterate, regress, fix, and validate with `agentops eval run` locally. No shared-with-CI blast radius. |
 | **dev** | A deployed Foundry Hosted Agent, Azure Container Apps revision, AKS service, or any HTTPS endpoint reachable from CI. | Team-shared environment. The PR workflow evaluates this URL to verify it is still healthy. Deploy workflows (or your existing CI) update it on merge. |
 
 Each environment maps to its own `.azure/<env>/.env` file with its own
