@@ -125,9 +125,10 @@ jobs:
           v = os.environ["VERSION"]
           p = pathlib.Path("tombstones/pypi/pyproject.toml")
           t = p.read_text(encoding="utf-8")
-          new_t = re.sub(r'^version = "[^"]+"', f'version = "{v}"', t, count=1, flags=re.MULTILINE)
-          if new_t == t:
-              raise SystemExit("::error::tombstones/pypi/pyproject.toml version was not updated; check the regex anchor.")
+          PATTERN = r'^version = "[^"]+"'
+          if not re.search(PATTERN, t, flags=re.MULTILINE):
+              raise SystemExit("::error::tombstones/pypi/pyproject.toml version regex anchor not found.")
+          new_t = re.sub(PATTERN, f'version = "{v}"', t, count=1, flags=re.MULTILINE)
           p.write_text(new_t, encoding="utf-8")
           PY
           echo "tombstones/pypi/pyproject.toml → $VERSION"
@@ -138,13 +139,10 @@ jobs:
           v = os.environ["VERSION"]
           p = pathlib.Path("tombstones/vscode/CHANGELOG.md")
           text = p.read_text(encoding="utf-8")
-          new_text = re.sub(
-              r"^## \[\d+\.\d+\.\d+\] - (?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})",
-              f"## [{v}] - YYYY-MM-DD",
-              text, count=1, flags=re.MULTILINE,
-          )
-          if new_text == text:
-              raise SystemExit("::error::tombstones/vscode/CHANGELOG.md heading was not updated; check the regex anchor.")
+          PATTERN = r"^## \[\d+\.\d+\.\d+\] - (?:YYYY-MM-DD|\d{4}-\d{2}-\d{2})"
+          if not re.search(PATTERN, text, flags=re.MULTILINE):
+              raise SystemExit("::error::tombstones/vscode/CHANGELOG.md heading regex anchor not found.")
+          new_text = re.sub(PATTERN, f"## [{v}] - YYYY-MM-DD", text, count=1, flags=re.MULTILINE)
           p.write_text(new_text, encoding="utf-8")
           PY
           echo "tombstones/vscode/CHANGELOG.md → [$VERSION] (date sentinel preserved)"
