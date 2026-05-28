@@ -174,11 +174,13 @@ jobs:
 
   # ── VSIX Stable Publish ──────────────────────────────────────────────
   # Publish the VS Code extension as a stable release to the Marketplace.
-  # Runs in parallel with the TestPyPI→PyPI flow (only needs source checkout).
+  # Runs after PyPI publish so PyPI and Marketplace identity stay consistent on every release.
   publish-vsix:
-    needs: build # gate on successful lint + test
+    needs: [build, publish-pypi] # gate on successful lint + test (build) and on PyPI publish
     runs-on: ubuntu-latest
     environment: release # same approval gate as PyPI
+    env:
+      VSIX_FILE: agentops-skills.vsix
     steps:
       - uses: actions/checkout@v6
         with:
@@ -211,23 +213,40 @@ jobs:
 
       - name: Package VSIX
         working-directory: plugins/agentops
-        run: vsce package -o agentops-skills.vsix
+        run: vsce package -o "${VSIX_FILE}"
 
       - name: Publish stable to VS Code Marketplace
-        continue-on-error: true # Tolerate "already exists" if staging pre-release published this version
+        # Tolerate ONLY the "already exists" case (staging pre-release may have
+        # published the same version first). Any other failure must fail the job.
         working-directory: plugins/agentops
-        run: vsce publish --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -o pipefail
+          if OUTPUT=$(vsce publish --packagePath "${VSIX_FILE}" -p "${VSCE_PAT}" 2>&1); then
+            RC=0
+          else
+            RC=$?
+          fi
+          echo "$OUTPUT"
+          if [ "$RC" -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qi "already exists"; then
+              echo "::warning::VSIX version already published (likely by staging pre-release). Treating as success."
+              exit 0
+            fi
+            exit "$RC"
+          fi
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
         with:
           name: vsix
-          path: plugins/agentops/agentops-skills.vsix
+          path: plugins/agentops/${{ env.VSIX_FILE }}
 
   # Create GitHub Release with built artifacts (Python dist + VSIX)
   github-release:
     needs: [publish-pypi, publish-vsix]
-    if: always() && needs.publish-pypi.result == 'success'
+    if: always() && needs.publish-pypi.result == 'success' && needs.publish-vsix.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
