@@ -14,11 +14,11 @@ This path validates the Foundry-native multi-environment route:
   Doctor blocking, release evidence, threshold enforcement, and Cockpit.
 
 The toolkit benefit is the **release loop across environments**. You will
-author the prompt in a personal **sandbox** Foundry project where saves are
-private experiments, then let CI prove the prompt is safe to merge by
-staging it as a candidate in a shared **dev** Foundry project, evaluating
-that exact candidate, running Doctor against the result, and — only when
-both pass — promoting the deploy.
+author the prompt in a **sandbox** Foundry project where saves are
+experimentation only and never trigger CI, then let CI prove the prompt
+is safe to merge by staging it as a candidate in the team's **dev**
+Foundry project, evaluating that exact candidate, running Doctor against
+the result, and — only when both pass — promoting the deploy.
 
 Pay special attention to Doctor in this tutorial: it does not only report
 whether thresholds passed, it also catches slow regressions (for example,
@@ -52,7 +52,7 @@ permission prompts.
 | Check | Why it matters |
 |---|---|
 | Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry projects. | AgentOps, Foundry SDK calls, and CI setup all need the same Azure identity context. |
-| You can create **two** Foundry projects in the same Azure subscription (or have two existing projects you can use). | The tutorial uses a personal sandbox project plus a shared dev project; the PR gate stages candidates in dev. |
+| You can create **two** Foundry projects in the same Azure subscription (or have two existing projects you can use). | The tutorial uses a sandbox project for authoring and experimentation plus a shared dev project for the PR gate; the PR workflow stages candidates in dev. |
 | You can publish a prompt agent in each Foundry project. | The tutorial seeds the same `travel-agent:1` baseline in both projects so the deploy workflow has a known template to look up. |
 | You can create or attach Application Insights for at least the dev Foundry project. | Foundry Traces, the Operate dashboard, Doctor, and Cockpit need telemetry to tell the observability story. Sandbox observability is optional. |
 | You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate only runs after the repo is pushed. |
@@ -67,11 +67,11 @@ Before the hands-on steps, hold this picture in your head:
 
 ```
 sandbox Foundry project              dev Foundry project
-(personal author iteration)          (shared environment, PR gate target,
-                                      where merge deploys land)
+(authoring + experimentation;        (shared environment, PR gate target,
+ used by you or the team)             where merge deploys land)
     │                                          │
     │  travel-agent:1 (seed)                   │  travel-agent:1 (seed, same instructions)
-    │  travel-agent:2,3,4,... (your saves)     │  travel-agent:2,3,... (created by CI per PR / deploy)
+    │  travel-agent:2,3,4,... (free saves)     │  travel-agent:2,3,... (created by CI per PR / deploy)
     │                                          │
     └──── git is the source of truth ─────────►│
           .agentops/prompts/travel-agent.md
@@ -155,17 +155,19 @@ meet, not a place where AgentOps imposes a particular skill stack.
 You need two Foundry projects in the same Azure subscription. Use these
 names so the rest of the tutorial reads naturally:
 
-- `travel-agent-sandbox` — your personal author iteration space. Saves
-  here never affect CI.
+- `travel-agent-sandbox` — the authoring and experimentation space. Saves
+  here never trigger CI. One project is fine whether you are solo or
+  working with a small team; everyone with access can iterate here.
 - `travel-agent-dev` — the first shared environment. The PR gate stages
   candidates here, and the dev deploy workflow lands here.
 
-> **Team tip.** This tutorial assumes a solo walkthrough, so one sandbox
-> project is enough. For a team, give each developer their own sandbox
-> project (for example, `travel-agent-paulo-sandbox`,
-> `travel-agent-mariana-sandbox`) so simultaneous saves do not collide,
-> and keep one shared `travel-agent-dev`. AgentOps does not care how many
-> sandbox projects exist; only the dev/qa/prod chain is what CI promotes
+> **Team scaling.** A single sandbox project works fine for a solo
+> walkthrough and for small teams. If you grow to the point that
+> simultaneous saves collide, or different feature streams need to
+> experiment in isolation, you can split into per-stream sandboxes
+> (`travel-agent-checkout-sandbox`, `travel-agent-search-sandbox`, etc.)
+> or per-developer sandboxes. AgentOps does not care how many sandbox
+> projects exist; only the dev / qa / prod chain is what CI promotes
 > through.
 
 ### Path A — Foundry portal (always available)
@@ -205,7 +207,8 @@ skill propose the changes before applying them:
 I want to set up two Azure AI Foundry projects in the same subscription
 for an AgentOps tutorial:
 
-1. travel-agent-sandbox - my personal author iteration space.
+1. travel-agent-sandbox - the authoring and experimentation space
+   (used by me, or shared with my team for iteration).
 2. travel-agent-dev - shared dev environment used by CI as the PR gate
    target and the dev deploy target.
 
