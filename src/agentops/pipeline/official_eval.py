@@ -209,7 +209,12 @@ def _build_plan(config_path: Path) -> _EvalPlan:
     dataset_path = _resolve_dataset_path(config_path, config.dataset)
     shape = detect_dataset_shape(dataset_path)
     overrides = [item.name for item in config.evaluators or []] or None
-    presets = select_evaluators(target, shape, overrides=overrides)
+    presets = select_evaluators(
+        target,
+        shape,
+        overrides=overrides,
+        threshold_metrics=config.thresholds.keys(),
+    )
     official_evaluators, skipped, warnings = _map_evaluators(presets)
     if not official_evaluators:
         raise OfficialEvalUnsupported(

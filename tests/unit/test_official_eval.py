@@ -37,6 +37,8 @@ def test_analyze_official_eval_support_for_prompt_agent(tmp_path: Path) -> None:
     assert support.agent_ids == "support-agent:4"
     assert "builtin.coherence" in support.official_evaluators
     assert "builtin.text_similarity" in support.official_evaluators
+    assert "builtin.response_completeness" in support.official_evaluators
+    assert "builtin.f1_score" not in support.official_evaluators
     assert support.warnings == ()
     assert recommended_eval_runner(tmp_path) == AGENTOPS_CLOUD_RUNNER
 
@@ -55,6 +57,8 @@ def test_prepare_official_eval_writes_data_and_metadata(tmp_path: Path) -> None:
     metadata = json.loads(prepared.metadata_path.read_text(encoding="utf-8"))
 
     assert data["evaluators"][:2] == ["builtin.coherence", "builtin.fluency"]
+    assert "builtin.response_completeness" in data["evaluators"]
+    assert "builtin.f1_score" not in data["evaluators"]
     assert data["data"][0]["query"] == "What is AgentOps?"
     assert data["data"][0]["ground_truth"] == "A release gate."
     assert data["openai_graders"]["builtin.text_similarity"]["reference"] == "{{item.ground_truth}}"

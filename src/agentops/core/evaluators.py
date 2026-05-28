@@ -8,8 +8,11 @@ user-facing ``scenario`` concept. Evaluators are picked from two inputs:
    if the dataset contains those fields.
 2. The shape of the dataset rows:
 
-   * Always: baseline quality evaluators (Coherence, Fluency, Similarity,
+   * Always: baseline quality evaluators (Coherence, Fluency).
+   * Model-direct targets add exact/reference-answer checks (Similarity,
      F1Score).
+   * Agent targets add answer-quality checks that tolerate free-form responses
+     (Similarity, ResponseCompleteness).
    * If rows include ``context``: add RAG evaluators (Groundedness,
      Retrieval, Relevance, ResponseCompleteness).
    * If rows include ``tool_calls`` or ``tool_definitions``: add agent
@@ -31,7 +34,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, FrozenSet, List, Optional, Tuple
+from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 
 from agentops.core.agentops_config import TargetKind, TargetResolution, Threshold
 
@@ -90,29 +93,55 @@ _QUALITY_BASELINE: Tuple[EvaluatorPreset, ...] = (
         default_threshold=_t("fluency", ">=", 3.0),
         categories=frozenset({"quality"}),
     ),
-    EvaluatorPreset(
-        name="SimilarityEvaluator",
-        class_name="SimilarityEvaluator",
-        score_key="similarity",
-        input_mapping={
-            "query": "$prompt",
-            "response": "$prediction",
-            "ground_truth": "$expected",
-        },
-        default_threshold=_t("similarity", ">=", 3.0),
-        categories=frozenset({"quality"}),
-    ),
-    EvaluatorPreset(
-        name="F1ScoreEvaluator",
-        class_name="F1ScoreEvaluator",
-        score_key="f1_score",
-        input_mapping={
-            "response": "$prediction",
-            "ground_truth": "$expected",
-        },
-        default_threshold=_t("f1_score", ">=", 0.5),
-        categories=frozenset({"quality"}),
-    ),
+)
+
+_SIMILARITY = EvaluatorPreset(
+    name="SimilarityEvaluator",
+    class_name="SimilarityEvaluator",
+    score_key="similarity",
+    input_mapping={
+        "query": "$prompt",
+        "response": "$prediction",
+        "ground_truth": "$expected",
+    },
+    default_threshold=_t("similarity", ">=", 3.0),
+    categories=frozenset({"quality"}),
+)
+
+_F1_SCORE = EvaluatorPreset(
+    name="F1ScoreEvaluator",
+    class_name="F1ScoreEvaluator",
+    score_key="f1_score",
+    input_mapping={
+        "response": "$prediction",
+        "ground_truth": "$expected",
+    },
+    default_threshold=_t("f1_score", ">=", 0.5),
+    categories=frozenset({"quality", "exact_reference"}),
+)
+
+_RESPONSE_COMPLETENESS = EvaluatorPreset(
+    name="ResponseCompletenessEvaluator",
+    class_name="ResponseCompletenessEvaluator",
+    score_key="response_completeness",
+    input_mapping={
+        "query": "$prompt",
+        "response": "$prediction",
+        "ground_truth": "$expected",
+    },
+    default_threshold=_t("response_completeness", ">=", 3.0),
+    categories=frozenset({"quality", "rag"}),
+    agent_only=True,
+)
+
+_MODEL_REFERENCE_EVALUATORS: Tuple[EvaluatorPreset, ...] = (
+    _SIMILARITY,
+    _F1_SCORE,
+)
+
+_AGENT_ANSWER_EVALUATORS: Tuple[EvaluatorPreset, ...] = (
+    _SIMILARITY,
+    _RESPONSE_COMPLETENESS,
 )
 
 
@@ -152,19 +181,7 @@ _RAG_EVALUATORS: Tuple[EvaluatorPreset, ...] = (
         categories=frozenset({"rag"}),
         agent_only=True,
     ),
-    EvaluatorPreset(
-        name="ResponseCompletenessEvaluator",
-        class_name="ResponseCompletenessEvaluator",
-        score_key="response_completeness",
-        input_mapping={
-            "query": "$prompt",
-            "response": "$prediction",
-            "ground_truth": "$expected",
-        },
-        default_threshold=_t("response_completeness", ">=", 3.0),
-        categories=frozenset({"rag"}),
-        agent_only=True,
-    ),
+    _RESPONSE_COMPLETENESS,
 )
 
 
@@ -234,6 +251,8 @@ CATALOG: Dict[str, EvaluatorPreset] = {
     preset.name: preset
     for preset in (
         *_QUALITY_BASELINE,
+        *_MODEL_REFERENCE_EVALUATORS,
+        *_AGENT_ANSWER_EVALUATORS,
         *_RAG_EVALUATORS,
         *_TOOL_USE_EVALUATORS,
         _LATENCY,
@@ -329,6 +348,7 @@ def select_evaluators(
     shape: DatasetShape,
     *,
     overrides: Optional[List[str]] = None,
+    threshold_metrics: Optional[Iterable[str]] = None,
 ) -> List[EvaluatorPreset]:
     """Return the ordered list of evaluators to run.
 
@@ -338,9 +358,12 @@ def select_evaluators(
 
     Otherwise the rules are:
 
-    * Always include the four baseline quality evaluators.
-    * If the target is a raw model, stop here. Agent-specific evaluators are
-      not meaningful (no tool calls, no retrieved context).
+    * Always include the baseline quality evaluators.
+    * If the target is a raw model, add exact/reference-answer evaluators and
+      stop here. Agent-specific evaluators are not meaningful (no tool calls,
+      no retrieved context).
+    * If the target is an agent without RAG/tool-use rows, add answer-quality
+      evaluators that tolerate free-form responses.
     * If the dataset has ``context`` rows, add the RAG evaluators.
     * If the dataset has ``tool_calls`` or ``tool_definitions``, add the agent
       evaluators.
@@ -361,7 +384,11 @@ def select_evaluators(
 
     selected: List[EvaluatorPreset] = list(_QUALITY_BASELINE)
 
-    if _is_agent_target(target.kind):
+    if target.kind == "model_direct":
+        selected.extend(_MODEL_REFERENCE_EVALUATORS)
+    elif _is_agent_target(target.kind):
+        if not shape.looks_rag and not shape.looks_tool_use:
+            selected.extend(_AGENT_ANSWER_EVALUATORS)
         if shape.looks_rag:
             selected.extend(_RAG_EVALUATORS)
         if shape.looks_tool_use:
@@ -376,12 +403,49 @@ def select_evaluators(
             _drop = {"F1ScoreEvaluator", "SimilarityEvaluator"}
             selected = [p for p in selected if p.name not in _drop]
 
+    if threshold_metrics:
+        selected = _include_thresholded_quality_presets(
+            selected,
+            target.kind,
+            threshold_metrics,
+        )
+
     selected.append(_LATENCY)
     return selected
 
 
 def _is_agent_target(kind: TargetKind) -> bool:
     return kind in {"foundry_prompt", "foundry_hosted", "http_json"}
+
+
+def _include_thresholded_quality_presets(
+    selected: List[EvaluatorPreset],
+    target_kind: TargetKind,
+    threshold_metrics: Iterable[str],
+) -> List[EvaluatorPreset]:
+    """Honor explicit thresholds for optional quality/reference metrics.
+
+    A user who already set ``thresholds: {f1_score: ...}`` should not also need
+    to learn the evaluator override escape hatch. This keeps exact-reference F1
+    available as an opt-in gate without making it a default for free-form agent
+    responses.
+    """
+    by_score_key = {preset.score_key: preset for preset in CATALOG.values()}
+    selected_names = {preset.name for preset in selected}
+    result = list(selected)
+    for metric in threshold_metrics:
+        preset = by_score_key.get(metric)
+        if preset is None or preset.name in selected_names:
+            continue
+        if "runtime" in preset.categories:
+            continue
+        if "quality" not in preset.categories and "exact_reference" not in preset.categories:
+            continue
+        if preset.agent_only and not _is_agent_target(target_kind):
+            continue
+        result.append(preset)
+        selected_names.add(preset.name)
+    return result
 
 
 def merge_thresholds(

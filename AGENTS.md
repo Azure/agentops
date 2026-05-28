@@ -351,7 +351,7 @@ free-form and AgentOps adapts evaluators based on which columns are present:
 | Column | Used by |
 |---|---|
 | `input` (required) | Prompt sent to the agent |
-| `expected` | Ground-truth response (similarity, F1, …) |
+| `expected` | Ground-truth response or acceptance criteria (similarity/completeness; F1 only for exact-reference checks) |
 | `context` | Retrieval context (RAG evaluators) |
 | `tool_definitions`, `tool_calls` | Agent-workflow evaluators |
 
@@ -435,8 +435,8 @@ can always be overridden in `agentops.yaml`.
 | Scenario | Agent value | Required dataset columns | Auto-selected evaluators |
 |---|---|---|---|
 | Model quality | `model:<deployment>` | `input`, `expected` | Similarity, Coherence, Fluency, F1Score, `avg_latency_seconds` |
-| RAG quality | Any agent with `context` rows | `input`, `expected`, `context` | Groundedness, Relevance, Retrieval, ResponseCompleteness, Coherence, `avg_latency_seconds` |
-| Conversational agent | Any prompt/hosted agent | `input`, `expected` | Coherence, Fluency, Relevance, Similarity, `avg_latency_seconds` |
+| RAG quality | Any agent with `context` rows | `input`, `expected`, `context` | Groundedness, Relevance, Retrieval, ResponseCompleteness, Coherence, Fluency, `avg_latency_seconds` |
+| Conversational agent | Any prompt/hosted agent | `input`, `expected` | Coherence, Fluency, Similarity, ResponseCompleteness, `avg_latency_seconds` |
 | Agent workflow (tools) | Any agent with tool rows | `input`, `expected`, `tool_definitions`, `tool_calls` | TaskCompletion, ToolCallAccuracy, IntentResolution, TaskAdherence, ToolSelection, ToolInputAccuracy, `avg_latency_seconds` |
 | Content safety | Any agent or model | `input`, `expected` | Violence, Sexual, SelfHarm, HateUnfairness, ProtectedMaterial (requires `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`) |
 

@@ -178,6 +178,10 @@ New-Item -ItemType Directory -Force .agentops\data | Out-Null
 '@ | Set-Content -Encoding utf8 .agentops\data\travel-smoke.jsonl
 ```
 
+The `expected` values here are acceptance criteria, not exact answer strings.
+For prompt agents, AgentOps uses judge-based quality and completeness metrics for
+this shape; token-overlap F1 is better reserved for exact-reference model tests.
+
 ## 4. Sign in and capture Foundry values
 
 ```powershell
@@ -302,12 +306,13 @@ Use this quick readout while presenting the terminal output:
 | `Release readiness: blocked` | The command succeeded, but the current evidence has findings that block release readiness. |
 | `Evidence pack` / `Evidence report` | These are the release-review artifacts to open or attach to the PR/release discussion. |
 | `Findings: 13 (3 critical ...)` | This is the severity rollup; critical items are what you discuss first. |
-| `Finding summary` | This is the terminal triage list. In a demo output like latency plus `regression.coherence` / `regression.f1_score`, explain that production performance and eval regressions block release, while workflow, threshold, RAI, and trace-regression warnings are hardening follow-ups. |
+| `Finding summary` | This is the terminal triage list. In a demo output like latency plus `regression.coherence` / `regression.response_completeness`, explain that production performance and eval regressions block release, while workflow, threshold, RAI, and trace-regression warnings are hardening follow-ups. |
 
 The useful story is the insight list, not the fact that a file was written.
 In the sample output, Doctor is telling you that this agent is not release-ready
 for three concrete reasons: production telemetry shows latency/error risk, eval
-history shows quality regression on metrics such as `coherence` and `f1_score`,
+history shows quality regression on metrics such as `coherence` and
+`response_completeness`,
 and the repo still has operational hardening gaps such as missing deploy
 workflow, explicit thresholds, continuous eval, action SHA pinning, and
 trace-to-regression feedback. Use the critical findings as release blockers and
@@ -486,8 +491,11 @@ Reader alone is not enough for this data-plane call.
      finish, then click **Details**.
    - Still in GitHub, on the workflow run **Summary**, find **AgentOps PR Eval**.
      Confirm the **Target** is `travel-agent:3`, then review the **Metrics** and
-     **Thresholds** tables. A regression should show failed threshold rows here,
-     not only a generic failed job.
+     **Thresholds** tables. For this tutorial, the important regression signal is
+     usually `response_completeness`: the bad prompt still writes fluent travel
+     text, but it stops satisfying the day-by-day plan, practical notes, and
+     booking-caveat criteria. A regression should show failed threshold rows
+     here, not only a generic failed job.
    - In the same summary, open the **Foundry URL** under **Foundry Cloud
      Session**. This opens Foundry for the regressed eval run. Keep this page
      open and use **Overall metric results** as the managed-eval view; the

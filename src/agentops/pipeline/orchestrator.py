@@ -112,7 +112,12 @@ def _run_evaluation_local(
     overrides = (
         [override.name for override in config.evaluators] if config.evaluators else None
     )
-    presets = select_evaluators(target, shape, overrides=overrides)
+    presets = select_evaluators(
+        target,
+        shape,
+        overrides=overrides,
+        threshold_metrics=config.thresholds.keys(),
+    )
     user_thresholds = [
         Threshold.from_expression(metric, expr)
         for metric, expr in config.thresholds.items()
@@ -252,7 +257,12 @@ def _run_evaluation_cloud(
     overrides = (
         [override.name for override in config.evaluators] if config.evaluators else None
     )
-    all_presets = select_evaluators(target, shape, overrides=overrides)
+    all_presets = select_evaluators(
+        target,
+        shape,
+        overrides=overrides,
+        threshold_metrics=config.thresholds.keys(),
+    )
 
     # Cloud execution runs server-side, so client-side runtime evaluators
     # (e.g. avg_latency_seconds) cannot be measured. Excluding them is the

@@ -118,7 +118,7 @@ Evaluators can be:
 - **AI-assisted** (Foundry) - use a judge model to score responses on
   criteria like coherence, fluency, similarity, or groundedness.
 - **Local metrics** - computed without a judge model, such as
-  `F1ScoreEvaluator` or `avg_latency_seconds`.
+  `avg_latency_seconds` or `F1ScoreEvaluator` for exact-reference model checks.
 
 AgentOps auto-selects evaluators from the target kind and dataset shape.
 Use `evaluators:` in `agentops.yaml` only when you need to override that

@@ -5,6 +5,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- Prompt and hosted agent eval defaults now use judge-based response
+  completeness instead of token-overlap F1, keeping F1 as the default for
+  exact-reference `model:<deployment>` checks or explicit evaluator overrides.
+
 ## [0.2.2] - 2026-05-26
 
 ### Fixed

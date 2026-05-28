@@ -122,7 +122,8 @@ class TestSelectEvaluators:
         assert "CoherenceEvaluator" in names
         assert "FluencyEvaluator" in names
         assert "SimilarityEvaluator" in names
-        assert "F1ScoreEvaluator" in names
+        assert "ResponseCompletenessEvaluator" in names
+        assert "F1ScoreEvaluator" not in names
         assert "avg_latency_seconds" in names
 
     def test_quality_only_for_quality_dataset(self) -> None:
@@ -168,6 +169,9 @@ class TestSelectEvaluators:
         assert "GroundednessEvaluator" not in names
         assert "ToolCallAccuracyEvaluator" not in names
         assert "CoherenceEvaluator" in names
+        assert "SimilarityEvaluator" in names
+        assert "F1ScoreEvaluator" in names
+        assert "ResponseCompletenessEvaluator" not in names
 
     def test_http_agent_treated_like_agent(self) -> None:
         result = select_evaluators(_HTTP_AGENT, _shape(context=True))
@@ -179,9 +183,19 @@ class TestSelectEvaluators:
             _PROMPT_AGENT,
             _shape(context=True, tool_calls=True),
             overrides=["CoherenceEvaluator"],
+            threshold_metrics=["f1_score"],
         )
         names = [p.name for p in result]
         assert names == ["CoherenceEvaluator"]
+
+    def test_threshold_metric_opts_into_optional_quality_evaluator(self) -> None:
+        result = select_evaluators(
+            _PROMPT_AGENT,
+            _shape(),
+            threshold_metrics=["f1_score"],
+        )
+        names = [p.name for p in result]
+        assert "F1ScoreEvaluator" in names
 
     def test_unknown_override_raises(self) -> None:
         with pytest.raises(ValueError, match="unknown evaluator"):

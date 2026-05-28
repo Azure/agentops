@@ -476,7 +476,9 @@ Selection rules (in order):
 
 1. If `evaluators:` is set in `agentops.yaml`, use it verbatim (escape hatch).
 2. Otherwise, start from the **quality baseline** for the resolved target
-   kind (e.g. `Coherence + Fluency + Similarity + F1Score` for chat-style agents).
+   kind. Prompt/hosted agents use judge-based answer quality
+   (`Coherence + Fluency + Similarity + ResponseCompleteness`); raw
+   `model:<deployment>` targets also add exact-reference overlap (`F1Score`).
 3. If dataset rows include `context`, add the **RAG evaluator set**
    (`Groundedness`, `Relevance`, `Retrieval`, `ResponseCompleteness`).
 4. If rows include `tool_calls` + `tool_definitions`, add the **tool-use
