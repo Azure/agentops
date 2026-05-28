@@ -5,7 +5,41 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **`--doctor-gate` flag on `agentops workflow generate`.** New option
+  `--doctor-gate critical|warning|none` controls the Doctor severity floor
+  in the PR workflow template. Default is `critical`, which makes the PR
+  Doctor step block on critical Doctor findings (notably the
+  `regression.<metric>` checks that fire when an evaluator metric drops
+  meaningfully from the rolling baseline). This catches drift such as
+  groundedness moving from 5.0 to 4.0 even when the configured eval
+  thresholds technically still pass. `--doctor-gate warning` blocks on
+  warnings or higher; `--doctor-gate none` restores the pre-1.x advisory
+  behavior. Only the PR template is affected — deploy templates continue
+  to run with `--severity-fail critical` regardless.
+- **Stage-then-eval PR workflow for Foundry prompt agents.** When
+  `--deploy-mode prompt-agent` is in effect, `agentops workflow generate
+  --kinds pr` now emits a PR workflow (and Azure DevOps pipeline) that
+  stages an ephemeral Foundry candidate prompt-agent version from
+  `prompt_file` in the dev Foundry project, then evaluates that exact
+  candidate (instead of the seed agent pinned in `agentops.yaml`). This
+  makes the PR gate meaningful for prompt-agent flows: regressions are
+  caught at PR time, not after merge. Candidates accumulate in the dev
+  project across PRs and may need periodic cleanup.
+
 ### Changed
+- **Default PR Doctor behavior is now blocking.** Generating workflows
+  without `--doctor-gate` produces a PR template that blocks on critical
+  Doctor findings. Existing workflows continue to work unchanged; only
+  re-generated workflows pick up the new default. To opt back into the
+  previous advisory behavior, run
+  `agentops workflow generate --doctor-gate none --force`.
+- **`--deploy-mode prompt-agent` now changes the generated PR workflow.**
+  Re-running `agentops workflow generate --deploy-mode prompt-agent
+  --kinds pr,dev,qa,prod --force` produces a different PR template than
+  before (it now stages a Foundry candidate before evaluating). Other
+  modes (`auto`, `placeholder`, `azd`) continue to produce the previous
+  generic PR template.
 - Prompt and hosted agent eval defaults now use judge-based response
   completeness instead of token-overlap F1, keeping F1 as the default for
   exact-reference `model:<deployment>` checks or explicit evaluator overrides.

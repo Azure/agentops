@@ -681,20 +681,27 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
     ("workflow", "generate"): ExplainPage(
         title="Generate CI/CD workflows",
         command="agentops workflow generate",
-        synopsis=("agentops workflow generate [--force] [--dir PATH] [--kinds pr,dev,qa,prod,doctor] [--platform github|azure-devops] [--deploy-mode auto|placeholder|azd|prompt-agent]", "agentops workflow generate explain"),
+        synopsis=("agentops workflow generate [--force] [--dir PATH] [--kinds pr,dev,qa,prod,doctor] [--platform github|azure-devops] [--deploy-mode auto|placeholder|azd|prompt-agent] [--doctor-gate critical|warning|none]", "agentops workflow generate explain"),
         summary=(
             "Writes CI/CD workflow templates that run AgentOps gates in pull requests and environment deployments.",
             "Deployment mode defaults to `auto`. Deployment is azd-first when the repo already has `azure.yaml`: generated deploy workflows call `azd provision` / `azd deploy` instead of asking AgentOps to own infrastructure. Repos without `azure.yaml` can use prompt-agent mode when `agentops.yaml` targets a Foundry prompt agent, or placeholders for custom stacks.",
+            "PR-gate Doctor severity defaults to `critical`: PRs are blocked on critical Doctor findings such as regression drops, even when eval thresholds still pass. Use `--doctor-gate warning` to also block on warnings, or `--doctor-gate none` to restore the pre-1.x advisory behavior.",
         ),
         how_it_works=(
             "Selects the target platform and workflow kinds.",
             "When `--deploy-mode` is omitted, auto-detects `azure.yaml` first, then Foundry prompt-agent configs, and picks azd, prompt-agent, or placeholder deploy templates. Override with `--deploy-mode`.",
+            "Substitutes the chosen `--doctor-gate` value into the PR template's `agentops doctor --severity-fail` argument. Deploy templates always run with `--severity-fail critical`.",
             "Copies packaged templates into `.github/workflows/` or `.azuredevops/pipelines/`.",
             "Skips existing files unless `--force` is set.",
             "Prints required identity, environment, and branch-protection next steps.",
         ),
         outputs=("CI/CD YAML workflow files",),
-        examples=("agentops workflow generate", "agentops workflow generate --kinds pr,dev --platform github --deploy-mode prompt-agent --force"),
+        examples=(
+            "agentops workflow generate",
+            "agentops workflow generate --kinds pr,dev --platform github --deploy-mode prompt-agent --force",
+            "agentops workflow generate --doctor-gate warning",
+            "agentops workflow generate --doctor-gate none",
+        ),
     ),
     ("skills",): ExplainPage(
         title="Coding agent skills",
@@ -2286,6 +2293,18 @@ def cmd_workflow_generate(
             "keeps stack-agnostic placeholders."
         ),
     ),
+    doctor_gate: str = typer.Option(
+        "critical",
+        "--doctor-gate",
+        help=(
+            "Severity floor for the PR-gate Doctor step. 'critical' (default) "
+            "blocks the PR on critical Doctor findings such as regression drops "
+            "even when eval thresholds still pass; 'warning' blocks on warning "
+            "or higher; 'none' keeps Doctor advisory (pre-1.x behavior). "
+            "Only the PR template uses this; deploy templates always run with "
+            "--severity-fail critical."
+        ),
+    ),
     explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
 ) -> None:
     """Generate the AgentOps GitFlow CI/CD workflows.
@@ -2309,6 +2328,7 @@ def cmd_workflow_generate(
     from agentops.services.cicd import (
         ALL_KINDS,
         DEPLOY_MODES,
+        DOCTOR_GATES,
         LEGACY_KIND_ALIASES,
         PLATFORMS,
         generate_cicd_workflows,
@@ -2316,8 +2336,8 @@ def cmd_workflow_generate(
     )
 
     log.debug(
-        "cmd_workflow_generate called force=%s dir=%s kinds=%r platform=%s",
-        force, directory, kinds, platform,
+        "cmd_workflow_generate called force=%s dir=%s kinds=%r platform=%s doctor_gate=%s",
+        force, directory, kinds, platform, doctor_gate,
     )
 
     if platform not in PLATFORMS:
@@ -2331,6 +2351,13 @@ def cmd_workflow_generate(
         typer.echo(
             f"{_cli_error('Error')}: unknown --deploy-mode value {deploy_mode!r}. "
             f"Valid: {', '.join(DEPLOY_MODES)}.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if doctor_gate not in DOCTOR_GATES:
+        typer.echo(
+            f"{_cli_error('Error')}: unknown --doctor-gate value {doctor_gate!r}. "
+            f"Valid: {', '.join(DOCTOR_GATES)}.",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -2357,6 +2384,7 @@ def cmd_workflow_generate(
             kinds=selected,
             platform=platform,
             deploy_mode=deploy_mode,
+            doctor_gate=doctor_gate,
         )
     except Exception as exc:
         typer.echo(
@@ -2377,6 +2405,15 @@ def cmd_workflow_generate(
         f"{_cli_label('Eval runner')}: "
         f"{_cli_value(_workflow_eval_runner_label(result.eval_runner))}"
     )
+    doctor_gate_note = result.doctor_gate
+    if "pr" in result.kinds:
+        if doctor_gate_note == "none":
+            doctor_gate_note = f"{doctor_gate_note} (advisory; PR not blocked)"
+        else:
+            doctor_gate_note = f"{doctor_gate_note} (PR blocks on {doctor_gate_note} findings)"
+    else:
+        doctor_gate_note = f"{doctor_gate_note}; PR template not generated"
+    typer.echo(f"{_cli_label('Doctor gate')}: {_cli_value(doctor_gate_note)}")
     for created in result.created_files:
         typer.echo(_cli_created(created))
     for overwritten in result.overwritten_files:
