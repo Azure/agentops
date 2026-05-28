@@ -38,10 +38,28 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   (`import agentops`) and CLI command (`agentops ...`) are
   unchanged — only the install/distribution identifier changed.
   Install with `pip install agentops-accelerator` or
-  `uv pip install agentops-accelerator`. The previous
-  `pip install agentops-toolkit` command continues to work via a
-  tombstone metapackage published alongside this release that
-  pins `agentops-accelerator>=0.3.0`. (#181)
+  `uv pip install agentops-accelerator`. Two deprecation tombstones
+  are published atomically with this release so existing users are
+  guided to the new identifiers:
+
+  - **PyPI tombstone**: `pip install agentops-toolkit` keeps working
+    via a metapackage at `tombstones/pypi/` that pins
+    `agentops-accelerator>=0.3.0` (no shadow code, no auto-discovery).
+    The package long-description on PyPI links to the migration
+    instructions.
+  - **VS Code Marketplace tombstone**: a final
+    `AgentOpsToolkit.agentops-skills` extension at `tombstones/vscode/`
+    activates with a one-time prompt offering to install
+    `AgentOpsAccelerator.agentops-skills` (or open the Marketplace
+    page in a browser). A per-install storage sentinel prevents
+    re-prompts after the user resolves it.
+
+  The release tag (`v0.3.0`) drives all four publishes
+  (agentops-accelerator + agentops-toolkit on PyPI, plus the new and
+  legacy VSIX publishers) through gated jobs in `release.yml`. The
+  tombstones are gated AFTER the corresponding main publish jobs so
+  the worst-case failure mode is "tombstone delayed, recoverable in
+  v0.3.1" — never "tombstone-without-new". (#181)
 - **Default PR Doctor behavior is now blocking.** Generating workflows
   without `--doctor-gate` produces a PR template that blocks on critical
   Doctor findings. Existing workflows continue to work unchanged; only
