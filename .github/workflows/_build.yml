@@ -54,7 +54,7 @@ jobs:
             echo "::error::Release tag '$TAG' did not resolve to a semver package version."
             exit 1
           fi
-          echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AGENTOPS_TOOLKIT=$VERSION" >> "$GITHUB_ENV"
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AGENTOPS_ACCELERATOR=$VERSION" >> "$GITHUB_ENV"
           echo "EXPECTED_PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
           echo "Release package version pinned to $VERSION from $TAG"
 
@@ -92,8 +92,8 @@ jobs:
           expected = os.environ["EXPECTED_PACKAGE_VERSION"]
           dist = Path("dist")
           matches = [
-              *sorted(dist.glob(f"agentops_toolkit-{expected}.tar.gz")),
-              *sorted(dist.glob(f"agentops_toolkit-{expected}-*.whl")),
+              *sorted(dist.glob(f"agentops_accelerator-{expected}.tar.gz")),
+              *sorted(dist.glob(f"agentops_accelerator-{expected}-*.whl")),
           ]
           if not matches:
               print(f"::error::Expected dist artifact for version {expected}, found:")
