@@ -201,7 +201,7 @@ def _append_doctor_finding_summary(lines: list[str], doctor: dict[str, Any]) -> 
     counts = counts if isinstance(counts, dict) else {}
     total = doctor.get("findings_total")
     try:
-        total_count = int(total)
+        total_count = int(total)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         total_count = len(top_findings)
 

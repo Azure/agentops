@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from html import escape as html_escape
 from pathlib import Path
 from textwrap import wrap
+from collections.abc import Sequence
 from typing import Annotated, Optional
 
 import typer
@@ -224,7 +225,7 @@ def _stream_is_interactive(stream: object) -> bool:
         return False
 
 
-def _doctor_findings_summary_lines(findings: list[object]) -> list[str]:
+def _doctor_findings_summary_lines(findings: Sequence[object]) -> list[str]:
     if not findings:
         return [f"{_cli_label('Findings')}: {_cli_ok('0')}"]
 

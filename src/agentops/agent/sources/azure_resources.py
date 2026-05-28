@@ -23,7 +23,7 @@ import re
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 from urllib.parse import urlparse
 
 from agentops.agent.config import AzureResourcesSourceConfig
@@ -190,7 +190,7 @@ def _discover_azd_environment(workspace: Optional[Path]) -> tuple[Optional[str],
     return env_name, values, diagnostics
 
 
-def _first_value(values: Dict[str, str], keys: tuple[str, ...]) -> Optional[str]:
+def _first_value(values: Mapping[str, str], keys: tuple[str, ...]) -> Optional[str]:
     for key in keys:
         value = values.get(key)
         if value:
