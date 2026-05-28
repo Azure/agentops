@@ -108,7 +108,7 @@ jobs:
       - name: Show build info
         run: |
           ls -la dist/
-          uv run python -c "from importlib.metadata import version; print(f'Version: {version(\"agentops-toolkit\")}')"
+          uv run python -c "from importlib.metadata import version; print(f'Version: {version(\"agentops-accelerator\")}')"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7

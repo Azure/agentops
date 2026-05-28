@@ -31,7 +31,7 @@
 #   VSCE_PAT — VS Code Marketplace Personal Access Token
 #
 # Setup (Trusted Publishing + VSCE):
-#   1. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
 #   2. GitHub repo → Settings → Environments → Create "staging" environment (optional approval)
 #   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
@@ -96,9 +96,9 @@ jobs:
       - name: Install from TestPyPI
         run: |
           for i in 1 2 3 4 5; do
-            echo "Attempt $i: installing agentops-toolkit==${{ steps.version.outputs.version }}"
+            echo "Attempt $i: installing agentops-accelerator==${{ steps.version.outputs.version }}"
             if pip install \
-              "agentops-toolkit==${{ steps.version.outputs.version }}" \
+              "agentops-accelerator==${{ steps.version.outputs.version }}" \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/; then
               exit 0
@@ -108,7 +108,7 @@ jobs:
               sleep 30
             fi
           done
-          echo "::error::agentops-toolkit==${{ steps.version.outputs.version }} was not available from TestPyPI after 5 attempts."
+          echo "::error::agentops-accelerator==${{ steps.version.outputs.version }} was not available from TestPyPI after 5 attempts."
           exit 1
 
       - name: Smoke test — version and help

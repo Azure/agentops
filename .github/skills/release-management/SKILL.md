@@ -1,6 +1,6 @@
 ---
 name: release-management
-description: 'Guide maintainers and contributors through branching, versioning, changelog updates, and publishing agentops-toolkit. Trigger when users ask about branching strategy, creating a release, version tagging, publishing to PyPI, updating the changelog, cutting a release, opening a PR, or syncing a fork. Common phrases include "cut a release", "how do I publish", "create release branch", "tag a version", "update changelog", "release process", "bump version", "what branch should I use", "feature branch", "prepare release".'
+description: 'Guide maintainers and contributors through branching, versioning, changelog updates, and publishing agentops-accelerator. Trigger when users ask about branching strategy, creating a release, version tagging, publishing to PyPI, updating the changelog, cutting a release, opening a PR, or syncing a fork. Common phrases include "cut a release", "how do I publish", "create release branch", "tag a version", "update changelog", "release process", "bump version", "what branch should I use", "feature branch", "prepare release".'
 ---
 
 # Release Management
@@ -207,7 +207,7 @@ Set in GitHub repo Settings → Secrets and variables → Actions:
 
 | Secret | Purpose |
 |---|---|
-| `PIPY_TOKEN` | PyPI API token scoped to `agentops-toolkit` - used on merge to `main` |
+| `PIPY_TOKEN` | PyPI API token scoped to `agentops-accelerator` - used on merge to `main` |
 | `TESTPYPI_API_TOKEN` | TestPyPI API token - used on tag push for pre-release validation |
 
 ## Default Decision Logic
