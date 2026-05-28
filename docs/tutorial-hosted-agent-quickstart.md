@@ -1,24 +1,36 @@
-# Quickstart: Foundry Hosted Agent or HTTP Agent
+# Quickstart: Foundry Hosted Agent or HTTP Agent (sandbox → dev with PR gate)
 
-Use this quickstart when the agent is reachable as an endpoint URL. The example
-creates a small **Travel Agent** HTTP endpoint locally, then shows how to swap in
-a Foundry-hosted or cloud-hosted URL for CI.
+Use this quickstart when the agent is reachable as an endpoint URL. The
+example creates a small **Travel Agent** HTTP endpoint locally (your
+**sandbox**), then shows how to swap in a deployed Foundry Hosted Agent
+or cloud-hosted URL (your **dev** environment) for CI.
 
-This path validates the AgentOps local route:
+This path validates the AgentOps local route in a two-environment
+arrangement:
 
-- Foundry or your app platform owns hosting and runtime operations.
+- Foundry or your app platform owns hosting and runtime operations in
+  each environment.
 - AgentOps invokes the endpoint from CI, applies repo thresholds, writes
-  normalized `results.json`, and produces release evidence.
+  normalized `results.json`, runs Doctor with `--severity-fail critical`
+  so regressions block the PR, and produces release evidence.
+
+The toolkit benefit is the same as the prompt-agent quickstart, adapted
+for endpoint-based agents: you author and iterate against a local
+sandbox, then let CI verify the deployed dev environment is still
+healthy on every PR. Production-readiness gates (eval thresholds plus
+Doctor critical findings) sit between you and a merge.
 
 ## Repository set used in this tutorial
 
-This tutorial intentionally connects the hosted-agent path to the Microsoft
-projects that make the Operate story complete. The official Foundry extension,
-Azure services, and AgentOps workflow remain the actual runtime path.
+This tutorial intentionally connects the hosted-agent path to the
+Microsoft projects that make the Operate story complete. The official
+Foundry extension, Azure services, and AgentOps workflow remain the
+actual runtime path.
 
-| Repository | Role in the journey |
+| Repository / skill | Role in the journey |
 |---|---|
 | `Azure/agentops` | Provides endpoint evaluation, thresholds, `results.json`, Doctor, Cockpit, and evidence. |
+| `microsoft-foundry` skill (Copilot Chat) | External, not bundled with AgentOps. Demonstrates how a skill outside the AgentOps toolkit can guide Foundry hosted agent creation and Operate wiring. The tutorial gives a portal-first fallback because the skill is optional. |
 | `microsoft/ai-agent-evals` | Reference for Foundry prompt-agent eval behavior; hosted endpoints use AgentOps local eval because CI must invoke your endpoint directly. |
 | `microsoft/foundry-toolkit` | Frames the Hosted Agent create/debug/deploy flow and the Operate handoff in VS Code. |
 | `microsoft/azure-skills` | Shows where the Microsoft Foundry skill can guide hosted-agent CI/CD, observe, and trace-regression follow-through. |
@@ -47,14 +59,82 @@ generated PR workflow at `ai-agent-evals`. Hosted and HTTP agents are evaluated
 through the AgentOps local runner because CI must invoke your endpoint, extract
 the response, apply repo thresholds, and write the normalized `results.json`.
 
+## Mental model: sandbox vs dev for hosted endpoints
+
+Even though hosted/HTTP agents don't have Foundry-managed prompt versions
+the way prompt agents do, the same **sandbox → dev → qa → prod** separation
+applies. For this tutorial you will work with two of them:
+
+| Environment | What it is in this tutorial | Purpose |
+|---|---|---|
+| **sandbox** | The local FastAPI endpoint on your machine (`http://127.0.0.1:8000`). For a more realistic setup, this can also be a dedicated Foundry Hosted Agent or ACA revision per developer. | Author-side experimentation. Iterate, regress, fix, and validate with `agentops eval run` locally. No shared blast radius. |
+| **dev** | A deployed Foundry Hosted Agent, Azure Container Apps revision, AKS service, or any HTTPS endpoint reachable from CI. | Team-shared environment. The PR workflow evaluates this URL to verify it is still healthy. Deploy workflows (or your existing CI) update it on merge. |
+
+Each environment maps to its own `.azure/<env>/.env` file with its own
+`TRAVEL_AGENT_ENDPOINT` (and optional Foundry project endpoint for
+observability). The sandbox is the default; dev is added once the tutorial
+moves into CI.
+
+### The promotion identity for hosted agents
+
+The prompt-agent tutorial uses **prompt SHA-256** + **git SHA** as the
+cross-environment identity. Hosted agents don't have a `prompt_file`, so
+the identity story is even simpler:
+
+```
+git commit SHA (and container image tag, if you containerize)
+   │
+   └─ cross-environment identity
+        │
+        ├── sandbox endpoint (your localhost or dev-machine deploy)
+        ├── dev endpoint     (https://travel-agent-dev.example.com)
+        ├── qa endpoint      (https://travel-agent-qa.example.com)
+        └── prod endpoint    (https://travel-agent.example.com)
+```
+
+> **The cross-environment identifier for hosted agents is the git commit
+> SHA, and (when you containerize) the image tag derived from it.** Each
+> environment's endpoint URL changes; what you cite when traceability
+> matters is the SHA that produced the deployed code. AgentOps records
+> the git SHA in `.agentops/results/<timestamp>/results.json` and in
+> release evidence, so the eval result and the source code stay linked
+> across environments.
+
 ## Journey you will exercise
 
-| Step | Main tool | What you do | AgentOps role |
+```
+sandbox (local FastAPI)
+   │  iterate, regress, fix locally with `agentops eval run`
+   ▼
+PR opened with code change
+   │  PR workflow evaluates dev URL with --doctor-gate critical
+   ▼
+PR green ── merge ── deploy workflow updates dev endpoint
+   │
+   ▼
+deploy workflow re-runs eval + Doctor against the freshly updated dev URL
+   │
+   ▼
+green dev → ready for promotion to qa / prod
+```
+
+| Stage | Main tool | What you do | AgentOps role |
 |---|---|---|---|
-| Create/deploy the hosted agent | VS Code, Foundry Toolkit, Agent Framework, Agent Inspector, or `microsoft-foundry` skill | Create, debug, and expose a Travel Agent endpoint. | No ownership of scaffold/deploy. |
+| Author + iterate | Your code editor + local FastAPI | Change endpoint behavior, run `agentops eval run` against `localhost`. | Local runner; baseline comparison. |
+| Open PR | GitHub or Azure DevOps + generated PR workflow | PR workflow runs eval against the **dev URL** and Doctor with `--severity-fail critical`. | PR gate (eval thresholds + critical Doctor findings block merge). |
+| Merge + deploy to dev | Your existing deploy pipeline (Foundry Toolkit, azd, ACA, AKS) + generated dev deploy workflow | Update the dev endpoint with the new commit and re-evaluate. | Deploy-time gate with the same `--severity-fail critical` (always strict on deploy). |
 | Observe runtime | Foundry Operate, Azure Monitor, Application Insights | Confirm traces, latency, errors, and metrics exist. | Checks whether telemetry is wired. |
-| Evaluate endpoint | AgentOps local runner | Invoke the URL and normalize results. | Primary eval path for hosted endpoints. |
 | Review readiness | AgentOps Doctor and Cockpit | Check CI, eval, telemetry, evidence, and links. | Primary owner of repo-side release proof. |
+
+> **Architectural note.** For hosted endpoints the natural regression
+> gate runs at **deploy time** (post-merge), not PR time. The PR
+> workflow's eval verifies the dev URL is still healthy; it cannot
+> evaluate the PR's *unmerged* code unless your CI does a per-PR
+> ephemeral deploy. If you need PR-time regression catching for hosted
+> agents, the workflow skill can guide you through adding a per-PR
+> ephemeral deploy step (out of scope for this quickstart). The
+> sandbox loop (local FastAPI + `agentops eval run`) is the
+> equivalent author-side gate.
 
 Observability needs an App Insights resource connected to the Foundry project or
 agent runtime. If you ask Foundry to create or attach that resource from the
@@ -487,12 +567,37 @@ rerun the same gate before a PR or release.
 
 ## 10. Generate CI and Doctor evidence
 
+Generate both the PR and dev deploy workflows with `--doctor-gate critical`
+so the PR template fails when Doctor reports critical regression findings.
+For hosted agents, the auto-detection path resolves to a placeholder deploy
+workflow (or `azd` if `azure.yaml` exists); you customize it with your
+existing deploy steps later.
+
 ```powershell
-agentops workflow generate --kinds pr --force
+agentops workflow generate `
+  --kinds pr,dev `
+  --doctor-gate critical `
+  --force
 agentops doctor --workspace . --evidence-pack
 code .agentops\agent\report.md
 code .agentops\release\latest\evidence.md
 ```
+
+> **`--deploy-mode prompt-agent` does not apply to hosted endpoints.**
+> That mode is specific to Foundry prompt agents (the stage-prompt-as-
+> candidate flow). For hosted endpoints, `agentops workflow generate`
+> auto-detects `azd` or falls back to a placeholder you customize with
+> your existing deploy steps (Foundry Toolkit deploy, `azd deploy`,
+> ACA revision update, AKS rollout, etc.).
+
+> **`--doctor-gate critical` is the default and what this tutorial uses.**
+> The PR workflow runs `agentops doctor --severity-fail critical`, which
+> exits non-zero (and fails the PR check) when Doctor reports any
+> critical finding. Use `--doctor-gate warning` to also fail on warnings
+> during hardening sprints. Use `--doctor-gate none` to make Doctor
+> advisory-only (the pre-`--doctor-gate` behavior). The deploy workflow
+> already runs Doctor with `--severity-fail critical`; that part is not
+> configurable because production gates should be strict.
 
 `agentops doctor` can take a few minutes because it checks Azure auth, Foundry
 discovery, Azure Monitor/App Insights, local eval history, and repo workflow
@@ -527,19 +632,47 @@ such as deploy workflows, thresholds, continuous eval, action SHA pinning, and
 trace-to-regression feedback. Use critical findings as release blockers and
 warnings as the hardening backlog.
 
-The generated PR gate runs `agentops eval run`. Before using that workflow in
-GitHub Actions or Azure Pipelines, replace any localhost agent URL with the
-deployed Foundry Hosted or cloud endpoint. Have the Entra app-registration
-permission or the admin-provided OIDC values ready before using a workflow skill
-to connect the repo to Azure.
+The generated PR gate runs `agentops eval run` against the dev endpoint URL.
+Before using that workflow in GitHub Actions or Azure Pipelines, replace any
+localhost agent URL with the deployed Foundry Hosted or cloud endpoint (set
+`AGENTOPS_AGENT_ENDPOINT` as an Actions variable on the `dev` GitHub environment).
+Have the Entra app-registration permission or the admin-provided OIDC values
+ready before using a workflow skill to connect the repo to Azure.
 
-In the generated PR workflow, Doctor evidence is advisory and the eval step is
-the merge gate. A green PR run can still include
-`Release readiness: blocked` in `evidence.md`; that means "not production-ready
-yet," not "the CI job broke." Production deploy workflows run Doctor as a
-critical release gate. The GitHub run summary includes the Doctor finding
-summary from `evidence.md`, so a blocked readiness result names the critical
-items to fix without digging through raw logs.
+With `--doctor-gate critical` set during workflow generation, the PR workflow's
+Doctor step blocks the PR on critical findings (eval thresholds are *also* a
+hard gate via the `agentops eval run` exit code). A green PR run means: the dev
+endpoint passed eval thresholds **and** Doctor found nothing critical. A
+blocked PR means one of those two gates flagged a problem; the PR comment and
+the run summary include the Doctor finding summary so the author knows exactly
+which findings to address. Use `--doctor-gate warning` if you want warnings to
+block too, or `--doctor-gate none` to revert to the pre-`--doctor-gate`
+advisory-only behavior. Production deploy workflows always run Doctor as a
+critical release gate regardless of the PR setting.
+
+### Add the dev environment to azd
+
+The seed workspace created by `agentops init` lives under
+`.azure/<sandbox-env>/.env`. For the CI flow to use a separate dev project (or
+dev observability target), add a sibling env. AgentOps does this entirely on
+the filesystem; no `azd` CLI required:
+
+```powershell
+New-Item -ItemType Directory -Force .azure\dev | Out-Null
+@'
+AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<dev-resource>.services.ai.azure.com/api/projects/<dev-project>
+APPLICATIONINSIGHTS_CONNECTION_STRING=<dev-app-insights-connection-string>
+AZURE_OPENAI_ENDPOINT=https://<dev-openai-resource>.openai.azure.com
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini
+'@ | Set-Content -Encoding utf8 .azure\dev\.env
+```
+
+Keep `.azure/config.json` pointed at the sandbox env (`defaultEnvironment`) so
+local commands default to sandbox; CI passes `--azd-env dev` (or sets the env
+explicitly) so it uses dev. The Foundry project endpoint plus the agent URL
+(`AGENTOPS_AGENT_ENDPOINT` set as an Actions variable on the `dev` GitHub
+environment) together let CI evaluate the deployed dev endpoint and land
+results in the dev observability target.
 
 Use the same workflow-skill handoff pattern as the Prompt Agent quickstart, but
 keep the scope to the hosted endpoint:
@@ -554,12 +687,14 @@ Then ask Copilot:
 Use the AgentOps workflow skill to get the generated PR gate running for this
 hosted-agent project.
 
-Create or connect the GitHub repo if needed, replace the localhost agent URL
-with the deployed HTTPS endpoint, wire Azure OIDC and required Actions variables
-in the `dev` environment, and set any required endpoint token as a secret. Do
-not add scheduled Doctor, deploy, QA, or production workflows yet. Show me the
-plan before changing GitHub or Azure, and call out anything that needs
-owner/admin permission.
+Create or connect the GitHub repo if needed, set AGENTOPS_AGENT_ENDPOINT in the
+`dev` environment to the deployed HTTPS endpoint, wire Azure OIDC and required
+Actions variables in the `dev` environment, and set any required endpoint token
+as a secret. The PR gate uses --doctor-gate critical so the workflow blocks on
+critical Doctor findings (regressions or other strict signals). Do not add
+scheduled Doctor, QA, or production workflows yet. Show me the plan before
+changing GitHub or Azure, and call out anything that needs owner/admin
+permission.
 ```
 
 Open both Doctor outputs. The report explains the findings; the evidence pack
@@ -591,15 +726,43 @@ status, release evidence, CI/CD, and next actions.
 
 You are done when:
 
-- The Travel Agent endpoint responds to `POST /chat`.
-- At least one local endpoint request appears in App Insights Logs with the
-  `travel-agent.chat` operation. If you deploy as a real Foundry Hosted Agent,
-  its richer runtime spans can also appear in Foundry Traces.
+- The Travel Agent endpoint responds to `POST /chat` in the sandbox
+  (local FastAPI) and the dev environment (your deployed endpoint or a
+  placeholder URL you plan to wire to a deploy workflow).
+- At least one sandbox endpoint request appears in App Insights Logs
+  with the `travel-agent.chat` operation. If you deploy as a real
+  Foundry Hosted Agent in the dev project, its richer runtime spans can
+  also appear in Foundry Traces.
 - `agentops workflow analyze` selects `agentops-local`.
-- `agentops eval run` writes `results.json` and `report.md`.
-- You forced the endpoint into regressed mode, compared it with the baseline,
-  fixed it, and reran the comparison.
+- `agentops eval run` writes `results.json` and `report.md`, and you
+  forced the endpoint into regressed mode, compared it with the
+  baseline, fixed it, and reran the comparison locally — proving the
+  author-side gate works before opening a PR.
+- The generated PR workflow uses `--severity-fail critical` for the
+  `agentops doctor` step (set by `--doctor-gate critical` during
+  `agentops workflow generate`), so a regression that lands in dev
+  blocks the next PR until it is fixed.
+- `.azure/` contains both a sandbox env (default) and a dev env, each
+  with its own `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` and
+  `APPLICATIONINSIGHTS_CONNECTION_STRING`.
 - `agentops doctor --evidence-pack` writes
-  `.agentops/release/latest/evidence.md`, and the workflow summary surfaces its
-  Doctor finding summary.
+  `.agentops/release/latest/evidence.md`, and the workflow summary
+  surfaces its Doctor finding summary.
 - Cockpit opens and shows the local eval history plus Doctor readiness.
+
+## Where to go next
+
+- **Add per-PR regression catching for hosted agents.** Per-PR ephemeral
+  deploys (e.g., ACA revision per PR, dedicated Foundry Hosted Agent per
+  PR) are the architectural answer if you want PR-time eval to catch
+  endpoint regressions before merge. The workflow skill can scaffold
+  this.
+- **Promote to qa and prod.** Mirror the dev pattern: create
+  `.azure/qa/.env` and `.azure/prod/.env`, set GitHub Environments with
+  the right `AGENTOPS_AGENT_ENDPOINT`, and use `agentops workflow
+  generate --kinds qa,prod --force`.
+- **Walk through the prompt-agent quickstart** at
+  [tutorial-prompt-agent-quickstart.md](tutorial-prompt-agent-quickstart.md)
+  to see the full prompt-as-code regression journey (stage-then-eval
+  at PR time, no per-PR deploys required) and contrast the two
+  architectures.

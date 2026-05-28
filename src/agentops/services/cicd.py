@@ -38,6 +38,14 @@ PLATFORMS: Tuple[str, ...] = ("github", "azure-devops")
 # ``agentops.yaml`` targets a Foundry prompt agent.
 DEPLOY_MODES: Tuple[str, ...] = ("auto", "placeholder", "azd", "prompt-agent")
 
+# Doctor gate severities supported by ``agentops workflow generate
+# --doctor-gate``. The PR workflow template runs `agentops doctor
+# --severity-fail <gate>`; ``critical`` (the default) blocks the PR on
+# critical Doctor findings (including regression detection), ``warning``
+# blocks on warning or higher, and ``none`` keeps Doctor advisory.
+DOCTOR_GATES: Tuple[str, ...] = ("critical", "warning", "none")
+DEFAULT_DOCTOR_GATE: str = "critical"
+
 # Per-platform mapping of workflow kind -> (template path inside package,
 # output path in repo).
 #
@@ -117,6 +125,7 @@ class CicdResult:
     platform: str = "github"
     deploy_mode: str = "placeholder"
     eval_runner: str = AGENTOPS_LOCAL_RUNNER
+    doctor_gate: str = "critical"
     kinds: List[str] = field(default_factory=list)
     created_files: List[Path] = field(default_factory=list)
     overwritten_files: List[Path] = field(default_factory=list)
@@ -160,6 +169,16 @@ def _branch_block_ado(*branches: str) -> str:
 
 
 _PROMPT_AGENT_VALUES: Dict[str, Dict[str, str]] = {
+    "pr": {
+        "__ENV_LABEL__": "PR",
+        "__ENV_KEY__": "pr",
+        # PR candidates are staged in the dev Foundry project so the
+        # gate evaluates the same target the deploy workflow will use.
+        # Sandbox is the author's playground only.
+        "__ENV_NAME__": "dev",
+        "__BRANCHES__": "",
+        "__EVAL_JOB_NAME__": "AgentOps eval (PR gate)",
+    },
     "dev": {
         "__ENV_LABEL__": "DEV",
         "__ENV_KEY__": "dev",
@@ -184,6 +203,14 @@ _PROMPT_AGENT_VALUES: Dict[str, Dict[str, str]] = {
 }
 
 _PROMPT_AGENT_VALUES_ADO: Dict[str, Dict[str, str]] = {
+    "pr": {
+        "__ENV_LABEL__": "PR",
+        "__ENV_KEY__": "pr",
+        # PR candidates are staged in the dev Foundry project so the
+        # gate evaluates the same target the deploy pipeline will use.
+        "__ENV_NAME__": "dev",
+        "__BRANCHES__": "",
+    },
     "dev": {
         "__ENV_LABEL__": "dev",
         "__ENV_KEY__": "dev",
@@ -206,11 +233,19 @@ _PROMPT_AGENT_VALUES_ADO: Dict[str, Dict[str, str]] = {
 
 _PROMPT_AGENT_TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
     "github": {
+        "pr": (
+            "workflows/agentops-pr-prompt-agent.yml",
+            ".github/workflows/agentops-pr.yml",
+        ),
         "dev": ("workflows/agentops-deploy-prompt-agent.yml", ".github/workflows/agentops-deploy-dev.yml"),
         "qa": ("workflows/agentops-deploy-prompt-agent.yml", ".github/workflows/agentops-deploy-qa.yml"),
         "prod": ("workflows/agentops-deploy-prompt-agent.yml", ".github/workflows/agentops-deploy-prod.yml"),
     },
     "azure-devops": {
+        "pr": (
+            "pipelines/azuredevops/agentops-pr-prompt-agent.yml",
+            ".azuredevops/pipelines/agentops-pr.yml",
+        ),
         "dev": (
             "pipelines/azuredevops/agentops-deploy-prompt-agent.yml",
             ".azuredevops/pipelines/agentops-deploy-dev.yml",
@@ -534,6 +569,7 @@ def generate_cicd_workflows(
     kinds: Sequence[str] | None = None,
     platform: str = "github",
     deploy_mode: str = "auto",
+    doctor_gate: str = DEFAULT_DOCTOR_GATE,
 ) -> CicdResult:
     """Generate AgentOps GitFlow CI/CD workflows.
 
@@ -557,6 +593,13 @@ def generate_cicd_workflows(
             candidate/eval/deploy workflows, and ``"auto"`` selects
             ``"azd"`` when ``azure.yaml`` exists or ``"prompt-agent"`` when
             ``agentops.yaml`` targets a Foundry prompt agent.
+        doctor_gate: Severity floor for the PR-gate Doctor step. One of
+            ``"critical"`` (default), ``"warning"``, or ``"none"``.
+            ``critical`` blocks the PR on critical Doctor findings such as
+            regression drops; ``warning`` blocks on warning or higher;
+            ``none`` keeps Doctor advisory (pre-1.x behavior). Only the PR
+            template uses this value; deploy templates keep the
+            hardcoded ``critical`` gate.
 
     Returns:
         CicdResult with platform and paths of created, overwritten, or
@@ -569,6 +612,10 @@ def generate_cicd_workflows(
     if deploy_mode not in DEPLOY_MODES:
         raise ValueError(
             f"unknown deploy mode {deploy_mode!r}; valid: {', '.join(DEPLOY_MODES)}"
+        )
+    if doctor_gate not in DOCTOR_GATES:
+        raise ValueError(
+            f"unknown doctor gate {doctor_gate!r}; valid: {', '.join(DOCTOR_GATES)}"
         )
 
     if kinds is None:
@@ -584,6 +631,7 @@ def generate_cicd_workflows(
         platform=platform,
         deploy_mode=effective_deploy_mode,
         eval_runner=effective_eval_runner,
+        doctor_gate=doctor_gate,
     )
     templates_root = files(_TEMPLATE_PACKAGE)
     template_map = _TEMPLATES_BY_PLATFORM[platform]
@@ -598,7 +646,7 @@ def generate_cicd_workflows(
             continue
         seen.add(kind)
         result.kinds.append(kind)
-        substitutions: dict[str, str] = {}
+        substitutions: dict[str, str] = {"__DOCTOR_GATE__": doctor_gate}
         eval_config = (
             "${{ inputs.config || 'agentops.yaml' }}"
             if platform == "github" and kind == "pr"
