@@ -160,7 +160,7 @@ install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
+python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Create the Travel Agent endpoint
