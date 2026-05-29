@@ -411,14 +411,19 @@ def _run_evaluation_cloud(
     # If the cloud run yielded zero usable metric values despite running
     # graders, surface that loudly so the user does not chase a phantom
     # "threshold failed" gate. The artifact dumped above is the triage
-    # entry point.
+    # entry point, but we also lift the first per-metric error string
+    # into the warning itself so CI logs carry the actionable cause
+    # (most often: the Foundry evaluator service principal lacks
+    # `Cognitive Services OpenAI User` on the model deployment).
     if presets and not aggregate and rows:
         suffix = (
             f" Inspect {raw_items_path}." if raw_items_path is not None else ""
         )
+        first_error = _first_metric_error(rows)
+        cause_suffix = f" First grader error: {first_error}" if first_error else ""
         progress(
             "warning: cloud eval returned 0 usable metric scores across "
-            f"{len(rows)} row(s).{suffix}"
+            f"{len(rows)} row(s).{cause_suffix}{suffix}"
         )
 
     result = RunResult(
@@ -756,6 +761,21 @@ def _aggregate_metrics(rows: List[RowResult]) -> Dict[str, float]:
         if values:
             aggregate[name] = statistics.fmean(values)
     return aggregate
+
+
+def _first_metric_error(rows: List[RowResult]) -> Optional[str]:
+    """Return the first non-empty per-metric error string across all rows.
+
+    Used by the cloud-eval orchestrator to lift the actionable cause of
+    an all-null aggregate (e.g., RBAC failure on the evaluator's model
+    deployment) into the user-facing warning so CI logs carry the signal
+    without operators having to download the raw artifact.
+    """
+    for row in rows:
+        for metric in row.metrics:
+            if isinstance(metric.error, str) and metric.error.strip():
+                return metric.error.strip()
+    return None
 
 
 def _summarize(

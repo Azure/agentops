@@ -6,6 +6,57 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Fixed
+- **Cloud eval surfaces grader execution errors instead of silent nulls.**
+  When a Foundry `azure_ai_evaluator` grader fails to execute (most
+  commonly because the evaluator service principal lacks
+  `Cognitive Services OpenAI User` on the target model deployment), the
+  per-metric `score` comes back `null` and the real cause is buried in
+  `result.sample.error.message`. The cloud-results parser now lifts that
+  message into `RowMetric.error` (including the error `code` prefix
+  when present), so the actionable error appears in `results.json` and
+  `report.md` instead of operators only seeing `actual=missing` in the
+  threshold table. The orchestrator's "0 usable metric scores" warning
+  also quotes the first grader error so CI logs carry the signal
+  without operators having to download the raw artifact.
+
+### Added
+- **`cloud_output_items.json` is now uploaded as a CI artifact.** Generated PR and deploy workflows (GitHub Actions and Azure DevOps) include `.agentops/results/latest/cloud_output_items.json` in the `agentops-*-results` artifact bundle alongside `results.json`, `report.md`, and `cloud_evaluation.json`. Pairs with the "0 usable scores" warning so operators can diagnose unrecognized Foundry grader shapes without re-running locally.
+- **`cloud_output_items.json` raw dump.** Every cloud eval run now
+  writes the raw `output_items` it received from Foundry to
+  `<output_dir>/cloud_output_items.json`, in addition to the parsed
+  `results.json`. When a future grader / SDK upgrade changes the on-the-
+  wire shape and the parser stops finding scores, the artifact bundle
+  alone is enough to triage the issue. The orchestrator also emits an
+  explicit warning to the progress channel when a cloud run yields zero
+  usable metric scores despite returning rows, pointing the user at the
+  new dump file.
+- **`.gitattributes`** pinning `*.yml` / `*.yaml` / `*.sh` / `*.md` /
+  `*.py` to LF line endings, preventing future CRLF↔LF churn from
+  Windows clones with `core.autocrlf=true`. Normalizes the existing
+  `_build.yml` and `ci.yml` (previously CRLF) to LF so all files in
+  `.github/workflows/` share a single line-ending convention.
+
+### Removed
+- **Retired tombstone publish jobs from CI.** The `agentops-toolkit` →
+  `agentops-accelerator` deprecation tombstones were one-shot publishes
+  for v0.3.0 / v0.3.1; the `build-pypi-tombstone`,
+  `publish-tombstone-testpypi`, `verify-tombstone-testpypi`,
+  `publish-tombstone-pypi`, and `publish-tombstone-vsix(-prerelease)`
+  jobs (plus their `cut-release.yml` plugin-version sync steps) have
+  been removed from `release.yml`, `staging.yml`, and `cut-release.yml`.
+  The `github-release` job now depends only on `publish-pypi` and
+  `publish-vsix` (both required), and the dead `always()` guard has
+  been dropped. Future releases ship only `agentops-accelerator` on
+  PyPI and the `AgentOpsAccelerator.agentops-accelerator` VSIX.
+  The orphaned `scripts/verify_tombstones.py` harness and
+  `docs/verifying-tombstones.md` checklist (both one-shot tools
+  whose CI counterpart no longer exists) have been removed, along
+  with the now-unused `tombstones/pypi/` package source and the
+  `tombstones/vscode/` extension source — only
+  `tombstones/vscode/CDN_DEPRECATION_REQUEST.md` survives as the
+  template for the still-pending Microsoft CDN deprecation request.
+
+### Fixed
 - **Cloud-eval parser no longer returns null scores for Foundry
   `azure_ai_evaluator` graders.** The parser now probes a wider set of
   score-carrier keys (`score`, `value`, `result`, `metric_value`,
@@ -19,21 +70,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   2 fired with `Threshold status: FAILED` even when the run itself
   succeeded.
 
-### Added
-- **`cloud_output_items.json` is now uploaded as a CI artifact.** Generated PR and deploy workflows (GitHub Actions and Azure DevOps) include `.agentops/results/latest/cloud_output_items.json` in the `agentops-*-results` artifact bundle alongside `results.json`, `report.md`, and `cloud_evaluation.json`. Pairs with the "0 usable scores" warning so operators can diagnose unrecognized Foundry grader shapes without re-running locally.
-- **`cloud_output_items.json` raw dump.** Every cloud eval run now
-  writes the raw `output_items` it received from Foundry to
-  `<output_dir>/cloud_output_items.json`, in addition to the parsed
-  `results.json`. When a future grader / SDK upgrade changes the on-the-
-  wire shape and the parser stops finding scores, the artifact bundle
-  alone is enough to triage the issue. The orchestrator also emits an
-  explicit warning to the progress channel when a cloud run yields zero
-  usable metric scores despite returning rows, pointing the user at the
-  new dump file.
-
 ## [0.3.0] - 2026-05-28
 
 ### Added
+- **Auto-bootstrap empty Foundry projects on first deploy.** New optional
+  `prompt_agent_bootstrap` block in `agentops.yaml` lets the prompt-agent
+  deploy workflow create the first version of an agent in a dev / qa / prod
+  Foundry project that does not yet have one. When the stage step looks up
+  the seed agent and gets a 404, it reads the model deployment (required)
+  plus optional `description`, `model_parameters`, and `tools` from
+  `prompt_agent_bootstrap`, combines them with `prompt_file`, and creates
+  the first version automatically. The deployment artifact records the new
+  `action: "bootstrapped"` for that first run; subsequent deploys follow
+  the normal reuse / next-version flow. Eliminates the previous
+  per-environment manual seeding step. `agentops workflow analyze` now
+  warns when a prompt-agent workspace is missing this block. Authentication
+  (401 / 403) and other non-404 errors continue to propagate — the
+  bootstrap path only triggers on a genuine "agent does not exist" 404.
 - **`--doctor-gate` flag on `agentops workflow generate`.** New option
   `--doctor-gate critical|warning|none` controls the Doctor severity floor
   in the PR workflow template. Default is `critical`, which makes the PR
@@ -401,3 +454,4 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   - `agentops report --in <results.json> [--out <report.md>]`
 - Unit tests for models, YAML/config loading, and workspace initialization behavior.
 - Initial documentation including generic quickstart and test running guide.
+

@@ -234,3 +234,105 @@ def test_records_diagnostic_reason_when_score_is_missing():
     assert metric.value is None
     assert metric.error is not None
     assert "cloud_output_items.json" in metric.error
+
+
+def test_lifts_grader_execution_error_from_sample_error_dict():
+    """When a Foundry ``azure_ai_evaluator`` grader fails to execute (e.g.
+    the evaluator service principal lacks ``Cognitive Services OpenAI
+    User`` on the model deployment), the failure is buried inside
+    ``result.sample.error.message`` and the top-level score is just
+    ``null``. The parser must lift that message into ``RowMetric.error``
+    so the actionable cause shows up in ``results.json`` / ``report.md``
+    instead of operators seeing only ``actual=missing`` in the threshold
+    table. Schema mirrors the on-the-wire shape captured from real
+    Foundry ``cloud_output_items.json`` artifacts."""
+    items = [
+        _item(
+            {"input": "hi", "expected": "hello"},
+            {"output_text": "hello"},
+            [
+                {
+                    "name": "coherence",
+                    "metric": "coherence",
+                    "type": "azure_ai_evaluator",
+                    "score": None,
+                    "passed": None,
+                    "label": None,
+                    "reason": None,
+                    "threshold": None,
+                    "status": "error",
+                    "sample": {
+                        "error": {
+                            "code": "FAILED_EXECUTION",
+                            "message": (
+                                "(UserError) OpenAI API hits "
+                                "AuthenticationError: Error code: 401 - "
+                                "PermissionDenied: lacks the required data "
+                                "action chat/completions/action"
+                            ),
+                        }
+                    },
+                }
+            ],
+        ),
+    ]
+    rows = rows_from_cloud_output_items(items)
+    metric = rows[0].metrics[0]
+    assert metric.name == "coherence"
+    assert metric.value is None
+    assert metric.error is not None
+    assert metric.error.startswith("FAILED_EXECUTION: ")
+    assert "AuthenticationError" in metric.error
+    assert "PermissionDenied" in metric.error
+    assert "cloud_output_items.json" not in metric.error
+
+
+def test_lifts_grader_error_from_top_level_dict_payload():
+    """Some Foundry response shapes carry the error as a dict at the top
+    level of the result envelope rather than inside ``sample.error``.
+    The parser must accept both shapes interchangeably."""
+    items = [
+        _item(
+            {"input": "hi"},
+            {"output_text": "hello"},
+            [
+                {
+                    "name": "fluency",
+                    "score": None,
+                    "error": {
+                        "code": "RateLimited",
+                        "message": "rate limit exceeded",
+                    },
+                }
+            ],
+        ),
+    ]
+    rows = rows_from_cloud_output_items(items)
+    metric = rows[0].metrics[0]
+    assert metric.value is None
+    assert metric.error == "RateLimited: rate limit exceeded"
+
+
+def test_grader_error_payload_does_not_shadow_a_real_score():
+    """A grader can return ``status: completed`` plus a numeric score
+    even when ``sample.error`` exists for an upstream warning. In that
+    case the numeric score wins and ``RowMetric.error`` stays empty so
+    aggregation continues normally."""
+    items = [
+        _item(
+            {"input": "hi"},
+            {"output_text": "hello"},
+            [
+                {
+                    "name": "coherence",
+                    "score": 4.5,
+                    "status": "completed",
+                    "sample": {"error": None},
+                }
+            ],
+        ),
+    ]
+    rows = rows_from_cloud_output_items(items)
+    metric = rows[0].metrics[0]
+    assert metric.value == 4.5
+    assert metric.error is None
