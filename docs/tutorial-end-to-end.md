@@ -468,14 +468,10 @@ and rerun the same gate.
 
 ### Prompt Agent regression
 
-Make sure the original prompt version has one green workflow run before you
-change it. **If you used the workflow skill in step 5 above, this is already
-done** — the skill commits your changes, pushes to GitHub, and triggers a first
-verification run of `agentops-pr.yml`. Open the latest workflow run's Foundry
-Evaluations link and keep that page open as the baseline. If you skipped the
-skill and wired CI by hand, commit the generated workflow and `agentops.yaml`,
-run `gh workflow run agentops-pr.yml --ref main`, and use that run as the
-baseline.
+The workflow skill in step 5 above already committed your changes, pushed
+`main` to GitHub, and triggered a first verification run of `agentops-pr.yml`.
+Open the latest workflow run's Foundry Evaluations link and keep that page
+open as the baseline.
 
 1. In Foundry, edit the `travel-agent` instructions to this intentionally bad
    version:

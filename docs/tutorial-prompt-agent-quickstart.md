@@ -761,34 +761,20 @@ This is the happy path. Before the regression step, you need a clean
 green baseline so the rolling-history Doctor checks (regression, drift)
 have something to compare against.
 
-> **If you used the workflow skill in step 12, the next two code
-> blocks have already been done — skip straight to "Now open a feature
-> branch..." below.** The `agentops-workflow` skill commits your local
-> changes, pushes `main` to the GitHub remote, and triggers a first
-> verification run of both `agentops-pr.yml` and `agentops-deploy-dev.yml`
-> as part of its end-to-end setup. Open the repo's **Actions** tab and
-> confirm both runs are present — `Stage Foundry prompt candidate (PR)`
-> + `AgentOps eval (PR gate)` should be green on the PR workflow, and
-> `agentops-deploy-dev.yml` should have a matching run that also went
-> green. Only run the `git add` / `commit` / `push` and `gh workflow run`
-> commands below if you skipped the skill and wired CI by hand, or if
-> the skill stopped before pushing your latest local changes (run
-> `git status` first — if the working tree is clean and the remote has
-> your commits, the manual commands are no-ops).
+The workflow skill in step 12 already committed your local changes,
+pushed `main` to the GitHub remote, and triggered a first verification
+run of both `agentops-pr.yml` and `agentops-deploy-dev.yml` as part of
+its end-to-end setup. Open the repo's **Actions** tab and confirm both
+runs are green:
+
+- `agentops-pr.yml` — both `Stage Foundry prompt candidate (PR)` and
+  `AgentOps eval (PR gate)` jobs are green.
+- `agentops-deploy-dev.yml` — has a matching run that also went green.
+
+If you want to wait on the first PR run from the terminal instead of
+the Actions UI:
 
 ```powershell
-git add agentops.yaml .agentops .github\workflows
-git commit -m "Add AgentOps prompt agent gate + dev deploy"
-git push -u origin main
-```
-
-Open the repository in GitHub and confirm both workflows appear under
-**Actions**. Trigger the PR workflow once on `main` so the dev project
-has a known-good candidate run:
-
-```powershell
-gh workflow run agentops-pr.yml --ref main
-Start-Sleep -Seconds 10
 $runId = gh run list --workflow agentops-pr.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
 gh run view $runId --web
 gh run watch $runId --exit-status
