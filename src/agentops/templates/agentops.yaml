@@ -27,6 +27,24 @@ dataset: .agentops/data/smoke.jsonl
 #
 # prompt_file: .agentops/prompts/agent-instructions.md
 
+# Optional. Bootstrap defaults for the *first* deploy into an empty Foundry
+# project (e.g. brand-new dev / qa / prod). When the prompt-agent deploy
+# workflow finds that 'agent' does not exist yet in the target environment,
+# it creates the first version from these defaults plus the contents of
+# 'prompt_file'. Subsequent deploys ignore this block and follow the normal
+# reuse / next-version flow. Requires 'prompt_file' to be set.
+#
+# Tip: use the same model deployment name across sandbox / dev / qa / prod so
+# the bootstrap payload works in every Foundry project without per-env tweaks.
+#
+# prompt_agent_bootstrap:
+#   model: gpt-4o-mini
+#   description: "Helps plan short trips and explains tradeoffs."
+#   # Optional model parameters and tool definitions are passed through as-is.
+#   # model_parameters:
+#   #   temperature: 0.2
+#   # tools: []
+
 # Optional. Override the auto-selected pass/fail thresholds. AgentOps fills in
 # sensible defaults for the metrics that are auto-selected.
 #

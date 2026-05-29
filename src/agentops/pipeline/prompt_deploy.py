@@ -16,7 +16,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from agentops.core.agentops_config import AgentOpsConfig, classify_agent
+from agentops.core.agentops_config import (
+    AgentOpsConfig,
+    PromptAgentBootstrap,
+    classify_agent,
+)
 from agentops.core.config_loader import load_agentops_config
 from agentops.utils.yaml import load_yaml, save_yaml
 
@@ -37,6 +41,12 @@ def stage_prompt_agent_candidate(
 
     The generated eval config points at the candidate version, so the CI gate
     evaluates the same Foundry agent definition that the deploy stage records.
+
+    If the target Foundry project does not yet contain the seed agent
+    referenced by ``agent`` (the SDK raises a 404), the function falls back to
+    bootstrapping the agent using ``prompt_agent_bootstrap`` from
+    ``agentops.yaml``. This lets CI/CD provision dev/qa/prod from a
+    sandbox-only authoring flow without requiring a manual portal step.
     """
 
     config_path = config_path.resolve()
@@ -64,41 +74,46 @@ def stage_prompt_agent_candidate(
             "or AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
         )
 
-    current = _get_agent_version(endpoint, target.name, target.version)
-    definition = getattr(current, "definition", None) or _get_mapping_value(current, "definition")
-    if definition is None:
-        raise ValueError(
-            f"Foundry agent {target.name}:{target.version} did not include a definition"
-        )
-
-    kind = str(_get_definition_value(definition, "kind") or "").lower()
-    if kind != "prompt":
-        raise ValueError(
-            f"Foundry agent {target.name}:{target.version} is kind {kind!r}; "
-            "prompt-agent deployment only supports kind 'prompt'"
-        )
-
     prompt_hash = hashlib.sha256(instructions.encode("utf-8")).hexdigest()
-    current_instructions = _get_definition_value(definition, "instructions") or ""
-    if str(current_instructions) == instructions:
-        candidate_version = target.version
-        action = "reused"
-        created = current
-    else:
-        candidate_definition = _copy_definition(definition)
-        _set_definition_value(candidate_definition, "instructions", instructions)
-        created = _create_agent_version(
-            endpoint,
-            target.name,
-            candidate_definition,
-            metadata=_deployment_metadata(
-                environment=environment,
-                prompt_hash=prompt_hash,
-            ),
-            description=(
-                f"AgentOps {environment} candidate from "
-                f"{resolved_prompt.as_posix()} ({prompt_hash[:12]})"
-            ),
+
+    try:
+        current = _get_agent_version(endpoint, target.name, target.version)
+    except Exception as exc:  # noqa: BLE001 — narrowed by _is_not_found_error below
+        if _is_not_found_error(exc):
+            current = None
+        else:
+            raise
+
+    metadata = _deployment_metadata(
+        environment=environment,
+        prompt_hash=prompt_hash,
+    )
+    description = (
+        f"AgentOps {environment} candidate from "
+        f"{resolved_prompt.as_posix()} ({prompt_hash[:12]})"
+    )
+
+    if current is None:
+        # Bootstrap path: target project does not yet contain the seed agent.
+        if config.prompt_agent_bootstrap is None:
+            raise ValueError(
+                f"Foundry agent {target.name}:{target.version} does not exist "
+                f"in project {endpoint}, and 'prompt_agent_bootstrap' is not "
+                "configured in agentops.yaml.\n\n"
+                "Either create the agent manually in the target project, or "
+                "add prompt_agent_bootstrap defaults so CI/CD can create the "
+                "first version automatically. Minimal example:\n\n"
+                "  prompt_agent_bootstrap:\n"
+                "    model: <your-model-deployment-name>\n\n"
+                "Then re-run the deploy workflow."
+            )
+        created = _bootstrap_prompt_agent(
+            endpoint=endpoint,
+            agent_name=target.name,
+            bootstrap=config.prompt_agent_bootstrap,
+            instructions=instructions,
+            metadata=metadata,
+            description=description,
         )
         candidate_version = str(
             getattr(created, "version", None)
@@ -107,7 +122,44 @@ def stage_prompt_agent_candidate(
         )
         if not candidate_version:
             raise ValueError("Foundry create_version did not return a version")
-        action = "created"
+        action = "bootstrapped"
+    else:
+        definition = getattr(current, "definition", None) or _get_mapping_value(current, "definition")
+        if definition is None:
+            raise ValueError(
+                f"Foundry agent {target.name}:{target.version} did not include a definition"
+            )
+
+        kind = str(_get_definition_value(definition, "kind") or "").lower()
+        if kind != "prompt":
+            raise ValueError(
+                f"Foundry agent {target.name}:{target.version} is kind {kind!r}; "
+                "prompt-agent deployment only supports kind 'prompt'"
+            )
+
+        current_instructions = _get_definition_value(definition, "instructions") or ""
+        if str(current_instructions) == instructions:
+            candidate_version = target.version
+            action = "reused"
+            created = current
+        else:
+            candidate_definition = _copy_definition(definition)
+            _set_definition_value(candidate_definition, "instructions", instructions)
+            created = _create_agent_version(
+                endpoint,
+                target.name,
+                candidate_definition,
+                metadata=metadata,
+                description=description,
+            )
+            candidate_version = str(
+                getattr(created, "version", None)
+                or _get_mapping_value(created, "version")
+                or ""
+            )
+            if not candidate_version:
+                raise ValueError("Foundry create_version did not return a version")
+            action = "created"
 
     eval_config_path = eval_config_path.resolve()
     output_path = output_path.resolve()
@@ -160,7 +212,13 @@ def summarize_deployment(record_path: Path, *, environment: str) -> Dict[str, An
             handle.write("## Foundry prompt-agent deployment\n\n")
             handle.write(f"- **Environment:** {environment}\n")
             handle.write(f"- **Agent version:** `{candidate}`\n")
+            handle.write(f"- **Action:** `{action}`\n")
             handle.write(f"- **Prompt hash:** `{record.get('prompt_sha256', '')}`\n")
+            if action == "bootstrapped":
+                handle.write(
+                    "- Agent did not exist in this environment; created from "
+                    "`prompt_agent_bootstrap` defaults.\n"
+                )
             if record.get("workflow_url"):
                 handle.write(f"- **Workflow:** {record['workflow_url']}\n")
     return record
@@ -201,6 +259,54 @@ def _path_from_env(name: str) -> Optional[Path]:
 def _get_agent_version(endpoint: str, agent_name: str, agent_version: str) -> Any:
     client = _project_client(endpoint)
     return client.agents.get_version(agent_name, agent_version)
+
+
+def _is_not_found_error(exc: BaseException) -> bool:
+    """True when ``exc`` is an Azure 404 / ResourceNotFound, false otherwise.
+
+    Deliberately narrow: 401/403/5xx / generic errors must propagate so
+    callers see auth, RBAC, or transport failures clearly instead of being
+    masked by a bootstrap path.
+    """
+
+    status = getattr(exc, "status_code", None)
+    if status == 404:
+        return True
+    try:
+        from azure.core.exceptions import ResourceNotFoundError  # noqa: WPS433
+    except ImportError:
+        return False
+    return isinstance(exc, ResourceNotFoundError)
+
+
+def _bootstrap_prompt_agent(
+    *,
+    endpoint: str,
+    agent_name: str,
+    bootstrap: PromptAgentBootstrap,
+    instructions: str,
+    metadata: Dict[str, str],
+    description: str,
+) -> Any:
+    """Create the first version of a prompt agent from bootstrap defaults."""
+
+    definition: Dict[str, Any] = {
+        "kind": "prompt",
+        "model": bootstrap.model,
+        "instructions": instructions,
+    }
+    if bootstrap.model_parameters:
+        definition["model_parameters"] = dict(bootstrap.model_parameters)
+    if bootstrap.tools:
+        definition["tools"] = [dict(tool) for tool in bootstrap.tools]
+
+    return _create_agent_version(
+        endpoint,
+        agent_name,
+        definition,
+        metadata=metadata,
+        description=bootstrap.description or description,
+    )
 
 
 def _create_agent_version(

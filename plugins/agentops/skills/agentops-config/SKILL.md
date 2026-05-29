@@ -76,6 +76,20 @@ thresholds:
   groundedness: ">=3"
   avg_latency_seconds: "<=30"
 
+# Prompt-agent only: auto-bootstrap empty Foundry projects on first deploy.
+# When the deploy workflow runs against a Foundry project that does not yet
+# contain the agent named in `agent:`, AgentOps reads this block plus
+# `prompt_file` and creates the first version automatically. Recommended
+# for multi-environment prompt-agent workflows (sandbox → dev → qa → prod)
+# so operators do not have to manually recreate the seed agent in every
+# Foundry project.
+prompt_agent_bootstrap:
+  model: gpt-4o-mini        # required - same deployment name in every env
+  description: "Helps plan short trips."
+  # model_parameters:        # optional - temperature, top_p, etc.
+  #   temperature: 0.2
+  # tools: []                # optional - tool definitions
+
 # Publish results to the Foundry Evaluations panel.
 # - execution: local + publish: true  → Classic Foundry (uploads metrics)
 # - execution: cloud                  → New Foundry (server-side run;

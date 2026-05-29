@@ -204,6 +204,86 @@ class DatasetSyncConfig(BaseModel):
         return value
 
 
+class PromptAgentBootstrap(BaseModel):
+    """Bootstrap defaults for prompt-agent CI/CD when the target Foundry
+    project does not yet contain the seed agent referenced by ``agent``.
+
+    AgentOps' Foundry prompt-agent deployment path normally looks up an
+    existing seed (``name:version``) in the target project, clones its
+    definition, and replaces the instructions with ``prompt_file``. That
+    forces every environment (sandbox, dev, qa, prod) to have the agent
+    pre-created manually.
+
+    When ``prompt_agent_bootstrap`` is set, the deployment step instead
+    bootstraps the agent in any environment whose target Foundry project
+    is still empty (the seed lookup returns 404) using these values plus
+    the contents of ``prompt_file``. The action recorded in the
+    deployment artifact will be ``bootstrapped`` for that first run.
+
+    This block is **only** consulted on the not-found code path. Once
+    the agent exists in the target project, the reuse / next-version
+    flow takes over and ``prompt_agent_bootstrap`` is ignored — changing
+    ``model`` here will not migrate an existing dev agent to a new
+    deployment. Treat schema changes beyond ``instructions`` as a
+    deliberate operations event.
+
+    Fields:
+
+    ``model``
+        Required. Azure OpenAI / Foundry model deployment name to use
+        when creating the agent. Must exist with the same name in every
+        environment that may bootstrap (sandbox, dev, qa, prod).
+
+    ``description``
+        Optional human-readable description recorded on the agent.
+
+    ``model_parameters``
+        Optional dict of model parameters (e.g. ``{"temperature": 0.2}``)
+        passed through to the Foundry ``PromptAgentDefinition``.
+
+    ``tools``
+        Optional list of tool definitions (JSON-serializable dicts that
+        match the Foundry tools schema) registered with the agent at
+        bootstrap time.
+    """
+
+    model: str = Field(
+        ...,
+        description=(
+            "Model deployment name. Must exist with the same name in "
+            "every Foundry project that may bootstrap from this config."
+        ),
+    )
+    description: Optional[str] = Field(
+        None,
+        description="Optional human-readable description for the agent.",
+    )
+    model_parameters: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Optional model parameters dict (e.g. {'temperature': 0.2}) "
+            "passed through to Foundry PromptAgentDefinition."
+        ),
+    )
+    tools: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description=(
+            "Optional tool definitions (JSON dicts matching Foundry "
+            "tools schema) registered with the agent at bootstrap."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid", protected_namespaces=())
+
+    @field_validator("model")
+    @classmethod
+    def _model_non_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("prompt_agent_bootstrap.model must be non-empty")
+        return value
+
+
 # ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
@@ -338,6 +418,15 @@ class AgentOpsConfig(BaseModel):
     dataset_sync: DatasetSyncConfig = Field(
         default_factory=DatasetSyncConfig,
         description="Cloud evaluation dataset submission policy.",
+    )
+    prompt_agent_bootstrap: Optional[PromptAgentBootstrap] = Field(
+        None,
+        description=(
+            "Optional bootstrap defaults used when the prompt-agent "
+            "deployment target is empty (seed lookup returns 404). "
+            "Lets CI/CD auto-create the agent in dev/qa/prod from "
+            "sandbox-only authoring. See PromptAgentBootstrap docs."
+        ),
     )
 
     model_config = ConfigDict(extra="forbid")

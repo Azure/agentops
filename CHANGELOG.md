@@ -6,6 +6,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- **Auto-bootstrap empty Foundry projects on first deploy.** New optional
+  `prompt_agent_bootstrap` block in `agentops.yaml` lets the prompt-agent
+  deploy workflow create the first version of an agent in a dev / qa / prod
+  Foundry project that does not yet have one. When the stage step looks up
+  the seed agent and gets a 404, it reads the model deployment (required)
+  plus optional `description`, `model_parameters`, and `tools` from
+  `prompt_agent_bootstrap`, combines them with `prompt_file`, and creates
+  the first version automatically. The deployment artifact records the new
+  `action: "bootstrapped"` for that first run; subsequent deploys follow
+  the normal reuse / next-version flow. Eliminates the previous
+  per-environment manual seeding step. `agentops workflow analyze` now
+  warns when a prompt-agent workspace is missing this block. Authentication
+  (401 / 403) and other non-404 errors continue to propagate — the
+  bootstrap path only triggers on a genuine "agent does not exist" 404.
 - **`--doctor-gate` flag on `agentops workflow generate`.** New option
   `--doctor-gate critical|warning|none` controls the Doctor severity floor
   in the PR workflow template. Default is `critical`, which makes the PR

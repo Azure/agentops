@@ -51,6 +51,33 @@ def test_analysis_recommends_prompt_agent_without_azd(tmp_path: Path) -> None:
     assert analysis.classification == "Foundry prompt-agent project"
     assert any(signal.key == "prompt_file" for signal in analysis.signals)
     assert any("prompt_deploy stage" in " ".join(stage.commands) for stage in analysis.stages)
+    # Without prompt_agent_bootstrap, analyze must warn the user so first
+    # deploy into an empty Foundry project does not 404.
+    assert any(
+        signal.key == "prompt_agent_bootstrap_missing" for signal in analysis.signals
+    )
+
+
+def test_analysis_silent_when_prompt_agent_bootstrap_present(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: quickstart-agent:2",
+                "prompt_file: .agentops/prompts/agent-instructions.md",
+                "dataset: data.jsonl",
+                "prompt_agent_bootstrap:",
+                "  model: gpt-4o-mini",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+
+    assert not any(
+        signal.key == "prompt_agent_bootstrap_missing" for signal in analysis.signals
+    )
 
 
 def test_analysis_recommends_cloud_eval_for_supported_prompt_agent(tmp_path: Path) -> None:
