@@ -401,13 +401,21 @@ agent: travel-agent:2
 dataset: .agentops/data/travel-smoke.jsonl
 ```
 
-> **App Insights.** The wizard does not ask for App Insights. Later
-> runtime commands try to discover the connected App Insights resource
-> through the Azure AI Projects SDK. If your dev project has no resource
-> attached, or your identity cannot read it, set
-> `APPLICATIONINSIGHTS_CONNECTION_STRING` manually inside
-> `.azure/dev/.env` in step 8 (and inside `.azure/sandbox/.env` if you
-> want sandbox traces too).
+> **App Insights — usually automatic.** You normally do **not** need to
+> set `APPLICATIONINSIGHTS_CONNECTION_STRING` by hand. As long as your
+> Foundry project has an Application Insights resource connected (see
+> the prerequisite at the top of this tutorial), AgentOps runtime
+> commands and CI workflows discover the connection string through the
+> Azure AI Projects SDK at runtime. Only set it manually if:
+>
+> - your Foundry project has no App Insights connected yet, or
+> - your identity cannot read the linked resource at runtime, or
+> - you intentionally want to point telemetry at a different App
+>   Insights resource than the one Foundry has connected.
+>
+> The "where to find it" instructions in section 8 cover the manual
+> case. If you are not sure whether you need it, skip ahead to section 8
+> and come back if a later step complains about missing telemetry.
 
 ## 8. Add the dev azd environment by hand
 
@@ -423,13 +431,53 @@ AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/p
 '@ | Set-Content -Encoding utf8 .azure\dev\.env
 ```
 
-Replace the endpoint with your real dev project endpoint from step 3. If
-you have the dev project's App Insights connection string, add it here
-too:
+Replace the endpoint with your real dev project endpoint from step 3.
+
+### Optional: also set the dev project's App Insights connection string
+
+You normally do **not** need to add this manually — AgentOps auto-discovers
+it through the Azure AI Projects SDK as long as the dev Foundry project
+has an Application Insights resource connected (see the prerequisite at
+the top of this tutorial). Only add the line below if auto-discovery
+fails or you want to override which resource telemetry goes to.
+
+If you do need to set it manually, here is where to find the connection
+string. Pick whichever path is easiest for you:
+
+**Path A — Azure AI Foundry portal (recommended, no Azure Portal
+hopping):**
+
+1. Open <https://ai.azure.com> and select the **dev** project.
+2. In the left rail, open **Tracing** (under "Observability" /
+   "Monitoring", depending on the current portal layout).
+3. The page shows the connected Application Insights resource with a
+   "Copy connection string" button. Copy the value.
+
+**Path B — Azure Portal:**
+
+1. Open <https://portal.azure.com> and search for the Application
+   Insights resource attached to your dev Foundry project (it is
+   typically created alongside the project and shares its name prefix).
+2. On the **Overview** blade, the right-hand "Essentials" panel shows a
+   **Connection String** field. Click the copy icon next to it.
+
+**Path C — Azure CLI (one command):**
+
+```powershell
+az monitor app-insights component show `
+  --app <appinsights-name> `
+  --resource-group <resource-group> `
+  --query connectionString -o tsv
+```
+
+Once you have the value, append it to `.azure\dev\.env`:
 
 ```text
-APPLICATIONINSIGHTS_CONNECTION_STRING=<your-connection-string>
+APPLICATIONINSIGHTS_CONNECTION_STRING=<paste-the-string-here>
 ```
+
+The full string starts with `InstrumentationKey=...` and includes
+`IngestionEndpoint=...`; paste the whole thing on one line.
 
 Confirm the final topology:
 
