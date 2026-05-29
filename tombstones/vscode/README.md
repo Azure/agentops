@@ -4,8 +4,8 @@
 
 ## Migrate in two steps
 
-1. **Install the new extension** from the Marketplace: [AgentOpsAccelerator.agentops-skills](https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-skills).
-2. **Uninstall this extension** (`AgentOpsToolkit.agentops-skills`) from your Extensions view.
+1. **Install the new extension** from the Marketplace: [AgentOpsAccelerator.agentops-accelerator](https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator).
+2. **Uninstall this extension** (`AgentOpsToolkit.agentops-toolkit`) from your Extensions view.
 
 ## Why the rename?
 

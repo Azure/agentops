@@ -50,9 +50,9 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
     The package long-description on PyPI links to the migration
     instructions.
   - **VS Code Marketplace tombstone**: a final
-    `AgentOpsToolkit.agentops-skills` extension at `tombstones/vscode/`
+    `AgentOpsToolkit.agentops-toolkit` extension at `tombstones/vscode/`
     activates with a one-time prompt offering to install
-    `AgentOpsAccelerator.agentops-skills` (or open the Marketplace
+    `AgentOpsAccelerator.agentops-accelerator` (or open the Marketplace
     page in a browser). A per-install storage sentinel prevents
     re-prompts after the user resolves it.
 
