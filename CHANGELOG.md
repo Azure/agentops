@@ -5,10 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
-## [0.3.1] - 2026-05-29
-
 ### Changed
-- **Tutorials: state directly that the workflow skill already wired the first run.**
+- **Tutorials: skip-if-skill callouts now state the skill's outcome directly and accurately.**
   The `step 13` callout in `docs/tutorial-prompt-agent-quickstart.md` and the
   baseline-run paragraph in `docs/tutorial-end-to-end.md` previously opened
   with "if you used the workflow skill, this is already done…" plus a
@@ -16,13 +14,22 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   preceding step (`step 12` of the prompt-agent tutorial, `step 5` of the
   end-to-end tutorial) only documents the workflow-skill path — there is no
   alternative wired-by-hand path the reader could have taken. Both callouts
-  now state the skill's outcome directly ("the workflow skill already
-  committed your changes, pushed `main`, and triggered a first verification
-  run of …"), and the redundant `git add` / `commit` / `push` and
-  `gh workflow run agentops-pr.yml --ref main` blocks have been removed (the
-  skill already triggers the first run). A small `gh run list` /
-  `gh run watch` snippet remains as an opt-in way to wait on the run from
-  the terminal instead of the Actions UI.
+  now state the skill's outcome directly, and the redundant `git add` /
+  `commit` / `push` and `gh workflow run agentops-pr.yml --ref main` blocks
+  have been removed (the skill already triggers the first run). A small
+  `gh run list` / `gh run watch` snippet remains as an opt-in way to wait
+  on the run from the terminal instead of the Actions UI. The previous
+  wording also over-claimed that the skill triggered verification runs of
+  **both** `agentops-pr.yml` and `agentops-deploy-dev.yml`; the skill only
+  dispatches the PR workflow as a sanity check (`workflow_dispatch`), while
+  `agentops-deploy-dev.yml` triggers on the first real merge into the trunk
+  branch. The callout now reflects this accurately and notes that the
+  deploy-dev run happens at the end of the section, not during the skill's
+  setup.
+
+## [0.3.1] - 2026-05-29
+
+### Changed
 - **Tutorials now flag the workflow skill's setup actions as redundant in the manual follow-up steps.**
   When users run the `agentops-workflow` skill in the CI-wiring step of either
   the prompt-agent tutorial (step 12) or the end-to-end tutorial (step 5, the

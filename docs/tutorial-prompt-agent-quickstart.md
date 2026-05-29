@@ -763,16 +763,17 @@ have something to compare against.
 
 The workflow skill in step 12 already committed your local changes,
 pushed `main` to the GitHub remote, and triggered a first verification
-run of both `agentops-pr.yml` and `agentops-deploy-dev.yml` as part of
-its end-to-end setup. Open the repo's **Actions** tab and confirm both
-runs are green:
+run of `agentops-pr.yml` (via `workflow_dispatch`) as part of its
+end-to-end setup. Open the repo's **Actions** tab and confirm both the
+`Stage Foundry prompt candidate (PR)` and `AgentOps eval (PR gate)`
+jobs of that run are green.
 
-- `agentops-pr.yml` — both `Stage Foundry prompt candidate (PR)` and
-  `AgentOps eval (PR gate)` jobs are green.
-- `agentops-deploy-dev.yml` — has a matching run that also went green.
+`agentops-deploy-dev.yml` does not run yet — it triggers on a real
+merge into your trunk branch (or on `workflow_dispatch`), and the first
+merge happens at the end of this section.
 
-If you want to wait on the first PR run from the terminal instead of
-the Actions UI:
+If you want to wait on the first PR-workflow verification run from the
+terminal instead of the Actions UI:
 
 ```powershell
 $runId = gh run list --workflow agentops-pr.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
