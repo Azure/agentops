@@ -392,6 +392,35 @@ def _run_evaluation_cloud(
     finished_at = datetime.now(timezone.utc)
     duration = time.perf_counter() - started_perf
 
+    # Always persist the raw Foundry output_items next to results.json /
+    # report.md so the run is debuggable from the artifact bundle alone.
+    # This is the only place the per-row grader payloads survive in their
+    # native shape; without it a parser regression looks the same in CI
+    # as a real eval failure.
+    try:
+        options.output_dir.mkdir(parents=True, exist_ok=True)
+        raw_items_path = options.output_dir / "cloud_output_items.json"
+        raw_items_path.write_text(
+            json.dumps(list(published.output_items), indent=2, default=str),
+            encoding="utf-8",
+        )
+    except (OSError, TypeError) as exc:
+        progress(f"warning: failed to write cloud_output_items.json: {exc}")
+        raw_items_path = None
+
+    # If the cloud run yielded zero usable metric values despite running
+    # graders, surface that loudly so the user does not chase a phantom
+    # "threshold failed" gate. The artifact dumped above is the triage
+    # entry point.
+    if presets and not aggregate and rows:
+        suffix = (
+            f" Inspect {raw_items_path}." if raw_items_path is not None else ""
+        )
+        progress(
+            "warning: cloud eval returned 0 usable metric scores across "
+            f"{len(rows)} row(s).{suffix}"
+        )
+
     result = RunResult(
         started_at=started_at.isoformat(),
         finished_at=finished_at.isoformat(),

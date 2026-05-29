@@ -5,6 +5,31 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **Cloud-eval parser no longer returns null scores for Foundry
+  `azure_ai_evaluator` graders.** The parser now probes a wider set of
+  score-carrier keys (`score`, `value`, `result`, `metric_value`,
+  `rating`, `grader_score`, `numeric_value`), falls back to `passed`
+  (bool) and then `label` (`"pass"` / `"fail"` strings), and descends
+  into `sample` / `details` as a final resort. Treats `score: 0` as a
+  legitimate value (was previously coerced to `None` in some paths).
+  Without this fix, every metric in a Foundry cloud run came back
+  `value: null` against the real on-the-wire shape — the `report.md`
+  threshold table showed every metric as `actual=missing` and exit code
+  2 fired with `Threshold status: FAILED` even when the run itself
+  succeeded.
+
+### Added
+- **`cloud_output_items.json` raw dump.** Every cloud eval run now
+  writes the raw `output_items` it received from Foundry to
+  `<output_dir>/cloud_output_items.json`, in addition to the parsed
+  `results.json`. When a future grader / SDK upgrade changes the on-the-
+  wire shape and the parser stops finding scores, the artifact bundle
+  alone is enough to triage the issue. The orchestrator also emits an
+  explicit warning to the progress channel when a cloud run yields zero
+  usable metric scores despite returning rows, pointing the user at the
+  new dump file.
+
 ## [0.3.0] - 2026-05-28
 
 ### Added
