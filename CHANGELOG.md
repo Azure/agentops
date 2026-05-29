@@ -5,6 +5,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **Skill + tutorial guidance now require `Cognitive Services OpenAI User` as a prerequisite RBAC role.**
+  The `agentops-workflow` skill, `tutorial-prompt-agent-quickstart.md`,
+  `tutorial-end-to-end.md`, and `docs/ci-github-actions.md` now instruct users
+  to grant the OIDC/CI service principal **both** Foundry User on the Foundry
+  project **and** Cognitive Services OpenAI User on the underlying Azure AI
+  Services account that hosts the evaluator model deployment. Foundry
+  `azure_ai_evaluator` graders impersonate the OIDC principal to call OpenAI;
+  without the OpenAI User role they fail with a 401 `PermissionDenied` and
+  every cloud eval metric returns `null`, blocking the first PR run. The skill
+  now emits the matching `az role assignment create` commands for both roles
+  (role ids `53ca6127-db72-4b80-b1b0-d745d6d5456d` and
+  `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd`) before dispatching the workflow.
+
 ### Fixed
 - **Cloud eval surfaces grader execution errors instead of silent nulls.**
   When a Foundry `azure_ai_evaluator` grader fails to execute (most
