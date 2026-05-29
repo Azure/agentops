@@ -213,7 +213,7 @@ jobs:
         run: |
           TMPDIR=$(mktemp -d)
           cd "$TMPDIR"
-          agentops init
+          agentops init --no-prompt --azd-env testenv
           test -f agentops.yaml
           test -f .agentops/data/smoke.jsonl
           test -f .azure/config.json
