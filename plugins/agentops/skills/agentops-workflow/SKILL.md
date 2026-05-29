@@ -156,15 +156,20 @@ release/* ── PR ──▶ main                     [agentops-pr]          ga
 If the user is on trunk-based development, omit `qa` and `release/**`
 and have them generate `--kinds pr,dev,prod`.
 
-The PR workflow uses the eval step as the hard merge gate. Doctor still writes
-release evidence in that workflow, but it is advisory there (`--severity-fail
-none`): `Release readiness: blocked` should be explained as production-readiness
-work, not as a PR failure. DEV/QA/PROD deploy workflows keep Doctor as a
-critical release gate.
+The PR workflow uses the eval step as the hard merge gate. Doctor also
+runs there and writes release evidence; by default the Doctor step blocks
+the PR on critical findings such as regression detection (`--severity-fail
+critical`, the default behavior of `agentops workflow generate
+--doctor-gate critical`). This catches metric drops (for example
+groundedness going from 5.0 to 4.0) that would still pass the configured
+eval thresholds. To restore the pre-1.x advisory behavior — Doctor writes
+release evidence but does not block the PR — generate with `--doctor-gate
+none`. DEV/QA/PROD deploy workflows always keep Doctor as a critical
+release gate; the `--doctor-gate` flag only controls the PR template.
 
 ## Step 0 - Prerequisites
 
-1. `pip install "agentops-toolkit @ git+https://github.com/Azure/agentops.git@main"` if `agentops` is missing.
+1. `pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"` if `agentops` is missing.
 2. `agentops eval analyze` has been reviewed, `agentops.yaml` exists at the
    project root, and `agentops eval run` works locally.
 3. The user's repo follows GitFlow (or is willing to). If not, ask which
@@ -447,7 +452,8 @@ Common follow-ups:
 
 - Do **not** invent CLI flags. The supported `workflow analyze` flags are
   `--dir`, `--format`, and `--out`. The supported `workflow generate` flags are
-  `--force`, `--dir`, `--kinds`, `--platform`, and `--deploy-mode`.
+  `--force`, `--dir`, `--kinds`, `--platform`, `--deploy-mode`, and
+  `--doctor-gate`.
 - Do **not** push DEV/QA/PROD deploy workflows with placeholder
   Build/Deploy steps or missing OIDC variables; generate PR-only first.
 - Do **not** create parallel workflow files. Prefer editing the

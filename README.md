@@ -1,12 +1,12 @@
-<h1 align="center">AgentOps Toolkit</h1>
+<h1 align="center">AgentOps Accelerator</h1>
 
 <p align="center">
 Answer the release question for Microsoft Foundry agents: can we ship it, and where is the proof?
 </p>
 
 <p align="center">
-<a href="https://pypi.org/project/agentops-toolkit/"><img alt="PyPI" src="https://img.shields.io/pypi/v/agentops-toolkit.svg?label=PyPI&color=blue"/></a>
-<a href="https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit"><img alt="VS Code Extension" src="https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg?logo=visualstudiocode"/></a>
+<a href="https://pypi.org/project/agentops-accelerator/"><img alt="PyPI" src="https://img.shields.io/pypi/v/agentops-accelerator.svg?label=PyPI&color=blue"/></a>
+<a href="https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator"><img alt="VS Code Extension" src="https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg?logo=visualstudiocode"/></a>
 <a href="https://github.com/Azure/agentops/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Azure/agentops/actions/workflows/ci.yml/badge.svg?branch=develop"/></a>
 <a href="https://github.com/Azure/agentops/actions/workflows/release.yml"><img alt="Release" src="https://github.com/Azure/agentops/actions/workflows/release.yml/badge.svg"/></a>
 <a href="https://github.com/Azure/agentops"><img alt="Status: Preview" src="https://img.shields.io/badge/Status-Preview-orange.svg"/></a>
@@ -19,7 +19,7 @@ Answer the release question for Microsoft Foundry agents: can we ship it, and wh
 
 ## Overview
 
-AgentOps Toolkit helps teams turn Foundry agent work into a clear release
+AgentOps Accelerator helps teams turn Foundry agent work into a clear release
 decision. Foundry is the agent control plane; AgentOps turns Foundry signals and
 repo checks into repeatable gates, Doctor readiness, release evidence, and
 trace-driven regression loops.
@@ -75,11 +75,11 @@ Exit code contract:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install --upgrade "agentops-toolkit[foundry] @ git+https://github.com/Azure/agentops.git@main"
+python -m pip install --upgrade "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"
 ```
 
 This installs the current AgentOps source from GitHub. After the next package
-release, you can switch the install line back to `agentops-toolkit[foundry]`
+release, you can switch the install line back to `agentops-accelerator[foundry]`
 from PyPI.
 
 ### 2) Bootstrap

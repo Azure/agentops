@@ -26,7 +26,7 @@ def create_app(
     except ImportError as exc:  # pragma: no cover - import guard
         raise RuntimeError(
             "FastAPI is not installed. Install agent extras with "
-            "'pip install agentops-toolkit[agent]'."
+            "'pip install agentops-accelerator[agent]'."
         ) from exc
 
     from agentops.agent.server.chat import stream_reply

@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentops-toolkit"
+name = "agentops-accelerator"
 dynamic = ["version"]
 description = "Release readiness gates and evidence for Microsoft Foundry agents"
 readme = "README.md"

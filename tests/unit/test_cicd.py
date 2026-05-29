@@ -191,7 +191,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
     generate_cicd_workflows(directory=tmp_path, kinds=["doctor"])
 
     content = (tmp_path / _DOCTOR_PATH).read_text(encoding="utf-8")
-    assert 'agentops-toolkit[foundry,agent]' in content
+    assert 'agentops-accelerator[foundry,agent]' in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
     assert "watchdog" not in content.lower()
@@ -209,7 +209,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
         force=True,
     )
     ado_content = (tmp_path / _ADO_DOCTOR).read_text(encoding="utf-8")
-    assert 'agentops-toolkit[foundry,agent]' in ado_content
+    assert 'agentops-accelerator[foundry,agent]' in ado_content
     assert "--evidence-pack" in ado_content
     assert "agentops-doctor-release-evidence" in ado_content
     assert "watchdog" not in ado_content.lower()
@@ -242,11 +242,13 @@ def test_pr_template_triggers_and_no_environment(tmp_path: Path) -> None:
 
     assert "agentops eval run" in content
     assert "agentops doctor --workspace ." in content
-    assert "--severity-fail none" in content
-    assert "--severity-fail critical" not in content
+    # Default --doctor-gate is critical: PR blocks on critical Doctor findings
+    # such as regression drops, even when eval thresholds still pass.
+    assert "--severity-fail critical" in content
+    assert "--severity-fail none" not in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
-    assert "agentops-toolkit" in content
+    assert "agentops-accelerator" in content
     assert "azure/login@v3" in content
     assert "actions/setup-python@v6" in content
     assert "3.11" in content
@@ -258,6 +260,30 @@ def test_pr_template_triggers_and_no_environment(tmp_path: Path) -> None:
 
     # PR comment idempotency marker
     assert "<!-- agentops-pr-report -->" in content
+
+
+def test_pr_template_doctor_gate_warning(tmp_path: Path) -> None:
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["pr"], doctor_gate="warning")
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+    assert result.doctor_gate == "warning"
+    assert "--severity-fail warning" in content
+    assert "--severity-fail critical" not in content
+    assert "--severity-fail none" not in content
+
+
+def test_pr_template_doctor_gate_none_restores_advisory_behavior(tmp_path: Path) -> None:
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["pr"], doctor_gate="none")
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+    assert result.doctor_gate == "none"
+    assert "--severity-fail none" in content
+    assert "--severity-fail critical" not in content
+
+
+def test_generate_workflows_rejects_unknown_doctor_gate(tmp_path: Path) -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="unknown doctor gate"):
+        generate_cicd_workflows(directory=tmp_path, kinds=["pr"], doctor_gate="info")
 
 
 def test_dev_template_triggers_and_environment(tmp_path: Path) -> None:
@@ -682,9 +708,23 @@ def test_azure_devops_pr_template_uses_ado_idioms(tmp_path: Path) -> None:
     assert "AZURE_SERVICE_CONNECTION" in content
     # PR comment marker preserved across platforms.
     assert "<!-- agentops-pr-report -->" in content
-    assert "--severity-fail none" in content
+    # Default --doctor-gate is critical.
+    assert "--severity-fail critical" in content
+    assert "--severity-fail none" not in content
     assert "--evidence-pack" in content
     assert "agentops-pr-release-evidence" in content
+
+
+def test_azure_devops_pr_template_honors_doctor_gate_none(tmp_path: Path) -> None:
+    generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=["pr"],
+        doctor_gate="none",
+    )
+    content = (tmp_path / _ADO_PR).read_text(encoding="utf-8")
+    assert "--severity-fail none" in content
+    assert "--severity-fail critical" not in content
 
 
 def test_azure_devops_deploy_templates_use_deployment_job(tmp_path: Path) -> None:
@@ -830,3 +870,140 @@ def test_cli_platform_invalid_value_fails(tmp_path: Path) -> None:
     # in ``result.output``. Use that to stay version-tolerant.
     out = result.output.lower()
     assert "unknown" in out and "platform" in out
+
+
+# ---------------------------------------------------------------------------
+# prompt-agent PR template (stage-then-eval for PR gate)
+# ---------------------------------------------------------------------------
+
+
+def test_prompt_agent_pr_template_stages_candidate_before_eval(tmp_path: Path) -> None:
+    """When --deploy-mode prompt-agent --kinds pr, the PR template must
+    stage a Foundry candidate from prompt_file and evaluate that
+    candidate (not the seed agent in agentops.yaml).
+    """
+    result = generate_cicd_workflows(
+        directory=tmp_path,
+        kinds=["pr"],
+        deploy_mode="prompt-agent",
+    )
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+
+    assert result.deploy_mode == "prompt-agent"
+    assert "agentops:deploy-mode=prompt-agent" in content
+    assert "prompt_deploy stage" in content
+    assert ".agentops/deployments/agentops.candidate.yaml" in content
+    assert "needs: stage-candidate" in content
+    # PR template must not record the candidate as deployed
+    assert "prompt_deploy record" not in content
+    # Default doctor gate is critical
+    assert "--severity-fail critical" in content
+    # PR candidates land in the dev Foundry project (not "pr", not sandbox)
+    assert "environment: dev" in content
+
+
+def test_prompt_agent_pr_template_is_valid_yaml(tmp_path: Path) -> None:
+    generate_cicd_workflows(
+        directory=tmp_path,
+        kinds=["pr"],
+        deploy_mode="prompt-agent",
+    )
+    data = _read_yaml(tmp_path / _PR_PATH)
+    assert isinstance(data, dict)
+    assert "jobs" in data
+    # The new template defines stage-candidate + eval jobs
+    assert "stage-candidate" in data["jobs"]
+    assert "eval" in data["jobs"]
+
+
+def test_prompt_agent_pr_template_propagates_doctor_gate(tmp_path: Path) -> None:
+    for gate in ("warning", "none"):
+        out_dir = tmp_path / f"prompt-pr-{gate}"
+        out_dir.mkdir()
+        generate_cicd_workflows(
+            directory=out_dir,
+            kinds=["pr"],
+            deploy_mode="prompt-agent",
+            doctor_gate=gate,
+        )
+        content = (out_dir / _PR_PATH).read_text(encoding="utf-8")
+        assert f"--severity-fail {gate}" in content
+        # No leftover placeholder
+        assert "__DOCTOR_GATE__" not in content
+
+
+def test_prompt_agent_pr_template_not_used_for_other_modes(tmp_path: Path) -> None:
+    """The new staging-based PR template is only used when deploy_mode
+    is prompt-agent. Other modes keep the generic PR template.
+    """
+    # azd mode against agentops.yaml that would otherwise auto-pick prompt-agent
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    result = generate_cicd_workflows(
+        directory=tmp_path,
+        kinds=["pr"],
+        deploy_mode="azd",
+    )
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+    assert result.deploy_mode == "azd"
+    # Generic PR template doesn't stage Foundry candidates
+    assert "prompt_deploy stage" not in content
+    assert "agentops.candidate.yaml" not in content
+
+
+def test_azure_devops_prompt_agent_pr_template_stages_candidate(tmp_path: Path) -> None:
+    result = generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=["pr"],
+        deploy_mode="prompt-agent",
+    )
+    content = (tmp_path / _ADO_PR).read_text(encoding="utf-8")
+
+    assert result.deploy_mode == "prompt-agent"
+    assert "agentops:deploy-mode=prompt-agent" in content
+    assert "prompt_deploy stage" in content
+    assert ".agentops/deployments/agentops.candidate.yaml" in content
+    # ADO uses stage dependencies, not job dependencies
+    assert "dependsOn: stage_candidate" in content
+    # PR pipeline must not record deployment
+    assert "prompt_deploy record" not in content
+    assert "--severity-fail critical" in content
+    # Pipeline uses pr: trigger, not push
+    assert "trigger: none" in content
+    assert "pr:" in content
+
+
+def test_azure_devops_prompt_agent_pr_template_is_valid_yaml(tmp_path: Path) -> None:
+    generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=["pr"],
+        deploy_mode="prompt-agent",
+    )
+    data = _read_yaml(tmp_path / _ADO_PR)
+    assert isinstance(data, dict)
+    assert "stages" in data
+    stage_names = {stage.get("stage") for stage in data["stages"] if isinstance(stage, dict)}
+    assert "stage_candidate" in stage_names
+    assert "eval" in stage_names
+
+
+def test_azure_devops_prompt_agent_pr_template_propagates_doctor_gate(tmp_path: Path) -> None:
+    for gate in ("warning", "none"):
+        out_dir = tmp_path / f"prompt-pr-ado-{gate}"
+        out_dir.mkdir()
+        generate_cicd_workflows(
+            directory=out_dir,
+            platform="azure-devops",
+            kinds=["pr"],
+            deploy_mode="prompt-agent",
+            doctor_gate=gate,
+        )
+        content = (out_dir / _ADO_PR).read_text(encoding="utf-8")
+        assert f"--severity-fail {gate}" in content
+        assert "__DOCTOR_GATE__" not in content
+

@@ -3,7 +3,7 @@
 from importlib.metadata import PackageNotFoundError, version
 
 try:
-    __version__ = version("agentops-toolkit")
+    __version__ = version("agentops-accelerator")
 except PackageNotFoundError:
     __version__ = "0.0.0-dev"
 

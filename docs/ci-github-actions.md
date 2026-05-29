@@ -18,7 +18,7 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate, advisory Doctor evidence, PR comment |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
 | `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
@@ -446,6 +446,8 @@ agentops workflow generate --kinds pr,dev,prod # subset (trunk-based)
 agentops workflow generate --kinds doctor      # optional scheduled Doctor workflow
 agentops workflow generate --deploy-mode azd   # delegate deploy to azd
 agentops workflow generate --deploy-mode prompt-agent # Foundry prompt deployment
+agentops workflow generate --doctor-gate warning # PR also blocks on warnings
+agentops workflow generate --doctor-gate none  # PR Doctor advisory (pre-1.x)
 agentops workflow generate --platform azure-devops
 agentops workflow generate --force             # overwrite existing files
 agentops workflow generate --dir <path>        # different repo root
@@ -456,8 +458,27 @@ agentops workflow generate --dir <path>        # different repo root
 | `--kinds` | Comma-separated subset of `pr,dev,qa,prod,doctor` | `pr,dev,qa,prod` |
 | `--platform` | `github` or `azure-devops` | `github` |
 | `--deploy-mode` | `auto`, `placeholder`, `azd`, or `prompt-agent` | `auto` |
+| `--doctor-gate` | Severity floor for the PR Doctor step: `critical`, `warning`, or `none` | `critical` |
 | `--force` | Overwrite existing workflow files | `false` |
 | `--dir` | Repository root | `.` |
+
+### PR Doctor gate (`--doctor-gate`)
+
+The PR template runs `agentops doctor --evidence-pack` after the eval
+step. The `--doctor-gate` flag controls how Doctor failures interact with
+the PR merge check:
+
+| `--doctor-gate` value | PR-template behavior |
+|---|---|
+| `critical` (default) | Doctor blocks the PR on **critical** findings. Notably this includes the `regression.<metric>` checks, which fire when an evaluator score drops by `>= 2 * threshold_drop` (default `0.20`, i.e. a 20 % drop) versus the rolling baseline. Catches drift like groundedness moving 5.0 → 4.0 even when the configured eval thresholds technically still pass. |
+| `warning` | Doctor blocks on **warning or higher** findings. Use when you also want the smaller (≥10 %) regression drops to block. |
+| `none` | Doctor still writes release evidence and uploads it as a PR artifact, but does not block the PR (pre-1.x behavior). The eval step remains the only hard gate. |
+
+Deploy templates (`agentops-deploy-dev.yml`, `…-qa.yml`, `…-prod.yml`)
+always run `agentops doctor --severity-fail critical`; the
+`--doctor-gate` flag does not affect deploy templates. Existing workflows
+keep their generated `--severity-fail` value until you re-generate with
+`--force`.
 
 ## Customisation tips
 

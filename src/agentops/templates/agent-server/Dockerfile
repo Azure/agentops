@@ -9,9 +9,9 @@ WORKDIR /app
 # Install AgentOps with the agent extras (FastAPI + Azure Monitor + crypto).
 ARG AGENTOPS_VERSION=
 RUN if [ -n "$AGENTOPS_VERSION" ]; then \
-      pip install "agentops-toolkit[agent]==${AGENTOPS_VERSION}"; \
+      pip install "agentops-accelerator[agent]==${AGENTOPS_VERSION}"; \
     else \
-      pip install "agentops-toolkit[agent] @ git+https://github.com/Azure/agentops.git@main"; \
+      pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@main"; \
     fi
 
 # Optional: copy a workspace into the image so analyze can find historic

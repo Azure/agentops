@@ -27,19 +27,30 @@
 #   and PyPI/TestPyPI.
 #
 # Required GitHub secrets:
-#   VSCE_PAT — VS Code Marketplace PAT (environment: release)
+#   VSCE_PAT — VS Code Marketplace PAT (environment: release). MUST have "Marketplace: Manage"
+#              scope covering BOTH the AgentOpsAccelerator and AgentOpsToolkit publishers.
 #
 # Required GitHub environments:
 #   staging  — for TestPyPI publish (optional approval)
 #   release  — for PyPI + VSIX publish (requires approval from designated reviewers)
 #
 # Setup (Trusted Publishing + VSCE):
-#   1. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=staging
-#   2. https://pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#   2. https://pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=release
-#   3. https://dev.azure.com/ → PAT with Marketplace scope → Create VSCE_PAT
-#   4. GitHub repo → Settings → Environments → Create "release" with required reviewers
+#   3. https://test.pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=staging
+#      (Required for the deprecation tombstone re-publish of agentops-toolkit on TestPyPI.)
+#   4. https://pypi.org/manage/project/agentops-toolkit/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=release
+#      (Required for the deprecation tombstone re-publish of agentops-toolkit on PyPI.)
+#   5. https://dev.azure.com/ → PAT with Marketplace scope on the AzDO account that
+#      owns BOTH the AgentOpsAccelerator AND AgentOpsToolkit publishers → Create VSCE_PAT.
+#      Verify scope with: vsce ls-publishers -p $VSCE_PAT (must list BOTH publishers).
+#      If publishers are owned by different AzDO accounts, create a second secret
+#      (e.g. VSCE_PAT_LEGACY) and wire it into the publish-tombstone-vsix job.
+#   6. GitHub repo → Settings → Environments → Create "release" with required reviewers
 #
 # Re-triggering a failed release:
 #   Option A (recommended): Delete and re-push the tag (triggers this workflow automatically).
@@ -69,6 +80,70 @@ jobs:
       checkout_ref: ${{ inputs.tag || github.ref }}
       release_tag: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
 
+  # Build the tombstone metapackage (agentops-toolkit → agentops-accelerator redirect).
+  # Version is hardcoded in tombstones/pypi/pyproject.toml; no setuptools-scm involvement.
+  build-pypi-tombstone:
+    runs-on: ubuntu-latest
+    outputs:
+      tombstone_version: ${{ steps.tver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Resolve tombstone version
+        id: tver
+        run: |
+          VERSION=$(python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('tombstones/pypi/pyproject.toml').read_text())['project']['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Tombstone version resolved: $VERSION"
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build
+
+      - name: Build tombstone distribution
+        run: python -m build tombstones/pypi --outdir dist-pypi-tombstone
+
+      - name: Assert tombstone artifact filenames
+        env:
+          TOMBSTONE_VERSION: ${{ steps.tver.outputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+
+          version = os.environ["TOMBSTONE_VERSION"]
+          dist = Path("dist-pypi-tombstone")
+          expected = {
+              f"agentops_toolkit-{version}.tar.gz",
+              f"agentops_toolkit-{version}-py3-none-any.whl",
+          }
+          actual = {p.name for p in dist.iterdir() if p.is_file()}
+          missing = expected - actual
+          if missing:
+              print(f"::error::Tombstone build is missing expected artifacts: {sorted(missing)}")
+              print("Contents of dist-pypi-tombstone/:")
+              for artifact in sorted(dist.iterdir()):
+                  print(f"  - {artifact.name}")
+              sys.exit(1)
+          print("Tombstone artifacts:")
+          for name in sorted(actual):
+              print(f"  - {name}")
+          PY
+
+      - name: Upload tombstone build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-pypi-tombstone
+          path: dist-pypi-tombstone/
+
   # Publish to TestPyPI for final pre-release verification
   publish-testpypi:
     needs: build
@@ -87,6 +162,30 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          verbose: true
+          skip-existing: true
+
+  # Publish the tombstone metapackage to TestPyPI.
+  # Gated AFTER publish-testpypi so the real package lands first; if the
+  # tombstone fails, hotfix it later — never the other way around.
+  publish-tombstone-testpypi:
+    needs: [build-pypi-tombstone, publish-testpypi]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write # Required for PyPI Trusted Publishing (OIDC)
+    steps:
+      - name: Download tombstone build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-pypi-tombstone
+          path: dist-pypi-tombstone/
+
+      - name: Publish tombstone to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist-pypi-tombstone/
           verbose: true
           skip-existing: true
 
@@ -122,9 +221,9 @@ jobs:
       - name: Install from TestPyPI
         run: |
           for i in 1 2 3 4 5; do
-            echo "Attempt $i: installing agentops-toolkit==${{ steps.version.outputs.version }}"
+            echo "Attempt $i: installing agentops-accelerator==${{ steps.version.outputs.version }}"
             if pip install \
-              "agentops-toolkit==${{ steps.version.outputs.version }}" \
+              "agentops-accelerator==${{ steps.version.outputs.version }}" \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/; then
               exit 0
@@ -134,7 +233,7 @@ jobs:
               sleep 30
             fi
           done
-          echo "::error::agentops-toolkit==${{ steps.version.outputs.version }} was not available from TestPyPI after 5 attempts."
+          echo "::error::agentops-accelerator==${{ steps.version.outputs.version }} was not available from TestPyPI after 5 attempts."
           exit 1
 
       - name: Smoke test — version and help
@@ -146,11 +245,53 @@ jobs:
         run: |
           TMPDIR=$(mktemp -d)
           cd "$TMPDIR"
-          agentops init
+          agentops init --no-prompt --azd-env testenv
           test -f agentops.yaml
           test -f .agentops/data/smoke.jsonl
           test -f .azure/config.json
           echo "✅ agentops init succeeded"
+
+  # Install the tombstone from TestPyPI and verify it redirects to agentops-accelerator.
+  verify-tombstone-testpypi:
+    needs: [build-pypi-tombstone, publish-tombstone-testpypi]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install agentops-toolkit==${{ needs.build-pypi-tombstone.outputs.tombstone_version }} from TestPyPI
+        env:
+          TOMBSTONE_VERSION: ${{ needs.build-pypi-tombstone.outputs.tombstone_version }}
+        run: |
+          for i in 1 2 3 4 5; do
+            echo "Attempt $i: installing agentops-toolkit==${TOMBSTONE_VERSION} from TestPyPI"
+            if pip install \
+              "agentops-toolkit==${TOMBSTONE_VERSION}" \
+              --index-url https://test.pypi.org/simple/ \
+              --extra-index-url https://pypi.org/simple/; then
+              exit 0
+            fi
+            if [ "$i" -lt 5 ]; then
+              echo "Not available yet, waiting 30s..."
+              sleep 30
+            fi
+          done
+          echo "::error::agentops-toolkit==${TOMBSTONE_VERSION} was not available from TestPyPI after 5 attempts."
+          exit 1
+
+      - name: Verify tombstone redirects to agentops-accelerator
+        run: |
+          # The tombstone declares agentops-accelerator as its sole dependency; pip show must list it under Requires.
+          if ! pip show agentops-toolkit | grep -E '^Requires:' | grep -q 'agentops-accelerator'; then
+            echo "::error::agentops-toolkit does not declare agentops-accelerator under Requires."
+            pip show agentops-toolkit
+            exit 1
+          fi
+          # Importing agentops must resolve via the real package shipped by agentops-accelerator.
+          python -c "import agentops; print(agentops.__file__)"
+          echo "✅ tombstone redirect verified"
 
   # Publish to PyPI — requires 'release' environment approval
   publish-pypi:
@@ -172,13 +313,39 @@ jobs:
           verbose: true
           skip-existing: true
 
+  # Publish the tombstone metapackage to PyPI.
+  # CRITICAL: gated AFTER publish-pypi succeeds so the new package is live
+  # before pip install agentops-toolkit redirects users to agentops-accelerator.
+  # Also gated on verify-tombstone-testpypi so the redirect was proven on TestPyPI first.
+  publish-tombstone-pypi:
+    needs: [build-pypi-tombstone, publish-pypi, verify-tombstone-testpypi]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write # Required for PyPI Trusted Publishing (OIDC)
+    steps:
+      - name: Download tombstone build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-pypi-tombstone
+          path: dist-pypi-tombstone/
+
+      - name: Publish tombstone to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-pypi-tombstone/
+          verbose: true
+          skip-existing: true
+
   # ── VSIX Stable Publish ──────────────────────────────────────────────
   # Publish the VS Code extension as a stable release to the Marketplace.
-  # Runs in parallel with the TestPyPI→PyPI flow (only needs source checkout).
+  # Runs after PyPI publish so PyPI and Marketplace identity stay consistent on every release.
   publish-vsix:
-    needs: build # gate on successful lint + test
+    needs: [build, publish-pypi] # gate on successful lint + test (build) and on PyPI publish
     runs-on: ubuntu-latest
     environment: release # same approval gate as PyPI
+    env:
+      VSIX_FILE: agentops-skills.vsix
     steps:
       - uses: actions/checkout@v6
         with:
@@ -211,23 +378,130 @@ jobs:
 
       - name: Package VSIX
         working-directory: plugins/agentops
-        run: vsce package -o agentops-skills.vsix
+        run: vsce package -o "${VSIX_FILE}"
 
       - name: Publish stable to VS Code Marketplace
-        continue-on-error: true # Tolerate "already exists" if staging pre-release published this version
+        # Tolerate ONLY the "already exists" case (staging pre-release may have
+        # published the same version first). Any other failure must fail the job.
         working-directory: plugins/agentops
-        run: vsce publish --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -o pipefail
+          if OUTPUT=$(vsce publish --packagePath "${VSIX_FILE}" -p "${VSCE_PAT}" 2>&1); then
+            RC=0
+          else
+            RC=$?
+          fi
+          echo "$OUTPUT"
+          if [ "$RC" -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qi "already exists"; then
+              echo "::warning::VSIX version already published (likely by staging pre-release). Treating as success."
+              exit 0
+            fi
+            exit "$RC"
+          fi
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
         with:
           name: vsix
-          path: plugins/agentops/agentops-skills.vsix
+          path: plugins/agentops/${{ env.VSIX_FILE }}
 
-  # Create GitHub Release with built artifacts (Python dist + VSIX)
+  # ── VSIX Stable Tombstone Publish ────────────────────────────────────
+  # Publish the deprecated AgentOpsToolkit publisher VSIX so existing users see
+  # the rename notice. Gated AFTER publish-vsix so the replacement extension is
+  # live before the tombstone redirects users to it.
+  publish-tombstone-vsix:
+    needs: publish-vsix
+    runs-on: ubuntu-latest
+    environment: release # same approval gate as the main VSIX
+    env:
+      VSIX_FILE: agentops-toolkit-tombstone.vsix
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # Full history for tag-derived version
+
+      - name: Substitute CHANGELOG date placeholder
+        working-directory: tombstones/vscode
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          sed -i "s/YYYY-MM-DD/$TODAY/g" CHANGELOG.md
+          if grep -q "YYYY-MM-DD" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md still contains the YYYY-MM-DD placeholder after substitution."
+            exit 1
+          fi
+          echo "CHANGELOG date set to $TODAY"
+
+      - name: Sync tombstone VSIX version from git tag
+        run: |
+          # Derive version from the tag name directly (most reliable for releases)
+          TAG="${{ inputs.tag || github.ref_name }}"
+          TAG=${TAG:-$(git tag -l 'v*' --sort=-v:refname | head -1)}
+          TAG=${TAG:-v0.0.0}
+          VERSION=${TAG#v}
+          jq --arg v "$VERSION" '.version = $v' \
+            tombstones/vscode/package.json > tombstones/vscode/package.json.tmp
+          mv tombstones/vscode/package.json.tmp tombstones/vscode/package.json
+          echo "Tombstone VSIX version set to $VERSION (from tag $TAG)"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Install vsce
+        run: npm install -g @vscode/vsce
+
+      - name: Install tombstone npm dependencies
+        working-directory: tombstones/vscode
+        run: npm install --no-audit --no-fund
+
+      - name: Compile tombstone TypeScript
+        working-directory: tombstones/vscode
+        run: npm run compile
+
+      - name: Package tombstone VSIX
+        working-directory: tombstones/vscode
+        run: vsce package -o "${VSIX_FILE}"
+
+      - name: Publish stable tombstone to VS Code Marketplace
+        # Tolerate ONLY the "already exists" case (e.g. the staging pre-release
+        # already published this version). Any other failure must fail the job.
+        working-directory: tombstones/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -o pipefail
+          if OUTPUT=$(vsce publish --packagePath "${VSIX_FILE}" -p "${VSCE_PAT}" 2>&1); then
+            RC=0
+          else
+            RC=$?
+          fi
+          echo "$OUTPUT"
+          if [ "$RC" -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qi "already exists"; then
+              echo "::warning::Tombstone VSIX version already published. Treating as success."
+              exit 0
+            fi
+            exit "$RC"
+          fi
+
+      - name: Upload tombstone VSIX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: vsix-tombstone
+          path: tombstones/vscode/${{ env.VSIX_FILE }}
+
+  # Create GitHub Release with built artifacts (Python dist + VSIX, plus tombstones when available).
+  # Gating: main publish-pypi + publish-vsix MUST succeed. Tombstone publish failures
+  # are non-fatal here — the release ships without the tombstone assets and the tombstone
+  # can be hotfixed later. Mirrors the atomicity rule: never let tombstone failure block
+  # the new package from being released.
   github-release:
-    needs: [publish-pypi, publish-vsix]
-    if: always() && needs.publish-pypi.result == 'success'
+    needs: [publish-pypi, publish-vsix, publish-tombstone-pypi, publish-tombstone-vsix]
+    if: always() && needs.publish-pypi.result == 'success' && needs.publish-vsix.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -246,12 +520,29 @@ jobs:
           name: vsix
           path: vsix/
 
+      - name: Download tombstone Python dist artifacts
+        if: needs.publish-tombstone-pypi.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: dist-pypi-tombstone
+          path: dist-tombstone/
+
+      - name: Download tombstone VSIX artifact
+        if: needs.publish-tombstone-vsix.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          name: vsix-tombstone
+          path: vsix-tombstone/
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ inputs.tag || github.ref_name }}"
-          gh release create "$TAG" dist/* vsix/* \
+          ASSETS=(dist/* vsix/*)
+          if [ -d dist-tombstone ]; then ASSETS+=(dist-tombstone/*); fi
+          if [ -d vsix-tombstone ]; then ASSETS+=(vsix-tombstone/*); fi
+          gh release create "$TAG" "${ASSETS[@]}" \
             --repo "${{ github.repository }}" \
             --title "$TAG" \
             --generate-notes

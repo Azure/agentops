@@ -54,7 +54,7 @@ stages:
           - bash: |
               python -m pip install --upgrade pip
               # NOTE: pinned to GitHub main until the next package release includes this flow.
-              python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+              python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
             displayName: Install AgentOps Toolkit
 
 __EVAL_TASKS__
@@ -67,9 +67,11 @@ __EVAL_TASKS__
               scriptType: bash
               scriptLocation: inlineScript
               inlineScript: |
-                # PR evidence is advisory; the eval task above remains the merge gate.
+                # Doctor gate severity is configured at workflow generation
+                # time via `agentops workflow generate
+                # --doctor-gate critical|warning|none`.
                 agentops doctor --workspace . --out .agentops/agent/report.md \
-                  --severity-fail none --evidence-pack
+                  --severity-fail __DOCTOR_GATE__ --evidence-pack
             env:
               AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
               AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)

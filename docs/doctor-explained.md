@@ -263,11 +263,19 @@ Severities are **independent of category**: a `quality` finding can be
 | `2` | Doctor ran and at least one finding is at or above the floor. Treat as a CI failure. |
 | `1` | Doctor itself failed (bad config, unreachable source, internal error). |
 
-The default `--severity-fail critical` is good for production release gates.
-`--severity-fail warning` is good for nightly cron jobs that want to catch drift
-before it gets bad. Use `--severity-fail none` when Doctor is evidence-only,
-such as a PR workflow where the eval step is the hard merge gate. Runtime or
-configuration errors still return `1`.
+The default `--severity-fail critical` is good for production release gates
+and is also the default behavior in the AgentOps PR workflow template (set
+via `agentops workflow generate --doctor-gate critical`). It blocks the PR
+on critical findings such as regression detection — for example a
+`regression.groundedness` finding when the metric drops from a 5.0
+baseline to 4.0, which would still pass typical `>= 3` thresholds in
+`agentops.yaml` but is a meaningful drift signal worth catching.
+`--severity-fail warning` is good for nightly cron jobs that want to
+catch smaller drift before it gets bad, and matches `agentops workflow
+generate --doctor-gate warning`. Use `--severity-fail none` (or
+`--doctor-gate none`) when Doctor should remain evidence-only, such as a
+PR workflow that delegates the merge decision entirely to the eval step.
+Runtime or configuration errors still return `1`.
 
 ## 7. LLM-judged checks
 

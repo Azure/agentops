@@ -23,7 +23,7 @@ def _build_server() -> Any:
     except ImportError as exc:  # pragma: no cover - exercised only without extra
         raise RuntimeError(
             "The MCP server requires the 'mcp' extra. "
-            "Install it with: pip install agentops-toolkit[mcp]"
+            "Install it with: pip install agentops-accelerator[mcp]"
         ) from exc
 
     server = FastMCP("agentops")

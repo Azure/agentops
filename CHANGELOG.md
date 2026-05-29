@@ -5,10 +5,92 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-28
+
+### Added
+- **`--doctor-gate` flag on `agentops workflow generate`.** New option
+  `--doctor-gate critical|warning|none` controls the Doctor severity floor
+  in the PR workflow template. Default is `critical`, which makes the PR
+  Doctor step block on critical Doctor findings (notably the
+  `regression.<metric>` checks that fire when an evaluator metric drops
+  meaningfully from the rolling baseline). This catches drift such as
+  groundedness moving from 5.0 to 4.0 even when the configured eval
+  thresholds technically still pass. `--doctor-gate warning` blocks on
+  warnings or higher; `--doctor-gate none` restores the pre-1.x advisory
+  behavior. Only the PR template is affected — deploy templates continue
+  to run with `--severity-fail critical` regardless.
+- **Stage-then-eval PR workflow for Foundry prompt agents.** When
+  `--deploy-mode prompt-agent` is in effect, `agentops workflow generate
+  --kinds pr` now emits a PR workflow (and Azure DevOps pipeline) that
+  stages an ephemeral Foundry candidate prompt-agent version from
+  `prompt_file` in the dev Foundry project, then evaluates that exact
+  candidate (instead of the seed agent pinned in `agentops.yaml`). This
+  makes the PR gate meaningful for prompt-agent flows: regressions are
+  caught at PR time, not after merge. Candidates accumulate in the dev
+  project across PRs and may need periodic cleanup.
+
 ### Changed
+- **Renamed PyPI distribution and VS Code publisher.** The PyPI
+  distribution name changed from `agentops-toolkit` to
+  `agentops-accelerator`, and the VS Code Marketplace publisher
+  changed from `AgentOpsToolkit` to `AgentOpsAccelerator`. The
+  resulting extension ID flips from
+  `AgentOpsToolkit.agentops-toolkit` to
+  `AgentOpsAccelerator.agentops-accelerator`. The Python import
+  (`import agentops`) and CLI command (`agentops ...`) are
+  unchanged — only the install/distribution identifier changed.
+  Install with `pip install agentops-accelerator` or
+  `uv pip install agentops-accelerator`. Two deprecation tombstones
+  are published atomically with this release so existing users are
+  guided to the new identifiers:
+
+  - **PyPI tombstone**: `pip install agentops-toolkit` keeps working
+    via a metapackage at `tombstones/pypi/` that pins
+    `agentops-accelerator>=0.3.0` (no shadow code, no auto-discovery).
+    The package long-description on PyPI links to the migration
+    instructions.
+  - **VS Code Marketplace tombstone**: a final
+    `AgentOpsToolkit.agentops-skills` extension at `tombstones/vscode/`
+    activates with a one-time prompt offering to install
+    `AgentOpsAccelerator.agentops-skills` (or open the Marketplace
+    page in a browser). A per-install storage sentinel prevents
+    re-prompts after the user resolves it.
+
+  The release tag (`v0.3.0`) drives all four publishes
+  (agentops-accelerator + agentops-toolkit on PyPI, plus the new and
+  legacy VSIX publishers) through gated jobs in `release.yml`. The
+  tombstones are gated AFTER the corresponding main publish jobs so
+  the worst-case failure mode is "tombstone delayed, recoverable in
+  v0.3.1" — never "tombstone-without-new". (#181)
+- **Default PR Doctor behavior is now blocking.** Generating workflows
+  without `--doctor-gate` produces a PR template that blocks on critical
+  Doctor findings. Existing workflows continue to work unchanged; only
+  re-generated workflows pick up the new default. To opt back into the
+  previous advisory behavior, run
+  `agentops workflow generate --doctor-gate none --force`.
+- **`--deploy-mode prompt-agent` now changes the generated PR workflow.**
+  Re-running `agentops workflow generate --deploy-mode prompt-agent
+  --kinds pr,dev,qa,prod --force` produces a different PR template than
+  before (it now stages a Foundry candidate before evaluating). Other
+  modes (`auto`, `placeholder`, `azd`) continue to produce the previous
+  generic PR template.
 - Prompt and hosted agent eval defaults now use judge-based response
   completeness instead of token-overlap F1, keeping F1 as the default for
   exact-reference `model:<deployment>` checks or explicit evaluator overrides.
+
+### Notes for developers
+- **Editable install cleanup after rebrand.** Developers with an
+  existing local editable install (`uv pip install -e .` or
+  `pip install -e .`) may have a stale
+  `src/agentops_toolkit.egg-info/` directory or stale
+  `importlib.metadata` entries pointing to the old distribution
+  name after pulling this release. Clean up with:
+  `rm -rf src/*.egg-info && uv pip install -e .` (or
+  `rm -rf src/*.egg-info && pip install -e .` for pip). This is
+  a one-time, dev-only step; CI runs are unaffected because they
+  create fresh virtual environments, and end users installing
+  from PyPI are unaffected because wheels carry the new
+  `dist-info` directory directly. (#181)
 
 ## [0.2.2] - 2026-05-26
 

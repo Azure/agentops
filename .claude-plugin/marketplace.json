@@ -10,10 +10,10 @@
   },
   "plugins": [
     {
-      "name": "agentops-toolkit",
+      "name": "agentops-accelerator",
       "source": "../../plugins/agentops",
       "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Toolkit and Microsoft Foundry agents.",
-      "version": "0.2.2",
+      "version": "0.3.0",
       "keywords": [
         "agentops",
         "evaluation",

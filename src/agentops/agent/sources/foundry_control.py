@@ -91,7 +91,7 @@ def collect_foundry_control(
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
             "azure-ai-projects / azure-identity not installed "
-            "(install agentops-toolkit[foundry])"
+            "(install agentops-accelerator[foundry])"
         )
         log.info("azure-ai-projects unavailable: %s", exc)
         return FoundryControlPayload(diagnostics=diagnostics)

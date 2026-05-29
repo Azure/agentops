@@ -1,7 +1,10 @@
 # End-to-end tutorial: release readiness for Foundry agents
 
 This tutorial is the full path. Use it after one of the quickstarts when you
-want to validate the complete develop -> evaluate -> release -> observe loop.
+want to validate the complete develop -> evaluate -> release -> observe loop
+across **sandbox**, **dev**, **qa**, and **prod** environments. The two
+quickstarts cover the same loop for a single agent type in a sandbox + dev
+arrangement; this tutorial expands the journey through every release stage.
 
 It is inspired by the Azure Samples repo
 [Mind the Gap In Your AI Agent Observability](https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe).
@@ -23,14 +26,72 @@ review.
 |---|---|---|---|---|
 | 1 | Define the agent goal and risks | Foundry docs, VS Code, Copilot | Helps define what must be proven before release. | Success criteria and risk list |
 | 2 | Choose Prompt Agent or Hosted Agent | Foundry portal, Foundry Toolkit, team architecture | Later references the target as `name:version` or URL. | Target type decision |
-| 3 | Create or deploy the agent | Foundry portal, Foundry SDK, Foundry Toolkit, Agent Framework, `microsoft-foundry` skill | No ownership of create/deploy. | Agent version or endpoint |
-| 4 | Test and debug | Foundry playground, VS Code debugger, Agent Inspector, Copilot Chat | Optional quick eval after target exists. | Working dev-loop agent |
+| 3 | Provision the **sandbox** and **dev** environments (separate Foundry projects for prompt agents; separate endpoints for hosted agents) | Foundry portal, `microsoft-foundry` skill, your platform | No ownership of create/deploy. | Two environments scoped to author and shared dev work |
+| 4 | Author and iterate in **sandbox** | Foundry playground (prompt agents) or local app (hosted agents), `agentops eval run` | Local eval gate before opening a PR. | Working sandbox-validated agent |
 | 5 | Configure release checks | AgentOps CLI and skills | Creates `agentops.yaml` and repo-side release contract. | Release checklist in repo |
-| 6 | Evaluate | Official AI Agent Evaluation or AgentOps local runner | Routes to the right runner and normalizes proof. | Eval gate signal |
-| 7 | Create operations workflow | GitHub Actions, Azure Pipelines, azd | Generates PR and environment workflows with Doctor evidence in the gate. | CI/CD gates |
-| 8 | Observe production | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
+| 6 | Open PR | Generated PR workflow with `--doctor-gate critical` | Routes to the right runner, normalizes proof, and blocks the PR on critical Doctor findings. | PR gate signal |
+| 7 | Merge and deploy to **dev** | Generated dev deploy workflow + your platform | Records candidate version (prompt agents) or commit/image (hosted agents) and re-evaluates after deploy. | Dev environment ready for promotion |
+| 8 | Observe production after promotion | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
 | 9 | Review readiness | AgentOps Doctor, Cockpit, evidence pack | Answers "can we ship it, and where is the proof?" | `evidence.md` |
 | 10 | Learn from traces | Foundry/App Insights exports, AgentOps trace promotion | Turns reviewed traces into regression candidates. | Future eval rows |
+
+## Multi-environment topology
+
+```
+.azure/
+├── config.json            # defaultEnvironment: sandbox
+├── .gitignore             # excludes */.env
+├── sandbox/.env           # team authoring / experimentation space (Foundry project for prompts, or local/shared app for hosted agents)
+├── dev/.env               # team-shared dev project / endpoint (PR + deploy gate)
+├── qa/.env                # qa project / endpoint
+└── prod/.env              # production project / endpoint
+```
+
+For **prompt agents**, each `.env` points at a different Foundry project so
+playground saves in sandbox don't appear in dev. For **hosted agents**, each
+`.env` typically points at the same Foundry project (for observability) but
+the agent URL (`AGENTOPS_AGENT_ENDPOINT`) differs per environment because the
+hosted endpoint itself is the per-environment artifact.
+
+> **Why a separate sandbox?** When authors save in the Foundry playground,
+> the platform auto-increments the version every save. If experimentation
+> happens in the same project that CI promotes from, dev fills up with
+> half-baked versions and traceability and rollback become messy. Sandbox
+> is the team's authoring and experimentation space (one project works
+> for most teams; split per-stream or per-developer only if save
+> collisions become a real problem); dev is the gated promotion target
+> CI writes to.
+
+## The cross-environment identity story (versioning callout)
+
+Each environment's Foundry version numbers or endpoint URLs diverge, but the
+following identifiers stay **identical** across sandbox, dev, qa, and prod
+for the same logical release:
+
+```
+For prompt agents:
+   prompt_file in git (byte-identical content)
+      └─ prompt_sha256 + git_sha (cross-environment identity)
+           ├── sandbox Foundry project → travel-agent:5
+           ├── dev Foundry project     → travel-agent:2
+           ├── qa Foundry project      → travel-agent:7
+           └── prod Foundry project    → travel-agent:3
+
+For hosted agents:
+   git commit SHA (+ container image tag derived from it)
+      └─ cross-environment identity
+           ├── sandbox endpoint (local FastAPI or per-dev deploy)
+           ├── dev endpoint     (https://travel-agent-dev.example.com)
+           ├── qa endpoint      (https://travel-agent-qa.example.com)
+           └── prod endpoint    (https://travel-agent.example.com)
+```
+
+AgentOps records these identifiers in
+`.agentops/deployments/foundry-agent.json` (per environment, uploaded as a CI
+artifact) for prompt agents and in `results.json` / release evidence for
+hosted agents. That means: given any deployed environment, you can trace
+back to the exact git commit and (for prompt agents) the exact prompt
+contents that produced it.
 
 ## Prerequisites
 
@@ -59,7 +120,7 @@ cd agentops-end-to-end
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-toolkit[foundry,agent]" fastapi "uvicorn[standard]"
+python -m pip install "agentops-accelerator[foundry,agent]" fastapi "uvicorn[standard]"
 az login
 ```
 
@@ -68,7 +129,7 @@ install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-toolkit[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
+python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
 ```
 
 You will provide the target values through the interactive `agentops init`
@@ -312,12 +373,34 @@ agentops eval run --output .agentops\results\manual-smoke
 code .agentops\results\manual-smoke\report.md
 ```
 
-For prompt agents, generate the workflow and let CI call AgentOps cloud eval in
-Foundry:
+For prompt agents, generate the PR workflow with `--deploy-mode prompt-agent`
+(uses the stage-prompt-as-candidate template) and `--doctor-gate critical`
+so critical Doctor findings block the PR:
 
 ```powershell
-agentops workflow generate --kinds pr --force
+agentops workflow generate `
+  --kinds pr `
+  --deploy-mode prompt-agent `
+  --doctor-gate critical `
+  --force
 ```
+
+For hosted endpoints, omit `--deploy-mode prompt-agent` (the staging flow is
+prompt-agent specific):
+
+```powershell
+agentops workflow generate `
+  --kinds pr `
+  --doctor-gate critical `
+  --force
+```
+
+> **`--doctor-gate critical` is the new default.** The PR workflow runs
+> `agentops doctor --severity-fail critical`, which exits non-zero (and fails
+> the PR check) when Doctor reports any critical finding such as a
+> `regression.<metric>` drop. Use `--doctor-gate warning` to also block on
+> warnings during hardening sprints. Use `--doctor-gate none` to make Doctor
+> advisory-only (the pre-`--doctor-gate` behavior).
 
 Before running that workflow, make the PR gate runnable in GitHub. Install the
 AgentOps workflow skill if needed:
@@ -442,10 +525,25 @@ This exercises the AgentOps local runner, baseline comparison, normalized
 
 ## 7. Add CI/CD gates
 
-Generate the common release path:
+Generate the common release path. For prompt agents, add
+`--deploy-mode prompt-agent` so the PR template stages your prompt as a
+candidate version against the dev project; for hosted agents, omit it.
+`--doctor-gate critical` makes the PR template block on critical Doctor
+findings (deploy workflows already use strict critical gating):
 
 ```powershell
-agentops workflow generate --kinds pr,dev,qa,prod --force
+# Prompt agents
+agentops workflow generate `
+  --kinds pr,dev,qa,prod `
+  --deploy-mode prompt-agent `
+  --doctor-gate critical `
+  --force
+
+# Hosted endpoints
+agentops workflow generate `
+  --kinds pr,dev,qa,prod `
+  --doctor-gate critical `
+  --force
 ```
 
 The generated workflows are intentionally boring:
@@ -734,17 +832,45 @@ Use Cockpit as the local command center:
 
 You are ready for a release review when:
 
-- The agent target is explicit in `agentops.yaml`.
-- CI uses the expected runner for the target.
-- Eval results or Microsoft Foundry eval metadata are attached to the workflow
-  artifact.
-- The tutorial includes one deliberate regression and one fixed rerun, either
-  through Foundry prompt versions or AgentOps local baseline comparison.
+- The agent target is explicit in `agentops.yaml`. For prompt agents,
+  `agent:` plus `prompt_file:` lock the cross-environment identity
+  (prompt SHA + git SHA). For hosted agents, the git commit SHA is the
+  identity recorded in `results.json` and evidence.
+- `.azure/` separates sandbox from dev (and qa / prod if you provisioned
+  them); the sandbox is the team's authoring and experimentation space
+  and dev is the shared promotion target.
+- CI uses the expected runner for the target (cloud Foundry eval for
+  prompt agents in CI, local runner for hosted endpoints).
+- Eval results or Microsoft Foundry eval metadata are attached to the
+  workflow artifact.
+- The PR workflow was generated with `--doctor-gate critical`, so a
+  critical Doctor finding blocks the PR. Deploy workflows always run
+  Doctor with `--severity-fail critical`.
+- The tutorial includes one deliberate regression and one fixed rerun,
+  either through Foundry prompt versions or AgentOps local baseline
+  comparison.
 - `agentops doctor --evidence-pack` writes `evidence.md`.
-- The workflow summary surfaces the Doctor finding summary from `evidence.md`,
-  so blocked readiness names the critical items to fix.
-- Application Insights is connected or the evidence clearly says it is missing.
+- The workflow summary surfaces the Doctor finding summary from
+  `evidence.md`, so blocked readiness names the critical items to fix.
+- Application Insights is connected or the evidence clearly says it is
+  missing.
 - At least one trace or operation was inspected in Foundry Traces or App
-  Insights, and Operate Ask AI was used for an aggregate summary when available.
+  Insights, and Operate Ask AI was used for an aggregate summary when
+  available.
 - Foundry red-team scans are linked or tracked as a release action.
 - Trace learnings have a path back into regression candidates.
+
+## Where to go next
+
+- **Detailed prompt-agent walkthrough** (sandbox + dev journey, regression
+  PR, Doctor-blocking gate, fix + redeploy):
+  [tutorial-prompt-agent-quickstart.md](tutorial-prompt-agent-quickstart.md).
+- **Detailed hosted-agent walkthrough** (same sandbox + dev story but
+  for endpoints, with the git SHA / image tag identity story):
+  [tutorial-hosted-agent-quickstart.md](tutorial-hosted-agent-quickstart.md).
+- **CI/CD reference** ([docs/ci-github-actions.md](ci-github-actions.md))
+  for full `agentops workflow generate` flag reference including the
+  `--doctor-gate` semantics.
+- **Doctor explainer** ([docs/doctor-explained.md](doctor-explained.md))
+  for the full readiness check catalog and severity rules that drive
+  the `--doctor-gate` block decision.

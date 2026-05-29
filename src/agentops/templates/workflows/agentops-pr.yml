@@ -70,8 +70,8 @@ jobs:
       - name: Install AgentOps Toolkit
         run: |
           # NOTE: pinned to GitHub main until the next package release includes this flow.
-          # Switch to `uv pip install --system "agentops-toolkit[foundry,agent]"` after release.
-          uv pip install --system "agentops-toolkit[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+          # Switch to `uv pip install --system "agentops-accelerator[foundry,agent]"` after release.
+          uv pip install --system "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
 
 __EVAL_STEPS__
 
@@ -83,9 +83,10 @@ __EVAL_STEPS__
           AZURE_OPENAI_DEPLOYMENT: ${{ vars.AZURE_OPENAI_DEPLOYMENT }}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}
         run: |
-          # PR evidence is advisory; the eval step above remains the merge gate.
+          # Doctor gate severity is configured at workflow generation time via
+          # `agentops workflow generate --doctor-gate critical|warning|none`.
           agentops doctor --workspace . --out .agentops/agent/report.md \
-            --severity-fail none --evidence-pack
+            --severity-fail __DOCTOR_GATE__ --evidence-pack
 
       - name: Upload AgentOps results
         if: always()

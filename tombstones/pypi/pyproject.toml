@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentops-toolkit"
+version = "0.3.0"
+description = "Deprecated placeholder: the legacy 'agentops-toolkit' distribution has been renamed to 'agentops-accelerator'. Installing this package pulls in the replacement so existing users keep working."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "AgentOps Toolkit Contributors" }]
+keywords = ["deprecated", "agentops", "evaluation"]
+classifiers = [
+  "Development Status :: 7 - Inactive",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+  # Unbounded on purpose: this is a redirect; always pull the latest agentops-accelerator.
+  "agentops-accelerator>=0.3.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Azure/agentops"
+Issues = "https://github.com/Azure/agentops/issues"
+Repository = "https://github.com/Azure/agentops"
+"Rename Notice" = "https://github.com/Azure/agentops/issues/181"
+
+[tool.setuptools]
+# Intentionally empty: this distribution must not ship any Python modules.
+# In particular, no `agentops/` package — otherwise it would shadow the real
+# `agentops` package installed via the `agentops-accelerator` dependency and
+# break `import agentops` for users who have both distributions installed.
+packages = []

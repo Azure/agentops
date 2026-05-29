@@ -121,7 +121,7 @@ def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
         raise RuntimeError(
             "Evaluators require the 'azure-ai-evaluation' package. "
             "Install the Foundry extra in this virtual environment. "
-            "Run: python -m pip install --upgrade 'agentops-toolkit[foundry]'"
+            "Run: python -m pip install --upgrade 'agentops-accelerator[foundry]'"
         ) from exc
 
     cls = getattr(module, preset.class_name, None)

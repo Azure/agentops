@@ -234,7 +234,7 @@ def _project_client(endpoint: str) -> Any:
     except ImportError as exc:
         raise RuntimeError(
             "prompt-agent deployment requires azure-ai-projects and "
-            "azure-identity; install agentops-toolkit[foundry]"
+            "azure-identity; install agentops-accelerator[foundry]"
         ) from exc
 
     credential = DefaultAzureCredential(
