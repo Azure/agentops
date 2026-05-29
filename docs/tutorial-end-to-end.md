@@ -1,9 +1,9 @@
 # End-to-end tutorial: release readiness for Foundry agents
 
-This tutorial is the full path. Use it after one of the quickstarts when you
+This tutorial is the full path. Use it after one of the type-specific tutorials when you
 want to validate the complete develop -> evaluate -> release -> observe loop
 across **sandbox**, **dev**, **qa**, and **prod** environments. The two
-quickstarts cover the same loop for a single agent type in a sandbox + dev
+type-specific tutorials cover the same loop for a single agent type in a sandbox + dev
 arrangement; this tutorial expands the journey through every release stage.
 
 It is inspired by the Azure Samples repo
@@ -409,7 +409,7 @@ agentops workflow generate `
 > not yet contain the agent, it reads that block plus `prompt_file` and
 > creates the first version automatically. No per-environment manual
 > seeding. See the
-> [prompt-agent quickstart](tutorial-prompt-agent-quickstart.md) for the
+> [prompt-agent tutorial](tutorial-prompt-agent-quickstart.md) for the
 > full multi-environment journey.
 
 Before running that workflow, make the PR gate runnable in GitHub. Install the

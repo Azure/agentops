@@ -6,6 +6,22 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Changed
+- **Tutorial wording: "quickstart" → "tutorial", "workshop" → "tutorial".**
+  The three documentation entries that were labeled "Prompt Agent quickstart",
+  "Hosted Agent quickstart", and "End-to-end workshop" now read as "Foundry
+  Prompt Agent tutorial", "Hosted or HTTP Agent tutorial", and "End-to-end
+  tutorial" across `README.md`, `plugins/agentops/README.md`, `AGENTS.md`,
+  `docs/concepts.md`, `docs/doctor-explained.md`, the `agentops-workflow`
+  skill (both synced copies), and the H1s + cross-references inside each
+  tutorial doc. The README description for the end-to-end tutorial now also
+  states explicitly that it **extends** either of the type-specific tutorials
+  (sandbox → dev → qa → prod plus Foundry red-team scans plus
+  trace-to-regression promotion) so the difference between the three is
+  obvious at a glance. The "quickstart" framing no longer fits doc bodies
+  that grew past 1000 lines covering multi-environment promotion, regression
+  injection, Doctor evidence, and Cockpit. The tutorial **filenames are
+  intentionally preserved** (`tutorial-*-quickstart.md`) to keep inbound
+  links and bookmarks stable.
 - **Skill + tutorial guidance now require `Cognitive Services OpenAI User` as a prerequisite RBAC role.**
   The `agentops-workflow` skill, `tutorial-prompt-agent-quickstart.md`,
   `tutorial-end-to-end.md`, and `docs/ci-github-actions.md` now instruct users

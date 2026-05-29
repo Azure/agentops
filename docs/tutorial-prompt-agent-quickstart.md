@@ -1,6 +1,6 @@
-# Quickstart: Foundry Prompt Agent (sandbox → dev with PR gate)
+# Tutorial: Foundry Prompt Agent (sandbox → dev with PR gate)
 
-Use this quickstart when you want a Foundry-managed prompt agent referenced as
+Use this tutorial when you want a Foundry-managed prompt agent referenced as
 `name:version`. The example creates a small **Travel Agent** in Foundry and
 then uses AgentOps to add repo-side readiness, a PR gate that catches
 regressions before merge, a `dev` deploy workflow, Doctor evidence, and
@@ -1077,7 +1077,7 @@ evidence. Read the output in this order:
 | `Findings: N (M critical ...)` | The severity rollup; critical items are what you discuss first. |
 | `Finding summary` | The terminal triage list. |
 
-In a fresh quickstart it is normal to see warnings for scheduled CI
+In a fresh tutorial workspace it is normal to see warnings for scheduled CI
 (you only generated `pr` and `dev`), continuous evaluation, qa/prod
 deploys, explicit thresholds, or red-team scans. Treat those as the
 hardening backlog. The eval gates and the dev deploy loop are
