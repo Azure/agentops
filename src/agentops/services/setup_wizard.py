@@ -73,14 +73,35 @@ ENV_KEY_APPINSIGHTS = "APPLICATIONINSIGHTS_CONNECTION_STRING"
 # ---------------------------------------------------------------------------
 
 
+# Endpoint-default provenance — informational only, used by the wizard to
+# decide whether to suppress a discovered default value because it likely
+# belongs to a *different* environment than the one being configured.
+ENDPOINT_SOURCE_AZD_ENV_FILE = "azd-env-file"
+ENDPOINT_SOURCE_AGENTOPS_ENV_FILE = "agentops-env-file"
+ENDPOINT_SOURCE_PROCESS_ENV = "process-env"
+ENDPOINT_SOURCE_YAML_LEGACY = "yaml-legacy"
+ENDPOINT_SOURCE_NONE = "none"
+
+
 @dataclass
 class WizardAnswers:
-    """User answers collected by the wizard."""
+    """User answers collected by the wizard.
+
+    The ``project_endpoint_source`` / ``project_endpoint_source_path`` fields
+    are populated by :func:`discover_defaults` to record *where* the default
+    project endpoint came from. They are informational only — never persisted
+    by :func:`apply_answers` — and the prompt loop in :func:`run_wizard` uses
+    them to suppress cross-environment leak (for example, a sandbox endpoint
+    exported in ``$AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` bleeding into a
+    fresh ``--azd-env dev`` setup).
+    """
 
     project_endpoint: Optional[str] = None
     agent: Optional[str] = None
     dataset: Optional[str] = None
     appinsights_connection_string: Optional[str] = None
+    project_endpoint_source: Optional[str] = None
+    project_endpoint_source_path: Optional[Path] = None
 
 
 @dataclass
@@ -107,16 +128,40 @@ def discover_defaults(workspace: Path) -> WizardAnswers:
 
     Returns the *current effective values* the wizard should pre-fill as
     defaults. Empty fields mean "no current value, ask the user fresh".
+
+    The returned :class:`WizardAnswers` also carries provenance for
+    ``project_endpoint`` via ``project_endpoint_source`` and
+    ``project_endpoint_source_path`` so the prompt loop can detect and
+    suppress cross-environment leaks (e.g. a shell-exported sandbox
+    endpoint bleeding into a fresh ``--azd-env dev`` setup).
     """
     workspace = workspace.resolve()
     yaml_data = _read_agentops_yaml(workspace)
-    env_values = _read_active_env(workspace)
+    env_values, env_source_path = _read_active_env_with_source(workspace)
 
-    project_endpoint = (
-        env_values.get(ENV_KEY_PROJECT_ENDPOINT)
-        or os.environ.get(ENV_KEY_PROJECT_ENDPOINT)
-        or _as_str(yaml_data.get("project_endpoint"))
-    )
+    project_endpoint: Optional[str] = None
+    endpoint_source: str = ENDPOINT_SOURCE_NONE
+    endpoint_source_path: Optional[Path] = None
+
+    env_value = env_values.get(ENV_KEY_PROJECT_ENDPOINT)
+    if env_value:
+        project_endpoint = env_value
+        endpoint_source_path = env_source_path
+        if env_source_path is not None and ".azure" in env_source_path.parts:
+            endpoint_source = ENDPOINT_SOURCE_AZD_ENV_FILE
+        else:
+            endpoint_source = ENDPOINT_SOURCE_AGENTOPS_ENV_FILE
+    else:
+        proc_value = os.environ.get(ENV_KEY_PROJECT_ENDPOINT)
+        if proc_value:
+            project_endpoint = proc_value
+            endpoint_source = ENDPOINT_SOURCE_PROCESS_ENV
+        else:
+            yaml_value = _as_str(yaml_data.get("project_endpoint"))
+            if yaml_value:
+                project_endpoint = yaml_value
+                endpoint_source = ENDPOINT_SOURCE_YAML_LEGACY
+
     agent = _as_str(yaml_data.get("agent"))
     dataset = _as_str(yaml_data.get("dataset"))
     appinsights = (
@@ -129,6 +174,8 @@ def discover_defaults(workspace: Path) -> WizardAnswers:
         agent=agent,
         dataset=dataset,
         appinsights_connection_string=appinsights,
+        project_endpoint_source=endpoint_source,
+        project_endpoint_source_path=endpoint_source_path,
     )
 
 
@@ -393,15 +440,28 @@ def ensure_agentops_gitignore(agentops_dir: Path) -> bool:
 
 def _read_active_env(workspace: Path) -> dict[str, str]:
     """Read the active env file (azd env first, then AgentOps local env)."""
+    values, _ = _read_active_env_with_source(workspace)
+    return values
+
+
+def _read_active_env_with_source(
+    workspace: Path,
+) -> tuple[dict[str, str], Optional[Path]]:
+    """Read the active env file AND return the path it came from.
+
+    The path is what lets the wizard later detect that a discovered default
+    value came from a *different* azd environment than the one the user is
+    currently configuring.
+    """
     from agentops.utils.azd_env import discover_azd_env, parse_env_file  # noqa: PLC0415
 
     location = discover_azd_env(workspace)
     if location.found and location.env_path is not None:
-        return parse_env_file(location.env_path)
+        return parse_env_file(location.env_path), location.env_path
     agentops_env = workspace / ".agentops" / ".env"
     if agentops_env.is_file():
-        return parse_env_file(agentops_env)
-    return {}
+        return parse_env_file(agentops_env), agentops_env
+    return {}, None
 
 
 # ---------------------------------------------------------------------------
@@ -446,6 +506,7 @@ def run_wizard(
     on_answer: Optional[OnAnswerFn] = None,
     reconfigure: bool = False,
     force_prompt_fields: Optional[Collection[str]] = None,
+    target_env_name: Optional[str] = None,
 ) -> WizardAnswers:
     """Drive the interactive question loop.
 
@@ -469,6 +530,17 @@ def run_wizard(
     selected fields while still reusing other existing defaults. The CLI uses
     this on a first interactive run so starter ``agentops.yaml`` values remain
     visible defaults instead of being accepted as real user choices.
+
+    ``target_env_name`` is the azd environment the user is *explicitly*
+    configuring (i.e. ``agentops init --azd-env <name>``). When provided, the
+    wizard suppresses any discovered default for ``project_endpoint`` that
+    came from a *different* source than ``.azure/<target>/.env`` (for example,
+    an ``$AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` exported in the shell from a
+    sandbox project, or another azd env's ``.env``). The user is shown an
+    explicit note about the discovered cross-environment value and asked to
+    enter the endpoint for the targeted env explicitly. Without
+    ``target_env_name`` (the bare ``agentops init`` case), behavior is
+    unchanged.
     """
     defaults = discover_defaults(workspace)
     answers = WizardAnswers()
@@ -496,15 +568,37 @@ def run_wizard(
         echo(f"  {ok_glyph} {label}: {display}")
 
     # 1) Foundry project endpoint
-    if not _should_prompt("project_endpoint", defaults.project_endpoint):
+    #
+    # When the user explicitly asked for a specific azd env via --azd-env,
+    # any default value that did NOT come from that env's own .env file is
+    # suspect: it most likely belongs to a different environment (sandbox /
+    # qa / prod) that just happens to be active in the user's shell. We
+    # suppress the pre-fill and surface a note so the user knows what we
+    # ignored and why.
+    cross_env_note = _detect_cross_env_endpoint_leak(
+        workspace=workspace,
+        target_env_name=target_env_name,
+        defaults=defaults,
+    )
+    suppress_endpoint_default = cross_env_note is not None
+    effective_endpoint_default = (
+        None if suppress_endpoint_default else defaults.project_endpoint
+    )
+
+    if not suppress_endpoint_default and not _should_prompt(
+        "project_endpoint", defaults.project_endpoint
+    ):
         _confirm_existing(PROJECT_ENDPOINT_TITLE, defaults.project_endpoint or "")
         skipped.append("project_endpoint")
     else:
         echo("")
         echo(PROJECT_ENDPOINT_TITLE)
         echo(_indent(PROJECT_ENDPOINT_HELP))
+        if cross_env_note:
+            echo("")
+            echo(_indent(cross_env_note))
         while True:
-            raw = prompt("Foundry project endpoint", defaults.project_endpoint)
+            raw = prompt("Foundry project endpoint", effective_endpoint_default)
             value = raw.strip()
             if not value:
                 break  # keep current / leave blank
@@ -573,6 +667,54 @@ def run_wizard(
 
 def _indent(text: str, prefix: str = "    ") -> str:
     return "\n".join(prefix + line for line in text.splitlines())
+
+
+def _detect_cross_env_endpoint_leak(
+    *,
+    workspace: Path,
+    target_env_name: Optional[str],
+    defaults: WizardAnswers,
+) -> Optional[str]:
+    """Return a user-facing note when the discovered endpoint default looks
+    like it belongs to a *different* environment than ``target_env_name``.
+
+    Returns ``None`` when the default is trustworthy (or when the wizard
+    was not given a target env to be opinionated about). The returned
+    string is a complete multi-line explanation suitable to ``echo`` above
+    the project-endpoint prompt; the caller is responsible for suppressing
+    the pre-fill (so the user must type the correct endpoint explicitly).
+    """
+    if not target_env_name:
+        return None
+    if not defaults.project_endpoint:
+        return None
+    source = defaults.project_endpoint_source or ENDPOINT_SOURCE_NONE
+    if source in (ENDPOINT_SOURCE_NONE, ENDPOINT_SOURCE_AGENTOPS_ENV_FILE):
+        return None
+    if source == ENDPOINT_SOURCE_AZD_ENV_FILE:
+        target_env_file = (workspace / ".azure" / target_env_name / ".env").resolve()
+        source_path = defaults.project_endpoint_source_path
+        if source_path is not None and source_path.resolve() == target_env_file:
+            return None  # Same azd env as the user targeted — safe to reuse.
+        source_label = (
+            f"another azd env file ({source_path})"
+            if source_path is not None
+            else "another azd env file"
+        )
+    elif source == ENDPOINT_SOURCE_PROCESS_ENV:
+        source_label = f"your shell environment (${ENV_KEY_PROJECT_ENDPOINT})"
+    elif source == ENDPOINT_SOURCE_YAML_LEGACY:
+        source_label = "the legacy 'project_endpoint' field in agentops.yaml"
+    else:  # pragma: no cover - defensive
+        source_label = source
+
+    return (
+        f"Note: a Foundry project endpoint was discovered in {source_label}:\n"
+        f"    {defaults.project_endpoint}\n"
+        f"Not using it as a default for env '{target_env_name}' because it may "
+        f"belong to a different environment.\n"
+        f"Please paste the endpoint for the '{target_env_name}' Foundry project:"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1587,6 +1587,7 @@ def cmd_init(
             on_answer=_on_answer,
             reconfigure=reconfigure,
             force_prompt_fields=force_prompt_fields,
+            target_env_name=azd_env_name,
         )
 
     # ----- Phase 4: apply (idempotent — covers scripted mode and any
