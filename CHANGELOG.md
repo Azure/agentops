@@ -5,6 +5,43 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **`cloud_output_items.json` is now uploaded as a CI artifact.** Generated PR and deploy workflows (GitHub Actions and Azure DevOps) include `.agentops/results/latest/cloud_output_items.json` in the `agentops-*-results` artifact bundle alongside `results.json`, `report.md`, and `cloud_evaluation.json`. Pairs with the "0 usable scores" warning so operators can diagnose unrecognized Foundry grader shapes without re-running locally.
+- **`cloud_output_items.json` raw dump.** Every cloud eval run now
+  writes the raw `output_items` it received from Foundry to
+  `<output_dir>/cloud_output_items.json`, in addition to the parsed
+  `results.json`. When a future grader / SDK upgrade changes the on-the-
+  wire shape and the parser stops finding scores, the artifact bundle
+  alone is enough to triage the issue. The orchestrator also emits an
+  explicit warning to the progress channel when a cloud run yields zero
+  usable metric scores despite returning rows, pointing the user at the
+  new dump file.
+- **`.gitattributes`** pinning `*.yml` / `*.yaml` / `*.sh` / `*.md` /
+  `*.py` to LF line endings, preventing future CRLF↔LF churn from
+  Windows clones with `core.autocrlf=true`. Normalizes the existing
+  `_build.yml` and `ci.yml` (previously CRLF) to LF so all files in
+  `.github/workflows/` share a single line-ending convention.
+
+### Removed
+- **Retired tombstone publish jobs from CI.** The `agentops-toolkit` →
+  `agentops-accelerator` deprecation tombstones were one-shot publishes
+  for v0.3.0 / v0.3.1; the `build-pypi-tombstone`,
+  `publish-tombstone-testpypi`, `verify-tombstone-testpypi`,
+  `publish-tombstone-pypi`, and `publish-tombstone-vsix(-prerelease)`
+  jobs (plus their `cut-release.yml` plugin-version sync steps) have
+  been removed from `release.yml`, `staging.yml`, and `cut-release.yml`.
+  The `github-release` job now depends only on `publish-pypi` and
+  `publish-vsix` (both required), and the dead `always()` guard has
+  been dropped. Future releases ship only `agentops-accelerator` on
+  PyPI and the `AgentOpsAccelerator.agentops-accelerator` VSIX.
+  The orphaned `scripts/verify_tombstones.py` harness and
+  `docs/verifying-tombstones.md` checklist (both one-shot tools
+  whose CI counterpart no longer exists) have been removed, along
+  with the now-unused `tombstones/pypi/` package source and the
+  `tombstones/vscode/` extension source — only
+  `tombstones/vscode/CDN_DEPRECATION_REQUEST.md` survives as the
+  template for the still-pending Microsoft CDN deprecation request.
+
 ### Fixed
 - **Cloud-eval parser no longer returns null scores for Foundry
   `azure_ai_evaluator` graders.** The parser now probes a wider set of
@@ -18,18 +55,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   threshold table showed every metric as `actual=missing` and exit code
   2 fired with `Threshold status: FAILED` even when the run itself
   succeeded.
-
-### Added
-- **`cloud_output_items.json` is now uploaded as a CI artifact.** Generated PR and deploy workflows (GitHub Actions and Azure DevOps) include `.agentops/results/latest/cloud_output_items.json` in the `agentops-*-results` artifact bundle alongside `results.json`, `report.md`, and `cloud_evaluation.json`. Pairs with the "0 usable scores" warning so operators can diagnose unrecognized Foundry grader shapes without re-running locally.
-- **`cloud_output_items.json` raw dump.** Every cloud eval run now
-  writes the raw `output_items` it received from Foundry to
-  `<output_dir>/cloud_output_items.json`, in addition to the parsed
-  `results.json`. When a future grader / SDK upgrade changes the on-the-
-  wire shape and the parser stops finding scores, the artifact bundle
-  alone is enough to triage the issue. The orchestrator also emits an
-  explicit warning to the progress channel when a cloud run yields zero
-  usable metric scores despite returning rows, pointing the user at the
-  new dump file.
 
 ## [0.3.0] - 2026-05-28
 
