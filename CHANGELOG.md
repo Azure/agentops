@@ -20,6 +20,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   succeeded.
 
 ### Added
+- **`cloud_output_items.json` is now uploaded as a CI artifact.** Generated PR and deploy workflows (GitHub Actions and Azure DevOps) include `.agentops/results/latest/cloud_output_items.json` in the `agentops-*-results` artifact bundle alongside `results.json`, `report.md`, and `cloud_evaluation.json`. Pairs with the "0 usable scores" warning so operators can diagnose unrecognized Foundry grader shapes without re-running locally.
 - **`cloud_output_items.json` raw dump.** Every cloud eval run now
   writes the raw `output_items` it received from Foundry to
   `<output_dir>/cloud_output_items.json`, in addition to the parsed
