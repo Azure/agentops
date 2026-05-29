@@ -428,8 +428,11 @@ this Foundry prompt-agent repo.
 Create or connect the GitHub repo if needed, create the `dev` environment, wire
 Azure OIDC, set AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini as a GitHub `dev`
 environment variable or equivalent Azure DevOps pipeline variable, verify the
-OIDC principal has Foundry User access, and show me the plan before changing
-GitHub or Azure.
+OIDC principal has **both** Foundry User access on the dev Foundry project
+**and** Cognitive Services OpenAI User access on the underlying Azure AI
+Services account that hosts the evaluator model (both are required — without
+the OpenAI User role, every cloud eval metric returns null), and show me the
+plan before changing GitHub or Azure.
 ```
 
 That value is not an `agentops init` answer. It tells the Foundry cloud eval
@@ -578,10 +581,13 @@ workflows running for this Foundry agent repo.
 
 Extend the PR/dev setup if it already exists, wire Azure OIDC for the `qa` and
 `production` environments, confirm required Actions variables such as
-AZURE_OPENAI_DEPLOYMENT, verify the OIDC principals have Foundry User access,
-and keep deploy placeholders unless this repo already has an azd deployment
-path. Show me the plan before changing GitHub or Azure, and call out anything
-that needs owner/admin permission.
+AZURE_OPENAI_DEPLOYMENT, verify the OIDC principals have **both** Foundry User
+access on each Foundry project **and** Cognitive Services OpenAI User on the
+underlying AI Services account hosting the evaluator model (both are required
+— without the OpenAI User role, every cloud eval metric returns null), and
+keep deploy placeholders unless this repo already has an azd deployment path.
+Show me the plan before changing GitHub or Azure, and call out anything that
+needs owner/admin permission.
 ```
 
 Use this moment in the video to connect the four repos: Foundry Toolkit creates

@@ -125,9 +125,23 @@ from GitHub Actions runs. See
 [Microsoft's WIF docs](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp).
 
 For Foundry prompt-agent gates, the same app registration / service principal
-also needs **Foundry User** on the Foundry project or Foundry resource. Azure
-`Reader` is not enough because the eval step calls Foundry data-plane APIs such
-as `Microsoft.CognitiveServices/accounts/AIServices/agents/read`.
+needs **two** Azure RBAC roles before the first workflow run. Both are required
+and the eval step fails silently (every metric returns `null`) if only one is
+in place:
+
+- **Foundry User** on the Foundry project or Foundry resource. Azure `Reader`
+  is not enough because the eval step calls Foundry data-plane APIs such as
+  `Microsoft.CognitiveServices/accounts/AIServices/agents/read`.
+- **Cognitive Services OpenAI User** on the underlying Azure AI Services
+  account that hosts the evaluator model deployment. Foundry `azure_ai_evaluator`
+  graders impersonate the OIDC principal to call OpenAI; without this role
+  they fail with a 401 `PermissionDenied` on
+  `Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/completions/action`
+  and every metric returns `null` in the cloud eval report. AgentOps lifts that
+  error into `results.json` and the orchestrator's "0 usable metric scores"
+  warning so you can see the cause in CI logs, but the workflow still fails the
+  gate. The role ids are `53ca6127-db72-4b80-b1b0-d745d6d5456d` (Foundry User)
+  and `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd` (Cognitive Services OpenAI User).
 
 The generated eval and doctor workflows install AgentOps telemetry support.
 When `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` is set, AgentOps first tries to
