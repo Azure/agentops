@@ -319,7 +319,8 @@ def _github_eval_substitutions(eval_runner: str, config_path: str) -> Mapping[st
           exit $ec""",
             "__EVAL_ARTIFACT_PATHS__": f"""{_CI_EVAL_OUTPUT}/results.json
             {_CI_EVAL_OUTPUT}/report.md
-            {_CI_EVAL_OUTPUT}/cloud_evaluation.json""",
+            {_CI_EVAL_OUTPUT}/cloud_evaluation.json
+            {_CI_EVAL_OUTPUT}/cloud_output_items.json""",
         }
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         official_action = official_eval_action_ref()
@@ -413,7 +414,8 @@ def _github_eval_substitutions(eval_runner: str, config_path: str) -> Mapping[st
           exit $ec""",
         "__EVAL_ARTIFACT_PATHS__": """.agentops/results/latest/results.json
             .agentops/results/latest/report.md
-            .agentops/results/latest/cloud_evaluation.json""",
+            .agentops/results/latest/cloud_evaluation.json
+            .agentops/results/latest/cloud_output_items.json""",
     }
 
 
