@@ -132,7 +132,7 @@ def _metric_from_result(entry: Any) -> Optional[RowMetric]:
             score = _score_from_mapping(details)
 
     reason = entry.get("reason") if isinstance(entry.get("reason"), str) else None
-    err = entry.get("error") if isinstance(entry.get("error"), str) else None
+    err = _extract_grader_error(entry)
     if score is None and err is None:
         # Surface the missing-score case as a structured reason instead of
         # silently writing null. The orchestrator/reporter use this string
@@ -142,6 +142,63 @@ def _metric_from_result(entry: Any) -> Optional[RowMetric]:
             "cloud_output_items.json in the results directory."
         )
     return RowMetric(name=name, value=score, error=err, reason=reason)
+
+
+def _extract_grader_error(entry: Dict[str, Any]) -> Optional[str]:
+    """Pull a human-readable error out of a Foundry grader result envelope.
+
+    The on-the-wire shape we have seen in production when an
+    ``azure_ai_evaluator`` grader fails to execute (e.g., the evaluator
+    service principal lacks RBAC on the model deployment) is::
+
+        {
+          "name": "coherence",
+          "score": null,
+          "passed": null,
+          "status": "error",
+          "sample": {
+            "error": {
+              "code": "FAILED_EXECUTION",
+              "message": "(UserError) OpenAI API hits AuthenticationError: ..."
+            }
+          }
+        }
+
+    Without lifting ``sample.error.message`` into ``RowMetric.error``, the
+    real cause is buried in ``cloud_output_items.json`` and the user only
+    sees ``actual=missing`` in the threshold table. Probe (in order):
+
+    1. Top-level ``error`` (string or ``{message, code}`` dict).
+    2. ``sample.error`` (string or ``{message, code}`` dict).
+    3. ``status == "error"`` as a last-resort signal so we at least flag
+       the row even when no error payload is present.
+    """
+    primary = _normalize_error_payload(entry.get("error"))
+    if primary is not None:
+        return primary
+    sample = entry.get("sample")
+    if isinstance(sample, dict):
+        nested = _normalize_error_payload(sample.get("error"))
+        if nested is not None:
+            return nested
+    status = entry.get("status")
+    if isinstance(status, str) and status.strip().lower() == "error":
+        return "grader status: error (no error payload returned)"
+    return None
+
+
+def _normalize_error_payload(value: Any) -> Optional[str]:
+    """Flatten ``error`` (string or ``{message, code}`` dict) into one line."""
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict):
+        message = value.get("message") or value.get("error")
+        if isinstance(message, str) and message.strip():
+            code = value.get("code")
+            if isinstance(code, str) and code.strip():
+                return f"{code.strip()}: {message.strip()}"
+            return message.strip()
+    return None
 
 
 def _extract_response_text(sample: Dict[str, Any]) -> str:
