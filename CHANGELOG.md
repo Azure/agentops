@@ -6,6 +6,24 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Changed
+- **Tutorials now flag the workflow skill's setup actions as redundant in the manual follow-up steps.**
+  When users run the `agentops-workflow` skill in the CI-wiring step of either
+  the prompt-agent tutorial (step 12B) or the end-to-end tutorial (the same
+  skill invocation that precedes the baseline-run step), the skill already
+  commits the workspace, pushes `main` to GitHub, and triggers a first
+  verification run of `agentops-pr.yml` (and `agentops-deploy-dev.yml` for the
+  prompt-agent flow). The next step previously asked users to repeat all
+  three actions, which was a no-op at best and confusing at worst (the
+  `git add` would find nothing to commit, the `git push` would report
+  up-to-date, the dispatched PR run would be the second one, not the first).
+  Step 13 of `docs/tutorial-prompt-agent-quickstart.md` and the baseline-run
+  paragraph in `docs/tutorial-end-to-end.md` now open with an explicit
+  "if you used the workflow skill above, this is already done" callout and
+  reframe the manual commands as a fallback for users who skipped the skill
+  or wired CI by hand. The deliberate baseline-PR step that follows (open a
+  feature branch, open a PR, merge once green) is unchanged — it must still
+  go through a real pull request, which the skill does not do for you, so
+  that the rolling Doctor history is seeded.
 - **Tutorial wording: "quickstart" → "tutorial", "workshop" → "tutorial".**
   The three documentation entries that were labeled "Prompt Agent quickstart",
   "Hosted Agent quickstart", and "End-to-end workshop" now read as "Foundry

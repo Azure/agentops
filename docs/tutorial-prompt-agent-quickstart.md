@@ -761,6 +761,21 @@ This is the happy path. Before the regression step, you need a clean
 green baseline so the rolling-history Doctor checks (regression, drift)
 have something to compare against.
 
+> **If you used the workflow skill in step 12B, the next two code
+> blocks have already been done — skip straight to "Now open a feature
+> branch..." below.** The `agentops-workflow` skill commits your local
+> changes, pushes `main` to the GitHub remote, and triggers a first
+> verification run of both `agentops-pr.yml` and `agentops-deploy-dev.yml`
+> as part of its end-to-end setup. Open the repo's **Actions** tab and
+> confirm both runs are present — `Stage Foundry prompt candidate (PR)`
+> + `AgentOps eval (PR gate)` should be green on the PR workflow, and
+> `agentops-deploy-dev.yml` should have a matching run that also went
+> green. Only run the `git add` / `commit` / `push` and `gh workflow run`
+> commands below if you skipped the skill and wired CI by hand, or if
+> the skill stopped before pushing your latest local changes (run
+> `git status` first — if the working tree is clean and the remote has
+> your commits, the manual commands are no-ops).
+
 ```powershell
 git add agentops.yaml .agentops .github\workflows
 git commit -m "Add AgentOps prompt agent gate + dev deploy"
