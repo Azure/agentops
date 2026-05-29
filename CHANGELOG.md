@@ -6,6 +6,27 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Fixed
+- **Tutorial: prompt-agent step 13 now matches what the workflow skill actually does (dispatches both workflows).**
+  PR #211 mistakenly narrowed the step 13 callout to say the workflow
+  skill only dispatches `agentops-pr.yml` as a verification run, based
+  on incorrect reasoning about `push:` triggers (the skill actually
+  uses `workflow_dispatch`, which works against any branch regardless
+  of the workflow's `push:` block). In practice — verified against a
+  live recording — the skill dispatches **both** `agentops-pr.yml`
+  and `agentops-deploy-dev.yml` end-to-end as part of CI verification,
+  asking the user to approve first per SKILL.md rule #14. The step 13
+  callout now reflects this and explains the expected outcome (both
+  runs may exit `threshold_failed` on first contact with an empty dev
+  project because the bootstrap path produces a fresh `travel-agent:1`
+  that has not been measured against the seed thresholds yet — by
+  design, not a CI wiring failure). The "What you should see in the
+  first PR workflow run" section also updates from the
+  "dev is still empty" assumption (which becomes false after the
+  skill's verification dispatch) to the three possible outcomes
+  (`reused` / `created` / `bootstrapped`) you can actually see at this
+  point. The "After the merge" paragraph now calls out that the
+  merge-triggered deploy is the **second** deploy-dev run for the
+  repo, not the first.
 - **Tutorials: end-to-end audit caught misleading dist URLs, phantom CLI commands, missing JSON fields, and stale Doctor advisory text.**
   All three tutorials previously installed the development build from a
   personal fork URL (`git+https://github.com/placerda/agentops.git@develop`);

@@ -778,17 +778,32 @@ green baseline so the rolling-history Doctor checks (regression, drift)
 have something to compare against.
 
 The workflow skill in step 12 already committed your local changes,
-pushed `main` to the GitHub remote, and triggered a first verification
-run of `agentops-pr.yml` (via `workflow_dispatch`) as part of its
-end-to-end setup. Open the repo's **Actions** tab and confirm both the
-`Stage Foundry prompt candidate (PR)` and `AgentOps eval (PR gate)`
-jobs of that run are green.
+pushed `main` to the GitHub remote, and dispatched first verification
+runs of **both** `agentops-pr.yml` and `agentops-deploy-dev.yml` (via
+`workflow_dispatch`, after asking you to approve) so the CI wiring is
+verified end-to-end. Open the repo's **Actions** tab and confirm both
+runs reached the eval stage:
 
-`agentops-deploy-dev.yml` does not run yet — it triggers on push to
-your dev branch (`main` in this tutorial, after the trigger rewrite the
-skill performed in step 12; the generator's stock default is `develop`)
-or on `workflow_dispatch`. The first merge into `main` happens at the
-end of this section.
+- `agentops-pr.yml` — `Stage Foundry prompt candidate (PR)` and
+  `AgentOps eval (PR gate)` jobs both ran.
+- `agentops-deploy-dev.yml` — `stage-candidate`, `eval`, and the
+  `Mark candidate as deployed` step all ran (the deploy job uses
+  `prompt_deploy summarize`, not a real Foundry promotion — it writes
+  the deployment record artifact + workflow summary).
+
+It is **expected** for one or both of these first runs to exit
+`threshold_failed` (`exit 2`) when the dev Foundry project starts
+empty: the bootstrap path creates a fresh `travel-agent:1` (and, on
+the next run, `:2`) in dev and evaluates it against the seed
+`agentops.yaml` thresholds, which can miss on first contact. That is
+by design, not a CI wiring failure. What you are really verifying at
+this point is the plumbing — OIDC, Foundry RBAC, the evaluator
+deployment, the staging step, the deploy summary writer — and that
+dev now contains a bootstrapped version of the agent.
+
+`agentops-deploy-dev.yml` will fire **again** automatically when you
+merge the baseline PR at the end of this section, because the skill
+rewrote its trigger from `develop` to `main` in step 12.
 
 If you want to wait on the first PR-workflow verification run from the
 terminal instead of the Actions UI:
@@ -799,33 +814,34 @@ gh run view $runId --web
 gh run watch $runId --exit-status
 ```
 
-What you should see in the **first** PR workflow run (dev is still
-empty at this point):
+What you should see in the **first** PR workflow run, after the
+skill's verification dispatches have already touched dev:
 
 1. **Stage Foundry prompt candidate (PR)** job runs first. The
-   `prompt_deploy stage` step tries to look up `travel-agent:2` in the
-   dev project and gets a 404. Because `agentops.yaml` includes a
-   `prompt_agent_bootstrap` block, the step:
-   - reads the `model` (`gpt-4o-mini`) and optional `description` from
-     `prompt_agent_bootstrap`,
-   - reads the instructions from `prompt_file`,
-   - creates a new version of `travel-agent` in the dev project from
-     those defaults via the Foundry SDK. The SDK assigns the version
-     number per-project; in an empty dev project the first version is
-     normally `travel-agent:1` (not `:2`, because dev has no draft
-     history of its own),
-   - reports `action: bootstrapped` and uses the freshly-bootstrapped
-     version as the candidate.
+   `prompt_deploy stage` step looks up `travel-agent:2` in the dev
+   project. Three outcomes are possible depending on what the skill's
+   verification dispatches produced:
+   - `action: reused` — dev already has `travel-agent:2` with the
+     same instructions as the seed (no new version created).
+   - `action: created` — dev has the seed version but with different
+     instructions, so Foundry auto-creates the next number (likely
+     `travel-agent:3`).
+   - `action: bootstrapped` — dev still does not have `travel-agent:2`
+     (only `:1`, because the bootstrap can fire `:1` and `:2`
+     back-to-back over two runs). The step reads
+     `prompt_agent_bootstrap` plus `prompt_file` and creates the next
+     SDK-assigned version, then uses it as the candidate.
 2. **AgentOps eval (PR gate)** job runs second. It evaluates the
-   bootstrapped candidate using cloud eval. Thresholds pass.
-   Doctor runs with `--severity-fail critical`; advisory findings are
-   listed but do not fail the job.
+   candidate using cloud eval. Doctor runs with
+   `--severity-fail critical`; advisory findings are listed but do not
+   fail the job. The first one or two PR runs against a fresh dev
+   project can still fail thresholds while bootstrap catches up. After
+   that, normal reuse / create flow takes over and the baseline PR
+   should go green.
 
-On the **second** PR run, dev has `travel-agent:1` but the seed still
-points at `:2`. The stage step gets another 404 looking up `:2` and
-bootstraps a second version — `travel-agent:2` — into dev. After this,
-the dev project finally has `travel-agent:2` matching the seed, and
-every subsequent PR takes the normal lookup path:
+Successive PR runs walk the same three branches above until dev's
+version count catches up to the seed (`travel-agent:2`). Once it does,
+every PR run hits the normal lookup path:
 
 - If `prompt_file` is byte-identical to the seed's instructions: the
   stage step reports `reused` and uses `travel-agent:2` as the
@@ -854,21 +870,27 @@ git push -u origin chore/agentops-baseline
 gh pr create --base main --head chore/agentops-baseline --title "Baseline AgentOps run" --body "First green PR to establish history."
 ```
 
-Open the PR in GitHub. The PR check runs the same staging + eval flow,
-green again because the prompt is unchanged. Merge.
+Open the PR in GitHub. The PR check runs the same staging + eval flow.
+Whether this baseline PR goes green on the first try depends on how
+many bootstrap rounds the dev project has already absorbed (from the
+skill's verification dispatches plus any failed PRs). Once bootstrap
+catches up to the seed and the prompt is stable, the PR goes green —
+re-run the workflow on the PR if needed. Then merge.
 
 After the merge, the **AgentOps deploy (dev)** workflow runs
 automatically on `main` (the skill rewrote its trigger from `develop`
-to `main` in step 12 because this tutorial uses trunk-based flow). It
-stages the candidate (likely re-using the same version as the PR run,
-or bootstrapping again if dev has not yet caught up to the seed),
-evaluates it, runs `prompt_deploy summarize` to write the dev
-deployment summary, and uploads the deployment artifact.
+to `main` in step 12 because this tutorial uses trunk-based flow).
+This is the **second** deploy-dev run for this repo — the first was
+the skill's verification dispatch in step 12. It stages the candidate
+(by this point most likely `action: reused` or `created`), evaluates
+it, runs `prompt_deploy summarize` to write the dev deployment summary,
+and uploads the deployment artifact.
 
 Open the deploy run and download the `foundry-agent-dev-deployment`
-artifact. Inside, open `foundry-agent.json`. On the very first deploy
-into an empty dev project (the bootstrap case), the file looks like
-this — note the actual field names AgentOps writes:
+artifact. Inside, open `foundry-agent.json`. If this merge-triggered
+run is the one that finally settles the bootstrap (the seed
+`travel-agent:2` did not exist yet and is created here), the file
+looks like this — note the actual field names AgentOps writes:
 
 ```json
 {
