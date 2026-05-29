@@ -5,6 +5,32 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **Tutorials: end-to-end audit caught misleading dist URLs, phantom CLI commands, missing JSON fields, and stale Doctor advisory text.**
+  All three tutorials previously installed the development build from a
+  personal fork URL (`git+https://github.com/placerda/agentops.git@develop`);
+  they now point at the canonical
+  `git+https://github.com/Azure/agentops.git@develop`. The prompt-agent
+  tutorial referenced a non-existent `prompt_deploy record` subcommand in
+  two places — the actual command is `prompt_deploy summarize`, matching
+  `src/agentops/pipeline/prompt_deploy.py` and the deploy template's
+  `Mark candidate as deployed` step. The same tutorial's `foundry-agent.json`
+  sample was missing the `eval_config` field that the code writes at
+  `src/agentops/pipeline/prompt_deploy.py:186`. The step 12 skill prompt
+  and the step 13 prose did not tell the reader to rewrite the dev-deploy
+  trigger from `develop` to `main` for this trunk-on-`main` tutorial; the
+  generator's stock default is `develop`, which would silently no-op after
+  the first merge. Step 12 now instructs the skill to do the rewrite (and
+  the bullet list of skill actions calls it out as a required step, with
+  a manual-edit fallback). Step 13's "deploy fires automatically on `main`"
+  sentence now states the dependency on the step 12 rewrite explicitly,
+  and the placeholder phrase "your trunk branch" is now disambiguated as
+  "`main` in this tutorial". The end-to-end tutorial's step 5 and step 9
+  Doctor descriptions still read as if Doctor were advisory-only in PR
+  workflows — that text predates the `--doctor-gate critical` default;
+  both blocks now describe the actual behavior (critical findings block
+  the PR by default; warning/info are evidence-only).
+
 ### Changed
 - **Tutorials: skip-if-skill callouts now state the skill's outcome directly and accurately.**
   The `step 13` callout in `docs/tutorial-prompt-agent-quickstart.md` and the

@@ -137,7 +137,7 @@ path, install the aligned reference branch so the CLI, generated
 workflows, and tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
+python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Install the AgentOps Copilot skills
@@ -670,7 +670,7 @@ The PR workflow now has two jobs:
 > candidate version numbers.
 
 The dev deploy workflow stages a candidate (same logic), evaluates it,
-records the deployment via `prompt_deploy record`, and uploads
+summarizes the deployment via `prompt_deploy summarize`, and uploads
 `.agentops/deployments/foundry-agent.json` as a workflow artifact.
 
 The `--doctor-gate critical` flag controls the Doctor severity floor in
@@ -725,6 +725,14 @@ the OpenAI User role, the Foundry cloud graders fail with a 401 and every
 metric comes back null), and do not set up `qa`, `production`, scheduled
 Doctor, or hosted deployment workflows yet.
 
+I am using trunk-based development with `main` as both my trunk and dev
+branch. The generator's stock dev-deploy trigger is `push: branches:
+[develop]`. Rewrite the `agentops-deploy-dev.yml` (and the matching
+`agentops-pr.yml` `pull_request: branches:` list, if it references
+`develop`) so they fire on `main` instead. The PR gate must run on PRs
+targeting `main`, and the dev deploy must auto-run on push to `main`
+after a merge.
+
 The dev Foundry project endpoint is in `.azure/dev/.env`; the sandbox
 endpoint is local-only and must not be added to CI.
 
@@ -741,6 +749,14 @@ it skips:
 - Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_CLIENT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (the dev
   endpoint), and `APPLICATIONINSIGHTS_CONNECTION_STRING` if available.
+- **Rewrite the dev deploy trigger to `main`.** The generator emits the
+  stock GitFlow defaults (`pull_request: branches: [develop, "release/**",
+  main]` on `agentops-pr.yml`, `push: branches: [develop]` on
+  `agentops-deploy-dev.yml`). For this trunk-on-`main` tutorial the
+  skill should rewrite both so the PR gate fires on PRs into `main` and
+  the deploy fires on push to `main`. If the skill skips this rewrite,
+  open the two YAML files in `.github/workflows/` and edit the
+  `branches:` lists by hand before opening the first PR.
 - Verify the OIDC principal has **two** Azure RBAC roles before the first
   run. Both are required and the eval step fails silently (every metric
   returns `null`) if only one is in place:
@@ -768,9 +784,11 @@ end-to-end setup. Open the repo's **Actions** tab and confirm both the
 `Stage Foundry prompt candidate (PR)` and `AgentOps eval (PR gate)`
 jobs of that run are green.
 
-`agentops-deploy-dev.yml` does not run yet — it triggers on a real
-merge into your trunk branch (or on `workflow_dispatch`), and the first
-merge happens at the end of this section.
+`agentops-deploy-dev.yml` does not run yet — it triggers on push to
+your dev branch (`main` in this tutorial, after the trigger rewrite the
+skill performed in step 12; the generator's stock default is `develop`)
+or on `workflow_dispatch`. The first merge into `main` happens at the
+end of this section.
 
 If you want to wait on the first PR-workflow verification run from the
 terminal instead of the Actions UI:
@@ -840,10 +858,12 @@ Open the PR in GitHub. The PR check runs the same staging + eval flow,
 green again because the prompt is unchanged. Merge.
 
 After the merge, the **AgentOps deploy (dev)** workflow runs
-automatically on `main`. It stages the candidate (likely re-using the
-same version as the PR run, or bootstrapping again if dev has not yet
-caught up to the seed), evaluates it, runs `prompt_deploy record` to
-mark it as the dev deployment, and uploads the deployment artifact.
+automatically on `main` (the skill rewrote its trigger from `develop`
+to `main` in step 12 because this tutorial uses trunk-based flow). It
+stages the candidate (likely re-using the same version as the PR run,
+or bootstrapping again if dev has not yet caught up to the seed),
+evaluates it, runs `prompt_deploy summarize` to write the dev
+deployment summary, and uploads the deployment artifact.
 
 Open the deploy run and download the `foundry-agent-dev-deployment`
 artifact. Inside, open `foundry-agent.json`. On the very first deploy
@@ -864,6 +884,7 @@ this — note the actual field names AgentOps writes:
   "project_endpoint": "https://<your-resource>.services.ai.azure.com/api/projects/travel-agent-dev",
   "prompt_file": ".agentops/prompts/travel-agent.md",
   "prompt_sha256": "9c3a...e0b1",
+  "eval_config": ".agentops/deployments/agentops.candidate.yaml",
   "created_at": "2025-...",
   "git_sha": "5f1a2c...",
   "workflow_url": "https://github.com/.../actions/runs/...",
