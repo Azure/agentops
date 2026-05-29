@@ -8,8 +8,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ### Changed
 - **Tutorials now flag the workflow skill's setup actions as redundant in the manual follow-up steps.**
   When users run the `agentops-workflow` skill in the CI-wiring step of either
-  the prompt-agent tutorial (step 12B) or the end-to-end tutorial (the same
-  skill invocation that precedes the baseline-run step), the skill already
+  the prompt-agent tutorial (step 12) or the end-to-end tutorial (step 5, the
+  same skill invocation that precedes the baseline-run step), the skill already
   commits the workspace, pushes `main` to GitHub, and triggers a first
   verification run of `agentops-pr.yml` (and `agentops-deploy-dev.yml` for the
   prompt-agent flow). The next step previously asked users to repeat all
