@@ -344,9 +344,27 @@ jobs:
         run: vsce package --pre-release -o agentops-skills.vsix
 
       - name: Publish pre-release to VS Code Marketplace
-        continue-on-error: true # Tolerate "already exists" for pre-release builds
+        # Tolerate ONLY the "already exists" case (re-run of the same pre-release
+        # version). Any other failure (auth, network, validation) must fail the job
+        # so staging surfaces real publish problems instead of silently green-lighting.
         working-directory: plugins/agentops
-        run: vsce publish --pre-release --packagePath agentops-skills.vsix -p "${{ secrets.VSCE_PAT }}"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -o pipefail
+          if OUTPUT=$(vsce publish --pre-release --packagePath agentops-skills.vsix -p "${VSCE_PAT}" 2>&1); then
+            RC=0
+          else
+            RC=$?
+          fi
+          echo "$OUTPUT"
+          if [ "$RC" -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qi "already exists"; then
+              echo "::warning::VSIX pre-release version already published. Treating as success."
+              exit 0
+            fi
+            exit "$RC"
+          fi
 
       - name: Show VSIX info
         working-directory: plugins/agentops
@@ -421,9 +439,27 @@ jobs:
         run: vsce package --pre-release -o "${VSIX_FILE}"
 
       - name: Publish pre-release tombstone to VS Code Marketplace
-        continue-on-error: true # Tolerate "already exists" for pre-release builds
+        # Tolerate ONLY the "already exists" case (re-run of the same pre-release
+        # version). Any other failure (auth, network, validation) must fail the job
+        # so staging surfaces real publish problems instead of silently green-lighting.
         working-directory: tombstones/vscode
-        run: vsce publish --pre-release --packagePath "${VSIX_FILE}" -p "${{ secrets.VSCE_PAT }}"
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          set -o pipefail
+          if OUTPUT=$(vsce publish --pre-release --packagePath "${VSIX_FILE}" -p "${VSCE_PAT}" 2>&1); then
+            RC=0
+          else
+            RC=$?
+          fi
+          echo "$OUTPUT"
+          if [ "$RC" -ne 0 ]; then
+            if echo "$OUTPUT" | grep -qi "already exists"; then
+              echo "::warning::Tombstone VSIX pre-release version already published. Treating as success."
+              exit 0
+            fi
+            exit "$RC"
+          fi
 
       - name: Show tombstone VSIX info
         working-directory: tombstones/vscode
