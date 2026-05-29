@@ -2,9 +2,9 @@
 
 This is the maintainer-facing checklist for proving that a release's two
 deprecation tombstones — the [`agentops-toolkit` PyPI metapackage](../tombstones/pypi/pyproject.toml)
-and the [`AgentOpsToolkit.agentops-skills` VSIX](../tombstones/vscode/package.json) —
+and the [`AgentOpsToolkit.agentops-toolkit` VSIX](../tombstones/vscode/package.json) —
 are live, intact, and redirecting users to the renamed
-`agentops-accelerator` / `AgentOpsAccelerator.agentops-skills` artifacts.
+`agentops-accelerator` / `AgentOpsAccelerator.agentops-accelerator` artifacts.
 
 The CI workflow runs a pre-publish smoke test against TestPyPI
 (see [`.github/workflows/release.yml`](../.github/workflows/release.yml) line
@@ -78,7 +78,7 @@ venv created with `sys.executable` and then verifies:
 This mirrors the pre-publish CI verification but adds the shadow-free check
 and version-floor assertion that production needs.
 
-**VSIX (`Check 2`)** — runs `vsce show AgentOpsToolkit.agentops-skills --json`
+**VSIX (`Check 2`)** — runs `vsce show AgentOpsToolkit.agentops-toolkit --json`
 and verifies:
 
 1. `vsce` is on `PATH` and the JSON parses.
@@ -131,7 +131,7 @@ sentinel starts empty.
 
    ```bash
    code --profile fresh-toolkit-1 \
-        --install-extension AgentOpsToolkit.agentops-skills@0.3.0
+        --install-extension AgentOpsToolkit.agentops-toolkit@0.3.0
    ```
 
    Reload the window. Expected: an information notification appears reading:
@@ -144,7 +144,7 @@ sentinel starts empty.
 2. **`Install replacement` installs the new extension and suppresses the prompt.**
 
    In the `fresh-toolkit-1` profile, click `Install replacement`. Expected:
-   VS Code installs `AgentOpsAccelerator.agentops-skills` automatically.
+   VS Code installs `AgentOpsAccelerator.agentops-accelerator` automatically.
    Reload the window again — the prompt **must not** re-appear (the per-install
    sentinel suppresses it).
 
@@ -152,7 +152,7 @@ sentinel starts empty.
 
    ```bash
    code --profile fresh-toolkit-2 \
-        --install-extension AgentOpsToolkit.agentops-skills@0.3.0
+        --install-extension AgentOpsToolkit.agentops-toolkit@0.3.0
    ```
 
    Reload, click `Dismiss`, reload again. Expected: prompt does **not**
@@ -162,11 +162,11 @@ sentinel starts empty.
 
    ```bash
    code --profile fresh-toolkit-3 \
-        --install-extension AgentOpsToolkit.agentops-skills@0.3.0
+        --install-extension AgentOpsToolkit.agentops-toolkit@0.3.0
    ```
 
    Reload, click `Open in Marketplace`. Expected: the system browser opens to
-   <https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-skills>.
+   <https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator>.
 
 All four flows must pass before filing the CDN deprecation request.
 
@@ -178,10 +178,10 @@ Once automated + manual verification are both green:
    [`tombstones/vscode/CDN_DEPRECATION_REQUEST.md`](../tombstones/vscode/CDN_DEPRECATION_REQUEST.md).
 2. Wait 24–48 hours after Microsoft confirms receipt.
 3. Verify: the legacy listing at
-   <https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-skills>
+   <https://marketplace.visualstudio.com/items?itemName=AgentOpsToolkit.agentops-toolkit>
    now shows the standard **Deprecated** banner and a pointer to the
    recommended replacement extension
-   (`AgentOpsAccelerator.agentops-skills`).
+   (`AgentOpsAccelerator.agentops-accelerator`).
 4. Update the tracking issue with the post-deprecation timestamp and a
    screenshot.
 

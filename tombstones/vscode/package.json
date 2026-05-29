@@ -1,7 +1,7 @@
 {
-  "name": "agentops-skills",
+  "name": "agentops-toolkit",
   "displayName": "[DEPRECATED] AgentOps Toolkit — Migrate to AgentOps Accelerator",
-  "description": "Deprecated. This extension was renamed to 'AgentOps Accelerator — Skills for GitHub Copilot' (AgentOpsAccelerator.agentops-skills). Please install the new extension and uninstall this one.",
+  "description": "Deprecated. This extension was renamed to 'AgentOps Accelerator — Skills for GitHub Copilot' (AgentOpsAccelerator.agentops-accelerator). Please install the new extension and uninstall this one.",
   "version": "0.3.0",
   "publisher": "AgentOpsToolkit",
   "license": "MIT",

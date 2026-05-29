@@ -10,4 +10,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 
-- This extension (`AgentOpsToolkit.agentops-skills`) is deprecated. It has been renamed and republished as `AgentOpsAccelerator.agentops-skills` ("AgentOps Accelerator — Skills for GitHub Copilot"). This final build only prompts users to install the new extension and uninstall this one. See <https://github.com/Azure/agentops/issues/181>.
+- This extension (`AgentOpsToolkit.agentops-toolkit`) is deprecated. It has been renamed and republished as `AgentOpsAccelerator.agentops-accelerator` ("AgentOps Accelerator — Skills for GitHub Copilot"). This final build only prompts users to install the new extension and uninstall this one. See <https://github.com/Azure/agentops/issues/181>.
