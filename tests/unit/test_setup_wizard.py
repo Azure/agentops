@@ -155,6 +155,78 @@ def test_discover_defaults_env_var_fallback_for_project_endpoint(
     assert defaults.project_endpoint and "from-shell" in defaults.project_endpoint
 
 
+def test_discover_defaults_tracks_endpoint_source_azd_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Endpoint read from .azure/<env>/.env reports source=azd-env-file."""
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    env_path = _seed_azd_env(
+        tmp_path,
+        "dev",
+        {
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": (
+                '"https://from-azd.services.ai.azure.com/api/projects/p"'
+            ),
+        },
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint_source == "azd-env-file"
+    assert defaults.project_endpoint_source_path == env_path
+
+
+def test_discover_defaults_tracks_endpoint_source_agentops_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Endpoint read from .agentops/.env reports source=agentops-env-file."""
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    (tmp_path / ".agentops").mkdir()
+    (tmp_path / ".agentops" / ".env").write_text(
+        'AZURE_AI_FOUNDRY_PROJECT_ENDPOINT="https://legacy.services.ai.azure.com/api/projects/p"\n',
+        encoding="utf-8",
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint_source == "agentops-env-file"
+    assert defaults.project_endpoint_source_path is not None
+
+
+def test_discover_defaults_tracks_endpoint_source_process_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Endpoint inherited from the shell reports source=process-env."""
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://from-shell.services.ai.azure.com/api/projects/p",
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint_source == "process-env"
+    assert defaults.project_endpoint_source_path is None
+
+
+def test_discover_defaults_tracks_endpoint_source_yaml_legacy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Endpoint from the legacy yaml field reports source=yaml-legacy."""
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: my-bot:1\n"
+        "project_endpoint: https://from-yaml.services.ai.azure.com/api/projects/p\n",
+        encoding="utf-8",
+    )
+    defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint_source == "yaml-legacy"
+
+
+def test_discover_defaults_endpoint_source_none_when_unset(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint is None
+    assert defaults.project_endpoint_source == "none"
+
+
 # ---------------------------------------------------------------------------
 # Apply / persistence
 # ---------------------------------------------------------------------------
@@ -550,6 +622,212 @@ def test_run_wizard_re_prompts_on_invalid_input(
     assert answers.project_endpoint == "https://acct.services.ai.azure.com/api/projects/p"
     assert answers.agent == "my-bot:2"
     assert len(errors) == 2
+
+
+# ---------------------------------------------------------------------------
+# Cross-environment endpoint protection (--azd-env <name>)
+# ---------------------------------------------------------------------------
+
+
+def test_run_wizard_suppresses_cross_env_endpoint_from_process_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A shell-exported endpoint must NOT pre-fill when targeting --azd-env dev.
+
+    Reproduces the leak vector where ``$AZURE_AI_FOUNDRY_PROJECT_ENDPOINT``
+    points at the user's sandbox project but they are running
+    ``agentops init --azd-env dev`` against a freshly-created dev env.
+    """
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://sandbox.services.ai.azure.com/api/projects/p",
+    )
+    _seed_azd_env(tmp_path, "dev", {})  # dev env exists but is empty
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: keep:1\ndataset: keep.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
+
+    seen_defaults: list = []
+    messages: list[str] = []
+
+    def prompt(_question: str, default):  # noqa: ANN001
+        seen_defaults.append(default)
+        return "https://dev.services.ai.azure.com/api/projects/p"
+
+    answers = run_wizard(
+        tmp_path,
+        prompt=prompt,
+        echo=messages.append,
+        target_env_name="dev",
+    )
+
+    assert answers.project_endpoint == (
+        "https://dev.services.ai.azure.com/api/projects/p"
+    )
+    # The endpoint prompt was called with no default (None) — not pre-filled.
+    assert seen_defaults and seen_defaults[0] is None
+    output = "\n".join(messages)
+    assert "sandbox.services.ai.azure.com" in output
+    assert "shell environment" in output
+
+
+def test_run_wizard_suppresses_cross_env_endpoint_from_yaml_legacy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A legacy yaml ``project_endpoint`` must NOT pre-fill an explicit env."""
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: keep:1\n"
+        "dataset: keep.jsonl\n"
+        "project_endpoint: https://from-yaml.services.ai.azure.com/api/projects/p\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
+    _seed_azd_env(tmp_path, "dev", {})
+
+    seen_defaults: list = []
+    messages: list[str] = []
+
+    def prompt(_question: str, default):  # noqa: ANN001
+        seen_defaults.append(default)
+        return "https://dev.services.ai.azure.com/api/projects/p"
+
+    run_wizard(
+        tmp_path,
+        prompt=prompt,
+        echo=messages.append,
+        target_env_name="dev",
+    )
+
+    assert seen_defaults and seen_defaults[0] is None
+    output = "\n".join(messages)
+    assert "from-yaml.services.ai.azure.com" in output
+    assert "agentops.yaml" in output
+
+
+def test_run_wizard_suppresses_cross_env_endpoint_from_other_azd_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Endpoint sitting in .azure/sandbox/.env must not pre-fill --azd-env dev."""
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    # sandbox holds an endpoint and is the *active* azd env...
+    _seed_azd_env(
+        tmp_path,
+        "sandbox",
+        {
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": (
+                '"https://sandbox.services.ai.azure.com/api/projects/p"'
+            ),
+        },
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: keep:1\ndataset: keep.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
+
+    seen_defaults: list = []
+    messages: list[str] = []
+
+    def prompt(_question: str, default):  # noqa: ANN001
+        seen_defaults.append(default)
+        return "https://dev.services.ai.azure.com/api/projects/p"
+
+    # ...but the user is explicitly running --azd-env dev.
+    run_wizard(
+        tmp_path,
+        prompt=prompt,
+        echo=messages.append,
+        target_env_name="dev",
+    )
+
+    assert seen_defaults and seen_defaults[0] is None
+    output = "\n".join(messages)
+    assert "sandbox.services.ai.azure.com" in output
+
+
+def test_run_wizard_keeps_endpoint_default_when_target_env_matches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """When .azure/dev/.env already holds the endpoint, reuse it silently."""
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(
+        tmp_path,
+        "dev",
+        {
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": (
+                '"https://dev.services.ai.azure.com/api/projects/p"'
+            ),
+        },
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: keep:1\ndataset: keep.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
+
+    messages: list[str] = []
+    prompt_calls: list[str] = []
+
+    def prompt(question: str, _default):  # noqa: ANN001
+        prompt_calls.append(question)
+        return ""
+
+    run_wizard(
+        tmp_path,
+        prompt=prompt,
+        echo=messages.append,
+        target_env_name="dev",
+    )
+
+    output = "\n".join(messages)
+    # Confirmed without re-prompting + no cross-env warning text leaked.
+    assert "Foundry project endpoint" in output
+    assert "shell environment" not in output
+    assert "may belong to a different environment" not in output
+    assert "Foundry project endpoint" not in prompt_calls
+
+
+def test_run_wizard_without_target_env_keeps_legacy_default_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Bare ``agentops init`` (no --azd-env) still pre-fills from the shell."""
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://from-shell.services.ai.azure.com/api/projects/p",
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: keep:1\ndataset: keep.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
+
+    prompt_calls: list[str] = []
+    messages: list[str] = []
+
+    def prompt(question: str, _default):  # noqa: ANN001
+        prompt_calls.append(question)
+        return ""
+
+    run_wizard(tmp_path, prompt=prompt, echo=messages.append)
+
+    output = "\n".join(messages)
+    assert "may belong to a different environment" not in output
+    # And the endpoint is silently reused (not re-prompted) on the bare path.
+    assert "Foundry project endpoint" not in prompt_calls
 
 
 # ---------------------------------------------------------------------------

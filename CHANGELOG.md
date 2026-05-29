@@ -20,6 +20,19 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd`) before dispatching the workflow.
 
 ### Fixed
+- **`agentops init --azd-env <name>` no longer pre-fills the endpoint from a different env.**
+  When the user explicitly targets a new azd env (e.g. `--azd-env dev` while the
+  active env is `sandbox`), the wizard now refuses to pre-fill
+  `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` from sources that don't match the
+  targeted env — process environment, legacy top-level `project_endpoint:` in
+  `agentops.yaml`, or a *different* `.azure/<env>/.env` file. Instead it
+  prompts with no default and prints a short note explaining where the
+  suspect default came from (e.g. "the active azd env `sandbox`'s
+  `.azure/sandbox/.env`"). This stops the silent sandbox→dev endpoint leak
+  that surfaced when users ran the multi-env tutorials; values picked up
+  from the targeted env's own `.azure/<env>/.env` are still honored. The
+  strict check only fires when `--azd-env` is passed explicitly — bare
+  `agentops init` keeps its existing best-effort default behavior.
 - **Cloud eval surfaces grader execution errors instead of silent nulls.**
   When a Foundry `azure_ai_evaluator` grader fails to execute (most
   commonly because the evaluator service principal lacks
