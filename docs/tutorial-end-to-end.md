@@ -402,6 +402,16 @@ agentops workflow generate `
 > warnings during hardening sprints. Use `--doctor-gate none` to make Doctor
 > advisory-only (the pre-`--doctor-gate` behavior).
 
+> **Promoting prompt agents across multiple Foundry projects?** Add a
+> `prompt_agent_bootstrap` block (model deployment plus optional
+> description, model_parameters, and tools) to `agentops.yaml`. When the
+> deploy workflow runs against a dev / qa / prod Foundry project that does
+> not yet contain the agent, it reads that block plus `prompt_file` and
+> creates the first version automatically. No per-environment manual
+> seeding. See the
+> [prompt-agent quickstart](tutorial-prompt-agent-quickstart.md) for the
+> full multi-environment journey.
+
 Before running that workflow, make the PR gate runnable in GitHub. Install the
 AgentOps workflow skill if needed:
 

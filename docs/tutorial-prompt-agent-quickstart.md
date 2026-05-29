@@ -52,8 +52,9 @@ permission prompts.
 | Check | Why it matters |
 |---|---|
 | Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry projects. | AgentOps, Foundry SDK calls, and CI setup all need the same Azure identity context. |
-| You can create **two** Foundry projects in the same Azure subscription (or have two existing projects you can use). | The tutorial uses a sandbox project for authoring and experimentation plus a shared dev project for the PR gate; the PR workflow stages candidates in dev. |
-| You can publish a prompt agent in each Foundry project. | The tutorial seeds the same `travel-agent:1` baseline in both projects so the deploy workflow has a known template to look up. |
+| You can create **two** Foundry projects in the same Azure subscription (or have two existing projects you can use). | The tutorial uses a sandbox project for authoring and experimentation plus a shared dev project for the PR gate. You only need to publish the agent in sandbox — CI auto-bootstraps it in dev (and later qa / prod). |
+| You can publish a prompt agent in the **sandbox** Foundry project. | The tutorial seeds `travel-agent:1` only in sandbox. Dev / qa / prod start empty; the prompt-agent deploy workflow creates the first version in those projects automatically using `prompt_agent_bootstrap` defaults plus `prompt_file`. |
+| The **same model deployment name** (for example `gpt-4o-mini`) exists in every Foundry project you plan to deploy to. | `prompt_agent_bootstrap.model` is a single value reused for every environment. If dev does not have that deployment, the first auto-bootstrap fails. |
 | You can create or attach Application Insights for at least the dev Foundry project. | Foundry Traces, the Operate dashboard, Doctor, and Cockpit need telemetry to tell the observability story. Sandbox observability is optional. |
 | You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate only runs after the repo is pushed. |
 | GitHub CLI is authenticated with `gh auth login` if you use the PR commands in this tutorial. | The regression step opens PRs and sends the reader directly to the workflow run. |
@@ -70,8 +71,10 @@ sandbox Foundry project              dev Foundry project
 (authoring + experimentation;        (shared environment, PR gate target,
  used by you or the team)             where merge deploys land)
     │                                          │
-    │  travel-agent:1 (seed)                   │  travel-agent:1 (seed, same instructions)
-    │  travel-agent:2,3,4,... (free saves)     │  travel-agent:2,3,... (created by CI per PR / deploy)
+    │  travel-agent:1 (you create this seed)   │  (empty — no agent here yet;
+    │  travel-agent:2,3,4,... (free saves)     │   CI auto-creates travel-agent:1
+    │                                          │   on the first deploy via
+    │                                          │   prompt_agent_bootstrap)
     │                                          │
     └──── git is the source of truth ─────────►│
           .agentops/prompts/travel-agent.md
@@ -84,7 +87,12 @@ Two ideas to internalize:
    `.agentops/prompts/travel-agent.md` is what CI reads and what reviewers
    diff. Each Foundry project's version numbers count its own saves and
    are environment-local.
-2. **Cross-environment identity is the SHA, not the number.** AgentOps
+2. **You only author the agent in sandbox.** Dev, qa, and prod start
+   empty. When the prompt-agent deploy workflow runs against an empty
+   environment, it reads `prompt_agent_bootstrap` from `agentops.yaml`
+   plus `prompt_file`, then creates `travel-agent:1` automatically in
+   that environment. You never seed dev / qa / prod by hand.
+3. **Cross-environment identity is the SHA, not the number.** AgentOps
    embeds `agentops.prompt_sha256` and `agentops.git_sha` into every
    Foundry version it creates, and writes the same identifiers into the
    per-environment deploy artifact `foundry-agent.json`. When you ask
@@ -98,10 +106,10 @@ have a real `foundry-agent.json` artifact to open.
 
 | Step | Main tool | What you do | AgentOps role |
 |---|---|---|---|
-| Create two Foundry projects | Foundry portal (or `microsoft-foundry` skill) | Create `travel-agent-sandbox` and `travel-agent-dev`; seed `travel-agent:1` in both. | No ownership; AgentOps consumes the published baselines. |
+| Create two Foundry projects | Foundry portal (or `microsoft-foundry` skill) | Create `travel-agent-sandbox` (where you author) and `travel-agent-dev` (left empty — CI seeds it). | No ownership; AgentOps consumes the published baseline from sandbox and bootstraps dev. |
 | Author in sandbox | Foundry playground | Iterate on the prompt safely in sandbox Foundry. | Optional spot-check via local `agentops eval run`. |
 | Promote the prompt to git | Editor | Copy validated instructions into `.agentops/prompts/travel-agent.md`. | The CI gate reads this file. |
-| First green PR + dev deploy | GitHub Actions + Foundry dev project | Push prompt, open PR, watch CI stage a candidate in dev, evaluate it, run Doctor; merge; deploy lands in dev. | Owns the gate, the threshold decision, the Doctor blocking step, the deploy artifact, and the release evidence. |
+| First green PR + dev deploy | GitHub Actions + Foundry dev project | Push prompt, open PR, watch CI auto-bootstrap `travel-agent:1` in dev from `prompt_agent_bootstrap` (the dev project is still empty at this point), evaluate it, run Doctor; merge; deploy lands in dev. | Owns the gate, the bootstrap-on-first-deploy, the threshold decision, the Doctor blocking step, the deploy artifact, and the release evidence. |
 | Force a regression | Editor + GitHub Actions | Edit the prompt to a worse version, push, observe BOTH eval threshold failure AND Doctor regression CRITICAL. | Catches the regression at PR time, not after merge. |
 | Fix and redeploy | Editor + GitHub Actions | Restore prompt, push, PR green, merge, deploy. | Records the recovery. |
 | Review readiness | AgentOps Doctor + Cockpit | Check CI, eval, telemetry, evidence, and links. | Turns scattered signals into release blockers, warnings, evidence files, and next actions. |
@@ -208,14 +216,19 @@ I want to set up two Azure AI Foundry projects in the same subscription
 for an AgentOps tutorial:
 
 1. travel-agent-sandbox - the authoring and experimentation space
-   (used by me, or shared with my team for iteration).
+   (used by me, or shared with my team for iteration). I will publish
+   the seed prompt agent (travel-agent:1) here manually in the next
+   step.
 2. travel-agent-dev - shared dev environment used by CI as the PR gate
-   target and the dev deploy target.
+   target and the dev deploy target. Leave this project EMPTY. CI will
+   auto-create the first agent version here on the first deploy using
+   AgentOps' prompt_agent_bootstrap defaults.
 
 For each project, please:
 - Create the project (any region with a chat-capable deployment is fine).
-- Make sure a chat-capable model deployment (gpt-4o-mini works) is
-  available in the project.
+- Make sure the SAME chat-capable model deployment name is available in
+  both projects (gpt-4o-mini works). Same name is important: AgentOps
+  uses a single bootstrap model value for every environment.
 - Attach or create an Application Insights resource for telemetry,
   starting with the dev project.
 
@@ -224,19 +237,19 @@ Show me the planned changes and the resulting endpoints before applying.
 
 If the skill is not available, use Path A.
 
-## 4. Seed `travel-agent:1` in both Foundry projects
+## 4. Seed `travel-agent:1` in the sandbox project
 
-The deploy workflow looks up the agent reference from `agentops.yaml`
-inside each environment's Foundry project as a **template**. It copies
-that template's model deployment, kind, name, and other settings, then
-replaces the instructions with whatever is in `prompt_file`. That means
-`travel-agent:1` must already exist in **both** projects when CI runs,
-with identical settings.
+You only author the agent in **one place**: your sandbox Foundry
+project. Dev (and later qa / prod) start empty. The first time the
+prompt-agent deploy workflow runs against an empty environment, it reads
+`prompt_agent_bootstrap` from `agentops.yaml` plus `prompt_file` and
+creates the first version automatically. You do **not** repeat this
+manual step for every environment.
 
-In **each** project (sandbox first, then dev), do the same thing:
+In the **sandbox** project only:
 
 1. Open the [Azure AI Foundry portal](https://ai.azure.com) and select
-   the project.
+   the `travel-agent-sandbox` project.
 2. Go to the agents area and create a new prompt-based agent.
 3. Use these values:
 
@@ -262,19 +275,28 @@ In **each** project (sandbox first, then dev), do the same thing:
    prices, or availability.
    ```
 
-5. Save and publish the agent. Foundry assigns version `1` (`travel-agent:1`).
-6. Confirm both projects now show `travel-agent:1` with the same
-   instructions and the same model deployment.
+5. Save and publish the agent. Foundry assigns version `1`
+   (`travel-agent:1`) in the sandbox project. The dev project still has
+   no agent at this point — that is expected.
+
+> **Why not seed dev too?** Forcing the operator to recreate the same
+> prompt agent in every environment is exactly the manual drift problem
+> AgentOps is here to eliminate. Step 9 adds a `prompt_agent_bootstrap`
+> block to `agentops.yaml`; the first PR / deploy run against dev reads
+> those defaults plus `prompt_file` and creates `travel-agent:1` in dev
+> with the metadata trail (`agentops.prompt_sha256`, `agentops.git_sha`).
+> Subsequent runs follow the normal reuse / next-version flow.
 
 > **Prompt-as-code captures only the instructions.** Later in the
-> tutorial you will commit `.agentops/prompts/travel-agent.md` to git and
-> let CI use it as the prompt source. That file does not capture the
-> model deployment, parameters (temperature, top-p), tools, or other
-> agent settings — those stay on the Foundry agent definition. If you
-> ever need to change one of those, change it on the seed agent in
-> **every** environment manually, or treat that change as a new release
-> with its own review process. AgentOps will not detect drift in
-> non-prompt fields.
+> tutorial you will commit `.agentops/prompts/travel-agent.md` to git
+> and let CI use it as the prompt source. That file does not capture
+> the model deployment, parameters (temperature, top-p), tools, or
+> other agent settings — those come from `prompt_agent_bootstrap` on
+> the first deploy and stay on the Foundry agent definition afterwards.
+> Use the same model deployment name in every Foundry project so the
+> single `prompt_agent_bootstrap.model` value works everywhere without
+> per-environment tweaks. AgentOps will not detect drift in non-prompt
+> fields between environments.
 
 ## 5. Try the agent in the sandbox playground
 
@@ -438,22 +460,37 @@ prices, or availability.
 '@ | Set-Content -Encoding utf8 .agentops\prompts\travel-agent.md
 ```
 
-Then tell `agentops.yaml` where to find the file:
+Then tell `agentops.yaml` where to find the file and add
+`prompt_agent_bootstrap` so CI can auto-create the agent in dev (and
+later qa / prod) on the first deploy:
 
 ```yaml
 version: 1
 agent: travel-agent:1
 dataset: .agentops/data/travel-smoke.jsonl
 prompt_file: .agentops/prompts/travel-agent.md
+prompt_agent_bootstrap:
+  model: gpt-4o-mini
+  description: "Helps plan short trips and explains tradeoffs."
 ```
 
-The `agent: travel-agent:1` value is now a **seed pointer**. CI uses it to
-look up the existing agent in the current environment's Foundry project,
-copies its definition (model deployment, name, kind), and replaces the
-instructions with the contents of `prompt_file`. If the prompt is
-byte-identical to the looked-up seed's instructions, CI re-uses the same
-Foundry version. If it differs, Foundry auto-creates the next version
-number in that project.
+The `agent: travel-agent:1` value is now a **seed pointer**. CI uses it
+to look up the existing agent in the current environment's Foundry
+project:
+
+- If the agent exists (the sandbox case, and every environment after
+  the first successful deploy), CI copies the looked-up definition
+  (model deployment, name, kind), replaces the instructions with the
+  contents of `prompt_file`, and either re-uses the same Foundry version
+  (when the prompt is byte-identical) or lets Foundry auto-create the
+  next number in that project (when it differs).
+- If the agent does **not** exist (the empty dev / qa / prod case on
+  the first deploy), CI reads `prompt_agent_bootstrap` for the model
+  deployment (and optional `description`, `model_parameters`, `tools`)
+  and creates the first `travel-agent:1` from those defaults plus
+  `prompt_file`. The deploy artifact for that run records
+  `action: "bootstrapped"`. Subsequent deploys follow the
+  reuse-or-create flow above and ignore the bootstrap block.
 
 > **Versioning, in one paragraph.** You are not pinning Foundry's
 > version number — you are pinning the prompt. The number that gets
@@ -465,6 +502,16 @@ number in that project.
 > `foundry-agent.json`. You only update `agent:` in `agentops.yaml`
 > when you want to repoint at a different stable seed version in
 > Foundry — not on every prompt change.
+
+> **Keep `project_endpoint` out of `agentops.yaml` for multi-env work.**
+> When `project_endpoint` is set in `agentops.yaml`, it wins over the
+> `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` environment variable that azd
+> environments rely on. That makes every command target the same
+> Foundry project regardless of which env is active, which defeats the
+> sandbox / dev / qa / prod split. The wizard does the right thing by
+> default (it writes the endpoint to `.azure/<env>/.env`, not to
+> `agentops.yaml`). If you ever copied the endpoint into `agentops.yaml`
+> manually, delete it now.
 
 ## 10. Check the selected eval runner
 
@@ -505,10 +552,20 @@ This creates two workflow files:
 The PR workflow now has two jobs:
 
 1. **`stage-candidate`** — stages an ephemeral Foundry prompt-agent
-   candidate in the **dev** Foundry project (not sandbox) by copying
-   `travel-agent:1`'s definition and replacing instructions with
-   `prompt_file`. Writes `.agentops/deployments/agentops.candidate.yaml`
-   pointing at the staged candidate.
+   candidate in the **dev** Foundry project (not sandbox).
+   - On the **very first PR**, dev is still empty. The stage step reads
+     `prompt_agent_bootstrap` from `agentops.yaml` plus `prompt_file`
+     and creates `travel-agent:1` in dev. The candidate it evaluates is
+     that newly-bootstrapped version. The stage step reports
+     `action: bootstrapped`.
+   - On every subsequent PR, dev has a seed. The stage step looks up
+     `travel-agent:1`'s definition, replaces the instructions with
+     `prompt_file`, and either re-uses the same version (when the
+     prompt is byte-identical to the seed) or lets Foundry auto-create
+     the next number. The stage step reports `reused` or `created`.
+   In all cases, the workflow writes
+   `.agentops/deployments/agentops.candidate.yaml` pointing at the
+   staged candidate.
 2. **`eval`** — runs `agentops eval run` against the candidate, then
    runs Doctor with `--severity-fail critical`.
 
@@ -617,20 +674,32 @@ gh run view $runId --web
 gh run watch $runId --exit-status
 ```
 
-What you should see in the PR workflow run:
+What you should see in the **first** PR workflow run (dev is still
+empty at this point):
 
 1. **Stage Foundry prompt candidate (PR)** job runs first. The
-   `prompt_deploy stage` step looks up `travel-agent:1` in the dev
-   project and compares the instructions in `prompt_file` against that
-   seed.
-   - If they are byte-identical: the stage step reports `reused` and
-     uses `travel-agent:1` as the candidate (no new version created).
-   - If they differ: Foundry auto-creates the next number (likely
-     `travel-agent:2`) and the stage step reports `created`.
+   `prompt_deploy stage` step tries to look up `travel-agent:1` in the
+   dev project and gets a 404. Because `agentops.yaml` includes a
+   `prompt_agent_bootstrap` block, the step:
+   - reads the `model` (`gpt-4o-mini`) and optional `description` from
+     `prompt_agent_bootstrap`,
+   - reads the instructions from `prompt_file`,
+   - creates `travel-agent:1` in the dev project from those defaults,
+   - reports `action: bootstrapped` and uses the freshly-bootstrapped
+     `travel-agent:1` as the candidate.
 2. **AgentOps eval (PR gate)** job runs second. It evaluates the
-   candidate (re-used or created) using cloud eval. Thresholds pass.
+   bootstrapped candidate using cloud eval. Thresholds pass.
    Doctor runs with `--severity-fail critical`; advisory findings are
    listed but do not fail the job.
+
+On every PR after this one, dev already has `travel-agent:1` as a seed,
+so the stage step takes the normal lookup path:
+
+- If `prompt_file` is byte-identical to the seed's instructions: the
+  stage step reports `reused` and uses `travel-agent:1` as the
+  candidate (no new version created).
+- If `prompt_file` differs: Foundry auto-creates the next number
+  (likely `travel-agent:2`) and the stage step reports `created`.
 
 Now open a feature branch, modify a non-functional file (or just rerun
 the workflow), open a PR, and merge it once green:
@@ -651,14 +720,15 @@ same version as the PR run), evaluates it, runs `prompt_deploy record`
 to mark it as the dev deployment, and uploads the deployment artifact.
 
 Open the deploy run and download the `foundry-agent-dev-deployment`
-artifact. Inside, open `foundry-agent.json`:
+artifact. Inside, open `foundry-agent.json`. On the very first deploy
+into an empty dev project (the bootstrap case), the file looks like:
 
 ```json
 {
   "environment": "dev",
   "agent_source": "travel-agent:1",
-  "agent_candidate": "travel-agent:2",
-  "action": "created",
+  "agent_candidate": "travel-agent:1",
+  "action": "bootstrapped",
   "agentops": {
     "prompt_sha256": "9c3a...e0b1",
     "git_sha": "5f1a2c...",
@@ -666,6 +736,12 @@ artifact. Inside, open `foundry-agent.json`:
   }
 }
 ```
+
+On every subsequent deploy, `action` switches to either `reused` (when
+the prompt is byte-identical to the previous seed) or `created` (when
+Foundry auto-created a new version because the prompt changed), and
+`agent_candidate` reflects the actual version that was evaluated and
+recorded.
 
 That `prompt_sha256` + `git_sha` pair is what the mental-model diagram
 at the start of the tutorial referred to as **cross-environment

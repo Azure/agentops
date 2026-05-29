@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from agentops.core.agentops_config import (
     AgentOpsConfig,
     DatasetSyncConfig,
+    PromptAgentBootstrap,
     Threshold,
     classify_agent,
 )
@@ -251,6 +252,69 @@ class TestAgentOpsConfig:
                     "agent": "my-rag:3",
                     "dataset": "./qa.jsonl",
                     "dataset_sync": {"mode": "inline", "name": " "},
+                }
+            )
+
+    def test_prompt_agent_bootstrap_defaults_to_none(self) -> None:
+        cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")
+        assert cfg.prompt_agent_bootstrap is None
+
+    def test_prompt_agent_bootstrap_accepts_model_only(self) -> None:
+        cfg = AgentOpsConfig.model_validate(
+            {
+                "version": 1,
+                "agent": "travel-agent:1",
+                "dataset": "./qa.jsonl",
+                "prompt_agent_bootstrap": {"model": "gpt-4o-mini"},
+            }
+        )
+        assert isinstance(cfg.prompt_agent_bootstrap, PromptAgentBootstrap)
+        assert cfg.prompt_agent_bootstrap.model == "gpt-4o-mini"
+        assert cfg.prompt_agent_bootstrap.description is None
+        assert cfg.prompt_agent_bootstrap.model_parameters is None
+        assert cfg.prompt_agent_bootstrap.tools is None
+
+    def test_prompt_agent_bootstrap_accepts_full_payload(self) -> None:
+        cfg = AgentOpsConfig.model_validate(
+            {
+                "version": 1,
+                "agent": "travel-agent:1",
+                "dataset": "./qa.jsonl",
+                "prompt_agent_bootstrap": {
+                    "model": "gpt-4o-mini",
+                    "description": "Plans short trips and explains tradeoffs.",
+                    "model_parameters": {"temperature": 0.2, "top_p": 0.9},
+                    "tools": [{"type": "function", "name": "lookup"}],
+                },
+            }
+        )
+        bootstrap = cfg.prompt_agent_bootstrap
+        assert bootstrap is not None
+        assert bootstrap.model_parameters == {"temperature": 0.2, "top_p": 0.9}
+        assert bootstrap.tools == [{"type": "function", "name": "lookup"}]
+
+    def test_prompt_agent_bootstrap_rejects_empty_model(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "travel-agent:1",
+                    "dataset": "./qa.jsonl",
+                    "prompt_agent_bootstrap": {"model": "   "},
+                }
+            )
+
+    def test_prompt_agent_bootstrap_rejects_unknown_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "travel-agent:1",
+                    "dataset": "./qa.jsonl",
+                    "prompt_agent_bootstrap": {
+                        "model": "gpt-4o-mini",
+                        "totally_unknown": True,
+                    },
                 }
             )
 
