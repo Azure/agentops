@@ -62,7 +62,7 @@ by discovering the whole Azure subscription.
    - `azd env get-values` when `azure.yaml` exists and azd is available.
    - `.github/workflows/agentops-*.yml`.
 2. Read the generated workflows to determine exactly which GitHub environments
-   and variables are needed. For the prompt-agent quickstart, `pr` normally
+   and variables are needed. For the prompt-agent tutorial, `pr` normally
    means only `environment: dev`.
 3. Treat `dev` here as a GitHub Actions environment for OIDC and variables. It
    normally points at the Foundry project already configured by `agentops init`;
@@ -302,7 +302,7 @@ so the PR-comment step can post.
 ### GitHub Actions (OIDC)
 
 At the GitHub Environment level when the workflow declares an environment
-(preferred for the quickstart), or at repository level when intentionally shared
+(preferred for the tutorials), or at repository level when intentionally shared
 across environments, set:
 
 - `AZURE_CLIENT_ID` - App registration / managed identity used for OIDC.

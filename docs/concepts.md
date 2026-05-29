@@ -180,11 +180,11 @@ AgentOps auto-selects common evaluation patterns from the dataset:
 
 Use one of the three hands-on tutorials for scenario coverage:
 
-- [Prompt Agent quickstart](tutorial-prompt-agent-quickstart.md) for Foundry
+- [Foundry Prompt Agent tutorial](tutorial-prompt-agent-quickstart.md) for Foundry
   prompt agents referenced as `name:version`.
-- [Hosted Agent quickstart](tutorial-hosted-agent-quickstart.md) for Foundry
+- [Hosted or HTTP Agent tutorial](tutorial-hosted-agent-quickstart.md) for Foundry
   hosted endpoints, generic HTTP agents, RAG services, and code-based workflows.
-- [End-to-end workshop](tutorial-end-to-end.md) for the complete Foundry +
+- [End-to-end tutorial](tutorial-end-to-end.md) for the complete Foundry +
   AgentOps loop, including CI/CD, observability, red-team follow-through,
   Doctor, release evidence, and trace regression.
 

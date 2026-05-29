@@ -1,6 +1,6 @@
-# Quickstart: Foundry Hosted Agent or HTTP Agent (sandbox → dev with PR gate)
+# Tutorial: Foundry Hosted Agent or HTTP Agent (sandbox → dev with PR gate)
 
-Use this quickstart when the agent is reachable as an endpoint URL. The
+Use this tutorial when the agent is reachable as an endpoint URL. The
 example creates a small **Travel Agent** HTTP endpoint locally (your
 **sandbox**), then shows how to swap in a deployed Foundry Hosted Agent
 or cloud-hosted URL (your **dev** environment) for CI.
@@ -14,7 +14,7 @@ arrangement:
   normalized `results.json`, runs Doctor with `--severity-fail critical`
   so regressions block the PR, and produces release evidence.
 
-The toolkit benefit is the same as the prompt-agent quickstart, adapted
+The toolkit benefit is the same as the prompt-agent tutorial, adapted
 for endpoint-based agents: you author and iterate against a local
 sandbox, then let CI verify the deployed dev environment is still
 healthy on every PR. Production-readiness gates (eval thresholds plus
@@ -54,7 +54,7 @@ unexpected permission prompts.
 | You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure. |
 | Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills. | The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps. |
 
-Unlike the Prompt Agent quickstart, this endpoint tutorial does not point the
+Unlike the Prompt Agent tutorial, this endpoint tutorial does not point the
 generated PR workflow at `ai-agent-evals`. Hosted and HTTP agents are evaluated
 through the AgentOps local runner because CI must invoke your endpoint, extract
 the response, apply repo thresholds, and write the normalized `results.json`.
@@ -132,7 +132,7 @@ green dev → ready for promotion to qa / prod
 > evaluate the PR's *unmerged* code unless your CI does a per-PR
 > ephemeral deploy. If you need PR-time regression catching for hosted
 > agents, the workflow skill can guide you through adding a per-PR
-> ephemeral deploy step (out of scope for this quickstart). The
+> ephemeral deploy step (out of scope for this tutorial). The
 > sandbox loop (local FastAPI + `agentops eval run`) is the
 > equivalent author-side gate.
 
@@ -674,7 +674,7 @@ explicitly) so it uses dev. The Foundry project endpoint plus the agent URL
 environment) together let CI evaluate the deployed dev endpoint and land
 results in the dev observability target.
 
-Use the same workflow-skill handoff pattern as the Prompt Agent quickstart, but
+Use the same workflow-skill handoff pattern as the Prompt Agent tutorial, but
 keep the scope to the hosted endpoint:
 
 ```powershell
@@ -699,7 +699,7 @@ permission.
 
 Open both Doctor outputs. The report explains the findings; the evidence pack
 summarizes what a reviewer needs to decide whether the endpoint is releasable.
-In a fresh quickstart, warnings about production telemetry, CI history, or trace
+In a fresh tutorial workspace, warnings about production telemetry, CI history, or trace
 regression history are expected and useful: they show what remains before this
 local endpoint becomes an operated service.
 
@@ -761,7 +761,7 @@ You are done when:
   `.azure/qa/.env` and `.azure/prod/.env`, set GitHub Environments with
   the right `AGENTOPS_AGENT_ENDPOINT`, and use `agentops workflow
   generate --kinds qa,prod --force`.
-- **Walk through the prompt-agent quickstart** at
+- **Walk through the prompt-agent tutorial** at
   [tutorial-prompt-agent-quickstart.md](tutorial-prompt-agent-quickstart.md)
   to see the full prompt-as-code regression journey (stage-then-eval
   at PR time, no per-PR deploys required) and contrast the two

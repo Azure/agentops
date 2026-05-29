@@ -221,9 +221,9 @@ Coverage highlights:
 docs/
 ├── concepts.md                                # Core concepts and evaluation scenarios
 ├── how-it-works.md                            # Architecture and request flow
-├── tutorial-prompt-agent-quickstart.md        # Quickstart for Foundry Prompt Agents
-├── tutorial-hosted-agent-quickstart.md        # Quickstart for Foundry hosted / HTTP agents
-├── tutorial-end-to-end.md                     # Full Foundry + AgentOps release-readiness workshop
+├── tutorial-prompt-agent-quickstart.md        # Tutorial for Foundry Prompt Agents
+├── tutorial-hosted-agent-quickstart.md        # Tutorial for Foundry hosted / HTTP agents
+├── tutorial-end-to-end.md                     # End-to-end release-readiness tutorial (Foundry + AgentOps)
 ├── doctor-explained.md                        # Doctor checks, history, and operations model
 ├── ci-github-actions.md                       # CI/CD setup
 ├── release-process.md                         # Release and versioning
