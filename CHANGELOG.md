@@ -5,6 +5,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **Cloud eval surfaces grader execution errors instead of silent nulls.**
+  When a Foundry `azure_ai_evaluator` grader fails to execute (most
+  commonly because the evaluator service principal lacks
+  `Cognitive Services OpenAI User` on the target model deployment), the
+  per-metric `score` comes back `null` and the real cause is buried in
+  `result.sample.error.message`. The cloud-results parser now lifts that
+  message into `RowMetric.error` (including the error `code` prefix
+  when present), so the actionable error appears in `results.json` and
+  `report.md` instead of operators only seeing `actual=missing` in the
+  threshold table. The orchestrator's "0 usable metric scores" warning
+  also quotes the first grader error so CI logs carry the signal
+  without operators having to download the raw artifact.
+
 ### Added
 - **`cloud_output_items.json` is now uploaded as a CI artifact.** Generated PR and deploy workflows (GitHub Actions and Azure DevOps) include `.agentops/results/latest/cloud_output_items.json` in the `agentops-*-results` artifact bundle alongside `results.json`, `report.md`, and `cloud_evaluation.json`. Pairs with the "0 usable scores" warning so operators can diagnose unrecognized Foundry grader shapes without re-running locally.
 - **`cloud_output_items.json` raw dump.** Every cloud eval run now
