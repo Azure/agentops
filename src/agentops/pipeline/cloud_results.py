@@ -61,21 +61,86 @@ def _row_from_item(index: int, item: Dict[str, Any]) -> RowResult:
     )
 
 
+_NUMERIC_SCORE_KEYS = (
+    "score",
+    "value",
+    "result",
+    "metric_value",
+    "rating",
+    "grader_score",
+    "numeric_value",
+)
+_PASS_LABELS = {"pass", "passed", "true", "yes", "1", "ok", "success"}
+_FAIL_LABELS = {"fail", "failed", "false", "no", "0", "error", "errored"}
+
+
+def _score_from_label(value: Any) -> Optional[float]:
+    """Map a textual pass/fail label onto 1.0 / 0.0."""
+    if not isinstance(value, str):
+        return None
+    token = value.strip().lower()
+    if not token:
+        return None
+    if token in _PASS_LABELS:
+        return 1.0
+    if token in _FAIL_LABELS:
+        return 0.0
+    return None
+
+
+def _score_from_mapping(entry: Dict[str, Any]) -> Optional[float]:
+    """Probe a dict-like result envelope for a score using a wide net of
+    field names. Mirrors the loose-shape contract documented at the top
+    of this module: Foundry / OpenAI Evals API have shipped at least
+    ``score``, ``value``, ``result``, ``grader_score`` and ``rating`` as
+    the numeric carrier across SDK versions and grader types, plus
+    ``passed`` (bool) and ``label`` (string) as binary fallbacks."""
+    score = _coerce_float(*(entry.get(k) for k in _NUMERIC_SCORE_KEYS))
+    if score is not None:
+        return score
+    passed = entry.get("passed")
+    if isinstance(passed, bool):
+        return 1.0 if passed else 0.0
+    label_score = _score_from_label(entry.get("label"))
+    if label_score is not None:
+        return label_score
+    return None
+
+
 def _metric_from_result(entry: Any) -> Optional[RowMetric]:
     if not isinstance(entry, dict):
         return None
     name = entry.get("name") or entry.get("metric")
     if not isinstance(name, str) or not name:
         return None
-    score = _coerce_float(
-        entry.get("score"),
-        entry.get("value"),
-        entry.get("result"),
-    )
-    if score is None and isinstance(entry.get("passed"), bool):
-        score = 1.0 if entry["passed"] else 0.0
+
+    # First try the top-level envelope where azure_ai_evaluator graders
+    # populate `score` + `passed` directly.
+    score = _score_from_mapping(entry)
+
+    # Some Foundry server-side graders (especially custom prompt-based
+    # evaluators) tuck the score down inside `sample` or `details`
+    # instead. Probe those as a fallback so a missing top-level score
+    # doesn't mask an evaluator that actually returned a number.
+    if score is None:
+        sample = entry.get("sample")
+        if isinstance(sample, dict):
+            score = _score_from_mapping(sample)
+    if score is None:
+        details = entry.get("details")
+        if isinstance(details, dict):
+            score = _score_from_mapping(details)
+
     reason = entry.get("reason") if isinstance(entry.get("reason"), str) else None
     err = entry.get("error") if isinstance(entry.get("error"), str) else None
+    if score is None and err is None:
+        # Surface the missing-score case as a structured reason instead of
+        # silently writing null. The orchestrator/reporter use this string
+        # to point operators at `cloud_output_items.json` for triage.
+        err = (
+            "no numeric score returned by Foundry grader; inspect "
+            "cloud_output_items.json in the results directory."
+        )
     return RowMetric(name=name, value=score, error=err, reason=reason)
 
 
