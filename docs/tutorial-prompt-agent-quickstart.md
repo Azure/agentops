@@ -718,9 +718,12 @@ This may be a brand-new folder with no Git repo or GitHub remote yet.
 Keep the scope to the PR gate and dev deploy only: create or connect the
 GitHub repo if needed, wire Azure OIDC and required Actions
 variables/secrets, create only the `dev` environment, verify the OIDC
-principal has Foundry User access on the **dev** Foundry project, and
-do not set up `qa`, `production`, scheduled Doctor, or hosted
-deployment workflows yet.
+principal has **both** Foundry User access on the **dev** Foundry project
+**and** Cognitive Services OpenAI User on the underlying Azure AI Services
+account that hosts the evaluator model (both roles are required — without
+the OpenAI User role, the Foundry cloud graders fail with a 401 and every
+metric comes back null), and do not set up `qa`, `production`, scheduled
+Doctor, or hosted deployment workflows yet.
 
 The dev Foundry project endpoint is in `.azure/dev/.env`; the sandbox
 endpoint is local-only and must not be added to CI.
@@ -738,9 +741,19 @@ it skips:
 - Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_CLIENT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (the dev
   endpoint), and `APPLICATIONINSIGHTS_CONNECTION_STRING` if available.
-- Verify the OIDC principal has **Foundry User** access on the dev
-  Foundry project. Reader alone is not enough for the data-plane calls
-  the prompt-agent staging and eval steps make.
+- Verify the OIDC principal has **two** Azure RBAC roles before the first
+  run. Both are required and the eval step fails silently (every metric
+  returns `null`) if only one is in place:
+  - **Foundry User** on the dev Foundry project — Reader alone is not
+    enough for the data-plane calls the prompt-agent staging and eval steps
+    make.
+  - **Cognitive Services OpenAI User** on the underlying Azure AI Services
+    account that hosts the evaluator model deployment. Foundry
+    `azure_ai_evaluator` graders impersonate the OIDC principal to call
+    OpenAI; without this role they fail with a 401 `PermissionDenied`. The
+    AgentOps cloud-results parser lifts that error into `results.json` so
+    you can see the cause in the artifact, but the workflow still fails
+    the gate.
 
 ## 13. First green PR → merge → dev deploy
 
