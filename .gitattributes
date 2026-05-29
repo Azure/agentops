@@ -1,0 +1,13 @@
+# GitHub Actions and other YAML workflow files must use LF.
+# Mixed CRLF/LF in .github/workflows/*.yml inflates diffs on cross-platform
+# contributors and serves no purpose — GitHub Actions parses both but renders
+# inconsistently in `git diff`.
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Shell scripts must use LF to remain executable under sh/bash.
+*.sh text eol=lf
+
+# Markdown and Python normalize to LF for cross-platform consistency.
+*.md text eol=lf
+*.py text eol=lf

@@ -5,6 +5,33 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Removed
+- **Retired tombstone publish jobs from CI.** The `agentops-toolkit` →
+  `agentops-accelerator` deprecation tombstones were one-shot publishes
+  for v0.3.0 / v0.3.1; the `build-pypi-tombstone`,
+  `publish-tombstone-testpypi`, `verify-tombstone-testpypi`,
+  `publish-tombstone-pypi`, and `publish-tombstone-vsix(-prerelease)`
+  jobs (plus their `cut-release.yml` plugin-version sync steps) have
+  been removed from `release.yml`, `staging.yml`, and `cut-release.yml`.
+  The `github-release` job now depends only on `publish-pypi` and
+  `publish-vsix` (both required), and the dead `always()` guard has
+  been dropped. Future releases ship only `agentops-accelerator` on
+  PyPI and the `AgentOpsAccelerator.agentops-accelerator` VSIX.
+  The orphaned `scripts/verify_tombstones.py` harness and
+  `docs/verifying-tombstones.md` checklist (both one-shot tools
+  whose CI counterpart no longer exists) have been removed, along
+  with the now-unused `tombstones/pypi/` package source and the
+  `tombstones/vscode/` extension source — only
+  `tombstones/vscode/CDN_DEPRECATION_REQUEST.md` survives as the
+  template for the still-pending Microsoft CDN deprecation request.
+
+### Added
+- **`.gitattributes`** pinning `*.yml` / `*.yaml` / `*.sh` / `*.md` /
+  `*.py` to LF line endings, preventing future CRLF↔LF churn from
+  Windows clones with `core.autocrlf=true`. Normalizes the existing
+  `_build.yml` and `ci.yml` (previously CRLF) to LF so all files in
+  `.github/workflows/` share a single line-ending convention.
+
 ### Fixed
 - **Cloud-eval parser no longer returns null scores for Foundry
   `azure_ai_evaluator` graders.** The parser now probes a wider set of
