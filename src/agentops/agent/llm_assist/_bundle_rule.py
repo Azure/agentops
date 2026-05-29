@@ -11,7 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Optional
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from agentops.agent.findings import Category, Finding
 from agentops.agent.llm_assist._base import (
@@ -106,8 +107,8 @@ def check_bundle_coverage(
 
     # Sanity check: skip when the YAML is unparseable.
     try:
-        yaml.safe_load(bundle_text)
-    except yaml.YAMLError:
+        YAML(typ="safe").load(bundle_text)
+    except YAMLError:
         return []
 
     ih = hash_text("bundle_coverage", bundle_text, agent_excerpt)

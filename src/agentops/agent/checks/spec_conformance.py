@@ -22,7 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from agentops.agent.config import SpecConformanceCheckConfig
 from agentops.agent.findings import Category, Finding, Severity
@@ -297,8 +298,8 @@ def _check_agent_drift(workspace: Path, doc: SpecDocument) -> List[Finding]:
     if not run_yaml.exists():
         return []
     try:
-        raw = yaml.safe_load(run_yaml.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError):
+        raw = YAML(typ="safe").load(run_yaml.read_text(encoding="utf-8"))
+    except (OSError, YAMLError):
         return []
     if not isinstance(raw, dict):
         return []
@@ -342,8 +343,8 @@ def _collect_evaluator_names(workspace: Path) -> set[str]:
         return out
     for p in bundles_dir.glob("*.y*ml"):
         try:
-            raw = yaml.safe_load(p.read_text(encoding="utf-8"))
-        except (OSError, yaml.YAMLError):
+            raw = YAML(typ="safe").load(p.read_text(encoding="utf-8"))
+        except (OSError, YAMLError):
             continue
         if not isinstance(raw, dict):
             continue
