@@ -761,7 +761,7 @@ This is the happy path. Before the regression step, you need a clean
 green baseline so the rolling-history Doctor checks (regression, drift)
 have something to compare against.
 
-> **If you used the workflow skill in step 12B, the next two code
+> **If you used the workflow skill in step 12, the next two code
 > blocks have already been done — skip straight to "Now open a feature
 > branch..." below.** The `agentops-workflow` skill commits your local
 > changes, pushes `main` to the GitHub remote, and triggers a first
