@@ -2286,11 +2286,11 @@ def _resolve_agent_identity(workspace: Path) -> Tuple[Optional[str], str]:
     ``agentops.yaml``) takes precedence over the legacy layered schema
     (``target.endpoint.agent_id`` in ``run.yaml``).
     """
-    import yaml  # noqa: PLC0415
+    from ruamel.yaml import YAML  # noqa: PLC0415
 
     def _read_yaml(path: Path) -> Optional[dict]:
         try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            data = YAML(typ="safe").load(path.read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001
             return None
         return data if isinstance(data, dict) else None

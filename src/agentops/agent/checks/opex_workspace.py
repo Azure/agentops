@@ -24,7 +24,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from agentops.agent.findings import Category, Finding, Severity
 
@@ -552,8 +553,8 @@ def _safe_load_yaml(path: Path) -> Optional[dict]:
         return None
     try:
         with path.open("r", encoding="utf-8") as handle:
-            data = yaml.safe_load(handle)
-    except (OSError, yaml.YAMLError):
+            data = YAML(typ="safe").load(handle)
+    except (OSError, YAMLError):
         return None
     return data if isinstance(data, dict) else None
 
