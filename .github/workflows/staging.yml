@@ -220,6 +220,15 @@ jobs:
           echo "✅ agentops init succeeded"
 
   # Install the tombstone from TestPyPI and verify it redirects to agentops-accelerator.
+  #
+  # Staging-only divergence from release.yml: the main package (agentops-accelerator)
+  # is built with setuptools-scm and published to TestPyPI as 0.2.3.devN, while the
+  # tombstone (agentops-toolkit) hardcodes `agentops-accelerator>=0.3.0` in its
+  # pyproject.toml. In release.yml the two packages publish in lockstep at the
+  # same 0.3.x tag, so pip resolves the dep cleanly. In staging the dep can never
+  # resolve via a standard `pip install`, so we install the tombstone with
+  # `--no-deps` (to validate its wheel metadata) and then install the latest
+  # pre-release of agentops-accelerator separately (to satisfy `import agentops`).
   verify-tombstone-testpypi:
     needs: [build-pypi-tombstone, publish-tombstone-testpypi]
     runs-on: ubuntu-latest
@@ -229,14 +238,45 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install agentops-toolkit==${{ needs.build-pypi-tombstone.outputs.tombstone_version }} from TestPyPI
+      - name: Install agentops-toolkit==${{ needs.build-pypi-tombstone.outputs.tombstone_version }} from TestPyPI (no deps)
         env:
           TOMBSTONE_VERSION: ${{ needs.build-pypi-tombstone.outputs.tombstone_version }}
         run: |
+          # --no-deps: in staging the tombstone's `agentops-accelerator>=0.3.0`
+          # requirement cannot be satisfied (staging publishes 0.2.3.devN). We
+          # install the wheel for its metadata only; the dep is provided by the
+          # next step. Retries cover TestPyPI replication lag for the wheel that
+          # `publish-tombstone-testpypi` just uploaded.
           for i in 1 2 3 4 5; do
-            echo "Attempt $i: installing agentops-toolkit==${TOMBSTONE_VERSION} from TestPyPI"
+            echo "Attempt $i: installing agentops-toolkit==${TOMBSTONE_VERSION} from TestPyPI (no deps)"
             if pip install \
               "agentops-toolkit==${TOMBSTONE_VERSION}" \
+              --no-deps \
+              --index-url https://test.pypi.org/simple/; then
+              exit 0
+            fi
+            if [ "$i" -lt 5 ]; then
+              echo "Not available yet, waiting 30s..."
+              sleep 30
+            fi
+          done
+          echo "::error::agentops-toolkit==${TOMBSTONE_VERSION} was not available from TestPyPI after 5 attempts."
+          exit 1
+
+      - name: Install agentops-accelerator pre-release from TestPyPI
+        run: |
+          # Satisfies the tombstone's runtime dep so `import agentops` resolves
+          # to the real package. `--pre` is required because in staging TestPyPI
+          # only carries dev versions (0.2.3.devN); without it pip would refuse
+          # to install them. The extra-index-url lets transitive deps fall back
+          # to real PyPI. We don't pin a version here because the accelerator
+          # version is not exposed as a job output; the latest dev release is
+          # sufficient for an import smoke check.
+          for i in 1 2 3 4 5; do
+            echo "Attempt $i: installing agentops-accelerator (pre) from TestPyPI"
+            if pip install \
+              --pre \
+              "agentops-accelerator" \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/; then
               exit 0
@@ -246,7 +286,7 @@ jobs:
               sleep 30
             fi
           done
-          echo "::error::agentops-toolkit==${TOMBSTONE_VERSION} was not available from TestPyPI after 5 attempts."
+          echo "::error::agentops-accelerator was not available from TestPyPI after 5 attempts."
           exit 1
 
       - name: Verify tombstone redirects to agentops-accelerator
