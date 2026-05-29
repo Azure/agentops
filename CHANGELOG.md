@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-29
+
 ### Changed
 - **Tutorials now flag the workflow skill's setup actions as redundant in the manual follow-up steps.**
   When users run the `agentops-workflow` skill in the CI-wiring step of either
