@@ -62,7 +62,7 @@ by discovering the whole Azure subscription.
    - `azd env get-values` when `azure.yaml` exists and azd is available.
    - `.github/workflows/agentops-*.yml`.
 2. Read the generated workflows to determine exactly which GitHub environments
-   and variables are needed. For the prompt-agent quickstart, `pr` normally
+   and variables are needed. For the prompt-agent tutorial, `pr` normally
    means only `environment: dev`.
 3. Treat `dev` here as a GitHub Actions environment for OIDC and variables. It
    normally points at the Foundry project already configured by `agentops init`;
@@ -302,7 +302,7 @@ so the PR-comment step can post.
 ### GitHub Actions (OIDC)
 
 At the GitHub Environment level when the workflow declares an environment
-(preferred for the quickstart), or at repository level when intentionally shared
+(preferred for the tutorials), or at repository level when intentionally shared
 across environments, set:
 
 - `AZURE_CLIENT_ID` - App registration / managed identity used for OIDC.
@@ -437,16 +437,26 @@ Prompt-agent workflows:
 
 1. read `prompt_file` from `agentops.yaml` or
    `AGENTOPS_AGENT_PROMPT_FILE`;
-2. create or reuse a candidate Foundry prompt-agent version from that file;
-3. generate `.agentops/deployments/agentops.candidate.yaml`;
-4. run `agentops eval run` against the candidate version;
-5. record `.agentops/deployments/foundry-agent.json` as a deployment
+2. look up the seed agent in the active environment's Foundry project;
+   if it does not exist (typical first deploy into dev / qa / prod),
+   read the optional `prompt_agent_bootstrap` block from
+   `agentops.yaml` (required `model`, optional `description`,
+   `model_parameters`, `tools`) plus `prompt_file` and create the
+   first version automatically (recorded as `action: "bootstrapped"`);
+3. otherwise create or reuse a candidate Foundry prompt-agent version
+   from `prompt_file`;
+4. generate `.agentops/deployments/agentops.candidate.yaml`;
+5. run `agentops eval run` against the candidate version;
+6. record `.agentops/deployments/foundry-agent.json` as a deployment
    artifact only when the gate passes.
 
 This avoids the bad pattern of evaluating one agent version and deploying a
 different prompt. The invariant is: **evaluated version == deployed version**.
 Foundry manages agent versions; AgentOps owns the repo-side gate and
-deployment record.
+deployment record. For multi-environment prompt-agent workflows
+(sandbox → dev → qa → prod), strongly recommend adding the
+`prompt_agent_bootstrap` block so operators do not have to manually
+recreate the seed agent in every Foundry project.
 
 If this is not a Foundry prompt agent and azd is not ready, generate
 `--kinds pr` only or use `--deploy-mode placeholder`. Do not ship

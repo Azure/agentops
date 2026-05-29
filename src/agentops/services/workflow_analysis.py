@@ -163,6 +163,22 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
                     str(agentops["prompt_file"]),
                 )
             )
+        if prompt_agent and not agentops.get("prompt_agent_bootstrap"):
+            signals.append(
+                WorkflowSignal(
+                    "prompt_agent_bootstrap_missing",
+                    "Prompt-agent bootstrap defaults",
+                    (
+                        "agentops.yaml targets a Foundry prompt agent but does not declare "
+                        "`prompt_agent_bootstrap`. Without it, CI in an empty target Foundry "
+                        "project (dev/qa/prod) fails with a 404 instead of auto-creating the "
+                        "first version. Add `prompt_agent_bootstrap: { model: <deployment> }` "
+                        "to enable auto-bootstrap."
+                    ),
+                    "agentops.yaml",
+                    confidence="medium",
+                )
+            )
 
     bicep_files = _find_files(root, "*.bicep")
     if bicep_files:
@@ -723,6 +739,7 @@ def _signal_type(key: str) -> str:
         "agentops_cloud_evaluation": "Eval runner",
         "azd_project": "Deploy mode",
         "prompt_file": "Prompt source",
+        "prompt_agent_bootstrap_missing": "Prompt-agent bootstrap",
         "bicep_infra": "Infrastructure",
         "ailz_manifest": "Landing zone",
         "ailz_preflight": "Preflight",
@@ -752,9 +769,11 @@ def _agentops_signal(root: Path) -> Dict[str, Any]:
             )
         }
     prompt_file = data.get("prompt_file") if isinstance(data, dict) else None
+    bootstrap = data.get("prompt_agent_bootstrap") if isinstance(data, dict) else None
     return {
         "prompt_agent": target.kind == "foundry_prompt",
         "prompt_file": prompt_file,
+        "prompt_agent_bootstrap": bool(bootstrap),
         "signal": WorkflowSignal(
             "agentops_config",
             "AgentOps config",

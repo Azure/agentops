@@ -1,9 +1,0 @@
-.vscode/**
-src/**
-node_modules/**
-**/*.map
-**/*.ts
-tsconfig.json
-.gitignore
-package-lock.json
-CDN_DEPRECATION_REQUEST.md

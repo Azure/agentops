@@ -210,9 +210,9 @@ Cockpit sections, in display order:
 
 ## Documentation
 
-- [Prompt Agent quickstart](docs/tutorial-prompt-agent-quickstart.md) - use this when the Foundry target is `agent: name:version`.
-- [Hosted Agent quickstart](docs/tutorial-hosted-agent-quickstart.md) - use this when the target is a Foundry hosted or HTTP endpoint URL.
-- [End-to-end workshop](docs/tutorial-end-to-end.md) - complete Foundry + AgentOps journey: create, debug, evaluate, release, observe, red-team follow-through, and trace regression.
+- [Foundry Prompt Agent tutorial](docs/tutorial-prompt-agent-quickstart.md) - use this when the Foundry target is `agent: name:version`. Walks the sandbox → dev journey with a PR gate.
+- [Hosted or HTTP Agent tutorial](docs/tutorial-hosted-agent-quickstart.md) - use this when the target is a Foundry hosted or HTTP endpoint URL. Same sandbox → dev journey for endpoint-based agents.
+- [End-to-end tutorial](docs/tutorial-end-to-end.md) - extends either of the above with the full sandbox → dev → qa → prod promotion, Foundry red-team scans, and trace-to-regression promotion.
 - [Core concepts](docs/concepts.md)
 - [How it works](docs/how-it-works.md)
 - [Doctor explained](docs/doctor-explained.md)

@@ -5,7 +5,43 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-05-29
+
 ### Changed
+- **Tutorials now flag the workflow skill's setup actions as redundant in the manual follow-up steps.**
+  When users run the `agentops-workflow` skill in the CI-wiring step of either
+  the prompt-agent tutorial (step 12) or the end-to-end tutorial (step 5, the
+  same skill invocation that precedes the baseline-run step), the skill already
+  commits the workspace, pushes `main` to GitHub, and triggers a first
+  verification run of `agentops-pr.yml` (and `agentops-deploy-dev.yml` for the
+  prompt-agent flow). The next step previously asked users to repeat all
+  three actions, which was a no-op at best and confusing at worst (the
+  `git add` would find nothing to commit, the `git push` would report
+  up-to-date, the dispatched PR run would be the second one, not the first).
+  Step 13 of `docs/tutorial-prompt-agent-quickstart.md` and the baseline-run
+  paragraph in `docs/tutorial-end-to-end.md` now open with an explicit
+  "if you used the workflow skill above, this is already done" callout and
+  reframe the manual commands as a fallback for users who skipped the skill
+  or wired CI by hand. The deliberate baseline-PR step that follows (open a
+  feature branch, open a PR, merge once green) is unchanged — it must still
+  go through a real pull request, which the skill does not do for you, so
+  that the rolling Doctor history is seeded.
+- **Tutorial wording: "quickstart" → "tutorial", "workshop" → "tutorial".**
+  The three documentation entries that were labeled "Prompt Agent quickstart",
+  "Hosted Agent quickstart", and "End-to-end workshop" now read as "Foundry
+  Prompt Agent tutorial", "Hosted or HTTP Agent tutorial", and "End-to-end
+  tutorial" across `README.md`, `plugins/agentops/README.md`, `AGENTS.md`,
+  `docs/concepts.md`, `docs/doctor-explained.md`, the `agentops-workflow`
+  skill (both synced copies), and the H1s + cross-references inside each
+  tutorial doc. The README description for the end-to-end tutorial now also
+  states explicitly that it **extends** either of the type-specific tutorials
+  (sandbox → dev → qa → prod plus Foundry red-team scans plus
+  trace-to-regression promotion) so the difference between the three is
+  obvious at a glance. The "quickstart" framing no longer fits doc bodies
+  that grew past 1000 lines covering multi-environment promotion, regression
+  injection, Doctor evidence, and Cockpit. The tutorial **filenames are
+  intentionally preserved** (`tutorial-*-quickstart.md`) to keep inbound
+  links and bookmarks stable.
 - **Skill + tutorial guidance now require `Cognitive Services OpenAI User` as a prerequisite RBAC role.**
   The `agentops-workflow` skill, `tutorial-prompt-agent-quickstart.md`,
   `tutorial-end-to-end.md`, and `docs/ci-github-actions.md` now instruct users
@@ -20,6 +56,19 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `5e0bd9bd-7b93-4f28-af87-19fc36ad61bd`) before dispatching the workflow.
 
 ### Fixed
+- **`agentops init --azd-env <name>` no longer pre-fills the endpoint from a different env.**
+  When the user explicitly targets a new azd env (e.g. `--azd-env dev` while the
+  active env is `sandbox`), the wizard now refuses to pre-fill
+  `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` from sources that don't match the
+  targeted env — process environment, legacy top-level `project_endpoint:` in
+  `agentops.yaml`, or a *different* `.azure/<env>/.env` file. Instead it
+  prompts with no default and prints a short note explaining where the
+  suspect default came from (e.g. "the active azd env `sandbox`'s
+  `.azure/sandbox/.env`"). This stops the silent sandbox→dev endpoint leak
+  that surfaced when users ran the multi-env tutorials; values picked up
+  from the targeted env's own `.azure/<env>/.env` are still honored. The
+  strict check only fires when `--azd-env` is passed explicitly — bare
+  `agentops init` keeps its existing best-effort default behavior.
 - **Cloud eval surfaces grader execution errors instead of silent nulls.**
   When a Foundry `azure_ai_evaluator` grader fails to execute (most
   commonly because the evaluator service principal lacks
@@ -468,4 +517,3 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   - `agentops report --in <results.json> [--out <report.md>]`
 - Unit tests for models, YAML/config loading, and workspace initialization behavior.
 - Initial documentation including generic quickstart and test running guide.
-

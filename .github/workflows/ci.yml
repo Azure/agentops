@@ -9,6 +9,19 @@
 #
 # NOTE: VSIX publishing is handled exclusively by staging.yml (pre-release)
 # and release.yml (stable). CI only validates that the VSIX packages correctly.
+#
+# Trusted Publishing (OIDC):
+#   The publish-dev job uses PyPI Trusted Publishing — no API tokens required.
+#   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
+#   and TestPyPI.
+#
+# Setup (Trusted Publishing):
+#   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
+#      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=ci.yml, environment=staging
+#      (This is a SEPARATE entry from the workflow=staging.yml / workflow=release.yml
+#       publishers — TestPyPI matches workflow filename exactly.)
+#   2. GitHub repo → Settings → Environments → "staging" → confirm "Deployment branches
+#      and tags" allows `develop` (publish-dev is the only consumer triggered from develop).
 
 name: CI
 
@@ -109,6 +122,8 @@ jobs:
     needs: [lint, test]
     runs-on: ubuntu-latest
     environment: staging
+    permissions:
+      id-token: write  # Required for PyPI Trusted Publishing (OIDC)
     steps:
       - uses: actions/checkout@v6
         with:
@@ -138,7 +153,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
           verbose: true
           skip-existing: true
 
