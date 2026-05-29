@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
 
-const NEW_EXTENSION_ID = 'AgentOpsAccelerator.agentops-skills';
+const NEW_EXTENSION_ID = 'AgentOpsAccelerator.agentops-accelerator';
 const STORAGE_KEY = 'agentops-toolkit.deprecation-prompt-shown';
 
 const DEPRECATION_MESSAGE =
     'The "AgentOps Toolkit" extension has been renamed to "AgentOps Accelerator". ' +
-    'Please install the new extension (AgentOpsAccelerator.agentops-skills) and uninstall this one ' +
+    `Please install the new extension (${NEW_EXTENSION_ID}) and uninstall this one ` +
     'to continue receiving updates.';
 
 const INSTALL_ACTION = 'Install new extension';
