@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-28
+
 ### Added
 - **Auto-bootstrap empty Foundry projects on first deploy.** New optional
   `prompt_agent_bootstrap` block in `agentops.yaml` lets the prompt-agent
