@@ -45,20 +45,24 @@ def _agentops_install_spec(version: str | None = None) -> str:
     """
 
     if version is None:
-        from agentops import __version__ as version  # local import to avoid cycles
+        from agentops import __version__
+
+        resolved = __version__
+    else:
+        resolved = version
     try:
         from packaging.version import InvalidVersion, Version
     except ImportError:  # pragma: no cover - packaging ships with pip/setuptools
         return AGENTOPS_DEV_INSTALL_SPEC
 
     try:
-        parsed = Version(version)
+        parsed = Version(resolved)
     except InvalidVersion:
         return AGENTOPS_DEV_INSTALL_SPEC
 
     if parsed.local is not None or parsed.is_devrelease:
         return AGENTOPS_DEV_INSTALL_SPEC
-    return f"=={version}"
+    return f"=={resolved}"
 # CI/CD platforms supported by ``agentops workflow generate``.
 PLATFORMS: Tuple[str, ...] = ("github", "azure-devops")
 
