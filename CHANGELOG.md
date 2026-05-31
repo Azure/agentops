@@ -6,6 +6,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Fixed
+- **Prompt-agent deploy: `stage` no longer fails with `Required properties ["kind"] are not present` against `azure-ai-projects` 2.x.**
+  `_copy_definition` previously called `.copy()` on the typed
+  `PromptAgentDefinition` returned by `get_version`. In SDK 1.x that
+  preserved the typed model so the body serialized as a flat
+  `{"kind": "prompt", "model": ..., "instructions": ...}`. In SDK 2.x
+  the same `.copy()` returns a stripped base `Model` whose JSON shape
+  is `{"_data": {"kind": "prompt", ...}}`, and `.get("kind")` returns
+  `None` — so the request body that reached the Foundry Agents service
+  contained `definition: {"_data": {...}}` with no top-level `kind`,
+  and the service rejected it with `invalid_payload`. This regression
+  only fired on the `created` action path (i.e. when the user's prompt
+  differed from the seed); the `reused` and bootstrap paths were
+  unaffected because they don't round-trip the typed model through
+  `.copy()`. `_copy_definition` now normalizes any SDK definition
+  object to a plain `dict` before mutation, and `_create_agent_version`
+  no longer puts a root-level `kind` on the request body (the new API
+  treats `kind` strictly as the discriminator inside `definition`).
 - **Tutorial: prompt-agent step 13 now shows the steady-state `foundry-agent.json` (action: reused) instead of the bootstrap edge case.**
   The example JSON in step 13 previously showed `action: bootstrapped`
   with `candidate_agent: "travel-agent:1"` and a "the two numbers are
