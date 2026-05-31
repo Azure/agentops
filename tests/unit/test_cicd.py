@@ -1007,3 +1007,99 @@ def test_azure_devops_prompt_agent_pr_template_propagates_doctor_gate(tmp_path: 
         assert f"--severity-fail {gate}" in content
         assert "__DOCTOR_GATE__" not in content
 
+
+# ---------------------------------------------------------------------------
+# Version-pinning of the AgentOps install spec
+# ---------------------------------------------------------------------------
+
+def test_agentops_install_spec_pins_clean_release() -> None:
+    from agentops.services.cicd import _agentops_install_spec
+
+    assert _agentops_install_spec("0.3.2") == "==0.3.2"
+    assert _agentops_install_spec("1.0.0") == "==1.0.0"
+
+
+def test_agentops_install_spec_pins_post_and_rc_releases() -> None:
+    from agentops.services.cicd import _agentops_install_spec
+
+    # PEP 440 post and rc releases are public-installable and should pin.
+    assert _agentops_install_spec("0.3.2.post1") == "==0.3.2.post1"
+    assert _agentops_install_spec("0.4.0rc1") == "==0.4.0rc1"
+
+
+def test_agentops_install_spec_falls_back_for_dev_or_local_installs() -> None:
+    from agentops.services.cicd import (
+        AGENTOPS_DEV_INSTALL_SPEC,
+        _agentops_install_spec,
+    )
+
+    # setuptools-scm dev versions and editable installs must fall back to
+    # git+main so contributors can still install from their checkout.
+    assert _agentops_install_spec("0.3.3.dev1") == AGENTOPS_DEV_INSTALL_SPEC
+    assert _agentops_install_spec("0.3.2+gabcdef") == AGENTOPS_DEV_INSTALL_SPEC
+    assert _agentops_install_spec("0.0.0-dev") == AGENTOPS_DEV_INSTALL_SPEC
+
+
+def test_workflow_install_lines_pin_to_release_version(tmp_path: Path) -> None:
+    """Generated workflows must pin agentops to a release version, not @main."""
+
+    from agentops.services import cicd
+
+    # Force a clean release version so the substitution is deterministic.
+    original = cicd._agentops_install_spec
+    cicd._agentops_install_spec = lambda version=None: "==9.9.9"
+    try:
+        generate_cicd_workflows(tmp_path, kinds=list(DEFAULT_KINDS), force=True)
+        generate_cicd_workflows(
+            tmp_path,
+            platform="azure-devops",
+            kinds=list(DEFAULT_KINDS),
+            force=True,
+        )
+    finally:
+        cicd._agentops_install_spec = original
+
+    expected_files = (
+        tmp_path / _PR_PATH,
+        tmp_path / _DEV_PATH,
+        tmp_path / _QA_PATH,
+        tmp_path / _PROD_PATH,
+        tmp_path / ".azuredevops/pipelines/agentops-pr.yml",
+        tmp_path / ".azuredevops/pipelines/agentops-deploy-dev.yml",
+        tmp_path / ".azuredevops/pipelines/agentops-deploy-qa.yml",
+        tmp_path / ".azuredevops/pipelines/agentops-deploy-prod.yml",
+    )
+    for path in expected_files:
+        content = path.read_text(encoding="utf-8")
+        assert "__AGENTOPS_INSTALL_SPEC__" not in content, (
+            f"{path} still has the placeholder"
+        )
+        assert "git+https://github.com/Azure/agentops.git@main" not in content, (
+            f"{path} still installs from @main"
+        )
+        assert "agentops-accelerator" in content
+        assert "==9.9.9" in content, (
+            f"{path} does not pin to the substituted release version"
+        )
+
+
+def test_workflow_install_lines_fall_back_to_main_for_dev_installs(tmp_path: Path) -> None:
+    """Editable / setuptools-scm installs keep the git+main fallback."""
+
+    from agentops.services import cicd
+
+    original = cicd._agentops_install_spec
+    cicd._agentops_install_spec = (
+        lambda version=None: cicd.AGENTOPS_DEV_INSTALL_SPEC
+    )
+    try:
+        generate_cicd_workflows(tmp_path, kinds=["pr", "dev"], force=True)
+    finally:
+        cicd._agentops_install_spec = original
+
+    for path in (tmp_path / _PR_PATH, tmp_path / _DEV_PATH):
+        content = path.read_text(encoding="utf-8")
+        assert "__AGENTOPS_INSTALL_SPEC__" not in content
+        assert " @ git+https://github.com/Azure/agentops.git@main" in content
+
+

@@ -109,7 +109,7 @@ __AILZ_PREFLIGHT_COMMAND__
           enable-cache: false
 
       - name: Install AgentOps Toolkit
-        run: uv pip install --system "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"
+        run: uv pip install --system "agentops-accelerator[foundry]__AGENTOPS_INSTALL_SPEC__"
 __EVAL_STEPS__
       - name: Upload AgentOps results
         if: always()

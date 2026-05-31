@@ -5,9 +5,73 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
-## [0.3.2] - 2026-05-31
+## [0.3.3] - 2026-05-31
+
+### Changed
+- **Runtime dependencies now have upper bounds so a future SDK major release
+  cannot silently break installs.** `pyproject.toml` previously declared every
+  Azure-SDK dependency with only a lower bound (e.g. `azure-ai-projects>=2.0.1`),
+  so `pip install agentops-accelerator` could resolve `azure-ai-projects 3.x`
+  the day after that ships and break the agent-definition serialization (the
+  exact failure mode that produced the `invalid_payload — Required properties
+  ["kind"] are not present` regression below). Each Azure SDK dependency
+  (`azure-ai-projects`, `azure-ai-evaluation`, `azure-identity`, `azure-monitor-*`,
+  `azure-mgmt-*`) is now constrained to its current major. `pandas`, `fastapi`,
+  `uvicorn`, `httpx`, and `markdown` are similarly capped to their next major.
+  `cryptography` is intentionally left unbounded so security patches can flow
+  through without a coordinated AgentOps release. Lift any of these bounds via
+  an explicit PR that exercises the new SDK against `tests/`.
+
+- **`agentops workflow generate` now stamps the installed agentops version
+  into generated CI/CD templates instead of always installing from
+  `git+...@main`.** Every generated `agentops-pr.yml`, `agentops-deploy-*.yml`,
+  `agentops-watchdog.yml` (and their Azure DevOps pipeline equivalents) used to
+  contain `pip install "agentops-accelerator[...] @ git+https://github.com/Azure/agentops.git@main"`,
+  with no version pin and a stale "NOTE: pinned to GitHub main until the next
+  package release" comment. User CI runs were therefore non-reproducible: the
+  same workflow file pulled different agentops snapshots day to day, which is
+  how PO's recorded tutorial took a hard SDK regression mid-record. The
+  generator now writes a literal `==X.Y.Z` pin derived from the agentops version
+  currently installed on the machine running `agentops workflow generate` — so
+  a user who generates workflows against AgentOps `0.3.3` always installs
+  `agentops-accelerator==0.3.3` on every CI run, and `agentops-accelerator`
+  brings exact-major Azure SDKs along (per the upper bounds above). Editable
+  installs (versions carrying a local segment like `+gabcdef` or marked
+  `.devN`) keep the `@main` fallback so contributors testing template changes
+  still get a resolvable install. Existing user workflows are unaffected until
+  the user re-runs `agentops workflow generate --force` against a release of
+  AgentOps that ships this change.
 
 ### Fixed
+- **Doctor regression check no longer flags the previous PR run as "current"
+  in CI.** The results-history loader (`agent/sources/results_history.py`)
+  was reading the wrong fields from `results.json` and excluding
+  `.agentops/results/latest/` from the candidate list. Three coordinated
+  schema-alignment fixes restore correctness:
+  1. `_summarize` now reads top-level `aggregate_metrics` first (the field
+     the orchestrator actually writes, per `core/results.py`), then falls
+     back to legacy `metrics`/`run_metrics`. Previously the loader looked
+     only at the legacy fields, so every freshly-written local
+     `RunSummary` had `metrics = {}` and the regression check could never
+     see the current run's metrics.
+  2. `_summarize` now reads `summary.overall_passed` first when deriving
+     the `run_pass` flag, then falls back to the legacy `summary.run_pass`
+     / `metrics.run_pass` shapes.
+  3. `_summarize` now orders runs by `timestamp` → `finished_at` →
+     `started_at` → `created_at` → `summary.timestamp`. The previous list
+     omitted `finished_at`/`started_at`, which are the two fields
+     `results.json` actually contains, so every loaded run defaulted to
+     epoch-zero ordering.
+  4. `_collect_local_runs` now includes `.agentops/results/latest/` when it
+     is the only local results directory. In CI, generated workflows run
+     `agentops eval run --output .agentops/results/latest` and write
+     nowhere else; the old loader unconditionally skipped `latest/` for
+     dev-mode dedup, so in CI `local_runs` was always empty. With cloud
+     listing trailing behind by seconds (eventual consistency), the
+     regression check would then compute `latest = previous_run` and
+     blame the just-completed candidate's coherence/groundedness on the
+     prior PR. Dev-mode dedup is preserved: when a timestamped sibling
+     exists, `latest/` is still skipped.
 - **Prompt-agent deploy: `stage` no longer fails with `Required properties ["kind"] are not present` against `azure-ai-projects` 2.x.**
   `_copy_definition` previously called `.copy()` on the typed
   `PromptAgentDefinition` returned by `get_version`. In SDK 1.x that

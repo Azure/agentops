@@ -14,7 +14,7 @@ from html import escape as html_escape
 from pathlib import Path
 from textwrap import wrap
 from collections.abc import Sequence
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 
@@ -1554,7 +1554,8 @@ def cmd_init(
         }
 
         def _on_answer(field_name: str, value: str) -> None:
-            partial = WizardAnswers(**{field_name: value})
+            partial_kwargs: dict[str, Any] = {field_name: value}
+            partial = WizardAnswers(**partial_kwargs)
             try:
                 partial_result = apply_answers(
                     workspace,

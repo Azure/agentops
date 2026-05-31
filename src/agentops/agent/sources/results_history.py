@@ -74,7 +74,12 @@ def _summarize(path: Path) -> Optional[RunSummary]:
     if not isinstance(data, dict):
         return None
 
-    metrics_raw = data.get("metrics") or data.get("run_metrics") or {}
+    metrics_raw = (
+        data.get("aggregate_metrics")
+        or data.get("metrics")
+        or data.get("run_metrics")
+        or {}
+    )
     metrics: Dict[str, float] = {}
     if isinstance(metrics_raw, dict):
         for key, value in metrics_raw.items():
@@ -85,9 +90,11 @@ def _summarize(path: Path) -> Optional[RunSummary]:
 
     summary = data.get("summary") or {}
     run_pass: Optional[bool] = None
-    if isinstance(summary, dict) and "run_pass" in summary:
+    if isinstance(summary, dict) and "overall_passed" in summary:
+        run_pass = bool(summary["overall_passed"])
+    elif isinstance(summary, dict) and "run_pass" in summary:
         run_pass = bool(summary["run_pass"])
-    elif "run_pass" in metrics_raw:
+    elif isinstance(metrics_raw, dict) and "run_pass" in metrics_raw:
         try:
             run_pass = bool(float(metrics_raw["run_pass"]))
         except (TypeError, ValueError):
@@ -105,6 +112,8 @@ def _summarize(path: Path) -> Optional[RunSummary]:
 
     timestamp_raw = (
         data.get("timestamp")
+        or data.get("finished_at")
+        or data.get("started_at")
         or data.get("created_at")
         or (summary.get("timestamp") if isinstance(summary, dict) else None)
     )
@@ -184,14 +193,23 @@ def _collect_local_runs(
         return []
 
     candidates: List[Path] = []
+    latest_target: Optional[Path] = None
     for child in base.iterdir():
         if not child.is_dir():
             continue
-        if child.name == "latest":
-            continue
         target = child / "results.json"
-        if target.is_file():
-            candidates.append(target)
+        if not target.is_file():
+            continue
+        if child.name == "latest":
+            latest_target = target
+            continue
+        candidates.append(target)
+    # CI workflows write directly to `.agentops/results/latest/` with no
+    # timestamped sibling. Include the `latest/` entry only when it is the
+    # sole local result so dev-mode runs (which already have a timestamped
+    # sibling) are not double-counted.
+    if not candidates and latest_target is not None:
+        candidates.append(latest_target)
 
     summaries: List[RunSummary] = []
     for path in candidates:
