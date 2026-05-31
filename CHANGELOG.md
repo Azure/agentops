@@ -5,6 +5,109 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-05-31
+
+### Fixed
+- **Prompt-agent deploy: `stage` no longer fails with `Required properties ["kind"] are not present` against `azure-ai-projects` 2.x.**
+  `_copy_definition` previously called `.copy()` on the typed
+  `PromptAgentDefinition` returned by `get_version`. In SDK 1.x that
+  preserved the typed model so the body serialized as a flat
+  `{"kind": "prompt", "model": ..., "instructions": ...}`. In SDK 2.x
+  the same `.copy()` returns a stripped base `Model` whose JSON shape
+  is `{"_data": {"kind": "prompt", ...}}`, and `.get("kind")` returns
+  `None` — so the request body that reached the Foundry Agents service
+  contained `definition: {"_data": {...}}` with no top-level `kind`,
+  and the service rejected it with `invalid_payload`. This regression
+  only fired on the `created` action path (i.e. when the user's prompt
+  differed from the seed); the `reused` and bootstrap paths were
+  unaffected because they don't round-trip the typed model through
+  `.copy()`. `_copy_definition` now normalizes any SDK definition
+  object to a plain `dict` before mutation, and `_create_agent_version`
+  no longer puts a root-level `kind` on the request body (the new API
+  treats `kind` strictly as the discriminator inside `definition`).
+- **Tutorial: prompt-agent step 13 now shows the steady-state `foundry-agent.json` (action: reused) instead of the bootstrap edge case.**
+  The example JSON in step 13 previously showed `action: bootstrapped`
+  with `candidate_agent: "travel-agent:1"` and a "the two numbers are
+  expected to differ until the environment has caught up to the seed"
+  explanation. In practice the merge-triggered deploy is almost never
+  the run that bootstraps — by the time the user reaches step 13, the
+  skill's verification dispatch in step 12 plus the first PR run have
+  already settled dev to `travel-agent:2`, so the merge deploy reports
+  `action: reused` with `candidate_agent: "travel-agent:2"` (matching
+  `source_agent`). The example now shows the steady-state shape (taken
+  from a real recording), uses the runner-resolved absolute paths the
+  user actually sees (`/home/runner/work/<your-repo>/...`), and uses a
+  real 64-char `prompt_sha256` + a real ISO timestamp. The
+  three-outcome list (`reused` / `created` / `bootstrapped`) below the
+  JSON keeps the bootstrap case as the documented edge condition.
+- **Tutorial: prompt-agent step 13 now matches what the workflow skill actually does (dispatches both workflows).**
+  PR #211 mistakenly narrowed the step 13 callout to say the workflow
+  skill only dispatches `agentops-pr.yml` as a verification run, based
+  on incorrect reasoning about `push:` triggers (the skill actually
+  uses `workflow_dispatch`, which works against any branch regardless
+  of the workflow's `push:` block). In practice — verified against a
+  live recording — the skill dispatches **both** `agentops-pr.yml`
+  and `agentops-deploy-dev.yml` end-to-end as part of CI verification,
+  asking the user to approve first per SKILL.md rule #14. The step 13
+  callout now reflects this and explains the expected outcome (both
+  runs may exit `threshold_failed` on first contact with an empty dev
+  project because the bootstrap path produces a fresh `travel-agent:1`
+  that has not been measured against the seed thresholds yet — by
+  design, not a CI wiring failure). The "What you should see in the
+  first PR workflow run" section also updates from the
+  "dev is still empty" assumption (which becomes false after the
+  skill's verification dispatch) to the three possible outcomes
+  (`reused` / `created` / `bootstrapped`) you can actually see at this
+  point. The "After the merge" paragraph now calls out that the
+  merge-triggered deploy is the **second** deploy-dev run for the
+  repo, not the first.
+- **Tutorials: end-to-end audit caught misleading dist URLs, phantom CLI commands, missing JSON fields, and stale Doctor advisory text.**
+  All three tutorials previously installed the development build from a
+  personal fork URL (`git+https://github.com/placerda/agentops.git@develop`);
+  they now point at the canonical
+  `git+https://github.com/Azure/agentops.git@develop`. The prompt-agent
+  tutorial referenced a non-existent `prompt_deploy record` subcommand in
+  two places — the actual command is `prompt_deploy summarize`, matching
+  `src/agentops/pipeline/prompt_deploy.py` and the deploy template's
+  `Mark candidate as deployed` step. The same tutorial's `foundry-agent.json`
+  sample was missing the `eval_config` field that the code writes at
+  `src/agentops/pipeline/prompt_deploy.py:186`. The step 12 skill prompt
+  and the step 13 prose did not tell the reader to rewrite the dev-deploy
+  trigger from `develop` to `main` for this trunk-on-`main` tutorial; the
+  generator's stock default is `develop`, which would silently no-op after
+  the first merge. Step 12 now instructs the skill to do the rewrite (and
+  the bullet list of skill actions calls it out as a required step, with
+  a manual-edit fallback). Step 13's "deploy fires automatically on `main`"
+  sentence now states the dependency on the step 12 rewrite explicitly,
+  and the placeholder phrase "your trunk branch" is now disambiguated as
+  "`main` in this tutorial". The end-to-end tutorial's step 5 and step 9
+  Doctor descriptions still read as if Doctor were advisory-only in PR
+  workflows — that text predates the `--doctor-gate critical` default;
+  both blocks now describe the actual behavior (critical findings block
+  the PR by default; warning/info are evidence-only).
+
+### Changed
+- **Tutorials: skip-if-skill callouts now state the skill's outcome directly and accurately.**
+  The `step 13` callout in `docs/tutorial-prompt-agent-quickstart.md` and the
+  baseline-run paragraph in `docs/tutorial-end-to-end.md` previously opened
+  with "if you used the workflow skill, this is already done…" plus a
+  manual-fallback block. That conditional framing was confusing because the
+  preceding step (`step 12` of the prompt-agent tutorial, `step 5` of the
+  end-to-end tutorial) only documents the workflow-skill path — there is no
+  alternative wired-by-hand path the reader could have taken. Both callouts
+  now state the skill's outcome directly, and the redundant `git add` /
+  `commit` / `push` and `gh workflow run agentops-pr.yml --ref main` blocks
+  have been removed (the skill already triggers the first run). A small
+  `gh run list` / `gh run watch` snippet remains as an opt-in way to wait
+  on the run from the terminal instead of the Actions UI. The previous
+  wording also over-claimed that the skill triggered verification runs of
+  **both** `agentops-pr.yml` and `agentops-deploy-dev.yml`; the skill only
+  dispatches the PR workflow as a sanity check (`workflow_dispatch`), while
+  `agentops-deploy-dev.yml` triggers on the first real merge into the trunk
+  branch. The callout now reflects this accurately and notes that the
+  deploy-dev run happens at the end of the section, not during the skill's
+  setup.
+
 ## [0.3.1] - 2026-05-29
 
 ### Changed

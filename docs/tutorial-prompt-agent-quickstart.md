@@ -137,7 +137,7 @@ path, install the aligned reference branch so the CLI, generated
 workflows, and tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
+python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Install the AgentOps Copilot skills
@@ -670,7 +670,7 @@ The PR workflow now has two jobs:
 > candidate version numbers.
 
 The dev deploy workflow stages a candidate (same logic), evaluates it,
-records the deployment via `prompt_deploy record`, and uploads
+summarizes the deployment via `prompt_deploy summarize`, and uploads
 `.agentops/deployments/foundry-agent.json` as a workflow artifact.
 
 The `--doctor-gate critical` flag controls the Doctor severity floor in
@@ -725,6 +725,14 @@ the OpenAI User role, the Foundry cloud graders fail with a 401 and every
 metric comes back null), and do not set up `qa`, `production`, scheduled
 Doctor, or hosted deployment workflows yet.
 
+I am using trunk-based development with `main` as both my trunk and dev
+branch. The generator's stock dev-deploy trigger is `push: branches:
+[develop]`. Rewrite the `agentops-deploy-dev.yml` (and the matching
+`agentops-pr.yml` `pull_request: branches:` list, if it references
+`develop`) so they fire on `main` instead. The PR gate must run on PRs
+targeting `main`, and the dev deploy must auto-run on push to `main`
+after a merge.
+
 The dev Foundry project endpoint is in `.azure/dev/.env`; the sandbox
 endpoint is local-only and must not be added to CI.
 
@@ -741,6 +749,14 @@ it skips:
 - Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_CLIENT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (the dev
   endpoint), and `APPLICATIONINSIGHTS_CONNECTION_STRING` if available.
+- **Rewrite the dev deploy trigger to `main`.** The generator emits the
+  stock GitFlow defaults (`pull_request: branches: [develop, "release/**",
+  main]` on `agentops-pr.yml`, `push: branches: [develop]` on
+  `agentops-deploy-dev.yml`). For this trunk-on-`main` tutorial the
+  skill should rewrite both so the PR gate fires on PRs into `main` and
+  the deploy fires on push to `main`. If the skill skips this rewrite,
+  open the two YAML files in `.github/workflows/` and edit the
+  `branches:` lists by hand before opening the first PR.
 - Verify the OIDC principal has **two** Azure RBAC roles before the first
   run. Both are required and the eval step fails silently (every metric
   returns `null`) if only one is in place:
@@ -761,66 +777,71 @@ This is the happy path. Before the regression step, you need a clean
 green baseline so the rolling-history Doctor checks (regression, drift)
 have something to compare against.
 
-> **If you used the workflow skill in step 12, the next two code
-> blocks have already been done — skip straight to "Now open a feature
-> branch..." below.** The `agentops-workflow` skill commits your local
-> changes, pushes `main` to the GitHub remote, and triggers a first
-> verification run of both `agentops-pr.yml` and `agentops-deploy-dev.yml`
-> as part of its end-to-end setup. Open the repo's **Actions** tab and
-> confirm both runs are present — `Stage Foundry prompt candidate (PR)`
-> + `AgentOps eval (PR gate)` should be green on the PR workflow, and
-> `agentops-deploy-dev.yml` should have a matching run that also went
-> green. Only run the `git add` / `commit` / `push` and `gh workflow run`
-> commands below if you skipped the skill and wired CI by hand, or if
-> the skill stopped before pushing your latest local changes (run
-> `git status` first — if the working tree is clean and the remote has
-> your commits, the manual commands are no-ops).
+The workflow skill in step 12 already committed your local changes,
+pushed `main` to the GitHub remote, and dispatched first verification
+runs of **both** `agentops-pr.yml` and `agentops-deploy-dev.yml` (via
+`workflow_dispatch`, after asking you to approve) so the CI wiring is
+verified end-to-end. Open the repo's **Actions** tab and confirm both
+runs reached the eval stage:
+
+- `agentops-pr.yml` — `Stage Foundry prompt candidate (PR)` and
+  `AgentOps eval (PR gate)` jobs both ran.
+- `agentops-deploy-dev.yml` — `stage-candidate`, `eval`, and the
+  `Mark candidate as deployed` step all ran (the deploy job uses
+  `prompt_deploy summarize`, not a real Foundry promotion — it writes
+  the deployment record artifact + workflow summary).
+
+It is **expected** for one or both of these first runs to exit
+`threshold_failed` (`exit 2`) when the dev Foundry project starts
+empty: the bootstrap path creates a fresh `travel-agent:1` (and, on
+the next run, `:2`) in dev and evaluates it against the seed
+`agentops.yaml` thresholds, which can miss on first contact. That is
+by design, not a CI wiring failure. What you are really verifying at
+this point is the plumbing — OIDC, Foundry RBAC, the evaluator
+deployment, the staging step, the deploy summary writer — and that
+dev now contains a bootstrapped version of the agent.
+
+`agentops-deploy-dev.yml` will fire **again** automatically when you
+merge the baseline PR at the end of this section, because the skill
+rewrote its trigger from `develop` to `main` in step 12.
+
+If you want to wait on the first PR-workflow verification run from the
+terminal instead of the Actions UI:
 
 ```powershell
-git add agentops.yaml .agentops .github\workflows
-git commit -m "Add AgentOps prompt agent gate + dev deploy"
-git push -u origin main
-```
-
-Open the repository in GitHub and confirm both workflows appear under
-**Actions**. Trigger the PR workflow once on `main` so the dev project
-has a known-good candidate run:
-
-```powershell
-gh workflow run agentops-pr.yml --ref main
-Start-Sleep -Seconds 10
 $runId = gh run list --workflow agentops-pr.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
 gh run view $runId --web
 gh run watch $runId --exit-status
 ```
 
-What you should see in the **first** PR workflow run (dev is still
-empty at this point):
+What you should see in the **first** PR workflow run, after the
+skill's verification dispatches have already touched dev:
 
 1. **Stage Foundry prompt candidate (PR)** job runs first. The
-   `prompt_deploy stage` step tries to look up `travel-agent:2` in the
-   dev project and gets a 404. Because `agentops.yaml` includes a
-   `prompt_agent_bootstrap` block, the step:
-   - reads the `model` (`gpt-4o-mini`) and optional `description` from
-     `prompt_agent_bootstrap`,
-   - reads the instructions from `prompt_file`,
-   - creates a new version of `travel-agent` in the dev project from
-     those defaults via the Foundry SDK. The SDK assigns the version
-     number per-project; in an empty dev project the first version is
-     normally `travel-agent:1` (not `:2`, because dev has no draft
-     history of its own),
-   - reports `action: bootstrapped` and uses the freshly-bootstrapped
-     version as the candidate.
+   `prompt_deploy stage` step looks up `travel-agent:2` in the dev
+   project. Three outcomes are possible depending on what the skill's
+   verification dispatches produced:
+   - `action: reused` — dev already has `travel-agent:2` with the
+     same instructions as the seed (no new version created).
+   - `action: created` — dev has the seed version but with different
+     instructions, so Foundry auto-creates the next number (likely
+     `travel-agent:3`).
+   - `action: bootstrapped` — dev still does not have `travel-agent:2`
+     (only `:1`, because the bootstrap can fire `:1` and `:2`
+     back-to-back over two runs). The step reads
+     `prompt_agent_bootstrap` plus `prompt_file` and creates the next
+     SDK-assigned version, then uses it as the candidate.
 2. **AgentOps eval (PR gate)** job runs second. It evaluates the
-   bootstrapped candidate using cloud eval. Thresholds pass.
-   Doctor runs with `--severity-fail critical`; advisory findings are
-   listed but do not fail the job.
+   candidate using cloud eval. Doctor runs with
+   `--severity-fail critical`; advisory findings are listed but do not
+   fail the job. The first one or two PR runs against a fresh dev
+   project can still fail thresholds while bootstrap catches up. After
+   that, normal reuse / create flow takes over and the baseline PR
+   should go green.
 
-On the **second** PR run, dev has `travel-agent:1` but the seed still
-points at `:2`. The stage step gets another 404 looking up `:2` and
-bootstraps a second version — `travel-agent:2` — into dev. After this,
-the dev project finally has `travel-agent:2` matching the seed, and
-every subsequent PR takes the normal lookup path:
+Successive PR runs walk the same three branches above until dev's
+version count catches up to the seed (`travel-agent:2`). Once it does,
+every PR run hits the normal lookup path:
 
 - If `prompt_file` is byte-identical to the seed's instructions: the
   stage step reports `reused` and uses `travel-agent:2` as the
@@ -849,18 +870,26 @@ git push -u origin chore/agentops-baseline
 gh pr create --base main --head chore/agentops-baseline --title "Baseline AgentOps run" --body "First green PR to establish history."
 ```
 
-Open the PR in GitHub. The PR check runs the same staging + eval flow,
-green again because the prompt is unchanged. Merge.
+Open the PR in GitHub. The PR check runs the same staging + eval flow.
+Whether this baseline PR goes green on the first try depends on how
+many bootstrap rounds the dev project has already absorbed (from the
+skill's verification dispatches plus any failed PRs). Once bootstrap
+catches up to the seed and the prompt is stable, the PR goes green —
+re-run the workflow on the PR if needed. Then merge.
 
 After the merge, the **AgentOps deploy (dev)** workflow runs
-automatically on `main`. It stages the candidate (likely re-using the
-same version as the PR run, or bootstrapping again if dev has not yet
-caught up to the seed), evaluates it, runs `prompt_deploy record` to
-mark it as the dev deployment, and uploads the deployment artifact.
+automatically on `main` (the skill rewrote its trigger from `develop`
+to `main` in step 12 because this tutorial uses trunk-based flow).
+This is the **second** deploy-dev run for this repo — the first was
+the skill's verification dispatch in step 12. It stages the candidate
+(by this point most likely `action: reused` or `created`), evaluates
+it, runs `prompt_deploy summarize` to write the dev deployment summary,
+and uploads the deployment artifact.
 
 Open the deploy run and download the `foundry-agent-dev-deployment`
-artifact. Inside, open `foundry-agent.json`. On the very first deploy
-into an empty dev project (the bootstrap case), the file looks like
+artifact. Inside, open `foundry-agent.json`. In the **steady-state**
+case (the most common — the seed `travel-agent:2` already exists in
+dev and matches the prompt the PR shipped), the file looks like
 this — note the actual field names AgentOps writes:
 
 ```json
@@ -868,34 +897,47 @@ this — note the actual field names AgentOps writes:
   "version": 1,
   "type": "foundry_prompt_agent_deployment",
   "environment": "dev",
-  "action": "bootstrapped",
+  "action": "reused",
   "agent_name": "travel-agent",
   "source_agent": "travel-agent:2",
-  "candidate_agent": "travel-agent:1",
+  "candidate_agent": "travel-agent:2",
   "source_version": "2",
-  "candidate_version": "1",
+  "candidate_version": "2",
   "project_endpoint": "https://<your-resource>.services.ai.azure.com/api/projects/travel-agent-dev",
-  "prompt_file": ".agentops/prompts/travel-agent.md",
-  "prompt_sha256": "9c3a...e0b1",
-  "created_at": "2025-...",
-  "git_sha": "5f1a2c...",
-  "workflow_url": "https://github.com/.../actions/runs/...",
-  "foundry_agent_version_id": "..."
+  "prompt_file": "/home/runner/work/<your-repo>/<your-repo>/.agentops/prompts/travel-agent.md",
+  "prompt_sha256": "9727437db863b00d52bc8ef1f314b70ed22e3e562f5a3a1f9dd68e26f7ea0975",
+  "eval_config": "/home/runner/work/<your-repo>/<your-repo>/.agentops/deployments/agentops.candidate.yaml",
+  "created_at": "2026-05-30T17:57:53.135435+00:00",
+  "git_sha": "3078df74c3b18625553dec8ecd4ed4282f1ca1ca",
+  "workflow_url": "https://github.com/<owner>/<your-repo>/actions/runs/26690922142",
+  "foundry_agent_version_id": "travel-agent:2"
 }
 ```
 
-The `source_agent` field records what `agent:` in `agentops.yaml`
-pointed at (`travel-agent:2`, the sandbox seed). The `candidate_agent`
-field records what CI actually produced and evaluated in this
-environment (`travel-agent:1`, because dev was empty and the SDK
-assigned `:1`). The two numbers are expected to differ until the
-environment has caught up to the seed.
+In the steady-state, `source_agent` and `candidate_agent` are
+**identical** (`travel-agent:2`) because the dev project already had
+`travel-agent:2` with the same instructions as the PR's `prompt_file`,
+so `prompt_deploy stage` reported `action: reused` and nothing new
+was created. The `prompt_file` and `eval_config` paths are absolute
+because they are resolved inside the GitHub Actions runner workspace
+(`/home/runner/work/<your-repo>/<your-repo>/...`).
 
-On every subsequent deploy, `action` switches to either `reused` (when
-the prompt is byte-identical to the previous seed) or `created` (when
-Foundry auto-created a new version because the prompt changed), and
-`candidate_agent` reflects the actual version that was evaluated and
-recorded.
+`action` will be one of:
+
+- **`reused`** — dev already had `travel-agent:2` with byte-identical
+  instructions. No new Foundry version was created. (Steady-state and
+  most-common case.)
+- **`created`** — dev had `travel-agent:2` but with **different**
+  instructions, so Foundry auto-created the next number (e.g.
+  `travel-agent:3`). `candidate_agent` would then be `travel-agent:3`.
+- **`bootstrapped`** — dev did not yet have `travel-agent:2` at all,
+  so the stage step fell back to `prompt_agent_bootstrap` defaults
+  plus `prompt_file` and asked the SDK to create the first version.
+  In a fresh, empty dev project the SDK starts at `:1`, so you would
+  see `candidate_agent: "travel-agent:1"` and `candidate_version: "1"`
+  while `source_agent` still reports the seed (`travel-agent:2`). The
+  two numbers stay different until subsequent runs catch dev up to
+  the seed.
 
 That `prompt_sha256` + `git_sha` pair is what the mental-model diagram
 at the start of the tutorial referred to as **cross-environment

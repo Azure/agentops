@@ -374,3 +374,83 @@ def test_is_not_found_error_handles_404_and_rejects_others() -> None:
     assert not prompt_deploy._is_not_found_error(_make_not_found(403))
     assert not prompt_deploy._is_not_found_error(_make_not_found(500))
     assert not prompt_deploy._is_not_found_error(Exception("no status"))
+
+
+def test_copy_definition_returns_plain_dict_from_sdk_typed_model() -> None:
+    """Regression: ``azure-ai-projects`` 2.x typed definition models expose a
+    ``.copy()`` method that returns a stripped base ``Model`` whose JSON shape
+    is ``{"_data": {...}}`` instead of the flat fields the Foundry service
+    expects. ``_copy_definition`` must normalize to a plain dict so the
+    ``definition`` payload reaches the wire as a flat object with ``kind`` at
+    the top level.
+    """
+
+    class _FakeTypedModel:
+        """Mimics the surface of ``PromptAgentDefinition`` from SDK 2.x."""
+
+        def __init__(self, data: dict) -> None:
+            self._data = dict(data)
+
+        def get(self, key, default=None):
+            return self._data.get(key, default)
+
+        def items(self):
+            return self._data.items()
+
+        def copy(self):
+            stripped = _FakeTypedModel.__new__(_FakeTypedModel)
+            stripped._data = dict(self._data)
+            return stripped
+
+    typed = _FakeTypedModel(
+        {"kind": "prompt", "model": "gpt-4o-mini", "instructions": "hi"}
+    )
+
+    copied = prompt_deploy._copy_definition(typed)
+
+    assert isinstance(copied, dict)
+    assert copied == {
+        "kind": "prompt",
+        "model": "gpt-4o-mini",
+        "instructions": "hi",
+    }
+    assert "_data" not in copied
+
+
+def test_create_agent_version_body_uses_flat_definition_dict(monkeypatch) -> None:
+    """The body sent to ``client.agents.create_version`` must contain a flat
+    ``definition`` dict (not the SDK's ``{"_data": {...}}`` shape) and must
+    not include a body-root ``kind`` — the new Foundry API treats ``kind`` as
+    the polymorphic discriminator inside ``definition``.
+    """
+
+    captured: dict = {}
+
+    class _FakeAgents:
+        def create_version(self, agent_name, *, body):
+            captured["agent_name"] = agent_name
+            captured["body"] = body
+            return SimpleNamespace(id="agent-version-9", version="9")
+
+    class _FakeClient:
+        agents = _FakeAgents()
+
+    monkeypatch.setattr(prompt_deploy, "_project_client", lambda endpoint: _FakeClient())
+
+    definition = {"kind": "prompt", "model": "gpt-4o-mini", "instructions": "hi"}
+
+    result = prompt_deploy._create_agent_version(
+        "https://example/api/projects/p",
+        "travel-agent",
+        definition,
+        metadata={"agentops.env": "dev"},
+        description="desc",
+    )
+
+    assert result.version == "9"
+    body = captured["body"]
+    assert "kind" not in body, "body-root 'kind' is no longer valid in SDK 2.x"
+    assert body["definition"] == definition
+    assert body["definition"]["kind"] == "prompt"
+    assert body["metadata"] == {"agentops.env": "dev"}
+    assert body["description"] == "desc"

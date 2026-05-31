@@ -129,7 +129,7 @@ install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/placerda/agentops.git@develop"
+python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 You will provide the target values through the interactive `agentops init`
@@ -451,9 +451,13 @@ The generated workflow prepares a temporary cloud config, runs
 
 It also records release evidence after the gate.
 
-In PR workflows, that Doctor evidence is advisory: the eval step is the merge
-gate, and `Release readiness: blocked` means the evidence found release work to
-review. Production deploy workflows still run Doctor as a critical release gate.
+Doctor runs in the PR workflow with `--severity-fail critical` (the
+`--doctor-gate critical` default). A critical Doctor finding — for example
+`regression.coherence: critical` from a metric drop that still passes
+thresholds — fails the PR check the same way an eval threshold breach
+does. Warning- and info-level findings are advisory and attached to the
+PR as evidence. Production deploy workflows always run Doctor with
+`--severity-fail critical` regardless of this flag.
 
 No tutorial-only Action replacement is needed. The generated workflow keeps the
 evaluation in Foundry while AgentOps owns the CI threshold decision and the
@@ -468,14 +472,10 @@ and rerun the same gate.
 
 ### Prompt Agent regression
 
-Make sure the original prompt version has one green workflow run before you
-change it. **If you used the workflow skill in step 5 above, this is already
-done** — the skill commits your changes, pushes to GitHub, and triggers a first
-verification run of `agentops-pr.yml`. Open the latest workflow run's Foundry
-Evaluations link and keep that page open as the baseline. If you skipped the
-skill and wired CI by hand, commit the generated workflow and `agentops.yaml`,
-run `gh workflow run agentops-pr.yml --ref main`, and use that run as the
-baseline.
+The workflow skill in step 5 above already committed your changes, pushed
+`main` to GitHub, and triggered a first verification run of `agentops-pr.yml`.
+Open the latest workflow run's Foundry Evaluations link and keep that page
+open as the baseline.
 
 1. In Foundry, edit the `travel-agent` instructions to this intentionally bad
    version:
@@ -755,10 +755,12 @@ show whether the repo has the release machinery reviewers expect. Use critical
 findings as release blockers and warning/info findings as the backlog that turns
 the POC into an operated service.
 
-If those same Doctor findings appear inside a PR workflow, treat them as
-evidence attached to the PR rather than as the merge gate. The eval step gates
-the PR; production deploy workflows are where critical Doctor findings block the
-release path.
+If those same Doctor findings appear inside a PR workflow, critical
+findings block the merge by default (the PR template runs Doctor with
+`--severity-fail critical`, the `--doctor-gate critical` default); warning
+and info findings are attached to the PR as evidence rather than as a
+gate. Production deploy workflows always run Doctor with
+`--severity-fail critical` and are the last-mile release gate.
 
 Open both files. The Doctor report is the diagnostic view: it tells you which
 signals are present, which are missing, and whether the finding is blocking or
