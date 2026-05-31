@@ -48,7 +48,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 python -m pip install --upgrade pip
-                python -m pip install "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"
+                python -m pip install "agentops-accelerator[foundry]__AGENTOPS_INSTALL_SPEC__"
                 python -m agentops.pipeline.prompt_deploy stage \
                   --config "$(AGENTOPS_CONFIG)" \
                   --environment "$(TARGET_ENVIRONMENT)" \
@@ -93,7 +93,7 @@ stages:
 
                 - bash: |
                     python -m pip install --upgrade pip
-                    python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+                    python -m pip install "agentops-accelerator[foundry,agent]__AGENTOPS_INSTALL_SPEC__"
                   displayName: Install AgentOps Toolkit
 
 __EVAL_TASKS__
@@ -153,7 +153,7 @@ __EVAL_TASKS__
                     versionSpec: "3.11"
 
                 - bash: |
-                    python -m pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"
+                    python -m pip install "agentops-accelerator__AGENTOPS_INSTALL_SPEC__"
                     python -m agentops.pipeline.prompt_deploy summarize \
                       --deployment ".agentops/deployments/foundry-agent.json" \
                       --environment "$(TARGET_ENVIRONMENT)"

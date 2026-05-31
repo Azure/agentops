@@ -5,6 +5,41 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **Runtime dependencies now have upper bounds so a future SDK major release
+  cannot silently break installs.** `pyproject.toml` previously declared every
+  Azure-SDK dependency with only a lower bound (e.g. `azure-ai-projects>=2.0.1`),
+  so `pip install agentops-accelerator` could resolve `azure-ai-projects 3.x`
+  the day after that ships and break the agent-definition serialization (the
+  exact failure mode that produced the `invalid_payload — Required properties
+  ["kind"] are not present` regression below). Each Azure SDK dependency
+  (`azure-ai-projects`, `azure-ai-evaluation`, `azure-identity`, `azure-monitor-*`,
+  `azure-mgmt-*`) is now constrained to its current major. `pandas`, `fastapi`,
+  `uvicorn`, `httpx`, and `markdown` are similarly capped to their next major.
+  `cryptography` is intentionally left unbounded so security patches can flow
+  through without a coordinated AgentOps release. Lift any of these bounds via
+  an explicit PR that exercises the new SDK against `tests/`.
+
+- **`agentops workflow generate` now stamps the installed agentops version
+  into generated CI/CD templates instead of always installing from
+  `git+...@main`.** Every generated `agentops-pr.yml`, `agentops-deploy-*.yml`,
+  `agentops-watchdog.yml` (and their Azure DevOps pipeline equivalents) used to
+  contain `pip install "agentops-accelerator[...] @ git+https://github.com/Azure/agentops.git@main"`,
+  with no version pin and a stale "NOTE: pinned to GitHub main until the next
+  package release" comment. User CI runs were therefore non-reproducible: the
+  same workflow file pulled different agentops snapshots day to day, which is
+  how PO's recorded tutorial took a hard SDK regression mid-record. The
+  generator now writes a literal `==X.Y.Z` pin derived from the agentops version
+  currently installed on the machine running `agentops workflow generate` — so
+  a user who generates workflows against AgentOps `0.3.3` always installs
+  `agentops-accelerator==0.3.3` on every CI run, and `agentops-accelerator`
+  brings exact-major Azure SDKs along (per the upper bounds above). Editable
+  installs (versions carrying a local segment like `+gabcdef` or marked
+  `.devN`) keep the `@main` fallback so contributors testing template changes
+  still get a resolvable install. Existing user workflows are unaffected until
+  the user re-runs `agentops workflow generate --force` against a release of
+  AgentOps that ships this change.
+
 ### Fixed
 - **Prompt-agent deploy: `stage` no longer fails with `Required properties ["kind"] are not present` against `azure-ai-projects` 2.x.**
   `_copy_definition` previously called `.copy()` on the typed

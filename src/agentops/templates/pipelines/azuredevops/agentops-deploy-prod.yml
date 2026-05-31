@@ -48,7 +48,7 @@ stages:
 
                 - bash: |
                     python -m pip install --upgrade pip
-                    python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+                    python -m pip install "agentops-accelerator[foundry,agent]__AGENTOPS_INSTALL_SPEC__"
                   displayName: Install AgentOps Toolkit
 
 __EVAL_TASKS__

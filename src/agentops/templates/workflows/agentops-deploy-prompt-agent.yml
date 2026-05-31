@@ -60,7 +60,7 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          uv pip install --system "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@main"
+          uv pip install --system "agentops-accelerator[foundry,agent]__AGENTOPS_INSTALL_SPEC__"
 
       - name: Create candidate agent version from prompt_file
         env:
@@ -117,7 +117,7 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          uv pip install --system "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"
+          uv pip install --system "agentops-accelerator[foundry]__AGENTOPS_INSTALL_SPEC__"
 
 __EVAL_STEPS__
 
@@ -181,7 +181,7 @@ __EVAL_STEPS__
 
       - name: Install AgentOps Toolkit
         run: |
-          python -m pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"
+          python -m pip install "agentops-accelerator__AGENTOPS_INSTALL_SPEC__"
 
       - name: Mark candidate as deployed
         run: |
