@@ -27,6 +27,38 @@ _TEMPLATE_PACKAGE = "agentops.templates"
 _CLOUD_EVAL_CONFIG_NAME = ".agentops.cloud.yaml"
 _CI_EVAL_OUTPUT = ".agentops/results/latest"
 
+# Git ref used by the dev/editable-install fallback when stamping the agentops
+# package version into generated CI/CD templates. Kept here so tests can target
+# the same constant without parsing template output.
+AGENTOPS_DEV_INSTALL_SPEC = " @ git+https://github.com/Azure/agentops.git@main"
+
+
+def _agentops_install_spec(version: str | None = None) -> str:
+    """Return the pip version-spec suffix used in generated workflows.
+
+    For a clean public release (e.g. ``0.3.2``, ``0.3.2.post1``, ``0.3.2rc1``)
+    we pin the exact version so user CI runs are reproducible regardless of
+    when they are triggered. For editable or dev installs (versions carrying
+    a local segment such as ``+gabcdef`` or marked as dev-releases) we fall
+    back to ``@main`` so contributors testing template changes still get a
+    resolvable install.
+    """
+
+    if version is None:
+        from agentops import __version__ as version  # local import to avoid cycles
+    try:
+        from packaging.version import InvalidVersion, Version
+    except ImportError:  # pragma: no cover - packaging ships with pip/setuptools
+        return AGENTOPS_DEV_INSTALL_SPEC
+
+    try:
+        parsed = Version(version)
+    except InvalidVersion:
+        return AGENTOPS_DEV_INSTALL_SPEC
+
+    if parsed.local is not None or parsed.is_devrelease:
+        return AGENTOPS_DEV_INSTALL_SPEC
+    return f"=={version}"
 # CI/CD platforms supported by ``agentops workflow generate``.
 PLATFORMS: Tuple[str, ...] = ("github", "azure-devops")
 
@@ -648,7 +680,10 @@ def generate_cicd_workflows(
             continue
         seen.add(kind)
         result.kinds.append(kind)
-        substitutions: dict[str, str] = {"__DOCTOR_GATE__": doctor_gate}
+        substitutions: dict[str, str] = {
+            "__DOCTOR_GATE__": doctor_gate,
+            "__AGENTOPS_INSTALL_SPEC__": _agentops_install_spec(),
+        }
         eval_config = (
             "${{ inputs.config || 'agentops.yaml' }}"
             if platform == "github" and kind == "pr"
