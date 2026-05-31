@@ -318,11 +318,9 @@ def _create_agent_version(
     description: str,
 ) -> Any:
     client = _project_client(endpoint)
-    # The current Foundry Agents create_version endpoint validates both a root
-    # `kind` discriminator and the nested `definition` payload.
-    body = {
-        "kind": _get_definition_value(definition, "kind"),
-        "definition": definition,
+    definition_dict = _definition_to_dict(definition)
+    body: Dict[str, Any] = {
+        "definition": definition_dict,
         "metadata": metadata,
         "description": description,
     }
@@ -380,13 +378,41 @@ def _get_mapping_value(value: Any, key: str) -> Any:
     return None
 
 
-def _copy_definition(definition: Any) -> Any:
-    if hasattr(definition, "copy"):
+def _copy_definition(definition: Any) -> Dict[str, Any]:
+    """Return a deep copy of ``definition`` as a plain dict.
+
+    The Foundry SDK's typed definition models (e.g. ``PromptAgentDefinition``)
+    expose ``.copy()``, but in ``azure-ai-projects`` 2.x that returns a stripped
+    base ``Model`` whose JSON shape is ``{"_data": {...}}`` instead of the
+    flattened payload the service expects. To stay compatible across SDK
+    versions we always normalize to a plain dict here.
+    """
+
+    return copy.deepcopy(_definition_to_dict(definition))
+
+
+def _definition_to_dict(definition: Any) -> Dict[str, Any]:
+    """Best-effort conversion of an SDK definition object into a plain dict."""
+
+    if isinstance(definition, dict):
+        return dict(definition)
+    data = getattr(definition, "_data", None)
+    if isinstance(data, dict):
+        return dict(data)
+    if hasattr(definition, "items"):
         try:
-            return definition.copy()
-        except TypeError:
+            return {key: value for key, value in definition.items()}
+        except Exception:  # noqa: BLE001 — fall through to attribute scrape
             pass
-    return copy.deepcopy(definition)
+    if hasattr(definition, "as_dict"):
+        try:
+            return dict(definition.as_dict())
+        except Exception:  # noqa: BLE001
+            pass
+    raise TypeError(
+        f"Cannot convert Foundry agent definition of type {type(definition).__name__} "
+        "to a dict; expected a mapping-compatible object."
+    )
 
 
 def _deployment_metadata(*, environment: str, prompt_hash: str) -> Dict[str, str]:
