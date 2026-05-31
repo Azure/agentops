@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-05-31
+
 ### Changed
 - **Runtime dependencies now have upper bounds so a future SDK major release
   cannot silently break installs.** `pyproject.toml` previously declared every
