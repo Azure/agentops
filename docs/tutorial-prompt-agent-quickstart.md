@@ -887,45 +887,57 @@ it, runs `prompt_deploy summarize` to write the dev deployment summary,
 and uploads the deployment artifact.
 
 Open the deploy run and download the `foundry-agent-dev-deployment`
-artifact. Inside, open `foundry-agent.json`. If this merge-triggered
-run is the one that finally settles the bootstrap (the seed
-`travel-agent:2` did not exist yet and is created here), the file
-looks like this — note the actual field names AgentOps writes:
+artifact. Inside, open `foundry-agent.json`. In the **steady-state**
+case (the most common — the seed `travel-agent:2` already exists in
+dev and matches the prompt the PR shipped), the file looks like
+this — note the actual field names AgentOps writes:
 
 ```json
 {
   "version": 1,
   "type": "foundry_prompt_agent_deployment",
   "environment": "dev",
-  "action": "bootstrapped",
+  "action": "reused",
   "agent_name": "travel-agent",
   "source_agent": "travel-agent:2",
-  "candidate_agent": "travel-agent:1",
+  "candidate_agent": "travel-agent:2",
   "source_version": "2",
-  "candidate_version": "1",
+  "candidate_version": "2",
   "project_endpoint": "https://<your-resource>.services.ai.azure.com/api/projects/travel-agent-dev",
-  "prompt_file": ".agentops/prompts/travel-agent.md",
-  "prompt_sha256": "9c3a...e0b1",
-  "eval_config": ".agentops/deployments/agentops.candidate.yaml",
-  "created_at": "2025-...",
-  "git_sha": "5f1a2c...",
-  "workflow_url": "https://github.com/.../actions/runs/...",
-  "foundry_agent_version_id": "..."
+  "prompt_file": "/home/runner/work/<your-repo>/<your-repo>/.agentops/prompts/travel-agent.md",
+  "prompt_sha256": "9727437db863b00d52bc8ef1f314b70ed22e3e562f5a3a1f9dd68e26f7ea0975",
+  "eval_config": "/home/runner/work/<your-repo>/<your-repo>/.agentops/deployments/agentops.candidate.yaml",
+  "created_at": "2026-05-30T17:57:53.135435+00:00",
+  "git_sha": "3078df74c3b18625553dec8ecd4ed4282f1ca1ca",
+  "workflow_url": "https://github.com/<owner>/<your-repo>/actions/runs/26690922142",
+  "foundry_agent_version_id": "travel-agent:2"
 }
 ```
 
-The `source_agent` field records what `agent:` in `agentops.yaml`
-pointed at (`travel-agent:2`, the sandbox seed). The `candidate_agent`
-field records what CI actually produced and evaluated in this
-environment (`travel-agent:1`, because dev was empty and the SDK
-assigned `:1`). The two numbers are expected to differ until the
-environment has caught up to the seed.
+In the steady-state, `source_agent` and `candidate_agent` are
+**identical** (`travel-agent:2`) because the dev project already had
+`travel-agent:2` with the same instructions as the PR's `prompt_file`,
+so `prompt_deploy stage` reported `action: reused` and nothing new
+was created. The `prompt_file` and `eval_config` paths are absolute
+because they are resolved inside the GitHub Actions runner workspace
+(`/home/runner/work/<your-repo>/<your-repo>/...`).
 
-On every subsequent deploy, `action` switches to either `reused` (when
-the prompt is byte-identical to the previous seed) or `created` (when
-Foundry auto-created a new version because the prompt changed), and
-`candidate_agent` reflects the actual version that was evaluated and
-recorded.
+`action` will be one of:
+
+- **`reused`** — dev already had `travel-agent:2` with byte-identical
+  instructions. No new Foundry version was created. (Steady-state and
+  most-common case.)
+- **`created`** — dev had `travel-agent:2` but with **different**
+  instructions, so Foundry auto-created the next number (e.g.
+  `travel-agent:3`). `candidate_agent` would then be `travel-agent:3`.
+- **`bootstrapped`** — dev did not yet have `travel-agent:2` at all,
+  so the stage step fell back to `prompt_agent_bootstrap` defaults
+  plus `prompt_file` and asked the SDK to create the first version.
+  In a fresh, empty dev project the SDK starts at `:1`, so you would
+  see `candidate_agent: "travel-agent:1"` and `candidate_version: "1"`
+  while `source_agent` still reports the seed (`travel-agent:2`). The
+  two numbers stay different until subsequent runs catch dev up to
+  the seed.
 
 That `prompt_sha256` + `git_sha` pair is what the mental-model diagram
 at the start of the tutorial referred to as **cross-environment

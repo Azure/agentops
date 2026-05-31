@@ -6,6 +6,21 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Fixed
+- **Tutorial: prompt-agent step 13 now shows the steady-state `foundry-agent.json` (action: reused) instead of the bootstrap edge case.**
+  The example JSON in step 13 previously showed `action: bootstrapped`
+  with `candidate_agent: "travel-agent:1"` and a "the two numbers are
+  expected to differ until the environment has caught up to the seed"
+  explanation. In practice the merge-triggered deploy is almost never
+  the run that bootstraps — by the time the user reaches step 13, the
+  skill's verification dispatch in step 12 plus the first PR run have
+  already settled dev to `travel-agent:2`, so the merge deploy reports
+  `action: reused` with `candidate_agent: "travel-agent:2"` (matching
+  `source_agent`). The example now shows the steady-state shape (taken
+  from a real recording), uses the runner-resolved absolute paths the
+  user actually sees (`/home/runner/work/<your-repo>/...`), and uses a
+  real 64-char `prompt_sha256` + a real ISO timestamp. The
+  three-outcome list (`reused` / `created` / `bootstrapped`) below the
+  JSON keeps the bootstrap case as the documented edge condition.
 - **Tutorial: prompt-agent step 13 now matches what the workflow skill actually does (dispatches both workflows).**
   PR #211 mistakenly narrowed the step 13 callout to say the workflow
   skill only dispatches `agentops-pr.yml` as a verification run, based
