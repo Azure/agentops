@@ -70,6 +70,147 @@ def test_collect_results_history_disabled(tmp_path: Path) -> None:
     assert history.diagnostics["status"] == "disabled"
 
 
+def test_collect_results_history_loads_latest_only_in_ci(tmp_path: Path) -> None:
+    """CI writes directly to .agentops/results/latest/ without a sibling dir.
+
+    The loader must include `latest/` when no other timestamped dirs exist so
+    the regression check sees the just-completed run as `latest` instead of
+    falling back to a stale Foundry-listing entry.
+    """
+    workspace = tmp_path
+    results = workspace / ".agentops" / "results"
+    latest_dir = results / "latest"
+    latest_dir.mkdir(parents=True)
+    payload = {
+        "version": 1,
+        "started_at": "2026-05-31T12:54:00+00:00",
+        "finished_at": "2026-05-31T12:54:04+00:00",
+        "aggregate_metrics": {
+            "coherence": 5.0,
+            "similarity": 5.0,
+        },
+        "summary": {
+            "overall_passed": True,
+            "items_total": 3,
+            "items_passed_all": 3,
+        },
+    }
+    (latest_dir / "results.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    config = ResultsHistorySourceConfig(
+        enabled=True, path=".agentops/results", lookback_runs=10
+    )
+    history = collect_results_history(workspace, config)
+
+    assert len(history.runs) == 1
+    run = history.runs[0]
+    assert run.run_id == "latest"
+    assert run.metrics == {"coherence": 5.0, "similarity": 5.0}
+    assert run.run_pass is True
+    assert run.items_total == 3
+    assert run.timestamp is not None
+    assert run.timestamp.year == 2026
+
+
+def test_collect_results_history_prefers_timestamped_over_latest(tmp_path: Path) -> None:
+    """In dev mode both `latest/` and a timestamped dir exist (same run).
+
+    The loader must skip `latest/` so the regression check does not see the
+    same run under two different keys.
+    """
+    workspace = tmp_path
+    results = workspace / ".agentops" / "results"
+    # Timestamped dir wins; `latest/` is its sibling pointer.
+    _write_run(results, "2026-05-31-12-54", "2026-05-31T12:54:00Z", {"coherence": 5.0})
+    _write_run(results, "latest", "2026-05-31T12:54:00Z", {"coherence": 5.0})
+
+    config = ResultsHistorySourceConfig(
+        enabled=True, path=".agentops/results", lookback_runs=10
+    )
+    history = collect_results_history(workspace, config)
+
+    assert [r.run_id for r in history.runs] == ["2026-05-31-12-54"]
+
+
+def test_collect_results_history_reads_aggregate_metrics_field(tmp_path: Path) -> None:
+    """The orchestrator writes `aggregate_metrics`, not `metrics`/`run_metrics`."""
+    workspace = tmp_path
+    results = workspace / ".agentops" / "results"
+    run_dir = results / "run-1"
+    run_dir.mkdir(parents=True)
+    payload = {
+        "version": 1,
+        "started_at": "2026-05-30T10:00:00+00:00",
+        "finished_at": "2026-05-30T10:00:30+00:00",
+        "aggregate_metrics": {"coherence": 4.5, "fluency": 4.0},
+        "summary": {
+            "overall_passed": True,
+            "items_total": 2,
+            "items_passed_all": 2,
+        },
+    }
+    (run_dir / "results.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    config = ResultsHistorySourceConfig(
+        enabled=True, path=".agentops/results", lookback_runs=10
+    )
+    history = collect_results_history(workspace, config)
+
+    assert len(history.runs) == 1
+    assert history.runs[0].metrics == {"coherence": 4.5, "fluency": 4.0}
+    assert history.runs[0].run_pass is True
+
+
+def test_collect_results_history_orders_by_finished_at(tmp_path: Path) -> None:
+    """`finished_at` should be preferred over `started_at` for ordering."""
+    workspace = tmp_path
+    results = workspace / ".agentops" / "results"
+
+    # run-a started later but finished earlier (e.g., shorter run).
+    run_a = results / "run-a"
+    run_a.mkdir(parents=True)
+    (run_a / "results.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-05-30T10:05:00+00:00",
+                "finished_at": "2026-05-30T10:05:10+00:00",
+                "aggregate_metrics": {"coherence": 4.0},
+                "summary": {
+                    "overall_passed": True,
+                    "items_total": 1,
+                    "items_passed_all": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    # run-b started earlier but finished later (long-running).
+    run_b = results / "run-b"
+    run_b.mkdir(parents=True)
+    (run_b / "results.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-05-30T10:00:00+00:00",
+                "finished_at": "2026-05-30T11:00:00+00:00",
+                "aggregate_metrics": {"coherence": 3.0},
+                "summary": {
+                    "overall_passed": True,
+                    "items_total": 1,
+                    "items_passed_all": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = ResultsHistorySourceConfig(
+        enabled=True, path=".agentops/results", lookback_runs=10
+    )
+    history = collect_results_history(workspace, config)
+
+    assert [r.run_id for r in history.runs] == ["run-a", "run-b"]
+
+
 def test_collect_results_history_falls_back_to_foundry_cloud(
     tmp_path: Path, monkeypatch
 ) -> None:
