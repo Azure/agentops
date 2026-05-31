@@ -101,6 +101,14 @@ Two ideas to internalize:
    per-environment deploy artifact `foundry-agent.json`. When you ask
    "is the same prompt running in sandbox, dev, and prod?", you compare
    SHAs, not version numbers. The version numbers will differ.
+4. **PRs evaluate a candidate; `agentops.yaml` pins the rolling
+   baseline.** When a PR changes the prompt content,
+   `prompt_deploy stage` creates a new candidate Foundry version in the
+   target environment and evaluates *that*, while the Release Evidence
+   `Target` field continues to show whatever `agentops.yaml` pins. The
+   two intentionally diverge on every prompt-changing PR; the pin only
+   moves when you explicitly promote a new baseline by bumping
+   `agentops.yaml`.
 
 The longer walkthrough of that identity story is in step 13, when you
 have a real `foundry-agent.json` artifact to open.
@@ -114,7 +122,7 @@ have a real `foundry-agent.json` artifact to open.
 | Promote the prompt to git | Editor | Copy validated instructions into `.agentops/prompts/travel-agent.md`. | The CI gate reads this file. |
 | First green PR + dev deploy | GitHub Actions + Foundry dev project | Push prompt, open PR, watch CI auto-bootstrap the first version of `travel-agent` in dev from `prompt_agent_bootstrap` (the dev project is still empty at this point), evaluate it, run Doctor; merge; deploy lands in dev. | Owns the gate, the bootstrap-on-first-deploy, the threshold decision, the Doctor blocking step, the deploy artifact, and the release evidence. |
 | Force a regression | Editor + GitHub Actions | Edit the prompt to a worse version, push, observe BOTH eval threshold failure AND Doctor regression CRITICAL. | Catches the regression at PR time, not after merge. |
-| Fix and redeploy | Editor + GitHub Actions | Restore prompt, push, PR green, merge, deploy. | Records the recovery. |
+| Fix and redeploy | Editor + GitHub Actions | Push an improved prompt that restores the guardrails and adds a small refinement, PR re-runs green, merge, deploy records a brand-new candidate version. | Records the recovery and makes the candidate-vs-baseline split visible: a new Foundry version is evaluated while `agentops.yaml` (and therefore the Release Evidence `Target`) is unchanged. |
 | Review readiness | AgentOps Doctor + Cockpit | Check CI, eval, telemetry, evidence, and links. | Turns scattered signals into release blockers, warnings, evidence files, and next actions. |
 
 ## 1. Create a clean workspace and install AgentOps
@@ -1038,7 +1046,12 @@ post-deploy production alert.
 
 ## 15. Fix and redeploy
 
-Restore the prompt to the good version:
+Push an *improved* prompt that re-establishes the guardrails and adds
+one small refinement. The refinement is narrow on purpose — it
+re-establishes the structure so the eval threshold passes and Doctor's
+regression findings clear, while still being a real content change so
+`prompt_deploy stage` creates a new candidate version in dev (instead
+of reusing the existing one).
 
 ```powershell
 @'
@@ -1050,9 +1063,10 @@ Help users plan short leisure trips. Always include:
 - practical notes about budget, transit, weather, or booking constraints;
 - a reminder that you cannot make live reservations or purchases.
 
-Ask one clarifying question only when the destination, duration, or
-traveler preference is missing. Do not invent booking confirmations,
-prices, or availability.
+When you mention monetary amounts, include the currency code when it is
+known (for example, USD 120 or EUR 35). Ask one clarifying question
+only when the destination, duration, or traveler preference is missing.
+Do not invent booking confirmations, prices, or availability.
 '@ | Set-Content -Encoding utf8 .agentops\prompts\travel-agent.md
 ```
 
@@ -1060,21 +1074,64 @@ Commit and push:
 
 ```powershell
 git add .agentops\prompts\travel-agent.md
-git commit -m "Restore travel agent prompt"
+git commit -m "Improve travel agent prompt: restore guardrails, require currency codes"
 git push
 ```
 
-The same PR re-runs (no new PR needed). The eval should pass again and
-Doctor's regression findings should clear because the candidate's
-metrics return to the rolling baseline. Merge. The dev deploy workflow
-records the restored prompt as the dev deployment with a new
-`foundry-agent.json` artifact that has the SHA of the recovered prompt.
+The same PR re-runs (no new PR is opened). Eval thresholds should pass
+again and Doctor's regression findings should clear, because the
+candidate's metrics return to the rolling baseline. Merge. The dev
+deploy workflow then re-runs and uploads a fresh
+`foundry-agent-dev-deployment` artifact whose `foundry-agent.json`
+looks like this — note the field values:
+
+```json
+{
+  "action": "created",
+  "agent_name": "travel-agent",
+  "source_agent": "travel-agent:2",
+  "candidate_agent": "travel-agent:N",
+  "source_version": "2",
+  "candidate_version": "N",
+  "prompt_sha256": "<new sha — different from the byte-identical baseline>",
+  "git_sha": "<your fix commit>",
+  ...
+}
+```
+
+`N` is whatever number Foundry assigns next in *your* dev project; it
+will be higher than the previous candidate. The interesting thing is
+the split:
+
+- **`candidate_agent: travel-agent:N`** is what CI actually evaluated
+  and recorded as the dev deployment. It changes on every PR that
+  changes the prompt content.
+- The Release Evidence card on Cockpit and the `agent:` line in
+  `agentops.yaml` still show **`travel-agent:2`**. That value is the
+  *declarative pin* — the rolling baseline your team agreed is "what
+  production should be aligned to". It does not move just because a PR
+  flowed through; it moves only when you explicitly bump
+  `agentops.yaml` to promote a new baseline.
+- Durable cross-environment identity lives in `prompt_sha256` +
+  `git_sha`, not in the version number. Foundry numbers are
+  environment-local.
+
+> **Recording / re-recording note.** If you already pushed a
+> byte-identical restore in an earlier take, `prompt_deploy stage`
+> reported `action: "reused"` and `candidate_agent: travel-agent:2`
+> (no new version was created because the file matched
+> `travel-agent:2`'s instructions in Foundry exactly). Push one more
+> commit with the improved prompt above and the stage step will report
+> `action: "created"` and a new `candidate_agent: travel-agent:N` —
+> which is the state the rest of the tutorial assumes.
 
 The learning loop is the point: the prompt source of truth is in git,
 the PR workflow exercises it as a candidate in dev, Doctor catches
 regressions that thresholds alone miss, and the merge promotes through
 the deploy workflow. None of those gates require the developer to
-remember to look at a dashboard.
+remember to look at a dashboard, and the candidate-vs-pin split is what
+keeps "what we evaluated this PR" honest about being separate from
+"what we declare as the baseline".
 
 ## 16. Brief observability checkout (Foundry side)
 
@@ -1176,9 +1233,12 @@ You are done when:
   by the eval threshold gate and once by Doctor's
   `--severity-fail critical` step. You can explain that either gate is
   sufficient on its own.
-- You restored the prompt, the PR returned to green, the merge ran the
-  dev deploy again, and the new `foundry-agent.json` shows the recovered
-  prompt's SHA.
+- You pushed an improved prompt that re-established the guardrails. The
+  PR returned to green, the merge ran the dev deploy again, and the new
+  `foundry-agent.json` shows `action: created` with a higher
+  `candidate_agent` version number and the new prompt's SHA — while
+  `agentops.yaml` (and therefore the Release Evidence `Target`) still
+  pins the same baseline.
 - `agentops doctor --evidence-pack` writes
   `.agentops/release/latest/evidence.md`, and the GitHub run summary
   shows its Doctor finding summary.
