@@ -286,7 +286,7 @@ for creating agents, tools, tracing, evaluation, and red-team scans:
 https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe
 ```
 
-### Grant your identity data-plane access to the AI Services account
+### Grant data-plane access to your identity and Foundry managed identities
 
 Both options above (prompt agent and hosted HTTP agent) eventually drive
 an `agentops eval run` that calls chat-completions on the AI Services
@@ -300,16 +300,32 @@ what causes the eval to fail later with `PermissionDenied` on
 `Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/
 completions/action`.
 
-Run the assignment once per resource group that hosts a Foundry account
-you will evaluate against. Replace `<your-objectId>`,
-`<subscription-id>`, and `<resource-group>` with your own values (use
-`az ad signed-in-user show --query id -o tsv` to get the object ID):
+Run these assignments once per resource group that hosts a Foundry account
+you will evaluate against. Cloud evaluations run server-side and some agent
+or grader calls may authenticate as Foundry/Azure AI managed identities, not
+only as your signed-in user. Assigning the role only to your user can still
+leave graders failing with `AuthenticationError`.
 
 ```powershell
+$subscriptionId = az account show --query id -o tsv
+$resourceGroup = "<resource-group>"
+$scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
+$userObjectId = az ad signed-in-user show --query id -o tsv
+
 az role assignment create `
-  --assignee <your-objectId> `
+  --assignee $userObjectId `
   --role "Cognitive Services OpenAI User" `
-  --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
+  --scope $scope
+
+az resource list -g $resourceGroup `
+  --query "[?identity.principalId!=null].identity.principalId" -o tsv |
+  ForEach-Object {
+    az role assignment create `
+      --assignee-object-id $_ `
+      --assignee-principal-type ServicePrincipal `
+      --role "Cognitive Services OpenAI User" `
+      --scope $scope
+  }
 ```
 
 > **Give the assignment a few minutes to propagate.** Data-plane role

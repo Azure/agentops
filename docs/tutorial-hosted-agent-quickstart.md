@@ -310,7 +310,7 @@ If the deployed endpoint needs a bearer token:
 $env:HOSTED_AGENT_TOKEN = "<token>"
 ```
 
-### Grant your identity data-plane access to the AI Services account
+### Grant data-plane access to your identity and Foundry managed identities
 
 The local AI-assisted evaluators that AgentOps runs in step 8 call
 chat-completions on the AI Services account that backs your Foundry
@@ -322,16 +322,32 @@ but `dataActions: []`. Skipping this once causes the eval to fail with
 `PermissionDenied` on `Microsoft.CognitiveServices/accounts/OpenAI/
 deployments/chat/completions/action`.
 
-Run the assignment once per resource group hosting a Foundry account
-you will evaluate against (replace `<your-objectId>`,
-`<subscription-id>`, and `<resource-group>` with your values; get the
-object ID with `az ad signed-in-user show --query id -o tsv`):
+Run these assignments once per resource group hosting a Foundry account
+you will evaluate against. Local AI-assisted evaluators use your identity,
+while Foundry-hosted/server-side eval paths may use Azure AI managed
+identities from the same resource group. Assigning only the user can still
+leave server-side graders failing with `AuthenticationError`.
 
 ```powershell
+$subscriptionId = az account show --query id -o tsv
+$resourceGroup = "<resource-group>"
+$scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
+$userObjectId = az ad signed-in-user show --query id -o tsv
+
 az role assignment create `
-  --assignee <your-objectId> `
+  --assignee $userObjectId `
   --role "Cognitive Services OpenAI User" `
-  --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
+  --scope $scope
+
+az resource list -g $resourceGroup `
+  --query "[?identity.principalId!=null].identity.principalId" -o tsv |
+  ForEach-Object {
+    az role assignment create `
+      --assignee-object-id $_ `
+      --assignee-principal-type ServicePrincipal `
+      --role "Cognitive Services OpenAI User" `
+      --scope $scope
+  }
 ```
 
 > **Give the assignment a few minutes to propagate.** Data-plane role

@@ -41,8 +41,12 @@ PermissionDenied … lacks the required data action
 'Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/completions/action'
 ```
 
-Run this preflight before Step 1 - it is idempotent (Azure returns
-`RoleAssignmentExists` if already granted) and takes ~5 seconds:
+Run this preflight before Step 1. It must grant the role to the signed-in
+user **and** to the Foundry/Azure AI managed identities in the resource
+group. Cloud evaluations run server-side and some graders authenticate as
+those managed identities, so assigning only the user can still produce
+intermittent `AuthenticationError` grader failures. The commands are
+idempotent (`RoleAssignmentExists` means the role was already granted):
 
 ```bash
 # 1. Resolve the AI Services account from agentops.yaml / .azure/<env>/.env
@@ -55,11 +59,23 @@ SUB_ID=$(az account show --query id -o tsv)
 RG=$(az cognitiveservices account list --subscription "$SUB_ID" --query "[?name=='$ACCOUNT_NAME'].resourceGroup | [0]" -o tsv)
 OBJ_ID=$(az ad signed-in-user show --query id -o tsv)
 
-# 3. Grant data-plane access at the RG scope (covers sandbox + future evals)
+# 3. Grant the user data-plane access at RG scope.
 az role assignment create \
   --assignee "$OBJ_ID" \
   --role "Cognitive Services OpenAI User" \
   --scope "/subscriptions/$SUB_ID/resourceGroups/$RG"
+
+# 4. Grant the same data-plane role to Foundry/Azure AI managed identities.
+az resource list -g "$RG" \
+  --query "[?identity.principalId!=null].identity.principalId" -o tsv |
+while read -r PRINCIPAL_ID; do
+  [ -z "$PRINCIPAL_ID" ] && continue
+  az role assignment create \
+    --assignee-object-id "$PRINCIPAL_ID" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Cognitive Services OpenAI User" \
+    --scope "/subscriptions/$SUB_ID/resourceGroups/$RG"
+done
 ```
 
 PowerShell equivalent: replace `$(...)` with the PowerShell variable
