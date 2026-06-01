@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-06-01
+
 ### Fixed
 - **RBAC preflight now covers Foundry/Azure AI managed identities, not only
   the signed-in user.** Cloud evaluations run server-side and some agent or
