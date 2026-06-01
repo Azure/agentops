@@ -5,6 +5,30 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **`agentops eval run` in local execution mode no longer fails with
+  `Missing environment variables: AZURE_OPENAI_ENDPOINT` when only the
+  Foundry project endpoint is configured.** `CONTRIBUTING.md` and the
+  user-facing env-var docs both stated that `AZURE_OPENAI_ENDPOINT` is
+  "auto-derived from the project endpoint when absent", but
+  `pipeline/runtime.py::_model_config` only read the explicit
+  `AZURE_OPENAI_ENDPOINT` env var with no fallback — so a fresh workspace
+  created by `agentops init` (which writes `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`
+  but not `AZURE_OPENAI_ENDPOINT`) would always trip the missing-env error
+  the first time AI-assisted evaluators tried to run locally. The new
+  helper `agentops.utils.azure_endpoints.derive_openai_endpoint_from_project`
+  trims the trailing `/api/projects/<name>` segment from a Foundry project
+  URL (covering both `services.ai.azure.com` and the legacy
+  `cognitiveservices.azure.com` hosts) to recover the AI Services account
+  base URL, which is exactly what the `openai` and `azure-ai-evaluation`
+  SDKs want. `_model_config` now uses the derived value as a fallback
+  whenever `AZURE_OPENAI_ENDPOINT` is unset, so the documented behavior
+  finally matches the runtime. When `AZURE_OPENAI_DEPLOYMENT` is the only
+  thing missing, the error message now points users at the deployment list
+  in the Foundry portal *and* mentions the `execution: cloud` escape hatch
+  in `agentops.yaml` so the next step is obvious without leaving the
+  terminal.
+
 ## [0.3.3] - 2026-05-31
 
 ### Changed
