@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-06-01
+
 ### Fixed
 - **`agentops eval run` in local execution mode no longer fails with
   `Missing environment variables: AZURE_OPENAI_ENDPOINT` when only the
