@@ -73,6 +73,17 @@ Skip this step only if the user explicitly says the role is already
 assigned, or if a previous `agentops eval run` succeeded against the
 same Foundry account.
 
+**Propagation:** data-plane role assignments do not take effect
+instantly — allow several minutes (occasionally up to ~15) before the
+first eval. The cloud/local graders authenticate per call, so if the
+user runs an eval immediately after this preflight and sees intermittent
+`AuthenticationError` on a subset of graders plus
+`Threshold status: FAILED` while the visible thresholds are green, that
+is propagation lag (a grader **execution** failure), not a quality
+regression. Tell the user to wait a few minutes and re-run
+`agentops eval run`; do not treat it as a failing gate or start changing
+thresholds.
+
 ## Step 1 - Analyze evaluation setup
 
 Run the deterministic local triage first:
