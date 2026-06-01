@@ -270,10 +270,23 @@ az role assignment create `
 ```
 
 Repeat the command with the `travel-agent-dev` resource group if the dev
-project lives in a different RG. The assignment usually propagates within
-30–120 seconds. AgentOps Doctor will detect the missing assignment in a
-future release, but until then this is a manual one-time setup step per
-new environment.
+project lives in a different RG.
+
+> **Give the assignment a few minutes to propagate.** Data-plane role
+> assignments on the AI Services account do **not** take effect
+> instantly — propagation to the Foundry evaluator workers can take
+> several minutes (occasionally up to ~15). The cloud eval runs each
+> grader as an independent worker that authenticates separately, so the
+> **first run right after granting the role may show intermittent
+> `AuthenticationError` on a subset of graders and report
+> `Threshold status: FAILED` even when every threshold is green** (no
+> single row had all graders succeed). This is a grader execution
+> failure, not a quality regression. Wait a few minutes and re-run
+> `agentops eval run` — once propagation finishes, every grader scores
+> and the gate passes.
+
+AgentOps Doctor will detect the missing assignment in a future release,
+but until then this is a manual one-time setup step per new environment.
 
 ## 4. Seed `travel-agent` in the sandbox project
 
