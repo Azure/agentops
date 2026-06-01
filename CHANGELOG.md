@@ -5,6 +5,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-06-01
+
+### Fixed
+- **RBAC preflight now covers Foundry/Azure AI managed identities, not only
+  the signed-in user.** Cloud evaluations run server-side and some agent or
+  grader calls authenticate as the managed identities on the backing AI
+  Services account and child Foundry project. Granting `Cognitive Services
+  OpenAI User` only to the user still allowed intermittent grader
+  `AuthenticationError` failures and the v0.3.6 execution warning. The
+  prompt-agent, hosted-agent, and end-to-end tutorials plus the
+  `agentops-eval` skill now assign the same data-plane role to every managed
+  identity in the Foundry resource group, preventing the warning/failure path
+  before `agentops eval run`.
+
 ## [0.3.6] - 2026-06-01
 
 ### Changed
