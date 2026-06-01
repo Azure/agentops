@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-06-01
+
 ### Changed
 - **`agentops eval run` now distinguishes a grader *execution* failure from a
   quality-gate failure.** When evaluator workers error out on a subset of rows
