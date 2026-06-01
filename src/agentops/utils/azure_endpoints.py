@@ -60,3 +60,35 @@ def normalize_azure_openai_endpoint(value: Optional[str]) -> Optional[str]:
     # Trim any straggling trailing slash so callers building paths
     # never get a doubled ``//``.
     return rewritten.rstrip("/")
+
+
+# Foundry project endpoints look like
+# ``https://<account>.services.ai.azure.com/api/projects/<project>`` (or the
+# legacy ``cognitiveservices.azure.com`` host). The Azure OpenAI inference
+# endpoint that the ``openai`` and ``azure-ai-evaluation`` SDKs want is the
+# *account* base URL — i.e. the same scheme/host with the project path
+# trimmed off. ``derive_openai_endpoint_from_project`` performs that trim so
+# users who only configure ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` (the value
+# the ``agentops init`` wizard already writes) get a working AI-assisted
+# evaluator run without having to hand-author ``AZURE_OPENAI_ENDPOINT`` too.
+_PROJECT_PATH_RE = re.compile(r"/api/projects/[^/?#]+/*\Z", re.IGNORECASE)
+
+
+def derive_openai_endpoint_from_project(value: Optional[str]) -> Optional[str]:
+    """Return the Azure OpenAI base URL embedded in a Foundry project endpoint.
+
+    The function is conservative: it only rewrites URLs whose final path
+    segment matches ``/api/projects/<project>`` exactly. Anything else
+    (already-base URLs, URLs with extra path segments after the project
+    name, non-Foundry hosts) is returned untouched apart from a normalizing
+    pass through :func:`normalize_azure_openai_endpoint`. ``None`` and
+    empty strings pass through unchanged so callers can keep the
+    ``os.getenv`` ergonomic of ``derive_openai_endpoint_from_project(os.getenv(...))``.
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return stripped
+    trimmed = _PROJECT_PATH_RE.sub("", stripped)
+    return normalize_azure_openai_endpoint(trimmed)
