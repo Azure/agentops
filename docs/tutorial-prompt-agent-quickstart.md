@@ -241,7 +241,7 @@ Show me the planned changes and the resulting endpoints before applying.
 
 If the skill is not available, use Path A.
 
-### Grant your identity data-plane access to the AI Services account
+### Grant data-plane access to your identity and Foundry managed identities
 
 Creating a project through the portal only assigns you `Foundry User` **at
 the project scope**. That role does not cover the OpenAI data-plane actions
@@ -257,16 +257,34 @@ Skipping this step is what causes the eval grader to fail later with::
     data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
     chat/completions/action` to perform `POST /openai/deployments/...`
 
-Run the assignment once per resource group that hosts a Foundry account
-you will evaluate against. Replace `<your-objectId>`, `<subscription-id>`,
-and `<resource-group>` with your own values (you can get the object ID
-with `az ad signed-in-user show --query id -o tsv`):
+Run these assignments once per resource group that hosts a Foundry account
+you will evaluate against. Cloud evaluations run server-side: the agent call
+and graders may authenticate as Foundry/Azure AI managed identities, not only
+as your signed-in user. Assigning the role only to your user can still leave
+some graders failing with `AuthenticationError`.
 
 ```powershell
+$subscriptionId = az account show --query id -o tsv
+$resourceGroup = "<resource-group>"
+$scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
+$userObjectId = az ad signed-in-user show --query id -o tsv
+
+# User running local commands / creating cloud evals.
 az role assignment create `
-  --assignee <your-objectId> `
+  --assignee $userObjectId `
   --role "Cognitive Services OpenAI User" `
-  --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
+  --scope $scope
+
+# Foundry/Azure AI managed identities used by server-side agent/evaluator calls.
+az resource list -g $resourceGroup `
+  --query "[?identity.principalId!=null].identity.principalId" -o tsv |
+  ForEach-Object {
+    az role assignment create `
+      --assignee-object-id $_ `
+      --assignee-principal-type ServicePrincipal `
+      --role "Cognitive Services OpenAI User" `
+      --scope $scope
+  }
 ```
 
 Repeat the command with the `travel-agent-dev` resource group if the dev
