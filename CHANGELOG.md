@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-06-01
+
 ### Changed
 - **`agentops-eval` coding-agent skill now preflights the data-plane RBAC
   step that the Foundry portal does not assign by default.** Creating a
