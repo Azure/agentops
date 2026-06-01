@@ -312,7 +312,15 @@ az role assignment create `
   --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
 ```
 
-Propagation usually completes within 30–120 seconds.
+> **Give the assignment a few minutes to propagate.** Data-plane role
+> assignments on the AI Services account do **not** take effect
+> instantly — propagation to the evaluator workers can take several
+> minutes (occasionally up to ~15). Evaluators authenticate per call, so
+> the **first eval right after granting the role may show intermittent
+> `AuthenticationError` on a subset of graders and report
+> `Threshold status: FAILED` even when every threshold is green**. This
+> is a grader execution failure, not a quality regression — wait a few
+> minutes and re-run the eval.
 
 ## 2. Create the travel eval dataset
 

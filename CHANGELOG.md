@@ -5,6 +5,28 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **`agentops eval run` now distinguishes a grader *execution* failure from a
+  quality-gate failure.** When evaluator workers error out on a subset of rows
+  (auth/RBAC/timeout), no row has every grader return a score, so
+  `items_passed_all` is `0` and the run reports `Threshold status: FAILED` even
+  though every threshold that *could* be computed passed. The CLI now detects
+  this case (errored graders combined with all thresholds passing) and prints a
+  `Warning` explaining that this is an execution error, not a quality
+  regression, names the most common cause (data-plane RBAC granted moments
+  earlier that is still propagating to the evaluator workers), surfaces the
+  first underlying grader error, and advises waiting a few minutes before
+  re-running. The exit-code contract is unchanged. Added the
+  `_grader_error_summary` helper plus focused unit tests.
+- **Corrected the RBAC propagation guidance in the tutorials and the
+  `agentops-eval` skill.** Data-plane role assignments on Cognitive Services
+  accounts can take several minutes (not 30-120 seconds) to reach the
+  independent, per-row evaluator workers, which can produce an *intermittent*
+  `FAILED` with otherwise-green thresholds on the first run after granting
+  access. The prompt-agent, hosted-agent, and end-to-end tutorials and the
+  skill now describe this symptom and tell readers to wait and re-run rather
+  than lower thresholds.
+
 ## [0.3.5] - 2026-06-01
 
 ### Changed

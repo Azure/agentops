@@ -2055,8 +2055,55 @@ def _run_flat_schema_eval(
     if result.summary.overall_passed:
         typer.echo(f"{_cli_label('Threshold status')}: {style('PASSED', 'bold', 'green')}")
         return
+
+    # Distinguish a genuine quality-gate failure from grader *execution*
+    # errors. When evaluator workers error (auth/RBAC/timeout) on a subset of
+    # rows, no row has every grader succeed, so `items_passed_all` is 0 and the
+    # gate reports FAILED even though every threshold that *could* be computed
+    # passed. Surfacing this prevents users from chasing a phantom quality
+    # regression - the most common cause is data-plane RBAC granted moments
+    # earlier that is still propagating to the evaluator workers.
+    errored, total, first_error = _grader_error_summary(result)
+    all_thresholds_passed = (
+        result.summary.thresholds_total > 0
+        and result.summary.thresholds_passed == result.summary.thresholds_total
+    )
+    if errored and all_thresholds_passed:
+        typer.echo(
+            f"{_cli_warn('Warning')}: {errored} of {total} grader execution(s) "
+            "errored, so no dataset row had every grader return a score. This is "
+            "a grader execution failure, not a quality regression - every "
+            "threshold that could be computed passed. The most common cause is "
+            "data-plane RBAC granted recently that is still propagating to the "
+            "evaluator workers; wait a few minutes and re-run `agentops eval run`.",
+            err=True,
+        )
+        if first_error:
+            typer.echo(f"{_cli_warn('Warning')}: first grader error: {first_error}", err=True)
+
     typer.echo(f"{_cli_label('Threshold status')}: {style('FAILED', 'bold', 'red')}")
     raise typer.Exit(code=exit_code_from(result))
+
+
+def _grader_error_summary(result) -> tuple[int, int, Optional[str]]:
+    """Return ``(errored_metric_count, total_metric_count, first_error)``.
+
+    Walks every per-row metric in the run so the CLI can tell a grader
+    *execution* failure (auth/RBAC/timeout) apart from a quality-gate failure.
+    The first non-empty error string is lifted out as the actionable cause.
+    """
+    errored = 0
+    total = 0
+    first_error: Optional[str] = None
+    for row in result.rows:
+        for metric in row.metrics:
+            total += 1
+            err = getattr(metric, "error", None)
+            if isinstance(err, str) and err.strip():
+                errored += 1
+                if first_error is None:
+                    first_error = err.strip()
+    return errored, total, first_error
 
 
 def _default_flat_output_dir(config_path: Path) -> Path:
