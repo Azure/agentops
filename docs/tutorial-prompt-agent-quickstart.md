@@ -241,6 +241,40 @@ Show me the planned changes and the resulting endpoints before applying.
 
 If the skill is not available, use Path A.
 
+### Grant your identity data-plane access to the AI Services account
+
+Creating a project through the portal only assigns you `Foundry User` **at
+the project scope**. That role does not cover the OpenAI data-plane actions
+that live on the parent AI Services *account* — the chat-completions call
+that backs every AI-assisted evaluator and every cloud-eval grader. Even
+`Owner` on the subscription is not enough: the built-in `Owner` role
+definition has `actions: ["*"]` but `dataActions: []`, so it grants full
+control plane and zero data plane on Cognitive Services accounts.
+
+Skipping this step is what causes the eval grader to fail later with::
+
+    PermissionDenied: The principal `<your-objectId>` lacks the required
+    data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
+    chat/completions/action` to perform `POST /openai/deployments/...`
+
+Run the assignment once per resource group that hosts a Foundry account
+you will evaluate against. Replace `<your-objectId>`, `<subscription-id>`,
+and `<resource-group>` with your own values (you can get the object ID
+with `az ad signed-in-user show --query id -o tsv`):
+
+```powershell
+az role assignment create `
+  --assignee <your-objectId> `
+  --role "Cognitive Services OpenAI User" `
+  --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
+```
+
+Repeat the command with the `travel-agent-dev` resource group if the dev
+project lives in a different RG. The assignment usually propagates within
+30–120 seconds. AgentOps Doctor will detect the missing assignment in a
+future release, but until then this is a manual one-time setup step per
+new environment.
+
 ## 4. Seed `travel-agent` in the sandbox project
 
 You only author the agent in **one place**: your sandbox Foundry
