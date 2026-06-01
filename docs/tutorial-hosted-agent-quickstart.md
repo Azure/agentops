@@ -310,6 +310,32 @@ If the deployed endpoint needs a bearer token:
 $env:HOSTED_AGENT_TOKEN = "<token>"
 ```
 
+### Grant your identity data-plane access to the AI Services account
+
+The local AI-assisted evaluators that AgentOps runs in step 8 call
+chat-completions on the AI Services account that backs your Foundry
+project. Creating a project through the portal only assigns you
+`Foundry User` **at the project scope**, which does not cover the
+OpenAI data-plane action on the parent account. Even subscription
+`Owner` is insufficient: the built-in `Owner` role has `actions: ["*"]`
+but `dataActions: []`. Skipping this once causes the eval to fail with
+`PermissionDenied` on `Microsoft.CognitiveServices/accounts/OpenAI/
+deployments/chat/completions/action`.
+
+Run the assignment once per resource group hosting a Foundry account
+you will evaluate against (replace `<your-objectId>`,
+`<subscription-id>`, and `<resource-group>` with your values; get the
+object ID with `az ad signed-in-user show --query id -o tsv`):
+
+```powershell
+az role assignment create `
+  --assignee <your-objectId> `
+  --role "Cognitive Services OpenAI User" `
+  --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
+```
+
+Propagation usually completes within 30–120 seconds.
+
 ## 5. Initialize AgentOps interactively
 
 ```powershell

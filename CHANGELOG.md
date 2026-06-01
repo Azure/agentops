@@ -5,6 +5,32 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-06-01
+
+### Changed
+- **`agentops-eval` coding-agent skill now preflights the data-plane RBAC
+  step that the Foundry portal does not assign by default.** Creating a
+  Foundry project through the portal only grants the user `Foundry User`
+  at the *project* scope, which does not cover
+  `Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/completions/action`
+  on the parent AI Services account where chat completions actually live.
+  Subscription `Owner` is also insufficient because the built-in `Owner`
+  role definition has `actions: ["*"]` but `dataActions: []`. The first
+  `agentops eval run` against a fresh workspace therefore failed with
+  `PermissionDenied` on every AI-assisted evaluator and every cloud-eval
+  grader. The skill's new **Step 0.5 - Ensure data-plane RBAC on the AI
+  Services account** resolves the Foundry project endpoint from
+  `.azure/<env>/.env` or `.agentops/.env`, looks up the backing AI
+  Services account + resource group with
+  `az cognitiveservices account list`, fetches the signed-in object ID
+  with `az ad signed-in-user show`, and runs an idempotent
+  `az role assignment create` for `Cognitive Services OpenAI User` at
+  the resource-group scope before handing off to `agentops eval analyze`.
+  This keeps the skill experience consistent with the new manual
+  instructions added to the prompt-agent, hosted-agent, and end-to-end
+  tutorials, so users running the skill against a fresh Foundry project
+  no longer hit the same 401 the manual tutorials previously hid.
+
 ## [0.3.4] - 2026-06-01
 
 ### Fixed

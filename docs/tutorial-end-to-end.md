@@ -286,6 +286,34 @@ for creating agents, tools, tracing, evaluation, and red-team scans:
 https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe
 ```
 
+### Grant your identity data-plane access to the AI Services account
+
+Both options above (prompt agent and hosted HTTP agent) eventually drive
+an `agentops eval run` that calls chat-completions on the AI Services
+account behind your Foundry project — either through Foundry's cloud
+graders or through the local AI-assisted evaluators. Creating a project
+through the portal assigns you `Foundry User` **only at the project
+scope**, which does not cover OpenAI data-plane actions on the parent
+account. Subscription `Owner` is also insufficient: its built-in role
+definition has `actions: ["*"]` but `dataActions: []`. Skipping this is
+what causes the eval to fail later with `PermissionDenied` on
+`Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/
+completions/action`.
+
+Run the assignment once per resource group that hosts a Foundry account
+you will evaluate against. Replace `<your-objectId>`,
+`<subscription-id>`, and `<resource-group>` with your own values (use
+`az ad signed-in-user show --query id -o tsv` to get the object ID):
+
+```powershell
+az role assignment create `
+  --assignee <your-objectId> `
+  --role "Cognitive Services OpenAI User" `
+  --scope /subscriptions/<subscription-id>/resourceGroups/<resource-group>
+```
+
+Propagation usually completes within 30–120 seconds.
+
 ## 2. Create the travel eval dataset
 
 ```powershell

@@ -25,6 +25,54 @@ with a `name:version` or URL.
    (`--project-endpoint`, `--agent`, `--dataset`, …) for non-interactive
    runs. Run `agentops init show` later to inspect the resolved config.
 
+## Step 0.5 - Ensure data-plane RBAC on the AI Services account
+
+AgentOps eval (cloud graders **and** local AI-assisted evaluators) calls
+`/openai/deployments/.../chat/completions` on the AI Services account
+that backs the Foundry project. Creating a project through the Foundry
+portal only assigns the user `Foundry User` at the *project* scope,
+which does **not** cover OpenAI data-plane actions on the parent
+account. Subscription `Owner` is also insufficient because the built-in
+`Owner` role has `actions: ["*"]` but `dataActions: []`. The first
+`agentops eval run` against a fresh workspace will otherwise fail with:
+
+```
+PermissionDenied … lacks the required data action
+'Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/completions/action'
+```
+
+Run this preflight before Step 1 - it is idempotent (Azure returns
+`RoleAssignmentExists` if already granted) and takes ~5 seconds:
+
+```bash
+# 1. Resolve the AI Services account from agentops.yaml / .azure/<env>/.env
+PROJECT_ENDPOINT=$(grep -h '^AZURE_AI_FOUNDRY_PROJECT_ENDPOINT' .azure/*/.env .agentops/.env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"')
+ACCOUNT_HOST=$(echo "$PROJECT_ENDPOINT" | awk -F[/:] '{print $4}')
+ACCOUNT_NAME=$(echo "$ACCOUNT_HOST" | cut -d. -f1)
+
+# 2. Resolve subscription, resource group, and signed-in object ID
+SUB_ID=$(az account show --query id -o tsv)
+RG=$(az cognitiveservices account list --subscription "$SUB_ID" --query "[?name=='$ACCOUNT_NAME'].resourceGroup | [0]" -o tsv)
+OBJ_ID=$(az ad signed-in-user show --query id -o tsv)
+
+# 3. Grant data-plane access at the RG scope (covers sandbox + future evals)
+az role assignment create \
+  --assignee "$OBJ_ID" \
+  --role "Cognitive Services OpenAI User" \
+  --scope "/subscriptions/$SUB_ID/resourceGroups/$RG"
+```
+
+PowerShell equivalent: replace `$(...)` with the PowerShell variable
+assignments shown in `docs/tutorial-prompt-agent-quickstart.md`.
+
+If the user has not run `az login` yet, do that first. If
+`az cognitiveservices account list` returns an empty RG, the AI Services
+account lives in a different subscription - ask the user which one.
+
+Skip this step only if the user explicitly says the role is already
+assigned, or if a previous `agentops eval run` succeeded against the
+same Foundry account.
+
 ## Step 1 - Analyze evaluation setup
 
 Run the deterministic local triage first:
