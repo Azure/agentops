@@ -65,10 +65,22 @@ def _credential() -> Any:
 
 
 def _model_config() -> Dict[str, str]:
-    from agentops.utils.azure_endpoints import normalize_azure_openai_endpoint
+    from agentops.utils.azure_endpoints import (
+        derive_openai_endpoint_from_project,
+        normalize_azure_openai_endpoint,
+    )
 
     raw_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     endpoint = normalize_azure_openai_endpoint(raw_endpoint)
+    if not endpoint:
+        # CONTRIBUTING.md promises ``AZURE_OPENAI_ENDPOINT`` is "auto-derived
+        # from the project endpoint when absent". The Foundry project URL
+        # already encodes the AI Services account host, so we can recover
+        # the base inference endpoint without an extra round-trip or any
+        # new wizard prompt.
+        endpoint = derive_openai_endpoint_from_project(
+            os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+        )
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv(
         "AZURE_AI_MODEL_DEPLOYMENT_NAME"
     )
@@ -85,9 +97,17 @@ def _model_config() -> Dict[str, str]:
     if not deployment:
         missing.append("AZURE_OPENAI_DEPLOYMENT")
     if missing:
+        hint = ""
+        if "AZURE_OPENAI_DEPLOYMENT" in missing:
+            hint = (
+                " Set AZURE_OPENAI_DEPLOYMENT to the name of a model "
+                "deployment in your Foundry project (Models + endpoints "
+                "in the portal), or switch the run to `execution: cloud` "
+                "in agentops.yaml so Foundry runs the evaluators server-side."
+            )
         raise RuntimeError(
             "AI-assisted evaluators require an evaluator model. "
-            "Missing environment variables: " + ", ".join(missing)
+            "Missing environment variables: " + ", ".join(missing) + "." + hint
         )
 
     config: Dict[str, str] = {
