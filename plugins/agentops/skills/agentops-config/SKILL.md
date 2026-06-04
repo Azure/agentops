@@ -110,6 +110,20 @@ evaluators:           # rare - AgentOps auto-selects from agent + dataset
     threshold: ">=4"
 ```
 
+Governance evidence (optional): when the repo already contains ASSERT, ACS, or
+red-team evidence artifacts, wire them into Doctor/release evidence without
+executing the external tools:
+
+```yaml
+assert_path: .assert/evaluation-policy.yaml
+acs_path: acs.yaml
+redteam_path: .agentops/governance/redteam-plan.md
+```
+
+If the user needs help drafting these files, switch to the
+`agentops-governance` skill. AgentOps validates and hashes these artifacts; it
+does not execute ASSERT, apply ACS controls, or run red-team campaigns.
+
 ## Step 4 - Validate
 
 Run `agentops eval run` once. If the config is malformed AgentOps prints a

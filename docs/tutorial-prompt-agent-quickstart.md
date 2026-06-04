@@ -9,9 +9,11 @@ Cockpit.
 This path validates the Foundry-native multi-environment route:
 
 - Foundry owns the prompt agent runtime, cloud evaluation execution, traces,
-  and Operate dashboards in **each environment**.
+  Rubric evaluator definitions, traces, Guardrails, red-team scans, and
+  Operate dashboards in **each environment**.
 - AgentOps owns repo-side readiness: source-controlled prompts, CI gates,
-  Doctor blocking, release evidence, threshold enforcement, and Cockpit.
+  Doctor blocking, release evidence, threshold enforcement, ASSERT/ACS evidence
+  references, and Cockpit.
 
 The toolkit benefit is the **release loop across environments**. You will
 author the prompt in a **sandbox** Foundry project where saves are
@@ -38,7 +40,7 @@ environment.
 |---|---|
 | `Azure/agentops` | Provides the AgentOps CLI, workflow generation, Doctor, Cockpit, and release evidence flow. |
 | `microsoft-foundry` skill (Copilot Chat) | External, not bundled with AgentOps. Demonstrates how a skill outside the AgentOps toolkit can guide Foundry project creation. The tutorial gives a portal-first fallback because the skill is optional. |
-| `microsoft/ai-agent-evals` | Reference for the Foundry-native eval Action/task. AgentOps invokes Foundry cloud eval directly for the default PR gate so it can enforce thresholds and write normalized evidence. |
+| `azd ai agent eval` / `microsoft/ai-agent-evals` | Foundry-native eval paths. AgentOps can wrap azd `eval.yaml` recipes (`execution: azd`) or invoke Foundry cloud eval directly; in both cases AgentOps normalizes threshold evidence and release artifacts. |
 | `microsoft/foundry-toolkit` | Frames the VS Code create/debug experience and the Operate handoff after a prompt version is ready. |
 | `microsoft/azure-skills` | Connects Copilot guidance to Foundry observe, CI/CD, regression, and trace follow-through. |
 | `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference for the Foundry Observe/Optimize/Protect loop: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
@@ -688,6 +690,24 @@ deploy workflow records candidates as deployed. Cloud eval in Foundry
 means the actual evaluator runs server-side; AgentOps still owns the
 threshold gate and the Doctor step.
 
+> **Optional azd eval recipe path.** If your team is already using the
+> public-preview `azd ai agent eval` flow, run `agentops eval init` to let azd
+> generate the `eval.yaml` recipe, then keep `execution: azd` and
+> `eval_recipe: eval.yaml` in `agentops.yaml`. AgentOps will call
+> `azd ai agent eval`, normalize the emitted metrics into `results.json`, and
+> fail closed if a threshold references a metric that azd did not emit. Rubric
+> evaluator dimensions can be used as literal threshold names, for example:
+>
+> ```yaml
+> thresholds:
+>   booking_accuracy: ">=0.8"
+>   avg_latency_seconds: "<=30"
+> ```
+>
+> Do not use hidden fallback here: when a project chooses `execution: azd`, azd
+> owns the eval execution and AgentOps owns normalization, thresholds, Doctor,
+> and release evidence.
+
 ## 11. Generate the PR + dev deploy workflows
 
 ```powershell
@@ -1201,9 +1221,22 @@ evidence. Read the output in this order:
 
 In a fresh tutorial workspace it is normal to see warnings for scheduled CI
 (you only generated `pr` and `dev`), continuous evaluation, qa/prod
-deploys, explicit thresholds, or red-team scans. Treat those as the
+deploys, explicit thresholds, or red-team/governance evidence. Treat those as the
 hardening backlog. The eval gates and the dev deploy loop are
 production-ready.
+
+If you want to show the Build 2026 governance story in the video, keep it as a
+short optional callout:
+
+```powershell
+/skills agentops-governance
+```
+
+Use that skill to draft or review pointers to ASSERT policies, ACS contracts,
+Guided Guardrail review notes, and red-team evidence indexes. AgentOps records
+the paths, SHA-256 hashes, and ACS checkpoint coverage in
+`.agentops\release\latest\evidence.json`; ASSERT execution, ACS enforcement,
+Guardrail setup, and red-team scans still happen in their owning tools.
 
 ## 18. Open Cockpit
 
@@ -1247,6 +1280,10 @@ You are done when:
 - `agentops doctor --evidence-pack` writes
   `.agentops/release/latest/evidence.md`, and the GitHub run summary
   shows its Doctor finding summary.
+- Optional governance artifacts are either absent (no Doctor noise) or wired as
+  evidence-only paths in `agentops.yaml` (`assert_path`, `acs_path`,
+  `redteam_path`) so the evidence pack can cite their hash/status without
+  claiming AgentOps executed ASSERT, applied ACS, or ran red-team scans.
 - Cockpit opens and links the repo-side readiness view back to Foundry
   for both sandbox and dev.
 
@@ -1261,3 +1298,6 @@ Where to go next:
   `agentops workflow generate --kinds doctor --force`.
 - Promote vetted production traces into the regression dataset with
   `agentops eval promote-traces` to grow the gate over time.
+- Use `/skills agentops-governance` to add ASSERT, ACS, Guardrail review, and
+  red-team evidence artifacts when your release process is ready for those
+  controls.

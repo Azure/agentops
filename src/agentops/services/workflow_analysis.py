@@ -9,9 +9,11 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from agentops.core.agentops_config import classify_agent
+from agentops.core.azd_eval import find_eval_yaml, load_eval_recipe, recipe_metric_names
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
+    AZD_EVAL_RUNNER,
     OFFICIAL_EVAL_RUNNER,
     analyze_official_eval_support,
     official_eval_action_ref,
@@ -274,10 +276,31 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
     official_evaluators: List[str] = []
     recommended_eval_runner = AGENTOPS_LOCAL_RUNNER
     if (root / "agentops.yaml").exists():
+        azd_recipe = _azd_eval_recipe(root)
         official_support = analyze_official_eval_support(root / "agentops.yaml")
         official_eval_reasons = list(official_support.reasons)
         official_evaluators = list(official_support.official_evaluators)
-        if official_support.eligible:
+        if azd_recipe is not None:
+            recommended_eval_runner = AZD_EVAL_RUNNER
+            try:
+                recipe = load_eval_recipe(azd_recipe)
+                official_evaluators = sorted(recipe_metric_names(recipe))
+            except Exception:
+                official_evaluators = []
+            rel_recipe = _relative_path(azd_recipe, root)
+            official_eval_reasons = [
+                f"Found azd eval recipe at `{rel_recipe}`.",
+                "azd/Foundry own eval assets; AgentOps will enforce thresholds and evidence.",
+            ]
+            signals.append(
+                WorkflowSignal(
+                    "azd_ai_agent_eval",
+                    "azd AI agent eval",
+                    "eval.yaml found; CI should run `agentops eval run` on the azd backend with a pinned azure.ai.agents extension.",
+                    rel_recipe,
+                )
+            )
+        elif official_support.eligible:
             recommended_eval_runner = AGENTOPS_CLOUD_RUNNER
             signals.append(
                 WorkflowSignal(
@@ -369,6 +392,8 @@ def recommended_eval_runner(directory: Path) -> str:
 
 
 def _display_eval_runner(eval_runner: str) -> str:
+    if eval_runner == AZD_EVAL_RUNNER:
+        return "azd AI agent eval"
     if eval_runner == AGENTOPS_CLOUD_RUNNER:
         return "AgentOps cloud eval in Foundry"
     if eval_runner == OFFICIAL_EVAL_RUNNER:
@@ -675,6 +700,8 @@ def _deploy_mode_check_detail(mode: str) -> str:
 
 
 def _eval_runner_check_detail(eval_runner: str) -> str:
+    if eval_runner == AZD_EVAL_RUNNER:
+        return "azd/Foundry run the eval from eval.yaml; AgentOps enforces thresholds and writes evidence."
     if eval_runner == AGENTOPS_CLOUD_RUNNER:
         return "Foundry executes the eval; AgentOps downloads results, applies thresholds, and writes evidence."
     if eval_runner == OFFICIAL_EVAL_RUNNER:
@@ -704,7 +731,11 @@ def _signal_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str, str]]:
 
 
 def _foundry_eval_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]:
-    selected = analysis.recommended_eval_runner in {AGENTOPS_CLOUD_RUNNER, OFFICIAL_EVAL_RUNNER}
+    selected = analysis.recommended_eval_runner in {
+        AZD_EVAL_RUNNER,
+        AGENTOPS_CLOUD_RUNNER,
+        OFFICIAL_EVAL_RUNNER,
+    }
     if selected:
         rows = [
             (
@@ -735,6 +766,7 @@ def _foundry_eval_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]
 def _signal_type(key: str) -> str:
     return {
         "agentops_config": "Config",
+        "azd_ai_agent_eval": "Eval runner",
         "official_ai_agent_evaluation": "Eval runner",
         "agentops_cloud_evaluation": "Eval runner",
         "azd_project": "Deploy mode",
@@ -973,6 +1005,11 @@ def _deployment_strategy(mode: str, network_isolated: bool, ailz_preflight: bool
 
 
 def _eval_strategy(eval_runner: str) -> str:
+    if eval_runner == AZD_EVAL_RUNNER:
+        return (
+            "Use azd AI agent eval so Foundry owns eval.yaml, datasets, evaluators, "
+            "and rubric assets while AgentOps applies thresholds and evidence."
+        )
     if eval_runner == AGENTOPS_CLOUD_RUNNER:
         return (
             "Use AgentOps cloud eval so Foundry executes the prompt-agent eval "
@@ -987,6 +1024,13 @@ def _eval_strategy(eval_runner: str) -> str:
 
 
 def _eval_stage(eval_runner: str) -> WorkflowStage:
+    if eval_runner == AZD_EVAL_RUNNER:
+        return WorkflowStage(
+            "PR evaluation gate",
+            "azd + Foundry + AgentOps",
+            "Run azd AI agent eval from eval.yaml and let AgentOps enforce thresholds before merge.",
+            ["agentops eval run --config agentops.yaml --output .agentops/results/latest"],
+        )
     if eval_runner == AGENTOPS_CLOUD_RUNNER:
         return WorkflowStage(
             "PR evaluation gate",
@@ -1061,7 +1105,9 @@ def _stages(
                 [
                     "python -m agentops.pipeline.prompt_deploy stage",
                     (
-                        "python -m agentops.pipeline.official_eval prepare"
+                        "agentops eval run --config <azd-eval-config>"
+                        if eval_runner == AZD_EVAL_RUNNER
+                        else "python -m agentops.pipeline.official_eval prepare"
                         if eval_runner == OFFICIAL_EVAL_RUNNER
                         else "agentops eval run --config <cloud-eval-config>"
                         if eval_runner == AGENTOPS_CLOUD_RUNNER
@@ -1099,6 +1145,11 @@ def _next_steps(
             1,
             "Set AZURE_OPENAI_DEPLOYMENT so Foundry cloud eval can judge responses, then review AgentOps results.json/report.md after the run.",
         )
+    elif eval_runner == AZD_EVAL_RUNNER:
+        steps.insert(
+            1,
+            "Keep eval.yaml and generated evaluator/rubric assets committed; CI installs a pinned azure.ai.agents extension before running the azd backend.",
+        )
     elif eval_runner == OFFICIAL_EVAL_RUNNER:
         steps.insert(
             1,
@@ -1118,6 +1169,20 @@ def _next_steps(
         )
     steps.append("Configure environment approvals and Azure federated identity/service connection before making gates required.")
     return steps
+
+
+def _azd_eval_recipe(root: Path) -> Optional[Path]:
+    try:
+        return find_eval_yaml(root)
+    except Exception:
+        return None
+
+
+def _relative_path(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
 
 
 def _skills_installed(root: Path) -> bool:

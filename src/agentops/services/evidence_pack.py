@@ -16,7 +16,8 @@ from agentops.core.release_evidence import (
     ReleaseEvidenceCheck,
     ReleaseEvidenceLink,
 )
-from agentops.pipeline.official_eval import OFFICIAL_EVAL_RUNNER
+from agentops.core.governance import summarize_acs, summarize_assert, summarize_redteam
+from agentops.pipeline.official_eval import AZD_EVAL_RUNNER, OFFICIAL_EVAL_RUNNER
 from agentops.utils.yaml import load_yaml
 
 
@@ -65,6 +66,7 @@ def build_release_evidence(
     monitoring = _monitoring_status(analysis)
     trace_dataset = _trace_dataset_status(root)
     ailz = _ailz_status(analysis)
+    governance = _governance_status(root)
 
     checks: list[ReleaseEvidenceCheck] = []
     blockers: list[str] = []
@@ -80,6 +82,7 @@ def build_release_evidence(
     _add_monitoring_check(checks, warnings, ready, monitoring)
     _add_trace_dataset_check(checks, warnings, ready, trace_dataset)
     _add_ailz_check(checks, warnings, ready, ailz)
+    _add_governance_check(checks, warnings, ready, governance)
 
     status = "blocked" if blockers else "ready_with_warnings" if warnings else "ready"
     links = _links(latest_eval)
@@ -104,6 +107,7 @@ def build_release_evidence(
         monitoring=monitoring,
         trace_dataset=trace_dataset,
         ailz=ailz,
+        governance=governance,
     )
     return ReleaseEvidence.model_validate(_redact_obj(evidence.model_dump()))
 
@@ -271,6 +275,8 @@ def _agentops_eval_status(root: Path) -> dict[str, Any]:
     thresholds = cast(list[Any], thresholds_raw) if isinstance(thresholds_raw, list) else []
     cloud_raw = config.get("cloud_evaluation")
     cloud = cast(dict[str, Any], cloud_raw) if isinstance(cloud_raw, dict) else {}
+    azd_raw = config.get("azd_evaluation")
+    azd = cast(dict[str, Any], azd_raw) if isinstance(azd_raw, dict) else {}
     comparison = payload.get("comparison")
 
     passed = summary.get("overall_passed")
@@ -282,7 +288,7 @@ def _agentops_eval_status(root: Path) -> dict[str, Any]:
         except (TypeError, ValueError):
             passed = None
 
-    runner = "agentops-cloud" if cloud else "agentops-local"
+    runner = AZD_EVAL_RUNNER if azd else "agentops-cloud" if cloud else "agentops-local"
     return {
         "status": "ok",
         "runner": runner,
@@ -298,6 +304,7 @@ def _agentops_eval_status(root: Path) -> dict[str, Any]:
         "has_comparison": isinstance(comparison, dict),
         "foundry_report_url": cloud.get("report_url"),
         "cloud_evaluation": cloud,
+        "azd_evaluation": azd,
         "machine_readable_thresholds": True,
     }
 
@@ -456,6 +463,15 @@ def _ailz_status(analysis: Optional[AnalysisResult]) -> dict[str, Any]:
         "status": "gaps" if gaps else "ready",
         "readiness": [f.summary for f in readiness],
         "gaps": [gap for f in gaps for gap in _as_list(f.evidence.get("gaps"))],
+    }
+
+
+def _governance_status(root: Path) -> dict[str, Any]:
+    config = _agentops_config(root)
+    return {
+        "assert": summarize_assert(root, config.get("assert_path")).to_dict(),
+        "acs": summarize_acs(root, config.get("acs_path")).to_dict(),
+        "redteam": summarize_redteam(root, config.get("redteam_path")).to_dict(),
     }
 
 
@@ -681,6 +697,58 @@ def _add_ailz_check(
         checks.append(ReleaseEvidenceCheck(name="AI Landing Zone readiness", status="warning", summary=message, evidence=ailz))
     else:
         checks.append(ReleaseEvidenceCheck(name="AI Landing Zone readiness", status="unknown", summary="AI Landing Zone readiness was not evaluated.", evidence=ailz))
+
+
+def _add_governance_check(
+    checks: list[ReleaseEvidenceCheck],
+    warnings: list[str],
+    ready: list[str],
+    governance: dict[str, Any],
+) -> None:
+    configured = [
+        name
+        for name, summary in governance.items()
+        if isinstance(summary, dict) and summary.get("status") != "not_configured"
+    ]
+    if not configured:
+        checks.append(
+            ReleaseEvidenceCheck(
+                name="Governance artifacts",
+                status="unknown",
+                summary="No ASSERT, ACS, or red-team governance artifacts were configured.",
+                evidence=governance,
+            )
+        )
+        return
+
+    problematic = [
+        name
+        for name, summary in governance.items()
+        if isinstance(summary, dict) and summary.get("status") in {"missing", "invalid", "partial"}
+    ]
+    if problematic:
+        message = "Governance artifacts need review: " + ", ".join(problematic)
+        warnings.append(message)
+        checks.append(
+            ReleaseEvidenceCheck(
+                name="Governance artifacts",
+                status="warning",
+                summary=message,
+                evidence=governance,
+            )
+        )
+        return
+
+    message = "Configured governance artifacts are present and evidence-ready."
+    ready.append(message)
+    checks.append(
+        ReleaseEvidenceCheck(
+            name="Governance artifacts",
+            status="ready",
+            summary=message,
+            evidence=governance,
+        )
+    )
 
 
 def _links(latest_eval: dict[str, Any]) -> list[ReleaseEvidenceLink]:

@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TypeVar
 
 from agentops.agent.checks.errors import run_errors_check
 from agentops.agent.checks.foundry_config import run_foundry_config_check
+from agentops.agent.checks.governance import run_governance_check
 from agentops.agent.checks.latency import run_latency_check
 from agentops.agent.checks.opex_workspace import run_opex_workspace_check
 from agentops.agent.checks.opex import run_opex_check
@@ -144,6 +145,7 @@ def analyze(
     findings.extend(run_safety_check(history, config.checks.safety, monitor, foundry))
     findings.extend(run_posture_check(resources, posture_config))
     findings.extend(run_opex_workspace_check(workspace))
+    findings.extend(run_governance_check(workspace))
     findings.extend(run_opex_check(history, config.checks.opex))
     findings.extend(run_release_readiness_check(workspace, history, foundry))
     findings.extend(

@@ -19,6 +19,9 @@ OFFICIAL_EVAL_ACTION = "microsoft/ai-agent-evals@v3-beta"
 OFFICIAL_EVAL_ADO_TASK = "AIAgentEvaluation@2"
 OFFICIAL_EVAL_ACTION_ENV = "AGENTOPS_OFFICIAL_EVAL_ACTION"
 OFFICIAL_EVAL_ADO_TASK_ENV = "AGENTOPS_OFFICIAL_EVAL_ADO_TASK"
+AZD_EVAL_RUNNER = "azd-ai-agent-eval"
+AZD_AI_AGENTS_EXTENSION_VERSION = "1.0.0"
+AZD_AI_AGENTS_EXTENSION_VERSION_ENV = "AGENTOPS_AZD_AI_AGENTS_EXTENSION_VERSION"
 AGENTOPS_LOCAL_RUNNER = "agentops-local"
 AGENTOPS_CLOUD_RUNNER = "agentops-cloud"
 
@@ -53,6 +56,15 @@ def official_eval_ado_task_ref() -> str:
     """Return the Azure DevOps task ref used for Microsoft Foundry eval workflows."""
 
     return os.getenv(OFFICIAL_EVAL_ADO_TASK_ENV, OFFICIAL_EVAL_ADO_TASK)
+
+
+def azd_ai_agents_extension_version() -> str:
+    """Return the pinned azd AI agents extension version for generated CI."""
+
+    return os.getenv(
+        AZD_AI_AGENTS_EXTENSION_VERSION_ENV,
+        AZD_AI_AGENTS_EXTENSION_VERSION,
+    )
 
 
 class OfficialEvalUnsupported(ValueError):
@@ -137,6 +149,14 @@ def analyze_official_eval_support(config_path: Path) -> OfficialEvalSupport:
 
 def recommended_eval_runner(directory: Path) -> str:
     """Return the safest evaluation runner for generated CI/CD workflows."""
+
+    try:
+        from agentops.core.azd_eval import find_eval_yaml
+
+        if find_eval_yaml(directory) is not None:
+            return AZD_EVAL_RUNNER
+    except Exception:
+        pass
 
     support = analyze_official_eval_support(directory / "agentops.yaml")
     return AGENTOPS_CLOUD_RUNNER if support.eligible else AGENTOPS_LOCAL_RUNNER

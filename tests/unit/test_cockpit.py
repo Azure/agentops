@@ -677,6 +677,44 @@ def test_readiness_detects_agentops_cloud_eval_workflow_and_evidence(tmp_path: P
     ]
 
 
+def test_readiness_details_include_azd_eval_and_governance_evidence(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    evidence_dir = tmp_path / ".agentops" / "release" / "latest"
+    evidence_dir.mkdir(parents=True)
+    (evidence_dir / "evidence.json").write_text(
+        json.dumps(
+            {
+                "status": "ready",
+                "generated_at": "2025-01-01T00:00:00Z",
+                "ready": ["Latest eval gate"],
+                "warnings": [],
+                "blockers": [],
+                "latest_eval": {"runner": "azd-ai-agent-eval"},
+                "governance": {
+                    "assert": {"status": "present"},
+                    "acs": {"status": "present"},
+                    "redteam": {"status": "not_configured"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog={"has_history": True, "latest_findings": []},
+    )
+
+    detail = {check["title"]: check for check in readiness["checks"]}[
+        "Release evidence pack"
+    ]["detail"]
+    assert "azd ai agent eval" in detail
+    assert "Governance evidence: assert: present, acs: present." in detail
+
+
 def test_cockpit_surfaces_official_eval_artifacts_without_local_runs(tmp_path: Path):
     official_dir = tmp_path / ".agentops" / "official-eval"
     official_dir.mkdir(parents=True)

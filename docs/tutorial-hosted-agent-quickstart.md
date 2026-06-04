@@ -799,6 +799,11 @@ You are done when:
   `.agentops/release/latest/evidence.md`, and the workflow summary
   surfaces its Doctor finding summary.
 - Cockpit opens and shows the local eval history plus Doctor readiness.
+- Optional ASSERT, ACS, and red-team evidence artifacts are either absent
+  (Doctor stays silent) or wired through `assert_path`, `acs_path`, and
+  `redteam_path` in `agentops.yaml`. AgentOps cites their status/hash in release
+  evidence; it does not execute ASSERT, apply ACS controls, or run red-team
+  campaigns.
 
 ## Where to go next
 

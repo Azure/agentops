@@ -844,7 +844,22 @@ Use AgentOps for the repo-side follow-through:
 1. Add safety/adversarial rows to your eval dataset when there are repeatable
    cases worth gating in CI.
 2. Keep the Foundry red-team scan URL or summary with the release review.
-3. Re-run Doctor and evidence:
+   Store only safe metadata in the repo, for example
+   `.agentops/governance/redteam-plan.md`; keep raw payloads/results in the
+   approved secure system.
+3. If you use ASSERT or Agent Control Specification, add reviewed artifacts to
+   the repo or CI artifacts and point AgentOps at them:
+
+   ```yaml
+   assert_path: .assert/evaluation-policy.yaml
+   acs_path: acs.yaml
+   redteam_path: .agentops/governance/redteam-plan.md
+   ```
+
+   AgentOps records path, SHA-256 hash, status, and ACS checkpoint coverage in
+   release evidence. ASSERT execution, ACS enforcement, Guided Guardrail setup,
+   and red-team scans remain in their owning tools.
+4. Re-run Doctor and evidence:
 
 ```powershell
 agentops doctor --workspace . --evidence-pack
@@ -932,6 +947,8 @@ You are ready for a release review when:
   Insights, and Operate Ask AI was used for an aggregate summary when
   available.
 - Foundry red-team scans are linked or tracked as a release action.
+- ASSERT / ACS / red-team artifacts are represented as evidence-only
+  references when your governance process uses them.
 - Trace learnings have a path back into regression candidates.
 
 ## Where to go next

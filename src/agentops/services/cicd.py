@@ -10,9 +10,12 @@ from typing import Dict, List, Mapping, Sequence, Tuple
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
+    AZD_AI_AGENTS_EXTENSION_VERSION_ENV,
+    AZD_EVAL_RUNNER,
     OFFICIAL_EVAL_ACTION_ENV,
     OFFICIAL_EVAL_ADO_TASK_ENV,
     OFFICIAL_EVAL_RUNNER,
+    azd_ai_agents_extension_version,
     official_eval_action_ref,
     official_eval_ado_task_ref,
 )
@@ -311,6 +314,44 @@ def _eval_substitutions(
 
 
 def _github_eval_substitutions(eval_runner: str, config_path: str) -> Mapping[str, str]:
+    if eval_runner == AZD_EVAL_RUNNER:
+        extension_version = azd_ai_agents_extension_version()
+        return {
+            "__EVAL_STEPS__": f"""      - name: Set up Azure Developer CLI
+        uses: Azure/setup-azd@v2
+
+      - name: Install pinned azd AI agents extension
+        env:
+          {AZD_AI_AGENTS_EXTENSION_VERSION_ENV}: "{extension_version}"
+        run: |
+          azd extension install azure.ai.agents --version "${AZD_AI_AGENTS_EXTENSION_VERSION_ENV}"
+
+      - name: Run azd AI agent eval through AgentOps
+        id: eval
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{{{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}}}
+          AZURE_OPENAI_ENDPOINT: ${{{{ vars.AZURE_OPENAI_ENDPOINT }}}}
+          AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
+          APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
+        run: |
+          set +e
+          agentops eval run --config "{config_path}" --output "{_CI_EVAL_OUTPUT}"
+          ec=$?
+          echo "exit_code=$ec" >> "$GITHUB_OUTPUT"
+          if [ $ec -eq 0 ]; then
+            echo "result=pass" >> "$GITHUB_OUTPUT"
+          elif [ $ec -eq 2 ]; then
+            echo "result=threshold_failed" >> "$GITHUB_OUTPUT"
+          else
+            echo "result=error" >> "$GITHUB_OUTPUT"
+          fi
+          exit $ec""",
+            "__EVAL_ARTIFACT_PATHS__": f"""{_CI_EVAL_OUTPUT}/results.json
+            {_CI_EVAL_OUTPUT}/report.md
+            {_CI_EVAL_OUTPUT}/azd_evaluation.json
+            {_CI_EVAL_OUTPUT}/azd_stdout.log
+            {_CI_EVAL_OUTPUT}/azd_stderr.log""",
+        }
     if eval_runner == AGENTOPS_CLOUD_RUNNER:
         return {
             "__EVAL_STEPS__": f"""      - name: Prepare AgentOps cloud eval config
@@ -461,6 +502,36 @@ def _ado_eval_substitutions(
     *,
     base_indent: int,
 ) -> Mapping[str, str]:
+    if eval_runner == AZD_EVAL_RUNNER:
+        extension_version = azd_ai_agents_extension_version()
+        return {
+            "__EVAL_TASKS__": _indent_block(
+                f"""- bash: |
+    curl -fsSL https://aka.ms/install-azd.sh | bash
+    azd extension install azure.ai.agents --version "{extension_version}"
+  displayName: Install pinned azd AI agents extension
+
+- task: AzureCLI@2
+  displayName: Run azd AI agent eval through AgentOps
+  inputs:
+    azureSubscription: $(AZURE_SERVICE_CONNECTION)
+    scriptType: bash
+    scriptLocation: inlineScript
+    inlineScript: |
+      set +e
+      agentops eval run --config "{config_path}" --output "{_CI_EVAL_OUTPUT}"
+      code=$?
+      echo "##vso[task.setvariable variable=AGENTOPS_EVAL_EXIT_CODE]$code"
+      exit $code
+  env:
+    AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
+    AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
+    AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
+                base_indent,
+            ),
+            "__EVAL_ARTIFACT_TARGET__": _CI_EVAL_OUTPUT,
+        }
     if eval_runner == AGENTOPS_CLOUD_RUNNER:
         return {
             "__EVAL_TASKS__": _indent_block(

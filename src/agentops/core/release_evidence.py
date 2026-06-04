@@ -52,5 +52,6 @@ class ReleaseEvidence(BaseModel):
     monitoring: Dict[str, Any] = Field(default_factory=dict)
     trace_dataset: Dict[str, Any] = Field(default_factory=dict)
     ailz: Dict[str, Any] = Field(default_factory=dict)
+    governance: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")

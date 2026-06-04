@@ -352,6 +352,30 @@ def test_prompt_agent_config_uses_agentops_cloud_eval_when_supported(tmp_path: P
     assert "python -m agentops.pipeline.official_eval prepare" not in content
 
 
+def test_prompt_agent_config_with_eval_yaml_uses_azd_eval_runner(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\nexecution: azd\neval_recipe: eval.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "eval.yaml").write_text("name: quickstart-eval\n", encoding="utf-8")
+
+    result = generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+
+    assert result.eval_runner == "azd-ai-agent-eval"
+    assert isinstance(_read_yaml(tmp_path / _PR_PATH), dict)
+    assert "Azure/setup-azd@v2" in content
+    assert "azd extension install azure.ai.agents --version" in content
+    assert "Run azd AI agent eval through AgentOps" in content
+    assert 'agentops eval run --config ".agentops/deployments/agentops.candidate.yaml" --output ".agentops/results/latest"' in content
+    assert ".agentops/results/latest/azd_evaluation.json" in content
+    assert "microsoft/ai-agent-evals@v3-beta" not in content
+
+
 def test_official_eval_action_override_does_not_affect_default_cloud_gate(
     tmp_path: Path,
     monkeypatch,
@@ -833,6 +857,32 @@ def test_official_eval_ado_task_override_does_not_affect_default_cloud_gate(
     assert "Run AgentOps Foundry cloud eval" in content
 
 
+def test_azure_devops_with_eval_yaml_uses_azd_eval_runner(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\nexecution: azd\neval_recipe: eval.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "eval.yaml").write_text("name: quickstart-eval\n", encoding="utf-8")
+
+    result = generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=["pr"],
+    )
+    content = (tmp_path / _ADO_PR).read_text(encoding="utf-8")
+
+    assert result.eval_runner == "azd-ai-agent-eval"
+    assert "install-azd.sh" in content
+    assert 'azd extension install azure.ai.agents --version "1.0.0"' in content
+    assert "Run azd AI agent eval through AgentOps" in content
+    assert 'agentops eval run --config ".agentops/deployments/agentops.candidate.yaml" --output ".agentops/results/latest"' in content
+    assert "AIAgentEvaluation@2" not in content
+
+
 def test_unknown_platform_raises(tmp_path: Path) -> None:
     import pytest
 
@@ -1101,5 +1151,3 @@ def test_workflow_install_lines_fall_back_to_main_for_dev_installs(tmp_path: Pat
         content = path.read_text(encoding="utf-8")
         assert "__AGENTOPS_INSTALL_SPEC__" not in content
         assert " @ git+https://github.com/Azure/agentops.git@main" in content
-
-

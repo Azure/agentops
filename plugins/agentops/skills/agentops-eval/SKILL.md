@@ -162,6 +162,7 @@ Exit codes:
 | Foundry Hosted Agent URL | no | yes | Use local runner; optionally set `publish: true` to upload local metrics to Classic Foundry. |
 | Generic HTTP/JSON endpoint | no | yes | Use local runner. |
 | Raw model deployment | no | yes | Use local runner. |
+| azd `eval.yaml` recipe | `execution: azd` | no fallback | Use `agentops eval init` / `azd ai agent eval` for Foundry prompt/hosted agents when the user wants the public-preview azd AI agent eval workflow. |
 
 For prompt-agent CI gates, prefer AgentOps cloud eval because Foundry executes
 the managed eval while AgentOps enforces thresholds and writes normalized
@@ -170,6 +171,11 @@ Action or Azure DevOps extension is still useful for standalone platform-native
 validation, but do not substitute it for the AgentOps PR gate when the user needs
 threshold enforcement, baselines, Doctor readiness, release evidence, or local
 fallback.
+
+When an `eval.yaml` includes Rubric evaluator dimensions, keep thresholds in
+`agentops.yaml` aligned to the dimension metric names (for example
+`booking_accuracy: ">=0.8"`). AgentOps binds Rubric/custom dimensions literally
+and fails closed when a configured threshold has no matching emitted metric.
 
 ## Step 5 - Inspect results and release evidence
 
@@ -191,7 +197,9 @@ agentops doctor --evidence-pack
 
 Open `.agentops/release/latest/evidence.md`. It summarizes eval, baseline,
 Doctor, workflow, Foundry, monitoring, AI Landing Zone, and trace-regression
-readiness without creating a second exit-code contract.
+readiness without creating a second exit-code contract. If the repo has ASSERT,
+ACS, or red-team evidence artifacts, use the `agentops-governance` skill to wire
+their paths into `agentops.yaml` before generating the evidence pack.
 
 ## Step 5b - (Optional) Promote reviewed traces to regression rows
 
