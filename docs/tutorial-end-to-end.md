@@ -75,7 +75,8 @@ hosted endpoint itself is the per-environment artifact.
 > any Foundry/Azure AI managed identities that will call evaluator models. A
 > single shared resource group is easiest for demos because RBAC and cleanup
 > happen once; production environments may use separate resource groups per
-> stage.
+> stage. For a fuller Azure baseline with networking, identity, security, and
+> operations patterns, see [Azure AI Landing Zone](https://aka.ms/ailz).
 
 ## The cross-environment identity story (versioning callout)
 

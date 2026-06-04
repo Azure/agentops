@@ -183,6 +183,11 @@ names so the rest of the tutorial reads naturally:
 > projects exist; only the dev / qa / prod chain is what CI promotes
 > through.
 
+> **Enterprise provisioning option.** This quickstart creates only the Foundry
+> resources needed for the video path. For a fuller Azure baseline with
+> networking, identity, security, and operations patterns, see
+> [Azure AI Landing Zone](https://aka.ms/ailz).
+
 ### Path A — Foundry portal (always available)
 
 1. Open the [Azure AI Foundry portal](https://ai.azure.com).
