@@ -143,6 +143,14 @@ FastAPI sample below emits custom OpenTelemetry spans only after you enable the
 observability step; a real Foundry Hosted Agent emits richer Foundry runtime
 spans.
 
+> **Name the Azure container resources up front.** If you use the
+> `microsoft-foundry` skill or Foundry Toolkit to create a hosted-agent project,
+> tell it the resource group, Foundry / AI Services resource name, region, and
+> model deployment you want, for example `rg-agentops-travel-demo`,
+> `foundry-agentops-travel-demo`, `East US 2`, and `gpt-4o-mini`. For a recorded
+> tutorial, one shared resource group is easiest because RBAC and cleanup happen
+> in one place; production teams may split resource groups by environment.
+
 ## 1. Create a clean workspace and install dependencies
 
 ```powershell
