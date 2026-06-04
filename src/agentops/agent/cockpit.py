@@ -2532,6 +2532,12 @@ def _release_evidence_status(workspace: Path) -> Dict[str, Any]:
         if isinstance(official_eval_raw, dict)
         else {}
     )
+    governance_raw = payload.get("governance")
+    governance = (
+        cast(Dict[str, Any], governance_raw)
+        if isinstance(governance_raw, dict)
+        else {}
+    )
     return {
         "status": payload.get("status") or "unknown",
         "path": path,
@@ -2542,6 +2548,7 @@ def _release_evidence_status(workspace: Path) -> Dict[str, Any]:
         "latest_eval_runner": latest_eval.get("runner"),
         "official_eval_present": bool(official_eval),
         "official_machine_readable_thresholds": official_eval.get("machine_readable_thresholds"),
+        "governance": governance,
     }
 
 
@@ -2579,10 +2586,30 @@ def _release_evidence_detail(evidence: Dict[str, Any]) -> str:
             " Latest eval evidence comes from the official Microsoft Foundry "
             "AI Agent Evaluation CI gate."
         )
+    elif runner == "azd-ai-agent-eval":
+        runner_text = (
+            " Latest eval evidence comes from <code>azd ai agent eval</code> "
+            "through AgentOps normalized results."
+        )
     elif runner:
         runner_text = " Latest eval evidence comes from AgentOps normalized results."
     else:
         runner_text = ""
+
+    governance = evidence.get("governance")
+    governance_text = ""
+    if isinstance(governance, dict):
+        configured = [
+            f"{name}: {summary.get('status')}"
+            for name, summary in governance.items()
+            if isinstance(summary, dict) and summary.get("status") != "not_configured"
+        ]
+        if configured:
+            governance_text = (
+                " Governance evidence: "
+                + _html_escape(", ".join(configured))
+                + "."
+            )
 
     if status == "ready":
         prefix = "Release evidence is ready."
@@ -2592,7 +2619,7 @@ def _release_evidence_detail(evidence: Dict[str, Any]) -> str:
         prefix = "Release evidence is blocked; resolve the blocker(s) before promotion."
     else:
         prefix = "Release evidence exists, but its readiness status is unknown."
-    return f"{prefix} {counts}{generated_text}{runner_text}"
+    return f"{prefix} {counts}{generated_text}{runner_text}{governance_text}"
 
 
 def _detect_deployment_workflow(workspace: Path) -> Optional[str]:

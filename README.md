@@ -34,6 +34,8 @@ The project enables:
 - Baseline comparison for regression detection
 - Doctor checks for repo, CI/CD, telemetry, landing zones, and Foundry setup
 - Release evidence packs for promotion review
+- Optional `azd ai agent eval` execution with Rubric/custom metric binding
+- ASSERT, ACS, and red-team governance evidence references
 - Trace promotion into regression datasets
 - Cockpit navigation for AgentOps, Foundry, and Azure Monitor
 
@@ -47,9 +49,10 @@ ship/no-ship workflow.
 | Moment | Foundry / Azure does | AgentOps adds |
 |---|---|---|
 | Build and version | Foundry portal, Foundry SDK/Toolkit, `microsoft-foundry` skill, azd | Pins the exact candidate in `agentops.yaml` and generates the PR/release gate around it |
-| Evaluate and compare | Foundry Evaluations and official CI actions/extensions | Keeps datasets and thresholds in the repo, records evidence, and provides local/fallback runs for non-prompt targets |
+| Evaluate and compare | Foundry Evaluations, `azd ai agent eval`, Rubric evaluator, and official CI actions/extensions | Keeps datasets and thresholds in the repo, records evidence, normalizes azd/Rubric outputs, and provides local/fallback runs for non-prompt targets |
 | Observe and investigate | Foundry Monitor, Traces, Azure Monitor, App Insights | Surfaces deep links, telemetry readiness, Doctor findings, and Cockpit navigation |
 | Decide release | Branch protection, environments, approvals | Packages `evidence.json` / `evidence.md` for promotion review |
+| Govern controls | ASSERT, ACS, Foundry Guardrails, Foundry red-team scans | References reviewed artifacts by path/hash/status without executing or applying the external controls |
 | Improve from production | Production traces and Foundry datasets | Promotes reviewed trace learnings into regression candidates |
 
 The rhythm is simple: build and operate the agent in Foundry, keep the release
@@ -179,6 +182,7 @@ Doctor/Cockpit, and `[mcp]` for MCP.
 - `agentops --version` - show installed version.
 - `agentops init` - bootstrap config and seed data.
 - `agentops eval analyze` - check eval readiness.
+- `agentops eval init` - bootstrap an azd `eval.yaml` recipe and wire `execution: azd`.
 - `agentops eval run [--baseline PATH]` - run an evaluation.
 - `agentops eval promote-traces --source FILE [--apply]` - promote traces.
 - `agentops report generate` - regenerate `report.md`.

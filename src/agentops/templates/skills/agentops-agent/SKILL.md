@@ -67,6 +67,12 @@ When summarising for the user, lead with the verdict, then the top
 3 findings, each with the recommendation. Always cite the finding `id`
 so the user can grep them later.
 
+Governance findings use the `governance.*` prefix. They are read-only checks for
+ASSERT, ACS, and red-team evidence paths declared in `agentops.yaml` or
+discovered in the workspace. If governance is not configured, Doctor should stay
+silent; if a configured artifact is missing, invalid, or ACS coverage is
+partial, route the user to the `agentops-governance` skill.
+
 ### 4. Drive remediation, do not invent it
 
 For each finding the report includes a `Recommendation`. Follow it
@@ -135,3 +141,5 @@ Extension on Azure Container Apps.
   partial data.
 - Never suggest disabling content-safety checks - recommend filtering
   the offending row or tightening the system prompt instead.
+- Never suggest that AgentOps executes ASSERT, applies ACS controls, or runs
+  red-team campaigns. It only records evidence and readiness findings.

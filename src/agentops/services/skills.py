@@ -22,6 +22,7 @@ _SKILLS: tuple[str, ...] = (
     "skills/agentops-report/SKILL.md",
     "skills/agentops-workflow/SKILL.md",
     "skills/agentops-agent/SKILL.md",
+    "skills/agentops-governance/SKILL.md",
 )
 
 _PLATFORM_CONFIGS: Dict[str, Dict[str, str]] = {
@@ -63,6 +64,7 @@ user asks about any of the topics below, read the corresponding skill file
 | Interpret and regenerate reports | `.github/skills/agentops-report/SKILL.md` | "report", "results", "explain scores" |
 | CI/CD workflow setup | `.github/skills/agentops-workflow/SKILL.md` | "CI", "workflow", "pipeline", "GitHub Actions" |
 | Watchdog analysis | `.github/skills/agentops-agent/SKILL.md` | "watchdog", "agent analyze", "production health", "latency spikes" |
+| ASSERT, ACS, guardrails, red-team readiness | `.github/skills/agentops-governance/SKILL.md` | "ASSERT", "ACS", "guardrail", "red team", "governance" |
 {_COPILOT_MARKER_END}"""
 
 _CURSOR_MDC = """\
@@ -83,6 +85,7 @@ read the corresponding skill file and follow its workflow step by step.
 | Interpret and regenerate reports | `.github/skills/agentops-report/SKILL.md` |
 | CI/CD workflow setup | `.github/skills/agentops-workflow/SKILL.md` |
 | Watchdog analysis | `.github/skills/agentops-agent/SKILL.md` |
+| ASSERT, ACS, guardrails, red-team readiness | `.github/skills/agentops-governance/SKILL.md` |
 """
 
 

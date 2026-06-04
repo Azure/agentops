@@ -141,10 +141,12 @@ flowchart TD
     A["CLI parses args"] --> B["Load agentops.yaml"]
     B --> C["classify_agent"]
     C --> D["Pre-flight checks"]
-    D --> E["Read JSONL dataset"]
-    E --> F["Invoke target per row"]
-    F --> G["Run evaluators per row"]
-    G --> H["Aggregate metrics"]
+    D --> E{"execution mode"}
+    E -->|local/cloud| F["Read JSONL dataset"]
+    F --> G["Invoke target per row or submit Foundry cloud eval"]
+    G --> H["Run/collect evaluator scores"]
+    E -->|azd| AZD["Call azd ai agent eval using eval.yaml"]
+    AZD --> H
     H --> I["Evaluate thresholds"]
     I --> J["Write results.json + report.md"]
     J --> K["Sync .agentops/results/latest"]
@@ -164,7 +166,8 @@ fail, and `1` for runtime or configuration errors.
 AgentOps does not create a second production gate with a new exit-code
 contract. Instead, it projects the signals already produced by evals, Doctor,
 workflow files, Foundry control-plane checks, Azure Monitor, AI Landing Zone
-readiness, and trace-regression manifests into a release evidence pack:
+readiness, trace-regression manifests, and optional governance artifacts
+(ASSERT, ACS, red-team evidence indexes) into a release evidence pack:
 
 ```mermaid
 flowchart LR
@@ -175,6 +178,7 @@ flowchart LR
     PT --> M["trace-regression-manifest.json"]
     M --> P
     W["workflow generate"] --> P
+    G["ASSERT / ACS / red-team evidence paths"] --> P
     P --> J["evidence.json/evidence.md"]
 ```
 
@@ -185,6 +189,10 @@ flowchart LR
 - Trace promotion is local and review-first. `self-similarity` labels are useful
   for drift detection, not human-verified correctness; use `--label-mode pending`
   when a person must fill expected answers before the dataset can gate.
+- Governance artifacts are evidence-only references. AgentOps records path,
+  SHA-256 hash, file size, schema version when available, and ACS checkpoint
+  coverage; it does not execute ASSERT, apply ACS controls, configure Guided
+  Guardrails, or run red-team campaigns.
 
 ## Analyze / Generate Boundary
 

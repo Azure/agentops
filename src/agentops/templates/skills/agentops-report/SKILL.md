@@ -64,8 +64,14 @@ exit code of the original run reflects the gate:
 - To compare a new run against a previous one, re-run with
   `agentops eval run --baseline <previous-results.json>` and explain the
   generated **Comparison vs Baseline** section.
+- For production evidence, open `.agentops/release/latest/evidence.md`. If it
+  includes a `governance` section, explain ASSERT/ACS/red-team entries as
+  read-only proof references (path, hash, status, ACS checkpoint coverage), not
+  as proof that AgentOps executed those frameworks.
 
 ## Guardrails
 
 - Never invent metric values. If a metric is absent, say so.
 - Do not edit `results.json` by hand - re-run the eval.
+- Do not paste raw red-team payloads into the response; summarize only metadata
+  and reviewer/status information.

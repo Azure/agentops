@@ -41,6 +41,7 @@ Public CLI contract:
 - `agentops init show [--dir PATH] [--reveal-secrets]`
 - `agentops init explain [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
 - `agentops eval analyze [--dir PATH] [--format text|markdown|json] [--out PATH]`
+- `agentops eval init [--dir PATH] [--force]`
 - `agentops eval run [--config PATH] [--baseline PATH] [--output DIR]`
 - `agentops eval promote-traces --source PATH [--out PATH] [--max-rows N] [--label-mode self-similarity|pending] [--apply]`
 - `agentops report generate [--in PATH] [--out PATH]`
@@ -325,7 +326,8 @@ Full schema:
 | `thresholds` | no | Map of metric → expression (e.g. `coherence: ">=3"`, `avg_latency_seconds: "<=30"`). Missing keys fall back to auto-defaults. |
 | `evaluators` | no | Advanced escape hatch: explicit list of evaluator names that overrides auto-selection. |
 | `project_endpoint` | no | Foundry project endpoint. Wins over `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` when both are set. |
-| `execution` | no | `local` (default) — AgentOps runs the agent row-by-row locally. `cloud` — Foundry runs the agent + evaluators server-side (only valid for `name:version` agents). |
+| `execution` | no | `local` (default) — AgentOps runs the agent row-by-row locally. `cloud` — Foundry runs the agent + evaluators server-side (only valid for `name:version` agents). `azd` — delegates execution to `azd ai agent eval` and normalizes the emitted metrics. |
+| `eval_recipe` | no | Optional path to azd `eval.yaml` when `execution: azd`; omitted values auto-discover a single recipe. |
 | `publish` | no | When `execution: local`, set to `true` to also upload results to the Classic Foundry Evaluations panel. With `execution: cloud` publishing is implicit. |
 | `protocol` | no | URL-based agents only. `responses` (default Foundry hosted), `invocations` (Foundry hosted with raw JSON), or `http-json` (default generic HTTP). |
 | `request_field` | no | HTTP / invocations only. JSON key that carries the user prompt (default: `message`). |
@@ -333,6 +335,9 @@ Full schema:
 | `tool_calls_field` | no | HTTP / invocations only. Dot-path to extract tool calls for agent-workflow evaluators. |
 | `headers` | no | HTTP / invocations only. Static extra HTTP headers. |
 | `auth_header_env` | no | HTTP / invocations only. Environment variable that holds a Bearer token. |
+| `assert_path` | no | Optional ASSERT policy/results file or directory referenced by Doctor/evidence. AgentOps does not execute ASSERT. |
+| `acs_path` | no | Optional Agent Control Specification contract file or directory referenced by Doctor/evidence. AgentOps does not apply ACS controls. |
+| `redteam_path` | no | Optional red-team plan/results evidence path. AgentOps records metadata and never exposes payload text. |
 
 ### Agent Type Inference
 

@@ -329,6 +329,36 @@ class TestAgentOpsConfig:
                 publish=False,
             )
 
+    def test_azd_execution_accepts_foundry_prompt_with_recipe(self) -> None:
+        cfg = AgentOpsConfig(
+            version=1,
+            agent="my-rag:3",
+            dataset="./qa.jsonl",
+            execution="azd",
+            eval_recipe="src/my-rag/eval.yaml",
+        )
+        assert cfg.execution == "azd"
+        assert cfg.eval_recipe == Path("src/my-rag/eval.yaml")
+        assert cfg.publish_target() is None
+
+    def test_azd_execution_rejects_http_target(self) -> None:
+        with pytest.raises(ValidationError, match="execution: azd"):
+            AgentOpsConfig(
+                version=1,
+                agent="https://example.com/chat",
+                dataset="./qa.jsonl",
+                execution="azd",
+            )
+
+    def test_auto_execution_is_allowed_for_model_target(self) -> None:
+        cfg = AgentOpsConfig(
+            version=1,
+            agent="model:gpt-4o",
+            dataset="./qa.jsonl",
+            execution="auto",
+        )
+        assert cfg.execution == "auto"
+
     def test_publish_defaults_to_false(self) -> None:
         cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")
         assert cfg.publish is False

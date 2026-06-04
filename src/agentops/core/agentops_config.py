@@ -57,7 +57,12 @@ TargetKind = Literal[
 #: - ``cloud``: Foundry runs the agent and evaluators server-side via the
 #:   OpenAI Evals API. Use this when you want the run to appear in the
 #:   New Foundry Evaluations panel as the primary record.
-ExecutionMode = Literal["local", "cloud"]
+#: - ``azd``: Azure Developer CLI runs ``azd ai agent eval``. This is a hard
+#:   dependency: if azd cannot run, AgentOps fails gracefully rather than
+#:   switching engines.
+#: - ``auto``: Resolve by target type only. Foundry targets use azd; target
+#:   types not covered by azd use the AgentOps local engine.
+ExecutionMode = Literal["local", "cloud", "azd", "auto"]
 
 #: How cloud evaluation submits local dataset rows to Foundry.
 DatasetSyncMode = Literal["auto", "inline", "foundry"]
@@ -354,6 +359,16 @@ class AgentOpsConfig(BaseModel):
         Optional cloud-evaluation dataset submission policy. The local JSONL
         remains the source of truth; this block controls whether cloud evals
         use inline compatibility or require a Foundry dataset reference.
+
+    ``eval_recipe``
+        Optional path to an azd ``eval.yaml`` recipe. When omitted, azd-backed
+        runs discover a single recipe at the workspace root or under
+        ``src/<agent>/``.
+
+    ``assert_path`` / ``acs_path`` / ``redteam_path``
+        Optional governance artifact paths. These are read-only inputs for
+        Doctor and release evidence; AgentOps validates and references them but
+        does not execute ASSERT, apply ACS controls, or run red-team campaigns.
     """
 
     version: int = Field(..., description="Schema version. Must be 1.")
@@ -365,6 +380,25 @@ class AgentOpsConfig(BaseModel):
             "Optional source-controlled prompt/instructions file used by "
             "prompt-agent CI/CD deployment workflows."
         ),
+    )
+    eval_recipe: Optional[Path] = Field(
+        None,
+        description=(
+            "Optional path to an azd eval.yaml recipe used by execution: azd. "
+            "When omitted, AgentOps discovers a single recipe in the workspace."
+        ),
+    )
+    assert_path: Optional[Path | List[Path]] = Field(
+        None,
+        description="Optional ASSERT policy/results file or directory for governance evidence.",
+    )
+    acs_path: Optional[Path | List[Path]] = Field(
+        None,
+        description="Optional Agent Control Specification contract file or directory.",
+    )
+    redteam_path: Optional[Path | List[Path]] = Field(
+        None,
+        description="Optional red-team plan/results artifact path for evidence-only readiness.",
     )
 
     thresholds: Dict[str, Any] = Field(
@@ -404,7 +438,12 @@ class AgentOpsConfig(BaseModel):
             "- local (default): AgentOps invokes the agent row-by-row locally.\n"
             "- cloud: Foundry runs the agent and evaluators server-side, and "
             "the run is implicitly published to the New Foundry Evaluations "
-            "panel (publish defaults to true)."
+            "panel (publish defaults to true).\n"
+            "- azd: azd ai agent eval runs the Foundry-native evaluation. If "
+            "azd cannot run, AgentOps fails gracefully and never switches "
+            "engines implicitly.\n"
+            "- auto: resolve by target type only; Foundry targets use azd, "
+            "HTTP/model/custom targets use AgentOps local."
         ),
     )
     project_endpoint: Optional[str] = Field(
@@ -494,6 +533,15 @@ class AgentOpsConfig(BaseModel):
     @model_validator(mode="after")
     def _validate_protocol_compat(self) -> "AgentOpsConfig":
         kind = classify_agent(self.agent, self.protocol).kind
+        if self.execution == "azd" and kind not in {"foundry_prompt", "foundry_hosted"}:
+            raise ValueError(
+                "execution: azd supports Foundry prompt or hosted agents only. "
+                "Use execution: local for HTTP/JSON, model:, or custom REST targets."
+            )
+        if self.execution == "auto" and kind == "model_direct":
+            # ``auto`` remains valid for model targets, but it resolves to the
+            # AgentOps local engine because azd does not evaluate model: targets.
+            pass
         if kind == "foundry_prompt" and self.protocol is not None:
             raise ValueError(
                 "agent of the form 'name:version' is a Foundry prompt agent "

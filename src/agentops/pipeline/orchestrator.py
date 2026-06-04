@@ -88,7 +88,20 @@ def _run_evaluation(
 
     if config.execution == "cloud":
         return _run_evaluation_cloud(config, options=options)
+    if _resolve_execution_backend(config) == "azd":
+        return _run_evaluation_azd(config, options=options)
     return _run_evaluation_local(config, options=options)
+
+
+def _resolve_execution_backend(config: AgentOpsConfig) -> str:
+    """Resolve the effective backend without probing tool availability."""
+
+    if config.execution != "auto":
+        return config.execution
+    target = classify_agent(config.agent, config.protocol)
+    if target.kind in {"foundry_prompt", "foundry_hosted"}:
+        return "azd"
+    return "local"
 
 
 def _run_evaluation_local(
@@ -489,6 +502,63 @@ def _run_evaluation_cloud(
             f"canonical view is the Foundry portal."
         )
 
+    return result
+
+
+def _run_evaluation_azd(
+    config: AgentOpsConfig,
+    *,
+    options: RunOptions,
+) -> RunResult:
+    """azd execution: delegate to ``azd ai agent eval`` with no hidden fallback."""
+
+    started_at = datetime.now(timezone.utc)
+    progress = options.progress or (lambda _msg: None)
+    workspace = options.config_path.parent
+
+    target = classify_agent(
+        options.agent_override or config.agent,
+        config.protocol,
+    )
+    if target.kind not in {"foundry_prompt", "foundry_hosted"}:
+        raise ValueError(
+            "execution: azd supports Foundry prompt or hosted agents only. "
+            "Use execution: local for HTTP/JSON, model:, or custom REST targets."
+        )
+
+    from agentops.pipeline import azd_runner
+
+    recipe_path = azd_runner.resolve_eval_recipe(workspace, config)
+    recipe = azd_runner.load_eval_recipe(recipe_path)
+    progress(
+        f"execution: {style('azd', 'bold')} - delegating to "
+        f"{style('azd ai agent eval', 'cyan')} with recipe "
+        f"{style(str(recipe_path), 'cyan')}."
+    )
+
+    azd_run = azd_runner.run_azd_eval(
+        recipe_path,
+        workspace=workspace,
+        progress=progress,
+        timeout_seconds=max(options.timeout_seconds, azd_runner.AZD_EVAL_TIMEOUT_SECONDS),
+    )
+    result = azd_runner.normalize_to_results(
+        azd_run,
+        config=config,
+        recipe=recipe,
+        started_at=started_at,
+    )
+
+    if options.baseline_path is not None:
+        baseline = comparison_module.load_baseline(options.baseline_path)
+        result.comparison = comparison_module.build_comparison(
+            current=result,
+            baseline=baseline,
+            baseline_path=options.baseline_path,
+        )
+
+    _persist(result, options.output_dir)
+    azd_runner.write_raw_artifacts(azd_run, options.output_dir)
     return result
 
 

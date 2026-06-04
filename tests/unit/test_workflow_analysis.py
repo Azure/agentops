@@ -116,6 +116,38 @@ def test_analysis_recommends_cloud_eval_for_supported_prompt_agent(tmp_path: Pat
     assert "| Check | Status | Explanation |" in markdown
 
 
+def test_analysis_recommends_azd_eval_when_eval_yaml_exists(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\nexecution: azd\neval_recipe: eval.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "eval.yaml").write_text(
+        """
+name: quickstart-eval
+evaluators:
+  - name: builtin.coherence
+  - name: travel_quality_rubric
+    kind: rubric
+    dimensions:
+      - id: booking_accuracy
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+    rendered = render_workflow_analysis(analysis, "text")
+
+    assert analysis.recommended_eval_runner == "azd-ai-agent-eval"
+    assert recommended_eval_runner(tmp_path) == "azd-ai-agent-eval"
+    assert "booking_accuracy" in analysis.official_evaluators
+    assert any(signal.key == "azd_ai_agent_eval" for signal in analysis.signals)
+    assert "azd AI agent eval" in rendered
+
+
 def test_analysis_uses_placeholder_for_generic_repo(tmp_path: Path) -> None:
     analysis = analyze_workflow_project(tmp_path)
 

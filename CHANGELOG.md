@@ -5,6 +5,22 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **AgentOps can now delegate Foundry eval execution to `azd ai agent eval`.**
+  Projects with an azd `eval.yaml` recipe can set `execution: azd` and
+  `eval_recipe: eval.yaml`; AgentOps invokes azd, normalizes emitted metrics
+  into `results.json`, binds thresholds including Rubric/custom dimensions, and
+  fails closed when configured thresholds do not map to emitted metrics.
+- **Governance evidence support for ASSERT, ACS, and red-team readiness.**
+  `agentops.yaml` can reference `assert_path`, `acs_path`, and `redteam_path`.
+  Doctor, Cockpit, and release evidence record path, SHA-256 hash, status, and
+  ACS checkpoint coverage without executing ASSERT, applying ACS controls, or
+  exposing red-team payload text.
+- **`agentops-governance` coding-agent skill.** The new skill drafts safe
+  evidence templates for ASSERT policies, ACS contracts, Guided Guardrail review
+  notes, and red-team readiness plans while explicitly refusing offensive
+  payload generation.
+
 ## [0.3.8] - 2026-06-04
 
 ### Fixed

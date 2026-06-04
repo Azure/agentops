@@ -166,6 +166,24 @@ trace-to-regression review. The standalone Microsoft Foundry AI Agent Evaluation
 Action/task remains useful for platform-native validation outside the AgentOps
 release-readiness flow.
 
+If a Foundry project already uses the public-preview `azd ai agent eval` recipe
+flow, set `execution: azd` and `eval_recipe: eval.yaml`. AgentOps delegates eval
+execution to azd, then normalizes metrics, binds thresholds, writes
+`results.json`, and fails closed for thresholds that have no emitted metric.
+Rubric evaluator dimensions are treated as first-class metric names.
+
+Governance artifacts are optional evidence inputs:
+
+```yaml
+assert_path: .assert/evaluation-policy.yaml
+acs_path: acs.yaml
+redteam_path: .agentops/governance/redteam-plan.md
+```
+
+AgentOps records path, hash, status, and ACS checkpoint coverage in Doctor,
+Cockpit, and release evidence. ASSERT execution, ACS enforcement, Guided
+Guardrail setup, and red-team scans remain in their owning tools.
+
 ## Evaluation Scenarios
 
 AgentOps auto-selects common evaluation patterns from the dataset:

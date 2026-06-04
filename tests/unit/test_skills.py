@@ -30,6 +30,7 @@ _COPILOT_SKILL_PATHS = [
     ".github/skills/agentops-report/SKILL.md",
     ".github/skills/agentops-workflow/SKILL.md",
     ".github/skills/agentops-agent/SKILL.md",
+    ".github/skills/agentops-governance/SKILL.md",
 ]
 
 _CLAUDE_SKILL_PATHS = [
@@ -39,6 +40,7 @@ _CLAUDE_SKILL_PATHS = [
     ".claude/commands/agentops-report.md",
     ".claude/commands/agentops-workflow.md",
     ".claude/commands/agentops-agent.md",
+    ".claude/commands/agentops-governance.md",
 ]
 
 
@@ -89,7 +91,7 @@ def test_install_creates_copilot_files(tmp_path: Path) -> None:
     result = install_skills(directory=tmp_path, platforms=["copilot"])
 
     assert result.platforms == ["copilot"]
-    assert len(result.created_files) == 6
+    assert len(result.created_files) == 7
     assert len(result.skipped_files) == 0
 
     for rel in _COPILOT_SKILL_PATHS:
@@ -116,7 +118,7 @@ def test_install_creates_claude_files(tmp_path: Path) -> None:
     result = install_skills(directory=tmp_path, platforms=["claude"])
 
     assert result.platforms == ["claude"]
-    assert len(result.created_files) == 6
+    assert len(result.created_files) == 7
 
     for rel in _CLAUDE_SKILL_PATHS:
         skill_file = tmp_path / rel
@@ -139,7 +141,7 @@ def test_claude_files_strip_frontmatter(tmp_path: Path) -> None:
 
 def test_install_multi_platform(tmp_path: Path) -> None:
     result = install_skills(directory=tmp_path, platforms=["copilot", "claude"])
-    assert len(result.created_files) == 12  # 6 per platform
+    assert len(result.created_files) == 14  # 7 per platform
     assert result.platforms == ["copilot", "claude"]
 
 
@@ -156,7 +158,7 @@ def test_install_skips_existing(tmp_path: Path) -> None:
 
     result = install_skills(directory=tmp_path, platforms=["copilot"], force=False)
 
-    assert len(result.skipped_files) == 6
+    assert len(result.skipped_files) == 7
     assert len(result.created_files) == 0
     assert skill.read_text(encoding="utf-8") == "custom content"
 
@@ -169,7 +171,7 @@ def test_install_overwrites_with_force(tmp_path: Path) -> None:
 
     result = install_skills(directory=tmp_path, platforms=["copilot"], force=True)
 
-    assert len(result.overwritten_files) == 6
+    assert len(result.overwritten_files) == 7
     content = skill.read_text(encoding="utf-8")
     assert content != "custom content"
     assert "AgentOps" in content
@@ -753,4 +755,3 @@ def test_cli_skills_install_from_invalid_ref(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 1
-
