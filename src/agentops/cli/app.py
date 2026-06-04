@@ -1365,6 +1365,7 @@ def cmd_init(
         AGENT_TITLE,
         DATASET_TITLE,
         PROJECT_ENDPOINT_TITLE,
+        REQUIRED_CONFIGURATION_MESSAGE,
         WizardAnswers,
         apply_answers,
         discover_defaults,
@@ -1476,16 +1477,37 @@ def cmd_init(
     if any_flag:
         # Scripted mode — validate then apply.
         if project_endpoint is not None:
+            if not project_endpoint.strip():
+                typer.echo(
+                    f"{_cli_error('Error')}: --project-endpoint is required. "
+                    f"{REQUIRED_CONFIGURATION_MESSAGE}",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
             err = validate_project_endpoint(project_endpoint)
             if err:
                 typer.echo(f"{_cli_error('Error')}: --project-endpoint: {err}", err=True)
                 raise typer.Exit(code=1)
         if agent is not None:
+            if not agent.strip():
+                typer.echo(
+                    f"{_cli_error('Error')}: --agent is required. "
+                    f"{REQUIRED_CONFIGURATION_MESSAGE}",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
             err = validate_agent(agent)
             if err:
                 typer.echo(f"{_cli_error('Error')}: --agent: {err}", err=True)
                 raise typer.Exit(code=1)
         if dataset is not None:
+            if not dataset.strip():
+                typer.echo(
+                    f"{_cli_error('Error')}: --dataset is required. "
+                    f"{REQUIRED_CONFIGURATION_MESSAGE}",
+                    err=True,
+                )
+                raise typer.Exit(code=1)
             err = validate_dataset(dataset, workspace)
             if err:
                 typer.echo(f"{_cli_error('Error')}: --dataset: {err}", err=True)
@@ -1605,8 +1627,14 @@ def cmd_init(
             default_env_name=target_env_name,
             azd_env_name=azd_env_name,
         )
-    except RuntimeError as exc:
-        typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(
+            f"{_cli_error('Error')}: could not save AgentOps configuration. "
+            f"{REQUIRED_CONFIGURATION_MESSAGE}",
+            err=True,
+        )
+        if str(exc):
+            typer.echo(f"{_cli_warn('Details')}: {exc}", err=True)
         raise typer.Exit(code=1)
 
     typer.echo("")
@@ -4362,8 +4390,8 @@ def _colorize_block(
 # fallback keeps the same words on a single line.
 def _agentops_tagline() -> str:
     if _terminal_unicode_enabled():
-        return "Evaluate  ·  Observe  ·  Diagnose  ·  Ship  —  every Foundry agent."
-    return "Evaluate :: Observe :: Diagnose :: Ship -- every Foundry agent."
+        return "Evaluate  ·  Ship  ·  Observe  ·  Own  —  every Foundry agent."
+    return "Evaluate :: Ship :: Observe :: Own -- every Foundry agent."
 
 
 def _render_brand_block(
