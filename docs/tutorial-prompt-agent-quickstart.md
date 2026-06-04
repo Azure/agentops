@@ -741,6 +741,13 @@ threshold gate and the Doctor step.
 
 ## 11. Generate the PR + dev deploy workflows
 
+> **Pipeline ownership.** This tutorial uses `agentops workflow generate`
+> because the workflow is the release-readiness contract: it stages the prompt
+> agent, runs eval thresholds, Doctor checks, and writes release evidence. For a
+> full `azd` / AI Landing Zone app, you can also use `azd pipeline config` to
+> bootstrap the app / infra deployment pipeline, then add AgentOps checks where
+> you need release readiness proof.
+
 ```powershell
 agentops workflow generate --kinds pr,dev --deploy-mode prompt-agent --doctor-gate critical --force
 ```
