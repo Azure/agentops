@@ -328,9 +328,11 @@ in both tutorial projects. For a recorded tutorial, one shared resource group is
 easiest because RBAC and cleanup happen in one place; production teams may split
 resource groups by environment.
 
-If the skill confirms it granted or verified the `Cognitive Services OpenAI
-User` assignments, skip the manual Path A RBAC follow-up. If the skill is not
-available, or if it only creates the projects and deployments, use Path A.
+Before continuing, check that the skill's plan/output explicitly lists the
+`Cognitive Services OpenAI User` assignments for your signed-in user and the
+Foundry/Azure AI managed identities. If it only created the projects and model
+deployments, ask the skill to add or verify those data-plane assignments before
+you move to step 4.
 
 ## 4. Seed `travel-agent` in the sandbox project
 
