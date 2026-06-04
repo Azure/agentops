@@ -70,9 +70,12 @@ hosted endpoint itself is the per-environment artifact.
 > Replace `<your-alias>` with a short unique suffix when multiple people share
 > the same subscription. Resource group names are unique within a subscription;
 > Foundry / AI Services resource names should also be unique enough to avoid
-> Azure naming conflicts. A single shared resource group is easiest for demos
-> because RBAC and cleanup happen once; production environments may use separate
-> resource groups per stage.
+> Azure naming conflicts. Also ask the skill/tool to grant or verify
+> `Cognitive Services OpenAI User` data-plane access for your signed-in user and
+> any Foundry/Azure AI managed identities that will call evaluator models. A
+> single shared resource group is easiest for demos because RBAC and cleanup
+> happen once; production environments may use separate resource groups per
+> stage.
 
 ## The cross-environment identity story (versioning callout)
 
@@ -312,11 +315,13 @@ what causes the eval to fail later with `PermissionDenied` on
 `Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/
 completions/action`.
 
-Run these assignments once per resource group that hosts a Foundry account
-you will evaluate against. Cloud evaluations run server-side and some agent
-or grader calls may authenticate as Foundry/Azure AI managed identities, not
-only as your signed-in user. Assigning the role only to your user can still
-leave graders failing with `AuthenticationError`.
+If your skill/tool already confirmed these role assignments, treat the commands
+below as a verification/fallback step. Otherwise, run these assignments once per
+resource group that hosts a Foundry account you will evaluate against. Cloud
+evaluations run server-side and some agent or grader calls may authenticate as
+Foundry/Azure AI managed identities, not only as your signed-in user. Assigning
+the role only to your user can still leave graders failing with
+`AuthenticationError`.
 
 ```powershell
 $subscriptionId = az account show --query id -o tsv
