@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import builtins
 from pathlib import Path
 
 import pytest
@@ -242,6 +243,29 @@ def test_apply_answers_writes_agent_and_dataset_to_yaml(tmp_path: Path):
     assert "dataset: .agentops/data/smoke.jsonl" in text
 
 
+def test_apply_answers_writes_yaml_without_pyyaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    real_import = builtins.__import__
+
+    def _import(name, *args, **kwargs):  # noqa: ANN001
+        if name == "yaml":
+            raise ModuleNotFoundError("No module named 'yaml'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _import)
+
+    result = apply_answers(
+        tmp_path,
+        WizardAnswers(agent="my-bot:7", dataset=".agentops/data/smoke.jsonl"),
+    )
+
+    assert result.yaml_updated is True
+    assert "agent: my-bot:7" in (tmp_path / "agentops.yaml").read_text(
+        encoding="utf-8"
+    )
+
+
 def test_apply_answers_does_not_write_project_endpoint_to_yaml(tmp_path: Path):
     """Environment-specific endpoints stay out of agentops.yaml."""
     answers = WizardAnswers(
@@ -465,7 +489,7 @@ def test_run_wizard_does_not_prompt_for_appinsights(
     assert "Application Insights" not in "\n".join(messages)
 
 
-def test_run_wizard_empty_input_keeps_current(
+def test_run_wizard_empty_input_reprompts_required_missing_endpoint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
@@ -479,14 +503,46 @@ def test_run_wizard_empty_input_keeps_current(
     # With idempotent skip-on-default, agent/dataset are silently reused.
     # Only the still-empty project endpoint gets asked; App Insights is left
     # for runtime discovery or explicit non-interactive configuration.
-    prompt = _scripted_prompt([""])
+    prompt = _scripted_prompt(["", "https://acct.services.ai.azure.com/api/projects/p"])
+    messages: list[str] = []
     answers = run_wizard(
-        tmp_path, prompt=prompt, echo=lambda _msg: None, reconfigure=False
+        tmp_path, prompt=prompt, echo=messages.append, reconfigure=False
     )
-    assert answers.project_endpoint is None
+    assert answers.project_endpoint == "https://acct.services.ai.azure.com/api/projects/p"
     assert answers.agent is None
     assert answers.dataset is None
     assert answers.appinsights_connection_string is None
+    assert "Foundry project endpoint is required." in "\n".join(messages)
+
+
+def test_run_wizard_reprompts_blank_required_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+
+    data_dir = tmp_path / ".agentops" / "data"
+    data_dir.mkdir(parents=True)
+    (data_dir / "smoke.jsonl").write_text("{}\n", encoding="utf-8")
+    prompt = _scripted_prompt(
+        [
+            "",
+            "https://acct.services.ai.azure.com/api/projects/p",
+            "",
+            "my-bot:9",
+            "",
+        ]
+    )
+    messages: list[str] = []
+
+    answers = run_wizard(tmp_path, prompt=prompt, echo=messages.append)
+
+    assert answers.project_endpoint == "https://acct.services.ai.azure.com/api/projects/p"
+    assert answers.agent == "my-bot:9"
+    assert answers.dataset == ".agentops/data/smoke.jsonl"
+    output = "\n".join(messages)
+    assert "Foundry project endpoint is required." in output
+    assert "Agent is required." in output
 
 
 def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
@@ -543,6 +599,20 @@ def test_run_wizard_appinsights_is_not_interactive_even_when_missing(
     """The wizard should not ask for App Insights just to leave it blank."""
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    _seed_azd_env(
+        tmp_path,
+        "dev",
+        {
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": (
+                "https://acct.services.ai.azure.com/api/projects/p"
+            ),
+        },
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: keep:1\ndataset: keep.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
 
     messages: list[str] = []
     prompt_calls: list[str] = []

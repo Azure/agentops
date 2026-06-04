@@ -5,6 +5,22 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **`agentops init` now handles blank required wizard values gracefully.** If
+  the user presses Enter without an existing Foundry endpoint or agent default,
+  the wizard explains that AgentOps needs the missing value and re-prompts
+  instead of proceeding to a later persistence failure. Scripted blank flags
+  such as `--agent ""` now exit with the same friendly message and no traceback.
+- **`agentops init` no longer depends on undeclared PyYAML.** The setup wizard
+  now reads and writes `agentops.yaml` through the repository's `ruamel.yaml`
+  helpers, fixing the ugly `No module named 'yaml'` traceback seen in clean
+  installs.
+
+### Changed
+- **AgentOps brand tagline sequence now reads `Evaluate :: Ship :: Observe ::
+  Own`.** The startup/explain banner now matches the intended product story
+  order.
+
 ## [0.3.7] - 2026-06-01
 
 ### Fixed

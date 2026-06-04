@@ -119,6 +119,16 @@ def test_init_scripted_validates_project_endpoint(tmp_path: Path) -> None:
     assert "Project endpoint" in result.output
 
 
+def test_init_scripted_blank_required_value_is_friendly(tmp_path: Path) -> None:
+    """Blank scripted values fail with a concise message, not a traceback."""
+    result = runner.invoke(app, ["init", "--dir", str(tmp_path), "--agent", ""])
+
+    assert result.exit_code == 1
+    assert "--agent is required" in result.output
+    assert "AgentOps needs a Foundry project endpoint" in result.output
+    assert "Traceback" not in result.output
+
+
 def test_init_scripted_with_custom_azd_env(tmp_path: Path) -> None:
     """`--azd-env qa` writes to the explicit azd env instead of the local env."""
     runner.invoke(app, ["init", "--dir", str(tmp_path), "--no-prompt"])
@@ -293,7 +303,7 @@ def test_init_prints_brand_banner(tmp_path: Path, monkeypatch) -> None:
     # ASCII letterforms from _AGENTOPS_PLAIN_BANNER (figlet "Standard").
     assert "____ _____ _   _ _____" in text
     # The catchphrase, ASCII fallback variant.
-    assert "Evaluate :: Observe :: Diagnose :: Ship -- every Foundry agent." in text
+    assert "Evaluate :: Ship :: Observe :: Own -- every Foundry agent." in text
 
 
 def test_brand_tagline_is_used_by_explain_pages(monkeypatch) -> None:
@@ -305,7 +315,7 @@ def test_brand_tagline_is_used_by_explain_pages(monkeypatch) -> None:
     result = runner.invoke(app, ["init", "explain", "--no-pager"])
     assert result.exit_code == 0
     text = _strip_ansi(result.stdout)
-    assert "Evaluate :: Observe :: Diagnose :: Ship -- every Foundry agent." in text
+    assert "Evaluate :: Ship :: Observe :: Own -- every Foundry agent." in text
 
 
 # ---------------------------------------------------------------------------

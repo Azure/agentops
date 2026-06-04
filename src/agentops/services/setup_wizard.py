@@ -67,6 +67,12 @@ DATASET_HELP = (
 ENV_KEY_PROJECT_ENDPOINT = "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
 ENV_KEY_APPINSIGHTS = "APPLICATIONINSIGHTS_CONNECTION_STRING"
 
+REQUIRED_CONFIGURATION_MESSAGE = (
+    "AgentOps needs a Foundry project endpoint, an agent, and a dataset path "
+    "before it can finish configuration. Enter the missing value, or press "
+    "Ctrl+C to cancel and re-run `agentops init` later."
+)
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -356,18 +362,16 @@ def _read_agentops_yaml(workspace: Path) -> dict:
     if not path.exists():
         return {}
     try:
-        import yaml  # noqa: PLC0415
-    except Exception:  # noqa: BLE001
-        return {}
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        from agentops.utils.yaml import load_yaml  # noqa: PLC0415
+
+        data = load_yaml(path)
     except Exception:  # noqa: BLE001
         return {}
     return data if isinstance(data, dict) else {}
 
 
 def _write_agentops_yaml(path: Path, data: dict) -> None:
-    import yaml  # noqa: PLC0415
+    from agentops.utils.yaml import save_yaml  # noqa: PLC0415
 
     path.parent.mkdir(parents=True, exist_ok=True)
     # Preserve simple field order for readability: version, agent, dataset,
@@ -381,10 +385,7 @@ def _write_agentops_yaml(path: Path, data: dict) -> None:
     for key, value in data.items():
         if key not in ordered:
             ordered[key] = value
-    path.write_text(
-        yaml.safe_dump(ordered, sort_keys=False, default_flow_style=False),
-        encoding="utf-8",
-    )
+    save_yaml(path, ordered)
 
 
 _AGENTOPS_ENV_HEADER = (
@@ -601,7 +602,11 @@ def run_wizard(
             raw = prompt("Foundry project endpoint", effective_endpoint_default)
             value = raw.strip()
             if not value:
-                break  # keep current / leave blank
+                if effective_endpoint_default:
+                    break  # keep current
+                echo("  ! Foundry project endpoint is required.")
+                echo("  ! " + REQUIRED_CONFIGURATION_MESSAGE)
+                continue
             err = validate_project_endpoint(value)
             if err:
                 echo("  ! " + err)
@@ -623,7 +628,11 @@ def run_wizard(
             raw = prompt("Agent", defaults.agent)
             value = raw.strip()
             if not value:
-                break
+                if defaults.agent:
+                    break  # keep current
+                echo("  ! Agent is required.")
+                echo("  ! " + REQUIRED_CONFIGURATION_MESSAGE)
+                continue
             err = validate_agent(value)
             if err:
                 echo("  ! " + err)
@@ -641,11 +650,12 @@ def run_wizard(
         echo("")
         echo(DATASET_TITLE)
         echo(_indent(DATASET_HELP))
+        dataset_default = defaults.dataset or ".agentops/data/smoke.jsonl"
         while True:
-            raw = prompt("Dataset path", defaults.dataset or ".agentops/data/smoke.jsonl")
+            raw = prompt("Dataset path", dataset_default)
             value = raw.strip()
             if not value:
-                break
+                value = dataset_default
             err = validate_dataset(value, workspace)
             if err:
                 echo("  ! " + err)
