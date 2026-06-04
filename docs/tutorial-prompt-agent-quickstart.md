@@ -224,7 +224,9 @@ Run these assignments once per resource group that hosts a Foundry account
 you will evaluate against. Cloud evaluations run server-side: the agent call
 and graders may authenticate as Foundry/Azure AI managed identities, not only
 as your signed-in user. Assigning the role only to your user can still leave
-some graders failing with `AuthenticationError`.
+some graders failing with `AuthenticationError`. Replace `<resource-group>`
+with the resource group you chose above, for example
+`rg-agentops-travel-<your-alias>`.
 
 ```powershell
 $subscriptionId = az account show --query id -o tsv

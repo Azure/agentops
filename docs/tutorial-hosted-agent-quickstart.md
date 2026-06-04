@@ -343,7 +343,8 @@ resource group hosting a Foundry account you will evaluate against. Local
 AI-assisted evaluators use your identity, while Foundry-hosted/server-side eval
 paths may use Azure AI managed identities from the same resource group.
 Assigning only the user can still leave server-side graders failing with
-`AuthenticationError`.
+`AuthenticationError`. Replace `<resource-group>` with the resource group you
+chose above, for example `rg-agentops-travel-<your-alias>`.
 
 ```powershell
 $subscriptionId = az account show --query id -o tsv
