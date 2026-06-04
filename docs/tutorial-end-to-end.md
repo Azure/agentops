@@ -65,10 +65,14 @@ hosted endpoint itself is the per-environment artifact.
 > **Name the Azure resources before provisioning.** When you use the Foundry
 > portal, `microsoft-foundry` skill, or Foundry Toolkit for this tutorial, specify
 > the resource group, Foundry / AI Services resource name, region, and model
-> deployment explicitly (for example `rg-agentops-travel-demo`,
-> `foundry-agentops-travel-demo`, `East US 2`, and `gpt-4o-mini`). A single shared
-> resource group is easiest for demos because RBAC and cleanup happen once;
-> production environments may use separate resource groups per stage.
+> deployment explicitly (for example `rg-agentops-travel-<your-alias>`,
+> `foundry-agentops-travel-<your-alias>`, `East US 2`, and `gpt-4o-mini`).
+> Replace `<your-alias>` with a short unique suffix when multiple people share
+> the same subscription. Resource group names are unique within a subscription;
+> Foundry / AI Services resource names should also be unique enough to avoid
+> Azure naming conflicts. A single shared resource group is easiest for demos
+> because RBAC and cleanup happen once; production environments may use separate
+> resource groups per stage.
 
 ## The cross-environment identity story (versioning callout)
 

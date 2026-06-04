@@ -221,8 +221,8 @@ I want to set up two Azure AI Foundry projects in the same subscription
 for an AgentOps tutorial:
 
 Use these Azure container/resource names unless I say otherwise:
-- Resource group: rg-agentops-travel-demo
-- Azure AI Foundry resource / AI Services account: foundry-agentops-travel-demo
+- Resource group: rg-agentops-travel-<your-alias>
+- Azure AI Foundry resource / AI Services account: foundry-agentops-travel-<your-alias>
 - Region: East US 2
 - Model deployment name in both projects: gpt-4o-mini
 
@@ -247,11 +247,16 @@ For each project, please:
 Show me the planned changes and the resulting endpoints before applying.
 ```
 
-Replace `rg-agentops-travel-demo`, `foundry-agentops-travel-demo`,
-`East US 2`, and `gpt-4o-mini` with the resource group, Foundry / AI Services
-resource name, region, and deployment name you want to use. For a recorded
-tutorial, one shared resource group is easiest because RBAC and cleanup happen
-in one place; production teams may split resource groups by environment.
+Replace `<your-alias>` with a short unique suffix such as your initials,
+GitHub handle, or a date (`pl`, `contoso-dev1`, `video-0604`). This matters
+when multiple people run the tutorial in the same subscription: resource group
+names must be unique within that subscription, Foundry / AI Services resource
+names should be unique enough to avoid Azure naming conflicts, and project names
+must be unique inside the Foundry resource. The model deployment name
+`gpt-4o-mini` does **not** need to be globally unique, but it must be the same
+in both tutorial projects. For a recorded tutorial, one shared resource group is
+easiest because RBAC and cleanup happen in one place; production teams may split
+resource groups by environment.
 
 If the skill is not available, use Path A.
 
