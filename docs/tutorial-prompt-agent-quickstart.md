@@ -204,6 +204,71 @@ names so the rest of the tutorial reads naturally:
 
    Save both endpoints. You will paste them in step 7 and step 8.
 
+#### Path A follow-up — grant data-plane access manually
+
+Creating a project through the portal only assigns you `Foundry User` **at
+the project scope**. That role does not cover the OpenAI data-plane actions
+that live on the parent AI Services *account* — the chat-completions call
+that backs every AI-assisted evaluator and every cloud-eval grader. Even
+`Owner` on the subscription is not enough: the built-in `Owner` role
+definition has `actions: ["*"]` but `dataActions: []`, so it grants full
+control plane and zero data plane on Cognitive Services accounts.
+
+Skipping this step is what causes the eval grader to fail later with::
+
+    PermissionDenied: The principal `<your-objectId>` lacks the required
+    data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
+    chat/completions/action` to perform `POST /openai/deployments/...`
+
+Run these assignments once per resource group that hosts a Foundry account
+you will evaluate against. Cloud evaluations run server-side: the agent call
+and graders may authenticate as Foundry/Azure AI managed identities, not only
+as your signed-in user. Assigning the role only to your user can still leave
+some graders failing with `AuthenticationError`.
+
+```powershell
+$subscriptionId = az account show --query id -o tsv
+$resourceGroup = "<resource-group>"
+$scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
+$userObjectId = az ad signed-in-user show --query id -o tsv
+
+# User running local commands / creating cloud evals.
+az role assignment create `
+  --assignee $userObjectId `
+  --role "Cognitive Services OpenAI User" `
+  --scope $scope
+
+# Foundry/Azure AI managed identities used by server-side agent/evaluator calls.
+az resource list -g $resourceGroup `
+  --query "[?identity.principalId!=null].identity.principalId" -o tsv |
+  ForEach-Object {
+    az role assignment create `
+      --assignee-object-id $_ `
+      --assignee-principal-type ServicePrincipal `
+      --role "Cognitive Services OpenAI User" `
+      --scope $scope
+  }
+```
+
+Repeat the command with the `travel-agent-dev` resource group if the dev
+project lives in a different RG.
+
+> **Give the assignment a few minutes to propagate.** Data-plane role
+> assignments on the AI Services account do **not** take effect
+> instantly — propagation to the Foundry evaluator workers can take
+> several minutes (occasionally up to ~15). The cloud eval runs each
+> grader as an independent worker that authenticates separately, so the
+> **first run right after granting the role may show intermittent
+> `AuthenticationError` on a subset of graders and report
+> `Threshold status: FAILED` even when every threshold is green** (no
+> single row had all graders succeed). This is a grader execution
+> failure, not a quality regression. Wait a few minutes and re-run
+> `agentops eval run` — once propagation finishes, every grader scores
+> and the gate passes.
+
+AgentOps Doctor will detect the missing assignment in a future release,
+but until then this is a manual one-time setup step per new environment.
+
 ### Path B — `microsoft-foundry` skill (if available)
 
 If your Copilot session already has the external `microsoft-foundry`
@@ -261,75 +326,9 @@ in both tutorial projects. For a recorded tutorial, one shared resource group is
 easiest because RBAC and cleanup happen in one place; production teams may split
 resource groups by environment.
 
-If the skill is not available, use Path A.
-
-### Grant data-plane access to your identity and Foundry managed identities
-
-Creating a project through the portal only assigns you `Foundry User` **at
-the project scope**. That role does not cover the OpenAI data-plane actions
-that live on the parent AI Services *account* — the chat-completions call
-that backs every AI-assisted evaluator and every cloud-eval grader. Even
-`Owner` on the subscription is not enough: the built-in `Owner` role
-definition has `actions: ["*"]` but `dataActions: []`, so it grants full
-control plane and zero data plane on Cognitive Services accounts.
-
-Skipping this step is what causes the eval grader to fail later with::
-
-    PermissionDenied: The principal `<your-objectId>` lacks the required
-    data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
-    chat/completions/action` to perform `POST /openai/deployments/...`
-
-If you used Path B and the `microsoft-foundry` skill confirmed these role
-assignments, treat the commands below as a verification/fallback step. If you
-used the portal, or if the skill only created the projects and deployments, run
-these assignments once per resource group that hosts a Foundry account you will
-evaluate against. Cloud evaluations run server-side: the agent call and graders
-may authenticate as Foundry/Azure AI managed identities, not only as your
-signed-in user. Assigning the role only to your user can still leave some
-graders failing with `AuthenticationError`.
-
-```powershell
-$subscriptionId = az account show --query id -o tsv
-$resourceGroup = "<resource-group>"
-$scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
-$userObjectId = az ad signed-in-user show --query id -o tsv
-
-# User running local commands / creating cloud evals.
-az role assignment create `
-  --assignee $userObjectId `
-  --role "Cognitive Services OpenAI User" `
-  --scope $scope
-
-# Foundry/Azure AI managed identities used by server-side agent/evaluator calls.
-az resource list -g $resourceGroup `
-  --query "[?identity.principalId!=null].identity.principalId" -o tsv |
-  ForEach-Object {
-    az role assignment create `
-      --assignee-object-id $_ `
-      --assignee-principal-type ServicePrincipal `
-      --role "Cognitive Services OpenAI User" `
-      --scope $scope
-  }
-```
-
-Repeat the command with the `travel-agent-dev` resource group if the dev
-project lives in a different RG.
-
-> **Give the assignment a few minutes to propagate.** Data-plane role
-> assignments on the AI Services account do **not** take effect
-> instantly — propagation to the Foundry evaluator workers can take
-> several minutes (occasionally up to ~15). The cloud eval runs each
-> grader as an independent worker that authenticates separately, so the
-> **first run right after granting the role may show intermittent
-> `AuthenticationError` on a subset of graders and report
-> `Threshold status: FAILED` even when every threshold is green** (no
-> single row had all graders succeed). This is a grader execution
-> failure, not a quality regression. Wait a few minutes and re-run
-> `agentops eval run` — once propagation finishes, every grader scores
-> and the gate passes.
-
-AgentOps Doctor will detect the missing assignment in a future release,
-but until then this is a manual one-time setup step per new environment.
+If the skill confirms it granted or verified the `Cognitive Services OpenAI
+User` assignments, skip the manual Path A RBAC follow-up. If the skill is not
+available, or if it only creates the projects and deployments, use Path A.
 
 ## 4. Seed `travel-agent` in the sandbox project
 
