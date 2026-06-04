@@ -220,6 +220,12 @@ skill propose the changes before applying them:
 I want to set up two Azure AI Foundry projects in the same subscription
 for an AgentOps tutorial:
 
+Use these Azure container/resource names unless I say otherwise:
+- Resource group: rg-agentops-travel-demo
+- Azure AI Foundry resource / AI Services account: foundry-agentops-travel-demo
+- Region: East US 2
+- Model deployment name in both projects: gpt-4o-mini
+
 1. travel-agent-sandbox - the authoring and experimentation space
    (used by me, or shared with my team for iteration). I will publish
    the seed prompt agent here manually in the next step (Foundry will
@@ -231,7 +237,7 @@ for an AgentOps tutorial:
    AgentOps' prompt_agent_bootstrap defaults.
 
 For each project, please:
-- Create the project (any region with a chat-capable deployment is fine).
+- Create the project under the resource group and Foundry resource named above.
 - Make sure the SAME chat-capable model deployment name is available in
   both projects (gpt-4o-mini works). Same name is important: AgentOps
   uses a single bootstrap model value for every environment.
@@ -240,6 +246,12 @@ For each project, please:
 
 Show me the planned changes and the resulting endpoints before applying.
 ```
+
+Replace `rg-agentops-travel-demo`, `foundry-agentops-travel-demo`,
+`East US 2`, and `gpt-4o-mini` with the resource group, Foundry / AI Services
+resource name, region, and deployment name you want to use. For a recorded
+tutorial, one shared resource group is easiest because RBAC and cleanup happen
+in one place; production teams may split resource groups by environment.
 
 If the skill is not available, use Path A.
 
