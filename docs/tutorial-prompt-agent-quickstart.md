@@ -243,6 +243,9 @@ For each project, please:
   uses a single bootstrap model value for every environment.
 - Attach or create an Application Insights resource for telemetry,
   starting with the dev project.
+- Grant or verify `Cognitive Services OpenAI User` data-plane access for my
+  signed-in user and for the Foundry/Azure AI managed identities that will
+  call the model deployment during server-side evaluations.
 
 Show me the planned changes and the resulting endpoints before applying.
 ```
@@ -276,11 +279,14 @@ Skipping this step is what causes the eval grader to fail later with::
     data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
     chat/completions/action` to perform `POST /openai/deployments/...`
 
-Run these assignments once per resource group that hosts a Foundry account
-you will evaluate against. Cloud evaluations run server-side: the agent call
-and graders may authenticate as Foundry/Azure AI managed identities, not only
-as your signed-in user. Assigning the role only to your user can still leave
-some graders failing with `AuthenticationError`.
+If you used Path B and the `microsoft-foundry` skill confirmed these role
+assignments, treat the commands below as a verification/fallback step. If you
+used the portal, or if the skill only created the projects and deployments, run
+these assignments once per resource group that hosts a Foundry account you will
+evaluate against. Cloud evaluations run server-side: the agent call and graders
+may authenticate as Foundry/Azure AI managed identities, not only as your
+signed-in user. Assigning the role only to your user can still leave some
+graders failing with `AuthenticationError`.
 
 ```powershell
 $subscriptionId = az account show --query id -o tsv

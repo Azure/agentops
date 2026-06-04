@@ -151,9 +151,12 @@ spans.
 > Replace `<your-alias>` with a short unique suffix when multiple people share
 > the same subscription. Resource group names are unique within a subscription;
 > Foundry / AI Services resource names should also be unique enough to avoid
-> Azure naming conflicts. For a recorded tutorial, one shared resource group is
-> easiest because RBAC and cleanup happen in one place; production teams may
-> split resource groups by environment.
+> Azure naming conflicts. Also ask the skill/tool to grant or verify
+> `Cognitive Services OpenAI User` data-plane access for your signed-in user and
+> any Foundry/Azure AI managed identities that will call evaluator models. For a
+> recorded tutorial, one shared resource group is easiest because RBAC and
+> cleanup happen in one place; production teams may split resource groups by
+> environment.
 
 ## 1. Create a clean workspace and install dependencies
 
@@ -334,11 +337,13 @@ but `dataActions: []`. Skipping this once causes the eval to fail with
 `PermissionDenied` on `Microsoft.CognitiveServices/accounts/OpenAI/
 deployments/chat/completions/action`.
 
-Run these assignments once per resource group hosting a Foundry account
-you will evaluate against. Local AI-assisted evaluators use your identity,
-while Foundry-hosted/server-side eval paths may use Azure AI managed
-identities from the same resource group. Assigning only the user can still
-leave server-side graders failing with `AuthenticationError`.
+If your skill/tool already confirmed these role assignments, treat the commands
+below as a verification/fallback step. Otherwise, run these assignments once per
+resource group hosting a Foundry account you will evaluate against. Local
+AI-assisted evaluators use your identity, while Foundry-hosted/server-side eval
+paths may use Azure AI managed identities from the same resource group.
+Assigning only the user can still leave server-side graders failing with
+`AuthenticationError`.
 
 ```powershell
 $subscriptionId = az account show --query id -o tsv
