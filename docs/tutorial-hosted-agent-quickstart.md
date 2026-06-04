@@ -156,7 +156,8 @@ spans.
 > any Foundry/Azure AI managed identities that will call evaluator models. For a
 > recorded tutorial, one shared resource group is easiest because RBAC and
 > cleanup happen in one place; production teams may split resource groups by
-> environment.
+> environment. For a fuller Azure baseline with networking, identity, security,
+> and operations patterns, see [Azure AI Landing Zone](https://aka.ms/ailz).
 
 ## 1. Create a clean workspace and install dependencies
 
