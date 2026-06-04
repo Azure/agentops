@@ -1,7 +1,7 @@
 {
   "name": "agentops-accelerator",
   "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Accelerator and Microsoft Foundry agents.",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "author": {
     "name": "AgentOps Accelerator",
     "url": "https://github.com/Azure/agentops"

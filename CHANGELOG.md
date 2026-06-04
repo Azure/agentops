@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.8] - 2026-06-04
+
 ### Fixed
 - **`agentops init` now handles blank required wizard values gracefully.** If
   the user presses Enter without an existing Foundry endpoint or agent default,
