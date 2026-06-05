@@ -70,13 +70,14 @@ hosted endpoint itself is the per-environment artifact.
 > Replace `<your-alias>` with a short unique suffix when multiple people share
 > the same subscription. Resource group names are unique within a subscription;
 > Foundry / AI Services resource names should also be unique enough to avoid
-> Azure naming conflicts. Also ask the skill/tool to grant or verify
-> `Cognitive Services OpenAI User` data-plane access for your signed-in user and
-> any Foundry/Azure AI managed identities that will call evaluator models. A
-> single shared resource group is easiest for demos because RBAC and cleanup
-> happen once; production environments may use separate resource groups per
-> stage. For a fuller Azure baseline with networking, identity, security, and
-> operations patterns, see [Azure AI Landing Zone](https://aka.ms/ailz).
+> Azure naming conflicts. Also ask the skill/tool to grant or verify `Azure AI
+> User` access for your signed-in user and `Cognitive Services OpenAI User`
+> data-plane access for your signed-in user plus any Foundry/Azure AI managed
+> identities that will call evaluator models. A single shared resource group is
+> easiest for demos because RBAC and cleanup happen once; production environments
+> may use separate resource groups per stage. For a fuller Azure baseline with
+> networking, identity, security, and operations patterns, see
+> [Azure AI Landing Zone](https://aka.ms/ailz).
 
 ## The cross-environment identity story (versioning callout)
 
@@ -302,17 +303,19 @@ for creating agents, tools, tracing, evaluation, and red-team scans:
 https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe
 ```
 
-### Grant data-plane access to your identity and Foundry managed identities
+### Grant agent-build and data-plane access to your identity and Foundry managed identities
 
 Both options above (prompt agent and hosted HTTP agent) eventually drive
 an `agentops eval run` that calls chat-completions on the AI Services
 account behind your Foundry project — either through Foundry's cloud
 graders or through the local AI-assisted evaluators. Creating a project
 through the portal assigns you `Foundry User` **only at the project
-scope**, which does not cover OpenAI data-plane actions on the parent
-account. Subscription `Owner` is also insufficient: its built-in role
-definition has `actions: ["*"]` but `dataActions: []`. Skipping this is
-what causes the eval to fail later with `PermissionDenied` on
+scope**. Creating/building agents in the Foundry UI can also require
+`Azure AI User` on the Foundry / AI Services resource. `Foundry User` does not
+cover OpenAI data-plane actions on the parent account. Subscription `Owner` is
+also insufficient: its built-in role definition has `actions: ["*"]` but
+`dataActions: []`. Skipping the OpenAI role is what causes the eval to fail
+later with `PermissionDenied` on
 `Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/
 completions/action`.
 
@@ -330,6 +333,11 @@ $subscriptionId = az account show --query id -o tsv
 $resourceGroup = "<resource-group>"
 $scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
 $userObjectId = az ad signed-in-user show --query id -o tsv
+
+az role assignment create `
+  --assignee $userObjectId `
+  --role "Azure AI User" `
+  --scope $scope
 
 az role assignment create `
   --assignee $userObjectId `

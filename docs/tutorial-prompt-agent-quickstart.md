@@ -209,28 +209,37 @@ names so the rest of the tutorial reads naturally:
 
    Save both endpoints. You will paste them in step 7 and step 8.
 
-#### Path A follow-up — grant data-plane access manually
+#### Path A follow-up — grant agent-build and data-plane access manually
 
 Creating a project through the portal only assigns you `Foundry User` **at
-the project scope**. That role does not cover the OpenAI data-plane actions
-that live on the parent AI Services *account* — the chat-completions call
-that backs every AI-assisted evaluator and every cloud-eval grader. Even
-`Owner` on the subscription is not enough: the built-in `Owner` role
-definition has `actions: ["*"]` but `dataActions: []`, so it grants full
-control plane and zero data plane on Cognitive Services accounts.
+the project scope**. In the Foundry UI, creating/building agents can also
+require `Azure AI User` on the Foundry / AI Services resource. If that role is
+missing, the portal blocks step 4 with:
 
-Skipping this step is what causes the eval grader to fail later with::
+```text
+You don't have permission to build agents in this project.
+To get access, please ask your administrator to assign you the Azure AI User role.
+```
+
+You also need `Cognitive Services OpenAI User` for the OpenAI data-plane actions
+that live on the parent AI Services *account* — the chat-completions call that
+backs every AI-assisted evaluator and every cloud-eval grader. Even `Owner` on
+the subscription is not enough: the built-in `Owner` role definition has
+`actions: ["*"]` but `dataActions: []`, so it grants full control plane and zero
+data plane on Cognitive Services accounts.
+
+Skipping the OpenAI role is what causes the eval grader to fail later with::
 
     PermissionDenied: The principal `<your-objectId>` lacks the required
     data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
     chat/completions/action` to perform `POST /openai/deployments/...`
 
-Run these assignments once per resource group that hosts a Foundry account
-you will evaluate against. Cloud evaluations run server-side: the agent call
-and graders may authenticate as Foundry/Azure AI managed identities, not only
-as your signed-in user. Assigning the role only to your user can still leave
-some graders failing with `AuthenticationError`. Replace `<resource-group>`
-with the resource group you chose above, for example
+Run these assignments once per resource group that hosts a Foundry account you
+will build in or evaluate against. Cloud evaluations run server-side: the agent
+call and graders may authenticate as Foundry/Azure AI managed identities, not
+only as your signed-in user. Assigning the OpenAI role only to your user can
+still leave some graders failing with `AuthenticationError`. Replace
+`<resource-group>` with the resource group you chose above, for example
 `rg-agentops-travel-<your-alias>`.
 
 ```powershell
@@ -239,7 +248,12 @@ $resourceGroup = "<resource-group>"
 $scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
 $userObjectId = az ad signed-in-user show --query id -o tsv
 
-# User running local commands / creating cloud evals.
+# User building agents in Foundry and running local commands / cloud evals.
+az role assignment create `
+  --assignee $userObjectId `
+  --role "Azure AI User" `
+  --scope $scope
+
 az role assignment create `
   --assignee $userObjectId `
   --role "Cognitive Services OpenAI User" `
@@ -315,9 +329,11 @@ For each project, please:
   uses a single bootstrap model value for every environment.
 - Attach or create an Application Insights resource for telemetry,
   starting with the dev project.
+- Grant or verify `Azure AI User` access for my signed-in user so I can build
+  agents in the Foundry UI.
 - Grant or verify `Cognitive Services OpenAI User` data-plane access for my
-  signed-in user and for the Foundry/Azure AI managed identities that will
-  call the model deployment during server-side evaluations.
+  signed-in user and for the Foundry/Azure AI managed identities that will call
+  the model deployment during server-side evaluations.
 
 Show me the planned changes and the resulting endpoints before applying.
 ```
@@ -333,11 +349,11 @@ in both tutorial projects. For a recorded tutorial, one shared resource group is
 easiest because RBAC and cleanup happen in one place; production teams may split
 resource groups by environment.
 
-Before continuing, check that the skill's plan/output explicitly lists the
-`Cognitive Services OpenAI User` assignments for your signed-in user and the
-Foundry/Azure AI managed identities. If it only created the projects and model
-deployments, ask the skill to add or verify those data-plane assignments before
-you move to step 4.
+Before continuing, check that the skill's plan/output explicitly lists
+`Azure AI User` for your signed-in user and `Cognitive Services OpenAI User` for
+your signed-in user plus the Foundry/Azure AI managed identities. If it only
+created the projects and model deployments, ask the skill to add or verify those
+role assignments before you move to step 4.
 
 ## 4. Seed `travel-agent` in the sandbox project
 
