@@ -213,8 +213,10 @@ names so the rest of the tutorial reads naturally:
 
 Creating a project through the portal only assigns you `Foundry User` **at
 the project scope**. In the Foundry UI, creating/building agents can also
-require `Azure AI User` on the Foundry / AI Services resource. If that role is
-missing, the portal blocks step 4 with:
+require `Foundry User` on the parent Foundry / AI Services resource. Some
+portal screens still use the previous role name, `Azure AI User`, while the
+Azure RBAC role name is now `Foundry User`. If that role is missing, the portal
+blocks step 4 with:
 
 ```text
 You don't have permission to build agents in this project.
@@ -251,7 +253,7 @@ $userObjectId = az ad signed-in-user show --query id -o tsv
 # User building agents in Foundry and running local commands / cloud evals.
 az role assignment create `
   --assignee $userObjectId `
-  --role "Azure AI User" `
+  --role "Foundry User" `
   --scope $scope
 
 az role assignment create `
@@ -329,8 +331,9 @@ For each project, please:
   uses a single bootstrap model value for every environment.
 - Attach or create an Application Insights resource for telemetry,
   starting with the dev project.
-- Grant or verify `Azure AI User` access for my signed-in user so I can build
-  agents in the Foundry UI.
+- Grant or verify `Foundry User` access for my signed-in user at the Foundry /
+  AI Services resource or resource-group scope so I can build agents in the
+  Foundry UI. Some portal screens still call this role `Azure AI User`.
 - Grant or verify `Cognitive Services OpenAI User` data-plane access for my
   signed-in user and for the Foundry/Azure AI managed identities that will call
   the model deployment during server-side evaluations.
@@ -350,10 +353,11 @@ easiest because RBAC and cleanup happen in one place; production teams may split
 resource groups by environment.
 
 Before continuing, check that the skill's plan/output explicitly lists
-`Azure AI User` for your signed-in user and `Cognitive Services OpenAI User` for
-your signed-in user plus the Foundry/Azure AI managed identities. If it only
-created the projects and model deployments, ask the skill to add or verify those
-role assignments before you move to step 4.
+`Foundry User` (or the previous portal label, `Azure AI User`) for your signed-in
+user and `Cognitive Services OpenAI User` for your signed-in user plus the
+Foundry/Azure AI managed identities. If it only created the projects and model
+deployments, ask the skill to add or verify those role assignments before you
+move to step 4.
 
 ## 4. Seed `travel-agent` in the sandbox project
 

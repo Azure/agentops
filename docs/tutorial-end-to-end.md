@@ -70,13 +70,14 @@ hosted endpoint itself is the per-environment artifact.
 > Replace `<your-alias>` with a short unique suffix when multiple people share
 > the same subscription. Resource group names are unique within a subscription;
 > Foundry / AI Services resource names should also be unique enough to avoid
-> Azure naming conflicts. Also ask the skill/tool to grant or verify `Azure AI
-> User` access for your signed-in user and `Cognitive Services OpenAI User`
-> data-plane access for your signed-in user plus any Foundry/Azure AI managed
-> identities that will call evaluator models. A single shared resource group is
-> easiest for demos because RBAC and cleanup happen once; production environments
-> may use separate resource groups per stage. For a fuller Azure baseline with
-> networking, identity, security, and operations patterns, see
+> Azure naming conflicts. Also ask the skill/tool to grant or verify `Foundry
+> User` access for your signed-in user (some portal screens still call this
+> `Azure AI User`) and `Cognitive Services OpenAI User` data-plane access for
+> your signed-in user plus any Foundry/Azure AI managed identities that will
+> call evaluator models. A single shared resource group is easiest for demos
+> because RBAC and cleanup happen once; production environments may use separate
+> resource groups per stage. For a fuller Azure baseline with networking,
+> identity, security, and operations patterns, see
 > [Azure AI Landing Zone](https://aka.ms/ailz).
 
 ## The cross-environment identity story (versioning callout)
@@ -311,8 +312,9 @@ account behind your Foundry project — either through Foundry's cloud
 graders or through the local AI-assisted evaluators. Creating a project
 through the portal assigns you `Foundry User` **only at the project
 scope**. Creating/building agents in the Foundry UI can also require
-`Azure AI User` on the Foundry / AI Services resource. `Foundry User` does not
-cover OpenAI data-plane actions on the parent account. Subscription `Owner` is
+`Foundry User` on the parent Foundry / AI Services resource; some portal screens
+still use the previous role name, `Azure AI User`. `Foundry User` does not cover
+OpenAI data-plane actions on the parent account. Subscription `Owner` is
 also insufficient: its built-in role definition has `actions: ["*"]` but
 `dataActions: []`. Skipping the OpenAI role is what causes the eval to fail
 later with `PermissionDenied` on
@@ -336,7 +338,7 @@ $userObjectId = az ad signed-in-user show --query id -o tsv
 
 az role assignment create `
   --assignee $userObjectId `
-  --role "Azure AI User" `
+  --role "Foundry User" `
   --scope $scope
 
 az role assignment create `
