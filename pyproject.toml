@@ -22,7 +22,7 @@ foundry = [
   "azure-ai-evaluation>=1.0,<2.0",
   "azure-identity>=1.17,<2.0",
   "azure-monitor-opentelemetry>=1.6,<2.0",
-  "pandas>=2.0,<3.0",
+  "pandas>=2.0,<4.0",
 ]
 agent = [
   "fastapi>=0.110,<1.0",
