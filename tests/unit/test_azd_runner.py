@@ -101,6 +101,50 @@ def test_run_azd_eval_reads_show_out_file_when_run_outputs_text(
     assert calls[1][:6] == ["azd", "ai", "agent", "eval", "show", "eval_123"]
 
 
+def test_run_command_with_progress_emits_heartbeat(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    messages: list[str] = []
+    ticks = iter([0.0, 31.0, 32.0])
+
+    class FakeProcess:
+        returncode = 0
+
+        def __init__(self, *, stdout, stderr) -> None:
+            self._polls = 0
+            stdout.write("Eval: eval_123\n")
+            stderr.write("diagnostic\n")
+
+        def poll(self) -> int | None:
+            self._polls += 1
+            return None if self._polls == 1 else self.returncode
+
+    def fake_popen(command, **kwargs):
+        assert command == ["azd", "ai", "agent", "eval", "run"]
+        return FakeProcess(stdout=kwargs["stdout"], stderr=kwargs["stderr"])
+
+    monkeypatch.setattr(azd_runner.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(azd_runner.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(azd_runner.time, "sleep", lambda _seconds: None)
+
+    completed = azd_runner._run_command(
+        ["azd", "ai", "agent", "eval", "run"],
+        cwd=tmp_path,
+        timeout_seconds=120,
+        progress=messages.append,
+        progress_label="azd eval run",
+    )
+
+    assert completed.returncode == 0
+    assert completed.stdout == "Eval: eval_123\n"
+    assert completed.stderr == "diagnostic\n"
+    assert messages == [
+        "azd eval run: waiting for azd/Foundry to finish (timeout 2 min).",
+        "azd eval run: still running (0.5 min elapsed).",
+    ]
+
+
 def test_normalize_to_results_binds_azd_metrics_and_thresholds(tmp_path: Path) -> None:
     recipe_path = tmp_path / "eval.yaml"
     _write_recipe(recipe_path)
