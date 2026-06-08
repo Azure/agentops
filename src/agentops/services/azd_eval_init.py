@@ -256,9 +256,9 @@ def _persist_recipe(
 
 def _relative_config_path(path: Path, root: Path) -> str:
     try:
-        return str(path.resolve().relative_to(root.resolve()))
+        return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
-        return str(path.resolve())
+        return path.resolve().as_posix()
 
 
 def _command_path(path: Path, *, workspace: Path) -> str:
