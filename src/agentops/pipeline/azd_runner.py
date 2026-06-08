@@ -15,7 +15,6 @@ from agentops.core.azd_eval import (
     EvalRecipe,
     bind_threshold_metrics,
     find_eval_yaml,
-    load_eval_recipe,
 )
 from agentops.core.results import RunResult, RunSummary, TargetInfo
 from agentops.pipeline import thresholds
