@@ -107,7 +107,8 @@ def _cli_created(path: Path | str) -> str:
 
 
 def _cli_updated(path: Path | str) -> str:
-    return f" {_cli_ok('✓')} {_cli_ok('updated')} {_cli_path(path)}"
+    marker = "✓" if _terminal_unicode_enabled() else "*"
+    return f" {_cli_ok(marker)} {_cli_ok('updated')} {_cli_path(path)}"
 
 
 def _cli_overwritten(path: Path | str) -> str:

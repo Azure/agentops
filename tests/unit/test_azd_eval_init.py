@@ -8,6 +8,7 @@ from unittest import mock
 
 from typer.testing import CliRunner
 
+import agentops.cli.app as cli_app
 from agentops.cli.app import app
 from agentops.services import azd_eval_init
 
@@ -102,3 +103,33 @@ def test_cli_eval_init_prints_result(tmp_path: Path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "azd eval init" in result.output
     assert "agentops eval run" in result.output
+
+
+def test_cli_eval_init_uses_ascii_updated_marker_when_unicode_disabled(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config_path = tmp_path / "agentops.yaml"
+    _write_config(config_path)
+    recipe_path = tmp_path / "eval.yaml"
+
+    def fake_init(**kwargs):
+        return azd_eval_init.AzdEvalInitResult(
+            recipe_path=recipe_path,
+            config_path=config_path,
+            config_updated=True,
+            command_ran=False,
+            stdout="",
+            stderr="",
+        )
+
+    monkeypatch.setattr(azd_eval_init, "run_azd_eval_init", fake_init)
+    monkeypatch.setattr(cli_app, "_terminal_unicode_enabled", lambda: False)
+
+    result = runner.invoke(
+        app,
+        ["eval", "init", "--dir", str(tmp_path), "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0
+    assert " * updated" in result.output
+    assert "✓" not in result.output

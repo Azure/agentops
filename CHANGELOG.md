@@ -22,6 +22,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   payload generation.
 
 ### Fixed
+- **`agentops eval init` now prints safely on Windows terminals without Unicode
+  support.** The CLI falls back to an ASCII updated marker instead of raising a
+  `UnicodeEncodeError` on cp1252 consoles after it wires `execution: azd` and
+  `eval_recipe`.
 - **Foundry RBAC preflight now prevents the portal build-agent permission
   block.** The prompt-agent, hosted-agent, and end-to-end tutorials plus the
   packaged `agentops-eval` skill now grant `Foundry User` and `Cognitive
