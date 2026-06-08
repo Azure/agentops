@@ -17,6 +17,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `agentops eval init` first.** When an azd eval recipe is selected, the
   recommended commands and next steps now explicitly create or reuse the recipe
   before telling users to run the local eval gate.
+- **`agentops eval run` now prints heartbeat feedback while azd is running.**
+  Long `azd ai agent eval run` calls now show an immediate waiting message and
+  periodic elapsed-time updates instead of leaving the terminal silent while
+  Foundry completes the native evaluation.
 
 ## [0.3.10] - 2026-06-08
 

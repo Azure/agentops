@@ -25,6 +25,7 @@ from agentops.pipeline import thresholds
 AZD_EXTENSION_NAME = "azure.ai.agents"
 AZD_AVAILABILITY_TIMEOUT_SECONDS = 10.0
 AZD_EVAL_TIMEOUT_SECONDS = 1800.0
+AZD_PROGRESS_INTERVAL_SECONDS = 30.0
 
 
 class AzdBackendError(RuntimeError):
@@ -118,7 +119,13 @@ def run_azd_eval(
     notify(f"Running azd backend: {' '.join(command)}")
 
     started = time.perf_counter()
-    completed = _run_command(command, cwd=workspace, timeout_seconds=timeout_seconds)
+    completed = _run_command(
+        command,
+        cwd=workspace,
+        timeout_seconds=timeout_seconds,
+        progress=progress,
+        progress_label="azd eval run",
+    )
     duration = time.perf_counter() - started
     if completed.returncode != 0:
         raise AzdBackendError(_format_command_failure("azd ai agent eval run", completed))
@@ -301,7 +308,17 @@ def _run_command(
     *,
     cwd: Path,
     timeout_seconds: float,
+    progress: Optional[Callable[[str], None]] = None,
+    progress_label: str = "command",
 ) -> subprocess.CompletedProcess[str]:
+    if progress is not None:
+        return _run_command_with_progress(
+            command,
+            cwd=cwd,
+            timeout_seconds=timeout_seconds,
+            progress=progress,
+            progress_label=progress_label,
+        )
     try:
         return subprocess.run(
             command,
@@ -321,6 +338,69 @@ def _run_command(
     except subprocess.TimeoutExpired as exc:
         raise AzdBackendError(
             f"{' '.join(command)} timed out after {timeout_seconds:g}s."
+        ) from exc
+
+
+def _run_command_with_progress(
+    command: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float,
+    progress: Callable[[str], None],
+    progress_label: str,
+) -> subprocess.CompletedProcess[str]:
+    started = time.monotonic()
+    next_update = started + AZD_PROGRESS_INTERVAL_SECONDS
+    progress(
+        f"{progress_label}: waiting for azd/Foundry to finish "
+        f"(timeout {timeout_seconds / 60:.0f} min)."
+    )
+    try:
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout_file:
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stderr_file:
+                process = subprocess.Popen(
+                    command,
+                    cwd=str(cwd),
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                )
+                while True:
+                    returncode = process.poll()
+                    now = time.monotonic()
+                    if returncode is not None:
+                        break
+                    elapsed = now - started
+                    if elapsed > timeout_seconds:
+                        process.kill()
+                        process.wait()
+                        raise AzdBackendError(
+                            f"{' '.join(command)} timed out after {timeout_seconds:g}s."
+                        )
+                    if now >= next_update:
+                        progress(
+                            f"{progress_label}: still running "
+                            f"({elapsed / 60:.1f} min elapsed)."
+                        )
+                        next_update = now + AZD_PROGRESS_INTERVAL_SECONDS
+                    time.sleep(1.0)
+
+                stdout_file.seek(0)
+                stderr_file.seek(0)
+                stdout = stdout_file.read()
+                stderr = stderr_file.read()
+                return subprocess.CompletedProcess(
+                    command,
+                    returncode,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+    except FileNotFoundError as exc:
+        raise AzdBackendError(
+            "azd was not found on PATH. Install the Azure Developer CLI and the "
+            f"`{AZD_EXTENSION_NAME}` extension, then rerun `agentops eval run`."
         ) from exc
 
 
