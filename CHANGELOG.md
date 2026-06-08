@@ -5,6 +5,16 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Reasoning models (OpenAI o-series, GPT-5) are now supported as evaluator
+  graders.** AI-assisted evaluators previously failed with
+  `BadRequestError: 'max_tokens' is not supported with this model` when the
+  grader deployment (`AZURE_OPENAI_DEPLOYMENT`) was a reasoning model. AgentOps
+  now passes `is_reasoning_model=True` to the `azure-ai-evaluation` evaluators so
+  the SDK sends `max_completion_tokens` instead. Resolution is automatic from the
+  deployment name and can be forced with the `AGENTOPS_EVALUATOR_REASONING`
+  environment variable (`auto` default, or `true`/`false`).
+
 ## [0.3.8] - 2026-06-04
 
 ### Fixed

@@ -12,6 +12,7 @@ import importlib
 import inspect
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -61,7 +62,9 @@ class EvaluatorRuntime:
 def _credential() -> Any:
     from azure.identity import DefaultAzureCredential  # noqa: WPS433
 
-    return DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
+    return DefaultAzureCredential(
+        exclude_developer_cli_credential=True, process_timeout=30
+    )
 
 
 def _model_config() -> Dict[str, str]:
@@ -118,6 +121,37 @@ def _model_config() -> Dict[str, str]:
     return config
 
 
+# Model families whose Azure OpenAI deployments reject the classic
+# ``max_tokens`` parameter and require ``max_completion_tokens`` instead
+# (OpenAI o-series reasoning models and GPT-5). ``azure-ai-evaluation``
+# only rewrites the request when the evaluator is constructed with
+# ``is_reasoning_model=True``; it never auto-detects.
+_REASONING_DEPLOYMENT_RE = re.compile(
+    r"(?:^|[^a-z0-9])(?:o[1-9][0-9]*|gpt-?5)(?:[^a-z0-9]|$)",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_reasoning_model(deployment: str) -> bool:
+    return bool(_REASONING_DEPLOYMENT_RE.search(deployment or ""))
+
+
+def _evaluator_reasoning_enabled(deployment: str) -> bool:
+    """Resolve whether AI-assisted evaluators target a reasoning grader.
+
+    Controlled by ``AGENTOPS_EVALUATOR_REASONING`` (``auto`` default,
+    ``true``/``false`` override). ``auto`` infers from the deployment name
+    because Azure deployment names are user-chosen and need not match the
+    underlying model.
+    """
+    raw = (os.getenv("AGENTOPS_EVALUATOR_REASONING") or "auto").strip().lower()
+    if raw in {"true", "1", "yes", "on"}:
+        return True
+    if raw in {"false", "0", "no", "off"}:
+        return False
+    return _looks_like_reasoning_model(deployment)
+
+
 def _project_endpoint() -> str:
     endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
     if not endpoint:
@@ -152,7 +186,10 @@ def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
 
     init_kwargs: Dict[str, Any] = {}
     if preset.class_name in _AI_ASSISTED:
-        init_kwargs["model_config"] = _model_config()
+        config = _model_config()
+        init_kwargs["model_config"] = config
+        if _evaluator_reasoning_enabled(config.get("azure_deployment", "")):
+            init_kwargs["is_reasoning_model"] = True
     if preset.class_name in _SAFETY:
         init_kwargs["azure_ai_project"] = _project_endpoint()
         init_kwargs["credential"] = _credential()
@@ -227,7 +264,9 @@ def _build_conversation_messages(
             # Normalise across the OpenAI ``function_call`` shape and the
             # nested ``function`` envelope produced by some Foundry payloads.
             raw_function = call.get("function")
-            function: Dict[str, Any] = raw_function if isinstance(raw_function, dict) else {}
+            function: Dict[str, Any] = (
+                raw_function if isinstance(raw_function, dict) else {}
+            )
             name = call.get("name") or function.get("name")
             if not name:
                 continue
@@ -242,29 +281,37 @@ def _build_conversation_messages(
                     pass
             tool_call_id = call.get("tool_call_id") or call.get("id") or f"call_{index}"
 
-            response_messages.append({
-                "role": "assistant",
-                "content": [{
-                    "type": "tool_call",
-                    "tool_call_id": tool_call_id,
-                    "name": name,
-                    "arguments": arguments if arguments is not None else {},
-                }],
-            })
+            response_messages.append(
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_call",
+                            "tool_call_id": tool_call_id,
+                            "name": name,
+                            "arguments": arguments if arguments is not None else {},
+                        }
+                    ],
+                }
+            )
 
             result = call.get("result")
             if isinstance(result, str) and result:
-                response_messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": [{"type": "tool_result", "tool_result": result}],
-                })
+                response_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": [{"type": "tool_result", "tool_result": result}],
+                    }
+                )
 
     if response_text:
-        response_messages.append({
-            "role": "assistant",
-            "content": [{"type": "text", "text": response_text}],
-        })
+        response_messages.append(
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": response_text}],
+            }
+        )
 
     if not response_messages:
         return None
@@ -353,7 +400,9 @@ def run_evaluator(
     #     score it as 0.0 instead of crashing the row.
     if preset.class_name == "ToolCallAccuracyEvaluator":
         has_actual = isinstance(actual_tool_calls, list) and len(actual_tool_calls) > 0
-        has_dataset = isinstance(row.get("tool_calls"), list) and len(row["tool_calls"]) > 0
+        has_dataset = (
+            isinstance(row.get("tool_calls"), list) and len(row["tool_calls"]) > 0
+        )
         if not has_actual:
             if has_dataset:
                 return RowMetric(
