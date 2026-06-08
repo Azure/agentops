@@ -507,10 +507,10 @@ CHECKS: Tuple[CheckSpec, ...] = (
     CheckSpec(
         id="opex.max_tokens_undefined",
         category=Category.OPERATIONAL_EXCELLENCE,
-        title="`max_tokens` is not set on model / evaluator configuration",
+        title="Output token limit is not set on model / evaluator configuration",
         summary=(
-            "Unbounded `max_tokens` invites long, expensive responses "
-            "and unpredictable latency."
+            "Missing `max_tokens` / `max_completion_tokens` limits invite "
+            "long, expensive responses and unpredictable latency."
         ),
         severities=(Severity.WARNING,),
         requires=("workspace",),

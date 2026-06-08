@@ -107,6 +107,7 @@ def run_azd_eval(
 
     command = [
         "azd",
+        "--no-prompt",
         "ai",
         "agent",
         "eval",
@@ -142,6 +143,7 @@ def run_azd_eval(
             show = _run_command(
                 [
                     "azd",
+                    "--no-prompt",
                     "ai",
                     "agent",
                     "eval",
@@ -327,6 +329,7 @@ def _run_command(
             encoding="utf-8",
             errors="replace",
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             timeout=timeout_seconds,
             check=False,
         )
