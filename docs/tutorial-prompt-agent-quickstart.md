@@ -751,6 +751,10 @@ the deploy workflow records which candidate is now running in dev. Next,
 standardize the eval side on an azd recipe so the same Foundry-native eval
 definition is used locally and in CI.
 
+The **Next** section printed by `workflow analyze` is a generic handoff. If it
+still says to run `agentops eval run` first, do not jump there yet for this
+tutorial. First create and wire the azd eval recipe:
+
 For this tutorial, use an azd eval recipe as the default Foundry-native eval
 handoff:
 
