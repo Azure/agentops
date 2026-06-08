@@ -236,30 +236,35 @@ Skipping the OpenAI role is what causes the eval grader to fail later with::
     data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
     chat/completions/action` to perform `POST /openai/deployments/...`
 
-Run these assignments once per resource group that hosts a Foundry account you
+Run these assignments once per AI Services account that hosts a Foundry project you
 will build in or evaluate against. Cloud evaluations run server-side: the agent
 call and graders may authenticate as Foundry/Azure AI managed identities, not
 only as your signed-in user. Assigning the OpenAI role only to your user can
 still leave some graders failing with `AuthenticationError`. Replace
 `<resource-group>` with the resource group you chose above, for example
-`rg-agentops-travel-<your-alias>`.
+`rg-agentops-travel-<your-alias>`, and `<account-name>` with the parent Foundry /
+AI Services account name.
 
 ```powershell
 $subscriptionId = az account show --query id -o tsv
 $resourceGroup = "<resource-group>"
-$scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
+$accountName = "<account-name>"
+$accountScope = az cognitiveservices account show `
+  --resource-group $resourceGroup `
+  --name $accountName `
+  --query id -o tsv
 $userObjectId = az ad signed-in-user show --query id -o tsv
 
 # User building agents in Foundry and running local commands / cloud evals.
 az role assignment create `
   --assignee $userObjectId `
-  --role "Foundry User" `
-  --scope $scope
+  --role "53ca6127-db72-4b80-b1b0-d745d6d5456d" `
+  --scope $accountScope
 
 az role assignment create `
   --assignee $userObjectId `
-  --role "Cognitive Services OpenAI User" `
-  --scope $scope
+  --role "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd" `
+  --scope $accountScope
 
 # Foundry/Azure AI managed identities used by server-side agent/evaluator calls.
 az resource list -g $resourceGroup `
@@ -268,8 +273,8 @@ az resource list -g $resourceGroup `
     az role assignment create `
       --assignee-object-id $_ `
       --assignee-principal-type ServicePrincipal `
-      --role "Cognitive Services OpenAI User" `
-      --scope $scope
+      --role "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd" `
+      --scope $accountScope
   }
 ```
 
@@ -331,8 +336,8 @@ For each project, please:
   uses a single bootstrap model value for every environment.
 - Attach or create an Application Insights resource for telemetry,
   starting with the dev project.
-- Grant or verify `Foundry User` access for my signed-in user at the Foundry /
-  AI Services resource or resource-group scope so I can build agents in the
+- Grant or verify `Foundry User` access for my signed-in user on the parent
+  Foundry / AI Services account so I can build agents in the
   Foundry UI. Some portal screens still call this role `Azure AI User`.
 - Grant or verify `Cognitive Services OpenAI User` data-plane access for my
   signed-in user and for the Foundry/Azure AI managed identities that will call
@@ -519,6 +524,10 @@ agent: travel-agent:2
 dataset: .agentops/data/travel-smoke.jsonl
 ```
 
+> **Why `version: 1`?** This is the AgentOps configuration schema version, not
+> the Foundry agent version. Keep it as `1`; the agent version is the suffix in
+> `agent: travel-agent:2`.
+>
 > **App Insights — should already be wired from step 3.** Step 3
 > (both Path A and Path B) instructs you to attach an Application
 > Insights resource to the **dev** Foundry project when you create it,
