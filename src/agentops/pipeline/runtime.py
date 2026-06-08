@@ -64,7 +64,10 @@ def _credential() -> Any:
     return DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
 
 
-def _model_config() -> Dict[str, str]:
+_REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
+
+
+def _model_config() -> Dict[str, Any]:
     from agentops.utils.azure_endpoints import (
         derive_openai_endpoint_from_project,
         normalize_azure_openai_endpoint,
@@ -110,12 +113,21 @@ def _model_config() -> Dict[str, str]:
             "Missing environment variables: " + ", ".join(missing) + "." + hint
         )
 
-    config: Dict[str, str] = {
-        "azure_endpoint": endpoint,  # type: ignore[dict-item]
-        "azure_deployment": deployment,  # type: ignore[dict-item]
+    config: Dict[str, Any] = {
+        "azure_endpoint": endpoint,
+        "azure_deployment": deployment,
         "api_version": api_version,
     }
     return config
+
+
+def _is_reasoning_model_deployment(deployment: Optional[str]) -> bool:
+    """Return whether an evaluator deployment needs reasoning-model parameters."""
+
+    if not deployment:
+        return False
+    normalized = deployment.strip().lower()
+    return any(normalized.startswith(prefix) for prefix in _REASONING_MODEL_PREFIXES)
 
 
 def _project_endpoint() -> str:
@@ -152,7 +164,10 @@ def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
 
     init_kwargs: Dict[str, Any] = {}
     if preset.class_name in _AI_ASSISTED:
-        init_kwargs["model_config"] = _model_config()
+        model_config = _model_config()
+        init_kwargs["model_config"] = model_config
+        if _is_reasoning_model_deployment(model_config.get("azure_deployment")):
+            init_kwargs["is_reasoning_model"] = True
     if preset.class_name in _SAFETY:
         init_kwargs["azure_ai_project"] = _project_endpoint()
         init_kwargs["credential"] = _credential()

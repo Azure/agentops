@@ -6,6 +6,14 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [0.3.11] - 2026-06-08
 
 ### Fixed
+- **Local AI-assisted evaluators now support reasoning-model graders.** When
+  `AZURE_OPENAI_DEPLOYMENT` points at `gpt-5*`, `o1*`, `o3*`, or `o4*`,
+  AgentOps marks the Azure AI Evaluation evaluator model as reasoning-capable so
+  the SDK sends `max_completion_tokens` instead of the unsupported `max_tokens`.
+- **`agentops eval run` no longer hides interactive azd prompts while appearing
+  to hang.** The azd backend now runs `azd ai agent eval run` and the follow-up
+  `show` command with `--no-prompt` and a closed stdin, so any missing
+  authentication/configuration fails visibly instead of waiting indefinitely.
 - **`agentops eval init` now bootstraps the minimal azd prompt-agent context.**
   For Foundry prompt-agent configs, the command creates missing `azure.yaml` and
   `src/<agent>/agent.yaml` files, enriches the active `.azure/<env>/.env` with

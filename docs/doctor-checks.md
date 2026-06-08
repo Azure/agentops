@@ -90,7 +90,7 @@ stopping the whole run.
 | `opex.stale_evaluation` | warning / critical | `results_history` | programmatic | latest run older than `stale_after_days` (critical at 2×) |
 | `opex.flaky_metric.<metric>` | warning | `results_history` | programmatic | coefficient of variation across last N runs > `flaky_cv_threshold` |
 | `opex.no_token_telemetry` | warning | `azure_monitor` | programmatic | `request_count > 0` but `gen_ai.usage.input_tokens + output_tokens == 0` |
-| `opex.max_tokens_undefined` | warning | `workspace_files` | programmatic | no `max_tokens:` declared in any `agentops.yaml` / bundle YAML that configures a model |
+| `opex.max_tokens_undefined` | warning | `workspace_files` | programmatic | no `max_tokens:` or `max_completion_tokens:` declared in any `agentops.yaml` / bundle YAML that configures a model |
 | `opex.llm.bundle_coverage` | info / warning | `workspace_files` | llm-judged | judge compares bundle YAML against agent description and flags missing built-ins |
 | `opex.spec_conformance.spec_missing` | warning | `workspace_files` | programmatic | spec-driven setup detected (`.specify/`, `AGENTS.md`, or Copilot instructions) but no readable spec body, so Doctor cannot verify bundles / datasets / tasks against intended agent behavior |
 | `opex.spec_conformance.tasks_stale` | warning | `workspace_files` | programmatic | unchecked task-list items in the spec have remained open past `stale_after_days`, which suggests the implementation plan may be stale or the task list was not maintained |

@@ -412,7 +412,7 @@ def test_workflow_sha_pinning_skips_local_actions(workspace: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# AI.26 max_tokens limit (opex.max_tokens_undefined)
+# AI.26 output token limit (opex.max_tokens_undefined)
 # ---------------------------------------------------------------------------
 
 
@@ -429,7 +429,7 @@ def test_max_tokens_undefined_fires_when_bundle_lacks_max_tokens(tmp_path: Path)
     findings = run_opex_workspace_check(tmp_path)
     f = next((f for f in findings if f.id == "opex.max_tokens_undefined"), None)
     assert f is not None
-    assert "default.yaml" in f.evidence["files_without_max_tokens"][0]
+    assert "default.yaml" in f.evidence["files_without_token_limit"][0]
 
 
 def test_max_tokens_undefined_silent_when_every_file_declares_it(tmp_path: Path) -> None:
@@ -444,6 +444,19 @@ def test_max_tokens_undefined_silent_when_every_file_declares_it(tmp_path: Path)
         encoding="utf-8",
     )
     findings = run_opex_workspace_check(tmp_path)
+    assert not any(f.id == "opex.max_tokens_undefined" for f in findings)
+
+
+def test_max_tokens_undefined_silent_when_reasoning_file_declares_completion_limit(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:2\nmodel: gpt-5\nmax_completion_tokens: 800\n",
+        encoding="utf-8",
+    )
+
+    findings = run_opex_workspace_check(tmp_path)
+
     assert not any(f.id == "opex.max_tokens_undefined" for f in findings)
 
 

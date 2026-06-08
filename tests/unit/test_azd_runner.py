@@ -52,11 +52,12 @@ def test_run_azd_eval_reads_show_out_file_when_run_outputs_text(
     _write_recipe(recipe_path)
     calls: list[list[str]] = []
 
-    def fake_run(command, *, cwd, text, encoding, errors, capture_output, timeout, check):
+    def fake_run(command, *, cwd, text, encoding, errors, capture_output, stdin, timeout, check):
         calls.append(command)
         assert encoding == "utf-8"
         assert errors == "replace"
-        if command[:5] == ["azd", "ai", "agent", "eval", "run"]:
+        assert stdin is azd_runner.subprocess.DEVNULL
+        if command[:6] == ["azd", "--no-prompt", "ai", "agent", "eval", "run"]:
             return mock.Mock(
                 returncode=0,
                 stdout=(
@@ -66,7 +67,7 @@ def test_run_azd_eval_reads_show_out_file_when_run_outputs_text(
                 ),
                 stderr="",
             )
-        if command[:5] == ["azd", "ai", "agent", "eval", "show"]:
+        if command[:6] == ["azd", "--no-prompt", "ai", "agent", "eval", "show"]:
             out_file = Path(command[command.index("--out-file") + 1])
             out_file.write_text(
                 json.dumps(
@@ -98,7 +99,8 @@ def test_run_azd_eval_reads_show_out_file_when_run_outputs_text(
     assert result.run_id == "evalrun_456"
     assert result.payload["eval_id"] == "eval_123"
     assert azd_runner._extract_numeric_metrics(result.payload) == {"coherence": 1.0}
-    assert calls[1][:6] == ["azd", "ai", "agent", "eval", "show", "eval_123"]
+    assert calls[0][:6] == ["azd", "--no-prompt", "ai", "agent", "eval", "run"]
+    assert calls[1][:7] == ["azd", "--no-prompt", "ai", "agent", "eval", "show", "eval_123"]
 
 
 def test_run_command_with_progress_emits_heartbeat(

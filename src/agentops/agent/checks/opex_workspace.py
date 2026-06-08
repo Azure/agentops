@@ -560,7 +560,7 @@ def _safe_load_yaml(path: Path) -> Optional[dict]:
 
 
 def _check_max_tokens_limit(workspace: Path) -> List[Finding]:
-    """AI.26 — every model deployment / call should set a ``max_tokens`` limit.
+    """AI.26 — every model deployment / call should set an output token limit.
 
     Without an upper bound, a runaway prompt or a malicious user can
     drive the bill arbitrarily high. We look in two places:
@@ -572,7 +572,7 @@ def _check_max_tokens_limit(workspace: Path) -> List[Finding]:
     The check is permissive: it fires only when at least one file
     explicitly looks like it configures a model (has ``model:``,
     ``deployment:``, or an ``evaluators:`` list) **and** none of the
-    candidate files declares ``max_tokens``. That avoids false
+    candidate files declares ``max_tokens`` or ``max_completion_tokens``. That avoids false
     positives on bare workspaces / agent-only configs.
     """
     candidates: List[Path] = []
@@ -586,18 +586,19 @@ def _check_max_tokens_limit(workspace: Path) -> List[Finding]:
         return []
 
     looks_model_shaped = False
-    files_with_max_tokens: List[str] = []
-    files_without_max_tokens: List[str] = []
+    files_with_token_limit: List[str] = []
+    files_without_token_limit: List[str] = []
 
     for path in candidates:
         try:
             text = path.read_text(encoding="utf-8")
         except OSError:
             continue
-        # Cheap, format-agnostic detection: matches `max_tokens: <n>`
-        # at any nesting level in any of the candidate YAMLs.
-        if re.search(r"(?m)^\s*max_tokens\s*:", text):
-            files_with_max_tokens.append(str(path.relative_to(workspace)).replace("\\", "/"))
+        # Cheap, format-agnostic detection: matches output token limits at
+        # any nesting level in any of the candidate YAMLs. Reasoning models
+        # require `max_completion_tokens`; older chat models use `max_tokens`.
+        if re.search(r"(?m)^\s*(max_tokens|max_completion_tokens)\s*:", text):
+            files_with_token_limit.append(str(path.relative_to(workspace)).replace("\\", "/"))
             looks_model_shaped = True
             continue
         # Only count files that actually look like they configure a model.
@@ -606,15 +607,15 @@ def _check_max_tokens_limit(workspace: Path) -> List[Finding]:
             text,
         ):
             looks_model_shaped = True
-            files_without_max_tokens.append(
+            files_without_token_limit.append(
                 str(path.relative_to(workspace)).replace("\\", "/")
             )
 
     if not looks_model_shaped:
         return []
-    if files_with_max_tokens and not files_without_max_tokens:
+    if files_with_token_limit and not files_without_token_limit:
         return []
-    if not files_without_max_tokens:
+    if not files_without_token_limit:
         return []
 
     return [
@@ -622,24 +623,23 @@ def _check_max_tokens_limit(workspace: Path) -> List[Finding]:
             id="opex.max_tokens_undefined",
             severity=Severity.WARNING,
             category=Category.OPERATIONAL_EXCELLENCE,
-            title="`max_tokens` is not set on model / evaluator configuration",
+            title="Output token limit is not set on model / evaluator configuration",
             summary=(
                 "Found model / evaluator YAML files that do not declare "
-                "a `max_tokens:` ceiling. Without an upper bound a single "
+                "a `max_tokens:` or `max_completion_tokens:` ceiling. Without an upper bound a single "
                 "runaway completion or a malicious prompt can drive token "
                 "spend arbitrarily high."
             ),
             recommendation=(
-                "Add a `max_tokens:` field next to each `model:` / "
-                "`deployment:` block (and inside `model_config:` for "
-                "AI-assisted evaluators). Pick a value just above your "
-                "longest legitimate response so legitimate traffic isn't "
-                "truncated."
+                "Add a `max_tokens:` field for chat models, or "
+                "`max_completion_tokens:` for reasoning models such as "
+                "`gpt-5` and `o` series deployments. Pick a value just above "
+                "your longest legitimate response so legitimate traffic isn't truncated."
             ),
             source=SOURCE_NAME,
             evidence={
-                "files_without_max_tokens": files_without_max_tokens[:10],
-                "files_with_max_tokens": files_with_max_tokens[:10],
+                "files_without_token_limit": files_without_token_limit[:10],
+                "files_with_token_limit": files_with_token_limit[:10],
             },
         )
     ]
