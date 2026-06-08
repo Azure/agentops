@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.11] - 2026-06-08
+
+### Fixed
+- **`agentops eval init` now bootstraps the minimal azd prompt-agent context.**
+  For Foundry prompt-agent configs, the command creates missing `azure.yaml` and
+  `src/<agent>/agent.yaml` files, enriches the active `.azure/<env>/.env` with
+  Foundry project metadata when it can resolve the project resource, and then
+  generates the azd eval recipe. The prompt-agent quickstart now keeps the main
+  path to `agentops eval init` followed by `agentops eval run`, while still using
+  `azd ai agent eval` under the hood.
+
 ## [0.3.10] - 2026-06-08
 
 ### Fixed

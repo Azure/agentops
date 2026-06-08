@@ -26,6 +26,7 @@ project_endpoint: https://contoso.services.ai.azure.com/api/projects/travel
 prompt_file: .agentops/prompts/travel.md
 prompt_agent_bootstrap:
   model: gpt-4o-mini
+  description: Helps plan short trips and explains tradeoffs.
 """.lstrip(),
         encoding="utf-8",
     )
@@ -37,7 +38,6 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
 ) -> None:
     config_path = tmp_path / "agentops.yaml"
     _write_config(config_path)
-    (tmp_path / "azure.yaml").write_text("name: travel-agent\n", encoding="utf-8")
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
     dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
@@ -47,9 +47,20 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
 
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
-    def fake_run(command, *, cwd, text, encoding, errors, capture_output, timeout, check):
-        assert encoding == "utf-8"
-        assert errors == "replace"
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=(
+                    '[{"id":"/subscriptions/sub-1/resourceGroups/rg-test/'
+                    'providers/Microsoft.CognitiveServices/accounts/contoso/'
+                    'projects/travel","resourceGroup":"rg-test","location":"eastus2"}]'
+                ),
+                stderr="",
+            )
+        assert kwargs["encoding"] == "utf-8"
+        assert kwargs["errors"] == "replace"
         assert command == [
             "azd",
             "--no-prompt",
@@ -70,7 +81,7 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
             "--evaluator",
             "builtin.fluency",
         ]
-        recipe = Path(cwd) / "src" / "travel-agent" / "eval.yaml"
+        recipe = Path(kwargs["cwd"]) / "src" / "travel-agent" / "eval.yaml"
         recipe.parent.mkdir(parents=True, exist_ok=True)
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
@@ -86,6 +97,13 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     assert result.config_updated is True
     converted = tmp_path / ".agentops" / "azd" / "smoke.azd.jsonl"
     assert '"query": "hello"' in converted.read_text(encoding="utf-8")
+    assert (tmp_path / "azure.yaml").exists()
+    agent_yaml = tmp_path / "src" / "travel-agent" / "agent.yaml"
+    assert "Helps plan short trips" in agent_yaml.read_text(encoding="utf-8")
+    env_text = (tmp_path / ".azure" / "sandbox" / ".env").read_text(encoding="utf-8")
+    assert "AZURE_AI_PROJECT_ID=" in env_text
+    assert "AZURE_RESOURCE_GROUP=rg-test" in env_text
+    assert "FOUNDRY_PROJECT_ENDPOINT=" in env_text
     updated = config_path.read_text(encoding="utf-8")
     assert "eval_recipe: src/travel-agent/eval.yaml" in updated
     assert "execution: azd" in updated
@@ -106,9 +124,9 @@ def test_run_azd_eval_init_explicit_dataset_wins(
 
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
-    def fake_run(command, *, cwd, text, encoding, errors, capture_output, timeout, check):
-        assert encoding == "utf-8"
-        assert errors == "replace"
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
         assert command == [
             "azd",
             "--no-prompt",
@@ -129,7 +147,7 @@ def test_run_azd_eval_init_explicit_dataset_wins(
             "--evaluator",
             "builtin.fluency",
         ]
-        recipe = Path(cwd) / "eval.yaml"
+        recipe = Path(kwargs["cwd"]) / "eval.yaml"
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
 
@@ -144,27 +162,67 @@ def test_run_azd_eval_init_explicit_dataset_wins(
     assert result.command_ran is True
 
 
-def test_run_azd_eval_init_requires_azd_project_when_generating_recipe(
+def test_run_azd_eval_init_bootstraps_before_azd_availability_check(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     config_path = tmp_path / "agentops.yaml"
     _write_config(config_path)
-    run_mock = mock.Mock()
-    monkeypatch.setattr(subprocess, "run", run_mock)
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True)
+    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: False)
 
-    try:
-        azd_eval_init.run_azd_eval_init(
-            workspace=tmp_path,
-            config_path=config_path,
-        )
-    except azd_eval_init.AzdBackendError as exc:
-        assert "requires a full azd AI agent project" in str(exc)
-        assert "prompt-agent tutorial step 10" in str(exc)
-    else:  # pragma: no cover - assertion helper
-        raise AssertionError("expected AzdBackendError")
+    with mock.patch.object(subprocess, "run") as run_mock:
+        run_mock.return_value = subprocess.CompletedProcess([], 0, stdout="[]", stderr="")
+        try:
+            azd_eval_init.run_azd_eval_init(
+                workspace=tmp_path,
+                config_path=config_path,
+            )
+        except azd_eval_init.AzdBackendError as exc:
+            assert "azd AI agent evaluation is not available" in str(exc)
+        else:  # pragma: no cover - assertion helper
+            raise AssertionError("expected AzdBackendError")
 
-    run_mock.assert_not_called()
+    assert (tmp_path / "azure.yaml").exists()
+    assert (tmp_path / "src" / "travel-agent" / "agent.yaml").exists()
+
+
+def test_run_azd_eval_init_bootstraps_without_project_endpoint(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "agentops.yaml"
+    config_path.write_text(
+        """
+version: 1
+agent: travel-agent:1
+dataset: .agentops/data/smoke.jsonl
+prompt_agent_bootstrap:
+  model: gpt-4o-mini
+""".lstrip(),
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True)
+    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    def fake_run(command, **kwargs):
+        assert "--project-endpoint" not in command
+        recipe = Path(kwargs["cwd"]) / "eval.yaml"
+        recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+    )
+
+    assert result.command_ran is True
 
 
 def test_run_azd_eval_init_reuses_existing_recipe_without_running_azd(
