@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- **`agentops explain` and every `explain` manual command no longer crash on a
+  clean install.** The CLI imports `click` directly for its pager and manual
+  output paths, but `click` was not a declared dependency. Newer Typer releases
+  (0.26+) no longer pull `click` transitively, so `pip install
+  agentops-accelerator` produced a `ModuleNotFoundError: No module named 'click'`
+  for `agentops explain`, `agentops init explain`, and `agentops doctor explain`.
+  `click>=8.1,<9` is now an explicit runtime dependency.
+
 ## [0.3.11] - 2026-06-08
 
 ### Fixed
