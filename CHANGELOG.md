@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.3.9] - 2026-06-08
 
 ### Added
 - **AgentOps can now delegate Foundry eval execution to `azd ai agent eval`.**
