@@ -54,31 +54,31 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "azure-ai-evaluation", marker = "extra == 'foundry'", specifier = ">=1.0" },
-    { name = "azure-ai-projects", specifier = ">=2.0.1" },
-    { name = "azure-identity", marker = "extra == 'agent'", specifier = ">=1.17" },
-    { name = "azure-identity", marker = "extra == 'foundry'", specifier = ">=1.17" },
-    { name = "azure-mgmt-cognitiveservices", marker = "extra == 'agent'", specifier = ">=13.5" },
-    { name = "azure-mgmt-monitor", marker = "extra == 'agent'", specifier = ">=6.0" },
-    { name = "azure-monitor-opentelemetry", marker = "extra == 'agent'", specifier = ">=1.6" },
-    { name = "azure-monitor-opentelemetry", marker = "extra == 'foundry'", specifier = ">=1.6" },
-    { name = "azure-monitor-query", marker = "extra == 'agent'", specifier = ">=1.3" },
+    { name = "azure-ai-evaluation", marker = "extra == 'foundry'", specifier = ">=1.0,<2.0" },
+    { name = "azure-ai-projects", specifier = ">=2.0.1,<3.0" },
+    { name = "azure-identity", marker = "extra == 'agent'", specifier = ">=1.17,<2.0" },
+    { name = "azure-identity", marker = "extra == 'foundry'", specifier = ">=1.17,<2.0" },
+    { name = "azure-mgmt-cognitiveservices", marker = "extra == 'agent'", specifier = ">=13.5,<14.0" },
+    { name = "azure-mgmt-monitor", marker = "extra == 'agent'", specifier = ">=6.0,<7.0" },
+    { name = "azure-monitor-opentelemetry", marker = "extra == 'agent'", specifier = ">=1.6,<2.0" },
+    { name = "azure-monitor-opentelemetry", marker = "extra == 'foundry'", specifier = ">=1.6,<2.0" },
+    { name = "azure-monitor-query", marker = "extra == 'agent'", specifier = ">=1.3,<2.0" },
     { name = "cryptography", marker = "extra == 'agent'", specifier = ">=42" },
-    { name = "fastapi", marker = "extra == 'agent'", specifier = ">=0.110" },
-    { name = "httpx", marker = "extra == 'agent'", specifier = ">=0.27" },
-    { name = "markdown", marker = "extra == 'agent'", specifier = ">=3.6" },
+    { name = "fastapi", marker = "extra == 'agent'", specifier = ">=0.110,<1.0" },
+    { name = "httpx", marker = "extra == 'agent'", specifier = ">=0.27,<1.0" },
+    { name = "markdown", marker = "extra == 'agent'", specifier = ">=3.6,<4.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
-    { name = "pandas", marker = "extra == 'foundry'", specifier = ">=2.0" },
+    { name = "pandas", marker = "extra == 'foundry'", specifier = ">=2.0,<3.0" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "ruamel-yaml", specifier = ">=0.18,<1.0" },
     { name = "typer", specifier = ">=0.12,<1.0" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'agent'", specifier = ">=0.30" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'agent'", specifier = ">=0.30,<1.0" },
 ]
 provides-extras = ["mcp", "foundry", "agent"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "azure-ai-evaluation", specifier = ">=1.0" },
+    { name = "azure-ai-evaluation", specifier = ">=1.0,<2.0" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pre-commit", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=8.0" },
@@ -353,16 +353,17 @@ wheels = [
 
 [[package]]
 name = "azure-mgmt-cognitiveservices"
-version = "14.1.0"
+version = "13.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "azure-common" },
     { name = "azure-mgmt-core" },
-    { name = "msrest" },
+    { name = "isodate" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fa/8e/9fcfdd507413a2536c5458b40942705ea8d74fe4e17f05fd1c32bb0225a9/azure_mgmt_cognitiveservices-14.1.0.tar.gz", hash = "sha256:915191374d0adb443863c20aaea2c9f3b9d558a849ac2b78f152249262fdcaf8", size = 184444, upload-time = "2025-10-24T07:28:14.229Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f7/4b/428c41c3aacad9506e65bd67055cc8ea950857ce4161b6bd895ed44e37f2/azure_mgmt_cognitiveservices-13.7.0.tar.gz", hash = "sha256:48a5a44c15c6768bad238011aaac83a806ceb8ace1b51b8043e35b39a9167a19", size = 174735, upload-time = "2025-07-21T06:24:49.537Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/25/ed6bbc01a03991255dd22aa41091360d225f1be20c88710af0f4a6c27459/azure_mgmt_cognitiveservices-14.1.0-py3-none-any.whl", hash = "sha256:3c0eecc00d183842a11d754f4f5c3328ff86f2d6c0a2b81b28dd7e073680258e", size = 290096, upload-time = "2025-10-24T07:28:15.766Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/72/0bccfe59ac552ff2434d2e69ea595d69b47bda81b507cbde2372363dc8a4/azure_mgmt_cognitiveservices-13.7.0-py3-none-any.whl", hash = "sha256:9683c436781b8294fe85410da4d22323128c3d68bc141196addbdf07b048dfb4", size = 271603, upload-time = "2025-07-21T06:24:50.951Z" },
 ]
 
 [[package]]
@@ -379,17 +380,16 @@ wheels = [
 
 [[package]]
 name = "azure-mgmt-monitor"
-version = "7.0.0"
+version = "6.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "azure-common" },
     { name = "azure-mgmt-core" },
     { name = "isodate" },
-    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0e/12/25874f6b894e972646244f570a23298969b58f57cfb7a188e2740017b43a/azure_mgmt_monitor-7.0.0.tar.gz", hash = "sha256:b75f536441d430f69ff873a1646e5f5dbcb3080a10768a59d0adc01541623816", size = 195496, upload-time = "2025-07-28T07:46:17.031Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/31/ebabafe0be1a177428880a8ec0fc44d681ac9dc1ae66a70d859cb5c7fbc3/azure-mgmt-monitor-6.0.2.tar.gz", hash = "sha256:5ffbf500e499ab7912b1ba6d26cef26480d9ae411532019bb78d72562196e07b", size = 760481, upload-time = "2023-08-22T08:31:30.722Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c6/d1/f6ea4731edfa02c14756770d7c3d5202b40c5c72744f15142c0d89b6d957/azure_mgmt_monitor-7.0.0-py3-none-any.whl", hash = "sha256:ad63b5d187e21d2d34366271ade6abbeea1fcf76e313ff0f83d394d9c124aa1b", size = 245243, upload-time = "2025-07-28T07:46:18.594Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/47/82ccbdb757da87c3c00d9ca0a7b7a28ab95f8dab040d1877bb15bf1c1e38/azure_mgmt_monitor-6.0.2-py3-none-any.whl", hash = "sha256:fe4cf41e6680b74a228f81451dc5522656d599c6f343ecf702fc790fda9a357b", size = 1305191, upload-time = "2023-08-22T08:31:35.989Z" },
 ]
 
 [[package]]
@@ -435,16 +435,16 @@ wheels = [
 
 [[package]]
 name = "azure-monitor-query"
-version = "2.0.0"
+version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "azure-core" },
     { name = "isodate" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/04/c0/e5c760f38224575f1eba35c319842f2be30fab599854ba9bd0b19d39c261/azure_monitor_query-2.0.0.tar.gz", hash = "sha256:7b05f2fcac4fb67fc9f77a7d4c5d98a0f3099fb73b57c69ec1b080773994671b", size = 86658, upload-time = "2025-07-30T22:23:41.534Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/c5/26eee462559e254ec69b1a8585528aa0d2bfb814c31a8640af872a151e7a/azure_monitor_query-1.4.1.tar.gz", hash = "sha256:71824e2b577d25df0d3bebbbb054c06a1ae3ebcb91831a9bac0bb344d0addf68", size = 162946, upload-time = "2025-01-14T23:00:47.263Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/52/0c/6b08a5a1e5f0bd97cefa13c53bf47f281a9a11732d19a94a86709acbc6bd/azure_monitor_query-2.0.0-py3-none-any.whl", hash = "sha256:8f52d581271d785e12f49cd5aaa144b8910fb843db2373855a7ef94c7fc462ea", size = 71102, upload-time = "2025-07-30T22:23:43.056Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/71/bdf03aef699d9a17d80bcaa8255c20e596ed591daa8a42a21854ddc4277d/azure_monitor_query-1.4.1-py3-none-any.whl", hash = "sha256:192c5d8efec48b434f803aa3850ce73b869975507a12b3a823012fc100056ac0", size = 157978, upload-time = "2025-01-14T23:00:50.661Z" },
 ]
 
 [[package]]

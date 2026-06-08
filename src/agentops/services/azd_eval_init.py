@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from agentops.core.agentops_config import classify_agent
 from agentops.core.azd_eval import AzdEvalRecipeError, find_eval_yaml
@@ -85,14 +86,7 @@ def run_azd_eval_init(
             command_ran=False,
         )
 
-    if not (root / "azure.yaml").exists():
-        raise AzdBackendError(
-            "`agentops eval init` requires a full azd AI agent project with "
-            "`azure.yaml`. Add the azd service descriptor and Foundry project "
-            "metadata from the prompt-agent tutorial step 10, or run "
-            "`azd ai agent init` for a hosted-agent project, then rerun "
-            "`agentops eval init`."
-        )
+    _ensure_prompt_agent_azd_context(root, resolved_config)
 
     if not azd_available(cwd=root):
         raise AzdBackendError(
@@ -227,6 +221,211 @@ def _project_endpoint_from_config_or_env(config_path: Path) -> Optional[str]:
     except Exception:  # noqa: BLE001
         pass
 
+    return None
+
+
+def _ensure_prompt_agent_azd_context(workspace: Path, config_path: Path) -> None:
+    data = load_yaml(config_path)
+    raw_agent = data.get("agent")
+    if not isinstance(raw_agent, str) or not raw_agent.strip():
+        return
+    try:
+        target = classify_agent(raw_agent)
+    except ValueError:
+        return
+    if target.kind != "foundry_prompt" or not target.name:
+        return
+
+    model = _eval_model_from_config(config_path) or "gpt-4o-mini"
+    description = _agent_description_from_config(config_path)
+    service_dir = workspace / "src" / target.name
+    azure_yaml = workspace / "azure.yaml"
+    agent_yaml = service_dir / "agent.yaml"
+
+    if not azure_yaml.exists():
+        azure_yaml.write_text(
+            _minimal_azure_yaml(
+                project_name=workspace.name,
+                service_name=target.name,
+                model=model,
+            ),
+            encoding="utf-8",
+        )
+    if not agent_yaml.exists():
+        service_dir.mkdir(parents=True, exist_ok=True)
+        agent_yaml.write_text(
+            _minimal_agent_yaml(
+                agent_name=target.name,
+                description=description,
+                model=model,
+            ),
+            encoding="utf-8",
+        )
+
+    _ensure_azd_project_env_metadata(workspace, config_path, model=model)
+
+
+def _agent_description_from_config(config_path: Path) -> str:
+    data = load_yaml(config_path)
+    raw_bootstrap = data.get("prompt_agent_bootstrap")
+    if isinstance(raw_bootstrap, dict):
+        raw_description = raw_bootstrap.get("description")
+        if isinstance(raw_description, str) and raw_description.strip():
+            return raw_description.strip()
+    return "Foundry prompt agent evaluated by AgentOps."
+
+
+def _minimal_azure_yaml(*, project_name: str, service_name: str, model: str) -> str:
+    return f"""# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+requiredVersions:
+  extensions:
+    azure.ai.agents: ">=0.1.38-preview"
+name: {project_name}
+services:
+  {service_name}:
+    project: src/{service_name}
+    host: azure.ai.agent
+    language: none
+    config:
+      deployments:
+        - name: {model}
+          model:
+            format: OpenAI
+            name: {model}
+          sku:
+            name: GlobalStandard
+            capacity: 10
+"""
+
+
+def _minimal_agent_yaml(*, agent_name: str, description: str, model: str) -> str:
+    return f"""# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/AgentSchema/refs/heads/main/schemas/v1.0/ContainerAgent.yaml
+
+kind: hosted
+name: {agent_name}
+description: {description}
+protocols:
+  - protocol: responses
+    version: 1.0.0
+environment_variables:
+  - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+    value: {model}
+"""
+
+
+def _ensure_azd_project_env_metadata(
+    workspace: Path,
+    config_path: Path,
+    *,
+    model: str,
+) -> None:
+    endpoint = _project_endpoint_from_config_or_env(config_path)
+    if not endpoint:
+        return
+    parsed = _parse_project_endpoint(endpoint)
+    if parsed is None:
+        return
+
+    from agentops.utils.azd_env import (  # noqa: PLC0415
+        discover_azd_env,
+        ensure_azd_env,
+        set_env_values,
+    )
+
+    location = discover_azd_env(workspace)
+    if not location.found or location.env_path is None:
+        location = ensure_azd_env(workspace, "sandbox")
+    env_path = location.env_path
+    updates = {
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": endpoint,
+        "FOUNDRY_PROJECT_ENDPOINT": endpoint,
+        "AZURE_AI_PROJECT_NAME": parsed["project_name"],
+        "AZURE_AI_ACCOUNT_NAME": parsed["account_name"],
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME": model,
+        "USE_EXISTING_AI_PROJECT": "true",
+    }
+
+    resource = _resolve_project_resource(parsed)
+    if resource:
+        updates.update(resource)
+    set_env_values(env_path, updates)
+
+
+def _parse_project_endpoint(endpoint: str) -> Optional[dict[str, str]]:
+    match = re.match(
+        r"^https://(?P<account>[^./]+)\.services\.ai\.azure\.com/api/projects/(?P<project>[^/?#]+)",
+        endpoint.rstrip("/"),
+    )
+    if not match:
+        return None
+    return {
+        "account_name": match.group("account"),
+        "project_name": match.group("project"),
+    }
+
+
+def _resolve_project_resource(parsed: dict[str, str]) -> dict[str, str]:
+    try:
+        listed = subprocess.run(
+            [
+                "az",
+                "resource",
+                "list",
+                "--resource-type",
+                "Microsoft.CognitiveServices/accounts/projects",
+                "--query",
+                (
+                    "[?name=='"
+                    f"{parsed['account_name']}/{parsed['project_name']}"
+                    "'].{id:id,resourceGroup:resourceGroup,location:location}"
+                ),
+                "-o",
+                "json",
+            ],
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return {}
+    if listed.returncode != 0:
+        return {}
+    try:
+        payload: Any = json.loads(listed.stdout)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, list) or not payload or not isinstance(payload[0], dict):
+        return {}
+    item = payload[0]
+    project_id = item.get("id")
+    resource_group = item.get("resourceGroup")
+    location = item.get("location")
+    if not isinstance(project_id, str) or not isinstance(resource_group, str):
+        return {}
+
+    subscription_id = _subscription_id_from_resource_id(project_id)
+    updates = {
+        "AZURE_AI_PROJECT_ID": project_id,
+        "AZURE_RESOURCE_GROUP": resource_group,
+        "AZURE_OPENAI_ENDPOINT": f"https://{parsed['account_name']}.openai.azure.com/",
+    }
+    if isinstance(location, str) and location:
+        updates["AZURE_LOCATION"] = location
+        updates["AZURE_AI_DEPLOYMENTS_LOCATION"] = location
+    if subscription_id:
+        updates["AZURE_SUBSCRIPTION_ID"] = subscription_id
+    return updates
+
+
+def _subscription_id_from_resource_id(resource_id: str) -> Optional[str]:
+    parts = resource_id.strip("/").split("/")
+    for index, part in enumerate(parts):
+        if part.lower() == "subscriptions" and index + 1 < len(parts):
+            return parts[index + 1]
     return None
 
 
