@@ -22,6 +22,10 @@ def _write_config(path: Path) -> None:
 version: 1
 agent: travel-agent:1
 dataset: .agentops/data/smoke.jsonl
+project_endpoint: https://contoso.services.ai.azure.com/api/projects/travel
+prompt_file: .agentops/prompts/travel.md
+prompt_agent_bootstrap:
+  model: gpt-4o-mini
 """.lstrip(),
         encoding="utf-8",
     )
@@ -36,6 +40,9 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
     dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
+    prompt_file.parent.mkdir(parents=True)
+    prompt_file.write_text("You are a travel planner.", encoding="utf-8")
 
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
@@ -47,6 +54,14 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
             "agent",
             "eval",
             "init",
+            "--project-endpoint",
+            "https://contoso.services.ai.azure.com/api/projects/travel",
+            "--agent",
+            "travel-agent",
+            "--gen-instruction-file",
+            str(Path(".agentops") / "prompts" / "travel.md"),
+            "--eval-model",
+            "gpt-4o-mini",
             "--dataset",
             str(Path(".agentops") / "data" / "smoke.jsonl"),
         ]
@@ -77,6 +92,9 @@ def test_run_azd_eval_init_explicit_dataset_wins(
     _write_config(config_path)
     dataset = tmp_path / "golden.jsonl"
     dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
+    prompt_file.parent.mkdir(parents=True)
+    prompt_file.write_text("You are a travel planner.", encoding="utf-8")
 
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
@@ -88,6 +106,14 @@ def test_run_azd_eval_init_explicit_dataset_wins(
             "agent",
             "eval",
             "init",
+            "--project-endpoint",
+            "https://contoso.services.ai.azure.com/api/projects/travel",
+            "--agent",
+            "travel-agent",
+            "--gen-instruction-file",
+            str(Path(".agentops") / "prompts" / "travel.md"),
+            "--eval-model",
+            "gpt-4o-mini",
             "--dataset",
             "golden.jsonl",
         ]

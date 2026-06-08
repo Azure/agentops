@@ -109,10 +109,10 @@ def test_analysis_recommends_cloud_eval_for_supported_prompt_agent(tmp_path: Pat
     assert "Copilot skills" in rendered
     assert "not needed - no Copilot handoff for this project shape" in rendered
     assert "Foundry eval" in rendered
-    assert "Run `agentops eval init` first" in rendered
-    assert "If you skip `agentops eval init`" in rendered
-    assert analysis.next_steps[0].startswith("Run `agentops eval init` first")
-    assert analysis.next_steps[1].startswith("If you skip `agentops eval init`")
+    assert "Run `agentops eval run` locally" in rendered
+    assert "Set AZURE_OPENAI_DEPLOYMENT" in rendered
+    assert analysis.next_steps[0].startswith("Run `agentops eval run` locally")
+    assert analysis.next_steps[1].startswith("Set AZURE_OPENAI_DEPLOYMENT")
     assert "- [x]" not in rendered
     assert "builtin." not in rendered
     assert "| Check" not in rendered

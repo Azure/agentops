@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from agentops.core.agentops_config import classify_agent
 from agentops.core.azd_eval import AzdEvalRecipeError, find_eval_yaml
 from agentops.pipeline.azd_runner import (
     AZD_EVAL_TIMEOUT_SECONDS,
@@ -69,6 +70,23 @@ def run_azd_eval_init(
         )
 
     command = ["azd", "--no-prompt", "ai", "agent", "eval", "init"]
+    project_endpoint = _project_endpoint_from_config_or_env(resolved_config)
+    if project_endpoint:
+        command.extend(["--project-endpoint", project_endpoint])
+    agent_name = _agent_name_from_config(resolved_config)
+    if agent_name:
+        command.extend(["--agent", agent_name])
+    instruction_file = _prompt_file_from_config(resolved_config)
+    if instruction_file is not None:
+        command.extend(
+            [
+                "--gen-instruction-file",
+                _command_path(instruction_file, workspace=root),
+            ]
+        )
+    eval_model = _eval_model_from_config(resolved_config)
+    if eval_model:
+        command.extend(["--eval-model", eval_model])
     effective_dataset = dataset or _dataset_from_config(resolved_config)
     if effective_dataset is not None:
         command.extend(
@@ -134,6 +152,78 @@ def _dataset_from_config(config_path: Path) -> Optional[Path]:
     if not dataset.exists():
         return None
     return dataset
+
+
+def _project_endpoint_from_config_or_env(config_path: Path) -> Optional[str]:
+    data = load_yaml(config_path)
+    raw_endpoint = data.get("project_endpoint")
+    if isinstance(raw_endpoint, str) and raw_endpoint.strip():
+        return raw_endpoint.strip()
+
+    try:
+        from agentops.utils.azd_env import discover_azd_env  # noqa: PLC0415
+        from agentops.utils.dotenv_loader import parse_env_file  # noqa: PLC0415
+
+        location = discover_azd_env(config_path.parent)
+        if location.found and location.env_path is not None:
+            endpoint = parse_env_file(location.env_path).get(
+                "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+            )
+            if endpoint:
+                return endpoint
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        from agentops.utils.dotenv_loader import parse_env_file  # noqa: PLC0415
+
+        for path in (
+            config_path.parent / ".agentops" / ".env",
+            config_path.parent / ".env",
+        ):
+            endpoint = parse_env_file(path).get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+            if endpoint:
+                return endpoint
+    except Exception:  # noqa: BLE001
+        pass
+
+    return None
+
+
+def _agent_name_from_config(config_path: Path) -> Optional[str]:
+    data = load_yaml(config_path)
+    raw_agent = data.get("agent")
+    if not isinstance(raw_agent, str) or not raw_agent.strip():
+        return None
+    try:
+        parsed = classify_agent(raw_agent)
+    except ValueError:
+        return None
+    return parsed.name
+
+
+def _prompt_file_from_config(config_path: Path) -> Optional[Path]:
+    data = load_yaml(config_path)
+    raw_prompt_file = data.get("prompt_file")
+    if not raw_prompt_file:
+        return None
+    prompt_file = Path(str(raw_prompt_file))
+    if not prompt_file.is_absolute():
+        prompt_file = config_path.parent / prompt_file
+    if not prompt_file.exists():
+        return None
+    return prompt_file
+
+
+def _eval_model_from_config(config_path: Path) -> Optional[str]:
+    data = load_yaml(config_path)
+    raw_bootstrap = data.get("prompt_agent_bootstrap")
+    if not isinstance(raw_bootstrap, dict):
+        return None
+    raw_model = raw_bootstrap.get("model")
+    if isinstance(raw_model, str) and raw_model.strip():
+        return raw_model.strip()
+    return None
 
 
 def _persist_recipe(

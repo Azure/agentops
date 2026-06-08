@@ -1137,13 +1137,7 @@ def _next_steps(
     ailz_preflight: bool,
 ) -> List[str]:
     eval_step = "Run `agentops eval run` locally and commit agentops.yaml plus datasets."
-    if mode == "prompt-agent" and eval_runner == AGENTOPS_CLOUD_RUNNER:
-        eval_step = (
-            "Run `agentops eval init` first if you want the Foundry-native azd "
-            "eval.yaml path; then run `agentops eval run` and commit agentops.yaml, "
-            "eval.yaml, and datasets."
-        )
-    elif eval_runner == AZD_EVAL_RUNNER:
+    if eval_runner == AZD_EVAL_RUNNER:
         eval_step = (
             "Run `agentops eval run` locally and commit agentops.yaml, eval.yaml, "
             "generated evaluator/rubric assets, and datasets."
@@ -1157,11 +1151,6 @@ def _next_steps(
             "Set AZURE_OPENAI_DEPLOYMENT so Foundry cloud eval can judge responses, "
             "then review AgentOps results.json/report.md after the run."
         )
-        if mode == "prompt-agent":
-            cloud_eval_step = (
-                "If you skip `agentops eval init` and stay on AgentOps cloud eval, "
-                "set AZURE_OPENAI_DEPLOYMENT so Foundry can judge responses."
-            )
         steps.insert(
             1,
             cloud_eval_step,
