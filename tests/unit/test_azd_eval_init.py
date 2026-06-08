@@ -47,7 +47,9 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
 
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
-    def fake_run(command, *, cwd, text, capture_output, timeout, check):
+    def fake_run(command, *, cwd, text, encoding, errors, capture_output, timeout, check):
+        assert encoding == "utf-8"
+        assert errors == "replace"
         assert command == [
             "azd",
             "--no-prompt",
@@ -59,12 +61,14 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
             "https://contoso.services.ai.azure.com/api/projects/travel",
             "--agent",
             "travel-agent",
-            "--gen-instruction-file",
-            str(Path(".agentops") / "prompts" / "travel.md"),
             "--eval-model",
             "gpt-4o-mini",
             "--dataset",
-            str(Path(".agentops") / "data" / "smoke.jsonl"),
+            str((tmp_path / ".agentops" / "azd" / "smoke.azd.jsonl").resolve()),
+            "--evaluator",
+            "builtin.coherence",
+            "--evaluator",
+            "builtin.fluency",
         ]
         recipe = Path(cwd) / "src" / "travel-agent" / "eval.yaml"
         recipe.parent.mkdir(parents=True, exist_ok=True)
@@ -80,6 +84,8 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
 
     assert result.command_ran is True
     assert result.config_updated is True
+    converted = tmp_path / ".agentops" / "azd" / "smoke.azd.jsonl"
+    assert '"query": "hello"' in converted.read_text(encoding="utf-8")
     updated = config_path.read_text(encoding="utf-8")
     assert "eval_recipe: src/travel-agent/eval.yaml" in updated
     assert "execution: azd" in updated
@@ -100,7 +106,9 @@ def test_run_azd_eval_init_explicit_dataset_wins(
 
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
-    def fake_run(command, *, cwd, text, capture_output, timeout, check):
+    def fake_run(command, *, cwd, text, encoding, errors, capture_output, timeout, check):
+        assert encoding == "utf-8"
+        assert errors == "replace"
         assert command == [
             "azd",
             "--no-prompt",
@@ -112,12 +120,14 @@ def test_run_azd_eval_init_explicit_dataset_wins(
             "https://contoso.services.ai.azure.com/api/projects/travel",
             "--agent",
             "travel-agent",
-            "--gen-instruction-file",
-            str(Path(".agentops") / "prompts" / "travel.md"),
             "--eval-model",
             "gpt-4o-mini",
             "--dataset",
-            "golden.jsonl",
+            str((tmp_path / ".agentops" / "azd" / "golden.azd.jsonl").resolve()),
+            "--evaluator",
+            "builtin.coherence",
+            "--evaluator",
+            "builtin.fluency",
         ]
         recipe = Path(cwd) / "eval.yaml"
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
@@ -150,7 +160,7 @@ def test_run_azd_eval_init_requires_azd_project_when_generating_recipe(
         )
     except azd_eval_init.AzdBackendError as exc:
         assert "requires a full azd AI agent project" in str(exc)
-        assert "agentops eval run" in str(exc)
+        assert "prompt-agent tutorial step 10" in str(exc)
     else:  # pragma: no cover - assertion helper
         raise AssertionError("expected AzdBackendError")
 

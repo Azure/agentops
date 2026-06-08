@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,28 @@ from agentops.pipeline.azd_runner import (
     azd_available,
 )
 from agentops.utils.yaml import load_yaml, save_yaml
+
+_DEFAULT_AZD_EVALUATORS = (
+    "builtin.coherence",
+    "builtin.fluency",
+)
+
+_EVALUATOR_NAME_TO_AZD = {
+    "CoherenceEvaluator": "builtin.coherence",
+    "FluencyEvaluator": "builtin.fluency",
+    "SimilarityEvaluator": "builtin.text_similarity",
+    "F1ScoreEvaluator": "builtin.f1_score",
+    "GroundednessEvaluator": "builtin.groundedness",
+    "RelevanceEvaluator": "builtin.relevance",
+    "RetrievalEvaluator": "builtin.retrieval",
+    "ResponseCompletenessEvaluator": "builtin.response_completeness",
+    "ToolCallAccuracyEvaluator": "builtin.tool_call_accuracy",
+    "IntentResolutionEvaluator": "builtin.intent_resolution",
+    "TaskAdherenceEvaluator": "builtin.task_adherence",
+    "ToolSelectionEvaluator": "builtin.tool_selection",
+    "ToolInputAccuracyEvaluator": "builtin.tool_input_accuracy",
+    "TaskCompletionEvaluator": "builtin.task_completion",
+}
 
 
 @dataclass(frozen=True)
@@ -65,9 +88,10 @@ def run_azd_eval_init(
     if not (root / "azure.yaml").exists():
         raise AzdBackendError(
             "`agentops eval init` requires a full azd AI agent project with "
-            "`azure.yaml`. This workspace can still use AgentOps cloud eval: "
-            "run `agentops workflow analyze --format text`, set "
-            "`AZURE_OPENAI_DEPLOYMENT`, then run `agentops eval run`."
+            "`azure.yaml`. Add the azd service descriptor and Foundry project "
+            "metadata from the prompt-agent tutorial step 10, or run "
+            "`azd ai agent init` for a hosted-agent project, then rerun "
+            "`agentops eval init`."
         )
 
     if not azd_available(cwd=root):
@@ -84,8 +108,9 @@ def run_azd_eval_init(
     agent_name = _agent_name_from_config(resolved_config)
     if agent_name:
         command.extend(["--agent", agent_name])
+    effective_dataset = dataset or _dataset_from_config(resolved_config)
     instruction_file = _prompt_file_from_config(resolved_config)
-    if instruction_file is not None:
+    if effective_dataset is None and instruction_file is not None:
         command.extend(
             [
                 "--gen-instruction-file",
@@ -95,17 +120,24 @@ def run_azd_eval_init(
     eval_model = _eval_model_from_config(resolved_config)
     if eval_model:
         command.extend(["--eval-model", eval_model])
-    effective_dataset = dataset or _dataset_from_config(resolved_config)
     if effective_dataset is not None:
+        effective_dataset = _azd_dataset_from_agentops_dataset(
+            effective_dataset,
+            workspace=root,
+        )
         command.extend(
             ["--dataset", _command_path(effective_dataset, workspace=root)]
         )
+        for evaluator in _azd_evaluators_from_config(resolved_config):
+            command.extend(["--evaluator", evaluator])
 
     try:
         completed = subprocess.run(
             command,
             cwd=str(root),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout_seconds,
             check=False,
@@ -234,6 +266,44 @@ def _eval_model_from_config(config_path: Path) -> Optional[str]:
     return None
 
 
+def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
+    data = load_yaml(config_path)
+    raw_evaluators = data.get("evaluators")
+    names: list[str] = []
+    if isinstance(raw_evaluators, list):
+        for item in raw_evaluators:
+            raw_name = item.get("name") if isinstance(item, dict) else item
+            if not isinstance(raw_name, str) or not raw_name.strip():
+                continue
+            name = raw_name.strip()
+            mapped = name if name.startswith("builtin.") else _EVALUATOR_NAME_TO_AZD.get(name)
+            if mapped and mapped not in names:
+                names.append(mapped)
+    return tuple(names) if names else _DEFAULT_AZD_EVALUATORS
+
+
+def _azd_dataset_from_agentops_dataset(dataset: Path, *, workspace: Path) -> Path:
+    target_dir = workspace / ".agentops" / "azd"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{dataset.stem}.azd.jsonl"
+
+    converted: list[str] = []
+    changed = False
+    for line in dataset.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if isinstance(row, dict) and "query" not in row and "input" in row:
+            row = {**row, "query": row["input"]}
+            changed = True
+        converted.append(json.dumps(row, ensure_ascii=False))
+
+    if changed:
+        target.write_text("\n".join(converted) + "\n", encoding="utf-8")
+        return target
+    return dataset
+
+
 def _persist_recipe(
     *,
     config_path: Path,
@@ -270,7 +340,4 @@ def _relative_config_path(path: Path, root: Path) -> str:
 
 
 def _command_path(path: Path, *, workspace: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(workspace.resolve()))
-    except ValueError:
-        return str(path.resolve())
+    return str(path.resolve())

@@ -3,6 +3,23 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.10] - 2026-06-08
+
+### Fixed
+- **Prompt-agent tutorial now uses `azd ai agent eval` as the standard eval
+  path.** Step 10 creates the minimal azd service context, records Foundry
+  project metadata in the active `.azure/<env>/.env`, runs `agentops eval init`,
+  and verifies the native azd eval backend with `agentops eval run`.
+- **`agentops eval init` now prepares azd-compatible inputs for prompt-agent
+  datasets.** The wrapper writes an azd JSONL copy with `query` values derived
+  from AgentOps `input`, passes absolute paths for azd service-project
+  resolution, uses stable built-in evaluators by default, and decodes azd output
+  safely on Windows.
+- **AgentOps now normalizes the current azd preview eval output.** The azd
+  runner reads text run IDs, exports details with `azd ai agent eval show
+  --out-file`, and converts per-criteria pass counts into aggregate metrics for
+  the AgentOps threshold gate.
+
 ## [0.3.9] - 2026-06-08
 
 ### Added

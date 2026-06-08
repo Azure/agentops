@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -122,31 +124,39 @@ def run_azd_eval(
         raise AzdBackendError(_format_command_failure("azd ai agent eval run", completed))
 
     run_payload = _parse_json_object(completed.stdout)
-    run_id = _extract_run_id(run_payload)
+    run_id = _extract_run_id(run_payload) or _extract_labeled_id(completed.stdout, "Run")
+    eval_id = _extract_eval_id(run_payload) or _extract_labeled_id(completed.stdout, "Eval")
     show_payload: Dict[str, Any] = {}
     show_stdout = ""
     show_stderr = ""
-    if run_id:
-        show = _run_command(
-            [
-                "azd",
-                "ai",
-                "agent",
-                "eval",
-                "show",
-                "--eval-id",
-                run_id,
-                "--output",
-                "json",
-            ],
-            cwd=workspace,
-            timeout_seconds=timeout_seconds,
-        )
-        show_stdout = show.stdout
-        show_stderr = show.stderr
-        if show.returncode != 0:
-            raise AzdBackendError(_format_command_failure("azd ai agent eval show", show))
-        show_payload = _parse_json_object(show.stdout)
+    if run_id and eval_id:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            details_path = Path(temp_dir) / "azd-eval-run.json"
+            show = _run_command(
+                [
+                    "azd",
+                    "ai",
+                    "agent",
+                    "eval",
+                    "show",
+                    eval_id,
+                    "--eval-run-id",
+                    run_id,
+                    "--out-file",
+                    str(details_path),
+                ],
+                cwd=workspace,
+                timeout_seconds=timeout_seconds,
+            )
+            show_stdout = show.stdout
+            show_stderr = show.stderr
+            if show.returncode != 0:
+                raise AzdBackendError(_format_command_failure("azd ai agent eval show", show))
+            if details_path.exists():
+                show_stdout = "\n".join(
+                    part for part in (show_stdout, details_path.read_text(encoding="utf-8")) if part
+                )
+                show_payload = _parse_json_object(details_path.read_text(encoding="utf-8"))
 
     payload = show_payload or run_payload
     if not payload:
@@ -297,6 +307,8 @@ def _run_command(
             command,
             cwd=str(cwd),
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout_seconds,
             check=False,
@@ -338,6 +350,19 @@ def _extract_run_id(payload: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _extract_eval_id(payload: Dict[str, Any]) -> Optional[str]:
+    for key in ("eval_id", "evalId"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _extract_labeled_id(text: str, label: str) -> Optional[str]:
+    match = re.search(rf"(?m)^\s*{re.escape(label)}:\s*(\S+)\s*$", text)
+    return match.group(1).strip() if match else None
+
+
 def _extract_status(payload: Dict[str, Any]) -> str:
     for key in ("status", "state", "result"):
         value = payload.get(key)
@@ -360,6 +385,24 @@ def _extract_item_count(payload: Dict[str, Any]) -> int:
 
 def _extract_numeric_metrics(payload: Dict[str, Any]) -> Dict[str, float]:
     metrics: Dict[str, float] = {}
+    criteria = payload.get("per_testing_criteria_results")
+    if isinstance(criteria, list):
+        for item in criteria:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("testing_criteria")
+            passed = item.get("passed")
+            failed = item.get("failed")
+            errored = item.get("errored")
+            if (
+                isinstance(name, str)
+                and isinstance(passed, int)
+                and isinstance(failed, int)
+                and isinstance(errored, int)
+            ):
+                total = passed + failed + errored
+                if total:
+                    metrics[name] = passed / total
     for key in ("metrics", "aggregate_metrics", "scores", "results", "evaluators", "dimensions"):
         value = payload.get(key)
         _collect_metrics(value, metrics)
