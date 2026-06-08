@@ -1939,6 +1939,10 @@ def cmd_eval_init(
         config_path = workspace / config_path
 
     try:
+        typer.echo(
+            f"{_cli_label('azd eval init')}: checking/generating eval.yaml "
+            "(this can take a few minutes on the first run)"
+        )
         result = run_azd_eval_init(
             workspace=workspace,
             config_path=config_path,

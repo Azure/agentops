@@ -22,6 +22,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   payload generation.
 
 ### Fixed
+- **`agentops eval init` now reuses the configured dataset and avoids hidden azd
+  prompts.** When `--dataset` is omitted, the command passes the existing
+  `agentops.yaml` dataset to `azd ai agent eval init`, reducing first-run
+  generation time for tutorial workspaces. It also runs azd with `--no-prompt`
+  and prints a progress line before the potentially long Foundry initialization.
 - **`agentops workflow analyze` now points prompt-agent users at `eval init`
   before `eval run` when no azd recipe is wired yet.** This keeps the CLI's
   next-step guidance aligned with the prompt-agent tutorial's standard
