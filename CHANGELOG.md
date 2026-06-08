@@ -22,6 +22,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   payload generation.
 
 ### Fixed
+- **`agentops workflow analyze` now points prompt-agent users at `eval init`
+  before `eval run` when no azd recipe is wired yet.** This keeps the CLI's
+  next-step guidance aligned with the prompt-agent tutorial's standard
+  Foundry-native `eval.yaml` flow.
 - **`agentops eval init` now prints safely on Windows terminals without Unicode
   support.** The CLI falls back to an ASCII updated marker instead of raising a
   `UnicodeEncodeError` on cp1252 consoles after it wires `execution: azd` and
