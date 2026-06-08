@@ -323,28 +323,33 @@ completions/action`.
 
 If your skill/tool already confirmed these role assignments, treat the commands
 below as a verification/fallback step. Otherwise, run these assignments once per
-resource group that hosts a Foundry account you will evaluate against. Cloud
+AI Services account that hosts a Foundry project you will evaluate against. Cloud
 evaluations run server-side and some agent or grader calls may authenticate as
 Foundry/Azure AI managed identities, not only as your signed-in user. Assigning
 the role only to your user can still leave graders failing with
 `AuthenticationError`. Replace `<resource-group>` with the resource group you
-chose above, for example `rg-agentops-travel-<your-alias>`.
+chose above, for example `rg-agentops-travel-<your-alias>`, and
+`<account-name>` with the parent Foundry / AI Services account name.
 
 ```powershell
 $subscriptionId = az account show --query id -o tsv
 $resourceGroup = "<resource-group>"
-$scope = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup"
+$accountName = "<account-name>"
+$accountScope = az cognitiveservices account show `
+  --resource-group $resourceGroup `
+  --name $accountName `
+  --query id -o tsv
 $userObjectId = az ad signed-in-user show --query id -o tsv
 
 az role assignment create `
   --assignee $userObjectId `
-  --role "Foundry User" `
-  --scope $scope
+  --role "53ca6127-db72-4b80-b1b0-d745d6d5456d" `
+  --scope $accountScope
 
 az role assignment create `
   --assignee $userObjectId `
-  --role "Cognitive Services OpenAI User" `
-  --scope $scope
+  --role "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd" `
+  --scope $accountScope
 
 az resource list -g $resourceGroup `
   --query "[?identity.principalId!=null].identity.principalId" -o tsv |
@@ -352,8 +357,8 @@ az resource list -g $resourceGroup `
     az role assignment create `
       --assignee-object-id $_ `
       --assignee-principal-type ServicePrincipal `
-      --role "Cognitive Services OpenAI User" `
-      --scope $scope
+      --role "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd" `
+      --scope $accountScope
   }
 ```
 

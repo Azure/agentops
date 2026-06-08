@@ -25,28 +25,36 @@ with a `name:version` or URL.
    (`--project-endpoint`, `--agent`, `--dataset`, …) for non-interactive
    runs. Run `agentops init show` later to inspect the resolved config.
 
-## Step 0.5 - Ensure data-plane RBAC on the AI Services account
+## Step 0.5 - Ensure agent-build and data-plane RBAC on the AI Services account
 
 AgentOps eval (cloud graders **and** local AI-assisted evaluators) calls
 `/openai/deployments/.../chat/completions` on the AI Services account
 that backs the Foundry project. Creating a project through the Foundry
 portal only assigns the user `Foundry User` at the *project* scope,
-which does **not** cover OpenAI data-plane actions on the parent
-account. Subscription `Owner` is also insufficient because the built-in
+which does **not** cover the parent account. The Foundry UI may then block
+agent creation with "You don't have permission to build agents in this
+project" and ask for the old portal label, `Azure AI User`; the current Azure
+RBAC role is `Foundry User` (`53ca6127-db72-4b80-b1b0-d745d6d5456d`).
+
+You also need `Cognitive Services OpenAI User`
+(`5e0bd9bd-7b93-4f28-af87-19fc36ad61bd`) for OpenAI data-plane actions on
+the parent account. Subscription `Owner` is insufficient because the built-in
 `Owner` role has `actions: ["*"]` but `dataActions: []`. The first
-`agentops eval run` against a fresh workspace will otherwise fail with:
+`agentops eval run` against a fresh workspace otherwise fails with:
 
 ```
 PermissionDenied … lacks the required data action
 'Microsoft.CognitiveServices/accounts/OpenAI/deployments/chat/completions/action'
 ```
 
-Run this preflight before Step 1. It must grant the role to the signed-in
-user **and** to the Foundry/Azure AI managed identities in the resource
-group. Cloud evaluations run server-side and some graders authenticate as
-those managed identities, so assigning only the user can still produce
-intermittent `AuthenticationError` grader failures. The commands are
-idempotent (`RoleAssignmentExists` means the role was already granted):
+Run this preflight before Step 1. It must grant `Foundry User` and
+`Cognitive Services OpenAI User` to the signed-in user on the AI Services
+account, plus the OpenAI data-plane role to any Foundry/Azure AI managed
+identities in the resource group. Cloud evaluations run server-side and some
+graders authenticate as those managed identities, so assigning only the user
+can still produce intermittent `AuthenticationError` grader failures. The
+commands are idempotent (`RoleAssignmentExists` means the role was already
+granted):
 
 ```bash
 # 1. Resolve the AI Services account from agentops.yaml / .azure/<env>/.env
@@ -54,16 +62,22 @@ PROJECT_ENDPOINT=$(grep -h '^AZURE_AI_FOUNDRY_PROJECT_ENDPOINT' .azure/*/.env .a
 ACCOUNT_HOST=$(echo "$PROJECT_ENDPOINT" | awk -F[/:] '{print $4}')
 ACCOUNT_NAME=$(echo "$ACCOUNT_HOST" | cut -d. -f1)
 
-# 2. Resolve subscription, resource group, and signed-in object ID
+# 2. Resolve subscription, resource group, account scope, and signed-in object ID
 SUB_ID=$(az account show --query id -o tsv)
 RG=$(az cognitiveservices account list --subscription "$SUB_ID" --query "[?name=='$ACCOUNT_NAME'].resourceGroup | [0]" -o tsv)
+ACCOUNT_ID=$(az cognitiveservices account show -g "$RG" -n "$ACCOUNT_NAME" --query id -o tsv)
 OBJ_ID=$(az ad signed-in-user show --query id -o tsv)
 
-# 3. Grant the user data-plane access at RG scope.
+# 3. Grant the user portal build access and data-plane access at account scope.
 az role assignment create \
   --assignee "$OBJ_ID" \
-  --role "Cognitive Services OpenAI User" \
-  --scope "/subscriptions/$SUB_ID/resourceGroups/$RG"
+  --role "53ca6127-db72-4b80-b1b0-d745d6d5456d" \
+  --scope "$ACCOUNT_ID"
+
+az role assignment create \
+  --assignee "$OBJ_ID" \
+  --role "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd" \
+  --scope "$ACCOUNT_ID"
 
 # 4. Grant the same data-plane role to Foundry/Azure AI managed identities.
 az resource list -g "$RG" \
@@ -73,8 +87,8 @@ while read -r PRINCIPAL_ID; do
   az role assignment create \
     --assignee-object-id "$PRINCIPAL_ID" \
     --assignee-principal-type ServicePrincipal \
-    --role "Cognitive Services OpenAI User" \
-    --scope "/subscriptions/$SUB_ID/resourceGroups/$RG"
+    --role "5e0bd9bd-7b93-4f28-af87-19fc36ad61bd" \
+    --scope "$ACCOUNT_ID"
 done
 ```
 
@@ -85,9 +99,10 @@ If the user has not run `az login` yet, do that first. If
 `az cognitiveservices account list` returns an empty RG, the AI Services
 account lives in a different subscription - ask the user which one.
 
-Skip this step only if the user explicitly says the role is already
-assigned, or if a previous `agentops eval run` succeeded against the
-same Foundry account.
+Skip this step only if the user explicitly says both roles are already
+assigned on the parent AI Services account, or if the user can already build
+agents in the Foundry UI and a previous `agentops eval run` succeeded against
+the same Foundry account.
 
 **Propagation:** data-plane role assignments do not take effect
 instantly — allow several minutes (occasionally up to ~15) before the

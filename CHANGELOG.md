@@ -21,6 +21,16 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   notes, and red-team readiness plans while explicitly refusing offensive
   payload generation.
 
+### Fixed
+- **Foundry RBAC preflight now prevents the portal build-agent permission
+  block.** The prompt-agent, hosted-agent, and end-to-end tutorials plus the
+  packaged `agentops-eval` skill now grant `Foundry User` and `Cognitive
+  Services OpenAI User` on the parent AI Services account using stable role IDs.
+  This covers the Foundry UI's "You don't have permission to build agents"
+  failure as well as the evaluator chat-completions data-plane failure, while
+  still assigning the OpenAI role to Foundry/Azure AI managed identities used by
+  server-side graders.
+
 ## [0.3.8] - 2026-06-04
 
 ### Fixed
