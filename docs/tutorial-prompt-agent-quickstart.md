@@ -744,11 +744,12 @@ Recommendation
   Copilot skills  installed - available for workflow adaptation handoff
 ```
 
-This is the combination the rest of the tutorial assumes: prompt-agent
-mode means the PR workflow stages candidates from `prompt_file` and the
-deploy workflow records candidates as deployed. Cloud eval in Foundry
-means the actual evaluator runs server-side; AgentOps still owns the
-threshold gate and the Doctor step.
+This is the combination the rest of the tutorial assumes: the PR workflow
+turns changes in `prompt_file` into a reviewable prompt-agent candidate,
+and the deploy workflow records which candidate is now running in dev.
+Foundry executes the cloud evaluation server-side; AgentOps reads that
+result, applies the threshold gate in CI, and then runs the Doctor
+readiness check.
 
 > **Optional azd eval recipe path.** If your team is already using the
 > public-preview `azd ai agent eval` flow, run `agentops eval init` to let azd
