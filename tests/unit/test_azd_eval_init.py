@@ -80,7 +80,7 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     assert result.command_ran is True
     assert result.config_updated is True
     updated = config_path.read_text(encoding="utf-8")
-    assert "eval_recipe: src\\travel-agent\\eval.yaml" in updated
+    assert "eval_recipe: src/travel-agent/eval.yaml" in updated
     assert "execution: azd" in updated
 
 
