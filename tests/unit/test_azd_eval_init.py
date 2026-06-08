@@ -33,11 +33,23 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
 ) -> None:
     config_path = tmp_path / "agentops.yaml"
     _write_config(config_path)
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True)
+    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
 
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
     def fake_run(command, *, cwd, text, capture_output, timeout, check):
-        assert command == ["azd", "ai", "agent", "eval", "init"]
+        assert command == [
+            "azd",
+            "--no-prompt",
+            "ai",
+            "agent",
+            "eval",
+            "init",
+            "--dataset",
+            str(Path(".agentops") / "data" / "smoke.jsonl"),
+        ]
         recipe = Path(cwd) / "src" / "travel-agent" / "eval.yaml"
         recipe.parent.mkdir(parents=True, exist_ok=True)
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
@@ -55,6 +67,43 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     updated = config_path.read_text(encoding="utf-8")
     assert "eval_recipe: src\\travel-agent\\eval.yaml" in updated
     assert "execution: azd" in updated
+
+
+def test_run_azd_eval_init_explicit_dataset_wins(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "agentops.yaml"
+    _write_config(config_path)
+    dataset = tmp_path / "golden.jsonl"
+    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    def fake_run(command, *, cwd, text, capture_output, timeout, check):
+        assert command == [
+            "azd",
+            "--no-prompt",
+            "ai",
+            "agent",
+            "eval",
+            "init",
+            "--dataset",
+            "golden.jsonl",
+        ]
+        recipe = Path(cwd) / "eval.yaml"
+        recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+        dataset=dataset,
+    )
+
+    assert result.command_ran is True
 
 
 def test_run_azd_eval_init_reuses_existing_recipe_without_running_azd(

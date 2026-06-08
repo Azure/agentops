@@ -762,8 +762,11 @@ handoff:
 agentops eval init
 ```
 
-That command lets azd generate `eval.yaml`. Keep the recipe wired in
-`agentops.yaml`:
+That command lets azd generate `eval.yaml`. AgentOps passes the dataset already
+configured in `agentops.yaml` to azd, so azd does not need to invent a new smoke
+dataset for this tutorial. The first run can still take a few minutes because
+Foundry creates the eval assets server-side before `eval.yaml` is written. Keep
+the recipe wired in `agentops.yaml`:
 
 ```yaml
 execution: azd

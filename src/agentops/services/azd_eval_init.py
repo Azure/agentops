@@ -68,9 +68,12 @@ def run_azd_eval_init(
             f"{AZD_EXTENSION_NAME}`), then rerun `agentops eval init`."
         )
 
-    command = ["azd", "ai", "agent", "eval", "init"]
-    if dataset is not None:
-        command.extend(["--dataset", str(dataset)])
+    command = ["azd", "--no-prompt", "ai", "agent", "eval", "init"]
+    effective_dataset = dataset or _dataset_from_config(resolved_config)
+    if effective_dataset is not None:
+        command.extend(
+            ["--dataset", _command_path(effective_dataset, workspace=root)]
+        )
 
     try:
         completed = subprocess.run(
@@ -120,6 +123,19 @@ def _find_recipe_if_unambiguous(workspace: Path) -> Optional[Path]:
         return None
 
 
+def _dataset_from_config(config_path: Path) -> Optional[Path]:
+    data = load_yaml(config_path)
+    raw_dataset = data.get("dataset")
+    if not raw_dataset:
+        return None
+    dataset = Path(str(raw_dataset))
+    if not dataset.is_absolute():
+        dataset = config_path.parent / dataset
+    if not dataset.exists():
+        return None
+    return dataset
+
+
 def _persist_recipe(
     *,
     config_path: Path,
@@ -151,5 +167,12 @@ def _persist_recipe(
 def _relative_config_path(path: Path, root: Path) -> str:
     try:
         return str(path.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(path.resolve())
+
+
+def _command_path(path: Path, *, workspace: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(workspace.resolve()))
     except ValueError:
         return str(path.resolve())
