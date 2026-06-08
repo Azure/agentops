@@ -150,7 +150,9 @@ evaluators:
     assert "booking_accuracy" in analysis.official_evaluators
     assert any(signal.key == "azd_ai_agent_eval" for signal in analysis.signals)
     assert "azd AI agent eval" in rendered
-    assert analysis.next_steps[0].startswith("Run `agentops eval run` locally")
+    assert "agentops eval init" in analysis.recommended_commands
+    assert analysis.next_steps[0].startswith("Run `agentops eval init`")
+    assert "`agentops eval run` locally" in analysis.next_steps[0]
     assert "eval.yaml" in analysis.next_steps[0]
     assert "generated evaluator/rubric assets" in analysis.next_steps[0]
 
