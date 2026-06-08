@@ -576,22 +576,22 @@ Azure AI Projects SDK. No env variable required.
 
 **Quick verification (10 seconds):**
 
-Open <https://ai.azure.com> → **`travel-agent-dev`** project → left
-rail **Tracing** (sometimes labeled **Observability** or **Monitoring**
-depending on the current portal layout). One of two things will be
-true:
+Open <https://ai.azure.com> → left rail **Admin** → select the
+**`travel-agent-dev`** project → **Connected resources**. Make sure you
+are checking the **dev** project, not the sandbox project you used to
+build the prompt agent. One of two things will be true:
 
 | What you see | What it means | What to do |
 |---|---|---|
-| Linked Application Insights resource with a "Copy connection string" button | The resource exists and is connected. Auto-discovery will pick it up. | **You are done.** Skip the rest of this subsection and continue to section 9. |
-| A "Connect Application Insights" prompt or empty Tracing tab | The resource was not created in step 3. | Either connect/create one now (see below), or paste a connection string manually. |
+| An `appinsights` row with category `AppInsights` | The resource exists and is connected to the dev project. Auto-discovery will pick it up. | **You are done.** Skip the rest of this subsection and continue to section 9. |
+| No App Insights row in **Connected resources** | The resource was not connected in step 3. | Click **Add connection**, connect or create an Application Insights resource for the dev project, or paste a connection string manually. |
 
-**If the Tracing tab says the resource is missing**, the fastest fix is
-to connect one through the Foundry portal itself: click **Connect
-Application Insights** on the Tracing tab and either pick an existing
-resource or click **Create new** to provision one in the same resource
-group as the project. Once it appears as the linked resource, you can
-again skip the manual env variable — auto-discovery will pick it up.
+**If Connected resources does not show App Insights**, the fastest fix is
+to connect one through the Foundry portal itself: click **Add connection**
+and either pick an existing Application Insights resource or create one
+in the same resource group as the dev project. Once an `appinsights` row
+appears under **Connected resources**, you can again skip the manual env
+variable — auto-discovery will pick it up.
 
 **Only if you specifically want to override which resource telemetry
 goes to** (advanced case, e.g. you have a dedicated observability
