@@ -769,34 +769,121 @@ Recommendation
 
 This confirms the deployment side is configured correctly: the PR workflow
 turns changes in `prompt_file` into a reviewable prompt-agent candidate, and
-the deploy workflow records which candidate is now running in dev. For this
-quickstart, keep the eval runner on the AgentOps cloud path that
-`workflow analyze` reports. Foundry runs the evaluator server-side, while
-AgentOps owns the release gate: it normalizes the results into `results.json`,
-applies thresholds, runs Doctor, and writes release evidence.
+the deploy workflow records which candidate is now running in dev. Next, add the
+minimal azd project context that `azd ai agent eval` needs. AgentOps will still
+own the release gate and evidence, but azd/Foundry will own the native eval run.
 
-Now follow the **Next** section from `workflow analyze`: set
-`AZURE_OPENAI_DEPLOYMENT` to the chat-capable deployment that should judge
-responses, then run `agentops eval run` in step 12 after the workflows are
-generated and the dev environment is ready.
+Create the azd service descriptor for this prompt agent:
 
-> **Advanced azd eval recipe path.** Use `agentops eval init` only when your
-> workspace is already a full azd AI agent project with `azure.yaml` and azd
-> project context. In that project shape, azd can generate and run an
-> `eval.yaml` recipe, and AgentOps can wrap it with:
->
-> ```yaml
-> execution: azd
-> eval_recipe: eval.yaml
-> thresholds:
->   booking_accuracy: ">=0.8"
->   avg_latency_seconds: "<=30"
-> ```
->
-> Do not run `agentops eval init` in this quickstart workspace just to satisfy
-> step 10. Without a full azd project context, current `azd ai agent eval run`
-> cannot resolve the Foundry project even if AgentOps passes the project endpoint
-> during initialization.
+```powershell
+New-Item -ItemType Directory -Force src\travel-agent | Out-Null
+@'
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+requiredVersions:
+  extensions:
+    azure.ai.agents: ">=0.1.38-preview"
+name: agentops-prompt-quickstart
+services:
+  travel-agent:
+    project: src/travel-agent
+    host: azure.ai.agent
+    language: none
+    config:
+      deployments:
+        - name: gpt-4o-mini
+          model:
+            format: OpenAI
+            name: gpt-4o-mini
+          sku:
+            name: GlobalStandard
+            capacity: 10
+'@ | Set-Content -Encoding utf8 azure.yaml
+
+@'
+# yaml-language-server: $schema=https://raw.githubusercontent.com/microsoft/AgentSchema/refs/heads/main/schemas/v1.0/ContainerAgent.yaml
+
+kind: hosted
+name: travel-agent
+description: Helps plan short trips and explains tradeoffs.
+protocols:
+  - protocol: responses
+    version: 1.0.0
+environment_variables:
+  - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
+    value: gpt-4o-mini
+'@ | Set-Content -Encoding utf8 src\travel-agent\agent.yaml
+```
+
+Make sure the active azd environment has the Foundry project metadata that azd
+uses to resolve the native eval resource. Replace the resource group and project
+names if you used a different suffix in step 3:
+
+```powershell
+$envName = "sandbox"
+$resourceGroup = "rg-agentops-travel-<your-alias>"
+$accountName = "foundry-agentops-travel-<your-alias>"
+$projectName = "travel-agent-sandbox"
+$projectEndpoint = "https://$accountName.services.ai.azure.com/api/projects/$projectName"
+$projectId = az resource show `
+  --resource-group $resourceGroup `
+  --resource-type Microsoft.CognitiveServices/accounts/projects `
+  --name "$accountName/$projectName" `
+  --query id -o tsv
+$subscriptionId = az account show --query id -o tsv
+
+$envFile = ".azure\$envName\.env"
+$updates = [ordered]@{
+  AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = $projectEndpoint
+  FOUNDRY_PROJECT_ENDPOINT = $projectEndpoint
+  AZURE_AI_PROJECT_ID = $projectId
+  AZURE_AI_PROJECT_NAME = $projectName
+  AZURE_AI_ACCOUNT_NAME = $accountName
+  AZURE_RESOURCE_GROUP = $resourceGroup
+  AZURE_SUBSCRIPTION_ID = $subscriptionId
+  AZURE_LOCATION = "eastus2"
+  AZURE_AI_DEPLOYMENTS_LOCATION = "eastus2"
+  AZURE_OPENAI_ENDPOINT = "https://$accountName.openai.azure.com/"
+  AZURE_AI_MODEL_DEPLOYMENT_NAME = "gpt-4o-mini"
+  USE_EXISTING_AI_PROJECT = "true"
+}
+$content = if (Test-Path $envFile) { Get-Content $envFile } else { @() }
+foreach ($key in $updates.Keys) {
+  $line = "$key=`"$($updates[$key])`""
+  if ($content -match "^$key=") {
+    $content = $content | ForEach-Object { if ($_ -match "^$key=") { $line } else { $_ } }
+  } else {
+    $content += $line
+  }
+}
+Set-Content -Encoding utf8 $envFile $content
+```
+
+Now generate the azd eval recipe through AgentOps:
+
+```powershell
+agentops eval init --force
+```
+
+AgentOps passes the existing Travel dataset to azd after creating an azd-friendly
+copy with the `query` field that azd expects. It also pins stable built-in
+evaluators (`builtin.coherence`, `builtin.fluency`) and records the generated
+recipe in `agentops.yaml`:
+
+```yaml
+execution: azd
+eval_recipe: src/travel-agent/eval.yaml
+```
+
+Run the gate once locally:
+
+```powershell
+agentops eval run
+```
+
+You should see `execution: azd` and `Threshold status: PASSED`. The raw azd run
+details are kept under `.agentops/results/latest/` alongside AgentOps'
+normalized `results.json` and `report.md`.
 
 ## 11. Generate the PR + dev deploy workflows
 

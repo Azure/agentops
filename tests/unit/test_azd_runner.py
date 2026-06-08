@@ -44,6 +44,63 @@ evaluators:
     )
 
 
+def test_run_azd_eval_reads_show_out_file_when_run_outputs_text(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    recipe_path = tmp_path / "eval.yaml"
+    _write_recipe(recipe_path)
+    calls: list[list[str]] = []
+
+    def fake_run(command, *, cwd, text, encoding, errors, capture_output, timeout, check):
+        calls.append(command)
+        assert encoding == "utf-8"
+        assert errors == "replace"
+        if command[:5] == ["azd", "ai", "agent", "eval", "run"]:
+            return mock.Mock(
+                returncode=0,
+                stdout=(
+                    "Eval:       eval_123\n"
+                    "Run:        evalrun_456\n"
+                    "Status:     Completed\n"
+                ),
+                stderr="",
+            )
+        if command[:5] == ["azd", "ai", "agent", "eval", "show"]:
+            out_file = Path(command[command.index("--out-file") + 1])
+            out_file.write_text(
+                json.dumps(
+                    {
+                        "id": "evalrun_456",
+                        "eval_id": "eval_123",
+                        "status": "completed",
+                        "result_counts": {"total": 3},
+                        "per_testing_criteria_results": [
+                            {
+                                "testing_criteria": "coherence",
+                                "passed": 3,
+                                "failed": 0,
+                                "errored": 0,
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return mock.Mock(returncode=0, stdout="exported", stderr="")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(azd_runner.subprocess, "run", fake_run)
+    monkeypatch.setattr(azd_runner, "azd_available", lambda *, cwd=None: True)
+
+    result = azd_runner.run_azd_eval(recipe_path, workspace=tmp_path)
+
+    assert result.run_id == "evalrun_456"
+    assert result.payload["eval_id"] == "eval_123"
+    assert azd_runner._extract_numeric_metrics(result.payload) == {"coherence": 1.0}
+    assert calls[1][:6] == ["azd", "ai", "agent", "eval", "show", "eval_123"]
+
+
 def test_normalize_to_results_binds_azd_metrics_and_thresholds(tmp_path: Path) -> None:
     recipe_path = tmp_path / "eval.yaml"
     _write_recipe(recipe_path)
