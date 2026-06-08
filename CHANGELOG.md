@@ -22,6 +22,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   payload generation.
 
 ### Fixed
+- **Prompt-agent tutorial now explicitly verifies the Travel Agent dataset path
+  after `agentops init`.** Step 7 now tells users to confirm
+  `agentops.yaml` points at `.agentops/data/travel-smoke.jsonl` and provides a
+  repair command if the wizard left the starter `.agentops/data/smoke.jsonl`.
 - **`agentops eval init` now reuses the configured dataset and avoids hidden azd
   prompts.** When `--dataset` is omitted, the command passes the existing
   `agentops.yaml` dataset to `azd ai agent eval init`, reducing first-run

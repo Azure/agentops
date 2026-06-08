@@ -498,6 +498,28 @@ If the wizard offers starter defaults such as `Agent [my-agent:1]` or
 `Dataset path [.agentops/data/smoke.jsonl]`, replace them with the
 Travel Agent values above.
 
+Before continuing, verify the saved dataset path. This must point to the
+Travel Agent dataset you created in step 6, not the starter
+`.agentops/data/smoke.jsonl` file:
+
+```powershell
+Select-String -Path agentops.yaml -Pattern '^dataset:'
+```
+
+Expected output:
+
+```text
+dataset: .agentops/data/travel-smoke.jsonl
+```
+
+If it still says `.agentops/data/smoke.jsonl`, fix it now:
+
+```powershell
+(Get-Content agentops.yaml) `
+  -replace '^dataset:.*$', 'dataset: .agentops/data/travel-smoke.jsonl' |
+  Set-Content -Encoding utf8 agentops.yaml
+```
+
 The interactive path is intentional: you see what each value means, and
 each answer is saved as soon as it validates. Because you passed
 `--azd-env sandbox`, the wizard writes the local Azure values to
