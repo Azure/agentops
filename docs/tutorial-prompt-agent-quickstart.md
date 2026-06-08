@@ -733,8 +733,9 @@ project:
 agentops workflow analyze --format text
 ```
 
-For `agent: name:version` plus `prompt_file`, AgentOps should recommend
-AgentOps cloud eval in Foundry with the prompt-agent deploy mode:
+For `agent: name:version` plus `prompt_file`, AgentOps should at least detect
+the prompt-agent deploy mode. Before you wire the azd recipe below, the eval
+recommendation may still show AgentOps cloud eval in Foundry:
 
 ```text
 Recommendation
@@ -744,30 +745,37 @@ Recommendation
   Copilot skills  installed - available for workflow adaptation handoff
 ```
 
-This is the combination the rest of the tutorial assumes: the PR workflow
-turns changes in `prompt_file` into a reviewable prompt-agent candidate,
-and the deploy workflow records which candidate is now running in dev.
-Foundry executes the cloud evaluation server-side; AgentOps reads that
-result, applies the threshold gate in CI, and then runs the Doctor
-readiness check.
+This confirms the deployment side is configured correctly: the PR workflow
+turns changes in `prompt_file` into a reviewable prompt-agent candidate, and
+the deploy workflow records which candidate is now running in dev. Next,
+standardize the eval side on an azd recipe so the same Foundry-native eval
+definition is used locally and in CI.
 
-> **Optional azd eval recipe path.** If your team is already using the
-> public-preview `azd ai agent eval` flow, run `agentops eval init` to let azd
-> generate the `eval.yaml` recipe, then keep `execution: azd` and
-> `eval_recipe: eval.yaml` in `agentops.yaml`. AgentOps will call
-> `azd ai agent eval`, normalize the emitted metrics into `results.json`, and
-> fail closed if a threshold references a metric that azd did not emit. Rubric
-> evaluator dimensions can be used as literal threshold names, for example:
->
-> ```yaml
-> thresholds:
->   booking_accuracy: ">=0.8"
->   avg_latency_seconds: "<=30"
-> ```
->
-> Do not use hidden fallback here: when a project chooses `execution: azd`, azd
-> owns the eval execution and AgentOps owns normalization, thresholds, Doctor,
-> and release evidence.
+For this tutorial, use an azd eval recipe as the default Foundry-native eval
+handoff:
+
+```powershell
+agentops eval init
+```
+
+That command lets azd generate `eval.yaml`. Keep the recipe wired in
+`agentops.yaml`:
+
+```yaml
+execution: azd
+eval_recipe: eval.yaml
+thresholds:
+  booking_accuracy: ">=0.8"
+  avg_latency_seconds: "<=30"
+```
+
+In this mode, azd owns the actual Foundry eval run through
+`azd ai agent eval`. AgentOps owns the release gate around that run: it calls
+azd from the generated workflow, normalizes the emitted metrics into
+`results.json`, applies the thresholds, runs Doctor, and writes the release
+evidence. If a threshold references a metric that azd did not emit, AgentOps
+fails closed instead of silently passing. Rubric evaluator dimensions can be
+used as literal threshold names, such as `booking_accuracy`.
 
 ## 11. Generate the PR + dev deploy workflows
 
