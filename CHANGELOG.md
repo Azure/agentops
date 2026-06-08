@@ -26,15 +26,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   after `agentops init`.** Step 7 now tells users to confirm
   `agentops.yaml` points at `.agentops/data/travel-smoke.jsonl` and provides a
   repair command if the wizard left the starter `.agentops/data/smoke.jsonl`.
-- **`agentops eval init` now reuses the configured dataset and avoids hidden azd
-  prompts.** When `--dataset` is omitted, the command passes the existing
-  `agentops.yaml` dataset to `azd ai agent eval init`, reducing first-run
-  generation time for tutorial workspaces. It also runs azd with `--no-prompt`
-  and prints a progress line before the potentially long Foundry initialization.
-- **`agentops workflow analyze` now points prompt-agent users at `eval init`
-  before `eval run` when no azd recipe is wired yet.** This keeps the CLI's
-  next-step guidance aligned with the prompt-agent tutorial's standard
-  Foundry-native `eval.yaml` flow.
+- **`agentops eval init` now reuses configured prompt-agent inputs and avoids
+  hidden azd prompts.** When `--dataset` is omitted, the command passes the
+  existing `agentops.yaml` dataset to `azd ai agent eval init`. It also runs azd
+  with `--no-prompt`, passes the configured Foundry project endpoint, agent
+  name, prompt file, and bootstrap model, and prints a progress line before the
+  potentially long Foundry initialization.
+- **Prompt-agent tutorial guidance now keeps azd eval recipes advanced-only.**
+  Step 10 now follows `workflow analyze` for the quickstart's AgentOps cloud
+  eval path and explains that `agentops eval init` requires a full azd AI agent
+  project context before `azd ai agent eval run` can resolve the Foundry
+  project.
 - **`agentops eval init` now prints safely on Windows terminals without Unicode
   support.** The CLI falls back to an ASCII updated marker instead of raising a
   `UnicodeEncodeError` on cp1252 consoles after it wires `execution: azd` and
