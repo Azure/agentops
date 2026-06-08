@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from agentops.core.agentops_config import AgentOpsConfig, Threshold, classify_agent
+from agentops.core.azd_eval import load_eval_recipe
 from agentops.core.evaluators import (
     detect_dataset_shape,
     merge_thresholds,
@@ -529,7 +530,7 @@ def _run_evaluation_azd(
     from agentops.pipeline import azd_runner
 
     recipe_path = azd_runner.resolve_eval_recipe(workspace, config)
-    recipe = azd_runner.load_eval_recipe(recipe_path)
+    recipe = load_eval_recipe(recipe_path)
     progress(
         f"execution: {style('azd', 'bold')} - delegating to "
         f"{style('azd ai agent eval', 'cyan')} with recipe "
