@@ -62,6 +62,14 @@ def run_azd_eval_init(
             command_ran=False,
         )
 
+    if not (root / "azure.yaml").exists():
+        raise AzdBackendError(
+            "`agentops eval init` requires a full azd AI agent project with "
+            "`azure.yaml`. This workspace can still use AgentOps cloud eval: "
+            "run `agentops workflow analyze --format text`, set "
+            "`AZURE_OPENAI_DEPLOYMENT`, then run `agentops eval run`."
+        )
+
     if not azd_available(cwd=root):
         raise AzdBackendError(
             "azd AI agent evaluation is not available. Install azd and the "

@@ -37,6 +37,7 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
 ) -> None:
     config_path = tmp_path / "agentops.yaml"
     _write_config(config_path)
+    (tmp_path / "azure.yaml").write_text("name: travel-agent\n", encoding="utf-8")
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
     dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
@@ -90,6 +91,7 @@ def test_run_azd_eval_init_explicit_dataset_wins(
 ) -> None:
     config_path = tmp_path / "agentops.yaml"
     _write_config(config_path)
+    (tmp_path / "azure.yaml").write_text("name: travel-agent\n", encoding="utf-8")
     dataset = tmp_path / "golden.jsonl"
     dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
     prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
@@ -130,6 +132,29 @@ def test_run_azd_eval_init_explicit_dataset_wins(
     )
 
     assert result.command_ran is True
+
+
+def test_run_azd_eval_init_requires_azd_project_when_generating_recipe(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "agentops.yaml"
+    _write_config(config_path)
+    run_mock = mock.Mock()
+    monkeypatch.setattr(subprocess, "run", run_mock)
+
+    try:
+        azd_eval_init.run_azd_eval_init(
+            workspace=tmp_path,
+            config_path=config_path,
+        )
+    except azd_eval_init.AzdBackendError as exc:
+        assert "requires a full azd AI agent project" in str(exc)
+        assert "agentops eval run" in str(exc)
+    else:  # pragma: no cover - assertion helper
+        raise AssertionError("expected AzdBackendError")
+
+    run_mock.assert_not_called()
 
 
 def test_run_azd_eval_init_reuses_existing_recipe_without_running_azd(
