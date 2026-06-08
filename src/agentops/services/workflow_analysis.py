@@ -339,6 +339,8 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
         recommended_commands.insert(1, "pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict")
     if requires_copilot and not skills_installed:
         recommended_commands.insert(1, "agentops skills install --platform copilot")
+    if recommended_eval_runner == AZD_EVAL_RUNNER:
+        recommended_commands.insert(1, "agentops eval init")
     if has_azd:
         recommended_commands.append("azd provision")
         recommended_commands.append("azd deploy")
@@ -1139,7 +1141,8 @@ def _next_steps(
     eval_step = "Run `agentops eval run` locally and commit agentops.yaml plus datasets."
     if eval_runner == AZD_EVAL_RUNNER:
         eval_step = (
-            "Run `agentops eval run` locally and commit agentops.yaml, eval.yaml, "
+            "Run `agentops eval init` to create or reuse the azd eval recipe, then "
+            "`agentops eval run` locally and commit agentops.yaml, eval.yaml, "
             "generated evaluator/rubric assets, and datasets."
         )
     steps = [

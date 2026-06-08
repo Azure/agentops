@@ -13,6 +13,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   generates the azd eval recipe. The prompt-agent quickstart now keeps the main
   path to `agentops eval init` followed by `agentops eval run`, while still using
   `azd ai agent eval` under the hood.
+- **`agentops workflow analyze` now tells azd eval users to run
+  `agentops eval init` first.** When an azd eval recipe is selected, the
+  recommended commands and next steps now explicitly create or reuse the recipe
+  before telling users to run the local eval gate.
 
 ## [0.3.10] - 2026-06-08
 
