@@ -843,6 +843,13 @@ agentops eval run
 When it passes, `results.json` records `execution: azd`, the evaluator list, the
 multi-turn dataset kind, and the threshold results emitted by azd.
 
+> **What did this CLI gate test?** At this point, the CLI gate is evaluating the
+> agent on individual synthetic conversation-context turns. It is not the portal
+> **Full conversations** preview. AgentOps uses `messages` to preserve the
+> conversation shape and `dataset_kind: multi-turn` to make the release evidence
+> conversation-aware. For true end-to-end full conversation evaluation, continue
+> with the Foundry portal flow below.
+
 ### Run full multi-turn evaluation in Foundry
 
 The CLI / azd gate above is the repo-controlled release gate. It uses
