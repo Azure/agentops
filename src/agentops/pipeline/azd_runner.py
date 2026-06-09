@@ -202,6 +202,7 @@ def normalize_to_results(
             "azd eval run returned no numeric metrics, so AgentOps cannot apply "
             "thresholds or claim the gate passed."
         )
+    _validate_rubric_evidence(config=config, recipe=recipe, metrics=aggregate_metrics)
 
     metric_binding = bind_threshold_metrics(config.thresholds.keys(), aggregate_metrics.keys())
     if metric_binding.unmatched:
@@ -270,6 +271,8 @@ def normalize_to_results(
             "version": config.version,
             "agent": config.agent,
             "thresholds": dict(config.thresholds),
+            "dataset_kind": config.dataset_kind,
+            "rubrics": [rubric.model_dump(mode="json") for rubric in config.rubrics],
             "execution": "azd",
             "backend_requested": "azd",
             "backend_effective": "azd",
@@ -289,6 +292,46 @@ def normalize_to_results(
             },
         },
     )
+
+
+def _validate_rubric_evidence(
+    *,
+    config: AgentOpsConfig,
+    recipe: EvalRecipe,
+    metrics: Dict[str, float],
+) -> None:
+    if not config.rubrics:
+        return
+
+    recipe_evaluators = {evaluator.name for evaluator in recipe.evaluators}
+    threshold_names = set(config.thresholds)
+    metric_names = set(metrics)
+    missing: list[str] = []
+
+    for rubric in config.rubrics:
+        evaluator_name = (rubric.evaluator or rubric.name).strip()
+        if evaluator_name not in recipe_evaluators:
+            missing.append(f"rubric evaluator `{evaluator_name}` in eval.yaml")
+        dimension_names = [dimension.name for dimension in rubric.dimensions]
+        thresholded_dimensions = [
+            name for name in dimension_names if name in threshold_names
+        ]
+        if not thresholded_dimensions:
+            missing.append(
+                f"threshold for at least one dimension of rubric `{rubric.name}`"
+            )
+            continue
+        for dimension_name in thresholded_dimensions:
+            if dimension_name not in metric_names:
+                missing.append(f"azd metric for rubric dimension `{dimension_name}`")
+
+    if missing:
+        raise AzdBackendError(
+            "rubric evidence is incomplete; "
+            + "; ".join(missing)
+            + ". Run `agentops eval init --force` after configuring rubrics and "
+            "bind rubric dimension thresholds in agentops.yaml."
+        )
 
 
 def write_raw_artifacts(azd_run: AzdEvalRun, output_dir: Path) -> None:
@@ -369,6 +412,7 @@ def _run_command_with_progress(
                     errors="replace",
                     stdout=stdout_file,
                     stderr=stderr_file,
+                    stdin=subprocess.DEVNULL,
                 )
                 while True:
                     returncode = process.poll()

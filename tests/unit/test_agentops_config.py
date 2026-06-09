@@ -10,7 +10,10 @@ from pydantic import ValidationError
 from agentops.core.agentops_config import (
     AgentOpsConfig,
     DatasetSyncConfig,
+    ObservabilityConfig,
     PromptAgentBootstrap,
+    RubricConfig,
+    RubricDimensionConfig,
     Threshold,
     classify_agent,
 )
@@ -252,6 +255,72 @@ class TestAgentOpsConfig:
                     "agent": "my-rag:3",
                     "dataset": "./qa.jsonl",
                     "dataset_sync": {"mode": "inline", "name": " "},
+                }
+            )
+
+    def test_accepts_build_2026_eval_metadata(self) -> None:
+        cfg = AgentOpsConfig(
+            version=1,
+            agent="travel-agent:2",
+            dataset=".agentops/data/conversations.jsonl",
+            dataset_kind="multi-turn",
+            rubrics=[
+                RubricConfig(
+                    name="travel-concierge-quality",
+                    description="Travel planning behavior",
+                    dimensions=[
+                        RubricDimensionConfig(
+                            name="task_success",
+                            description="Completes the requested travel planning task.",
+                            weight=0.5,
+                        ),
+                        RubricDimensionConfig(
+                            name="tone",
+                            description="Uses concise and helpful travel-advisor tone.",
+                            weight=0.2,
+                        ),
+                    ],
+                    evaluator="builtin.rubric",
+                )
+            ],
+            observability=ObservabilityConfig(
+                tracing_enabled=True,
+                trace_sampling={"enabled": True, "mode": "foundry"},
+                trace_replay_url="https://ai.azure.com/project/traces/trace-1",
+            ),
+            thresholds={"task_success": ">=4"},
+        )
+
+        assert cfg.dataset_kind == "multi-turn"
+        assert cfg.rubrics[0].name == "travel-concierge-quality"
+        assert cfg.rubrics[0].dimensions[0].weight == 0.5
+        assert cfg.observability.tracing_enabled is True
+        assert cfg.observability.trace_sampling.enabled is True
+
+    def test_observability_rejects_non_url_links(self) -> None:
+        with pytest.raises(ValidationError, match="observability URLs"):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "travel-agent:2",
+                    "dataset": ".agentops/data/smoke.jsonl",
+                    "observability": {"trace_replay_url": "ai.azure.com/traces"},
+                }
+            )
+
+    def test_rubric_rejects_empty_dimension(self) -> None:
+        with pytest.raises(ValidationError, match="rubric dimension"):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "travel-agent:2",
+                    "dataset": ".agentops/data/smoke.jsonl",
+                    "rubrics": [
+                        {
+                            "name": "travel",
+                            "dimensions": [{"name": " ", "description": "score"}],
+                        }
+                    ],
                 }
             )
 

@@ -20,6 +20,13 @@ agent: "my-agent:1"
 
 dataset: .agentops/data/smoke.jsonl
 
+# Optional. Leave as auto for existing single-turn smoke tests. Set to
+# multi-turn when the dataset rows represent conversations / message histories
+# so Doctor, Cockpit, and release evidence can treat conversation-level evals as
+# part of the readiness proof.
+#
+# dataset_kind: auto
+
 # Optional. Source-controlled instructions file used by prompt-agent CI/CD.
 # Generated prompt-agent deploy workflows create a candidate Foundry version
 # from this file, evaluate that exact version, then record it as deployed only
@@ -52,6 +59,25 @@ dataset: .agentops/data/smoke.jsonl
 #   coherence: ">=3"
 #   groundedness: ">=3"
 #   avg_latency_seconds: "<=30"
+#
+# Optional. Context-specific rubric evaluators. When this block is present,
+# AgentOps requires execution: azd so the Foundry / azd evaluator actually runs;
+# local execution will fail closed instead of pretending rubric scoring happened.
+#
+# rubrics:
+#   - name: travel-concierge-quality
+#     evaluator: travel-concierge-rubric
+#     dimensions:
+#       - name: task_success
+#         description: "Completes the requested task without losing context."
+#         weight: 0.5
+#       - name: safety
+#         description: "Avoids unsafe or unsupported claims."
+#         weight: 0.3
+#
+# thresholds:
+#   task_success: ">=4"
+#   safety: ">=4"
 
 # Optional. Foundry prompt agents and Foundry publishing need a project
 # endpoint. If both this value and AZURE_AI_FOUNDRY_PROJECT_ENDPOINT are set,
@@ -66,6 +92,19 @@ dataset: .agentops/data/smoke.jsonl
 #                     implicitly publishes to the New Foundry panel).
 #
 # execution: local
+#
+# Optional. Foundry observability readiness metadata. AgentOps reads
+# this for Doctor/Cockpit/evidence; Foundry still owns tracing, replay, and
+# trace sampling at runtime.
+#
+# observability:
+#   tracing_enabled: true
+#   trace_sampling:
+#     enabled: true
+#     mode: foundry
+#   trace_replay_url: "https://ai.azure.com/..."
+#   evaluations_url: "https://ai.azure.com/..."
+#   datasets_url: "https://ai.azure.com/..."
 #
 # Optional. Publish local results to the Classic Foundry Evaluations panel.
 # Only meaningful when execution: local. With execution: cloud the run is

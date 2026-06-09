@@ -105,6 +105,47 @@ def test_build_release_evidence_ready_with_warning_without_baseline(tmp_path: Pa
     assert any("No baseline comparison" in warning for warning in evidence.warnings)
 
 
+def test_build_release_evidence_includes_observability_links_and_rubric_status(
+    tmp_path: Path,
+) -> None:
+    _write_latest_results(tmp_path, passed=True)
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: travel-agent:7\n"
+        "dataset: .agentops/data/travel-conversations.jsonl\n"
+        "dataset_kind: multi-turn\n"
+        "execution: azd\n"
+        "rubrics:\n"
+        "  - name: travel-concierge-quality\n"
+        "    evaluator: travel-concierge-quality\n"
+        "    dimensions:\n"
+        "      - name: task_success\n"
+        "        description: Completes the requested trip plan.\n"
+        "observability:\n"
+        "  trace_sampling:\n"
+        "    enabled: true\n"
+        "    mode: foundry\n"
+        "  trace_replay_url: https://ai.azure.com/traces/replay/abc\n"
+        "  evaluations_url: https://ai.azure.com/evaluations/run-1\n"
+        "  datasets_url: https://ai.azure.com/datasets/travel\n",
+        encoding="utf-8",
+    )
+
+    evidence = build_release_evidence(tmp_path)
+
+    assert evidence.observability["multi_turn_ready"] is True
+    assert evidence.observability["rubrics_count"] == 1
+    assert evidence.observability["trace_sampling_enabled"] is True
+    assert evidence.observability["trace_replay_urls"] == [
+        "https://ai.azure.com/traces/replay/abc"
+    ]
+    assert any(check.name == "Foundry observability" and check.status == "ready" for check in evidence.checks)
+    labels = {link.label: link.url for link in evidence.links}
+    assert labels["Foundry trace replay"] == "https://ai.azure.com/traces/replay/abc"
+    assert labels["Foundry evaluation"] == "https://ai.azure.com/evaluations/run-1"
+    assert labels["Foundry datasets"] == "https://ai.azure.com/datasets/travel"
+
+
 def test_write_release_evidence_redacts_secret_values(tmp_path: Path) -> None:
     evidence = ReleaseEvidence(
         generated_at="2026-01-01T00:00:00+00:00",

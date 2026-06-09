@@ -648,6 +648,14 @@ This is the core AgentOps loop for hosted endpoints: keep a stable dataset,
 compare a changed runtime against the last known result, fix the agent, and
 rerun the same gate before a PR or release.
 
+If this hosted endpoint is backed by a Foundry / azd eval recipe, you can use
+the same rubric contract as the prompt-agent Travel Agent tutorial before you
+generate CI: set `execution: azd`, add `dataset_kind: multi-turn`, declare
+`rubrics[].evaluator` in `agentops.yaml`, run `agentops eval init --force`, and
+then run `agentops eval run`. AgentOps will require the azd backend whenever
+rubrics are configured, so a passing hosted-agent gate means the rubric evaluator
+actually ran instead of being recorded as metadata only.
+
 ## 10. Generate CI and Doctor evidence
 
 Generate both the PR and dev deploy workflows with `--doctor-gate critical`
@@ -665,6 +673,13 @@ agentops doctor --workspace . --evidence-pack
 code .agentops\agent\report.md
 code .agentops\release\latest\evidence.md
 ```
+
+The generated PR gate reuses the same `agentops.yaml` contract. If you promoted
+the hosted endpoint to an azd/Foundry eval recipe with rubrics, CI runs that
+recipe and blocks on the rubric thresholds; otherwise it runs the local hosted
+endpoint gate and normalized thresholds. In both cases Doctor and the evidence
+pack surface multi-turn coverage, trace sampling readiness, replay/evaluation
+links, and trace-to-dataset lineage when those signals exist.
 
 > **`--deploy-mode prompt-agent` does not apply to hosted endpoints.**
 > That mode is specific to Foundry prompt agents (the stage-prompt-as-

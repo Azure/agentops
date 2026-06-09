@@ -162,6 +162,54 @@ def test_run_azd_eval_init_explicit_dataset_wins(
     assert result.command_ran is True
 
 
+def test_run_azd_eval_init_passes_configured_rubric_evaluator(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = tmp_path / "agentops.yaml"
+    _write_config(config_path)
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + """
+rubrics:
+  - name: travel-quality
+    evaluator: travel-quality-rubric
+    dimensions:
+      - name: task_success
+        description: Completes the requested travel planning task.
+thresholds:
+  task_success: ">=4"
+""",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True)
+    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
+    prompt_file.parent.mkdir(parents=True)
+    prompt_file.write_text("You are a travel planner.", encoding="utf-8")
+
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        assert command[-2:] == ["--evaluator", "travel-quality-rubric"]
+        assert command.count("--evaluator") == 3
+        recipe = Path(kwargs["cwd"]) / "eval.yaml"
+        recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+    )
+
+    assert result.command_ran is True
+
+
 def test_run_azd_eval_init_bootstraps_before_azd_availability_check(
     tmp_path: Path,
     monkeypatch,
