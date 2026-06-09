@@ -201,6 +201,12 @@ def _invoke_redteam_scan(
     )
 
     project = azure_ai_project or _project_from_env()
+    if project is None:
+        raise RedTeamRunnerError(
+            "Azure AI project metadata is required. Set redteam.azure_ai_project in "
+            "agentops.yaml or define AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, and "
+            "AZURE_AI_PROJECT_NAME (or AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)."
+        )
     cred = credential or _default_credential()
 
     risk_enums = [_coerce_enum(RiskCategory, category) for category in risk_categories]

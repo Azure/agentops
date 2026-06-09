@@ -311,7 +311,8 @@ def _aggregate_totals(
     total = 0
     failed = 0
     if isinstance(metrics, dict):
-        candidates = metrics.get("totals") if isinstance(metrics.get("totals"), dict) else metrics
+        totals_value = metrics.get("totals")
+        candidates: dict[str, Any] = totals_value if isinstance(totals_value, dict) else metrics
         for key in ("total", "total_cases", "cases", "count"):
             if isinstance(candidates.get(key), int):
                 total = candidates[key]
