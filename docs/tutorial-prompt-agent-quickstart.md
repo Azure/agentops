@@ -844,15 +844,19 @@ only to metric names that appear in the azd run output, and regenerate the recip
 with `agentops eval init --force`. Do not use placeholder rubric names in the
 quickstart path.
 
-### Optional: showcase ASSERT evidence
+### Add ASSERT evidence to the release proof
 
-ASSERT is useful in the tutorial as **release evidence**, not as an AgentOps-run
-execution step. Run ASSERT in its owning tool, keep the approved policy or result
-summary in the repo or CI artifact store, and point AgentOps at that artifact so
-Doctor and the evidence pack can cite its status and hash.
+The normal AgentOps flow proves the release with evaluation results, Doctor
+findings, workflow runs, and release evidence. ASSERT fits into that same release
+proof as a governed artifact: run ASSERT in the tool or process your team uses
+for policy checks, keep the reviewed policy or result summary in the repo or CI
+artifact store, and point AgentOps at it.
 
-For a safe tutorial/demo path, add only reviewed metadata. Do not paste raw
-adversarial prompts, secrets, or customer data into the repo.
+AgentOps does not execute ASSERT. It records the artifact path, status, and
+SHA-256 hash so Doctor and the evidence pack can show reviewers which ASSERT
+evidence was used for the release. Store only approved metadata in the repo; keep
+raw adversarial prompts, secrets, customer data, and detailed scan payloads in
+the approved secure system.
 
 ```powershell
 New-Item -ItemType Directory -Force .agentops\governance | Out-Null

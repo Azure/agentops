@@ -892,8 +892,9 @@ Use AgentOps for the repo-side follow-through:
    `.agentops/governance/redteam-plan.md`; keep raw payloads/results in the
    approved secure system.
 3. If you use ASSERT or Agent Control Specification, add reviewed artifacts to
-   the repo or CI artifacts and point AgentOps at them. In tutorials, keep this
-   as a metadata-only showcase unless you already have an approved ASSERT run:
+   the repo or CI artifacts and point AgentOps at them. These artifacts join the
+   normal release proof alongside eval results, Doctor findings, and workflow
+   runs:
 
    ```yaml
    assert_path: .agentops/governance/assert-evidence.md
