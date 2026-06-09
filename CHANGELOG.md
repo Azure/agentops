@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.12] - 2026-06-09
+
 ### Added
 - **Foundry observability readiness now spans eval, Doctor, Cockpit, and release evidence.**
   `agentops.yaml` supports `dataset_kind`, `rubrics`, and `observability`
