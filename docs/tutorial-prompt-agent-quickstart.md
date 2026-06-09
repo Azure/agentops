@@ -818,15 +818,6 @@ field AgentOps maps to the azd `query`. Also keep `messages` beside it so the
 dataset has the same shape as future trace-derived rows and release evidence can
 show that this gate covers conversation scenarios.
 
-> **What about full multi-turn evaluation?** Foundry also supports
-> **Full conversations** evaluation in preview from the portal: it evaluates a
-> complete multi-turn conversation from start to finish, including overall
-> conversation quality, task completion, and user satisfaction. This tutorial's
-> CLI / azd flow is intentionally simpler: it uses synthetic conversation-context
-> rows where the agent receives the relevant conversation summary in `input`, and
-> `messages` preserves the structured scenario for evidence and future
-> trace-derived regression.
-
 ```powershell
 @'
 {"input":"Conversation so far: the user wants to visit Rome with two kids. The assistant asked how many days and what pace they prefer. The user answered: three days, moderate pace, museums and food. Now plan the trip.","expected":"The agent should preserve the family-with-kids constraint, propose a practical three-day Rome itinerary, include transit/rest pacing, and avoid claiming it can book live reservations.","messages":[{"role":"user","content":"We want to visit Rome with two kids."},{"role":"assistant","content":"How many days do you have and what pace do you prefer?"},{"role":"user","content":"Three days, moderate pace, museums and food."}]}
@@ -851,6 +842,30 @@ agentops eval run
 
 When it passes, `results.json` records `execution: azd`, the evaluator list, the
 multi-turn dataset kind, and the threshold results emitted by azd.
+
+### Run full multi-turn evaluation in Foundry
+
+The CLI / azd gate above is the repo-controlled release gate. It uses
+synthetic conversation-context rows: the agent receives the relevant
+conversation summary in `input`, and `messages` preserves the structured
+scenario for evidence and future trace-derived regression.
+
+For the Foundry-native full multi-turn path, use **Full conversations** in the
+Foundry portal. This preview evaluation scope evaluates a complete multi-turn
+conversation from start to finish, including overall conversation quality, task
+completion, and user satisfaction.
+
+Use this Foundry portal path when you want to review the end-to-end
+conversation experience itself:
+
+1. Open your Foundry project in <https://ai.azure.com>.
+2. Go to **Evaluation** and create a new evaluation.
+3. Choose the **Full conversations (preview)** scope.
+4. Select or upload the conversation dataset you want Foundry to evaluate.
+5. Run the evaluation and keep the Foundry evaluation URL with the release
+   review.
+
+Reference: [Run evaluations from the Microsoft Foundry portal](https://learn.microsoft.com/azure/foundry/how-to/evaluate-generative-ai-app#create-an-evaluation).
 
 If your Foundry project already has a real rubric evaluator, add it later as an
 advanced hardening step: declare `rubrics:` in `agentops.yaml`, bind thresholds
