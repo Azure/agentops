@@ -794,6 +794,17 @@ execution: azd
 eval_recipe: src/travel-agent/eval.yaml
 ```
 
+> **What is `smoke-core`?** In the generated
+> `src/travel-agent/eval.yaml`, azd may include an evaluator entry similar to
+> `name: smoke-core` with
+> `local_uri: evaluators\smoke-core\rubric_dimensions.json`. That is the local
+> rubric evaluator generated for this quickstart's smoke gate. The built-in
+> evaluators, such as `builtin.coherence` and `builtin.fluency`, check general
+> response quality. `smoke-core` points at rubric dimensions that describe what
+> this Travel Agent must do well. Later in this tutorial, when you add
+> `rubrics:` to `agentops.yaml`, use the evaluator name that appears here
+> instead of inventing a new one.
+
 Use `agentops eval init --force` only when you intentionally want to regenerate
 and replace an existing `eval.yaml`. For the normal quickstart flow, run it
 without `--force`.
@@ -903,11 +914,32 @@ Reference: [Run evaluations from the Microsoft Foundry portal](https://learn.mic
 
 ### Add the Travel Agent rubric gate
 
-Now make the rubric part of the release gate. Use the rubric evaluator that you
-created or selected in Foundry / azd for this Travel Agent project. Do not invent
-placeholder evaluator names: the value in `rubrics[].evaluator` must match the
-real evaluator name that the azd run can execute, and thresholds must bind to
-metric names that appear in the azd output.
+Before you edit the config, understand what this gate is adding. A normal
+evaluator checks a general quality signal such as coherence or fluency. A rubric
+evaluator is still usually an LLM-as-a-judge evaluation, but the judge is guided
+by product-specific criteria that you define for this agent.
+
+For the Travel Agent, the rubric is the release check that asks questions such
+as:
+
+| Rubric dimension | What the judge checks |
+|---|---|
+| Task success | Did the answer complete the user's travel-planning goal? |
+| Constraint following | Did it preserve constraints such as kids, budget, trip length, and pace? |
+| Safe booking behavior | Did it avoid claiming live bookings, confirmations, or prices it cannot verify? |
+
+The `eval_model` in the generated azd recipe is the model that acts as the
+judge. The rubric file tells that judge which dimensions to score, and the
+thresholds in `agentops.yaml` decide whether the release gate passes.
+
+Now make the rubric part of the release gate. If you followed the previous
+steps, `agentops eval init` already generated the local azd rubric evaluator in
+`src/travel-agent/eval.yaml`. Look under `evaluators:` for the entry with a
+`local_uri`, such as `name: smoke-core` and
+`local_uri: evaluators\smoke-core\rubric_dimensions.json`. Do not invent
+placeholder evaluator names: the value in `rubrics[].evaluator` must match an
+evaluator name that the azd run can execute, and thresholds must bind to metric
+names that appear in the azd output.
 
 Add the rubric metadata and thresholds to `agentops.yaml`. Replace every
 `<...>` value with the evaluator and metric names from your Foundry / azd rubric
@@ -916,7 +948,7 @@ run before you save the file:
 ```yaml
 rubrics:
   - name: travel-concierge-quality
-    evaluator: <your-real-foundry-rubric-evaluator-name>
+    evaluator: <evaluator-name-from-src-travel-agent-eval-yaml>
     description: Scores the Travel Agent against the intended product behavior.
     dimensions:
       - name: <azd-emitted-task-success-metric>
