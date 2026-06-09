@@ -455,6 +455,11 @@ later.
 
 Create the small JSONL dataset that matches the Travel Agent behavior:
 
+> **Copilot assist:** If you want help expanding or reviewing these rows, ask
+> Copilot to use `/skills agentops-dataset`. The skill can propose additional
+> edge cases, check that each row has `input` and `expected`, and keep the
+> criteria written as reviewable behavior instead of exact answer strings.
+
 ```powershell
 New-Item -ItemType Directory -Force .agentops\data | Out-Null
 @'
@@ -813,6 +818,11 @@ Create a small set of **synthetic multi-turn test cases**. These rows are not
 claiming that the agent already said the assistant turns verbatim. They define a
 controlled conversation scenario you want the next response to handle.
 
+> **Copilot assist:** You can also ask `/skills agentops-dataset` to draft these
+> conversation scenarios. Ask it for synthetic multi-turn rows that keep the
+> conversation summary in `input`, preserve the structured turns in `messages`,
+> and write `expected` as acceptance criteria.
+
 Keep the important conversation context inside `input`, because that is the
 field AgentOps maps to the azd `query`. Also keep `messages` beside it so the
 dataset has the same shape as future trace-derived rows and release evidence can
@@ -889,18 +899,54 @@ conversation experience itself:
 4. Select or upload the conversation dataset you want Foundry to evaluate.
 5. Run the evaluation and review the result in Foundry.
 
-Do not block the tutorial on copying portal URLs back into `agentops.yaml`.
-When Foundry exposes a stable automation path for this preview scope, AgentOps
-should capture that evaluation evidence automatically instead of asking you to
-paste links by hand.
-
 Reference: [Run evaluations from the Microsoft Foundry portal](https://learn.microsoft.com/azure/foundry/how-to/evaluate-generative-ai-app#create-an-evaluation).
 
-If your Foundry project already has a real rubric evaluator, add it later as an
-advanced hardening step: declare `rubrics:` in `agentops.yaml`, bind thresholds
-only to metric names that appear in the azd run output, and regenerate the recipe
-with `agentops eval init --force`. Do not use placeholder rubric names in the
-quickstart path.
+### Add the Travel Agent rubric gate
+
+Now make the rubric part of the release gate. Use the rubric evaluator that you
+created or selected in Foundry / azd for this Travel Agent project. Do not invent
+placeholder evaluator names: the value in `rubrics[].evaluator` must match the
+real evaluator name that the azd run can execute, and thresholds must bind to
+metric names that appear in the azd output.
+
+Add the rubric metadata and thresholds to `agentops.yaml`. Replace every
+`<...>` value with the evaluator and metric names from your Foundry / azd rubric
+run before you save the file:
+
+```yaml
+rubrics:
+  - name: travel-concierge-quality
+    evaluator: <your-real-foundry-rubric-evaluator-name>
+    description: Scores the Travel Agent against the intended product behavior.
+    dimensions:
+      - name: <azd-emitted-task-success-metric>
+        description: Completes the user's travel-planning goal across the conversation.
+        weight: 0.5
+      - name: <azd-emitted-constraint-following-metric>
+        description: Carries user constraints such as kids, budget, duration, and pace.
+        weight: 0.3
+      - name: <azd-emitted-safe-booking-metric>
+        description: Avoids claiming live bookings, confirmations, or prices it cannot verify.
+        weight: 0.2
+
+thresholds:
+  <azd-emitted-task-success-metric>: ">=4"
+  <azd-emitted-constraint-following-metric>: ">=4"
+  <azd-emitted-safe-booking-metric>: ">=4"
+```
+
+Regenerate the azd recipe so the rubric evaluator is included in the backend
+run, then run the gate again:
+
+```powershell
+agentops eval init --force
+agentops eval run
+```
+
+When this passes, the release gate has both the conversation-context dataset and
+the Travel Agent rubric thresholds. If a metric name is wrong, AgentOps will keep
+the run from passing the configured threshold gate because the threshold cannot
+bind to an emitted metric.
 
 ### Add ASSERT evidence to the release proof
 
