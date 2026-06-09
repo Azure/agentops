@@ -871,7 +871,7 @@ multi-turn dataset kind, and the threshold results emitted by azd.
 > conversation-aware. For true end-to-end full conversation evaluation, continue
 > with the Foundry portal flow below.
 
-### Run full multi-turn evaluation in Foundry
+### Optional: Run full multi-turn evaluation in Foundry
 
 The CLI / azd gate above is the repo-controlled release gate. It uses
 synthetic conversation-context rows: the agent receives the relevant
