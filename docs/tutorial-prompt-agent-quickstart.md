@@ -862,9 +862,10 @@ Foundry portal. This preview evaluation scope evaluates a complete multi-turn
 conversation from start to finish, including overall conversation quality, task
 completion, and user satisfaction.
 
-This part runs in the **Foundry portal**, not inside the AgentOps CLI. AgentOps
-Accelerator still matters here: it owns the repo-controlled gate above and can
-record the Foundry evaluation URL in Doctor, Cockpit, and release evidence.
+This part runs in the **Foundry portal**, not inside the AgentOps CLI. Keep it
+as a deeper Foundry review path, not as an extra required step in the automated
+release gate. The automated gate for this tutorial remains AgentOps + azd +
+Doctor evidence.
 
 Use one of these data sources:
 
@@ -879,29 +880,19 @@ portal asks you to upload data, use `.agentops/data/travel-conversations.jsonl`
 as the source content and adapt the column mapping in the wizard if prompted.
 Later, replace that with real Foundry traces or approved conversation logs.
 
-Run the Foundry portal evaluation when you want to review the end-to-end
+Use the Foundry portal evaluation when you want to review the end-to-end
 conversation experience itself:
 
 1. Open your Foundry project in <https://ai.azure.com>.
 2. Go to **Evaluation** and create a new evaluation.
 3. Choose the **Full conversations (preview)** scope.
 4. Select or upload the conversation dataset you want Foundry to evaluate.
-5. Run the evaluation and keep the Foundry evaluation URL with the release
-   review.
+5. Run the evaluation and review the result in Foundry.
 
-Then paste that URL into `agentops.yaml` so AgentOps can cite it as release
-evidence:
-
-```yaml
-observability:
-  evaluations_url: https://ai.azure.com/<your-foundry-evaluation-url>
-```
-
-Re-run Doctor when you want the evidence pack to include that link:
-
-```powershell
-agentops doctor --workspace . --evidence-pack
-```
+Do not block the tutorial on copying portal URLs back into `agentops.yaml`.
+When Foundry exposes a stable automation path for this preview scope, AgentOps
+should capture that evaluation evidence automatically instead of asking you to
+paste links by hand.
 
 Reference: [Run evaluations from the Microsoft Foundry portal](https://learn.microsoft.com/azure/foundry/how-to/evaluate-generative-ai-app#create-an-evaluation).
 
