@@ -932,53 +932,92 @@ The `eval_model` in the generated azd recipe is the model that acts as the
 judge. The rubric file tells that judge which dimensions to score, and the
 thresholds in `agentops.yaml` decide whether the release gate passes.
 
-Now make the rubric part of the release gate. If you followed the previous
-steps, `agentops eval init` already generated the local azd rubric evaluator in
-`src/travel-agent/eval.yaml`. Look under `evaluators:` for the entry with a
-`local_uri`, such as `name: smoke-core` and
-`local_uri: evaluators\smoke-core\rubric_dimensions.json`. Do not invent
-placeholder evaluator names: the value in `rubrics[].evaluator` must match an
-evaluator name that the azd run can execute, and thresholds must bind to metric
-names that appear in the azd output.
+Now make the rubric part of the release gate. You will fill in two kinds of
+real names: the rubric evaluator name, and the rubric dimension names. Do not
+invent your own values - both must come from files that `agentops eval init`
+already generated on disk.
 
-Add the rubric metadata and thresholds to `agentops.yaml`. Replace every
-`<...>` value with the evaluator and metric names from your Foundry / azd rubric
-run before you save the file:
+**1. Find the evaluator name.** Open `src/travel-agent/eval.yaml` and look
+under `evaluators:` for the entry that has a `local_uri`. Example:
+
+```yaml
+evaluators:
+    - builtin.coherence
+    - builtin.fluency
+    - name: smoke-core
+      version: "9"
+      local_uri: evaluators\smoke-core\rubric_dimensions.json
+```
+
+The value you need is the `name:` of that entry. In this example it is
+`smoke-core`. That is the evaluator name azd knows how to run.
+
+**2. Find the dimension names.** Open the file that the `local_uri` points to,
+for example `src/travel-agent/evaluators/smoke-core/rubric_dimensions.json`.
+Each object in that file has an `id`. Those `id` values are the metric names
+that azd will emit for this rubric. Example file:
+
+```json
+[
+  { "id": "correct_itinerary", "description": "...", "weight": 9 },
+  { "id": "clear_practical_notes", "description": "...", "weight": 5 },
+  { "id": "user_satisfaction", "description": "...", "weight": 4 },
+  { "id": "adherence_to_constraints", "description": "...", "weight": 3 },
+  { "id": "itinerary_clarity", "description": "...", "weight": 2 },
+  { "id": "general_quality", "description": "...", "weight": 5,
+    "always_applicable": true }
+]
+```
+
+Pick the dimensions you want to enforce as release gates. For the Travel Agent
+quickstart, the three that map to the Task success / Constraint following /
+Safe booking checks are:
+
+| Dimension intent | Dimension `id` to use |
+|---|---|
+| Task success | `correct_itinerary` |
+| Constraint following | `adherence_to_constraints` |
+| Safe booking behavior | `clear_practical_notes` |
+
+**3. Add `rubrics:` and `thresholds:` to `agentops.yaml`.** Using the values
+above, the file looks like this (replace `smoke-core` and the dimension `id`s
+only if your generated files used different names):
 
 ```yaml
 rubrics:
   - name: travel-concierge-quality
-    evaluator: <evaluator-name-from-src-travel-agent-eval-yaml>
+    evaluator: smoke-core
     description: Scores the Travel Agent against the intended product behavior.
     dimensions:
-      - name: <azd-emitted-task-success-metric>
+      - name: correct_itinerary
         description: Completes the user's travel-planning goal across the conversation.
         weight: 0.5
-      - name: <azd-emitted-constraint-following-metric>
+      - name: adherence_to_constraints
         description: Carries user constraints such as kids, budget, duration, and pace.
         weight: 0.3
-      - name: <azd-emitted-safe-booking-metric>
+      - name: clear_practical_notes
         description: Avoids claiming live bookings, confirmations, or prices it cannot verify.
         weight: 0.2
 
 thresholds:
-  <azd-emitted-task-success-metric>: ">=4"
-  <azd-emitted-constraint-following-metric>: ">=4"
-  <azd-emitted-safe-booking-metric>: ">=4"
+  correct_itinerary: ">=4"
+  adherence_to_constraints: ">=4"
+  clear_practical_notes: ">=4"
 ```
 
-Regenerate the azd recipe so the rubric evaluator is included in the backend
-run, then run the gate again:
+**4. Regenerate the azd recipe and run the gate again:**
 
 ```powershell
 agentops eval init --force
 agentops eval run
 ```
 
-When this passes, the release gate has both the conversation-context dataset and
-the Travel Agent rubric thresholds. If a metric name is wrong, AgentOps will keep
-the run from passing the configured threshold gate because the threshold cannot
-bind to an emitted metric.
+When this passes, the release gate has both the conversation-context dataset
+and the Travel Agent rubric thresholds. If a dimension name is wrong, AgentOps
+will keep the run from passing the threshold gate because the threshold cannot
+bind to an emitted metric. Open `.agentops/results/latest/results.json` to see
+which rubric metric names actually appeared in the azd output; that is the
+authoritative list of values you can put under `thresholds:`.
 
 ### Add ASSERT evidence to the release proof
 
