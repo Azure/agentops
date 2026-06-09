@@ -232,9 +232,46 @@ def _trace_to_row(trace: dict[str, Any], label_mode: LabelMode) -> Optional[dict
     metadata = {
         "source": "production_trace",
         "trace_id": _first_text(trace, "trace_id", "operation_Id", "operationId", "id"),
+        "operation_id": _first_text(trace, "operation_Id", "operationId"),
+        "span_id": _first_text(trace, "span_id", "spanId", "id"),
         "timestamp": _first_text(trace, "timestamp", "time", "TimeGenerated"),
         "label_mode": label_mode,
         "needs_review": True,
+        "source_system": _first_text(trace, "source_system", "source", "customDimensions.source_system"),
+        "agent": _first_text(trace, "agent", "agent_id", "customDimensions.agent"),
+        "agent_version": _first_text(
+            trace,
+            "agent_version",
+            "customDimensions.agent_version",
+            "customDimensions.agentops.agent.version",
+        ),
+        "foundry_project": _first_text(
+            trace,
+            "foundry_project",
+            "project",
+            "customDimensions.foundry_project",
+        ),
+        "replay_url": _first_text(
+            trace,
+            "replay_url",
+            "trace_replay_url",
+            "customDimensions.replay_url",
+            "customDimensions.trace_replay_url",
+        ),
+        "evaluation_url": _first_text(
+            trace,
+            "evaluation_url",
+            "eval_url",
+            "customDimensions.evaluation_url",
+            "customDimensions.eval_url",
+        ),
+        "sampling_policy": _first_text(
+            trace,
+            "sampling_policy",
+            "sample_reason",
+            "customDimensions.sampling_policy",
+            "customDimensions.sample_reason",
+        ),
     }
     row: dict[str, Any] = {
         "input": input_text,
@@ -247,6 +284,9 @@ def _trace_to_row(trace: dict[str, Any], label_mode: LabelMode) -> Optional[dict
     tool_calls = _first_value(trace, "tool_calls", "customDimensions.tool_calls")
     if tool_calls:
         row["tool_calls"] = tool_calls
+    messages = _first_value(trace, "messages", "conversation", "turns", "customDimensions.messages")
+    if messages:
+        row["messages"] = messages
     return row
 
 
@@ -256,6 +296,7 @@ def _write_trace_dataset(preview: TracePromotionPreview) -> None:
         for row in preview.rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
 
+    lineage = _lineage_from_rows(preview.rows)
     manifest = {
         "version": 1,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -265,8 +306,57 @@ def _write_trace_dataset(preview: TracePromotionPreview) -> None:
         "skipped": preview.skipped,
         "label_mode": preview.label_mode,
         "human_review_required": True,
+        "lineage": lineage,
     }
     preview.manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+def _lineage_from_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    trace_ids: list[str] = []
+    replay_urls: list[str] = []
+    evaluation_urls: list[str] = []
+    source_systems: set[str] = set()
+    agents: set[str] = set()
+    agent_versions: set[str] = set()
+    sampling_policies: set[str] = set()
+    multi_turn_rows = 0
+
+    for row in rows:
+        metadata = row.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        _append_unique(trace_ids, metadata.get("trace_id"))
+        _append_unique(replay_urls, metadata.get("replay_url"))
+        _append_unique(evaluation_urls, metadata.get("evaluation_url"))
+        _add_text(source_systems, metadata.get("source_system"))
+        _add_text(agents, metadata.get("agent"))
+        _add_text(agent_versions, metadata.get("agent_version"))
+        _add_text(sampling_policies, metadata.get("sampling_policy"))
+        if row.get("messages"):
+            multi_turn_rows += 1
+
+    return {
+        "trace_ids": trace_ids,
+        "replay_urls": replay_urls,
+        "evaluation_urls": evaluation_urls,
+        "source_systems": sorted(source_systems),
+        "agents": sorted(agents),
+        "agent_versions": sorted(agent_versions),
+        "sampling_policies": sorted(sampling_policies),
+        "multi_turn_rows": multi_turn_rows,
+    }
+
+
+def _append_unique(values: list[str], value: Any) -> None:
+    text = str(value).strip() if value is not None else ""
+    if text and text not in values:
+        values.append(text)
+
+
+def _add_text(values: set[str], value: Any) -> None:
+    text = str(value).strip() if value is not None else ""
+    if text:
+        values.add(text)
 
 
 def _first_text(data: dict[str, Any], *keys: str) -> Optional[str]:

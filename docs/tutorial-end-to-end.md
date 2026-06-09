@@ -444,6 +444,13 @@ Foundry through `agentops eval run`, so AgentOps can enforce thresholds and writ
 repo-side evidence. AgentOps keeps the local path for hosted endpoints, models,
 unsupported evaluator mappings, and fallback cases.
 
+When the quality gate uses a task-specific rubric, choose the azd runner instead
+of local execution. Add `rubrics:` to `agentops.yaml`, set
+`rubrics[].evaluator` to the Foundry / azd evaluator name, set
+`execution: azd`, and run `agentops eval init --force`. AgentOps then passes the
+rubric evaluator into the generated azd recipe and fails closed if someone tries
+to run that rubric gate with the local backend.
+
 ## 5. Run the first eval
 
 For hosted agents or local fallback:
@@ -651,7 +658,9 @@ agentops workflow generate `
 
 The generated workflows are intentionally boring:
 
-- PR gate: evaluate and publish report/evidence.
+- PR gate: evaluate and publish report/evidence. If `agentops.yaml` declares
+  rubric evaluators, this is the same azd/Foundry rubric gate you ran locally;
+  the PR does not downgrade to a plain smoke test.
 - Dev/QA/Prod: deploy with azd or placeholders, then run readiness checks.
 - Optional Doctor cadence: generate `--kinds doctor` separately if you want a
   scheduled readiness run outside PRs.
@@ -698,10 +707,11 @@ Use this loop in the video:
 | Signal | Foundry or Azure Monitor action | AgentOps handoff |
 |---|---|---|
 | App Insights connection | In Foundry, open the project or agent **Traces** view and connect an App Insights resource. Verify it under project connected resources. | Doctor checks whether telemetry wiring is discoverable. |
+| Trace sampling | Configure the project's trace sampling policy in Foundry or the hosted-agent observability settings your team owns. Keep the policy name in `agentops.yaml` under `observability.trace_sampling`. | Doctor/evidence can show reviewers that live-quality sampling exists before traces are promoted. |
 | Live trace | Run one playground prompt for a Prompt Agent, or call the hosted endpoint a few times. Open the agent **Traces** tab, wait 2-5 minutes if needed, and click the Trace ID. In the modal, inspect spans plus the **Input + Output** and **Metadata** tabs. | Evidence and Cockpit link reviewers back to the runtime view. |
 | Operate summary | Switch to **Operate** -> **Overview**, select the same subscription/project, wait for metrics to sync, and use **Ask AI** for dashboard-level questions such as `Help me identify any issues or anomalies in my agent metrics.` | The summary informs the release discussion; AgentOps does not rewrite it. |
-| Eval context | From a Foundry eval run, inspect row-level explanations and, when available, the trace attached to the interaction. | The repo keeps the exact target, dataset, gate, and evidence together. |
-| Trace learning | Export or curate traces that represent real issues. | `agentops eval promote-traces` turns reviewed traces into regression candidates. |
+| Eval context | From a Foundry eval run, inspect row-level explanations, rubric scores, and, when available, the trace attached to the interaction. | The repo keeps the exact target, dataset, rubric gate, and evidence together. |
+| Trace learning | Export or curate traces that represent real issues, including conversation turns when present. | `agentops eval promote-traces` turns reviewed traces into regression candidates and preserves replay/evaluation lineage. |
 
 For the screen recording, make the Foundry side visible before opening AgentOps
 Cockpit:

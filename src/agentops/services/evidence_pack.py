@@ -65,6 +65,7 @@ def build_release_evidence(
     foundry = _foundry_status(analysis)
     monitoring = _monitoring_status(analysis)
     trace_dataset = _trace_dataset_status(root)
+    observability = _observability_status(root, trace_dataset)
     ailz = _ailz_status(analysis)
     governance = _governance_status(root)
 
@@ -80,12 +81,13 @@ def build_release_evidence(
     _add_doctor_check(checks, blockers, warnings, ready, doctor)
     _add_foundry_check(checks, warnings, ready, foundry)
     _add_monitoring_check(checks, warnings, ready, monitoring)
+    _add_observability_check(checks, warnings, ready, observability)
     _add_trace_dataset_check(checks, warnings, ready, trace_dataset)
     _add_ailz_check(checks, warnings, ready, ailz)
     _add_governance_check(checks, warnings, ready, governance)
 
     status = "blocked" if blockers else "ready_with_warnings" if warnings else "ready"
-    links = _links(latest_eval)
+    links = _links(latest_eval, observability)
     target = latest_eval.get("target")
     generated_at = datetime.now(timezone.utc).isoformat()
 
@@ -106,6 +108,7 @@ def build_release_evidence(
         foundry=foundry,
         monitoring=monitoring,
         trace_dataset=trace_dataset,
+        observability=observability,
         ailz=ailz,
         governance=governance,
     )
@@ -452,6 +455,42 @@ def _trace_dataset_status(root: Path) -> dict[str, Any]:
     return {"status": "ok", "manifest": str(manifest), **payload}
 
 
+def _observability_status(root: Path, trace_dataset: dict[str, Any]) -> dict[str, Any]:
+    config = _agentops_config(root)
+    observability = config.get("observability")
+    observability = observability if isinstance(observability, dict) else {}
+    rubrics = config.get("rubrics")
+    rubrics = rubrics if isinstance(rubrics, list) else []
+    lineage = trace_dataset.get("lineage")
+    lineage = lineage if isinstance(lineage, dict) else {}
+    trace_sampling = observability.get("trace_sampling")
+    trace_sampling = trace_sampling if isinstance(trace_sampling, dict) else {}
+
+    replay_urls = [str(url) for url in _as_list(lineage.get("replay_urls")) if url]
+    evaluation_urls = [str(url) for url in _as_list(lineage.get("evaluation_urls")) if url]
+    sampling_policies = [
+        str(policy) for policy in _as_list(lineage.get("sampling_policies")) if policy
+    ]
+    multi_turn_rows = int(lineage.get("multi_turn_rows") or 0)
+
+    return {
+        "status": "ok" if observability or rubrics or lineage else "not_configured",
+        "dataset_kind": config.get("dataset_kind", "auto"),
+        "multi_turn_ready": config.get("dataset_kind") == "multi-turn" or multi_turn_rows > 0,
+        "multi_turn_rows": multi_turn_rows,
+        "rubrics_count": len(rubrics),
+        "rubrics": rubrics,
+        "trace_sampling_enabled": bool(trace_sampling.get("enabled")) or bool(sampling_policies),
+        "trace_sampling_mode": trace_sampling.get("mode"),
+        "sampling_policies": sampling_policies,
+        "trace_replay_urls": replay_urls
+        or ([str(observability["trace_replay_url"])] if observability.get("trace_replay_url") else []),
+        "evaluation_urls": evaluation_urls
+        or ([str(observability["evaluations_url"])] if observability.get("evaluations_url") else []),
+        "datasets_url": observability.get("datasets_url"),
+    }
+
+
 def _ailz_status(analysis: Optional[AnalysisResult]) -> dict[str, Any]:
     if analysis is None:
         return {"status": "not_run"}
@@ -661,6 +700,50 @@ def _add_monitoring_check(
     checks.append(ReleaseEvidenceCheck(name="Runtime monitoring", status="warning", summary=message, evidence=monitoring))
 
 
+def _add_observability_check(
+    checks: list[ReleaseEvidenceCheck],
+    warnings: list[str],
+    ready: list[str],
+    observability: dict[str, Any],
+) -> None:
+    missing: list[str] = []
+    if not observability.get("multi_turn_ready"):
+        missing.append("multi-turn eval coverage")
+    if int(observability.get("rubrics_count") or 0) <= 0:
+        missing.append("rubric evaluator")
+    if not observability.get("trace_sampling_enabled"):
+        missing.append("intelligent trace sampling")
+    if not observability.get("trace_replay_urls"):
+        missing.append("trace replay link")
+
+    if not missing:
+        message = (
+            "Foundry observability signals are evidence-ready: "
+            "multi-turn coverage, rubric scoring, trace sampling, and replay links."
+        )
+        ready.append(message)
+        checks.append(
+            ReleaseEvidenceCheck(
+                name="Foundry observability",
+                status="ready",
+                summary=message,
+                evidence=observability,
+            )
+        )
+        return
+
+    message = "Foundry observability evidence is incomplete: " + ", ".join(missing)
+    warnings.append(message)
+    checks.append(
+        ReleaseEvidenceCheck(
+            name="Foundry observability",
+            status="warning",
+            summary=message,
+            evidence=observability,
+        )
+    )
+
+
 def _add_trace_dataset_check(
     checks: list[ReleaseEvidenceCheck],
     warnings: list[str],
@@ -751,11 +834,18 @@ def _add_governance_check(
     )
 
 
-def _links(latest_eval: dict[str, Any]) -> list[ReleaseEvidenceLink]:
+def _links(latest_eval: dict[str, Any], observability: dict[str, Any]) -> list[ReleaseEvidenceLink]:
     links: list[ReleaseEvidenceLink] = []
     report_url = latest_eval.get("foundry_report_url")
     if report_url:
         links.append(ReleaseEvidenceLink(label="Foundry evaluation report", url=str(report_url)))
+    for url in _as_list(observability.get("trace_replay_urls"))[:3]:
+        links.append(ReleaseEvidenceLink(label="Foundry trace replay", url=str(url)))
+    for url in _as_list(observability.get("evaluation_urls"))[:3]:
+        links.append(ReleaseEvidenceLink(label="Foundry evaluation", url=str(url)))
+    datasets_url = observability.get("datasets_url")
+    if datasets_url:
+        links.append(ReleaseEvidenceLink(label="Foundry datasets", url=str(datasets_url)))
     return links
 
 

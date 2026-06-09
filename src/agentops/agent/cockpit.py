@@ -27,6 +27,7 @@ from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange, parse_time_range, preset_keys
+from agentops.utils.yaml import load_yaml
 
 
 # ---------------------------------------------------------------------------
@@ -1891,6 +1892,12 @@ def _build_readiness_checklist(
     deep-links panel.
     """
     checks: List[Dict[str, Any]] = []
+    agentops_config = _read_agentops_config(workspace)
+    trace_manifest = _read_trace_regression_manifest(workspace)
+    raw_trace_lineage = trace_manifest.get("lineage")
+    trace_lineage: Dict[str, Any] = (
+        raw_trace_lineage if isinstance(raw_trace_lineage, dict) else {}
+    )
 
     tracing_ok = bool(telemetry.get("enabled"))
     checks.append(
@@ -1945,6 +1952,80 @@ def _build_readiness_checklist(
             "title": "Continuous evaluation rules (Foundry)",
             "status": cont_eval_status,
             "detail": cont_eval_detail,
+        }
+    )
+
+    multi_turn_ready = (
+        agentops_config.get("dataset_kind") == "multi-turn"
+        or int(trace_lineage.get("multi_turn_rows") or 0) > 0
+    )
+    checks.append(
+        {
+            "title": "Multi-turn eval coverage",
+            "status": "ok" if multi_turn_ready else "muted",
+            "detail": (
+                "Detected conversation-level evaluation coverage from "
+                "<code>dataset_kind: multi-turn</code> or trace-derived rows."
+                if multi_turn_ready
+                else "<strong>How to complete:</strong> add a conversation "
+                "dataset or promote traces that include <code>messages</code>, "
+                "then set <code>dataset_kind: multi-turn</code> in "
+                "<code>agentops.yaml</code>."
+            ),
+        }
+    )
+
+    rubrics = agentops_config.get("rubrics")
+    rubric_ready = isinstance(rubrics, list) and bool(rubrics)
+    checks.append(
+        {
+            "title": "Rubric evaluator gate",
+            "status": "ok" if rubric_ready else "muted",
+            "detail": (
+                "Detected <code>rubrics:</code> in <code>agentops.yaml</code>. "
+                "AgentOps requires <code>execution: azd</code> so the Foundry "
+                "rubric evaluator actually runs."
+                if rubric_ready
+                else "<strong>How to complete:</strong> declare a task-specific "
+                "<code>rubrics:</code> block and bind its dimensions to thresholds. "
+                "Use <code>execution: azd</code> so Foundry evaluates the rubric."
+            ),
+        }
+    )
+
+    observability = agentops_config.get("observability")
+    observability = observability if isinstance(observability, dict) else {}
+    trace_sampling = observability.get("trace_sampling")
+    trace_sampling = trace_sampling if isinstance(trace_sampling, dict) else {}
+    sampling_ready = bool(trace_sampling.get("enabled")) or bool(trace_lineage.get("sampling_policies"))
+    checks.append(
+        {
+            "title": "Trace sampling for live quality",
+            "status": "ok" if sampling_ready else "muted",
+            "detail": (
+                "Detected trace-sampling intent or sampling lineage in the "
+                "trace-derived dataset manifest."
+                if sampling_ready
+                else "<strong>How to complete:</strong> enable Foundry trace "
+                "sampling or document the policy under "
+                "<code>observability.trace_sampling</code>, then harvest sampled "
+                "traces into dataset candidates."
+            ),
+        }
+    )
+
+    replay_ready = bool(observability.get("trace_replay_url")) or bool(trace_lineage.get("replay_urls"))
+    checks.append(
+        {
+            "title": "Trace replay linked to evidence",
+            "status": "ok" if replay_ready else "muted",
+            "detail": (
+                "Detected a Foundry trace replay link in config or trace lineage."
+                if replay_ready
+                else "<strong>How to complete:</strong> keep a representative "
+                "Foundry replay link in <code>observability.trace_replay_url</code> "
+                "or include replay URLs when promoting traces."
+            ),
         }
     )
 
@@ -2479,6 +2560,21 @@ def _read_json_object(path: Path) -> Dict[str, Any]:
     except (OSError, ValueError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _read_agentops_config(workspace: Path) -> Dict[str, Any]:
+    path = workspace / "agentops.yaml"
+    if not path.exists():
+        return {}
+    try:
+        payload = load_yaml(path)
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _read_trace_regression_manifest(workspace: Path) -> Dict[str, Any]:
+    return _read_json_object(workspace / ".agentops" / "data" / "trace-regression-manifest.json")
 
 
 def _official_eval_artifact_status(workspace: Path) -> Dict[str, Any]:

@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file.
 This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+## [0.3.12] - 2026-06-09
+
+### Added
+- **Foundry observability readiness now spans eval, Doctor, Cockpit, and release evidence.**
+  `agentops.yaml` supports `dataset_kind`, `rubrics`, and `observability`
+  metadata for multi-turn coverage, rubric evaluator gates, trace sampling, and
+  replay/evaluation/dataset links. Doctor and Cockpit surface the readiness
+  state without mutating cloud resources, and release evidence records the same
+  signals for reviewers.
+- **Trace promotion preserves evaluation lineage.** `agentops eval
+  promote-traces` now carries operation/span IDs, source system, agent version,
+  replay/evaluation URLs, sampling policy, and multi-turn message fields into
+  candidate datasets and their manifest.
+
+### Changed
+- **Rubric evaluators are executed through the azd backend.** When `rubrics:`
+  is configured, `agentops eval init` includes those evaluator names in the azd
+  recipe and `agentops eval run` fails closed outside `execution: azd`, so rubric
+  scores cannot be treated as evidence unless Foundry / azd actually ran them.
+- **Tutorials now carry rubric and observability proof into evaluation and CI/CD.**
+  The Travel Agent flow keeps the existing smoke recording through step 10, then
+  upgrades the gate to multi-turn dataset rows, rubric thresholds, trace
+  sampling/replay lineage, and CI/CD workflows that reuse the same eval contract.
+
 ## [0.3.11] - 2026-06-08
 
 ### Fixed
