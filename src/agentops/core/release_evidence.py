@@ -51,6 +51,7 @@ class ReleaseEvidence(BaseModel):
     foundry: Dict[str, Any] = Field(default_factory=dict)
     monitoring: Dict[str, Any] = Field(default_factory=dict)
     trace_dataset: Dict[str, Any] = Field(default_factory=dict)
+    observability: Dict[str, Any] = Field(default_factory=dict)
     ailz: Dict[str, Any] = Field(default_factory=dict)
     governance: Dict[str, Any] = Field(default_factory=dict)
 

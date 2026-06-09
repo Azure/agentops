@@ -141,6 +141,18 @@ CHECK_REFERENCE_URLS: Dict[str, str] = {
     "safety.config.continuous_eval_disabled": (
         "https://learn.microsoft.com/azure/ai-foundry/how-to/online-evaluation"
     ),
+    "observability.multiturn_coverage_missing": (
+        "https://learn.microsoft.com/azure/foundry/concepts/observability"
+    ),
+    "observability.rubric_missing": (
+        "https://learn.microsoft.com/azure/foundry/concepts/observability"
+    ),
+    "observability.trace_sampling_missing": (
+        "https://learn.microsoft.com/azure/foundry/concepts/observability"
+    ),
+    "observability.trace_replay_missing": (
+        "https://learn.microsoft.com/azure/foundry/concepts/observability"
+    ),
 }
 
 
@@ -198,6 +210,28 @@ CHECKS: Tuple[CheckSpec, ...] = (
         severities=(Severity.WARNING, Severity.CRITICAL),
         requires=("results_history",),
         flags=("dynamic_id",),
+    ),
+    CheckSpec(
+        id="observability.multiturn_coverage_missing",
+        category=Category.QUALITY,
+        title="Multi-turn evaluation coverage is not declared yet",
+        summary=(
+            "The workspace does not declare multi-turn dataset coverage or "
+            "trace-derived conversation rows for Foundry multi-turn evals."
+        ),
+        severities=(Severity.INFO,),
+        requires=("workspace",),
+    ),
+    CheckSpec(
+        id="observability.rubric_missing",
+        category=Category.QUALITY,
+        title="No context-specific rubric evaluator is declared",
+        summary=(
+            "The workspace does not declare a Foundry rubric evaluator or "
+            "rubric dimensions that can be bound to release thresholds."
+        ),
+        severities=(Severity.INFO,),
+        requires=("workspace",),
     ),
     # ------------------------------------------------------------------
     # Performance
@@ -437,6 +471,28 @@ CHECKS: Tuple[CheckSpec, ...] = (
         ),
         severities=(Severity.WARNING,),
         requires=("foundry_control",),
+    ),
+    CheckSpec(
+        id="observability.trace_sampling_missing",
+        category=Category.OPERATIONAL_EXCELLENCE,
+        title="Intelligent trace sampling is not evidence-ready",
+        summary=(
+            "The workspace does not declare Foundry trace sampling and the "
+            "trace-regression manifest does not include sampling lineage."
+        ),
+        severities=(Severity.WARNING,),
+        requires=("workspace",),
+    ),
+    CheckSpec(
+        id="observability.trace_replay_missing",
+        category=Category.OPERATIONAL_EXCELLENCE,
+        title="Trace replay link is not captured in release evidence",
+        summary=(
+            "The workspace has no trace replay URL in agentops.yaml or in "
+            "trace-derived dataset lineage."
+        ),
+        severities=(Severity.INFO,),
+        requires=("workspace",),
     ),
     CheckSpec(
         id="opex.results_not_gitignored",

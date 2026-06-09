@@ -427,6 +427,43 @@ def test_readiness_splits_tracing_and_includes_continuous_eval(tmp_path: Path):
     assert "Server-side tracing (agent → App Insights)" in html
 
 
+def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: travel-agent:3\n"
+        "dataset: .agentops/data/travel-conversations.jsonl\n"
+        "dataset_kind: multi-turn\n"
+        "execution: azd\n"
+        "rubrics:\n"
+        "  - name: travel-concierge-quality\n"
+        "    evaluator: travel-concierge-quality\n"
+        "    dimensions:\n"
+        "      - name: task_success\n"
+        "        description: Completes the requested trip plan.\n"
+        "observability:\n"
+        "  trace_sampling:\n"
+        "    enabled: true\n"
+        "    mode: foundry\n"
+        "  trace_replay_url: https://ai.azure.com/traces/replay/abc\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    by_title = {check["title"]: check for check in readiness["checks"]}
+
+    assert by_title["Multi-turn eval coverage"]["status"] == "ok"
+    assert by_title["Rubric evaluator gate"]["status"] == "ok"
+    assert by_title["Trace sampling for live quality"]["status"] == "ok"
+    assert by_title["Trace replay linked to evidence"]["status"] == "ok"
+
+
 def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypatch):
     from agentops.agent.cockpit import _build_readiness_checklist
 

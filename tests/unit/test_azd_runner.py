@@ -124,6 +124,7 @@ def test_run_command_with_progress_emits_heartbeat(
 
     def fake_popen(command, **kwargs):
         assert command == ["azd", "ai", "agent", "eval", "run"]
+        assert kwargs["stdin"] is azd_runner.subprocess.DEVNULL
         return FakeProcess(stdout=kwargs["stdout"], stderr=kwargs["stderr"])
 
     monkeypatch.setattr(azd_runner.subprocess, "Popen", fake_popen)
@@ -145,6 +146,37 @@ def test_run_command_with_progress_emits_heartbeat(
         "azd eval run: waiting for azd/Foundry to finish (timeout 2 min).",
         "azd eval run: still running (0.5 min elapsed).",
     ]
+
+
+def test_rubrics_require_azd_backend(tmp_path: Path) -> None:
+    dataset = tmp_path / "smoke.jsonl"
+    _write_dataset(dataset)
+    config = AgentOpsConfig(
+        version=1,
+        agent="travel-agent:1",
+        dataset=dataset,
+        execution="local",
+        rubrics=[
+            {
+                "name": "travel-quality",
+                "dimensions": [
+                    {
+                        "name": "task_success",
+                        "description": "Completes the requested travel task.",
+                    }
+                ],
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="rubrics require execution: azd"):
+        orchestrator.run_evaluation(
+            config,
+            options=orchestrator.RunOptions(
+                config_path=tmp_path / "agentops.yaml",
+                output_dir=tmp_path / ".agentops" / "results",
+            ),
+        )
 
 
 def test_normalize_to_results_binds_azd_metrics_and_thresholds(tmp_path: Path) -> None:
@@ -250,6 +282,24 @@ evaluators:
         agent="travel-agent:1",
         dataset="ignored.jsonl",
         execution="azd",
+        rubrics=[
+            {
+                "name": "travel_quality",
+                "evaluator": "travel_quality_rubric",
+                "dimensions": [
+                    {
+                        "name": "booking_accuracy",
+                        "description": "Books or recommends options accurately.",
+                        "weight": 0.7,
+                    },
+                    {
+                        "name": "policy_enforcement",
+                        "description": "Avoids unsupported booking claims.",
+                        "weight": 0.3,
+                    },
+                ],
+            }
+        ],
         thresholds={
             "travel_quality_rubric": ">=0.8",
             "booking_accuracy": ">=0.8",
@@ -296,6 +346,112 @@ evaluators:
         "booking_accuracy": "booking_accuracy",
         "policy_enforcement": "policy_enforcement",
     }
+    assert result.config["rubrics"][0]["evaluator"] == "travel_quality_rubric"
+
+
+def test_rubric_config_requires_dimension_threshold_evidence(tmp_path: Path) -> None:
+    recipe_path = tmp_path / "eval.yaml"
+    recipe_path.write_text(
+        """
+name: rubric-eval
+agent:
+  name: travel-agent
+  kind: prompt-agent
+evaluators:
+  - builtin.coherence
+  - travel_quality_rubric
+""".lstrip(),
+        encoding="utf-8",
+    )
+    recipe = load_eval_recipe(recipe_path)
+    config = AgentOpsConfig(
+        version=1,
+        agent="travel-agent:1",
+        dataset="ignored.jsonl",
+        execution="azd",
+        rubrics=[
+            {
+                "name": "travel_quality",
+                "evaluator": "travel_quality_rubric",
+                "dimensions": [
+                    {
+                        "name": "booking_accuracy",
+                        "description": "Books or recommends options accurately.",
+                    }
+                ],
+            }
+        ],
+        thresholds={"coherence": ">=0.8"},
+    )
+    azd_run = azd_runner.AzdEvalRun(
+        recipe_path=recipe_path,
+        payload={"metrics": {"coherence": 0.91}},
+        run_id="run-1",
+        status="completed",
+        stdout="{}",
+        stderr="",
+        duration_seconds=3.0,
+    )
+
+    with pytest.raises(azd_runner.AzdBackendError, match="rubric evidence"):
+        azd_runner.normalize_to_results(
+            azd_run,
+            config=config,
+            recipe=recipe,
+            started_at=datetime.now(timezone.utc),
+        )
+
+
+def test_rubric_config_requires_recipe_evaluator(tmp_path: Path) -> None:
+    recipe_path = tmp_path / "eval.yaml"
+    recipe_path.write_text(
+        """
+name: rubric-eval
+agent:
+  name: travel-agent
+  kind: prompt-agent
+evaluators:
+  - builtin.coherence
+""".lstrip(),
+        encoding="utf-8",
+    )
+    recipe = load_eval_recipe(recipe_path)
+    config = AgentOpsConfig(
+        version=1,
+        agent="travel-agent:1",
+        dataset="ignored.jsonl",
+        execution="azd",
+        rubrics=[
+            {
+                "name": "travel_quality",
+                "evaluator": "travel_quality_rubric",
+                "dimensions": [
+                    {
+                        "name": "booking_accuracy",
+                        "description": "Books or recommends options accurately.",
+                    }
+                ],
+            }
+        ],
+        thresholds={"booking_accuracy": ">=0.8"},
+    )
+    azd_run = azd_runner.AzdEvalRun(
+        recipe_path=recipe_path,
+        payload={"metrics": {"booking_accuracy": 0.91}},
+        run_id="run-1",
+        status="completed",
+        stdout="{}",
+        stderr="",
+        duration_seconds=3.0,
+    )
+
+    with pytest.raises(azd_runner.AzdBackendError, match="rubric evaluator"):
+        azd_runner.normalize_to_results(
+            azd_run,
+            config=config,
+            recipe=recipe,
+            started_at=datetime.now(timezone.utc),
+        )
 
 
 def test_orchestrator_azd_dispatch_never_invokes_local_runtime(tmp_path: Path) -> None:

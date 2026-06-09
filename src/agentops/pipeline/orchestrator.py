@@ -80,6 +80,12 @@ def _run_evaluation(
     options: RunOptions,
 ) -> RunResult:
     """Run a full evaluation after optional telemetry has been initialized."""
+    if config.rubrics and _resolve_execution_backend(config) != "azd":
+        raise ValueError(
+            "rubrics require execution: azd so Foundry/azd runs the rubric "
+            "evaluator. Set `execution: azd`, run `agentops eval init`, and "
+            "bind rubric dimension thresholds in agentops.yaml."
+        )
     if options.baseline_path is not None and not options.baseline_path.exists():
         raise FileNotFoundError(
             f"baseline file not found: {options.baseline_path}. "

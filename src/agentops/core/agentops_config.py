@@ -67,6 +67,9 @@ ExecutionMode = Literal["local", "cloud", "azd", "auto"]
 #: How cloud evaluation submits local dataset rows to Foundry.
 DatasetSyncMode = Literal["auto", "inline", "foundry"]
 
+#: Dataset shape used by the evaluator runtime or Foundry / azd recipes.
+DatasetKind = Literal["auto", "single-turn", "multi-turn"]
+
 #: Internal-only literal kept for the publisher dispatch table. Derived from
 #: ``execution`` + ``publish`` via :meth:`AgentOpsConfig.publish_target`.
 PublishTarget = Literal["foundry", "foundry_cloud"]
@@ -206,6 +209,110 @@ class DatasetSyncConfig(BaseModel):
         value = value.strip()
         if not value:
             raise ValueError("dataset_sync.version must be non-empty")
+        return value
+
+
+class RubricDimensionConfig(BaseModel):
+    """One weighted dimension in a Foundry rubric evaluator.
+
+    Rubrics are optional and additive. AgentOps records them as release
+    readiness intent and uses thresholds to gate the metrics that Foundry/azd
+    emits for each dimension.
+    """
+
+    name: str
+    description: str
+    weight: Optional[float] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("name", "description")
+    @classmethod
+    def _text_non_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("rubric dimension fields must be non-empty")
+        return value
+
+
+class RubricConfig(BaseModel):
+    """Context-specific evaluator criteria for Foundry rubric scoring."""
+
+    name: str
+    description: Optional[str] = None
+    dimensions: List[RubricDimensionConfig] = Field(default_factory=list)
+    evaluator: Optional[str] = Field(
+        None,
+        description="Optional Foundry/azd evaluator name when the rubric is registered remotely.",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("name")
+    @classmethod
+    def _name_non_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("rubric name must be non-empty")
+        return value
+
+    @field_validator("description", "evaluator")
+    @classmethod
+    def _optional_text_non_empty(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("rubric optional text fields must be non-empty when provided")
+        return value
+
+
+class TraceSamplingConfig(BaseModel):
+    """Foundry intelligent trace-sampling readiness contract."""
+
+    enabled: bool = False
+    mode: Literal["manual", "foundry", "scheduled"] = "manual"
+    description: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("description")
+    @classmethod
+    def _description_non_empty(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("observability.trace_sampling.description must be non-empty")
+        return value
+
+
+class ObservabilityConfig(BaseModel):
+    """Foundry observability readiness metadata.
+
+    The fields are read-only intent for Doctor, Cockpit, and release evidence.
+    AgentOps does not create Foundry trace replay, sampling, or portal resources
+    from this block.
+    """
+
+    tracing_enabled: bool = False
+    trace_sampling: TraceSamplingConfig = Field(default_factory=TraceSamplingConfig)
+    trace_replay_url: Optional[str] = None
+    evaluations_url: Optional[str] = None
+    datasets_url: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("trace_replay_url", "evaluations_url", "datasets_url")
+    @classmethod
+    def _url_non_empty(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("observability URLs must be non-empty when provided")
+        if not value.startswith(("https://", "http://")):
+            raise ValueError("observability URLs must start with http:// or https://")
         return value
 
 
@@ -369,11 +476,25 @@ class AgentOpsConfig(BaseModel):
         Optional governance artifact paths. These are read-only inputs for
         Doctor and release evidence; AgentOps validates and references them but
         does not execute ASSERT, apply ACS controls, or run red-team campaigns.
+
+    ``dataset_kind`` / ``rubrics`` / ``observability``
+        Optional Foundry observability metadata. These fields keep existing
+        single-turn evals working while letting Doctor, Cockpit, CI evidence, and
+        azd/Foundry recipes reason about multi-turn coverage, rubric gates, trace
+        sampling, and trace replay links.
     """
 
     version: int = Field(..., description="Schema version. Must be 1.")
     agent: str = Field(..., description="Target identifier (name:version, URL, or model:deployment)")
     dataset: Path = Field(..., description="Path to a JSONL dataset file")
+    dataset_kind: DatasetKind = Field(
+        "auto",
+        description=(
+            "Dataset shape. 'auto' preserves current behavior, 'single-turn' "
+            "requires input/expected rows, and 'multi-turn' documents that rows "
+            "represent conversations or message histories."
+        ),
+    )
     prompt_file: Optional[Path] = Field(
         None,
         description=(
@@ -414,6 +535,10 @@ class AgentOpsConfig(BaseModel):
     auth_header_env: Optional[str] = None
 
     evaluators: Optional[List[EvaluatorOverride]] = None
+    rubrics: List[RubricConfig] = Field(
+        default_factory=list,
+        description="Optional context-specific rubric evaluator definitions.",
+    )
 
     publish: bool = Field(
         False,
@@ -457,6 +582,10 @@ class AgentOpsConfig(BaseModel):
     dataset_sync: DatasetSyncConfig = Field(
         default_factory=DatasetSyncConfig,
         description="Cloud evaluation dataset submission policy.",
+    )
+    observability: ObservabilityConfig = Field(
+        default_factory=ObservabilityConfig,
+        description="Foundry observability readiness metadata.",
     )
     prompt_agent_bootstrap: Optional[PromptAgentBootstrap] = Field(
         None,

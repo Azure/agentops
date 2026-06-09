@@ -478,7 +478,20 @@ def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
             mapped = name if name.startswith("builtin.") else _EVALUATOR_NAME_TO_AZD.get(name)
             if mapped and mapped not in names:
                 names.append(mapped)
-    return tuple(names) if names else _DEFAULT_AZD_EVALUATORS
+    if not names:
+        names.extend(_DEFAULT_AZD_EVALUATORS)
+    raw_rubrics = data.get("rubrics")
+    if isinstance(raw_rubrics, list):
+        for item in raw_rubrics:
+            if not isinstance(item, dict):
+                continue
+            raw_name = item.get("evaluator") or item.get("name")
+            if not isinstance(raw_name, str) or not raw_name.strip():
+                continue
+            name = raw_name.strip()
+            if name not in names:
+                names.append(name)
+    return tuple(names)
 
 
 def _azd_dataset_from_agentops_dataset(dataset: Path, *, workspace: Path) -> Path:
