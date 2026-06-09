@@ -1894,7 +1894,10 @@ def _build_readiness_checklist(
     checks: List[Dict[str, Any]] = []
     agentops_config = _read_agentops_config(workspace)
     trace_manifest = _read_trace_regression_manifest(workspace)
-    trace_lineage = trace_manifest.get("lineage") if isinstance(trace_manifest.get("lineage"), dict) else {}
+    raw_trace_lineage = trace_manifest.get("lineage")
+    trace_lineage: Dict[str, Any] = (
+        raw_trace_lineage if isinstance(raw_trace_lineage, dict) else {}
+    )
 
     tracing_ok = bool(telemetry.get("enabled"))
     checks.append(

@@ -337,6 +337,8 @@ def _ensure_azd_project_env_metadata(
     if not location.found or location.env_path is None:
         location = ensure_azd_env(workspace, "sandbox")
     env_path = location.env_path
+    if env_path is None:
+        return
     updates = {
         "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": endpoint,
         "FOUNDRY_PROJECT_ENDPOINT": endpoint,
