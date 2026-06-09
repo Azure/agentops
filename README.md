@@ -23,13 +23,10 @@ Can we ship it, and how do we know?
 
 AgentOps Accelerator is an open-source framework and CLI that standardizes
 continuous evaluation, safety testing, and release readiness for enterprise
-AI agents running on Microsoft Foundry.
-
-It connects Foundry Evaluations, ASSERT, the PyRIT-backed AI Red Teaming
-agent, Azure Monitor, and your CI/CD platform into one repeatable release
-loop, then packages every result into a stable evidence pack that proves
-the release is ready for production. Reviewed production traces flow back
-into regression datasets that feed the next eval cycle.
+AI agents on Microsoft Foundry. It connects Foundry Evaluations, ASSERT,
+the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your CI/CD
+platform into one repeatable release loop, packaging every result into a
+stable evidence pack that proves the release is ready for production.
 
 The output is a clear answer to the two questions reviewers actually ask:
 can we ship it, and how do we know?
