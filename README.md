@@ -3,7 +3,7 @@
 <p align="center">
 <b>Open-source framework and CLI for continuous evaluation, safety testing, and release readiness of Microsoft Foundry agents.</b>
 <br/>
-Can we ship it, and where is the proof?
+Can we ship it, and how do we know?
 </p>
 
 <p align="center">
@@ -21,34 +21,27 @@ Can we ship it, and where is the proof?
 
 ## Overview
 
-**AgentOps Accelerator is an open-source framework and CLI that standardizes
-continuous evaluation, safety testing, and release readiness for enterprise AI
-agents — with Microsoft Foundry as the agent runtime.**
+AgentOps Accelerator is an open-source framework and CLI that standardizes
+continuous evaluation, safety testing, and release readiness for enterprise
+AI agents running on Microsoft Foundry.
 
-It is an *orchestrator*, not a reimplementation. AgentOps wires together the
-tools you already use — Foundry Evaluations, `azd ai agent eval`, the
-open-source ASSERT framework, the PyRIT-backed AI Red Teaming agent, Azure
-Monitor / Application Insights, and your CI/CD platform — into a single
-repeatable release loop:
+It connects Foundry Evaluations, `azd ai agent eval`, the open-source
+ASSERT framework, the PyRIT-backed AI Red Teaming agent, Azure Monitor,
+and your CI/CD platform into one repeatable release loop. You evaluate the
+agent against your datasets, rubrics, and policies with auto-selected
+evaluators for RAG, tool use, model quality, and safety. You probe it with
+adversarial inputs through `agentops assert run` and `agentops redteam
+run`. You diagnose the rest of the picture (repo layout, telemetry wiring,
+landing zone, and Foundry configuration) with `agentops doctor`. The
+pipeline gates the release using a deterministic exit-code contract, and
+packages everything into a stable evidence pack (`evidence.json` and
+`evidence.md`) that bundles eval results, ASSERT verdicts, red-team
+findings, telemetry readiness, and Doctor findings for whoever signs off
+on production. Once the release ships, reviewed production traces are
+promoted back into regression datasets that feed the next eval cycle.
 
-1. **Evaluate** the agent against datasets, rubrics, and policies — locally or
-   in the cloud — using auto-selected evaluators for RAG, tool use, model
-   quality, and safety.
-2. **Probe** the agent with adversarial inputs by orchestrating ASSERT
-   (`agentops assert run`) and the Foundry/PyRIT Red Teaming agent
-   (`agentops redteam run`) as active CI steps.
-3. **Diagnose** repo, telemetry, landing zone, and Foundry readiness with
-   `agentops doctor`.
-4. **Gate** the release with a deterministic exit-code contract that PRs and
-   pipelines can rely on.
-5. **Prove** the release with a stable evidence pack (`evidence.json` +
-   `evidence.md`) that bundles eval results, ASSERT verdicts, red-team
-   findings, telemetry readiness, and Doctor findings for promotion review.
-6. **Learn from production** by promoting reviewed traces into regression
-   datasets that feed the next eval cycle.
-
-The output is a clear answer to two questions reviewers actually ask:
-**can we ship it, and where is the proof?**
+The output is a clear answer to the two questions reviewers actually ask:
+can we ship it, and how do we know?
 
 ### Core outputs
 
@@ -63,10 +56,11 @@ The output is a clear answer to two questions reviewers actually ask:
 
 ### Exit-code contract
 
-- `0` — execution succeeded and all gates passed
-- `2` — execution succeeded but a threshold, ASSERT violation, red-team rate,
-  or Doctor severity gate failed
-- `1` — runtime or configuration error
+AgentOps commands exit with `0` when execution succeeded and every gate
+passed, with `2` when execution itself succeeded but a threshold, an ASSERT
+violation, a red-team attack-success rate, or a Doctor severity gate
+failed, and with `1` for runtime or configuration errors. Pipelines can
+rely on this contract without parsing output.
 
 ## AgentOps and Microsoft Foundry
 
