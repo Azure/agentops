@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.14] - 2026-06-09
+
 ### Added
 - **`agentops assert run` orchestrates the open-source ASSERT framework.**
   AgentOps now invokes the `assert-ai` CLI as an active CI step instead of only
