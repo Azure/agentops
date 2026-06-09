@@ -1,7 +1,7 @@
 <h1 align="center">AgentOps Accelerator</h1>
 
 <p align="center">
-<b>Open-source framework and CLI for continuous evaluation, safety testing, and release readiness of Microsoft Foundry agents.</b>
+<b>The open-source AgentOps jumpstart for continuous evaluation, safety testing, observability, and release readiness of Microsoft Foundry agents.</b>
 <br/>
 Can we ship it, and how do we know?
 </p>
@@ -21,10 +21,10 @@ Can we ship it, and how do we know?
 
 ## Overview
 
-AgentOps Accelerator is an open-source framework and CLI that standardizes
-continuous evaluation, safety testing, and release readiness for enterprise
-AI agents on Microsoft Foundry. It connects Foundry Evaluations, ASSERT,
-the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your CI/CD
+AgentOps Accelerator is an open-source AgentOps jumpstart that standardizes
+continuous evaluation, safety testing, observability, and release readiness
+for enterprise AI agents on Microsoft Foundry. It connects Foundry Evaluations,
+ASSERT, the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your CI/CD
 platform into one repeatable release loop, packaging every result into a
 stable evidence pack that proves the release is ready for production.
 
