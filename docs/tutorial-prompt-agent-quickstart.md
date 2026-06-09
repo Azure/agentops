@@ -104,7 +104,7 @@ Two ideas to internalize:
    "is the same prompt running in sandbox, dev, and prod?", you compare
    SHAs, not version numbers. The version numbers will differ.
 
-The longer walkthrough of that identity story is in step 13, when you
+The longer walkthrough of that identity story is in step 15, when you
 have a real `foundry-agent.json` artifact to open.
 
 ## Journey you will exercise
@@ -448,7 +448,7 @@ A short observability cross-reference: in the same project's
 **Traces** tab you can find this run. If Foundry asks to attach
 Application Insights and you have not connected it yet, you can do that
 now or wait until the closeout step. The detailed observability tour is
-in step 16; for now, just confirm there is at least one trace to look at
+in step 18; for now, just confirm there is at least one trace to look at
 later.
 
 ## 6. Create the travel eval dataset
@@ -671,7 +671,7 @@ Confirm the final topology:
 ```
 
 `defaultEnvironment: sandbox` means local commands like
-`agentops eval run` use the sandbox project. CI workflows in step 11
+`agentops eval run` use the sandbox project. CI workflows in step 13
 read from `.azure/dev/.env` explicitly so they always target dev.
 
 ## 9. Promote the prompt to a source-controlled file
@@ -754,15 +754,17 @@ project:
 > `agentops.yaml`). If you ever copied the endpoint into `agentops.yaml`
 > manually, delete it now.
 
-## 10. Check the selected eval runner
+## 10. Initialize the azd eval recipe and run the smoke gate
+
+Confirm the eval runner the workflow generator will use:
 
 ```powershell
 agentops workflow analyze --format text
 ```
 
-For `agent: name:version` plus `prompt_file`, AgentOps should detect the
-prompt-agent deploy mode. Before you initialize the azd eval recipe below, the
-eval recommendation may still show AgentOps cloud eval in Foundry:
+For `agent: name:version` plus `prompt_file`, AgentOps detects the
+prompt-agent deploy mode. The recommendation may still show AgentOps
+cloud eval in Foundry before you initialize the azd recipe:
 
 ```text
 Recommendation
@@ -772,72 +774,66 @@ Recommendation
   Copilot skills  installed - available for workflow adaptation handoff
 ```
 
-This confirms the deployment side is configured correctly: the PR workflow
-turns changes in `prompt_file` into a reviewable prompt-agent candidate, and
-the deploy workflow records which candidate is now running in dev. Next, let
-AgentOps initialize the native azd eval recipe:
+That confirms the deployment side is wired correctly. Now let AgentOps
+prepare the native azd eval recipe:
 
 ```powershell
 agentops eval init
 ```
 
-AgentOps prepares the small amount of azd context that
-`azd ai agent eval` needs: it creates `azure.yaml` and
-`src/travel-agent/agent.yaml` if they are missing, enriches the active
-`.azure/sandbox/.env` with the Foundry project metadata azd expects, and writes
-an azd-friendly dataset copy with the `query` field derived from your
-AgentOps `input` values. It then asks azd to generate the eval recipe and records
-that recipe in `agentops.yaml`:
+This creates `azure.yaml` and `src/travel-agent/agent.yaml` if they are
+missing, enriches the active `.azure/sandbox/.env` with the Foundry
+metadata azd expects, writes an azd-friendly dataset copy with the
+`query` field derived from your AgentOps `input` values, asks azd to
+generate the eval recipe, and records it in `agentops.yaml`:
 
 ```yaml
 execution: azd
 eval_recipe: src/travel-agent/eval.yaml
 ```
 
-> **What is `smoke-core`?** In the generated
-> `src/travel-agent/eval.yaml`, azd may include an evaluator entry similar to
-> `name: smoke-core` with
-> `local_uri: evaluators\smoke-core\rubric_dimensions.json`. That is the local
-> rubric evaluator generated for this quickstart's smoke gate. The built-in
-> evaluators, such as `builtin.coherence` and `builtin.fluency`, check general
-> response quality. `smoke-core` points at rubric dimensions that describe what
-> this Travel Agent must do well. Later in this tutorial, when you add
-> `rubrics:` to `agentops.yaml`, use the evaluator name that appears here
-> instead of inventing a new one.
+Use `--force` only when you intentionally want to regenerate an existing
+`eval.yaml`. For the normal flow, run it without `--force`.
 
-Use `agentops eval init --force` only when you intentionally want to regenerate
-and replace an existing `eval.yaml`. For the normal quickstart flow, run it
-without `--force`.
+> **What is `smoke-core`?** In the generated `src/travel-agent/eval.yaml`,
+> azd may include an evaluator like `name: smoke-core` with
+> `local_uri: evaluators\smoke-core\rubric_dimensions.json`. That is the
+> local rubric evaluator generated for this quickstart's smoke gate. The
+> built-in evaluators (`builtin.coherence`, `builtin.fluency`) check
+> general response quality; `smoke-core` points at rubric dimensions
+> specific to this Travel Agent. When you add `rubrics:` to
+> `agentops.yaml` later, use the evaluator name that appears here.
 
-Run the gate once locally:
+Run the gate locally:
 
 ```powershell
 agentops eval run
 ```
 
-You should see `execution: azd` and `Threshold status: PASSED`. The raw azd run
-details are kept under `.agentops/results/latest/` alongside AgentOps'
-normalized `results.json` and `report.md`.
+You should see `execution: azd` and `Threshold status: PASSED`. The raw
+azd run details are kept under `.agentops/results/latest/` alongside
+AgentOps' normalized `results.json` and `report.md`.
 
-Before generating CI, turn the Travel Agent gate from a basic smoke test into a
-conversation-aware proof. Keep the recording you already made through this step:
-the smoke run above proves the workspace works. The next commands only harden
-the same gate with multi-turn rows that can later line up with trace replay and
-trace-to-dataset evidence.
+## 11. Harden the gate: conversation-aware dataset and rubric
 
-Create a small set of **synthetic multi-turn test cases**. These rows are not
-claiming that the agent already said the assistant turns verbatim. They define a
-controlled conversation scenario you want the next response to handle.
+The smoke gate proves the workspace works. Before generating CI, harden
+the same gate with multi-turn rows that line up with future trace replay
+and a rubric that scores the Travel Agent's product behavior.
 
-> **Copilot assist:** You can also ask `/skills agentops-dataset` to draft these
-> conversation scenarios. Ask it for synthetic multi-turn rows that keep the
-> conversation summary in `input`, preserve the structured turns in `messages`,
-> and write `expected` as acceptance criteria.
+### Create a synthetic multi-turn dataset
 
-Keep the important conversation context inside `input`, because that is the
-field AgentOps maps to the azd `query`. Also keep `messages` beside it so the
-dataset has the same shape as future trace-derived rows and release evidence can
-show that this gate covers conversation scenarios.
+Define a small set of synthetic multi-turn rows. They are not claiming
+the agent already produced the assistant turns verbatim — they define
+controlled conversation scenarios the next response must handle.
+
+> **Copilot assist:** `/skills agentops-dataset` can draft these
+> conversation scenarios. Ask for synthetic multi-turn rows that keep the
+> conversation summary in `input`, preserve the structured turns in
+> `messages`, and write `expected` as acceptance criteria.
+
+Keep the important context inside `input` (the field AgentOps maps to the
+azd `query`) and keep `messages` alongside it so the dataset matches the
+shape of future trace-derived rows.
 
 ```powershell
 @'
@@ -846,63 +842,44 @@ show that this gate covers conversation scenarios.
 '@ | Set-Content -Encoding utf8 .agentops\data\travel-conversations.jsonl
 ```
 
-Then update the dataset in `agentops.yaml`:
+Point `agentops.yaml` at it:
 
 ```yaml
 dataset: .agentops/data/travel-conversations.jsonl
 dataset_kind: multi-turn
 ```
 
-Re-run init so the azd recipe points at the conversation dataset, then run the
-gate again:
+Re-init the recipe and run the gate again:
 
 ```powershell
 agentops eval init --force
 agentops eval run
 ```
 
-When it passes, `results.json` records `execution: azd`, the evaluator list, the
-multi-turn dataset kind, and the threshold results emitted by azd.
+When it passes, `results.json` records `execution: azd`, the evaluator
+list, the multi-turn dataset kind, and the threshold results.
 
-> **What did this CLI gate test?** At this point, the CLI gate is evaluating the
-> agent on individual synthetic conversation-context turns. It is not the portal
-> **Full conversations** preview. AgentOps uses `messages` to preserve the
-> conversation shape and `dataset_kind: multi-turn` to make the release evidence
-> conversation-aware. For true end-to-end full conversation evaluation, continue
-> with the Foundry portal flow below.
+> **What did this gate test?** Individual synthetic conversation-context
+> turns, not the Foundry portal **Full conversations** preview. AgentOps
+> uses `messages` to preserve the conversation shape and
+> `dataset_kind: multi-turn` to make the release evidence
+> conversation-aware. For end-to-end full-conversation evaluation, use
+> the optional Foundry path below.
 
-### Optional: Run full multi-turn evaluation in Foundry
+### Optional: Full conversations evaluation in the Foundry portal
 
-The CLI / azd gate above is the repo-controlled release gate. It uses
-synthetic conversation-context rows: the agent receives the relevant
-conversation summary in `input`, and `messages` preserves the structured
-scenario for evidence and future trace-derived regression.
-
-For the Foundry-native full multi-turn path, use **Full conversations** in the
-Foundry portal. This preview evaluation scope evaluates a complete multi-turn
-conversation from start to finish, including overall conversation quality, task
-completion, and user satisfaction.
-
-This part runs in the **Foundry portal**, not inside the AgentOps CLI. Keep it
-as a deeper Foundry review path, not as an extra required step in the automated
-release gate. The automated gate for this tutorial remains AgentOps + azd +
-Doctor evidence.
-
-Use one of these data sources:
+This is a Foundry-native deeper review path, not a required step in the
+automated release gate. The automated gate for this tutorial stays
+AgentOps + azd + Doctor evidence.
 
 | If you have... | Use this dataset source |
 |---|---|
-| No production conversations yet | Start with the synthetic conversation rows from `.agentops/data/travel-conversations.jsonl`. They are controlled examples for the tutorial. |
+| No production conversations yet | Start with the synthetic rows from `.agentops/data/travel-conversations.jsonl`. |
 | A deployed agent with traffic | Use Foundry traces or exported conversation logs, then convert/select those conversations as the Foundry evaluation dataset. |
-| A curated review set from your team | Upload that approved conversation dataset in the format the Foundry portal asks for. |
+| A curated review set from your team | Upload that approved conversation dataset in the format the portal asks for. |
 
-For this tutorial, start with the local synthetic file you just created. If the
-portal asks you to upload data, use `.agentops/data/travel-conversations.jsonl`
-as the source content and adapt the column mapping in the wizard if prompted.
-Later, replace that with real Foundry traces or approved conversation logs.
-
-Use the Foundry portal evaluation when you want to review the end-to-end
-conversation experience itself:
+For this tutorial, start with the synthetic file you just created. Later,
+replace that with real Foundry traces or approved conversation logs.
 
 1. Open your Foundry project in <https://ai.azure.com>.
 2. Go to **Evaluation** and create a new evaluation.
@@ -912,15 +889,13 @@ conversation experience itself:
 
 Reference: [Run evaluations from the Microsoft Foundry portal](https://learn.microsoft.com/azure/foundry/how-to/evaluate-generative-ai-app#create-an-evaluation).
 
-### Add the Travel Agent rubric gate
+### Add the Travel Agent rubric to the release gate
 
-Before you edit the config, understand what this gate is adding. A normal
-evaluator checks a general quality signal such as coherence or fluency. A rubric
-evaluator is still usually an LLM-as-a-judge evaluation, but the judge is guided
-by product-specific criteria that you define for this agent.
+A normal evaluator checks a general quality signal (coherence, fluency).
+A rubric evaluator is still usually an LLM-as-a-judge evaluation, but the
+judge is guided by product-specific criteria you define for this agent.
 
-For the Travel Agent, the rubric is the release check that asks questions such
-as:
+For the Travel Agent, the rubric asks:
 
 | Rubric dimension | What the judge checks |
 |---|---|
@@ -928,17 +903,16 @@ as:
 | Constraint following | Did it preserve constraints such as kids, budget, trip length, and pace? |
 | Safe booking behavior | Did it avoid claiming live bookings, confirmations, or prices it cannot verify? |
 
-The `eval_model` in the generated azd recipe is the model that acts as the
-judge. The rubric file tells that judge which dimensions to score, and the
-thresholds in `agentops.yaml` decide whether the release gate passes.
+The `eval_model` in the generated azd recipe is the judge. The rubric
+file tells it which dimensions to score, and the thresholds in
+`agentops.yaml` decide whether the gate passes.
 
-Now make the rubric part of the release gate. You will fill in two kinds of
-real names: the rubric evaluator name, and the rubric dimension names. Do not
-invent your own values - both must come from files that `agentops eval init`
-already generated on disk.
+Fill in two kinds of real names: the rubric evaluator name and the rubric
+dimension names. Do not invent values — both must come from files
+`agentops eval init` already generated on disk.
 
-**1. Find the evaluator name.** Open `src/travel-agent/eval.yaml` and look
-under `evaluators:` for the entry that has a `local_uri`. Example:
+**1. Find the evaluator name.** Open `src/travel-agent/eval.yaml` and
+look under `evaluators:` for the entry with a `local_uri`:
 
 ```yaml
 evaluators:
@@ -949,13 +923,12 @@ evaluators:
       local_uri: evaluators\smoke-core\rubric_dimensions.json
 ```
 
-The value you need is the `name:` of that entry. In this example it is
-`smoke-core`. That is the evaluator name azd knows how to run.
+The value you need is the `name:` of that entry. In this example,
+`smoke-core`.
 
-**2. Find the dimension names.** Open the file that the `local_uri` points to,
-for example `src/travel-agent/evaluators/smoke-core/rubric_dimensions.json`.
-Each object in that file has an `id`. Those `id` values are the metric names
-that azd will emit for this rubric. Example file:
+**2. Find the dimension names.** Open the file the `local_uri` points to
+(e.g. `src/travel-agent/evaluators/smoke-core/rubric_dimensions.json`).
+Each object's `id` is a metric name azd will emit:
 
 ```json
 [
@@ -969,9 +942,8 @@ that azd will emit for this rubric. Example file:
 ]
 ```
 
-Pick the dimensions you want to enforce as release gates. For the Travel Agent
-quickstart, the three that map to the Task success / Constraint following /
-Safe booking checks are:
+For this quickstart the three dimensions that map to Task success /
+Constraint following / Safe booking are:
 
 | Dimension intent | Dimension `id` to use |
 |---|---|
@@ -979,9 +951,7 @@ Safe booking checks are:
 | Constraint following | `adherence_to_constraints` |
 | Safe booking behavior | `clear_practical_notes` |
 
-**3. Add `rubrics:` and `thresholds:` to `agentops.yaml`.** Using the values
-above, the file looks like this (replace `smoke-core` and the dimension `id`s
-only if your generated files used different names):
+**3. Add `rubrics:` and `thresholds:` to `agentops.yaml`:**
 
 ```yaml
 rubrics:
@@ -1005,40 +975,39 @@ thresholds:
   clear_practical_notes: ">=4"
 ```
 
-**4. Regenerate the azd recipe and run the gate again:**
+**4. Regenerate the recipe and re-run the gate:**
 
 ```powershell
 agentops eval init --force
 agentops eval run
 ```
 
-When this passes, the release gate has both the conversation-context dataset
-and the Travel Agent rubric thresholds. If a dimension name is wrong, AgentOps
-will keep the run from passing the threshold gate because the threshold cannot
-bind to an emitted metric. Open `.agentops/results/latest/results.json` to see
-which rubric metric names actually appeared in the azd output; that is the
-authoritative list of values you can put under `thresholds:`.
+When this passes, the gate enforces both the conversation-context dataset
+and the Travel Agent rubric thresholds. If a dimension name is wrong,
+AgentOps cannot bind the threshold to an emitted metric — open
+`.agentops/results/latest/results.json` to see which rubric metric names
+azd actually produced.
 
-### Add ASSERT and Red Team to the release gate
+## 12. Add ASSERT and Red Team to the release gate
 
-The normal AgentOps flow proves the release with evaluation results, Doctor
-findings, workflow runs, and release evidence. Two release-readiness signals
+The eval gate proves quality. Two additional release-readiness signals
 deserve to run inside the same loop:
 
-- **ASSERT** (open-source `assert-ai`) — turns natural-language policies into
-  executable behavior tests (prompt injection, jailbreak, hallucination, PII
-  leak, unauthorized tool use). Repo: <https://github.com/responsibleai/ASSERT>.
-- **AI Red Teaming** (Foundry agent, PyRIT-backed) — generates adversarial
-  prompts across risk categories (violence, hate, self-harm, sexual) and applies
-  attack strategies (base64, rot13, morse) to surface safety regressions before
-  users do. Docs:
+- **ASSERT** (open-source `assert-ai`) — turns natural-language policies
+  into executable behavior tests (prompt injection, jailbreak,
+  hallucination, PII leak, unauthorized tool use). Repo:
+  <https://github.com/responsibleai/ASSERT>.
+- **AI Red Teaming** (Foundry agent, PyRIT-backed) — generates
+  adversarial prompts across risk categories (violence, hate, self-harm,
+  sexual) and applies attack strategies (base64, rot13, morse) to surface
+  safety regressions. Docs:
   <https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent>.
 
-AgentOps does NOT reimplement either. It orchestrates them as active CI steps,
-gates the pipeline on their results, and writes normalized JSON summaries that
-the evidence pack ingests automatically.
+AgentOps does not reimplement either. It orchestrates them as active CI
+steps, gates the pipeline on their results, and writes normalized JSON
+summaries that the evidence pack ingests automatically.
 
-#### 10a. Run ASSERT against the Travel Agent
+### Run ASSERT against the Travel Agent
 
 Install ASSERT and scaffold a minimal eval config:
 
@@ -1081,12 +1050,13 @@ What AgentOps does for you:
 3. Locates the run output under `artifacts/results/<suite>/<run>/`.
 4. Parses `metrics.json` and `scores.jsonl` for per-dimension verdicts.
 5. Writes a normalized summary at `.agentops/assert/latest.json`.
-6. Exits non-zero (code 2) when ASSERT reports any policy violation, unless
-   you pass `--no-gate` or set `assert.fail_on_violations: false`.
+6. Exits non-zero (code 2) when ASSERT reports any policy violation,
+   unless you pass `--no-gate` or set `assert.fail_on_violations: false`.
 
-#### 10b. Run the AI Red Teaming agent
+### Run the AI Red Teaming agent
 
-Install Foundry's Red Team SDK (it ships under an extra of `azure-ai-evaluation`):
+Install Foundry's Red Team SDK (it ships under an extra of
+`azure-ai-evaluation`):
 
 ```powershell
 pip install "azure-ai-evaluation[redteam]"
@@ -1114,11 +1084,11 @@ What AgentOps does for you:
 
 1. Verifies the `RedTeam` Python API is importable.
 2. Resolves the target (deployment / agent / endpoint) from the YAML.
-3. Calls `RedTeam.scan(...)` with the configured risk categories, strategies,
-   and objective count.
+3. Calls `RedTeam.scan(...)` with the configured risk categories,
+   strategies, and objective count.
 4. Aggregates per-category and per-strategy attack-success-rate.
-5. Writes a normalized summary at `.agentops/redteam/latest.json` plus the
-   raw SDK payload at `.agentops/redteam/raw_summary.json`.
+5. Writes a normalized summary at `.agentops/redteam/latest.json` plus
+   the raw SDK payload at `.agentops/redteam/raw_summary.json`.
 6. Exits non-zero (code 2) when overall attack-success-rate exceeds
    `fail_on_attack_success_rate`, unless you pass `--no-gate`.
 
@@ -1126,9 +1096,9 @@ What AgentOps does for you:
 > non-production deployment and budget for the cost of the configured
 > objective count.
 
-#### 10c. Pull both into the release evidence pack
+### Pull both into the release evidence pack
 
-Both runners write to well-known paths the evidence pack already auto-discovers
+Both runners write to well-known paths the evidence pack auto-discovers
 (via `assert_path` and `redteam_path` resolution). When you produce the
 evidence pack:
 
@@ -1136,12 +1106,13 @@ evidence pack:
 agentops doctor --workspace . --evidence-pack
 ```
 
-`evidence.json` and `evidence.md` now include the suite/run id, total cases,
-violation counts, attack-success-rate, and SHA-256 hashes for both artifacts —
-without claiming AgentOps invented the verdicts. The verdicts come from ASSERT
-and PyRIT; AgentOps owns orchestration, normalization, and gating.
+`evidence.json` and `evidence.md` now include the suite/run id, total
+cases, violation counts, attack-success-rate, and SHA-256 hashes for both
+artifacts — without claiming AgentOps invented the verdicts. The verdicts
+come from ASSERT and PyRIT; AgentOps owns orchestration, normalization,
+and gating.
 
-## 11. Generate the PR + dev deploy workflows
+## 13. Generate the PR + dev deploy workflows
 
 > **Pipeline ownership.** This tutorial uses `agentops workflow generate`
 > because the workflow is the release-readiness contract: it stages the prompt
@@ -1218,7 +1189,7 @@ Deploy templates always run with `--severity-fail critical` regardless of
 the last-mile production gate and should always block on critical
 findings.
 
-## 12. Wire CI: GitHub repository + Azure OIDC + dev environment
+## 14. Wire CI: GitHub repository + Azure OIDC + dev environment
 
 The workflows live only on your machine right now. CI will not run until
 the folder is a GitHub repository, pushed to a remote, and connected to
@@ -1302,13 +1273,13 @@ it skips:
     you can see the cause in the artifact, but the workflow still fails
     the gate.
 
-## 13. First green PR → merge → dev deploy
+## 15. First green PR → merge → dev deploy
 
 This is the happy path. Before the regression step, you need a clean
 green baseline so the rolling-history Doctor checks (regression, drift)
 have something to compare against.
 
-The workflow skill in step 12 already committed your local changes,
+The workflow skill in step 14 already committed your local changes,
 pushed `main` to the GitHub remote, and dispatched first verification
 runs of **both** `agentops-pr.yml` and `agentops-deploy-dev.yml` (via
 `workflow_dispatch`, after asking you to approve) so the CI wiring is
@@ -1334,7 +1305,7 @@ dev now contains a bootstrapped version of the agent.
 
 `agentops-deploy-dev.yml` will fire **again** automatically when you
 merge the baseline PR at the end of this section, because the skill
-rewrote its trigger from `develop` to `main` in step 12.
+rewrote its trigger from `develop` to `main` in step 14.
 
 If you want to wait on the first PR-workflow verification run from the
 terminal instead of the Actions UI:
@@ -1410,9 +1381,9 @@ re-run the workflow on the PR if needed. Then merge.
 
 After the merge, the **AgentOps deploy (dev)** workflow runs
 automatically on `main` (the skill rewrote its trigger from `develop`
-to `main` in step 12 because this tutorial uses trunk-based flow).
+to `main` in step 14 because this tutorial uses trunk-based flow).
 This is the **second** deploy-dev run for this repo — the first was
-the skill's verification dispatch in step 12. It stages the candidate
+the skill's verification dispatch in step 14. It stages the candidate
 (by this point most likely `action: reused` or `created`), evaluates
 it, runs `prompt_deploy summarize` to write the dev deployment summary,
 and uploads the deployment artifact.
@@ -1488,7 +1459,7 @@ will have its own `foundry-agent.json` with possibly different
 > can each create their own version. The durable identifier is
 > `prompt_sha256`, not the integer suffix.
 
-## 14. Regression PR — eval gate AND Doctor blocking
+## 16. Regression PR — eval gate AND Doctor blocking
 
 Now exercise the value of running Doctor as a critical PR gate. You will
 intentionally ship a worse prompt and observe **two independent failure
@@ -1557,7 +1528,7 @@ the regressed run.
 
 > **What if Doctor does not flag regression yet?** The
 > `regression.<metric>` checks need at least a small history of prior
-> runs to compute the baseline. The baseline run in step 13 plus this
+> runs to compute the baseline. The baseline run in step 15 plus this
 > regression run should be enough, but if you skipped the baseline,
 > Doctor may only emit lower-severity findings. Re-run the green
 > workflow once on `main` to seed history, then push the regression
@@ -1567,7 +1538,7 @@ The lesson: this PR is blocked at PR time, before any reviewer touches
 it, and the reason is in the GitHub run summary — not buried in a
 post-deploy production alert.
 
-## 15. Fix and redeploy
+## 17. Fix and redeploy
 
 Restore the prompt to the good version:
 
@@ -1607,7 +1578,7 @@ regressions that thresholds alone miss, and the merge promotes through
 the deploy workflow. None of those gates require the developer to
 remember to look at a dashboard.
 
-## 16. Brief observability checkout (Foundry side)
+## 18. Brief observability checkout (Foundry side)
 
 The Foundry side of the loop is worth a short tour, even though it is
 not what AgentOps owns. This is the "Foundry tells you what happened"
@@ -1636,7 +1607,7 @@ will check whether this telemetry is wired (App Insights connection
 string, recent traces, etc.) and include it in the readiness call, but
 the runtime view itself lives in Foundry.
 
-## 17. Sync local evidence and create the release evidence pack
+## 19. Sync local evidence and create the release evidence pack
 
 ```powershell
 agentops eval run
@@ -1684,7 +1655,7 @@ the paths, SHA-256 hashes, and ACS checkpoint coverage in
 `.agentops\release\latest\evidence.json`; ASSERT execution, ACS enforcement,
 Guardrail setup, and red-team scans still happen in their owning tools.
 
-## 18. Open Cockpit
+## 20. Open Cockpit
 
 ```powershell
 agentops cockpit --workspace .
