@@ -349,7 +349,7 @@ evaluators:
     assert result.config["rubrics"][0]["evaluator"] == "travel_quality_rubric"
 
 
-def test_rubric_config_requires_dimension_threshold_evidence(tmp_path: Path) -> None:
+def test_rubric_metadata_does_not_block_azd_metrics(tmp_path: Path) -> None:
     recipe_path = tmp_path / "eval.yaml"
     recipe_path.write_text(
         """
@@ -393,65 +393,15 @@ evaluators:
         duration_seconds=3.0,
     )
 
-    with pytest.raises(azd_runner.AzdBackendError, match="rubric evidence"):
-        azd_runner.normalize_to_results(
-            azd_run,
-            config=config,
-            recipe=recipe,
-            started_at=datetime.now(timezone.utc),
-        )
-
-
-def test_rubric_config_requires_recipe_evaluator(tmp_path: Path) -> None:
-    recipe_path = tmp_path / "eval.yaml"
-    recipe_path.write_text(
-        """
-name: rubric-eval
-agent:
-  name: travel-agent
-  kind: prompt-agent
-evaluators:
-  - builtin.coherence
-""".lstrip(),
-        encoding="utf-8",
-    )
-    recipe = load_eval_recipe(recipe_path)
-    config = AgentOpsConfig(
-        version=1,
-        agent="travel-agent:1",
-        dataset="ignored.jsonl",
-        execution="azd",
-        rubrics=[
-            {
-                "name": "travel_quality",
-                "evaluator": "travel_quality_rubric",
-                "dimensions": [
-                    {
-                        "name": "booking_accuracy",
-                        "description": "Books or recommends options accurately.",
-                    }
-                ],
-            }
-        ],
-        thresholds={"booking_accuracy": ">=0.8"},
-    )
-    azd_run = azd_runner.AzdEvalRun(
-        recipe_path=recipe_path,
-        payload={"metrics": {"booking_accuracy": 0.91}},
-        run_id="run-1",
-        status="completed",
-        stdout="{}",
-        stderr="",
-        duration_seconds=3.0,
+    result = azd_runner.normalize_to_results(
+        azd_run,
+        config=config,
+        recipe=recipe,
+        started_at=datetime.now(timezone.utc),
     )
 
-    with pytest.raises(azd_runner.AzdBackendError, match="rubric evaluator"):
-        azd_runner.normalize_to_results(
-            azd_run,
-            config=config,
-            recipe=recipe,
-            started_at=datetime.now(timezone.utc),
-        )
+    assert result.summary.overall_passed is True
+    assert result.config["rubrics"][0]["evaluator"] == "travel_quality_rubric"
 
 
 def test_orchestrator_azd_dispatch_never_invokes_local_runtime(tmp_path: Path) -> None:

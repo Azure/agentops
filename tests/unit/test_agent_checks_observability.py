@@ -18,7 +18,6 @@ def test_observability_check_flags_missing_build_2026_readiness(tmp_path: Path) 
     ids = {finding.id for finding in findings}
 
     assert "observability.multiturn_coverage_missing" in ids
-    assert "observability.rubric_missing" in ids
     assert "observability.trace_sampling_missing" in ids
     assert "observability.trace_replay_missing" in ids
 
@@ -29,11 +28,6 @@ def test_observability_check_accepts_declared_readiness(tmp_path: Path) -> None:
         "agent: travel-agent:2\n"
         "dataset: .agentops/data/conversations.jsonl\n"
         "dataset_kind: multi-turn\n"
-        "rubrics:\n"
-        "  - name: travel-concierge-quality\n"
-        "    dimensions:\n"
-        "      - name: task_success\n"
-        "        description: Completes the requested travel task.\n"
         "observability:\n"
         "  trace_sampling:\n"
         "    enabled: true\n"
@@ -51,9 +45,7 @@ def test_observability_check_accepts_trace_manifest_lineage(tmp_path: Path) -> N
     (tmp_path / "agentops.yaml").write_text(
         "version: 1\n"
         "agent: travel-agent:2\n"
-        "dataset: .agentops/data/smoke.jsonl\n"
-        "rubrics:\n"
-        "  - name: travel-concierge-quality\n",
+        "dataset: .agentops/data/smoke.jsonl\n",
         encoding="utf-8",
     )
     manifest = tmp_path / ".agentops" / "data" / "trace-regression-manifest.json"

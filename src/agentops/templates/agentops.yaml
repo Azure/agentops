@@ -60,24 +60,20 @@ dataset: .agentops/data/smoke.jsonl
 #   groundedness: ">=3"
 #   avg_latency_seconds: "<=30"
 #
-# Optional. Context-specific rubric evaluators. When this block is present,
-# AgentOps requires execution: azd so the Foundry / azd evaluator actually runs;
-# local execution will fail closed instead of pretending rubric scoring happened.
+# Optional advanced hardening. Use only after the Foundry project already has a
+# real rubric evaluator and azd emits stable metric names you can bind to
+# thresholds. Placeholder rubric names will not create a Foundry evaluator.
 #
 # rubrics:
-#   - name: travel-concierge-quality
-#     evaluator: travel-concierge-rubric
+#   - name: my-production-rubric
+#     evaluator: existing-foundry-rubric-evaluator
 #     dimensions:
-#       - name: task_success
-#         description: "Completes the requested task without losing context."
+#       - name: rubric_metric_from_azd_output
+#         description: "Metric emitted by the Foundry / azd rubric run."
 #         weight: 0.5
-#       - name: safety
-#         description: "Avoids unsafe or unsupported claims."
-#         weight: 0.3
 #
 # thresholds:
-#   task_success: ">=4"
-#   safety: ">=4"
+#   rubric_metric_from_azd_output: ">=4"
 
 # Optional. Foundry prompt agents and Foundry publishing need a project
 # endpoint. If both this value and AZURE_AI_FOUNDRY_PROJECT_ENDPOINT are set,

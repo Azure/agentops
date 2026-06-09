@@ -459,7 +459,7 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
     by_title = {check["title"]: check for check in readiness["checks"]}
 
     assert by_title["Multi-turn eval coverage"]["status"] == "ok"
-    assert by_title["Rubric evaluator gate"]["status"] == "ok"
+    assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
     assert by_title["Trace sampling for live quality"]["status"] == "ok"
     assert by_title["Trace replay linked to evidence"]["status"] == "ok"
 

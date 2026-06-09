@@ -16,9 +16,9 @@ def run_observability_check(workspace: Path) -> List[Finding]:
     """Validate repo-side intent for Foundry observability signals.
 
     These checks are deliberately read-only. Foundry owns the runtime surfaces
-    for traces, intelligent sampling, replay, multi-turn eval, and rubric
-    evaluators; AgentOps verifies whether the repo has enough metadata and
-    evidence to make those signals part of release readiness.
+    for traces, intelligent sampling, replay, multi-turn eval, and optional
+    rubric evaluators; AgentOps verifies whether the repo has enough metadata
+    and evidence to make those signals part of release readiness.
     """
 
     config = _safe_config(workspace)
@@ -27,7 +27,6 @@ def run_observability_check(workspace: Path) -> List[Finding]:
 
     findings: List[Finding] = []
     findings.extend(_check_multiturn_coverage(config, workspace))
-    findings.extend(_check_rubric_coverage(config))
     findings.extend(_check_trace_sampling(config, workspace))
     findings.extend(_check_trace_replay(config, workspace))
     return findings
@@ -56,32 +55,6 @@ def _check_multiturn_coverage(config: dict[str, Any], workspace: Path) -> List[F
                 "After the single-turn smoke gate is green, add a conversation "
                 "dataset or use Foundry traces-to-dataset output with `messages` "
                 "rows, then set `dataset_kind: multi-turn` in agentops.yaml."
-            ),
-            source=SOURCE_NAME,
-        )
-    ]
-
-
-def _check_rubric_coverage(config: dict[str, Any]) -> List[Finding]:
-    rubrics = config.get("rubrics")
-    if isinstance(rubrics, list) and rubrics:
-        return []
-    return [
-        Finding(
-            id="observability.rubric_missing",
-            severity=Severity.INFO,
-            category=Category.QUALITY,
-            title="No context-specific rubric evaluator is declared",
-            summary=(
-                "Foundry rubric evaluators let teams score the agent against "
-                "task-specific criteria such as task success, tone, safety, cost, "
-                "and latency. AgentOps did not find a `rubrics:` block in "
-                "agentops.yaml."
-            ),
-            recommendation=(
-                "Declare at least one rubric in agentops.yaml and bind its "
-                "dimension metrics to thresholds, or reference the rubric through "
-                "the azd eval recipe used by `execution: azd`."
             ),
             source=SOURCE_NAME,
         )
