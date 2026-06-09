@@ -144,9 +144,6 @@ CHECK_REFERENCE_URLS: Dict[str, str] = {
     "observability.multiturn_coverage_missing": (
         "https://learn.microsoft.com/azure/foundry/concepts/observability"
     ),
-    "observability.rubric_missing": (
-        "https://learn.microsoft.com/azure/foundry/concepts/observability"
-    ),
     "observability.trace_sampling_missing": (
         "https://learn.microsoft.com/azure/foundry/concepts/observability"
     ),
@@ -218,17 +215,6 @@ CHECKS: Tuple[CheckSpec, ...] = (
         summary=(
             "The workspace does not declare multi-turn dataset coverage or "
             "trace-derived conversation rows for Foundry multi-turn evals."
-        ),
-        severities=(Severity.INFO,),
-        requires=("workspace",),
-    ),
-    CheckSpec(
-        id="observability.rubric_missing",
-        category=Category.QUALITY,
-        title="No context-specific rubric evaluator is declared",
-        summary=(
-            "The workspace does not declare a Foundry rubric evaluator or "
-            "rubric dimensions that can be bound to release thresholds."
         ),
         severities=(Severity.INFO,),
         requires=("workspace",),

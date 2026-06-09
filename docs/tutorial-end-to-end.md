@@ -444,12 +444,12 @@ Foundry through `agentops eval run`, so AgentOps can enforce thresholds and writ
 repo-side evidence. AgentOps keeps the local path for hosted endpoints, models,
 unsupported evaluator mappings, and fallback cases.
 
-When the quality gate uses a task-specific rubric, choose the azd runner instead
-of local execution. Add `rubrics:` to `agentops.yaml`, set
-`rubrics[].evaluator` to the Foundry / azd evaluator name, set
-`execution: azd`, and run `agentops eval init --force`. AgentOps then passes the
-rubric evaluator into the generated azd recipe and fails closed if someone tries
-to run that rubric gate with the local backend.
+When the quality gate uses a task-specific rubric, keep it as an advanced
+Foundry / azd hardening step: first confirm the rubric evaluator exists in the
+Foundry project and that an azd run emits stable metric names for its scores.
+Then add `rubrics:` and matching thresholds to `agentops.yaml`, set
+`execution: azd`, and run `agentops eval init --force`. Do not use placeholder
+rubric names in the first tutorial pass.
 
 ## 5. Run the first eval
 
