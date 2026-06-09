@@ -844,6 +844,44 @@ only to metric names that appear in the azd run output, and regenerate the recip
 with `agentops eval init --force`. Do not use placeholder rubric names in the
 quickstart path.
 
+### Optional: showcase ASSERT evidence
+
+ASSERT is useful in the tutorial as **release evidence**, not as an AgentOps-run
+execution step. Run ASSERT in its owning tool, keep the approved policy or result
+summary in the repo or CI artifact store, and point AgentOps at that artifact so
+Doctor and the evidence pack can cite its status and hash.
+
+For a safe tutorial/demo path, add only reviewed metadata. Do not paste raw
+adversarial prompts, secrets, or customer data into the repo.
+
+```powershell
+New-Item -ItemType Directory -Force .agentops\governance | Out-Null
+@'
+# ASSERT evidence
+
+Status: reviewed
+Source: <link-to-approved-assert-run-or-policy>
+Scope: Travel Agent release readiness
+Notes: ASSERT execution remains in the owning ASSERT workflow; AgentOps records
+this artifact as release evidence only.
+'@ | Set-Content -Encoding utf8 .agentops\governance\assert-evidence.md
+```
+
+Then reference it from `agentops.yaml`:
+
+```yaml
+assert_path: .agentops/governance/assert-evidence.md
+```
+
+When you later run:
+
+```powershell
+agentops doctor --workspace . --evidence-pack
+```
+
+the release evidence includes the ASSERT path, status, and SHA-256 hash without
+claiming that AgentOps executed ASSERT.
+
 ## 11. Generate the PR + dev deploy workflows
 
 > **Pipeline ownership.** This tutorial uses `agentops workflow generate`
