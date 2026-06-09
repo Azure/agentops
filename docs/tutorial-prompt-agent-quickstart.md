@@ -809,14 +809,19 @@ the smoke run above proves the workspace works. The next commands only harden
 the same gate with multi-turn rows that can later line up with trace replay and
 trace-to-dataset evidence.
 
-Create a small conversation-shaped dataset. It still keeps `input` and
-`expected` so AgentOps and azd can route the row, but it also carries the
-conversation turns that multi-turn evaluators and trace-derived rows use:
+Create a small set of **synthetic multi-turn test cases**. These rows are not
+claiming that the agent already said the assistant turns verbatim. They define a
+controlled conversation scenario you want the next response to handle.
+
+Keep the important conversation context inside `input`, because that is the
+field AgentOps maps to the azd `query`. Also keep `messages` beside it so the
+dataset has the same shape as future trace-derived rows and release evidence can
+show that this gate covers conversation scenarios.
 
 ```powershell
 @'
-{"input":"Plan a three-day Rome trip for a family with kids. Ask one clarification if needed.","expected":"The agent should preserve the family-with-kids constraint, propose a practical three-day Rome itinerary, include transit/rest pacing, and avoid claiming it can book live reservations.","messages":[{"role":"user","content":"We want to visit Rome with two kids."},{"role":"assistant","content":"How many days do you have and what pace do you prefer?"},{"role":"user","content":"Three days, moderate pace, museums and food."}]}
-{"input":"Help me choose between Lisbon and Seattle for a low-budget food weekend.","expected":"The agent should compare both destinations, mention budget tradeoffs, food activities, transit/weather notes, and avoid unsupported price or booking claims.","messages":[{"role":"user","content":"I need a low-budget food weekend."},{"role":"assistant","content":"Are you choosing between specific cities?"},{"role":"user","content":"Lisbon or Seattle."}]}
+{"input":"Conversation so far: the user wants to visit Rome with two kids. The assistant asked how many days and what pace they prefer. The user answered: three days, moderate pace, museums and food. Now plan the trip.","expected":"The agent should preserve the family-with-kids constraint, propose a practical three-day Rome itinerary, include transit/rest pacing, and avoid claiming it can book live reservations.","messages":[{"role":"user","content":"We want to visit Rome with two kids."},{"role":"assistant","content":"How many days do you have and what pace do you prefer?"},{"role":"user","content":"Three days, moderate pace, museums and food."}]}
+{"input":"Conversation so far: the user needs a low-budget food weekend. The assistant asked whether they are choosing between specific cities. The user answered: Lisbon or Seattle. Now compare those options.","expected":"The agent should compare both destinations, mention budget tradeoffs, food activities, transit/weather notes, and avoid unsupported price or booking claims.","messages":[{"role":"user","content":"I need a low-budget food weekend."},{"role":"assistant","content":"Are you choosing between specific cities?"},{"role":"user","content":"Lisbon or Seattle."}]}
 '@ | Set-Content -Encoding utf8 .agentops\data\travel-conversations.jsonl
 ```
 
