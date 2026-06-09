@@ -1979,16 +1979,17 @@ def _build_readiness_checklist(
     rubric_ready = isinstance(rubrics, list) and bool(rubrics)
     checks.append(
         {
-            "title": "Rubric evaluator gate",
+            "title": "Optional rubric evaluator gate",
             "status": "ok" if rubric_ready else "muted",
             "detail": (
                 "Detected <code>rubrics:</code> in <code>agentops.yaml</code>. "
-                "AgentOps requires <code>execution: azd</code> so the Foundry "
-                "rubric evaluator actually runs."
+                "Keep thresholds bound only to metric names emitted by your "
+                "Foundry / azd run."
                 if rubric_ready
-                else "<strong>How to complete:</strong> declare a task-specific "
-                "<code>rubrics:</code> block and bind its dimensions to thresholds. "
-                "Use <code>execution: azd</code> so Foundry evaluates the rubric."
+                else "<strong>How to complete:</strong> optional - add "
+                "<code>rubrics:</code> only after a real Foundry rubric evaluator "
+                "exists and azd emits stable metric names you can bind to "
+                "thresholds."
             ),
         }
     )

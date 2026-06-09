@@ -803,10 +803,11 @@ You should see `execution: azd` and `Threshold status: PASSED`. The raw azd run
 details are kept under `.agentops/results/latest/` alongside AgentOps'
 normalized `results.json` and `report.md`.
 
-Before generating CI, turn the Travel Agent gate from a basic smoke test into
-the proof you want reviewers to see later. Keep the recording you already made
-through this step: the smoke run above proves the workspace works. The next
-commands only harden the same gate.
+Before generating CI, turn the Travel Agent gate from a basic smoke test into a
+conversation-aware proof. Keep the recording you already made through this step:
+the smoke run above proves the workspace works. The next commands only harden
+the same gate with multi-turn rows that can later line up with trace replay and
+trace-to-dataset evidence.
 
 Create a small conversation-shaped dataset. It still keeps `input` and
 `expected` so AgentOps and azd can route the row, but it also carries the
@@ -819,49 +820,29 @@ conversation turns that multi-turn evaluators and trace-derived rows use:
 '@ | Set-Content -Encoding utf8 .agentops\data\travel-conversations.jsonl
 ```
 
-Then update the evaluation contract in `agentops.yaml`. The important part is
-that `rubrics[].evaluator` names the rubric evaluator that Foundry / azd will
-run. If your Foundry Observe flow generated a different rubric evaluator name,
-use that exact name here.
+Then update the dataset in `agentops.yaml`:
 
 ```yaml
 dataset: .agentops/data/travel-conversations.jsonl
 dataset_kind: multi-turn
-
-rubrics:
-  - name: travel-concierge-quality
-    evaluator: travel-concierge-quality
-    description: Scores the Travel Agent against the intended product behavior.
-    dimensions:
-      - name: task_success
-        description: Completes the user's travel-planning goal across the conversation.
-        weight: 0.5
-      - name: constraint_following
-        description: Carries user constraints such as kids, budget, duration, and pace.
-        weight: 0.3
-      - name: safe_booking_behavior
-        description: Avoids claiming live bookings, confirmations, or prices it cannot verify.
-        weight: 0.2
-
-thresholds:
-  task_success: ">=4"
-  constraint_following: ">=4"
-  safe_booking_behavior: ">=4"
 ```
 
-Re-run init so the azd recipe includes the rubric evaluator in the actual
-evaluation, not only in documentation:
+Re-run init so the azd recipe points at the conversation dataset, then run the
+gate again:
 
 ```powershell
 agentops eval init --force
 agentops eval run
 ```
 
-If the rubric evaluator name is wrong or missing in Foundry, the run should fail
-closed. That is intentional: a green gate must mean the rubric really ran. When
-it passes, `results.json` records `execution: azd`, the evaluator list, the
-rubric metadata from `agentops.yaml`, and threshold results for the rubric
-dimensions.
+When it passes, `results.json` records `execution: azd`, the evaluator list, the
+multi-turn dataset kind, and the threshold results emitted by azd.
+
+If your Foundry project already has a real rubric evaluator, add it later as an
+advanced hardening step: declare `rubrics:` in `agentops.yaml`, bind thresholds
+only to metric names that appear in the azd run output, and regenerate the recipe
+with `agentops eval init --force`. Do not use placeholder rubric names in the
+quickstart path.
 
 ## 11. Generate the PR + dev deploy workflows
 
@@ -907,10 +888,10 @@ The PR workflow now has two jobs:
    staged candidate.
 2. **`eval`** — runs `agentops eval run` against the candidate, then
    runs Doctor with `--severity-fail critical`. Because the previous step
-   moved the gate to `execution: azd` with `rubrics:`, the workflow is not
-   just checking a smoke response: it runs the Foundry / azd evaluation recipe,
-   applies the Travel Agent rubric dimensions as thresholds, and writes the
-   normalized rubric evidence to `.agentops/results/latest/results.json`.
+   moved the gate to a conversation dataset, the workflow is not just checking a
+   single smoke response: it runs the Foundry / azd evaluation recipe against the
+   multi-turn Travel Agent rows and writes normalized evidence to
+   `.agentops/results/latest/results.json`.
 
 > **Why does the PR workflow stage in dev, not sandbox?** The PR gate
 > must evaluate the same target the deploy workflow will use. Sandbox
@@ -923,9 +904,8 @@ The PR workflow now has two jobs:
 The dev deploy workflow stages a candidate (same logic), evaluates it,
 summarizes the deployment via `prompt_deploy summarize`, and uploads
 `.agentops/deployments/foundry-agent.json` as a workflow artifact.
-The deploy gate uses the same rubric-aware `agentops eval run`, so the candidate
-that lands in dev has already passed the conversation/rubric gate reviewers saw
-on the PR.
+The deploy gate uses the same conversation-aware `agentops eval run`, so the
+candidate that lands in dev has already passed the gate reviewers saw on the PR.
 
 The `--doctor-gate critical` flag controls the Doctor severity floor in
 the PR template. The table below summarizes the three values:

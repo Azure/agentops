@@ -648,13 +648,12 @@ This is the core AgentOps loop for hosted endpoints: keep a stable dataset,
 compare a changed runtime against the last known result, fix the agent, and
 rerun the same gate before a PR or release.
 
-If this hosted endpoint is backed by a Foundry / azd eval recipe, you can use
-the same rubric contract as the prompt-agent Travel Agent tutorial before you
-generate CI: set `execution: azd`, add `dataset_kind: multi-turn`, declare
-`rubrics[].evaluator` in `agentops.yaml`, run `agentops eval init --force`, and
-then run `agentops eval run`. AgentOps will require the azd backend whenever
-rubrics are configured, so a passing hosted-agent gate means the rubric evaluator
-actually ran instead of being recorded as metadata only.
+If this hosted endpoint is backed by a Foundry / azd eval recipe, you can use the
+same conversation-aware contract as the prompt-agent Travel Agent tutorial
+before you generate CI: set `execution: azd`, add `dataset_kind: multi-turn`, run
+`agentops eval init --force`, and then run `agentops eval run`. Add a rubric only
+after your Foundry project already has a real rubric evaluator and the azd run
+emits metric names you can bind to thresholds.
 
 ## 10. Generate CI and Doctor evidence
 

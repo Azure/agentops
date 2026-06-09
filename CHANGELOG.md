@@ -5,6 +5,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-06-09
+
+### Fixed
+- **Quickstart rubrics no longer block azd eval runs with placeholder evidence.**
+  The Travel Agent hardening flow now defaults to multi-turn dataset coverage and
+  treats rubric evaluators as advanced opt-in only after Foundry / azd emits real
+  metric names, while AgentOps preserves rubric metadata without failing a normal
+  azd result solely because matching rubric metrics were not emitted.
+
 ## [0.3.12] - 2026-06-09
 
 ### Added
