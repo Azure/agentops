@@ -5,6 +5,26 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **`agentops assert run` orchestrates the open-source ASSERT framework.**
+  AgentOps now invokes the `assert-ai` CLI as an active CI step instead of only
+  consuming pre-generated artifacts via `assert_path:`. A new `assert:` block in
+  `agentops.yaml` (`config`, `results_dir`, `suite`, `run_id`,
+  `fail_on_violations`) drives subprocess invocation, locates the run output
+  under `<results_dir>/<suite>/<run>/`, parses `metrics.json` and
+  `scores.jsonl`, and writes a normalized summary at `.agentops/assert/latest.json`
+  that the release evidence pack ingests automatically. Exit code 2 when any
+  policy dimension reports violations.
+- **`agentops redteam run` orchestrates Foundry's AI Red Teaming agent (PyRIT).**
+  AgentOps now invokes `azure.ai.evaluation.red_team.RedTeam` against the
+  configured target (Azure OpenAI deployment, Foundry prompt agent, or HTTP
+  endpoint) and normalizes the per-category and per-strategy attack outcomes.
+  A new `redteam:` block in `agentops.yaml` (`target`, `risk_categories`,
+  `attack_strategies`, `num_objectives`, `fail_on_attack_success_rate`)
+  controls the scan; results land at `.agentops/redteam/latest.json` so the
+  evidence pack picks them up via `redteam_path:` automatically. Exit code 2
+  when attack-success-rate exceeds the configured threshold.
+
 ## [0.3.13] - 2026-06-09
 
 ### Fixed

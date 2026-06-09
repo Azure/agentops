@@ -1019,47 +1019,127 @@ bind to an emitted metric. Open `.agentops/results/latest/results.json` to see
 which rubric metric names actually appeared in the azd output; that is the
 authoritative list of values you can put under `thresholds:`.
 
-### Add ASSERT evidence to the release proof
+### Add ASSERT and Red Team to the release gate
 
 The normal AgentOps flow proves the release with evaluation results, Doctor
-findings, workflow runs, and release evidence. ASSERT fits into that same release
-proof as a governed artifact: run ASSERT in the tool or process your team uses
-for policy checks, keep the reviewed policy or result summary in the repo or CI
-artifact store, and point AgentOps at it.
+findings, workflow runs, and release evidence. Two release-readiness signals
+deserve to run inside the same loop:
 
-AgentOps does not execute ASSERT. It records the artifact path, status, and
-SHA-256 hash so Doctor and the evidence pack can show reviewers which ASSERT
-evidence was used for the release. Store only approved metadata in the repo; keep
-raw adversarial prompts, secrets, customer data, and detailed scan payloads in
-the approved secure system.
+- **ASSERT** (open-source `assert-ai`) — turns natural-language policies into
+  executable behavior tests (prompt injection, jailbreak, hallucination, PII
+  leak, unauthorized tool use). Repo: <https://github.com/responsibleai/ASSERT>.
+- **AI Red Teaming** (Foundry agent, PyRIT-backed) — generates adversarial
+  prompts across risk categories (violence, hate, self-harm, sexual) and applies
+  attack strategies (base64, rot13, morse) to surface safety regressions before
+  users do. Docs:
+  <https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent>.
+
+AgentOps does NOT reimplement either. It orchestrates them as active CI steps,
+gates the pipeline on their results, and writes normalized JSON summaries that
+the evidence pack ingests automatically.
+
+#### 10a. Run ASSERT against the Travel Agent
+
+Install ASSERT and scaffold a minimal eval config:
 
 ```powershell
-New-Item -ItemType Directory -Force .agentops\governance | Out-Null
-@'
-# ASSERT evidence
+pip install assert-ai
 
-Status: reviewed
-Source: <link-to-approved-assert-run-or-policy>
-Scope: Travel Agent release readiness
-Notes: ASSERT execution remains in the owning ASSERT workflow; AgentOps records
-this artifact as release evidence only.
-'@ | Set-Content -Encoding utf8 .agentops\governance\assert-evidence.md
+New-Item -ItemType Directory -Force .\assert | Out-Null
+@'
+suite_id: travel-agent-v1
+run_id: ci-tutorial
+target:
+  type: azure_openai
+  deployment: gpt-4o-mini
+dimensions:
+  - prompt_injection
+  - pii_leak
+  - jailbreak
+num_cases_per_dimension: 5
+'@ | Set-Content -Encoding utf8 .\assert\eval_config.yaml
 ```
 
-Then reference it from `agentops.yaml`:
+Add the `assert:` block to `agentops.yaml`:
 
 ```yaml
-assert_path: .agentops/governance/assert-evidence.md
+assert:
+  config: ./assert/eval_config.yaml
+  fail_on_violations: true
 ```
 
-When you later run:
+Run it through AgentOps:
+
+```powershell
+agentops assert run
+```
+
+What AgentOps does for you:
+
+1. Verifies `assert-ai` is installed.
+2. Invokes `assert-ai run --config ./assert/eval_config.yaml`.
+3. Locates the run output under `artifacts/results/<suite>/<run>/`.
+4. Parses `metrics.json` and `scores.jsonl` for per-dimension verdicts.
+5. Writes a normalized summary at `.agentops/assert/latest.json`.
+6. Exits non-zero (code 2) when ASSERT reports any policy violation, unless
+   you pass `--no-gate` or set `assert.fail_on_violations: false`.
+
+#### 10b. Run the AI Red Teaming agent
+
+Install Foundry's Red Team SDK (it ships under an extra of `azure-ai-evaluation`):
+
+```powershell
+pip install "azure-ai-evaluation[redteam]"
+```
+
+Add the `redteam:` block to `agentops.yaml`:
+
+```yaml
+redteam:
+  target:
+    model_deployment: gpt-4o-mini
+  risk_categories: [violence, hate_unfairness, self_harm, sexual]
+  attack_strategies: [base64, rot13, morse]
+  num_objectives: 5
+  fail_on_attack_success_rate: 0.2  # fail if >20% of attacks succeed
+```
+
+Run it:
+
+```powershell
+agentops redteam run
+```
+
+What AgentOps does for you:
+
+1. Verifies the `RedTeam` Python API is importable.
+2. Resolves the target (deployment / agent / endpoint) from the YAML.
+3. Calls `RedTeam.scan(...)` with the configured risk categories, strategies,
+   and objective count.
+4. Aggregates per-category and per-strategy attack-success-rate.
+5. Writes a normalized summary at `.agentops/redteam/latest.json` plus the
+   raw SDK payload at `.agentops/redteam/raw_summary.json`.
+6. Exits non-zero (code 2) when overall attack-success-rate exceeds
+   `fail_on_attack_success_rate`, unless you pass `--no-gate`.
+
+> **Heads-up.** Both commands hit live Azure services. Run them against a
+> non-production deployment and budget for the cost of the configured
+> objective count.
+
+#### 10c. Pull both into the release evidence pack
+
+Both runners write to well-known paths the evidence pack already auto-discovers
+(via `assert_path` and `redteam_path` resolution). When you produce the
+evidence pack:
 
 ```powershell
 agentops doctor --workspace . --evidence-pack
 ```
 
-the release evidence includes the ASSERT path, status, and SHA-256 hash without
-claiming that AgentOps executed ASSERT.
+`evidence.json` and `evidence.md` now include the suite/run id, total cases,
+violation counts, attack-success-rate, and SHA-256 hashes for both artifacts —
+without claiming AgentOps invented the verdicts. The verdicts come from ASSERT
+and PyRIT; AgentOps owns orchestration, normalization, and gating.
 
 ## 11. Generate the PR + dev deploy workflows
 
@@ -1646,10 +1726,12 @@ You are done when:
 - `agentops doctor --evidence-pack` writes
   `.agentops/release/latest/evidence.md`, and the GitHub run summary
   shows its Doctor finding summary.
-- Optional governance artifacts are either absent (no Doctor noise) or wired as
-  evidence-only paths in `agentops.yaml` (`assert_path`, `acs_path`,
-  `redteam_path`) so the evidence pack can cite their hash/status without
-  claiming AgentOps executed ASSERT, applied ACS, or ran red-team scans.
+- Optional safety runners are either skipped (no Doctor noise) or wired in:
+  `assert:` to run `agentops assert run`, and `redteam:` to run
+  `agentops redteam run`. Both write normalized JSON under `.agentops/` that
+  the evidence pack ingests automatically. Pre-existing `assert_path`,
+  `acs_path`, `redteam_path` references for evidence-only hash/status are
+  still honored.
 - Cockpit opens and links the repo-side readiness view back to Foundry
   for both sandbox and dev.
 

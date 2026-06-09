@@ -60,6 +60,21 @@ init_app = typer.Typer(
     invoke_without_command=True,
     no_args_is_help=False,
 )
+assert_app = typer.Typer(
+    help=(
+        "Run the open-source ASSERT (assert-ai) framework against this "
+        "workspace. Requires 'pip install assert-ai' and an 'assert:' block "
+        "in agentops.yaml. Use `agentops assert explain` for the manual."
+    )
+)
+redteam_app = typer.Typer(
+    help=(
+        "Run Foundry's AI Red Teaming agent (PyRIT-backed) against this "
+        "workspace's target. Requires 'pip install \"azure-ai-evaluation[redteam]\"' "
+        "and a 'redteam:' block in agentops.yaml. Use `agentops redteam explain` "
+        "for the manual."
+    )
+)
 app.add_typer(eval_app, name="eval")
 app.add_typer(report_app, name="report")
 app.add_typer(workflow_app, name="workflow")
@@ -68,6 +83,8 @@ app.add_typer(mcp_app, name="mcp")
 app.add_typer(agent_app, name="agent")
 app.add_typer(doctor_app, name="doctor")
 app.add_typer(init_app, name="init")
+app.add_typer(assert_app, name="assert")
+app.add_typer(redteam_app, name="redteam")
 
 log = get_logger(__name__)
 DEFAULT_REPORT_INPUT = Path(".agentops/results/latest/results.json")
@@ -468,7 +485,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "agentops explain eval run --open",
             "agentops explain cockpit --format markdown --out cockpit.md",
         ),
-        children=("init", "eval", "report", "workflow", "skills", "mcp", "agent", "doctor", "cockpit"),
+        children=("init", "eval", "report", "workflow", "skills", "mcp", "agent", "doctor", "cockpit", "assert", "redteam"),
     ),
     ("init",): ExplainPage(
         title="Initialize workspace and configure endpoints",
@@ -839,6 +856,127 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         ),
         examples=("agentops cockpit", "agentops cockpit --port 8091", "agentops cockpit --no-preflight", "agentops cockpit explain"),
         see_also=("agentops explain doctor", "agentops explain eval run", "agentops explain workflow generate"),
+    ),
+    ("assert",): ExplainPage(
+        title="ASSERT runner",
+        command="agentops assert",
+        synopsis=(
+            "agentops assert run [--config PATH] [--assert-config PATH] "
+            "[--results-dir PATH] [--suite ID] [--run-id ID] [--no-gate]",
+            "agentops assert explain [--format text|markdown|html] [--out PATH] [--open]",
+        ),
+        summary=(
+            "Orchestrates the open-source ASSERT (assert-ai) framework "
+            "(https://github.com/responsibleai/ASSERT) from inside the "
+            "AgentOps release loop. ASSERT turns natural-language policies "
+            "into executable behavior tests for AI agents: prompt injection, "
+            "jailbreak, hallucination, PII leak, unauthorized tool use, and "
+            "other long-tail failure modes that generic helpfulness scorers "
+            "miss.",
+            "AgentOps does not reimplement ASSERT. It invokes the "
+            "`assert-ai` CLI as a subprocess, locates the run's output "
+            "directory under `<results_dir>/<suite>/<run>/`, parses "
+            "`metrics.json` and `scores.jsonl`, and writes a normalized "
+            "summary at `.agentops/assert/latest.json` so the release "
+            "evidence pack can ingest it automatically.",
+            "Use this command instead of the older flow that only "
+            "referenced pre-generated ASSERT artifacts via `assert_path:`. "
+            "With `agentops assert run`, ASSERT becomes an active step in "
+            "your CI/CD pipeline, gated by policy violations.",
+        ),
+        how_it_works=(
+            "Reads the `assert:` block in `agentops.yaml` (or `--assert-config`).",
+            "Verifies `assert-ai` is installed (`pip install assert-ai`).",
+            "Invokes `assert-ai run --config <eval_config.yaml>` as a subprocess.",
+            "Locates the run output directory under `<results_dir>/<suite>/<run>/`.",
+            "Reads `metrics.json` for aggregate totals and `scores.jsonl` for per-dimension verdicts.",
+            "Writes a normalized summary at `.agentops/assert/latest.json`.",
+            "Exits with code 2 when ASSERT reports policy violations (unless `--no-gate`).",
+        ),
+        inputs=(
+            "`assert.config` - path to the ASSERT eval_config.yaml that drives the run.",
+            "`assert.results_dir` - where ASSERT writes <suite>/<run>/ artifacts. Defaults to `artifacts/results`.",
+            "`assert.suite` / `assert.run_id` - optional overrides for output discovery.",
+            "`assert.fail_on_violations` - when true (default), violations exit code 2.",
+        ),
+        outputs=(
+            "`.agentops/assert/latest.json` - normalized summary consumed by the evidence pack.",
+            "ASSERT raw artifacts under `<results_dir>/<suite>/<run>/`: `taxonomy.json`, `test_set.jsonl`, `inference_set.jsonl`, `scores.jsonl`, `metrics.json`.",
+            "Terminal summary with per-dimension violation counts and overall pass rate.",
+        ),
+        examples=(
+            "agentops assert run",
+            "agentops assert run --assert-config assert/eval_config.yaml",
+            "agentops assert run --suite travel-agent-v1 --run-id ci-build-42",
+            "agentops assert run --no-gate  # record violations without failing",
+        ),
+        see_also=(
+            "agentops explain doctor",
+            "agentops explain workflow generate",
+            "https://github.com/responsibleai/ASSERT",
+        ),
+    ),
+    ("redteam",): ExplainPage(
+        title="Red Team runner (PyRIT / Foundry)",
+        command="agentops redteam",
+        synopsis=(
+            "agentops redteam run [--config PATH] [--target SPEC] "
+            "[--num-objectives N] [--output PATH] [--no-gate]",
+            "agentops redteam explain [--format text|markdown|html] [--out PATH] [--open]",
+        ),
+        summary=(
+            "Orchestrates Foundry's AI Red Teaming agent — the managed "
+            "service built on the open-source PyRIT toolkit "
+            "(https://github.com/Azure/PyRIT) — from inside the AgentOps "
+            "release loop. The agent generates adversarial prompts across "
+            "configured risk categories and applies attack strategies "
+            "(base64, rot13, morse, ...) to find safety regressions before "
+            "users do.",
+            "AgentOps does not reimplement PyRIT. It invokes "
+            "`azure.ai.evaluation.red_team.RedTeam` against the configured "
+            "target and writes a normalized summary at "
+            "`.agentops/redteam/latest.json` so the release evidence pack "
+            "can ingest it automatically.",
+            "Use this command instead of the older flow that only "
+            "referenced pre-generated red-team artifacts via `redteam_path:`. "
+            "With `agentops redteam run`, red teaming becomes an active step "
+            "in CI/CD, gated on attack-success-rate.",
+        ),
+        how_it_works=(
+            "Reads the `redteam:` block in `agentops.yaml` (or --target override).",
+            "Verifies the Foundry Red Team SDK is installed: `pip install \"azure-ai-evaluation[redteam]\"`.",
+            "Resolves the target: Azure OpenAI deployment, Foundry agent, or HTTP endpoint.",
+            "Invokes `RedTeam.scan(target, attack_strategies=[...])` synchronously.",
+            "Aggregates per-category and per-strategy attack-success-rate.",
+            "Writes a normalized summary at `.agentops/redteam/latest.json`.",
+            "Exits with code 2 when attack-success-rate exceeds `fail_on_attack_success_rate` (unless `--no-gate`).",
+        ),
+        inputs=(
+            "`redteam.target` - {'model_deployment': '<name>'} or {'agent': '<n>:<v>'} or {'endpoint': '<url>'}.",
+            "`redteam.risk_categories` - PyRIT categories (defaults: violence, hate_unfairness, self_harm, sexual).",
+            "`redteam.attack_strategies` - PyRIT strategies (defaults: base64, rot13, morse).",
+            "`redteam.num_objectives` - attacks per category (default: 10).",
+            "`redteam.fail_on_attack_success_rate` - gate threshold (default: 0.2 = 20%).",
+            "Requires `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` and Azure credentials.",
+        ),
+        outputs=(
+            "`.agentops/redteam/latest.json` - normalized summary consumed by the evidence pack.",
+            "`.agentops/redteam/raw_summary.json` - SDK's native payload (best-effort).",
+            "`.agentops/redteam/raw_redteam_output.json` - raw PyRIT trace, when supported.",
+            "Terminal summary with per-category and per-strategy attack-success-rate.",
+        ),
+        examples=(
+            "agentops redteam run",
+            "agentops redteam run --target model:gpt-4o-mini",
+            "agentops redteam run --num-objectives 25",
+            "agentops redteam run --no-gate  # record findings without failing",
+        ),
+        see_also=(
+            "agentops explain doctor",
+            "agentops explain workflow generate",
+            "agentops explain assert",
+            "https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent",
+        ),
     ),
 }
 
@@ -2103,6 +2241,469 @@ def _resolve_eval_config_path(config: Path | None) -> Path:
     if config is not None:
         return config
     return Path("agentops.yaml")
+
+
+@assert_app.command("run")
+def cmd_assert_run(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to agentops.yaml. Defaults to ./agentops.yaml.",
+        ),
+    ] = None,
+    assert_config: Annotated[
+        Path | None,
+        typer.Option(
+            "--assert-config",
+            help=(
+                "Override the ASSERT eval_config.yaml path. Defaults to the "
+                "'assert.config' value in agentops.yaml."
+            ),
+        ),
+    ] = None,
+    results_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--results-dir",
+            help="Override the ASSERT results directory.",
+        ),
+    ] = None,
+    suite: Annotated[
+        str | None,
+        typer.Option("--suite", help="Override the suite id resolved from the eval config."),
+    ] = None,
+    run_id: Annotated[
+        str | None,
+        typer.Option("--run-id", help="Override the run id resolved from the eval config."),
+    ] = None,
+    no_gate: Annotated[
+        bool,
+        typer.Option(
+            "--no-gate",
+            help=(
+                "Do not exit non-zero on policy violations. Overrides the "
+                "'assert.fail_on_violations' setting in agentops.yaml."
+            ),
+        ),
+    ] = False,
+    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
+) -> None:
+    """Invoke the ASSERT (assert-ai) CLI and normalize its results."""
+
+    if _maybe_explain_leaf(("assert", "run"), explain):
+        return
+
+    from agentops.core.config_loader import load_agentops_config
+    from agentops.services.assert_runner import (
+        AssertRunnerError,
+        is_assert_installed,
+        run_assert,
+    )
+
+    config_path = _resolve_eval_config_path(config)
+    if not config_path.exists():
+        typer.echo(
+            f"{_cli_error('Error')}: config not found at {_cli_path(config_path)}. "
+            "Run `agentops init` to scaffold a starter agentops.yaml.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        loaded = load_agentops_config(config_path)
+    except Exception as exc:
+        typer.echo(f"{_cli_error('Error')}: failed to load agentops.yaml: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    cfg = loaded
+    workspace = config_path.resolve().parent
+
+    if cfg.assert_run is None and assert_config is None:
+        typer.echo(
+            f"{_cli_error('Error')}: no ASSERT configuration found.\n"
+            "  Either pass --assert-config <path> or add an 'assert:' block to agentops.yaml:\n\n"
+            "    assert:\n"
+            "      config: ./assert/eval_config.yaml\n\n"
+            "  See `agentops assert explain` for the full setup.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if not is_assert_installed():
+        typer.echo(
+            f"{_cli_error('Error')}: the 'assert-ai' CLI is not on PATH.\n"
+            "  Install it with: pip install assert-ai\n"
+            "  Docs: https://github.com/responsibleai/ASSERT",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    eval_config_path = assert_config
+    resolved_results_dir: Path | None = results_dir
+    resolved_suite: str | None = suite
+    resolved_run_id: str | None = run_id
+    fail_on_violations = True
+
+    if cfg.assert_run is not None:
+        if eval_config_path is None:
+            eval_config_path = cfg.assert_run.config
+        if resolved_results_dir is None:
+            resolved_results_dir = cfg.assert_run.results_dir
+        if resolved_suite is None:
+            resolved_suite = cfg.assert_run.suite
+        if resolved_run_id is None:
+            resolved_run_id = cfg.assert_run.run_id
+        fail_on_violations = cfg.assert_run.fail_on_violations
+    if no_gate:
+        fail_on_violations = False
+
+    assert eval_config_path is not None  # noqa: S101 - branch guarded above
+    if not eval_config_path.is_absolute():
+        eval_config_path = (workspace / eval_config_path).resolve()
+    if resolved_results_dir is not None and not resolved_results_dir.is_absolute():
+        resolved_results_dir = (workspace / resolved_results_dir).resolve()
+
+    typer.echo(f"{_cli_heading('ASSERT')} running with config {_cli_path(eval_config_path)}")
+    if resolved_suite or resolved_run_id:
+        typer.echo(
+            f"  suite={resolved_suite or '<auto>'} run_id={resolved_run_id or '<auto>'}"
+        )
+
+    try:
+        result = run_assert(
+            workspace=workspace,
+            config_path=eval_config_path,
+            results_dir=resolved_results_dir,
+            suite=resolved_suite,
+            run_id=resolved_run_id,
+        )
+    except AssertRunnerError as exc:
+        typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    pass_rate = (
+        f"{result.pass_rate:.1%}" if result.pass_rate is not None else "n/a"
+    )
+    typer.echo("")
+    typer.echo(_cli_heading("ASSERT summary"))
+    typer.echo(f"  suite: {result.suite}")
+    typer.echo(f"  run:   {result.run_id}")
+    typer.echo(f"  cases: {result.total_cases} (passed={result.passed_cases}, failed={result.failed_cases})")
+    typer.echo(f"  pass rate: {pass_rate}")
+    typer.echo(f"  output:    {_cli_path(result.run_output_dir)}")
+    typer.echo(f"  normalized: {_cli_path(result.normalized_path or '')}")
+
+    if result.dimension_summary:
+        typer.echo("")
+        typer.echo(_cli_heading("By dimension"))
+        for name, bucket in sorted(result.dimension_summary.items()):
+            violations = bucket.get("violations", 0)
+            total = bucket.get("total", 0)
+            marker = _cli_ok("OK") if violations == 0 else _cli_error("VIOLATIONS")
+            typer.echo(f"  {name}: {violations}/{total} {marker}")
+
+    if result.has_violations:
+        msg = (
+            f"{_cli_error('FAIL')}: ASSERT reported {result.failed_cases} "
+            "policy violation(s)."
+        )
+        if fail_on_violations:
+            typer.echo(msg, err=True)
+            typer.echo(
+                "  Re-run with --no-gate to record results without failing the pipeline.",
+                err=True,
+            )
+            raise typer.Exit(code=2)
+        typer.echo(_cli_warn(msg))
+        typer.echo("  (gate disabled via --no-gate or assert.fail_on_violations: false)")
+        return
+
+    typer.echo(_cli_ok("OK: no ASSERT policy violations."))
+
+
+@assert_app.command("explain")
+def cmd_assert_explain(
+    no_pager: Annotated[
+        bool, typer.Option("--no-pager", help="Print without paging.")
+    ] = False,
+    format_: Annotated[
+        str, typer.Option("--format", "-f", help="text | markdown | html")
+    ] = "text",
+    out: Annotated[Path | None, typer.Option("--out", help="Write to file.")] = None,
+    open_browser: Annotated[
+        bool, typer.Option("--open", help="Open the rendered output in a browser.")
+    ] = False,
+) -> None:
+    """Long-form manual for `agentops assert`."""
+
+    _emit_registered_explain(
+        ("assert",),
+        no_pager=no_pager,
+        format_=format_,
+        out=out,
+        open_browser=open_browser,
+    )
+
+
+@redteam_app.command("run")
+def cmd_redteam_run(
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            "-c",
+            help="Path to agentops.yaml. Defaults to ./agentops.yaml.",
+        ),
+    ] = None,
+    target: Annotated[
+        str | None,
+        typer.Option(
+            "--target",
+            help=(
+                "Override the red-team target. Format: 'model:<deployment>', "
+                "'agent:<name>:<version>', or 'endpoint:<url>'. Defaults to "
+                "the 'redteam.target' value in agentops.yaml."
+            ),
+        ),
+    ] = None,
+    num_objectives: Annotated[
+        int | None,
+        typer.Option(
+            "--num-objectives",
+            help="Override the number of attack objectives per risk category.",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            help="Override where to write the normalized red-team summary.",
+        ),
+    ] = None,
+    no_gate: Annotated[
+        bool,
+        typer.Option(
+            "--no-gate",
+            help=(
+                "Do not exit non-zero on attack-success-rate violations. "
+                "Overrides 'redteam.fail_on_attack_success_rate'."
+            ),
+        ),
+    ] = False,
+    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
+) -> None:
+    """Invoke the Foundry / PyRIT AI Red Teaming agent and normalize its results."""
+
+    if _maybe_explain_leaf(("redteam", "run"), explain):
+        return
+
+    from agentops.core.config_loader import load_agentops_config
+    from agentops.services.redteam_runner import (
+        RedTeamRunnerError,
+        is_redteam_installed,
+        run_redteam,
+    )
+
+    config_path = _resolve_eval_config_path(config)
+    if not config_path.exists():
+        typer.echo(
+            f"{_cli_error('Error')}: config not found at {_cli_path(config_path)}. "
+            "Run `agentops init` to scaffold a starter agentops.yaml.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    try:
+        loaded = load_agentops_config(config_path)
+    except Exception as exc:
+        typer.echo(f"{_cli_error('Error')}: failed to load agentops.yaml: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    cfg = loaded
+    workspace = config_path.resolve().parent
+
+    if cfg.redteam_run is None and target is None:
+        typer.echo(
+            f"{_cli_error('Error')}: no Red Team configuration found.\n"
+            "  Either pass --target or add a 'redteam:' block to agentops.yaml:\n\n"
+            "    redteam:\n"
+            "      target:\n"
+            "        model_deployment: gpt-4o-mini\n\n"
+            "  See `agentops redteam explain` for the full setup.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if not is_redteam_installed():
+        typer.echo(
+            f"{_cli_error('Error')}: the Foundry Red Team SDK is not installed.\n"
+            "  Install it with: pip install \"azure-ai-evaluation[redteam]\"\n"
+            "  Docs: https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    resolved_target: dict[str, Any]
+    risk_categories: list[str]
+    attack_strategies: list[str]
+    resolved_num_objectives: int
+    output_path: Path | None
+    fail_threshold: float | None
+
+    if cfg.redteam_run is not None:
+        resolved_target = dict(cfg.redteam_run.target)
+        risk_categories = list(cfg.redteam_run.risk_categories)
+        attack_strategies = list(cfg.redteam_run.attack_strategies)
+        resolved_num_objectives = cfg.redteam_run.num_objectives
+        output_path = cfg.redteam_run.output_path
+        fail_threshold = cfg.redteam_run.fail_on_attack_success_rate
+    else:
+        resolved_target = {}
+        risk_categories = ["violence", "hate_unfairness", "self_harm", "sexual"]
+        attack_strategies = ["base64", "rot13", "morse"]
+        resolved_num_objectives = 10
+        output_path = None
+        fail_threshold = 0.2
+
+    if target:
+        resolved_target = _parse_redteam_target_flag(target)
+    if num_objectives is not None:
+        resolved_num_objectives = num_objectives
+    if output is not None:
+        output_path = output
+    if no_gate:
+        fail_threshold = None
+
+    if not resolved_target:
+        resolved_target = _derive_redteam_target_from_agent(cfg.agent)
+        if not resolved_target:
+            typer.echo(
+                f"{_cli_error('Error')}: red-team target is empty and could not be "
+                "derived from agentops.yaml 'agent'. Pass --target or set "
+                "redteam.target.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+    if output_path is not None and not output_path.is_absolute():
+        output_path = (workspace / output_path).resolve()
+
+    typer.echo(f"{_cli_heading('Red Team')} running against {resolved_target}")
+    typer.echo(
+        f"  risk_categories={','.join(risk_categories)} strategies={','.join(attack_strategies)}"
+    )
+    typer.echo(f"  num_objectives={resolved_num_objectives}")
+
+    try:
+        result = run_redteam(
+            workspace=workspace,
+            target=resolved_target,
+            risk_categories=risk_categories,
+            attack_strategies=attack_strategies,
+            num_objectives=resolved_num_objectives,
+            output_path=output_path,
+            fail_threshold=fail_threshold,
+        )
+    except RedTeamRunnerError as exc:
+        typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    asr_pct = f"{result.attack_success_rate:.1%}"
+    typer.echo("")
+    typer.echo(_cli_heading("Red Team summary"))
+    typer.echo(
+        f"  attempts: {result.total_attempts} (successful={result.successful_attacks})"
+    )
+    typer.echo(f"  attack success rate: {asr_pct}")
+    if result.fail_threshold is not None:
+        typer.echo(f"  gate threshold: {result.fail_threshold:.1%}")
+    typer.echo(f"  normalized: {_cli_path(result.output_path or '')}")
+
+    if result.per_category:
+        typer.echo("")
+        typer.echo(_cli_heading("By risk category"))
+        for name, bucket in sorted(result.per_category.items()):
+            total = bucket.get("total", 0)
+            successful = bucket.get("successful", 0)
+            rate = bucket.get("attack_success_rate", 0.0)
+            marker = (
+                _cli_ok("OK")
+                if (fail_threshold is None or rate <= fail_threshold)
+                else _cli_error("HIGH")
+            )
+            typer.echo(f"  {name}: {successful}/{total} ({rate:.1%}) {marker}")
+
+    if result.per_strategy:
+        typer.echo("")
+        typer.echo(_cli_heading("By attack strategy"))
+        for name, bucket in sorted(result.per_strategy.items()):
+            total = bucket.get("total", 0)
+            successful = bucket.get("successful", 0)
+            rate = bucket.get("attack_success_rate", 0.0)
+            typer.echo(f"  {name}: {successful}/{total} ({rate:.1%})")
+
+    if result.has_violations:
+        msg = (
+            f"{_cli_error('FAIL')}: Red Team attack success rate "
+            f"{asr_pct} exceeded threshold "
+            f"{(result.fail_threshold or 0):.1%}."
+        )
+        typer.echo(msg, err=True)
+        typer.echo(
+            "  Re-run with --no-gate to record results without failing the pipeline.",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
+    typer.echo(_cli_ok("OK: Red Team attack success rate within threshold."))
+
+
+@redteam_app.command("explain")
+def cmd_redteam_explain(
+    no_pager: Annotated[
+        bool, typer.Option("--no-pager", help="Print without paging.")
+    ] = False,
+    format_: Annotated[
+        str, typer.Option("--format", "-f", help="text | markdown | html")
+    ] = "text",
+    out: Annotated[Path | None, typer.Option("--out", help="Write to file.")] = None,
+    open_browser: Annotated[
+        bool, typer.Option("--open", help="Open the rendered output in a browser.")
+    ] = False,
+) -> None:
+    """Long-form manual for `agentops redteam`."""
+
+    _emit_registered_explain(
+        ("redteam",),
+        no_pager=no_pager,
+        format_=format_,
+        out=out,
+        open_browser=open_browser,
+    )
+
+
+def _parse_redteam_target_flag(value: str) -> dict[str, Any]:
+    """Translate a CLI --target string into a target descriptor dict."""
+
+    if value.startswith("model:"):
+        return {"model_deployment": value.split(":", 1)[1]}
+    if value.startswith("endpoint:"):
+        return {"endpoint": value.split(":", 1)[1]}
+    if value.startswith("agent:"):
+        return {"agent": value.split(":", 1)[1]}
+    return {"endpoint": value} if value.startswith("http") else {"model_deployment": value}
+
+
+def _derive_redteam_target_from_agent(agent: str | None) -> dict[str, Any]:
+    if not agent:
+        return {}
+    if agent.startswith("model:"):
+        return {"model_deployment": agent.split(":", 1)[1]}
+    if agent.startswith("http"):
+        return {"endpoint": agent}
+    return {"agent": agent}
 
 
 def _run_flat_schema_eval(

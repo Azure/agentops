@@ -397,6 +397,150 @@ class PromptAgentBootstrap(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# ASSERT runner configuration
+# ---------------------------------------------------------------------------
+
+
+class AssertRunConfig(BaseModel):
+    """Optional configuration for orchestrating the open-source ASSERT CLI.
+
+    When present, ``agentops assert run`` will invoke the ``assert-ai`` CLI
+    against the referenced eval config and normalize the resulting artifacts
+    so the evidence pack can ingest them automatically. AgentOps does not
+    reimplement ASSERT; this block only declares where the ASSERT config
+    lives and where ASSERT writes its outputs.
+
+    Example::
+
+        assert:
+          config: ./assert/eval_config.yaml
+          results_dir: ./artifacts/results
+          suite: travel-agent-v1
+          run_id: ci-run
+    """
+
+    config: Path = Field(
+        ...,
+        description="Path to the ASSERT eval_config.yaml that drives the run.",
+    )
+    results_dir: Path = Field(
+        Path("artifacts") / "results",
+        description=(
+            "Directory under which ASSERT writes <suite>/<run>/ artifacts. "
+            "Defaults to ASSERT's standard 'artifacts/results' layout."
+        ),
+    )
+    suite: Optional[str] = Field(
+        None,
+        description=(
+            "Optional suite id override. When omitted, AgentOps reads it "
+            "from the ASSERT eval_config.yaml; if still unknown, the most "
+            "recently modified suite directory is used."
+        ),
+    )
+    run_id: Optional[str] = Field(
+        None,
+        description=(
+            "Optional run id override. When omitted, AgentOps reads it "
+            "from the ASSERT eval_config.yaml; if still unknown, the most "
+            "recently modified run directory under the suite is used."
+        ),
+    )
+    fail_on_violations: bool = Field(
+        True,
+        description=(
+            "When true (default), 'agentops assert run' exits non-zero if "
+            "ASSERT reports any policy violations. Set to false to record "
+            "results without gating the pipeline."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# ---------------------------------------------------------------------------
+# Red Team runner configuration
+# ---------------------------------------------------------------------------
+
+
+class RedTeamRunConfig(BaseModel):
+    """Optional configuration for orchestrating Foundry/PyRIT AI Red Teaming.
+
+    When present, ``agentops redteam run`` will invoke Foundry's AI Red
+    Teaming agent (built on the open-source PyRIT toolkit, exposed through
+    ``azure.ai.evaluation.red_team.RedTeam``) against the configured target
+    and write a normalized result the evidence pack can ingest automatically.
+    AgentOps does not reimplement PyRIT — this block declares the target,
+    risk categories, attack strategies, and gating thresholds.
+
+    Example::
+
+        redteam:
+          target:
+            model_deployment: gpt-4o-mini
+          risk_categories: [violence, hate_unfairness, self_harm, sexual]
+          attack_strategies: [base64, rot13, morse]
+          num_objectives: 10
+          fail_on_attack_success_rate: 0.2
+    """
+
+    target: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Target descriptor passed to the Foundry Red Teaming runner. "
+            "Typically one of: {'model_deployment': '<deployment>'} for an "
+            "Azure OpenAI deployment, or {'agent': 'name:version'} for a "
+            "Foundry prompt agent, or {'endpoint': 'https://...'} for an "
+            "HTTP/JSON agent. When omitted, AgentOps derives a target from "
+            "the top-level 'agent' value."
+        ),
+    )
+    risk_categories: List[str] = Field(
+        default_factory=lambda: ["violence", "hate_unfairness", "self_harm", "sexual"],
+        description=(
+            "PyRIT risk categories to probe. Defaults to the four standard "
+            "Azure AI Content Safety categories."
+        ),
+    )
+    attack_strategies: List[str] = Field(
+        default_factory=lambda: ["base64", "rot13", "morse"],
+        description=(
+            "PyRIT attack strategies to apply. See "
+            "https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent "
+            "for the supported strategy set."
+        ),
+    )
+    num_objectives: int = Field(
+        10,
+        ge=1,
+        description=(
+            "Number of attack objectives to generate per risk category. "
+            "Higher values increase coverage and cost."
+        ),
+    )
+    output_path: Path = Field(
+        Path(".agentops") / "redteam" / "latest.json",
+        description=(
+            "Where AgentOps writes the normalized red-team summary. The "
+            "evidence pack auto-discovers this path via 'redteam_path'."
+        ),
+    )
+    fail_on_attack_success_rate: Optional[float] = Field(
+        0.2,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "When set, 'agentops redteam run' exits non-zero if the overall "
+            "attack success rate (successful attacks / total attempts) "
+            "exceeds this threshold. Set to null to record results without "
+            "gating the pipeline. Defaults to 0.2 (20%)."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
 
@@ -521,6 +665,25 @@ class AgentOpsConfig(BaseModel):
         None,
         description="Optional red-team plan/results artifact path for evidence-only readiness.",
     )
+    assert_run: Optional[AssertRunConfig] = Field(
+        None,
+        alias="assert",
+        description=(
+            "Optional ASSERT runner configuration. When set, 'agentops assert "
+            "run' invokes the assert-ai CLI and writes normalized results that "
+            "the evidence pack ingests via assert_path automatically."
+        ),
+    )
+    redteam_run: Optional[RedTeamRunConfig] = Field(
+        None,
+        alias="redteam",
+        description=(
+            "Optional Red Team runner configuration. When set, 'agentops "
+            "redteam run' invokes the Foundry/PyRIT AI Red Teaming agent and "
+            "writes normalized results that the evidence pack ingests via "
+            "redteam_path automatically."
+        ),
+    )
 
     thresholds: Dict[str, Any] = Field(
         default_factory=dict,
@@ -597,7 +760,7 @@ class AgentOpsConfig(BaseModel):
         ),
     )
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     @model_validator(mode="before")
     @classmethod
