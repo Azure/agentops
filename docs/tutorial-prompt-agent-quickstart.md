@@ -862,7 +862,24 @@ Foundry portal. This preview evaluation scope evaluates a complete multi-turn
 conversation from start to finish, including overall conversation quality, task
 completion, and user satisfaction.
 
-Use this Foundry portal path when you want to review the end-to-end
+This part runs in the **Foundry portal**, not inside the AgentOps CLI. AgentOps
+Accelerator still matters here: it owns the repo-controlled gate above and can
+record the Foundry evaluation URL in Doctor, Cockpit, and release evidence.
+
+Use one of these data sources:
+
+| If you have... | Use this dataset source |
+|---|---|
+| No production conversations yet | Start with the synthetic conversation rows from `.agentops/data/travel-conversations.jsonl`. They are controlled examples for the tutorial. |
+| A deployed agent with traffic | Use Foundry traces or exported conversation logs, then convert/select those conversations as the Foundry evaluation dataset. |
+| A curated review set from your team | Upload that approved conversation dataset in the format the Foundry portal asks for. |
+
+For this tutorial, start with the local synthetic file you just created. If the
+portal asks you to upload data, use `.agentops/data/travel-conversations.jsonl`
+as the source content and adapt the column mapping in the wizard if prompted.
+Later, replace that with real Foundry traces or approved conversation logs.
+
+Run the Foundry portal evaluation when you want to review the end-to-end
 conversation experience itself:
 
 1. Open your Foundry project in <https://ai.azure.com>.
@@ -871,6 +888,20 @@ conversation experience itself:
 4. Select or upload the conversation dataset you want Foundry to evaluate.
 5. Run the evaluation and keep the Foundry evaluation URL with the release
    review.
+
+Then paste that URL into `agentops.yaml` so AgentOps can cite it as release
+evidence:
+
+```yaml
+observability:
+  evaluations_url: https://ai.azure.com/<your-foundry-evaluation-url>
+```
+
+Re-run Doctor when you want the evidence pack to include that link:
+
+```powershell
+agentops doctor --workspace . --evidence-pack
+```
 
 Reference: [Run evaluations from the Microsoft Foundry portal](https://learn.microsoft.com/azure/foundry/how-to/evaluate-generative-ai-app#create-an-evaluation).
 
