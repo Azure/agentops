@@ -119,9 +119,7 @@ def run_azd_eval_init(
             effective_dataset,
             workspace=root,
         )
-        command.extend(
-            ["--dataset", _command_path(effective_dataset, workspace=root)]
-        )
+        command.extend(["--dataset", _command_path(effective_dataset, workspace=root)])
         for evaluator in _azd_evaluators_from_config(resolved_config):
             command.extend(["--evaluator", evaluator])
 
@@ -147,7 +145,11 @@ def run_azd_eval_init(
         ) from exc
 
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or f"exit code {completed.returncode}"
+        detail = (
+            completed.stderr.strip()
+            or completed.stdout.strip()
+            or f"exit code {completed.returncode}"
+        )
         raise AzdBackendError(f"azd ai agent eval init failed: {detail}")
 
     recipe = find_eval_yaml(root)
@@ -337,6 +339,8 @@ def _ensure_azd_project_env_metadata(
     if not location.found or location.env_path is None:
         location = ensure_azd_env(workspace, "sandbox")
     env_path = location.env_path
+    if env_path is None:
+        return
     updates = {
         "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": endpoint,
         "FOUNDRY_PROJECT_ENDPOINT": endpoint,
@@ -475,7 +479,11 @@ def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
             if not isinstance(raw_name, str) or not raw_name.strip():
                 continue
             name = raw_name.strip()
-            mapped = name if name.startswith("builtin.") else _EVALUATOR_NAME_TO_AZD.get(name)
+            mapped = (
+                name
+                if name.startswith("builtin.")
+                else _EVALUATOR_NAME_TO_AZD.get(name)
+            )
             if mapped and mapped not in names:
                 names.append(mapped)
     return tuple(names) if names else _DEFAULT_AZD_EVALUATORS
@@ -518,7 +526,9 @@ def _persist_recipe(
     data["eval_recipe"] = recipe_value
     if previous_execution in (None, "", "local", "auto"):
         data["execution"] = "azd"
-    config_updated = previous_recipe != recipe_value or data.get("execution") != previous_execution
+    config_updated = (
+        previous_recipe != recipe_value or data.get("execution") != previous_execution
+    )
     if config_updated:
         save_yaml(config_path, data)
     return AzdEvalInitResult(
