@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.18] - 2026-06-10
+
 ### Fixed
 - **`agentops eval run` surfaces real azd failures instead of swallowing them
   behind a spinner line.** When `execution: azd` fails, the error now includes
