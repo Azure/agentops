@@ -795,15 +795,6 @@ eval_recipe: src/travel-agent/eval.yaml
 Use `--force` only when you intentionally want to regenerate an existing
 `eval.yaml`. For the normal flow, run it without `--force`.
 
-> **What is `smoke-core`?** In the generated `src/travel-agent/eval.yaml`,
-> azd may include an evaluator like `name: smoke-core` with
-> `local_uri: evaluators\smoke-core\rubric_dimensions.json`. That is the
-> local rubric evaluator generated for this quickstart's smoke gate. The
-> built-in evaluators (`builtin.coherence`, `builtin.fluency`) check
-> general response quality; `smoke-core` points at rubric dimensions
-> specific to this Travel Agent. When you add `rubrics:` to
-> `agentops.yaml` later, use the evaluator name that appears here.
-
 Run the gate locally:
 
 ```powershell
