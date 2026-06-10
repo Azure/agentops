@@ -5,6 +5,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **`agentops-governance` skill can now scaffold the ASSERT and Red Team
+  runners** (install `assert-ai` / `azure-ai-evaluation[redteam]`, create
+  `./assert/eval_config.yaml`, append the `assert:` / `redteam:` block to
+  `agentops.yaml`). Previously the skill only drafted reviewable evidence
+  skeletons.
+
+### Docs
+- **Tutorial step 12 (ASSERT + Red Team) now shows two options** — ask Copilot
+  via the `agentops-governance` skill, or run the commands yourself.
+
 ## [0.3.19] - 2026-06-10
 
 ### Fixed
