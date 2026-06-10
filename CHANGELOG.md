@@ -5,6 +5,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **`agentops eval run` surfaces real azd failures instead of swallowing them
+  behind a spinner line.** When `execution: azd` fails, the error now includes
+  the full command, exit code, and both stderr and stdout (truncated
+  defensively). Raw streams are also persisted to
+  `.agentops/results/<ts>/azd_eval_run_stdout.log` and `_stderr.log` (and the
+  matching `azd_eval_show_*` files when `azd ai agent eval show` fails) so the
+  underlying cause is always recoverable from disk. Previously the CLI printed
+  only the active azd spinner step (e.g. "Resolving eval context..."), leaving
+  users with no actionable diagnostic.
+
 ## [0.3.17] - 2026-06-09
 
 ## [0.3.16] - 2026-06-09

@@ -548,6 +548,7 @@ def _run_evaluation_azd(
         workspace=workspace,
         progress=progress,
         timeout_seconds=max(options.timeout_seconds, azd_runner.AZD_EVAL_TIMEOUT_SECONDS),
+        debug_dir=options.output_dir,
     )
     result = azd_runner.normalize_to_results(
         azd_run,

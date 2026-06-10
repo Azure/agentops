@@ -94,6 +94,7 @@ def run_azd_eval(
     workspace: Path,
     progress: Optional[Callable[[str], None]] = None,
     timeout_seconds: float = AZD_EVAL_TIMEOUT_SECONDS,
+    debug_dir: Optional[Path] = None,
 ) -> AzdEvalRun:
     """Run ``azd ai agent eval`` and return its normalized native payload."""
 
@@ -129,7 +130,17 @@ def run_azd_eval(
     )
     duration = time.perf_counter() - started
     if completed.returncode != 0:
-        raise AzdBackendError(_format_command_failure("azd ai agent eval run", completed))
+        debug_paths = _persist_failure_logs(
+            debug_dir, step="azd_eval_run", completed=completed, command=command
+        )
+        raise AzdBackendError(
+            _format_command_failure(
+                "azd ai agent eval run",
+                completed,
+                command=command,
+                debug_paths=debug_paths,
+            )
+        )
 
     run_payload = _parse_json_object(completed.stdout)
     run_id = _extract_run_id(run_payload) or _extract_labeled_id(completed.stdout, "Run")
@@ -140,27 +151,38 @@ def run_azd_eval(
     if run_id and eval_id:
         with tempfile.TemporaryDirectory() as temp_dir:
             details_path = Path(temp_dir) / "azd-eval-run.json"
+            show_command = [
+                "azd",
+                "--no-prompt",
+                "ai",
+                "agent",
+                "eval",
+                "show",
+                eval_id,
+                "--eval-run-id",
+                run_id,
+                "--out-file",
+                str(details_path),
+            ]
             show = _run_command(
-                [
-                    "azd",
-                    "--no-prompt",
-                    "ai",
-                    "agent",
-                    "eval",
-                    "show",
-                    eval_id,
-                    "--eval-run-id",
-                    run_id,
-                    "--out-file",
-                    str(details_path),
-                ],
+                show_command,
                 cwd=workspace,
                 timeout_seconds=timeout_seconds,
             )
             show_stdout = show.stdout
             show_stderr = show.stderr
             if show.returncode != 0:
-                raise AzdBackendError(_format_command_failure("azd ai agent eval show", show))
+                debug_paths = _persist_failure_logs(
+                    debug_dir, step="azd_eval_show", completed=show, command=show_command
+                )
+                raise AzdBackendError(
+                    _format_command_failure(
+                        "azd ai agent eval show",
+                        show,
+                        command=show_command,
+                        debug_paths=debug_paths,
+                    )
+                )
             if details_path.exists():
                 show_stdout = "\n".join(
                     part for part in (show_stdout, details_path.read_text(encoding="utf-8")) if part
@@ -574,8 +596,71 @@ def _recipe_dataset_path(recipe: EvalRecipe, recipe_path: Path) -> str:
     return ""
 
 
-def _format_command_failure(label: str, completed: subprocess.CompletedProcess[str]) -> str:
-    stderr = completed.stderr.strip()
-    stdout = completed.stdout.strip()
-    detail = stderr or stdout or f"exit code {completed.returncode}"
-    return f"{label} failed: {detail}"
+_AZD_FAILURE_STREAM_LIMIT = 4000
+
+
+def _format_command_failure(
+    label: str,
+    completed: subprocess.CompletedProcess[str],
+    *,
+    command: Optional[list[str]] = None,
+    debug_paths: Optional[Dict[str, Path]] = None,
+) -> str:
+    stderr = (completed.stderr or "").strip()
+    stdout = (completed.stdout or "").strip()
+    lines: list[str] = [f"{label} failed (exit code {completed.returncode})."]
+    if command:
+        lines.append(f"Command: {' '.join(command)}")
+    if stderr:
+        lines.append("--- stderr ---")
+        lines.append(_truncate_stream(stderr, _AZD_FAILURE_STREAM_LIMIT))
+    if stdout:
+        lines.append("--- stdout ---")
+        lines.append(_truncate_stream(stdout, _AZD_FAILURE_STREAM_LIMIT))
+    if not stderr and not stdout:
+        lines.append("(no output captured on either stream)")
+    if debug_paths:
+        lines.append("--- debug logs ---")
+        for name, path in debug_paths.items():
+            lines.append(f"{name}: {path}")
+    return "\n".join(lines)
+
+
+def _truncate_stream(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    head = value[: limit // 2]
+    tail = value[-limit // 2 :]
+    skipped = len(value) - len(head) - len(tail)
+    return f"{head}\n... [{skipped} chars truncated] ...\n{tail}"
+
+
+def _persist_failure_logs(
+    debug_dir: Optional[Path],
+    *,
+    step: str,
+    completed: subprocess.CompletedProcess[str],
+    command: list[str],
+) -> Dict[str, Path]:
+    if debug_dir is None:
+        return {}
+    try:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return {}
+    written: Dict[str, Path] = {}
+    safe_step = re.sub(r"[^A-Za-z0-9._-]+", "_", step).strip("_") or "azd"
+    header = f"# command: {' '.join(command)}\n# exit_code: {completed.returncode}\n"
+    stdout_path = debug_dir / f"{safe_step}_stdout.log"
+    stderr_path = debug_dir / f"{safe_step}_stderr.log"
+    try:
+        stdout_path.write_text(header + (completed.stdout or ""), encoding="utf-8")
+        written["stdout"] = stdout_path
+    except OSError:
+        pass
+    try:
+        stderr_path.write_text(header + (completed.stderr or ""), encoding="utf-8")
+        written["stderr"] = stderr_path
+    except OSError:
+        pass
+    return written
