@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-06-10
+
 ### Fixed
 - **`execution: azd` reports no longer ship empty `Dataset:` lines and empty
   `## Rows` tables.** The `eval.yaml` parser now recognizes the `dataset_file:`
