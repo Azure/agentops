@@ -970,10 +970,21 @@ rubrics:
         weight: 0.2
 
 thresholds:
-  correct_itinerary: ">=4"
-  adherence_to_constraints: ">=4"
-  clear_practical_notes: ">=4"
+  smoke-core: ">=0.6"
+  coherence: ">=0.6"
+  fluency: ">=0.6"
 ```
+
+> **Why threshold the evaluator, not the dimensions?** `azd ai agent
+> eval` emits one aggregate pass-rate metric per evaluator
+> (`coherence`, `fluency`, `smoke-core`), not one metric per rubric
+> dimension. The dimension `id`s live inside the local rubric file and
+> guide the judge's prompt, but azd does not surface them as separate
+> metrics today, so thresholds bind to the evaluator names azd actually
+> reports. The `rubrics:` block above is still recorded in
+> `results.json` and the release evidence pack as documentation of what
+> the judge was asked to score. Values are pass rates in `0..1` (e.g.
+> `">=0.6"` means at least 60% of rows passed the evaluator).
 
 **4. Regenerate the recipe and re-run the gate:**
 
@@ -983,10 +994,11 @@ agentops eval run
 ```
 
 When this passes, the gate enforces both the conversation-context dataset
-and the Travel Agent rubric thresholds. If a dimension name is wrong,
-AgentOps cannot bind the threshold to an emitted metric — open
-`.agentops/results/latest/results.json` to see which rubric metric names
-azd actually produced.
+and the Travel Agent rubric pass-rate threshold. If a threshold key is
+wrong, AgentOps cannot bind it to an emitted metric — open
+`.agentops/results/latest/results.json` and look at
+`aggregate_metrics` to see exactly which evaluator names azd produced
+for this recipe.
 
 ## 12. Add ASSERT and Red Team to the release gate
 
