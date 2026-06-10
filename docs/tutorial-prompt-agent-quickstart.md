@@ -1074,6 +1074,27 @@ summaries that the evidence pack ingests automatically.
 
 ### Run ASSERT against the Travel Agent
 
+You have two ways to wire up ASSERT — pick whichever fits your workflow.
+
+#### Option A — Ask Copilot (recommended once skills are installed)
+
+If you installed the AgentOps coding-agent skills in step 4
+(`agentops skills install`), the `agentops-governance` skill knows the full
+recipe. In Copilot Chat (or Claude Code), say:
+
+> Use the `agentops-governance` skill to scaffold ASSERT for this workspace.
+> Target the `gpt-4o-mini` deployment, cover prompt_injection / pii_leak /
+> jailbreak, 5 cases per dimension.
+
+Copilot will install `assert-ai`, create `./assert/eval_config.yaml`, and
+append the `assert:` block to `agentops.yaml` for you. Skip to **Run it
+through AgentOps** below.
+
+> Don't have the skill yet? Re-run `agentops skills install --force` to refresh
+> your `.github/skills/` (or `.claude/commands/`) directory.
+
+#### Option B — Run the commands yourself
+
 Install ASSERT and scaffold a minimal eval config:
 
 ```powershell
@@ -1102,7 +1123,7 @@ assert:
   fail_on_violations: true
 ```
 
-Run it through AgentOps:
+#### Run it through AgentOps
 
 ```powershell
 agentops assert run
@@ -1119,6 +1140,15 @@ What AgentOps does for you:
    unless you pass `--no-gate` or set `assert.fail_on_violations: false`.
 
 ### Run the AI Red Teaming agent
+
+Same pattern: Copilot can do it, or you can run the commands yourself.
+
+#### Option A — Ask Copilot
+
+> Use the `agentops-governance` skill to scaffold the Red Team runner.
+> Target `gpt-4o-mini`, fail when attack success rate exceeds 20%.
+
+#### Option B — Run the commands yourself
 
 Install Foundry's Red Team SDK (it ships under an extra of
 `azure-ai-evaluation`):
@@ -1139,7 +1169,7 @@ redteam:
   fail_on_attack_success_rate: 0.2  # fail if >20% of attacks succeed
 ```
 
-Run it:
+#### Run it through AgentOps
 
 ```powershell
 agentops redteam run
