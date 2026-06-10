@@ -805,6 +805,33 @@ You should see `execution: azd` and `Threshold status: PASSED`. The raw
 azd run details are kept under `.agentops/results/latest/` alongside
 AgentOps' normalized `results.json` and `report.md`.
 
+### See the run in the Foundry portal
+
+`agentops eval run` only prints aggregate pass/fail to the terminal. The
+Foundry portal shows the full per-row, per-evaluator breakdown — useful
+for learning what the judge actually scored and why. Use this anchor
+section any time the tutorial tells you to run an eval.
+
+1. **Open the deep link** — easiest path. Look in
+   `.agentops/results/latest/azd_evaluation.json` for the `report_url`
+   field. That URL goes straight to the evaluation run in the New
+   Foundry experience.
+2. **Or navigate manually** in <https://ai.azure.com>:
+   1. Pick the `travel-agent-sandbox` project (top selector).
+   2. **Agents** → select **`travel-agent`**.
+   3. Open the **Evaluations** tab.
+   4. Click the most recent run (named after the evaluator, e.g.
+      `smoke-core`).
+3. **What to look at on the run page:**
+   - **Overall metric results** — the aggregate pass rate per evaluator
+     (matches the values AgentOps reports under `aggregate_metrics`).
+   - **Detailed metrics results** — one row per dataset sample with the
+     pass/fail for `coherence`, `fluency`, and the local rubric
+     (`smoke-core`).
+
+> **Tip:** keep this tab open as you iterate. Every new
+> `agentops eval run` creates a new evaluation run in the same list.
+
 ## 11. Harden the gate: conversation-aware dataset and rubric
 
 The smoke gate proves the workspace works. Before generating CI, harden
@@ -849,6 +876,14 @@ agentops eval run
 
 When it passes, `results.json` records `execution: azd`, the evaluator
 list, the multi-turn dataset kind, and the threshold results.
+
+> **See it in the Foundry portal.** Open the new evaluation run using
+> the deep link in `.agentops/results/latest/azd_evaluation.json`
+> (`report_url`) or the manual nav described in
+> [See the run in the Foundry portal](#see-the-run-in-the-foundry-portal).
+> The **Detailed metrics results** table now shows one row per
+> multi-turn sample, so you can compare how the agent handled the Rome
+> and Lisbon/Seattle scenarios independently.
 
 > **What did this gate test?** Individual synthetic conversation-context
 > turns, not the Foundry portal **Full conversations** preview. AgentOps
@@ -999,6 +1034,24 @@ wrong, AgentOps cannot bind it to an emitted metric — open
 `.agentops/results/latest/results.json` and look at
 `aggregate_metrics` to see exactly which evaluator names azd produced
 for this recipe.
+
+> **See the per-dimension rubric scores in the Foundry portal.** The
+> CLI threshold lives on the `smoke-core` aggregate, but Foundry still
+> records every dimension the judge scored. Open the run as in
+> [See the run in the Foundry portal](#see-the-run-in-the-foundry-portal),
+> scroll to **Detailed metrics results**, find the `smoke-core` column,
+> and click **View rubric details** on any row. The modal shows:
+>
+> - The aggregated rubric score (e.g. `0.92 / 1.0`).
+> - The judge's free-text explanation of the overall result.
+> - One row per dimension (`correct_itinerary`, `clear_practical_notes`,
+>   `user_satisfaction`, `adherence_to_constraints`,
+>   `itinerary_clarity`, `general_quality`) with the individual score
+>   (1–5), pass/fail badge, and the judge's reason for that dimension.
+>
+> This is the most useful drill-down when you are iterating on the
+> rubric file: it tells you not just *whether* the rubric passed, but
+> *which dimension* drove the result on each sample.
 
 ## 12. Add ASSERT and Red Team to the release gate
 
