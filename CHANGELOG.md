@@ -5,6 +5,29 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.19] - 2026-06-10
+
+### Fixed
+- **`execution: azd` reports no longer ship empty `Dataset:` lines and empty
+  `## Rows` tables.** The `eval.yaml` parser now recognizes the `dataset_file:`
+  field that `azd ai agent eval init` emits, so `report.md` shows the actual
+  dataset path. When azd returns aggregate metrics only (the normal case), the
+  reporter omits the row tables entirely and instead emits a `## Per-row
+  breakdown` section that links to the Foundry run for the per-sample view.
+- **`agentops eval run` prints a clickable Foundry deep link on success.**
+  After a successful azd run, the CLI now emits a `Foundry run: <url>` line
+  alongside the `results.json`/`report.md` paths so users can jump straight to
+  the per-sample table and rubric drill-downs in the Foundry portal.
+
+### Changed
+- **Shorter azd backend log line.** Replaced the verbose `Running azd backend:
+  azd --no-prompt ai agent eval run --config <long path> --output json` line
+  with a concise `Running azd backend: azd ai agent eval run`; the full
+  command remains captured in the per-failure debug logs introduced in 0.3.18.
+- **`execution: azd` startup line uses a workspace-relative recipe path** so
+  the "delegating to azd ai agent eval" message stays readable on long
+  Windows paths.
+
 ## [0.3.18] - 2026-06-10
 
 ### Fixed

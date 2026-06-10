@@ -139,6 +139,7 @@ class EvalRecipe(BaseModel):
     name: Optional[str] = None
     agent: Optional[EvalAgent] = None
     dataset_reference: Optional[EvalDatasetReference] = None
+    dataset_file: Optional[str] = None
     evaluators: list[EvalEvaluator] = Field(default_factory=list)
     options: Optional[EvalOptions] = None
 

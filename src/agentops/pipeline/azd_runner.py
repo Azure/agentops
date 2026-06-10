@@ -118,7 +118,7 @@ def run_azd_eval(
         "--output",
         "json",
     ]
-    notify(f"Running azd backend: {' '.join(command)}")
+    notify("Running azd backend: azd ai agent eval run")
 
     started = time.perf_counter()
     completed = _run_command(
@@ -301,7 +301,9 @@ def normalize_to_results(
             "azd_evaluation": {
                 "recipe_path": str(azd_run.recipe_path),
                 "run_id": azd_run.run_id,
+                "eval_id": _extract_eval_id(azd_run.payload),
                 "status": azd_run.status,
+                "report_url": _extract_report_url(azd_run.payload),
                 "dataset": (
                     recipe.dataset_reference.model_dump(mode="json")
                     if recipe.dataset_reference
@@ -477,6 +479,14 @@ def _extract_status(payload: Dict[str, Any]) -> str:
     return "unknown"
 
 
+def _extract_report_url(payload: Dict[str, Any]) -> Optional[str]:
+    for key in ("report_url", "reportUrl", "report_uri", "url"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip().lower().startswith(("http://", "https://")):
+            return value.strip()
+    return None
+
+
 def _extract_item_count(payload: Dict[str, Any]) -> int:
     for key in ("items_total", "item_count", "samples", "max_samples", "row_count"):
         value = payload.get(key)
@@ -585,6 +595,11 @@ def _looks_like_metric_name(name: str) -> bool:
 
 
 def _recipe_dataset_path(recipe: EvalRecipe, recipe_path: Path) -> str:
+    if recipe.dataset_file:
+        dataset = Path(recipe.dataset_file)
+        if not dataset.is_absolute():
+            dataset = recipe_path.parent / dataset
+        return str(dataset)
     ref = recipe.dataset_reference
     if ref and ref.local_uri:
         dataset = Path(ref.local_uri)

@@ -795,15 +795,6 @@ eval_recipe: src/travel-agent/eval.yaml
 Use `--force` only when you intentionally want to regenerate an existing
 `eval.yaml`. For the normal flow, run it without `--force`.
 
-> **What is `smoke-core`?** In the generated `src/travel-agent/eval.yaml`,
-> azd may include an evaluator like `name: smoke-core` with
-> `local_uri: evaluators\smoke-core\rubric_dimensions.json`. That is the
-> local rubric evaluator generated for this quickstart's smoke gate. The
-> built-in evaluators (`builtin.coherence`, `builtin.fluency`) check
-> general response quality; `smoke-core` points at rubric dimensions
-> specific to this Travel Agent. When you add `rubrics:` to
-> `agentops.yaml` later, use the evaluator name that appears here.
-
 Run the gate locally:
 
 ```powershell
@@ -813,6 +804,33 @@ agentops eval run
 You should see `execution: azd` and `Threshold status: PASSED`. The raw
 azd run details are kept under `.agentops/results/latest/` alongside
 AgentOps' normalized `results.json` and `report.md`.
+
+### See the run in the Foundry portal
+
+`agentops eval run` only prints aggregate pass/fail to the terminal. The
+Foundry portal shows the full per-row, per-evaluator breakdown — useful
+for learning what the judge actually scored and why. Use this anchor
+section any time the tutorial tells you to run an eval.
+
+1. **Open the deep link** — easiest path. Look in
+   `.agentops/results/latest/azd_evaluation.json` for the `report_url`
+   field. That URL goes straight to the evaluation run in the New
+   Foundry experience.
+2. **Or navigate manually** in <https://ai.azure.com>:
+   1. Pick the `travel-agent-sandbox` project (top selector).
+   2. **Agents** → select **`travel-agent`**.
+   3. Open the **Evaluations** tab.
+   4. Click the most recent run (named after the evaluator, e.g.
+      `smoke-core`).
+3. **What to look at on the run page:**
+   - **Overall metric results** — the aggregate pass rate per evaluator
+     (matches the values AgentOps reports under `aggregate_metrics`).
+   - **Detailed metrics results** — one row per dataset sample with the
+     pass/fail for `coherence`, `fluency`, and the local rubric
+     (`smoke-core`).
+
+> **Tip:** keep this tab open as you iterate. Every new
+> `agentops eval run` creates a new evaluation run in the same list.
 
 ## 11. Harden the gate: conversation-aware dataset and rubric
 
@@ -858,6 +876,14 @@ agentops eval run
 
 When it passes, `results.json` records `execution: azd`, the evaluator
 list, the multi-turn dataset kind, and the threshold results.
+
+> **See it in the Foundry portal.** Open the new evaluation run using
+> the deep link in `.agentops/results/latest/azd_evaluation.json`
+> (`report_url`) or the manual nav described in
+> [See the run in the Foundry portal](#see-the-run-in-the-foundry-portal).
+> The **Detailed metrics results** table now shows one row per
+> multi-turn sample, so you can compare how the agent handled the Rome
+> and Lisbon/Seattle scenarios independently.
 
 > **What did this gate test?** Individual synthetic conversation-context
 > turns, not the Foundry portal **Full conversations** preview. AgentOps
@@ -910,6 +936,15 @@ file tells it which dimensions to score, and the thresholds in
 Fill in two kinds of real names: the rubric evaluator name and the rubric
 dimension names. Do not invent values — both must come from files
 `agentops eval init` already generated on disk.
+
+> **About the auto-generated evaluator.** When you ran `agentops eval
+> init`, azd seeded `src/travel-agent/eval.yaml` with two kinds of
+> evaluators: built-ins like `builtin.coherence` and `builtin.fluency`
+> (general response-quality checks) plus a local rubric evaluator —
+> typically `name: smoke-core` — whose `local_uri` points at a JSON file
+> with rubric dimensions specific to this Travel Agent. That local
+> evaluator is the hook AgentOps `rubrics:` bind to. You will reference
+> its `name:` and its dimension `id`s in the next two steps.
 
 **1. Find the evaluator name.** Open `src/travel-agent/eval.yaml` and
 look under `evaluators:` for the entry with a `local_uri`:
@@ -970,10 +1005,21 @@ rubrics:
         weight: 0.2
 
 thresholds:
-  correct_itinerary: ">=4"
-  adherence_to_constraints: ">=4"
-  clear_practical_notes: ">=4"
+  smoke-core: ">=0.6"
+  coherence: ">=0.6"
+  fluency: ">=0.6"
 ```
+
+> **Why threshold the evaluator, not the dimensions?** `azd ai agent
+> eval` emits one aggregate pass-rate metric per evaluator
+> (`coherence`, `fluency`, `smoke-core`), not one metric per rubric
+> dimension. The dimension `id`s live inside the local rubric file and
+> guide the judge's prompt, but azd does not surface them as separate
+> metrics today, so thresholds bind to the evaluator names azd actually
+> reports. The `rubrics:` block above is still recorded in
+> `results.json` and the release evidence pack as documentation of what
+> the judge was asked to score. Values are pass rates in `0..1` (e.g.
+> `">=0.6"` means at least 60% of rows passed the evaluator).
 
 **4. Regenerate the recipe and re-run the gate:**
 
@@ -983,10 +1029,29 @@ agentops eval run
 ```
 
 When this passes, the gate enforces both the conversation-context dataset
-and the Travel Agent rubric thresholds. If a dimension name is wrong,
-AgentOps cannot bind the threshold to an emitted metric — open
-`.agentops/results/latest/results.json` to see which rubric metric names
-azd actually produced.
+and the Travel Agent rubric pass-rate threshold. If a threshold key is
+wrong, AgentOps cannot bind it to an emitted metric — open
+`.agentops/results/latest/results.json` and look at
+`aggregate_metrics` to see exactly which evaluator names azd produced
+for this recipe.
+
+> **See the per-dimension rubric scores in the Foundry portal.** The
+> CLI threshold lives on the `smoke-core` aggregate, but Foundry still
+> records every dimension the judge scored. Open the run as in
+> [See the run in the Foundry portal](#see-the-run-in-the-foundry-portal),
+> scroll to **Detailed metrics results**, find the `smoke-core` column,
+> and click **View rubric details** on any row. The modal shows:
+>
+> - The aggregated rubric score (e.g. `0.92 / 1.0`).
+> - The judge's free-text explanation of the overall result.
+> - One row per dimension (`correct_itinerary`, `clear_practical_notes`,
+>   `user_satisfaction`, `adherence_to_constraints`,
+>   `itinerary_clarity`, `general_quality`) with the individual score
+>   (1–5), pass/fail badge, and the judge's reason for that dimension.
+>
+> This is the most useful drill-down when you are iterating on the
+> rubric file: it tells you not just *whether* the rubric passed, but
+> *which dimension* drove the result on each sample.
 
 ## 12. Add ASSERT and Red Team to the release gate
 

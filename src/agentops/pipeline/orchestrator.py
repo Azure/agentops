@@ -537,10 +537,14 @@ def _run_evaluation_azd(
 
     recipe_path = azd_runner.resolve_eval_recipe(workspace, config)
     recipe = load_eval_recipe(recipe_path)
+    try:
+        recipe_display = recipe_path.relative_to(workspace).as_posix()
+    except ValueError:
+        recipe_display = recipe_path.name
     progress(
         f"execution: {style('azd', 'bold')} - delegating to "
-        f"{style('azd ai agent eval', 'cyan')} with recipe "
-        f"{style(str(recipe_path), 'cyan')}."
+        f"{style('azd ai agent eval', 'cyan')} (recipe "
+        f"{style(recipe_display, 'cyan')})."
     )
 
     azd_run = azd_runner.run_azd_eval(

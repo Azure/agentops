@@ -2,7 +2,7 @@
   "name": "agentops-accelerator",
   "displayName": "AgentOps Accelerator — Skills for GitHub Copilot",
   "description": "Copilot agent skills for running standardized evaluation workflows with AgentOps Accelerator and Microsoft Foundry agents.",
-  "version": "0.3.18",
+  "version": "0.3.19",
   "publisher": "AgentOpsAccelerator",
   "icon": "icon.png",
   "license": "MIT",
