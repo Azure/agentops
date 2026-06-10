@@ -24,7 +24,8 @@ def render(result: RunResult) -> str:
     lines.append(f"- **Target:** `{result.target.raw}` ({result.target.kind})")
     if result.target.protocol:
         lines.append(f"- **Protocol:** {result.target.protocol}")
-    lines.append(f"- **Dataset:** `{result.dataset_path}`")
+    if result.dataset_path:
+        lines.append(f"- **Dataset:** `{result.dataset_path}`")
     lines.append(f"- **Started:** {result.started_at}")
     lines.append(f"- **Duration:** {result.duration_seconds:.2f}s")
     lines.append(f"- **Rows:** {result.summary.items_total}")
@@ -62,15 +63,15 @@ def render(result: RunResult) -> str:
             lines.append(f"| {row.row_index} | {_short(row.error or '', 200)} |")
         lines.append("")
 
-    lines.append("## Rows")
-    lines.append("")
-    lines.append("| # | Latency (s) | Metrics |")
-    lines.append("| --- | --- | --- |")
-    for row in result.rows:
-        lines.append(_row_summary(row))
-    lines.append("")
-
     if result.rows:
+        lines.append("## Rows")
+        lines.append("")
+        lines.append("| # | Latency (s) | Metrics |")
+        lines.append("| --- | --- | --- |")
+        for row in result.rows:
+            lines.append(_row_summary(row))
+        lines.append("")
+
         lines.append("## Row Details")
         lines.append("")
         lines.append("| # | Input | Response | Expected |")
@@ -78,6 +79,11 @@ def render(result: RunResult) -> str:
         for row in result.rows:
             lines.append(_row_detail(row))
         lines.append("")
+    else:
+        azd_eval = result.config.get("azd_evaluation")
+        if isinstance(azd_eval, dict):
+            lines.extend(_render_azd_aggregate_note(azd_eval))
+            lines.append("")
 
     cloud = result.config.get("cloud_evaluation")
     if isinstance(cloud, dict):
@@ -118,6 +124,26 @@ def _cell(value: str, limit: int) -> str:
 def _short(text: str, limit: int) -> str:
     text = text.replace("\n", " ").replace("|", "\\|")
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _render_azd_aggregate_note(azd: dict) -> List[str]:
+    lines = ["## Per-row breakdown", ""]
+    lines.append(
+        "`execution: azd` reports aggregate metrics only; per-row scores "
+        "are recorded by Foundry."
+    )
+    report_url = azd.get("report_url")
+    if isinstance(report_url, str) and report_url.strip():
+        lines.append("")
+        lines.append(f"**Open the run in Foundry:** {report_url.strip()}")
+    else:
+        lines.append("")
+        lines.append(
+            "Open the latest run in the Foundry portal "
+            "(Agents → your agent → Evaluations) to see the per-sample table "
+            "and rubric drill-downs."
+        )
+    return lines
 
 
 def _render_cloud_evaluation(cloud: dict) -> List[str]:

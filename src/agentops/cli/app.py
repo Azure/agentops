@@ -2766,6 +2766,10 @@ def _run_flat_schema_eval(
     typer.echo(f"{_cli_label('report.md')}:    {_cli_path(output_dir / 'report.md')}")
     if latest_dir is not None:
         typer.echo(f"{_cli_label('latest/')}:      {_cli_path(latest_dir)}")
+    azd_eval = result.config.get("azd_evaluation") if isinstance(result.config, dict) else None
+    report_url = azd_eval.get("report_url") if isinstance(azd_eval, dict) else None
+    if isinstance(report_url, str) and report_url.strip():
+        typer.echo(f"{_cli_label('Foundry run')}:  {report_url.strip()}")
     if result.summary.overall_passed:
         typer.echo(f"{_cli_label('Threshold status')}: {style('PASSED', 'bold', 'green')}")
         return
