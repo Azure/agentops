@@ -902,6 +902,15 @@ Fill in two kinds of real names: the rubric evaluator name and the rubric
 dimension names. Do not invent values — both must come from files
 `agentops eval init` already generated on disk.
 
+> **About the auto-generated evaluator.** When you ran `agentops eval
+> init`, azd seeded `src/travel-agent/eval.yaml` with two kinds of
+> evaluators: built-ins like `builtin.coherence` and `builtin.fluency`
+> (general response-quality checks) plus a local rubric evaluator —
+> typically `name: smoke-core` — whose `local_uri` points at a JSON file
+> with rubric dimensions specific to this Travel Agent. That local
+> evaluator is the hook AgentOps `rubrics:` bind to. You will reference
+> its `name:` and its dimension `id`s in the next two steps.
+
 **1. Find the evaluator name.** Open `src/travel-agent/eval.yaml` and
 look under `evaluators:` for the entry with a `local_uri`:
 
