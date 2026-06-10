@@ -1080,11 +1080,13 @@ You have two ways to wire up ASSERT — pick whichever fits your workflow.
 
 If you installed the AgentOps coding-agent skills in step 4
 (`agentops skills install`), the `agentops-governance` skill knows the full
-recipe. In Copilot Chat (or Claude Code), say:
+recipe. In Copilot Chat (or Claude Code), paste this prompt:
 
-> Use the `agentops-governance` skill to scaffold ASSERT for this workspace.
-> Target the `gpt-4o-mini` deployment, cover prompt_injection / pii_leak /
-> jailbreak, 5 cases per dimension.
+```text
+Use the agentops-governance skill to scaffold ASSERT for this workspace.
+Target the gpt-4o-mini deployment, cover prompt_injection / pii_leak /
+jailbreak, 5 cases per dimension.
+```
 
 Copilot will install `assert-ai`, create `./assert/eval_config.yaml`, and
 append the `assert:` block to `agentops.yaml` for you. Skip to **Run it
@@ -1145,8 +1147,13 @@ Same pattern: Copilot can do it, or you can run the commands yourself.
 
 #### Option A — Ask Copilot
 
-> Use the `agentops-governance` skill to scaffold the Red Team runner.
-> Target `gpt-4o-mini`, fail when attack success rate exceeds 20%.
+Paste this prompt into Copilot Chat (or Claude Code):
+
+```text
+Use the agentops-governance skill to scaffold the Red Team runner for this
+workspace. Target the gpt-4o-mini deployment, fail when attack success rate
+exceeds 20%.
+```
 
 #### Option B — Run the commands yourself
 
