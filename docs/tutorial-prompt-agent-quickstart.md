@@ -57,7 +57,7 @@ permission prompts.
 | You can create **two** Foundry projects in the same Azure subscription (or have two existing projects you can use). | The tutorial uses a sandbox project for authoring and experimentation plus a shared dev project for the PR gate. You only need to publish the agent in sandbox — CI auto-bootstraps it in dev (and later qa / prod). |
 | You can publish a prompt agent in the **sandbox** Foundry project. | The tutorial seeds `travel-agent:2` only in sandbox (Foundry portal typically numbers the first published version `:2`, not `:1`). Dev / qa / prod start empty; the prompt-agent deploy workflow creates the first version in those projects automatically using `prompt_agent_bootstrap` defaults plus `prompt_file`. |
 | The **same model deployment name** (for example `gpt-4o-mini`) exists in every Foundry project you plan to deploy to. | `prompt_agent_bootstrap.model` is a single value reused for every environment. If dev does not have that deployment, the first auto-bootstrap fails. |
-| You can create or attach Application Insights for at least the dev Foundry project. | Foundry Traces, the Operate dashboard, Doctor, and Cockpit need telemetry to tell the observability story. Sandbox observability is optional. |
+| You can create or attach Application Insights for at least the dev Foundry project, and can grant Reader to the dev project's managed identity on that App Insights resource. | Foundry Traces, the Operate dashboard, trace-to-dataset generation, Doctor, and Cockpit need telemetry to tell the observability story. Sandbox observability is optional. |
 | You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate only runs after the repo is pushed. |
 | GitHub CLI is authenticated with `gh auth login` if you use the PR commands in this tutorial. | The regression step opens PRs and sends the reader directly to the workflow run. |
 | You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth and the dev Foundry project endpoint. |
@@ -336,6 +336,11 @@ For each project, please:
   uses a single bootstrap model value for every environment.
 - Attach or create an Application Insights resource for telemetry,
   starting with the dev project.
+- Grant or verify **Reader** on that Application Insights resource to the
+  **managed identity of the `travel-agent-dev` Foundry project**. Foundry's
+  trace-to-dataset flow runs as the project identity when it reads traces; the
+  Operate dashboard may still render for my signed-in user even when this
+  project identity permission is missing.
 - Grant or verify `Foundry User` access for my signed-in user on the parent
   Foundry / AI Services account so I can build agents in the
   Foundry UI. Some portal screens still call this role `Azure AI User`.
@@ -610,7 +615,7 @@ build the prompt agent. One of two things will be true:
 
 | What you see | What it means | What to do |
 |---|---|---|
-| An `appinsights` row with category `AppInsights` | The resource exists and is connected to the dev project. Auto-discovery will pick it up. | **You are done.** Skip the rest of this subsection and continue to section 9. |
+| An `appinsights` row with category `AppInsights` | The resource exists and is connected to the dev project. Auto-discovery will pick it up. | Continue with the trace-to-dataset access check below. |
 | No App Insights row in **Connected resources** | The resource was not connected in step 3. | Click **Add connection**, connect or create an Application Insights resource for the dev project, or paste a connection string manually. |
 
 **If Connected resources does not show App Insights**, the fastest fix is
@@ -619,6 +624,22 @@ and either pick an existing Application Insights resource or create one
 in the same resource group as the dev project. Once an `appinsights` row
 appears under **Connected resources**, you can again skip the manual env
 variable — auto-discovery will pick it up.
+
+**Also verify trace-to-dataset access now.** For the step 18
+trace-sampling flow, the **managed identity of the `travel-agent-dev`
+Foundry project** needs **Reader** on the connected Application Insights
+resource. This is separate from your signed-in user's portal access and
+separate from GitHub OIDC. If you connected App Insights manually, open the
+Application Insights resource in Azure Portal → **Access control (IAM)** and
+add:
+
+| Field | Value |
+|---|---|
+| **Role** | Reader |
+| **Assign access to** | Managed identity |
+| **Managed identity** | `travel-agent-dev` Foundry project |
+
+Wait a few minutes for RBAC propagation before creating a dataset from traces.
 
 **Only if you specifically want to override which resource telemetry
 goes to** (advanced case, e.g. you have a dedicated observability
@@ -1728,6 +1749,13 @@ real traces" to "what should keep getting evaluated."
    Leave **Intelligent sampling** enabled when the time-range UI shows it.
    Foundry will filter noisy traces, deduplicate near-identical prompts, and
    select a representative sample instead of evaluating every request.
+
+   If the dialog shows **Setup incomplete: Assign the Foundry project's managed
+   identity the Reader role on Application Insights**, click **Resolve** if you
+   have permission. Otherwise ask an Azure admin to grant **Reader** on the
+   connected Application Insights resource to the **managed identity of the
+   `travel-agent-dev` Foundry project**, then wait a few minutes for RBAC to
+   propagate and reopen the dialog.
 7. Select **Create** and track the background job on the **Data Generation**
    tab. When it finishes, open the generated dataset from the **Data** tab and
    preview the rows. This is the evaluation-ready sample created from real
