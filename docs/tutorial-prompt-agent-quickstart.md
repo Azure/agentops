@@ -1692,44 +1692,72 @@ regressions that thresholds alone miss, and the merge promotes through
 the deploy workflow. None of those gates require the developer to
 remember to look at a dashboard.
 
-## 18. Brief observability checkout (Foundry side)
+## 18. Observability checkout: traces into continuous evaluation
 
-Take a short tour of the Foundry runtime view: this is where you inspect
-the traces, spans, latency, model calls, and input/output details that show
-what actually happened during an eval or live conversation.
+Take a short tour of the Foundry runtime view, then turn the same production
+signal into evaluation coverage. This is the bridge from "what happened in
+real traces" to "what should keep getting evaluated."
 
 1. Open the `travel-agent-dev` project in the Foundry portal.
 2. Open the `travel-agent` agent and switch to the **Traces** tab. If
    Application Insights is not yet connected, connect or create the
    resource now.
-3. Find the most recent eval run in **Conversations** or
+3. Find a recent eval or playground run in **Conversations** or
    **Responses** and click the **Trace ID**. Inspect spans, latency,
-   model call, and the input/output panes.
-4. Switch to **Operate → Overview** and use **Ask AI** for a
-   dashboard-level summary. Example:
+   model calls, and the input/output panes.
+4. Switch to **Operate → Overview** and use **Ask AI** for a dashboard-level
+   summary. Example:
 
    ```text
    Help me identify any issues or anomalies in my agent metrics for
    the last 24 hours.
    ```
 
-5. Optional deep dive: open the connected **Application Insights** resource,
-   go to **Logs**, set the time range to **Last 24 hours**, and run a small
-   KQL query to inspect the raw telemetry behind the trace view:
+5. Now use the traces as evaluation signal. In the project, open
+   **Data Generation**, then select **Create dataset → From traces**.
+6. In **Create dataset**, configure:
 
-   ```kusto
-   AppTraces
-   | where TimeGenerated > ago(24h)
-   | where Message has_any ("travel-agent", "travel")
-      or tostring(Properties) has_any ("travel-agent", "travel")
-   | project TimeGenerated, Message, SeverityLevel, Properties
-   | order by TimeGenerated desc
-   | take 50
-   ```
+   | Field | Value |
+   |---|---|
+   | **Dataset usage** | `Evaluation` |
+   | **Name** | `travel-agent-traces-step18` |
+   | **Agent** | `travel-agent` |
+   | **Date range** | Last day or last 7 days |
+   | **Maximum samples** | At least `15` |
 
-Foundry gives you the runtime trace view; AgentOps Doctor checks that the
-telemetry is wired and includes those signals in the release-readiness
-evidence.
+   Leave **Intelligent sampling** enabled when the time-range UI shows it.
+   Foundry will filter noisy traces, deduplicate near-identical prompts, and
+   select a representative sample instead of evaluating every request.
+7. Select **Create** and track the background job on the **Data Generation**
+   tab. When it finishes, open the generated dataset from the **Data** tab and
+   preview the rows. This is the evaluation-ready sample created from real
+   traces.
+8. If the portal offers to start an evaluation from the completed job, open it
+   and confirm the generated dataset is selected. You do not need to finish a
+   new eval for this tutorial step; the point is to see how Foundry turns
+   traced behavior into a dataset you can evaluate continuously.
+
+> **Public preview.** Trace-to-dataset generation and intelligent sampling are
+> currently preview Foundry features. If your region or project does not show
+> **Create dataset → From traces**, continue with step 19 and treat this section
+> as a product tour.
+
+Optional KQL deep dive: use Application Insights **Logs** only when you want to
+debug raw telemetry. Set the time range to **Last 24 hours** and run:
+
+```kusto
+AppTraces
+| where TimeGenerated > ago(24h)
+| where Message has_any ("travel-agent", "travel")
+   or tostring(Properties) has_any ("travel-agent", "travel")
+| project TimeGenerated, Message, SeverityLevel, Properties
+| order by TimeGenerated desc
+| take 50
+```
+
+Foundry gives you the runtime trace view and trace-sampled evaluation datasets;
+AgentOps Doctor checks that telemetry and release evidence are wired into the
+readiness story.
 
 ## 19. Sync local evidence and create the release evidence pack
 
