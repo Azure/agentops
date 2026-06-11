@@ -1326,8 +1326,10 @@ principal has **both** Foundry User access on the **dev** Foundry project
 **and** Cognitive Services OpenAI User on the underlying Azure AI Services
 account that hosts the evaluator model (both roles are required — without
 the OpenAI User role, the Foundry cloud graders fail with a 401 and every
-metric comes back null), and do not set up `qa`, `production`, scheduled
-Doctor, or hosted deployment workflows yet.
+metric comes back null), verify `AZURE_TENANT_ID` is the tenant that owns
+the Entra app registration and its federated credential (not just a
+subscription `managedByTenants` value), and do not set up `qa`,
+`production`, scheduled Doctor, or hosted deployment workflows yet.
 
 I am using trunk-based development with `main` as both my trunk and dev
 branch. The generator's stock dev-deploy trigger is `push: branches:
@@ -1353,6 +1355,11 @@ it skips:
 - Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_CLIENT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (the dev
   endpoint), and `APPLICATIONINSIGHTS_CONNECTION_STRING` if available.
+- Verify `AZURE_TENANT_ID` against the app registration / federated
+  credential tenant before the first run. A subscription can be associated
+  with another tenant through `managedByTenants`; do not copy that tenant id
+  into the GitHub environment unless the app registration and federated
+  credential are actually visible there.
 - **Rewrite the dev deploy trigger to `main`.** The generator emits the
   stock GitFlow defaults (`pull_request: branches: [develop, "release/**",
   main]` on `agentops-pr.yml`, `push: branches: [develop]` on
@@ -1413,7 +1420,8 @@ If you want to wait on the first PR-workflow verification run from the
 terminal instead of the Actions UI:
 
 ```powershell
-$runId = gh run list --workflow agentops-pr.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
+$prBranch = gh pr view --json headRefName --jq '.headRefName'
+$runId = gh run list --workflow agentops-pr.yml --branch $prBranch --event pull_request --limit 1 --json databaseId --jq '.[0].databaseId'
 gh run view $runId --web
 gh run watch $runId --exit-status
 ```

@@ -786,12 +786,13 @@ hosted-agent project.
 
 Create or connect the GitHub repo if needed, set AGENTOPS_AGENT_ENDPOINT in the
 `dev` environment to the deployed HTTPS endpoint, wire Azure OIDC and required
-Actions variables in the `dev` environment, and set any required endpoint token
-as a secret. The PR gate uses --doctor-gate critical so the workflow blocks on
-critical Doctor findings (regressions or other strict signals). Do not add
-scheduled Doctor, QA, or production workflows yet. Show me the plan before
-changing GitHub or Azure, and call out anything that needs owner/admin
-permission.
+Actions variables in the `dev` environment, verify AZURE_TENANT_ID is the tenant
+that owns the Entra app registration and its federated credential, and set any
+required endpoint token as a secret. The PR gate uses --doctor-gate critical so
+the workflow blocks on critical Doctor findings (regressions or other strict
+signals). Do not add scheduled Doctor, QA, or production workflows yet. Show me
+the plan before changing GitHub or Azure, and call out anything that needs
+owner/admin permission.
 ```
 
 Open both Doctor outputs. The report explains the findings; the evidence pack

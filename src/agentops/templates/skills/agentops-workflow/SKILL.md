@@ -81,7 +81,21 @@ by discovering the whole Azure subscription.
      `azd env get-values` values before `az account show`.
    - `az account show` only as a proposal for tenant/subscription; confirm
      before writing it to GitHub variables.
-6. Copy CI variables from local AgentOps/azd configuration into the GitHub
+6. For GitHub OIDC, treat `AZURE_TENANT_ID` as the tenant that owns the app
+   registration / federated credential, not merely the tenant associated with
+   the subscription or a `managedByTenants` entry. Before writing
+   `AZURE_TENANT_ID`, verify the chosen tenant can see the app registration and
+   the exact federated credential:
+   - `az ad app show --id <AZURE_CLIENT_ID>` in the active tenant, or an
+     equivalent Microsoft Graph query scoped to the proposed tenant.
+   - `az ad app federated-credential list --id <AZURE_CLIENT_ID>` and confirm
+     the `subject`, `issuer`, and `audiences`.
+   If the app is visible in one tenant but the Azure subscription is associated
+   with another tenant, use the app/federated-credential tenant for
+   `AZURE_TENANT_ID`; the subscription id remains `AZURE_SUBSCRIPTION_ID`.
+   Do not copy a `managedByTenants[*].tenantId` value into GitHub variables
+   unless the app and federated credential are verified there too.
+7. Copy CI variables from local AgentOps/azd configuration into the GitHub
    environment used by the workflow. Reuse local values for
    `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, `AZURE_OPENAI_ENDPOINT`,
    `AZURE_OPENAI_DEPLOYMENT`, and optional
@@ -89,17 +103,17 @@ by discovering the whole Azure subscription.
    them again. Explain `AZURE_OPENAI_DEPLOYMENT` only if it is missing: it is
    the Azure OpenAI deployment used as the evaluator/judge model, not the
    user's agent.
-7. Do not enumerate subscriptions, Foundry projects, Azure OpenAI resources, or
+8. Do not enumerate subscriptions, Foundry projects, Azure OpenAI resources, or
    model deployments to guess missing values. If `AZURE_SUBSCRIPTION_ID`,
    `AZURE_TENANT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, or
    `AZURE_OPENAI_DEPLOYMENT` is absent from AgentOps/azd/local env, ask the user
    to choose or provide it. Only run a scoped Azure query after the user confirms
    the subscription and the exact missing value.
-8. For GitHub OIDC, derive the federated credential subject from the generated
+9. For GitHub OIDC, derive the federated credential subject from the generated
    workflow. If the job has `environment: dev`, the subject is normally
    `repo:<owner>/<repo>:environment:dev`. Do not assume branch or
    `pull_request` subjects without reading the workflow.
-9. Before triggering a Foundry prompt-agent workflow, make sure the OIDC app /
+10. Before triggering a Foundry prompt-agent workflow, make sure the OIDC app /
    service principal has **two** RBAC assignments. Both are required; the eval
    step fails silently (every metric returns `null`) if only one is in place.
    1. **Foundry User** on the Foundry project (or the Foundry resource scope
@@ -118,7 +132,7 @@ by discovering the whole Azure subscription.
       metric scores" warning so the cause is visible in CI logs, but the
       workflow still fails the gate. Grant this role **before** the first run.
    Azure **Reader** is not enough for either step.
-10. If either RBAC assignment is missing, do not run the workflow yet.
+11. If either RBAC assignment is missing, do not run the workflow yet.
    Show the exact GitHub OIDC client ID / service principal, desired role,
    target scope (project for Foundry User, AI Services account for Cognitive
    Services OpenAI User), then ask the user to approve the role assignment or
@@ -134,25 +148,30 @@ by discovering the whole Azure subscription.
    `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<ai-account-name>`
    and can be derived from
    `az cognitiveservices account list --resource-group <foundry-project-rg> --query "[?kind=='AIServices'].id" -o tsv`.
-11. Ask before creating or updating GitHub repos, GitHub environments,
+12. Ask before creating or updating GitHub repos, GitHub environments,
    variables/secrets, Entra app registrations/service principals, federated
    credentials, managed identities, or Azure RBAC assignments.
-12. When creating federated credentials from PowerShell, avoid fragile
+13. When creating federated credentials from PowerShell, avoid fragile
    interpolation. Do **not** write `"repo:$repo:environment:$envName"` because
    `$repo:` can be parsed as a scoped variable. Use
    `"repo:${repo}:environment:${envName}"` or
    `("repo:{0}:environment:{1}" -f $repo, $envName)`, then build JSON from a
    PowerShell object with `ConvertTo-Json`.
-13. After creating or updating a federated credential, read it back and verify
+14. After creating or updating a federated credential, read it back and verify
     before triggering a workflow:
     - `subject` exactly matches the generated workflow subject.
     - `issuer` is `https://token.actions.githubusercontent.com`.
     - `audiences` includes `api://AzureADTokenExchange`.
     If any value differs, fix the credential before running GitHub Actions.
-14. Do not dispatch `gh workflow run` as a surprise validation step. First show
+15. After setting GitHub environment variables, read them back and verify
+    `AZURE_TENANT_ID` still matches the app/federated-credential tenant before
+    triggering a run. If `azure/login` fails with `AADSTS53003`, first re-check
+    this tenant/app alignment before assuming Conditional Access is the root
+    cause.
+16. Do not dispatch `gh workflow run` as a surprise validation step. First show
     that the GitHub environment, variables/secrets, federated credential, and
     Foundry RBAC are ready, then ask the user before triggering workflows.
-15. Avoid broad discovery unless local config is missing. Do **not** run broad
+17. Avoid broad discovery unless local config is missing. Do **not** run broad
    `az resource list`, `az graph query`, SDK inspection, or web search to find
    the Foundry project when `agentops init show`, `.agentops/.env`, or
    `.azure/<env>/.env` already has `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. If the

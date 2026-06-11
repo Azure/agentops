@@ -524,8 +524,9 @@ environment variable or equivalent Azure DevOps pipeline variable, verify the
 OIDC principal has **both** Foundry User access on the dev Foundry project
 **and** Cognitive Services OpenAI User access on the underlying Azure AI
 Services account that hosts the evaluator model (both are required — without
-the OpenAI User role, every cloud eval metric returns null), and show me the
-plan before changing GitHub or Azure.
+the OpenAI User role, every cloud eval metric returns null), verify
+AZURE_TENANT_ID is the tenant that owns the Entra app registration and its
+federated credential, and show me the plan before changing GitHub or Azure.
 ```
 
 That value is not an `agentops init` answer. It tells the Foundry cloud eval
