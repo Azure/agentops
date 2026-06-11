@@ -1320,16 +1320,17 @@ project.
 
 This may be a brand-new folder with no Git repo or GitHub remote yet.
 Keep the scope to the PR gate and dev deploy only: create or connect the
-GitHub repo if needed, wire Azure OIDC and required Actions
-variables/secrets, create only the `dev` environment, verify the OIDC
-principal has **both** Foundry User access on the **dev** Foundry project
-**and** Cognitive Services OpenAI User on the underlying Azure AI Services
-account that hosts the evaluator model (both roles are required — without
-the OpenAI User role, the Foundry cloud graders fail with a 401 and every
-metric comes back null), verify `AZURE_TENANT_ID` is the tenant that owns
-the Entra app registration and its federated credential (not just a
-subscription `managedByTenants` value), and do not set up `qa`,
-`production`, scheduled Doctor, or hosted deployment workflows yet.
+GitHub repo if needed, ensure local `main` tracks `origin/main` after the
+first push/connect, wire Azure OIDC and required Actions variables/secrets,
+create only the `dev` environment, verify the OIDC principal has **both**
+Foundry User access on the **dev** Foundry project **and** Cognitive Services
+OpenAI User on the underlying Azure AI Services account that hosts the
+evaluator model (both roles are required — without the OpenAI User role, the
+Foundry cloud graders fail with a 401 and every metric comes back null),
+verify `AZURE_TENANT_ID` is the tenant that owns the Entra app registration
+and its federated credential (not just a subscription `managedByTenants`
+value), and do not set up `qa`, `production`, scheduled Doctor, or hosted
+deployment workflows yet.
 
 I am using trunk-based development with `main` as both my trunk and dev
 branch. The generator's stock dev-deploy trigger is `push: branches:
@@ -1349,7 +1350,10 @@ that needs owner/admin permission.
 The workflow skill will normally do the following, but call out anything
 it skips:
 
-- Create/connect the GitHub remote.
+- Create/connect the GitHub remote and ensure local `main` tracks
+  `origin/main` (`git branch -vv` should show `[origin/main]`). If the skill
+  skips this, run `git branch --set-upstream-to=origin/main main` before the
+  later tutorial steps that use `git pull`.
 - Create the `dev` GitHub environment.
 - Configure OIDC federated credentials between GitHub and Entra ID.
 - Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
