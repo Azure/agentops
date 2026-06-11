@@ -1778,30 +1778,49 @@ real traces" to "what should keep getting evaluated."
 > **Create dataset → From traces**, continue with step 19 and treat this section
 > as a product tour.
 
-Optional KQL deep dive: use Application Insights **Logs** only when you want to
-debug raw telemetry. App Insights can expose either the classic `traces` table
-or the workspace-backed `AppTraces` table, depending on where you opened Logs.
-Set the time range to **Last 24 hours** and run this table-safe query:
+Optional KQL deep dive: query the evaluation metrics Foundry emits as
+`gen_ai.evaluation.result` events. These land in the **`AppEvents`** table, which
+only resolves in the **Log Analytics workspace** that backs your Application
+Insights resource — not in the App Insights *scoped* Logs blade. Open
+**Monitor → Logs** (or the connected Log Analytics workspace), set **Time range**
+to **Set in query** (the query below uses `ago(30d)`), and run:
 
 ```kusto
-union isfuzzy=true traces, AppTraces
-| extend EventTime = coalesce(
-    column_ifexists("TimeGenerated", datetime(null)),
-    column_ifexists("timestamp", datetime(null))
-)
-| extend MessageText = tostring(column_ifexists("Message", ""))
-| extend MessageText = iff(isempty(MessageText), tostring(column_ifexists("message", "")), MessageText)
-| extend PropertiesText = tostring(column_ifexists("Properties", ""))
-| extend PropertiesText = iff(isempty(PropertiesText), tostring(column_ifexists("customDimensions", "")), PropertiesText)
-| extend SeverityText = tostring(column_ifexists("SeverityLevel", ""))
-| extend SeverityText = iff(isempty(SeverityText), tostring(column_ifexists("severityLevel", "")), SeverityText)
-| where EventTime > ago(24h)
-| where MessageText has_any ("travel-agent", "travel")
-   or PropertiesText has_any ("travel-agent", "travel")
-| project EventTime, MessageText, SeverityText, PropertiesText
-| order by EventTime desc
-| take 50
+AppEvents
+| where TimeGenerated > ago(30d)
+| where Name == "gen_ai.evaluation.result"
+| extend p = parse_json(tostring(Properties))
+| extend Conversation = tostring(p["gen_ai.conversation.id"]),
+         Agent         = tostring(p["gen_ai.agent.id"]),
+         Evaluator     = tostring(p["gen_ai.evaluation.name"]),
+         Score         = todouble(p["gen_ai.evaluation.score.value"])
+| summarize Time = max(TimeGenerated), AvgScore = round(avg(Score), 2),
+            Metrics = make_bag(pack(Evaluator, Score))
+    by Conversation, Agent
+| order by Time desc
+| take 20
 ```
+
+Each row is one conversation with its average score and a `Metrics` bag holding
+every evaluator score side by side. For a per-day rollup of average scores by
+evaluator, pivot instead:
+
+```kusto
+AppEvents
+| where TimeGenerated > ago(30d)
+| where Name == "gen_ai.evaluation.result"
+| extend p = parse_json(tostring(Properties))
+| extend Evaluator = tostring(p["gen_ai.evaluation.name"]),
+         Score     = todouble(p["gen_ai.evaluation.score.value"])
+| summarize AvgScore = round(avg(Score), 2) by Day = bin(TimeGenerated, 1d), Evaluator
+| evaluate pivot(Evaluator, any(AvgScore))
+| order by Day desc
+```
+
+> **Empty results?** Telemetry can be sparse, so `Last 24 hours` / `Last 7 days`
+> may return nothing. Widen the time range (`ago(30d)` with **Set in query**, or
+> **Last 30 days**) and confirm you are in the **Log Analytics workspace**, where
+> `AppEvents` resolves.
 
 Foundry gives you the runtime trace view and trace-sampled evaluation datasets;
 AgentOps Doctor checks that telemetry and release evidence are wired into the
