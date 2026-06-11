@@ -1779,15 +1779,27 @@ real traces" to "what should keep getting evaluated."
 > as a product tour.
 
 Optional KQL deep dive: use Application Insights **Logs** only when you want to
-debug raw telemetry. Set the time range to **Last 24 hours** and run:
+debug raw telemetry. App Insights can expose either the classic `traces` table
+or the workspace-backed `AppTraces` table, depending on where you opened Logs.
+Set the time range to **Last 24 hours** and run this table-safe query:
 
 ```kusto
-AppTraces
-| where TimeGenerated > ago(24h)
-| where Message has_any ("travel-agent", "travel")
-   or tostring(Properties) has_any ("travel-agent", "travel")
-| project TimeGenerated, Message, SeverityLevel, Properties
-| order by TimeGenerated desc
+union isfuzzy=true traces, AppTraces
+| extend EventTime = coalesce(
+    column_ifexists("TimeGenerated", datetime(null)),
+    column_ifexists("timestamp", datetime(null))
+)
+| extend MessageText = tostring(column_ifexists("Message", ""))
+| extend MessageText = iff(isempty(MessageText), tostring(column_ifexists("message", "")), MessageText)
+| extend PropertiesText = tostring(column_ifexists("Properties", ""))
+| extend PropertiesText = iff(isempty(PropertiesText), tostring(column_ifexists("customDimensions", "")), PropertiesText)
+| extend SeverityText = tostring(column_ifexists("SeverityLevel", ""))
+| extend SeverityText = iff(isempty(SeverityText), tostring(column_ifexists("severityLevel", "")), SeverityText)
+| where EventTime > ago(24h)
+| where MessageText has_any ("travel-agent", "travel")
+   or PropertiesText has_any ("travel-agent", "travel")
+| project EventTime, MessageText, SeverityText, PropertiesText
+| order by EventTime desc
 | take 50
 ```
 
