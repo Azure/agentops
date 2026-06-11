@@ -114,17 +114,28 @@ by discovering the whole Azure subscription.
    them again. Explain `AZURE_OPENAI_DEPLOYMENT` only if it is missing: it is
    the Azure OpenAI deployment used as the evaluator/judge model, not the
    user's agent.
-9. Do not enumerate subscriptions, Foundry projects, Azure OpenAI resources, or
+9. For prompt-agent tutorials that use Foundry trace sampling / trace-to-dataset,
+   verify observability RBAC before telling the user step 18 is ready:
+   - Resolve the dev Foundry project managed identity principal id.
+   - Resolve the connected Application Insights resource.
+   - Grant or verify **Reader** on that Application Insights resource to the dev
+     Foundry project managed identity.
+   - If the App Insights component is workspace-based, also grant or verify
+     **Reader** on the backing Log Analytics workspace.
+   This is separate from GitHub OIDC and separate from the signed-in user's
+   portal access. Operate dashboards can still render while trace-to-dataset
+   fails if the project identity cannot read App Insights.
+10. Do not enumerate subscriptions, Foundry projects, Azure OpenAI resources, or
    model deployments to guess missing values. If `AZURE_SUBSCRIPTION_ID`,
    `AZURE_TENANT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, or
    `AZURE_OPENAI_DEPLOYMENT` is absent from AgentOps/azd/local env, ask the user
    to choose or provide it. Only run a scoped Azure query after the user confirms
    the subscription and the exact missing value.
-10. For GitHub OIDC, derive the federated credential subject from the generated
+11. For GitHub OIDC, derive the federated credential subject from the generated
    workflow. If the job has `environment: dev`, the subject is normally
    `repo:<owner>/<repo>:environment:dev`. Do not assume branch or
    `pull_request` subjects without reading the workflow.
-11. Before triggering a Foundry prompt-agent workflow, make sure the OIDC app /
+12. Before triggering a Foundry prompt-agent workflow, make sure the OIDC app /
    service principal has **two** RBAC assignments. Both are required; the eval
    step fails silently (every metric returns `null`) if only one is in place.
    1. **Foundry User** on the Foundry project (or the Foundry resource scope
@@ -143,7 +154,7 @@ by discovering the whole Azure subscription.
       metric scores" warning so the cause is visible in CI logs, but the
       workflow still fails the gate. Grant this role **before** the first run.
    Azure **Reader** is not enough for either step.
-12. If either RBAC assignment is missing, do not run the workflow yet.
+13. If either RBAC assignment is missing, do not run the workflow yet.
    Show the exact GitHub OIDC client ID / service principal, desired role,
    target scope (project for Foundry User, AI Services account for Cognitive
    Services OpenAI User), then ask the user to approve the role assignment or
@@ -159,30 +170,30 @@ by discovering the whole Azure subscription.
    `/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<ai-account-name>`
    and can be derived from
    `az cognitiveservices account list --resource-group <foundry-project-rg> --query "[?kind=='AIServices'].id" -o tsv`.
-13. Ask before creating or updating GitHub repos, GitHub environments,
+14. Ask before creating or updating GitHub repos, GitHub environments,
    variables/secrets, Entra app registrations/service principals, federated
    credentials, managed identities, or Azure RBAC assignments.
-14. When creating federated credentials from PowerShell, avoid fragile
+15. When creating federated credentials from PowerShell, avoid fragile
    interpolation. Do **not** write `"repo:$repo:environment:$envName"` because
    `$repo:` can be parsed as a scoped variable. Use
    `"repo:${repo}:environment:${envName}"` or
    `("repo:{0}:environment:{1}" -f $repo, $envName)`, then build JSON from a
    PowerShell object with `ConvertTo-Json`.
-15. After creating or updating a federated credential, read it back and verify
+16. After creating or updating a federated credential, read it back and verify
     before triggering a workflow:
     - `subject` exactly matches the generated workflow subject.
     - `issuer` is `https://token.actions.githubusercontent.com`.
     - `audiences` includes `api://AzureADTokenExchange`.
     If any value differs, fix the credential before running GitHub Actions.
-16. After setting GitHub environment variables, read them back and verify
+17. After setting GitHub environment variables, read them back and verify
     `AZURE_TENANT_ID` still matches the app/federated-credential tenant before
     triggering a run. If `azure/login` fails with `AADSTS53003`, first re-check
     this tenant/app alignment before assuming Conditional Access is the root
     cause.
-17. Do not dispatch `gh workflow run` as a surprise validation step. First show
+18. Do not dispatch `gh workflow run` as a surprise validation step. First show
     that the GitHub environment, variables/secrets, federated credential, and
     Foundry RBAC are ready, then ask the user before triggering workflows.
-18. Avoid broad discovery unless local config is missing. Do **not** run broad
+19. Avoid broad discovery unless local config is missing. Do **not** run broad
    `az resource list`, `az graph query`, SDK inspection, or web search to find
    the Foundry project when `agentops init show`, `.agentops/.env`, or
    `.azure/<env>/.env` already has `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. If the
@@ -346,6 +357,13 @@ across environments, set:
   variable or secret. Generated workflows first try to auto-discover App
   Insights from the Foundry project endpoint; this value makes eval and
   Doctor telemetry explicit.
+
+For Foundry prompt-agent projects that use trace sampling or
+**Create dataset → From traces**, also verify the Foundry project managed
+identity can read telemetry: grant or verify **Reader** on the connected
+Application Insights resource, and on the backing Log Analytics workspace when
+the App Insights component is workspace-based. This permission is not covered by
+the GitHub OIDC service principal roles above.
 
 Then configure Workload Identity Federation on the Azure side
 (`federated-credentials` on the app registration) for **each branch /
