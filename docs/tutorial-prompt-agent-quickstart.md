@@ -1589,9 +1589,9 @@ thresholds are loose enough that a regression slips through, Doctor
 still catches it.
 
 ```powershell
-git switch main
-git pull
-git switch -c feature/regress-travel-agent
+git fetch origin
+$branch = "feature/regress-travel-agent-step16-$((Get-Date).ToString('yyyyMMddHHmmss'))"
+git switch -c $branch origin/main
 ```
 
 Edit `.agentops/prompts/travel-agent.md` to this intentionally vague
@@ -1607,8 +1607,8 @@ Commit and push:
 ```powershell
 git add .agentops\prompts\travel-agent.md
 git commit -m "Intentional regression: vague travel prompt"
-git push -u origin feature/regress-travel-agent
-gh pr create --base main --head feature/regress-travel-agent --title "Test AgentOps regression gate" --body "Evaluates an intentionally regressed travel-agent prompt."
+git push -u origin $branch
+gh pr create --base main --head $branch --title "Test AgentOps regression gate" --body "Evaluates an intentionally regressed travel-agent prompt."
 ```
 
 Watch the PR check:
