@@ -1694,9 +1694,9 @@ remember to look at a dashboard.
 
 ## 18. Brief observability checkout (Foundry side)
 
-The Foundry side of the loop is worth a short tour, even though it is
-not what AgentOps owns. This is the "Foundry tells you what happened"
-side of the conversation.
+Take a short tour of the Foundry runtime view: this is where you inspect
+the traces, spans, latency, model calls, and input/output details that show
+what actually happened during an eval or live conversation.
 
 1. Open the `travel-agent-dev` project in the Foundry portal.
 2. Open the `travel-agent` agent and switch to the **Traces** tab. If
@@ -1713,13 +1713,23 @@ side of the conversation.
    the last 24 hours.
    ```
 
-5. Optionally, sample the same operation through Application Insights
-   Logs (KQL) for the engineer-level view.
+5. Optional deep dive: open the connected **Application Insights** resource,
+   go to **Logs**, set the time range to **Last 24 hours**, and run a small
+   KQL query to inspect the raw telemetry behind the trace view:
 
-This is the observability surface AgentOps does **not** replace. Doctor
-will check whether this telemetry is wired (App Insights connection
-string, recent traces, etc.) and include it in the readiness call, but
-the runtime view itself lives in Foundry.
+   ```kusto
+   AppTraces
+   | where TimeGenerated > ago(24h)
+   | where Message has_any ("travel-agent", "travel")
+      or tostring(Properties) has_any ("travel-agent", "travel")
+   | project TimeGenerated, Message, SeverityLevel, Properties
+   | order by TimeGenerated desc
+   | take 50
+   ```
+
+Foundry gives you the runtime trace view; AgentOps Doctor checks that the
+telemetry is wired and includes those signals in the release-readiness
+evidence.
 
 ## 19. Sync local evidence and create the release evidence pack
 
