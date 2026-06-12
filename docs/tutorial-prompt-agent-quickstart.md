@@ -1880,10 +1880,31 @@ Guardrail setup, and red-team scans still happen in their owning tools.
 agentops cockpit --workspace .
 ```
 
-Open the local URL printed by the command. The Cockpit should show
-Foundry connection (sandbox by default; you can switch in the URL),
-AgentOps cloud-eval readiness, Doctor findings, release evidence, the
-PR and dev deploy CI pipelines, and next actions.
+Cockpit starts a read-only local web server and prints
+`http://127.0.0.1:8090`. Open that URL in your browser; press `Ctrl+C`
+in the terminal to stop it. It reflects the **active azd environment**
+(`sandbox`, from `defaultEnvironment` in `.azure/config.json`) — there is
+no URL switch. To inspect `dev` instead, stop Cockpit, point the active
+env at `dev` (set `defaultEnvironment: dev` in `.azure/config.json`, or
+export `AZURE_ENV_NAME=dev`), then rerun the command.
+
+Read the page top to bottom and confirm each card against what you built:
+
+| Section | What to confirm in this run |
+|---|---|
+| **Foundry connection** | Foundry project = `travel-agent-sandbox`, your Azure tenant is resolved (`az login`), and Agent = `travel-agent:2`. |
+| **Open in Foundry** | The deep-links open your sandbox project in the correct tenant. |
+| **Observability readiness** | Trace setup / sampling status pulled from the latest Doctor analysis. |
+| **AgentOps Doctor** | The same finding rollup you saw in step 19 — **2 critical** (`latency.p95_production`, `errors.production_rate`), plus warnings. |
+| **Local eval history** | Your `agentops eval run` from step 19 appears as the latest entry. |
+| **Quality metrics** | coherence / fluency / similarity / response_completeness trend cards from your runs. |
+| **Production telemetry** | App Insights p95 latency (~11.7s) and error rate (~12%) — the source of the two criticals. |
+| **CI/CD Pipelines** | The `pr` and `dev` workflows you generated are listed; `qa`/`prod`/scheduled are absent (expected). |
+| **Next actions** | The prioritized backlog Cockpit derives from the open findings. |
+
+Cockpit does not run checks or mutate anything — it renders the latest
+`results.json`, Doctor report, and evidence pack you already produced, and
+links out to Foundry / Azure Monitor for live runtime data.
 
 ## Success criteria
 
