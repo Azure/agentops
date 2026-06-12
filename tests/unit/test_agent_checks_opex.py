@@ -131,3 +131,33 @@ def test_flaky_metric_silent_for_near_zero_mean() -> None:
         if f.id.startswith("opex.flaky_metric")
     ]
     assert flaky == []
+
+
+def test_flaky_metric_silent_when_methodologies_differ() -> None:
+    """Runs with mismatched methodologies should not blend into the CV."""
+    base = datetime.now(timezone.utc) - timedelta(days=5)
+    # Latest run uses fingerprint B; only the latest matches itself, so there
+    # are not enough comparable runs to compute a CV.
+    runs = []
+    for i, (value, fp) in enumerate(
+        [(1.0, "A"), (4.0, "A"), (1.5, "A"), (3.5, "A"), (3.0, "B")]
+    ):
+        runs.append(
+            RunSummary(
+                run_id=f"r{i}",
+                timestamp=base + timedelta(days=i),
+                metrics={"coherence": value},
+                run_pass=True,
+                items_total=1,
+                items_passed_all=1,
+                raw_path=Path("."),
+                methodology_fingerprint=fp,
+            )
+        )
+    history = ResultsHistory(runs=runs)
+    flaky = [
+        f
+        for f in run_opex_check(history, OpexCheckConfig())
+        if f.id.startswith("opex.flaky_metric")
+    ]
+    assert flaky == []

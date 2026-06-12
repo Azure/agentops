@@ -52,6 +52,7 @@ class AssertRunResult:
     total_cases: int = 0
     failed_cases: int = 0
     passed_cases: int = 0
+    skipped_cases: int = 0
     pass_rate: Optional[float] = None
     has_violations: bool = False
     exit_code: int = 0
@@ -175,6 +176,7 @@ def run_assert(
         total_cases=totals["total"],
         failed_cases=totals["failed"],
         passed_cases=totals["passed"],
+        skipped_cases=totals["skipped"],
         pass_rate=totals["pass_rate"],
         has_violations=totals["failed"] > 0,
         exit_code=completed.returncode,
@@ -266,6 +268,13 @@ def _read_metrics(run_dir: Path) -> dict[str, Any]:
 
 
 def _summarize_dimensions(run_dir: Path) -> dict[str, dict[str, Any]]:
+    """Bucket scores.jsonl records by risk category / behavior.
+
+    Supports both the assert-ai 0.1.x schema (per-record ``dimensions`` block
+    plus ``verdict.dimensions.policy_violation``) and the older flat
+    ``dimension`` / ``verdict`` string schema.
+    """
+
     scores_path = run_dir / "scores.jsonl"
     if not scores_path.is_file():
         return {}
@@ -282,19 +291,21 @@ def _summarize_dimensions(run_dir: Path) -> dict[str, dict[str, Any]]:
                     continue
                 if not isinstance(record, dict):
                     continue
-                dimension = record.get("dimension") or record.get("metric")
-                if not dimension:
+                dim_value = _record_dimension(record)
+                if not dim_value:
                     continue
-                verdict = (record.get("verdict") or record.get("status") or "").lower()
                 bucket = summary.setdefault(
-                    str(dimension),
-                    {"total": 0, "violations": 0, "passes": 0, "other": 0},
+                    str(dim_value),
+                    {"total": 0, "violations": 0, "passes": 0, "skipped": 0, "other": 0},
                 )
                 bucket["total"] += 1
-                if verdict in {"violation", "fail", "failed", "violated"}:
+                verdict_status = _classify_verdict(record)
+                if verdict_status == "violation":
                     bucket["violations"] += 1
-                elif verdict in {"pass", "passed", "ok", "satisfied"}:
+                elif verdict_status == "pass":
                     bucket["passes"] += 1
+                elif verdict_status == "skipped":
+                    bucket["skipped"] += 1
                 else:
                     bucket["other"] += 1
     except OSError as exc:
@@ -302,6 +313,55 @@ def _summarize_dimensions(run_dir: Path) -> dict[str, dict[str, Any]]:
             f"Could not read ASSERT scores.jsonl at {scores_path}: {exc}"
         ) from exc
     return summary
+
+
+def _record_dimension(record: dict[str, Any]) -> Optional[str]:
+    """Pick the most informative dimension label for bucketing."""
+
+    dims = record.get("dimensions")
+    if isinstance(dims, dict):
+        for key in ("risk_category", "behavior", "category"):
+            value = dims.get(key)
+            if isinstance(value, str) and value:
+                return value
+    for key in ("dimension", "metric", "risk_category", "behavior"):
+        value = record.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def _classify_verdict(record: dict[str, Any]) -> str:
+    """Map a scores.jsonl record to pass/violation/skipped/other.
+
+    assert-ai 0.1.x reports the verdict as a structured object under
+    ``verdict.dimensions`` (booleans like ``policy_violation``) with a
+    sibling ``judge_status``. Older schemas use a top-level string verdict.
+    """
+
+    judge_status = record.get("judge_status")
+    if isinstance(judge_status, str) and judge_status and judge_status != "ok":
+        return "skipped"
+
+    verdict = record.get("verdict")
+    if isinstance(verdict, dict):
+        dim_block = verdict.get("dimensions")
+        if isinstance(dim_block, dict):
+            policy_violation = dim_block.get("policy_violation")
+            if policy_violation is True:
+                return "violation"
+            if policy_violation is False:
+                return "pass"
+        return "other"
+
+    raw = record.get("verdict") or record.get("status")
+    if isinstance(raw, str):
+        normalized = raw.lower()
+        if normalized in {"violation", "fail", "failed", "violated"}:
+            return "violation"
+        if normalized in {"pass", "passed", "ok", "satisfied"}:
+            return "pass"
+    return "other"
 
 
 def _aggregate_totals(
@@ -321,15 +381,20 @@ def _aggregate_totals(
             if isinstance(candidates.get(key), int):
                 failed = candidates[key]
                 break
+    skipped = 0
     if total == 0 and dimensions:
-        total = max((bucket["total"] for bucket in dimensions.values()), default=0)
+        total = sum(bucket["total"] for bucket in dimensions.values())
     if failed == 0 and dimensions:
         failed = sum(bucket["violations"] for bucket in dimensions.values())
-    passed = max(total - failed, 0) if total else 0
-    pass_rate = round(passed / total, 4) if total else None
+    if dimensions:
+        skipped = sum(bucket.get("skipped", 0) for bucket in dimensions.values())
+    scored = max(total - skipped, 0)
+    passed = max(scored - failed, 0) if scored else 0
+    pass_rate = round(passed / scored, 4) if scored else None
     return {
         "total": int(total),
         "failed": int(failed),
         "passed": int(passed),
+        "skipped": int(skipped),
         "pass_rate": pass_rate,
     }

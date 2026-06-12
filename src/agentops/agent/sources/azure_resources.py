@@ -414,7 +414,7 @@ def collect_azure_resources(
         return AzureResourcesPayload(diagnostics=diagnostics)
 
     try:
-        from azure.identity import DefaultAzureCredential
+        from azure.identity import DefaultAzureCredential  # noqa: F401
     except ImportError as exc:
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
@@ -426,7 +426,9 @@ def collect_azure_resources(
     payload = AzureResourcesPayload(diagnostics=diagnostics)
 
     try:
-        credential = DefaultAzureCredential(process_timeout=30)
+        from ._credentials import format_source_error, get_shared_credential
+
+        credential = get_shared_credential(process_timeout=30)
         try:
             cs_client, monitor_client = _build_clients(credential, subscription_id)
         except ImportError as exc:
@@ -594,8 +596,8 @@ def collect_azure_resources(
 
     except Exception as exc:  # pragma: no cover
         diagnostics["status"] = "error"
-        diagnostics["reason"] = str(exc)
-        log.warning("Azure resources read failed: %s", exc)
+        diagnostics["reason"] = format_source_error(exc)
+        log.warning("Azure resources read failed: %s", diagnostics["reason"])
         return payload
 
     diagnostics["status"] = "ok"

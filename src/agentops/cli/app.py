@@ -2383,6 +2383,7 @@ def cmd_assert_run(
         typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
+    scored_cases = max(result.total_cases - result.skipped_cases, 0)
     pass_rate = (
         f"{result.pass_rate:.1%}" if result.pass_rate is not None else "n/a"
     )
@@ -2390,7 +2391,17 @@ def cmd_assert_run(
     typer.echo(_cli_heading("ASSERT summary"))
     typer.echo(f"  suite: {result.suite}")
     typer.echo(f"  run:   {result.run_id}")
-    typer.echo(f"  cases: {result.total_cases} (passed={result.passed_cases}, failed={result.failed_cases})")
+    if result.skipped_cases:
+        typer.echo(
+            f"  cases: {result.total_cases} "
+            f"(scored={scored_cases}, passed={result.passed_cases}, "
+            f"failed={result.failed_cases}, skipped={result.skipped_cases})"
+        )
+    else:
+        typer.echo(
+            f"  cases: {result.total_cases} "
+            f"(passed={result.passed_cases}, failed={result.failed_cases})"
+        )
     typer.echo(f"  pass rate: {pass_rate}")
     typer.echo(f"  output:    {_cli_path(result.run_output_dir)}")
     typer.echo(f"  normalized: {_cli_path(result.normalized_path or '')}")
@@ -2401,8 +2412,19 @@ def cmd_assert_run(
         for name, bucket in sorted(result.dimension_summary.items()):
             violations = bucket.get("violations", 0)
             total = bucket.get("total", 0)
+            skipped = bucket.get("skipped", 0)
             marker = _cli_ok("OK") if violations == 0 else _cli_error("VIOLATIONS")
-            typer.echo(f"  {name}: {violations}/{total} {marker}")
+            suffix = f" (skipped={skipped})" if skipped else ""
+            typer.echo(f"  {name}: {violations}/{total}{suffix} {marker}")
+
+    typer.echo("")
+    typer.echo(_cli_heading("Inspect details"))
+    typer.echo(f"  assert-ai results status {result.suite} {result.run_id}")
+    if result.skipped_cases:
+        typer.echo(
+            "  (skipped cases usually mean the tester model self-refused before "
+            "reaching the target; try a less restrictive tester deployment.)"
+        )
 
     if result.has_violations:
         msg = (

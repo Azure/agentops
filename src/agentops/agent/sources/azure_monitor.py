@@ -132,7 +132,7 @@ def collect_azure_monitor(
         return AzureMonitorPayload(diagnostics=diagnostics)
 
     try:
-        from azure.identity import DefaultAzureCredential
+        from azure.identity import DefaultAzureCredential  # noqa: F401
         from azure.monitor.query import LogsQueryClient, LogsQueryStatus
     except ImportError as exc:
         diagnostics["status"] = "skipped"
@@ -143,13 +143,15 @@ def collect_azure_monitor(
         log.info("azure-monitor-query unavailable: %s", exc)
         return AzureMonitorPayload(diagnostics=diagnostics)
 
+    from ._credentials import format_source_error, get_shared_credential, log_source_error  # noqa: F401
+
     workspace_or_resource = (
         config.log_analytics_workspace_id or config.app_insights_resource_id
     )
     diagnostics["target"] = workspace_or_resource
 
     try:
-        credential = DefaultAzureCredential(
+        credential = get_shared_credential(
             exclude_developer_cli_credential=True,
             process_timeout=30,
         )
@@ -179,8 +181,9 @@ def collect_azure_monitor(
             )
     except Exception as exc:  # pragma: no cover - network / auth errors
         diagnostics["status"] = "error"
-        diagnostics["reason"] = str(exc)
-        log.warning("Azure Monitor query failed: %s", exc)
+        diagnostics["reason"] = log_source_error(
+            log, "Azure Monitor query failed", exc
+        )
         return AzureMonitorPayload(diagnostics=diagnostics)
 
     if getattr(response, "status", None) == LogsQueryStatus.FAILURE:
@@ -373,6 +376,8 @@ def _collect_application_insights_by_app_id(
     diagnostics: Dict[str, Any],
 ) -> AzureMonitorPayload:
     """Query App Insights by ApplicationId when no ARM resource id is configured."""
+    from ._credentials import log_source_error
+
     try:
         bearer = _acquire_application_insights_token()
     except ImportError as exc:
@@ -382,8 +387,9 @@ def _collect_application_insights_by_app_id(
         return AzureMonitorPayload(diagnostics=diagnostics)
     except Exception as exc:  # pragma: no cover - network / auth errors
         diagnostics["status"] = "error"
-        diagnostics["reason"] = str(exc)
-        log.warning("App Insights token acquisition failed: %s", exc)
+        diagnostics["reason"] = log_source_error(
+            log, "App Insights token acquisition failed", exc
+        )
         return AzureMonitorPayload(diagnostics=diagnostics)
 
     payload = AzureMonitorPayload(diagnostics=diagnostics)
@@ -456,14 +462,30 @@ def _collect_application_insights_by_app_id(
 
 
 def _acquire_application_insights_token() -> str:
-    from azure.identity import DefaultAzureCredential
+    """Acquire a token for the App Insights data plane.
 
-    credential = DefaultAzureCredential(
-        exclude_developer_cli_credential=True,
-        process_timeout=30,
-    )
-    token = credential.get_token("https://api.applicationinsights.io/.default")
-    return token.token
+    Windows `az.cmd` / `pwsh.exe` cold-starts occasionally time out the
+    default 30s budget when a credential is asked for a *second* scope (the
+    ARM token already consumed the warm-up). Retry once with a longer
+    timeout before surfacing the failure.
+    """
+    from azure.identity import DefaultAzureCredential  # noqa: F401
+
+    from ._credentials import get_shared_credential
+
+    scope = "https://api.applicationinsights.io/.default"
+    last_exc: Optional[Exception] = None
+    for timeout in (30, 90):
+        try:
+            credential = get_shared_credential(
+                exclude_developer_cli_credential=True,
+                process_timeout=timeout,
+            )
+            return credential.get_token(scope).token
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            continue
+    raise last_exc  # type: ignore[misc]
 
 
 def _query_application_insights(
