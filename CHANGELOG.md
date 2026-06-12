@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.20] - 2026-06-10
+
 ### Changed
 - **`agentops-governance` skill can now scaffold the ASSERT and Red Team
   runners** (install `assert-ai` / `azure-ai-evaluation[redteam]`, create
