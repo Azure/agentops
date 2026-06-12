@@ -801,6 +801,13 @@ In a fresh tutorial workspace, warnings about production telemetry, CI history, 
 regression history are expected and useful: they show what remains before this
 local endpoint becomes an operated service.
 
+If production telemetry *does* carry enough live traffic to trip latency or
+error criticals, those are honest signals. The thresholds that decide
+critical-vs-warning live in `.agentops/agent.yaml`
+(`checks.latency.p95_threshold_seconds`, `checks.errors.rate_threshold`) and are
+separate from the `agentops.yaml` eval-gate thresholds; raise them only if you
+deliberately want to relax the production gate for a demo.
+
 If you later want a separate cadence outside PRs, generate the optional Doctor
 workflow with `agentops workflow generate --kinds doctor --force`.
 
@@ -817,8 +824,32 @@ look self-contained inside AgentOps.
 agentops cockpit --workspace .
 ```
 
-Cockpit shows the endpoint readiness, eval history, Doctor findings, telemetry
-status, release evidence, CI/CD, and next actions.
+Cockpit starts a read-only local web server and prints
+`http://127.0.0.1:8090` (this is the Cockpit UI port, not your agent's
+`:8000`). Open that URL in your browser; press `Ctrl+C` in the terminal to
+stop it. It reflects the **active azd environment** (`sandbox`, from
+`defaultEnvironment` in `.azure/config.json`) — there is no URL switch. To
+inspect `dev`, stop Cockpit, point the active env at `dev` (set
+`defaultEnvironment: dev` in `.azure/config.json`, or export
+`AZURE_ENV_NAME=dev`), then rerun the command.
+
+Read the page top to bottom and confirm each card:
+
+| Section | What to confirm |
+|---|---|
+| **Foundry connection** | The Foundry project / tenant resolve, and the agent is your hosted endpoint URL. |
+| **Open in Foundry** | The deep-links open your project in the correct tenant. |
+| **Observability readiness** | Trace setup / sampling status from the latest Doctor analysis. |
+| **AgentOps Doctor** | The same finding rollup from the Doctor / evidence-pack step (criticals first, then warnings). |
+| **Local eval history** | Your `agentops eval run` baseline, regressed, and fixed reruns appear. |
+| **Quality metrics** | Evaluator score trends from your runs. |
+| **Production telemetry** | App Insights latency / error snapshot for the `travel-agent.chat` operation (or a "no live traffic" state in a fresh workspace). |
+| **CI/CD Pipelines** | The PR and dev deploy workflows you generated are listed. |
+| **Next actions** | The prioritized backlog Cockpit derives from the open findings. |
+
+Cockpit does not run checks or mutate anything — it renders the latest
+`results.json`, Doctor report, and evidence pack you already produced, and
+links out to Foundry / Azure Monitor for live runtime data.
 
 ## Success criteria
 

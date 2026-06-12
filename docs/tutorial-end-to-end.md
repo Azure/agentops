@@ -878,6 +878,13 @@ may not have live traffic, scheduled workflows may not have history, and trace
 regression candidates may not exist yet. That is useful tutorial feedback, not
 a failure of Doctor.
 
+If production telemetry *does* carry enough live traffic to trip latency or
+error criticals, those are honest signals — not tutorial noise. The thresholds
+that decide critical-vs-warning live in `.agentops/agent.yaml`
+(`checks.latency.p95_threshold_seconds`, `checks.errors.rate_threshold`) and are
+separate from the `agentops.yaml` eval-gate thresholds; raise them only if you
+deliberately want to relax the production gate for a demo.
+
 ## 10. Run Foundry red-team scans
 
 Red-team scans are a Foundry capability. Run them from Foundry Observability /
@@ -953,16 +960,31 @@ reviews and accepts them.
 agentops cockpit --workspace .
 ```
 
-Use Cockpit as the local command center:
+Cockpit starts a read-only local web server and prints
+`http://127.0.0.1:8090`. Open that URL in your browser; press `Ctrl+C` in
+the terminal to stop it. It reflects the **active azd environment**
+(`sandbox`, from `defaultEnvironment` in `.azure/config.json`) — there is no
+URL switch. To inspect `dev`, stop Cockpit, point the active env at `dev`
+(set `defaultEnvironment: dev` in `.azure/config.json`, or export
+`AZURE_ENV_NAME=dev`), then rerun the command.
 
-- Foundry connection and deep links;
-- Microsoft Foundry eval or AgentOps local eval gate status;
-- Doctor findings;
-- release evidence;
-- local eval history;
-- production telemetry snapshot;
-- CI/CD workflow status;
-- next actions.
+Read the page top to bottom and confirm each card:
+
+| Section | What to confirm |
+|---|---|
+| **Foundry connection** | The Foundry project and tenant resolve, and the agent identity matches your `agentops.yaml` target. |
+| **Open in Foundry** | The deep-links open your project in the correct tenant. |
+| **Observability readiness** | Trace setup / sampling status from the latest Doctor analysis. |
+| **AgentOps Doctor** | The same finding rollup from the Doctor / evidence-pack step (criticals first, then warnings). |
+| **Local eval history** | Your `agentops eval run` baseline and regression reruns appear. |
+| **Quality metrics** | Evaluator score trends from your runs. |
+| **Production telemetry** | App Insights latency / error snapshot (or a clear "no live traffic" state in a fresh workspace). |
+| **CI/CD Pipelines** | The workflows you generated are listed. |
+| **Next actions** | The prioritized backlog Cockpit derives from the open findings. |
+
+Cockpit does not run checks or mutate anything — it renders the latest
+`results.json`, Doctor report, and evidence pack you already produced, and
+links out to Foundry / Azure Monitor for live runtime data.
 
 ## Completion checklist
 
