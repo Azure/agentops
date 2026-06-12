@@ -1861,6 +1861,23 @@ deploys, explicit thresholds, or red-team/governance evidence. Treat those as th
 hardening backlog. The eval gates and the dev deploy loop are
 production-ready.
 
+You will likely also see **two critical findings** here, and that is expected
+in this tutorial:
+
+| Critical finding | Why it shows up |
+|---|---|
+| `latency.p95_production` | App Insights p95 latency exceeds the 5s default (a prompt agent reasoning over each request runs ~9–12s). |
+| `errors.production_rate` | Your own tutorial traffic (including the earlier `az login` / token retries) pushed the production error rate above the 5% default. |
+
+These criticals come from **real production telemetry of your own test
+traffic**, not from the release candidate's eval gate (which passed). They are
+honest signals: a real release would investigate latency and errors before
+promoting. For the tutorial they simply demonstrate that Doctor reads live
+runtime data. If you want to relax them for a demo, raise the Doctor thresholds
+in `.agentops/agent.yaml` (`checks.latency.p95_threshold_seconds` and
+`checks.errors.rate_threshold`) — these are separate from the `agentops.yaml`
+eval-gate thresholds.
+
 If you want to show the governance evidence path in the video, keep it as a
 short optional callout:
 
