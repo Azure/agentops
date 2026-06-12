@@ -138,16 +138,70 @@ def test_assert_summarize_dimensions_counts_violations(tmp_path: Path):
 def test_assert_aggregate_totals_uses_dimensions(tmp_path: Path):
     metrics: dict[str, Any] = {}
     dims = {
-        "a": {"total": 5, "violations": 2, "passes": 3, "other": 0},
-        "b": {"total": 5, "violations": 0, "passes": 5, "other": 0},
+        "a": {"total": 5, "violations": 2, "passes": 3, "skipped": 0, "other": 0},
+        "b": {"total": 5, "violations": 0, "passes": 5, "skipped": 0, "other": 0},
     }
     totals = assert_runner._aggregate_totals(metrics, dims)
-    # ASSERT design: total = max across dimensions (each case is judged on
-    # every dimension), failed = sum of violations.
-    assert totals["total"] == 5
+    # assert-ai 0.1.x: each scores.jsonl row is one test case bucketed by its
+    # risk_category / behavior, so total = sum across dimensions.
+    assert totals["total"] == 10
     assert totals["failed"] == 2
-    assert totals["passed"] == 3
-    assert totals["pass_rate"] == pytest.approx(3 / 5)
+    assert totals["passed"] == 8
+    assert totals["skipped"] == 0
+    assert totals["pass_rate"] == pytest.approx(8 / 10)
+
+
+def test_assert_aggregate_totals_excludes_skipped_from_pass_rate(tmp_path: Path):
+    dims = {
+        "pii_leak": {
+            "total": 4,
+            "violations": 1,
+            "passes": 2,
+            "skipped": 1,
+            "other": 0,
+        },
+    }
+    totals = assert_runner._aggregate_totals({}, dims)
+    assert totals["total"] == 4
+    assert totals["skipped"] == 1
+    assert totals["failed"] == 1
+    # 4 total - 1 skipped = 3 scored; 3 - 1 failed = 2 passed; pass_rate over 3.
+    assert totals["passed"] == 2
+    assert totals["pass_rate"] == pytest.approx(2 / 3, abs=1e-3)
+
+
+def test_assert_summarize_dimensions_handles_0_1_x_schema(tmp_path: Path):
+    """assert-ai 0.1.x emits structured verdict + dimensions blocks per row."""
+
+    run_dir = _write_assert_layout(
+        tmp_path,
+        suite="demo",
+        run_id="r1",
+        metrics={},
+        scores=[
+            {
+                "judge_status": "ok",
+                "verdict": {"dimensions": {"policy_violation": False, "overrefusal": False}},
+                "dimensions": {"risk_category": "pii_leak", "behavior": "noop"},
+            },
+            {
+                "judge_status": "ok",
+                "verdict": {"dimensions": {"policy_violation": True}},
+                "dimensions": {"risk_category": "pii_leak"},
+            },
+            {
+                "judge_status": "scoring_skipped",
+                "verdict": {},
+                "dimensions": {"risk_category": "jailbreak"},
+            },
+        ],
+    )
+    summary = assert_runner._summarize_dimensions(run_dir)
+    assert summary["pii_leak"]["total"] == 2
+    assert summary["pii_leak"]["violations"] == 1
+    assert summary["pii_leak"]["passes"] == 1
+    assert summary["jailbreak"]["skipped"] == 1
+    assert summary["jailbreak"]["violations"] == 0
 
 
 def test_run_assert_invokes_cli_and_writes_normalized(tmp_path: Path, monkeypatch):
@@ -249,6 +303,153 @@ def test_redteam_records_from_payload_attack_details():
     assert records[1]["successful"] is False
 
 
+def test_redteam_records_from_payload_openai_evals_shape():
+    """Current azure-ai-evaluation RedTeam SDK writes OpenAI Evals-shaped output."""
+    payload = {
+        "result_counts": {"total": 3, "passed": 2, "failed": 1},
+        "output_items": {
+            "object": "list",
+            "data": [
+                {
+                    "object": "eval.run.output_item",
+                    "status": "completed",
+                    "results": {
+                        "name": "hate_unfairness",
+                        "metric": "hate_unfairness",
+                        "passed": False,
+                        "label": "fail",
+                        "properties": {
+                            "attack_technique": "base64",
+                            "attack_complexity": "easy",
+                            "attack_success": True,
+                        },
+                    },
+                },
+                {
+                    "object": "eval.run.output_item",
+                    "status": "completed",
+                    "results": {
+                        "name": "violence",
+                        "passed": True,
+                        "label": "pass",
+                        "properties": {
+                            "attack_technique": "base64",
+                            "attack_success": False,
+                        },
+                    },
+                },
+                {
+                    "object": "eval.run.output_item",
+                    "status": "completed",
+                    "results": {
+                        "name": "hate_unfairness",
+                        "passed": True,
+                        "label": "pass",
+                        "properties": {"attack_technique": "base64"},
+                    },
+                },
+            ],
+        },
+    }
+    records = redteam_runner._records_from_payload(payload)
+    assert len(records) == 3
+    assert records[0]["risk_category"] == "hate_unfairness"
+    assert records[0]["attack_strategy"] == "base64"
+    assert records[0]["successful"] is True
+    assert records[1]["successful"] is False
+    assert records[2]["successful"] is False
+
+
+def test_redteam_records_from_payload_unwraps_redteam_result_object():
+    """The SDK now returns a RedTeamResult object; we unwrap via scan_result."""
+
+    class _FakeRedTeamResult:
+        def __init__(self, data: dict) -> None:
+            self.scan_result = data
+
+    payload = _FakeRedTeamResult(
+        {
+            "output_items": {
+                "data": [
+                    {
+                        "results": {
+                            "name": "violence",
+                            "label": "fail",
+                            "properties": {
+                                "attack_technique": "rot13",
+                                "attack_success": True,
+                            },
+                        }
+                    }
+                ]
+            }
+        }
+    )
+    records = redteam_runner._records_from_payload(payload)
+    assert len(records) == 1
+    assert records[0]["risk_category"] == "violence"
+    assert records[0]["attack_strategy"] == "rot13"
+    assert records[0]["successful"] is True
+
+
+def test_redteam_records_from_payload_unwraps_via_to_dict():
+    class _FakeRedTeamResult:
+        def to_dict(self) -> dict:
+            return {
+                "attack_details": [
+                    {
+                        "risk_category": "self_harm",
+                        "attack_strategy": "morse",
+                        "attack_success": False,
+                    }
+                ]
+            }
+
+    records = redteam_runner._records_from_payload(_FakeRedTeamResult())
+    assert len(records) == 1
+    assert records[0]["risk_category"] == "self_harm"
+    assert records[0]["successful"] is False
+
+
+def test_redteam_load_results_from_output_dir_reads_results_json(tmp_path: Path):
+    results_dir = tmp_path / "raw_redteam_output.json"
+    results_dir.mkdir()
+    payload = {
+        "output_items": {
+            "data": [
+                {
+                    "results": {
+                        "name": "hate_unfairness",
+                        "label": "fail",
+                        "properties": {
+                            "attack_technique": "base64",
+                            "attack_success": True,
+                        },
+                    }
+                }
+            ]
+        }
+    }
+    (results_dir / "results.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    loaded = redteam_runner._load_results_from_output_dir(tmp_path)
+    assert loaded == payload
+
+
+def test_redteam_load_results_from_output_dir_falls_back_to_file(tmp_path: Path):
+    """Older SDK versions wrote a single file at the output_path."""
+    payload = {"attack_details": [{"risk_category": "violence", "attack_success": True}]}
+    (tmp_path / "raw_redteam_output.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+    loaded = redteam_runner._load_results_from_output_dir(tmp_path)
+    assert loaded == payload
+
+
+def test_redteam_load_results_from_output_dir_returns_none_when_missing(tmp_path: Path):
+    assert redteam_runner._load_results_from_output_dir(tmp_path) is None
+
+
 def test_redteam_build_target_callback_requires_endpoint(monkeypatch):
     monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
     with pytest.raises(redteam_runner.RedTeamRunnerError):
@@ -265,6 +466,48 @@ def test_redteam_build_target_callback_with_endpoint(monkeypatch):
 def test_redteam_build_target_callback_unsupported():
     with pytest.raises(redteam_runner.RedTeamRunnerError):
         redteam_runner._build_target_callback({"foo": "bar"})
+
+
+def test_redteam_project_from_env_returns_onedp_endpoint_string(monkeypatch):
+    """New (hub-less) Foundry projects use the endpoint as a string."""
+
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://acct.services.ai.azure.com/api/projects/my-project/",
+    )
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "sub-1234")
+    monkeypatch.setenv("AZURE_RESOURCE_GROUP", "rg-foundry")
+    monkeypatch.setenv("AZURE_AI_PROJECT_NAME", "my-project")
+    project = redteam_runner._project_from_env()
+    # SDK detects OneDP via isinstance(project, str); endpoint must win even
+    # when the legacy triplet is also present so we skip AML discovery.
+    assert isinstance(project, str)
+    assert project == "https://acct.services.ai.azure.com/api/projects/my-project"
+
+
+def test_redteam_project_from_env_returns_triplet_for_hub_based(monkeypatch):
+    """Hub-based projects (no OneDP endpoint) use the legacy triplet."""
+
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.setenv("AZURE_SUBSCRIPTION_ID", "sub-1234")
+    monkeypatch.setenv("AZURE_RESOURCE_GROUP", "rg-foundry")
+    monkeypatch.setenv("AZURE_AI_PROJECT_NAME", "my-project")
+    project = redteam_runner._project_from_env()
+    assert project == {
+        "subscription_id": "sub-1234",
+        "resource_group_name": "rg-foundry",
+        "project_name": "my-project",
+    }
+
+
+def test_redteam_project_from_env_returns_none_when_incomplete(monkeypatch):
+    """Without an endpoint or full triplet we must return None."""
+
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_SUBSCRIPTION_ID", raising=False)
+    monkeypatch.setenv("AZURE_RESOURCE_GROUP", "rg-foundry")
+    monkeypatch.setenv("AZURE_AI_PROJECT_NAME", "my-project")
+    assert redteam_runner._project_from_env() is None
 
 
 def test_run_redteam_raises_when_sdk_missing(tmp_path: Path, monkeypatch):

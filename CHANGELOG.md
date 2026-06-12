@@ -5,6 +5,19 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **`agentops-governance` skill now scaffolds a valid `assert-ai 0.1.0` config.**
+  The previous skeleton invented top-level keys (`dimensions:`,
+  `num_cases_per_dimension:`, `target.type:`, `suite_id:`/`run_id:`) that
+  `assert-ai run` rejects with `config has unsupported field(s)`. The skill
+  and tutorial step 12 now generate the real pipeline schema (`suite`/`run`/
+  `behavior.preset`/`default_model`/`pipeline.{systematize,test_set,inference,
+  judge}`) using the built-in `travel_planner` behavior preset shipped with
+  `assert-ai`, plus a `safety-core` + `alignment` judge combo. Added a
+  troubleshooting note explaining the LiteLLM-style Azure env vars
+  (`AZURE_API_KEY`/`AZURE_API_BASE`/`AZURE_API_VERSION`) that `assert-ai`
+  needs at runtime.
+
 ## [0.3.22] - 2026-06-12
 
 ### Security
@@ -45,12 +58,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `./assert/eval_config.yaml`, append the `assert:` / `redteam:` block to
   `agentops.yaml`). Previously the skill only drafted reviewable evidence
   skeletons.
-
-### Docs
-- **Tutorial step 12 (ASSERT + Red Team) now shows two options** — ask Copilot
-  via the `agentops-governance` skill, or run the commands yourself.
-
-## [0.3.19] - 2026-06-10
 
 ### Fixed
 - **`execution: azd` reports no longer ship empty `Dataset:` lines and empty

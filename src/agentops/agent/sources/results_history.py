@@ -8,6 +8,7 @@ runs so Doctor still has signal in freshly cloned workspaces.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import dataclass, field
@@ -34,6 +35,7 @@ class RunSummary:
     item_evaluations: List[Dict[str, Any]] = field(default_factory=list)
     source: str = "local"
     portal_url: Optional[str] = None
+    methodology_fingerprint: Optional[str] = None
 
 
 @dataclass
@@ -136,7 +138,44 @@ def _summarize(path: Path) -> Optional[RunSummary]:
         items_passed_all=items_passed_all,
         raw_path=path,
         item_evaluations=item_evaluations,
+        methodology_fingerprint=_methodology_fingerprint(data),
     )
+
+
+def _methodology_fingerprint(data: Dict[str, Any]) -> Optional[str]:
+    """Derive a stable hash of (agent target, dataset, evaluators).
+
+    Two runs share a fingerprint only when their evaluation methodology is
+    comparable: same agent, same dataset path, same evaluator set. The
+    regression and flaky-metric checks use this to avoid mixing baselines
+    across incompatible methodologies (e.g. a smoke dataset vs. a hardened
+    multi-turn rubric, or a cloud Foundry run vs. a local run with different
+    evaluators).
+    """
+    target = data.get("target") or (data.get("config") or {}).get("agent")
+    dataset_path = data.get("dataset_path") or (data.get("config") or {}).get(
+        "dataset"
+    )
+    evaluators_raw = data.get("evaluators")
+    if isinstance(evaluators_raw, list):
+        evaluators = sorted(str(e) for e in evaluators_raw)
+    elif isinstance(evaluators_raw, dict):
+        evaluators = sorted(str(k) for k in evaluators_raw.keys())
+    else:
+        evaluators = []
+
+    if not target and not dataset_path and not evaluators:
+        return None
+
+    payload = json.dumps(
+        {
+            "target": str(target) if target else None,
+            "dataset": str(dataset_path) if dataset_path else None,
+            "evaluators": evaluators,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def collect_results_history(
@@ -257,7 +296,7 @@ def _collect_foundry_eval_runs(
 
     try:
         from azure.ai.projects import AIProjectClient
-        from azure.identity import DefaultAzureCredential
+        from azure.identity import DefaultAzureCredential  # noqa: F401
     except ImportError as exc:
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
@@ -267,8 +306,10 @@ def _collect_foundry_eval_runs(
         log.info("Foundry cloud eval history unavailable: %s", exc)
         return [], diagnostics
 
+    from ._credentials import format_source_error, get_shared_credential
+
     try:
-        credential = DefaultAzureCredential(
+        credential = get_shared_credential(
             exclude_developer_cli_credential=True,
             process_timeout=30,
         )
@@ -276,14 +317,18 @@ def _collect_foundry_eval_runs(
         openai_client = project_client.get_openai_client()
     except Exception as exc:  # pragma: no cover - SDK/auth shape varies
         diagnostics["status"] = "skipped"
-        diagnostics["reason"] = f"could not create Foundry OpenAI client: {exc}"
+        diagnostics["reason"] = (
+            f"could not create Foundry OpenAI client: {format_source_error(exc)}"
+        )
         return [], diagnostics
 
     try:
         runs = _list_cloud_eval_runs(openai_client, limit=limit)
     except Exception as exc:  # pragma: no cover - SDK shape varies
         diagnostics["status"] = "skipped"
-        diagnostics["reason"] = f"could not list cloud evaluation runs: {exc}"
+        diagnostics["reason"] = (
+            f"could not list cloud evaluation runs: {format_source_error(exc)}"
+        )
         return [], diagnostics
 
     diagnostics["status"] = "ok"

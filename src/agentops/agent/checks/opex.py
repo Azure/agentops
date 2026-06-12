@@ -104,9 +104,23 @@ def _check_flaky_metric(
     if len(runs) < config.min_runs_for_flaky:
         return []
 
+    # Only consider the recent window of runs that share the latest run's
+    # evaluation methodology (same target/dataset/evaluators). Mixing
+    # methodologies inflates the coefficient of variation and produces
+    # false "flaky metric" warnings.
+    latest_fingerprint = runs[-1].methodology_fingerprint
+    if latest_fingerprint is None:
+        comparable = runs
+    else:
+        comparable = [
+            r for r in runs if r.methodology_fingerprint == latest_fingerprint
+        ]
+    if len(comparable) < config.min_runs_for_flaky:
+        return []
+
     # Collect each metric's series across the recent window.
     series: dict[str, List[float]] = {}
-    for run in runs[-config.min_runs_for_flaky :]:
+    for run in comparable[-config.min_runs_for_flaky :]:
         for name, value in run.metrics.items():
             series.setdefault(name, []).append(value)
 

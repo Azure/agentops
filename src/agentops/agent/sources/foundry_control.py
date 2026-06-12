@@ -86,7 +86,7 @@ def collect_foundry_control(
 
     try:
         from azure.ai.projects import AIProjectClient
-        from azure.identity import DefaultAzureCredential
+        from azure.identity import DefaultAzureCredential  # noqa: F401
     except ImportError as exc:
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
@@ -96,14 +96,21 @@ def collect_foundry_control(
         log.info("azure-ai-projects unavailable: %s", exc)
         return FoundryControlPayload(diagnostics=diagnostics)
 
+    from ._credentials import format_source_error, get_shared_credential, log_source_error
+
     payload = FoundryControlPayload(diagnostics=diagnostics)
 
     try:
-        credential = DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30)
+        credential = get_shared_credential(
+            exclude_developer_cli_credential=True,
+            process_timeout=30,
+        )
         client = AIProjectClient(endpoint=endpoint, credential=credential)
     except Exception as exc:  # pragma: no cover
         diagnostics["status"] = "error"
-        diagnostics["reason"] = f"client init failed: {exc}"
+        diagnostics["reason"] = log_source_error(
+            log, "Foundry client init failed", exc
+        )
         return payload
 
     try:
@@ -128,8 +135,9 @@ def collect_foundry_control(
                         )
                     )
     except Exception as exc:  # pragma: no cover
-        log.warning("Foundry agents listing failed: %s", exc)
-        diagnostics["agents_error"] = str(exc)
+        diagnostics["agents_error"] = log_source_error(
+            log, "Foundry agents listing failed", exc
+        )
 
     # Best-effort: continuous evaluation rules attached to agents.
     # The exact accessor varies by SDK version; we try a few attribute
@@ -166,8 +174,9 @@ def collect_foundry_control(
         else:
             diagnostics["evaluation_rules_status"] = "unavailable"
     except Exception as exc:  # pragma: no cover - SDK shape varies
-        log.info("Foundry evaluation_rules listing skipped: %s", exc)
-        diagnostics["evaluation_rules_warning"] = str(exc)
+        reason = format_source_error(exc)
+        log.info("Foundry evaluation_rules listing skipped: %s", reason)
+        diagnostics["evaluation_rules_warning"] = reason
 
     diagnostics["status"] = "ok"
     diagnostics["agents_count"] = len(payload.agents)
