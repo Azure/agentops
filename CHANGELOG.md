@@ -5,6 +5,27 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **`agentops-workflow` skill now verifies OIDC tenant, branch upstream
+  tracking, and trace-sampling RBAC before wiring CI.** The packaged skill
+  instructs agents to treat `AZURE_TENANT_ID` as the tenant that owns the Entra
+  app registration / federated credential (not the subscription tenant), to set
+  and verify the local trunk branch upstream (`git branch -vv` must show
+  `[origin/main]`), and to grant **Reader** on Application Insights (and its
+  backing Log Analytics workspace) to the Foundry project managed identity for
+  trace-to-dataset flows.
+
+### Docs
+- **Prompt-agent, hosted-agent, and end-to-end tutorials hardened end to end.**
+  OIDC setup calls out the app-registration tenant; observability steps require
+  App Insights Reader for trace sampling and cover workspace-backed App Insights;
+  the telemetry step queries `gen_ai.evaluation` results from `AppEvents`
+  (table-safe, no hard-coded dates); the evidence step explains expected
+  production-telemetry criticals and where the Doctor thresholds live
+  (`.agentops/agent.yaml`); and the Cockpit step is now a concrete walkthrough
+  (exact `http://127.0.0.1:8090` URL, read-only note, per-section checks, and
+  azd-env switching instead of a non-existent URL switch).
+
 ## [0.3.20] - 2026-06-10
 
 ### Changed
