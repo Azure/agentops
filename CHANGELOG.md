@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.22] - 2026-06-12
+
 ### Security
 - **E2E agent container dependencies no longer resolve vulnerable Starlette or
   mem0ai versions.** The sample FastAPI service now pins patched FastAPI and
