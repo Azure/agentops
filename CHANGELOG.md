@@ -5,6 +5,13 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Security
+- **E2E agent container dependencies no longer resolve vulnerable Starlette or
+  mem0ai versions.** The sample FastAPI service now pins patched FastAPI and
+  Agent Framework releases and adds an explicit `mem0ai` pin so Dependabot no
+  longer reports the transitive Starlette host-header / file-response advisories
+  or the mem0ai unsafe deserialization advisory on the default branch.
+
 ## [0.3.21] - 2026-06-12
 
 ### Changed
