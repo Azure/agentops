@@ -82,7 +82,7 @@ def run_redteam(
     attack_strategies: List[str],
     num_objectives: int = 10,
     output_path: Optional[Path] = None,
-    azure_ai_project: Optional[Dict[str, Any]] = None,
+    azure_ai_project: Optional[Any] = None,
     credential: Any = None,
     fail_threshold: Optional[float] = None,
 ) -> RedTeamRunResult:
@@ -174,7 +174,7 @@ def _invoke_redteam_scan(
     risk_categories: List[str],
     attack_strategies: List[str],
     num_objectives: int,
-    azure_ai_project: Optional[Dict[str, Any]],
+    azure_ai_project: Optional[Any],
     credential: Any,
     output_dir: Path,
 ) -> tuple[List[Dict[str, Any]], Optional[Any]]:
@@ -200,12 +200,14 @@ def _invoke_redteam_scan(
         RiskCategory,
     )
 
-    project = azure_ai_project or _project_from_env()
+    project = azure_ai_project if azure_ai_project is not None else _project_from_env()
     if project is None:
         raise RedTeamRunnerError(
-            "Azure AI project metadata is required. Set redteam.azure_ai_project in "
-            "agentops.yaml or define AZURE_SUBSCRIPTION_ID, AZURE_RESOURCE_GROUP, and "
-            "AZURE_AI_PROJECT_NAME (or AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)."
+            "Azure AI project metadata is required. Set "
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT for new (hub-less) Foundry "
+            "projects, or AZURE_SUBSCRIPTION_ID + AZURE_RESOURCE_GROUP + "
+            "AZURE_AI_PROJECT_NAME for hub-based projects. AgentOps reads "
+            "these from the active .azure/<env>/.env or .agentops/.env."
         )
     cred = credential or _default_credential()
 
@@ -235,20 +237,134 @@ def _invoke_redteam_scan(
 
     raw_payload = _resolve_if_awaitable(raw_payload)
     records = _records_from_payload(raw_payload)
+
+    # The SDK return value shape varies across azure-ai-evaluation versions
+    # (older releases returned a dict with ``attack_details``; current
+    # releases return a ``RedTeamResult`` object whose attributes are not
+    # JSON-serializable). The on-disk ``results.json`` is the stable
+    # contract — fall back to it when the in-memory payload did not yield
+    # any records, and replace ``raw_payload`` so ``raw_summary.json``
+    # captures the actual scan data instead of a useless ``repr()`` string.
+    if not records:
+        disk_payload = _load_results_from_output_dir(output_dir)
+        if disk_payload is not None:
+            disk_records = _records_from_payload(disk_payload)
+            if disk_records:
+                records = disk_records
+                raw_payload = disk_payload
+
     return records, raw_payload
 
 
+def _load_results_from_output_dir(output_dir: Path) -> Optional[Any]:
+    """Locate and parse the SDK's on-disk ``results.json``.
+
+    The Red Team SDK writes the canonical OpenAI Evals-shaped result to a
+    file (or directory of files) at the path supplied via
+    ``scanner.scan(output_path=...)``. Recent SDK versions create a
+    directory containing ``results.json`` plus ``evaluation_results.jsonl``;
+    older versions wrote a single JSON file directly. Handle both shapes.
+    """
+
+    base = output_dir / "raw_redteam_output.json"
+    candidates = [
+        base / "results.json",
+        base,
+    ]
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            return json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+    return None
+
+
 def _records_from_payload(payload: Any) -> List[Dict[str, Any]]:
-    """Best-effort flattening of the SDK payload into per-attempt records."""
+    """Best-effort flattening of the SDK payload into per-attempt records.
+
+    Supports three shapes:
+
+    * ``RedTeamResult``-like objects — unwrapped via ``scan_result`` /
+      ``to_dict()`` / ``result`` attributes.
+    * OpenAI Evals-shaped payloads with
+      ``output_items.data[*].results.properties.attack_success``.
+    * Legacy ``attack_details`` / ``attacks`` / ``details`` lists.
+    """
+
+    # Unwrap ``RedTeamResult``-like objects to their dict representation
+    # before pattern-matching against the known shapes below.
+    if payload is not None and not isinstance(payload, (dict, list)):
+        for attr in ("scan_result", "to_dict", "result"):
+            value = getattr(payload, attr, None)
+            if callable(value):
+                try:
+                    value = value()
+                except Exception:  # noqa: BLE001 — best-effort extraction.
+                    value = None
+            if isinstance(value, (dict, list)):
+                payload = value
+                break
 
     records: List[Dict[str, Any]] = []
-    candidates = []
+
+    # OpenAI Evals shape: output_items.data[*].results.properties.attack_success
     if isinstance(payload, dict):
-        for key in ("attack_details", "attacks", "results", "details"):
+        output_items = payload.get("output_items")
+        if isinstance(output_items, dict):
+            data = output_items.get("data")
+            if isinstance(data, list):
+                for entry in data:
+                    if not isinstance(entry, dict):
+                        continue
+                    result = entry.get("results")
+                    if not isinstance(result, dict):
+                        continue
+                    props = result.get("properties")
+                    if not isinstance(props, dict):
+                        props = {}
+                    category = result.get("name") or result.get("metric")
+                    strategy = (
+                        props.get("attack_technique")
+                        or props.get("attack_strategy")
+                    )
+                    successful = props.get("attack_success")
+                    if successful is None:
+                        label = str(result.get("label") or "").lower()
+                        passed = result.get("passed")
+                        if label in {"fail", "failed", "violation"}:
+                            successful = True
+                        elif passed is False:
+                            successful = True
+                        else:
+                            successful = False
+                    records.append(
+                        {
+                            "risk_category": _stringify_enum(category),
+                            "attack_strategy": _stringify_enum(strategy),
+                            "successful": bool(successful),
+                        }
+                    )
+                if records:
+                    return records
+
+    # Legacy shape: dict carrying an ``attack_details`` / ``attacks`` /
+    # ``details`` list, or a bare list of per-attempt dicts.
+    candidates: List[Any] = []
+    if isinstance(payload, dict):
+        for key in ("attack_details", "attacks", "details"):
             value = payload.get(key)
             if isinstance(value, list):
                 candidates = value
                 break
+        # ``results`` is also a list in the legacy shape but conflicts with
+        # the OpenAI Evals-shaped ``output_items`` flow above; only use it
+        # when the SDK did not emit ``output_items``.
+        if not candidates and "output_items" not in payload:
+            value = payload.get("results")
+            if isinstance(value, list):
+                candidates = value
     elif isinstance(payload, list):
         candidates = payload
 
@@ -330,11 +446,48 @@ def _build_target_callback(target: Dict[str, Any]) -> Any:
     )
 
 
-def _project_from_env() -> Optional[Dict[str, Any]]:
-    endpoint = os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
-    if not endpoint:
-        return None
-    return {"endpoint": endpoint}
+def _project_from_env() -> Optional[Any]:
+    """Build the azure_ai_project descriptor the Red Team SDK expects.
+
+    The SDK supports two project shapes:
+
+    * Hub-less / "OneDP" Foundry projects (the default for new accounts):
+      detected by ``isinstance(project, str)``. We pass the bare endpoint
+      URL (``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT``) as a string and the SDK
+      skips AML workspace discovery, which would otherwise 404 because the
+      account has no AML workspace.
+
+    * Hub-based AI Foundry projects (legacy): require the
+      subscription_id / resource_group_name / project_name triplet.
+
+    We prefer the string form whenever the OneDP-style endpoint is set,
+    and fall back to the triplet for hub-based projects.
+    """
+
+    endpoint = os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", "").strip()
+    if endpoint and "/api/projects/" in endpoint:
+        return endpoint.rstrip("/")
+
+    subscription = os.environ.get("AZURE_SUBSCRIPTION_ID")
+    resource_group = (
+        os.environ.get("AZURE_RESOURCE_GROUP")
+        or os.environ.get("AZURE_RESOURCE_GROUP_NAME")
+    )
+    project_name = (
+        os.environ.get("AZURE_AI_PROJECT_NAME")
+        or os.environ.get("AZURE_AI_FOUNDRY_PROJECT_NAME")
+    )
+
+    if not project_name and "/projects/" in endpoint:
+        project_name = endpoint.rsplit("/projects/", 1)[-1].split("/", 1)[0] or None
+
+    if subscription and resource_group and project_name:
+        return {
+            "subscription_id": subscription,
+            "resource_group_name": resource_group,
+            "project_name": project_name,
+        }
+    return None
 
 
 def _default_credential() -> Any:

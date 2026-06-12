@@ -340,7 +340,15 @@ def _install_fake_foundry_modules(monkeypatch, fake_openai) -> None:
 
     projects_module.AIProjectClient = FakeProjectClient
     identity_module.DefaultAzureCredential = FakeCredential
+    identity_module.AzureCliCredential = FakeCredential
     monkeypatch.setitem(sys.modules, "azure", azure_module)
     monkeypatch.setitem(sys.modules, "azure.ai", azure_ai_module)
     monkeypatch.setitem(sys.modules, "azure.ai.projects", projects_module)
     monkeypatch.setitem(sys.modules, "azure.identity", identity_module)
+
+    # The shared credential factory checks the real ``az`` CLI to decide
+    # whether to prefer ``AzureCliCredential``. Reset its cache so each
+    # test starts deterministic. The probe auto-skips under pytest.
+    from agentops.agent.sources import _credentials
+
+    _credentials.reset_shared_credentials()

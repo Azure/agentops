@@ -18,7 +18,19 @@ def run_regression_check(
         return []
 
     latest = runs[-1]
-    baseline_runs = runs[:-1]
+    # Only compare against runs that share the same evaluation methodology
+    # (same agent target, dataset, and evaluator set). This avoids spurious
+    # regressions when the dataset, evaluators, or runner changes between
+    # runs (e.g. smoke → hardened conversation rubric, or local → cloud).
+    fingerprint = latest.methodology_fingerprint
+    if fingerprint is None:
+        baseline_runs = runs[:-1]
+    else:
+        baseline_runs = [
+            r for r in runs[:-1] if r.methodology_fingerprint == fingerprint
+        ]
+    if len(baseline_runs) + 1 < config.min_runs:
+        return []
     if not baseline_runs:
         return []
 
