@@ -122,7 +122,7 @@ prompts.
 | Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry project. | AgentOps, Foundry SDK calls, Doctor, Cockpit, and CI setup all need the same Azure identity context. |
 | You have the Foundry project endpoint and can create or publish one Travel Agent target. | The target is either `travel-agent:<version>` for prompt agents or an HTTP endpoint for hosted agents. |
 | You have a chat-capable Azure OpenAI deployment, for example `gpt-4o-mini`. | Local evals and CI variables need a judge model for evaluator calls. |
-| Application Insights is connected to the Foundry project or agent runtime, or you can create/attach it. | Foundry Traces, Operate metrics/Ask AI when available, Azure Monitor, Doctor, Cockpit, and evidence links need telemetry. |
+| Application Insights is connected to the Foundry project or agent runtime, or you can create/attach it. For Foundry trace-to-dataset flows, you can also grant Reader on App Insights and its backing Log Analytics workspace to the Foundry project managed identity. | Foundry Traces, Operate metrics/Ask AI when available, trace sampling, Azure Monitor, Doctor, Cockpit, and evidence links need telemetry. |
 | You can deploy or expose any hosted endpoint that CI will call. | `localhost` works for local eval; remote CI needs a reachable HTTPS URL. |
 | You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | PR and environment workflows only run after the repo is published. |
 | GitHub CLI is authenticated with `gh auth login` if you use GitHub PR commands while testing CI. | The regression and release-gate steps are smoother when repo, PR, and Actions access are already confirmed. |
@@ -524,8 +524,9 @@ environment variable or equivalent Azure DevOps pipeline variable, verify the
 OIDC principal has **both** Foundry User access on the dev Foundry project
 **and** Cognitive Services OpenAI User access on the underlying Azure AI
 Services account that hosts the evaluator model (both are required — without
-the OpenAI User role, every cloud eval metric returns null), and show me the
-plan before changing GitHub or Azure.
+the OpenAI User role, every cloud eval metric returns null), verify
+AZURE_TENANT_ID is the tenant that owns the Entra app registration and its
+federated credential, and show me the plan before changing GitHub or Azure.
 ```
 
 That value is not an `agentops init` answer. It tells the Foundry cloud eval
@@ -877,6 +878,13 @@ may not have live traffic, scheduled workflows may not have history, and trace
 regression candidates may not exist yet. That is useful tutorial feedback, not
 a failure of Doctor.
 
+If production telemetry *does* carry enough live traffic to trip latency or
+error criticals, those are honest signals — not tutorial noise. The thresholds
+that decide critical-vs-warning live in `.agentops/agent.yaml`
+(`checks.latency.p95_threshold_seconds`, `checks.errors.rate_threshold`) and are
+separate from the `agentops.yaml` eval-gate thresholds; raise them only if you
+deliberately want to relax the production gate for a demo.
+
 ## 10. Run Foundry red-team scans
 
 Red-team scans are a Foundry capability. Run them from Foundry Observability /
@@ -952,16 +960,31 @@ reviews and accepts them.
 agentops cockpit --workspace .
 ```
 
-Use Cockpit as the local command center:
+Cockpit starts a read-only local web server and prints
+`http://127.0.0.1:8090`. Open that URL in your browser; press `Ctrl+C` in
+the terminal to stop it. It reflects the **active azd environment**
+(`sandbox`, from `defaultEnvironment` in `.azure/config.json`) — there is no
+URL switch. To inspect `dev`, stop Cockpit, point the active env at `dev`
+(set `defaultEnvironment: dev` in `.azure/config.json`, or export
+`AZURE_ENV_NAME=dev`), then rerun the command.
 
-- Foundry connection and deep links;
-- Microsoft Foundry eval or AgentOps local eval gate status;
-- Doctor findings;
-- release evidence;
-- local eval history;
-- production telemetry snapshot;
-- CI/CD workflow status;
-- next actions.
+Read the page top to bottom and confirm each card:
+
+| Section | What to confirm |
+|---|---|
+| **Foundry connection** | The Foundry project and tenant resolve, and the agent identity matches your `agentops.yaml` target. |
+| **Open in Foundry** | The deep-links open your project in the correct tenant. |
+| **Observability readiness** | Trace setup / sampling status from the latest Doctor analysis. |
+| **AgentOps Doctor** | The same finding rollup from the Doctor / evidence-pack step (criticals first, then warnings). |
+| **Local eval history** | Your `agentops eval run` baseline and regression reruns appear. |
+| **Quality metrics** | Evaluator score trends from your runs. |
+| **Production telemetry** | App Insights latency / error snapshot (or a clear "no live traffic" state in a fresh workspace). |
+| **CI/CD Pipelines** | The workflows you generated are listed. |
+| **Next actions** | The prioritized backlog Cockpit derives from the open findings. |
+
+Cockpit does not run checks or mutate anything — it renders the latest
+`results.json`, Doctor report, and evidence pack you already produced, and
+links out to Foundry / Azure Monitor for live runtime data.
 
 ## Completion checklist
 

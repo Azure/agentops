@@ -119,6 +119,12 @@ In Settings → Secrets and variables → Actions → **Variables**, add:
 | `AZURE_OPENAI_DEPLOYMENT` | Model deployment used by local evaluators and AgentOps cloud eval judges |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Optional fallback when the Foundry project's App Insights connection cannot be auto-discovered |
 
+Set `AZURE_TENANT_ID` to the tenant that owns the app registration / federated
+credential used by `AZURE_CLIENT_ID`. Do not use a subscription
+`managedByTenants` tenant id unless the app registration and federated
+credential are also visible in that tenant; otherwise `azure/login` can fail at
+token issuance before AgentOps starts.
+
 Then on the Azure side, configure Workload Identity Federation
 (federated credentials) on the app registration so it can be assumed
 from GitHub Actions runs. See

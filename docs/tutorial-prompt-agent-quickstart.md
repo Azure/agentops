@@ -57,7 +57,7 @@ permission prompts.
 | You can create **two** Foundry projects in the same Azure subscription (or have two existing projects you can use). | The tutorial uses a sandbox project for authoring and experimentation plus a shared dev project for the PR gate. You only need to publish the agent in sandbox — CI auto-bootstraps it in dev (and later qa / prod). |
 | You can publish a prompt agent in the **sandbox** Foundry project. | The tutorial seeds `travel-agent:2` only in sandbox (Foundry portal typically numbers the first published version `:2`, not `:1`). Dev / qa / prod start empty; the prompt-agent deploy workflow creates the first version in those projects automatically using `prompt_agent_bootstrap` defaults plus `prompt_file`. |
 | The **same model deployment name** (for example `gpt-4o-mini`) exists in every Foundry project you plan to deploy to. | `prompt_agent_bootstrap.model` is a single value reused for every environment. If dev does not have that deployment, the first auto-bootstrap fails. |
-| You can create or attach Application Insights for at least the dev Foundry project. | Foundry Traces, the Operate dashboard, Doctor, and Cockpit need telemetry to tell the observability story. Sandbox observability is optional. |
+| You can create or attach Application Insights for at least the dev Foundry project, and can grant Reader to the dev project's managed identity on that App Insights resource and its backing Log Analytics workspace when workspace-based. | Foundry Traces, the Operate dashboard, trace-to-dataset generation, Doctor, and Cockpit need telemetry to tell the observability story. Sandbox observability is optional. |
 | You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate only runs after the repo is pushed. |
 | GitHub CLI is authenticated with `gh auth login` if you use the PR commands in this tutorial. | The regression step opens PRs and sends the reader directly to the workflow run. |
 | You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth and the dev Foundry project endpoint. |
@@ -336,6 +336,12 @@ For each project, please:
   uses a single bootstrap model value for every environment.
 - Attach or create an Application Insights resource for telemetry,
   starting with the dev project.
+- Grant or verify **Reader** on that Application Insights resource to the
+  **managed identity of the `travel-agent-dev` Foundry project**. Foundry's
+  trace-to-dataset flow runs as the project identity when it reads traces; the
+  Operate dashboard may still render for my signed-in user even when this
+  project identity permission is missing. If Application Insights is
+  workspace-based, also grant Reader on the backing Log Analytics workspace.
 - Grant or verify `Foundry User` access for my signed-in user on the parent
   Foundry / AI Services account so I can build agents in the
   Foundry UI. Some portal screens still call this role `Azure AI User`.
@@ -610,7 +616,7 @@ build the prompt agent. One of two things will be true:
 
 | What you see | What it means | What to do |
 |---|---|---|
-| An `appinsights` row with category `AppInsights` | The resource exists and is connected to the dev project. Auto-discovery will pick it up. | **You are done.** Skip the rest of this subsection and continue to section 9. |
+| An `appinsights` row with category `AppInsights` | The resource exists and is connected to the dev project. Auto-discovery will pick it up. | Continue with the trace-to-dataset access check below. |
 | No App Insights row in **Connected resources** | The resource was not connected in step 3. | Click **Add connection**, connect or create an Application Insights resource for the dev project, or paste a connection string manually. |
 
 **If Connected resources does not show App Insights**, the fastest fix is
@@ -619,6 +625,28 @@ and either pick an existing Application Insights resource or create one
 in the same resource group as the dev project. Once an `appinsights` row
 appears under **Connected resources**, you can again skip the manual env
 variable — auto-discovery will pick it up.
+
+**Also verify trace-to-dataset access now.** For the step 18
+trace-sampling flow, the **managed identity of the `travel-agent-dev`
+Foundry project** needs **Reader** on the connected Application Insights
+resource. If the App Insights component is workspace-based, grant the same
+Reader role on the backing Log Analytics workspace too. This is separate from
+your signed-in user's portal access and separate from GitHub OIDC. If you
+connected App Insights manually, open the Application Insights resource in
+Azure Portal → **Access control (IAM)** and add:
+
+| Field | Value |
+|---|---|
+| **Role** | Reader |
+| **Assign access to** | Managed identity |
+| **Managed identity** | `travel-agent-dev` Foundry project |
+
+Then open the Application Insights resource → **Properties** and check
+**Workspace Resource ID**. If it points to a Log Analytics workspace, open that
+workspace and repeat the same **Reader** assignment for the `travel-agent-dev`
+managed identity.
+
+Wait a few minutes for RBAC propagation before creating a dataset from traces.
 
 **Only if you specifically want to override which resource telemetry
 goes to** (advanced case, e.g. you have a dedicated observability
@@ -1080,11 +1108,13 @@ You have two ways to wire up ASSERT — pick whichever fits your workflow.
 
 If you installed the AgentOps coding-agent skills in step 4
 (`agentops skills install`), the `agentops-governance` skill knows the full
-recipe. In Copilot Chat (or Claude Code), say:
+recipe. In Copilot Chat (or Claude Code), paste this prompt:
 
-> Use the `agentops-governance` skill to scaffold ASSERT for this workspace.
-> Target the `gpt-4o-mini` deployment, cover prompt_injection / pii_leak /
-> jailbreak, 5 cases per dimension.
+```text
+Use the agentops-governance skill to scaffold ASSERT for this workspace.
+Target the gpt-4o-mini deployment, cover prompt_injection / pii_leak /
+jailbreak, 5 cases per dimension.
+```
 
 Copilot will install `assert-ai`, create `./assert/eval_config.yaml`, and
 append the `assert:` block to `agentops.yaml` for you. Skip to **Run it
@@ -1145,8 +1175,13 @@ Same pattern: Copilot can do it, or you can run the commands yourself.
 
 #### Option A — Ask Copilot
 
-> Use the `agentops-governance` skill to scaffold the Red Team runner.
-> Target `gpt-4o-mini`, fail when attack success rate exceeds 20%.
+Paste this prompt into Copilot Chat (or Claude Code):
+
+```text
+Use the agentops-governance skill to scaffold the Red Team runner for this
+workspace. Target the gpt-4o-mini deployment, fail when attack success rate
+exceeds 20%.
+```
 
 #### Option B — Run the commands yourself
 
@@ -1313,14 +1348,17 @@ project.
 
 This may be a brand-new folder with no Git repo or GitHub remote yet.
 Keep the scope to the PR gate and dev deploy only: create or connect the
-GitHub repo if needed, wire Azure OIDC and required Actions
-variables/secrets, create only the `dev` environment, verify the OIDC
-principal has **both** Foundry User access on the **dev** Foundry project
-**and** Cognitive Services OpenAI User on the underlying Azure AI Services
-account that hosts the evaluator model (both roles are required — without
-the OpenAI User role, the Foundry cloud graders fail with a 401 and every
-metric comes back null), and do not set up `qa`, `production`, scheduled
-Doctor, or hosted deployment workflows yet.
+GitHub repo if needed, ensure local `main` tracks `origin/main` after the
+first push/connect, wire Azure OIDC and required Actions variables/secrets,
+create only the `dev` environment, verify the OIDC principal has **both**
+Foundry User access on the **dev** Foundry project **and** Cognitive Services
+OpenAI User on the underlying Azure AI Services account that hosts the
+evaluator model (both roles are required — without the OpenAI User role, the
+Foundry cloud graders fail with a 401 and every metric comes back null),
+verify `AZURE_TENANT_ID` is the tenant that owns the Entra app registration
+and its federated credential (not just a subscription `managedByTenants`
+value), and do not set up `qa`, `production`, scheduled Doctor, or hosted
+deployment workflows yet.
 
 I am using trunk-based development with `main` as both my trunk and dev
 branch. The generator's stock dev-deploy trigger is `push: branches:
@@ -1340,12 +1378,20 @@ that needs owner/admin permission.
 The workflow skill will normally do the following, but call out anything
 it skips:
 
-- Create/connect the GitHub remote.
+- Create/connect the GitHub remote and ensure local `main` tracks
+  `origin/main` (`git branch -vv` should show `[origin/main]`). If the skill
+  skips this, run `git branch --set-upstream-to=origin/main main` before the
+  later tutorial steps that use `git pull`.
 - Create the `dev` GitHub environment.
 - Configure OIDC federated credentials between GitHub and Entra ID.
 - Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_CLIENT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (the dev
   endpoint), and `APPLICATIONINSIGHTS_CONNECTION_STRING` if available.
+- Verify `AZURE_TENANT_ID` against the app registration / federated
+  credential tenant before the first run. A subscription can be associated
+  with another tenant through `managedByTenants`; do not copy that tenant id
+  into the GitHub environment unless the app registration and federated
+  credential are actually visible there.
 - **Rewrite the dev deploy trigger to `main`.** The generator emits the
   stock GitFlow defaults (`pull_request: branches: [develop, "release/**",
   main]` on `agentops-pr.yml`, `push: branches: [develop]` on
@@ -1406,7 +1452,8 @@ If you want to wait on the first PR-workflow verification run from the
 terminal instead of the Actions UI:
 
 ```powershell
-$runId = gh run list --workflow agentops-pr.yml --branch main --limit 1 --json databaseId --jq '.[0].databaseId'
+$prBranch = gh pr view --json headRefName --jq '.headRefName'
+$runId = gh run list --workflow agentops-pr.yml --branch $prBranch --event pull_request --limit 1 --json databaseId --jq '.[0].databaseId'
 gh run view $runId --web
 gh run watch $runId --exit-status
 ```
@@ -1574,9 +1621,9 @@ thresholds are loose enough that a regression slips through, Doctor
 still catches it.
 
 ```powershell
-git switch main
-git pull
-git switch -c feature/regress-travel-agent
+git fetch origin
+$branch = "feature/regress-travel-agent-step16-$((Get-Date).ToString('yyyyMMddHHmmss'))"
+git switch -c $branch origin/main
 ```
 
 Edit `.agentops/prompts/travel-agent.md` to this intentionally vague
@@ -1592,8 +1639,8 @@ Commit and push:
 ```powershell
 git add .agentops\prompts\travel-agent.md
 git commit -m "Intentional regression: vague travel prompt"
-git push -u origin feature/regress-travel-agent
-gh pr create --base main --head feature/regress-travel-agent --title "Test AgentOps regression gate" --body "Evaluates an intentionally regressed travel-agent prompt."
+git push -u origin $branch
+gh pr create --base main --head $branch --title "Test AgentOps regression gate" --body "Evaluates an intentionally regressed travel-agent prompt."
 ```
 
 Watch the PR check:
@@ -1673,34 +1720,111 @@ regressions that thresholds alone miss, and the merge promotes through
 the deploy workflow. None of those gates require the developer to
 remember to look at a dashboard.
 
-## 18. Brief observability checkout (Foundry side)
+## 18. Observability checkout: traces into continuous evaluation
 
-The Foundry side of the loop is worth a short tour, even though it is
-not what AgentOps owns. This is the "Foundry tells you what happened"
-side of the conversation.
+Take a short tour of the Foundry runtime view, then turn the same production
+signal into evaluation coverage. This is the bridge from "what happened in
+real traces" to "what should keep getting evaluated."
 
 1. Open the `travel-agent-dev` project in the Foundry portal.
 2. Open the `travel-agent` agent and switch to the **Traces** tab. If
    Application Insights is not yet connected, connect or create the
    resource now.
-3. Find the most recent eval run in **Conversations** or
+3. Find a recent eval or playground run in **Conversations** or
    **Responses** and click the **Trace ID**. Inspect spans, latency,
-   model call, and the input/output panes.
-4. Switch to **Operate → Overview** and use **Ask AI** for a
-   dashboard-level summary. Example:
+   model calls, and the input/output panes.
+4. Switch to **Operate → Overview** and use **Ask AI** for a dashboard-level
+   summary. Example:
 
    ```text
    Help me identify any issues or anomalies in my agent metrics for
    the last 24 hours.
    ```
 
-5. Optionally, sample the same operation through Application Insights
-   Logs (KQL) for the engineer-level view.
+5. Now use the traces as evaluation signal. In the project, open
+   **Data Generation**, then select **Create dataset → From traces**.
+6. In **Create dataset**, configure:
 
-This is the observability surface AgentOps does **not** replace. Doctor
-will check whether this telemetry is wired (App Insights connection
-string, recent traces, etc.) and include it in the readiness call, but
-the runtime view itself lives in Foundry.
+   | Field | Value |
+   |---|---|
+   | **Dataset usage** | `Evaluation` |
+   | **Name** | `travel-agent-traces-step18` |
+   | **Agent** | `travel-agent` |
+   | **Date range** | Last day or last 7 days |
+   | **Maximum samples** | At least `15` |
+
+   Leave **Intelligent sampling** enabled when the time-range UI shows it.
+   Foundry will filter noisy traces, deduplicate near-identical prompts, and
+   select a representative sample instead of evaluating every request.
+
+   If the dialog shows **Setup incomplete: Assign the Foundry project's managed
+   identity the Reader role on Application Insights**, click **Resolve** if you
+   have permission. Otherwise ask an Azure admin to grant **Reader** on the
+   connected Application Insights resource to the **managed identity of the
+   `travel-agent-dev` Foundry project**. If Application Insights is
+   workspace-based, grant Reader on its backing Log Analytics workspace too.
+   Then wait a few minutes for RBAC to propagate and reopen the dialog.
+7. Select **Create** and track the background job on the **Data Generation**
+   tab. When it finishes, open the generated dataset from the **Data** tab and
+   preview the rows. This is the evaluation-ready sample created from real
+   traces.
+8. If the portal offers to start an evaluation from the completed job, open it
+   and confirm the generated dataset is selected. You do not need to finish a
+   new eval for this tutorial step; the point is to see how Foundry turns
+   traced behavior into a dataset you can evaluate continuously.
+
+> **Public preview.** Trace-to-dataset generation and intelligent sampling are
+> currently preview Foundry features. If your region or project does not show
+> **Create dataset → From traces**, continue with step 19 and treat this section
+> as a product tour.
+
+Optional KQL deep dive: query the evaluation metrics Foundry emits as
+`gen_ai.evaluation.result` events. These land in the **`AppEvents`** table, which
+only resolves in the **Log Analytics workspace** that backs your Application
+Insights resource — not in the App Insights *scoped* Logs blade. Open
+**Monitor → Logs** (or the connected Log Analytics workspace), set **Time range**
+to **Set in query** (the query below uses `ago(30d)`), and run:
+
+```kusto
+AppEvents
+| where TimeGenerated > ago(30d)
+| where Name == "gen_ai.evaluation.result"
+| extend p = parse_json(tostring(Properties))
+| extend Conversation = tostring(p["gen_ai.conversation.id"]),
+         Agent         = tostring(p["gen_ai.agent.id"]),
+         Evaluator     = tostring(p["gen_ai.evaluation.name"]),
+         Score         = todouble(p["gen_ai.evaluation.score.value"])
+| summarize Time = max(TimeGenerated), AvgScore = round(avg(Score), 2),
+            Metrics = make_bag(pack(Evaluator, Score))
+    by Conversation, Agent
+| order by Time desc
+| take 20
+```
+
+Each row is one conversation with its average score and a `Metrics` bag holding
+every evaluator score side by side. For a per-day rollup of average scores by
+evaluator, pivot instead:
+
+```kusto
+AppEvents
+| where TimeGenerated > ago(30d)
+| where Name == "gen_ai.evaluation.result"
+| extend p = parse_json(tostring(Properties))
+| extend Evaluator = tostring(p["gen_ai.evaluation.name"]),
+         Score     = todouble(p["gen_ai.evaluation.score.value"])
+| summarize AvgScore = round(avg(Score), 2) by Day = bin(TimeGenerated, 1d), Evaluator
+| evaluate pivot(Evaluator, any(AvgScore))
+| order by Day desc
+```
+
+> **Empty results?** Telemetry can be sparse, so `Last 24 hours` / `Last 7 days`
+> may return nothing. Widen the time range (`ago(30d)` with **Set in query**, or
+> **Last 30 days**) and confirm you are in the **Log Analytics workspace**, where
+> `AppEvents` resolves.
+
+Foundry gives you the runtime trace view and trace-sampled evaluation datasets;
+AgentOps Doctor checks that telemetry and release evidence are wired into the
+readiness story.
 
 ## 19. Sync local evidence and create the release evidence pack
 
@@ -1737,6 +1861,23 @@ deploys, explicit thresholds, or red-team/governance evidence. Treat those as th
 hardening backlog. The eval gates and the dev deploy loop are
 production-ready.
 
+You will likely also see **two critical findings** here, and that is expected
+in this tutorial:
+
+| Critical finding | Why it shows up |
+|---|---|
+| `latency.p95_production` | App Insights p95 latency exceeds the 5s default (a prompt agent reasoning over each request runs ~9–12s). |
+| `errors.production_rate` | Your own tutorial traffic (including the earlier `az login` / token retries) pushed the production error rate above the 5% default. |
+
+These criticals come from **real production telemetry of your own test
+traffic**, not from the release candidate's eval gate (which passed). They are
+honest signals: a real release would investigate latency and errors before
+promoting. For the tutorial they simply demonstrate that Doctor reads live
+runtime data. If you want to relax them for a demo, raise the Doctor thresholds
+in `.agentops/agent.yaml` (`checks.latency.p95_threshold_seconds` and
+`checks.errors.rate_threshold`) — these are separate from the `agentops.yaml`
+eval-gate thresholds.
+
 If you want to show the governance evidence path in the video, keep it as a
 short optional callout:
 
@@ -1756,10 +1897,31 @@ Guardrail setup, and red-team scans still happen in their owning tools.
 agentops cockpit --workspace .
 ```
 
-Open the local URL printed by the command. The Cockpit should show
-Foundry connection (sandbox by default; you can switch in the URL),
-AgentOps cloud-eval readiness, Doctor findings, release evidence, the
-PR and dev deploy CI pipelines, and next actions.
+Cockpit starts a read-only local web server and prints
+`http://127.0.0.1:8090`. Open that URL in your browser; press `Ctrl+C`
+in the terminal to stop it. It reflects the **active azd environment**
+(`sandbox`, from `defaultEnvironment` in `.azure/config.json`) — there is
+no URL switch. To inspect `dev` instead, stop Cockpit, point the active
+env at `dev` (set `defaultEnvironment: dev` in `.azure/config.json`, or
+export `AZURE_ENV_NAME=dev`), then rerun the command.
+
+Read the page top to bottom and confirm each card against what you built:
+
+| Section | What to confirm in this run |
+|---|---|
+| **Foundry connection** | Foundry project = `travel-agent-sandbox`, your Azure tenant is resolved (`az login`), and Agent = `travel-agent:2`. |
+| **Open in Foundry** | The deep-links open your sandbox project in the correct tenant. |
+| **Observability readiness** | Trace setup / sampling status pulled from the latest Doctor analysis. |
+| **AgentOps Doctor** | The same finding rollup you saw in step 19 — **2 critical** (`latency.p95_production`, `errors.production_rate`), plus warnings. |
+| **Local eval history** | Your `agentops eval run` from step 19 appears as the latest entry. |
+| **Quality metrics** | coherence / fluency / similarity / response_completeness trend cards from your runs. |
+| **Production telemetry** | App Insights p95 latency (~11.7s) and error rate (~12%) — the source of the two criticals. |
+| **CI/CD Pipelines** | The `pr` and `dev` workflows you generated are listed; `qa`/`prod`/scheduled are absent (expected). |
+| **Next actions** | The prioritized backlog Cockpit derives from the open findings. |
+
+Cockpit does not run checks or mutate anything — it renders the latest
+`results.json`, Doctor report, and evidence pack you already produced, and
+links out to Foundry / Azure Monitor for live runtime data.
 
 ## Success criteria
 
