@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.23] - 2026-06-12
+
 ### Fixed
 - **`agentops-governance` skill now scaffolds a valid `assert-ai 0.1.0` config.**
   The previous skeleton invented top-level keys (`dimensions:`,
