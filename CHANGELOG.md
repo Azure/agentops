@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.3.21] - 2026-06-12
+
 ### Changed
 - **`agentops-workflow` skill now verifies OIDC tenant, branch upstream
   tracking, and trace-sampling RBAC before wiring CI.** The packaged skill
