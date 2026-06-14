@@ -16,6 +16,9 @@ from agentops.agent.checks.observability import run_observability_check
 from agentops.agent.checks.opex_workspace import run_opex_workspace_check
 from agentops.agent.checks.opex import run_opex_check
 from agentops.agent.checks.posture import run_posture_check
+from agentops.agent.checks.rbac_openai_data_plane import (
+    run_rbac_openai_data_plane_check,
+)
 from agentops.agent.checks.regression import run_regression_check
 from agentops.agent.checks.release_readiness import run_release_readiness_check
 from agentops.agent.checks.safety import run_safety_check
@@ -145,6 +148,7 @@ def analyze(
     findings.extend(run_errors_check(monitor, foundry, config.checks.errors))
     findings.extend(run_safety_check(history, config.checks.safety, monitor, foundry))
     findings.extend(run_posture_check(resources, posture_config))
+    findings.extend(run_rbac_openai_data_plane_check(resources))
     findings.extend(run_opex_workspace_check(workspace))
     findings.extend(run_governance_check(workspace))
     findings.extend(run_observability_check(workspace))
