@@ -5,6 +5,14 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **`agentops skills install --platform` help text now lists `cursor`.** The
+  CLI option help was advertising only `copilot` and `claude` even though the
+  `cursor` platform is fully implemented (registers rules in
+  `.cursor/rules/agentops.mdc`). Updated to `Target platform(s): copilot,
+  claude, cursor.` so users discover the supported value from `--help`.
+  ([#157](https://github.com/Azure/agentops/issues/157))
+
 ## [0.3.23] - 2026-06-12
 
 ### Fixed
