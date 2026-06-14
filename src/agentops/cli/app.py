@@ -3313,7 +3313,7 @@ def cmd_skills_install(
         typer.Option(
             "--platform",
             "-p",
-            help="Target platform(s): copilot, claude.",
+            help="Target platform(s): copilot, claude, cursor.",
         ),
     ] = None,
     from_github: Annotated[

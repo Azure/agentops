@@ -5,6 +5,41 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-14
+
+### Added
+- **`agentops doctor` now detects missing OpenAI data-plane RBAC on the Foundry
+  resource.** A new `security.missing_openai_data_plane_rbac` check resolves the
+  signed-in principal (via the `oid` claim of the access token used by
+  `DefaultAzureCredential`) and lists role assignments at the Foundry account
+  scope using `azure-mgmt-authorization`. When none of *Cognitive Services
+  OpenAI User*, *Cognitive Services OpenAI Contributor* or *Cognitive Services
+  Contributor* is present (directly or inherited), Doctor surfaces an
+  actionable WARNING that includes the exact `az role assignment create`
+  command for *Cognitive Services OpenAI User* scoped to the Foundry account.
+  The check is read-only and skips silently when the SDK, principal or scope
+  cannot be resolved. ([#228](https://github.com/Azure/agentops/issues/228))
+
+### Changed
+- **`agentops-pr` workflow templates now auto-detect a committed baseline.**
+  Both the GitHub Actions (`.github/workflows/agentops-pr.yml`) and Azure
+  DevOps (`.azuredevops/pipelines/agentops-pr.yml`) PR templates emitted by
+  `agentops workflow generate` wrap `agentops eval run` with a small bash
+  guard. When `.agentops/baseline/results.json` exists in the consumer
+  repo, the step automatically passes `--baseline .agentops/baseline/results.json`;
+  without the file the behaviour is unchanged. Aligns shipped templates
+  with the `tutorial-baseline-comparison.md` "drop a file in your repo"
+  promise. Deploy templates (`dev`/`qa`/`prod`) are untouched.
+  ([#155](https://github.com/Azure/agentops/issues/155))
+
+### Fixed
+- **`agentops skills install --platform` help text now lists `cursor`.** The
+  CLI option help was advertising only `copilot` and `claude` even though the
+  `cursor` platform is fully implemented (registers rules in
+  `.cursor/rules/agentops.mdc`). Updated to `Target platform(s): copilot,
+  claude, cursor.` so users discover the supported value from `--help`.
+  ([#157](https://github.com/Azure/agentops/issues/157))
+
 ## [0.3.23] - 2026-06-12
 
 ### Fixed
