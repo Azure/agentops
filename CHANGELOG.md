@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-06-14
+
 ### Added
 - **`agentops doctor` now detects missing OpenAI data-plane RBAC on the Foundry
   resource.** A new `security.missing_openai_data_plane_rbac` check resolves the
