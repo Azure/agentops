@@ -286,6 +286,83 @@ def test_generate_workflows_rejects_unknown_doctor_gate(tmp_path: Path) -> None:
         generate_cicd_workflows(directory=tmp_path, kinds=["pr"], doctor_gate="info")
 
 
+def test_pr_template_autodetects_committed_baseline(tmp_path: Path) -> None:
+    """The PR gate must auto-detect a committed baseline file.
+
+    If `.agentops/baseline/results.json` is present in the consumer repo,
+    the GitHub Actions PR template wraps `agentops eval run` so it passes
+    `--baseline .agentops/baseline/results.json`. Without the file the
+    behaviour is unchanged because `BASELINE_ARG` stays empty.
+
+    Regression guard for #155.
+    """
+    generate_cicd_workflows(directory=tmp_path, kinds=["pr"])
+    content = (tmp_path / _PR_PATH).read_text(encoding="utf-8")
+
+    assert 'BASELINE_ARG=""' in content
+    assert "if [ -f .agentops/baseline/results.json ]; then" in content
+    assert (
+        'BASELINE_ARG="--baseline .agentops/baseline/results.json"'
+        in content
+    )
+    # The eval invocation honours the variable.
+    assert "agentops eval run" in content
+    assert "$BASELINE_ARG" in content
+
+
+def test_deploy_templates_do_not_inject_baseline_autodetect(
+    tmp_path: Path,
+) -> None:
+    """Baseline auto-detect is PR-only; deploy templates stay unchanged."""
+    generate_cicd_workflows(directory=tmp_path, kinds=["dev", "qa", "prod"])
+    for rel in (_DEV_PATH, _QA_PATH, _PROD_PATH):
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        assert "BASELINE_ARG" not in content, rel
+        assert "$BASELINE_ARG" not in content, rel
+
+
+def test_azure_devops_pr_template_autodetects_committed_baseline(
+    tmp_path: Path,
+) -> None:
+    """ADO PR pipeline mirrors the GitHub Actions baseline auto-detect.
+
+    Regression guard for #155 across both supported CI platforms.
+    """
+    generate_cicd_workflows(
+        directory=tmp_path, kinds=["pr"], platform="azure-devops"
+    )
+    content = (
+        tmp_path / ".azuredevops/pipelines/agentops-pr.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'BASELINE_ARG=""' in content
+    assert "if [ -f .agentops/baseline/results.json ]; then" in content
+    assert (
+        'BASELINE_ARG="--baseline .agentops/baseline/results.json"'
+        in content
+    )
+    assert "agentops eval run" in content
+    assert "$BASELINE_ARG" in content
+
+
+def test_azure_devops_deploy_templates_do_not_inject_baseline_autodetect(
+    tmp_path: Path,
+) -> None:
+    """ADO deploy pipelines stay unchanged; baseline detect is PR-only."""
+    generate_cicd_workflows(
+        directory=tmp_path,
+        kinds=["dev", "qa", "prod"],
+        platform="azure-devops",
+    )
+    for rel in (
+        ".azuredevops/pipelines/agentops-deploy-dev.yml",
+        ".azuredevops/pipelines/agentops-deploy-qa.yml",
+        ".azuredevops/pipelines/agentops-deploy-prod.yml",
+    ):
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        assert "BASELINE_ARG" not in content, rel
+
+
 def test_dev_template_triggers_and_environment(tmp_path: Path) -> None:
     generate_cicd_workflows(directory=tmp_path, kinds=["dev"])
     content = (tmp_path / _DEV_PATH).read_text(encoding="utf-8")
