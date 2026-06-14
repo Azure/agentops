@@ -5,6 +5,18 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **`agentops-pr` workflow templates now auto-detect a committed baseline.**
+  Both the GitHub Actions (`.github/workflows/agentops-pr.yml`) and Azure
+  DevOps (`.azuredevops/pipelines/agentops-pr.yml`) PR templates emitted by
+  `agentops workflow generate` wrap `agentops eval run` with a small bash
+  guard. When `.agentops/baseline/results.json` exists in the consumer
+  repo, the step automatically passes `--baseline .agentops/baseline/results.json`;
+  without the file the behaviour is unchanged. Aligns shipped templates
+  with the `tutorial-baseline-comparison.md` "drop a file in your repo"
+  promise. Deploy templates (`dev`/`qa`/`prod`) are untouched.
+  ([#155](https://github.com/Azure/agentops/issues/155))
+
 ### Fixed
 - **`agentops skills install --platform` help text now lists `cursor`.** The
   CLI option help was advertising only `copilot` and `claude` even though the

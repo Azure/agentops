@@ -301,19 +301,74 @@ _PROMPT_AGENT_TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
 }
 
 
+# Path of the optional committed baseline file consumed by the PR template's
+# ``agentops eval run`` step. When present in the consumer repo, the PR
+# eval step passes ``--baseline <path>`` so threshold comparisons run
+# against the committed baseline instead of any prior artifact.
+_PR_BASELINE_PATH: str = ".agentops/baseline/results.json"
+
+
+def _baseline_arg_suffix(kind: str) -> str:
+    """Suffix appended to ``agentops eval run --config ...`` for PR templates.
+
+    Returns ``" $BASELINE_ARG"`` for ``kind == 'pr'`` so the bash variable
+    set by the auto-detect block is honored, or an empty string otherwise.
+    """
+    return " $BASELINE_ARG" if kind == "pr" else ""
+
+
+def _github_baseline_autodetect_block(kind: str) -> str:
+    """Bash that auto-detects ``.agentops/baseline/results.json`` for PR jobs.
+
+    Indented to match the ``run: |`` block in the GitHub Actions step
+    (``"          "`` for the leading spaces). For non-PR kinds returns the
+    empty string so the deploy templates' bash is unchanged.
+    """
+    if kind != "pr":
+        return ""
+    return (
+        f"          BASELINE_ARG=\"\"\n"
+        f"          if [ -f {_PR_BASELINE_PATH} ]; then\n"
+        f"            BASELINE_ARG=\"--baseline {_PR_BASELINE_PATH}\"\n"
+        f"          fi\n"
+    )
+
+
+def _ado_baseline_autodetect_block(kind: str) -> str:
+    """Bash that auto-detects the committed baseline for ADO PR pipelines.
+
+    Indented to sit inside ``inlineScript: |`` (``"      "`` leading
+    spaces). The whole task block is later re-indented by ``_indent_block``
+    using ``base_indent`` so the resulting YAML stays valid.
+    """
+    if kind != "pr":
+        return ""
+    return (
+        f"      BASELINE_ARG=\"\"\n"
+        f"      if [ -f {_PR_BASELINE_PATH} ]; then\n"
+        f"        BASELINE_ARG=\"--baseline {_PR_BASELINE_PATH}\"\n"
+        f"      fi\n"
+    )
+
+
 def _eval_substitutions(
     platform: str,
     eval_runner: str,
     config_path: str,
     *,
+    kind: str,
     ado_indent: int = 10,
 ) -> Mapping[str, str]:
     if platform == "azure-devops":
-        return _ado_eval_substitutions(eval_runner, config_path, base_indent=ado_indent)
-    return _github_eval_substitutions(eval_runner, config_path)
+        return _ado_eval_substitutions(
+            eval_runner, config_path, kind=kind, base_indent=ado_indent
+        )
+    return _github_eval_substitutions(eval_runner, config_path, kind=kind)
 
 
-def _github_eval_substitutions(eval_runner: str, config_path: str) -> Mapping[str, str]:
+def _github_eval_substitutions(
+    eval_runner: str, config_path: str, *, kind: str
+) -> Mapping[str, str]:
     if eval_runner == AZD_EVAL_RUNNER:
         extension_version = azd_ai_agents_extension_version()
         return {
@@ -478,7 +533,7 @@ def _github_eval_substitutions(eval_runner: str, config_path: str) -> Mapping[st
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
         run: |
           set +e
-          agentops eval run --config \"{config_path}\"
+{_github_baseline_autodetect_block(kind)}          agentops eval run --config \"{config_path}\"{_baseline_arg_suffix(kind)}
           ec=$?
           echo \"exit_code=$ec\" >> \"$GITHUB_OUTPUT\"
           if [ $ec -eq 0 ]; then
@@ -500,6 +555,7 @@ def _ado_eval_substitutions(
     eval_runner: str,
     config_path: str,
     *,
+    kind: str,
     base_indent: int,
 ) -> Mapping[str, str]:
     if eval_runner == AZD_EVAL_RUNNER:
@@ -647,7 +703,7 @@ def _ado_eval_substitutions(
     scriptLocation: inlineScript
     inlineScript: |
       set +e
-      agentops eval run --config \"{config_path}\"
+{_ado_baseline_autodetect_block(kind)}      agentops eval run --config \"{config_path}\"{_baseline_arg_suffix(kind)}
       code=$?
       echo \"##vso[task.setvariable variable=AGENTOPS_EVAL_EXIT_CODE]$code\"
       exit $code
@@ -789,6 +845,7 @@ def generate_cicd_workflows(
                 platform,
                 effective_eval_runner,
                 eval_config,
+                kind=kind,
                 ado_indent=ado_indent,
             )
         )
