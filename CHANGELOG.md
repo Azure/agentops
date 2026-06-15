@@ -5,6 +5,24 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-15
+
+### Changed
+- **PR-stage Foundry prompt-agent versions are now tagged at the source.** When
+  `agentops.pipeline.prompt_deploy stage` runs in a PR context (GitHub Actions
+  `pull_request` event or Azure DevOps `BUILD_REASON=PullRequest`), the version
+  it creates in the dev Foundry project carries metadata
+  `agentops:candidate=true`, `agentops:pr=<number>`, and
+  `agentops:created_at=<ISO timestamp>`. Portal viewers can filter the
+  Versions tab on `agentops:candidate` to separate abandoned PR candidates
+  from deployed-of-record versions, and downstream consumers that resolve
+  "latest" can refuse to pick up candidates. Deployed-of-record versions
+  (push to `main`/`develop`/`release/**` or `workflow_dispatch`) are not
+  tagged, so absence of `agentops:candidate` is the deployed-of-record
+  signal. The PR/deploy workflow templates and the prompt-agent quickstart
+  tutorial are updated to describe the new contract.
+  ([#214](https://github.com/Azure/agentops/issues/214))
+
 ## [0.4.0] - 2026-06-14
 
 ### Added

@@ -1370,11 +1370,18 @@ The PR workflow now has two jobs:
 
 > **Why does the PR workflow stage in dev, not sandbox?** The PR gate
 > must evaluate the same target the deploy workflow will use. Sandbox
-> is the author's playground and never receives CI traffic. PR
-> candidates accumulate in dev over time and may need periodic
-> cleanup according to your team's Foundry retention policy; AgentOps
-> uses prompt SHAs and git SHAs as the durable identity, not old
-> candidate version numbers.
+> is the author's playground and never receives CI traffic.
+>
+> Candidate versions created by PR runs are tagged in Foundry with
+> `agentops:candidate=true` plus `agentops:pr=<number>` and
+> `agentops:created_at=<ISO timestamp>`. Portal viewers can filter the
+> Versions tab on `agentops:candidate` to separate "abandoned PR
+> candidates" from "deployed versions of record". Downstream consumers
+> that resolve `<agent>` to "latest" should skip versions carrying
+> `agentops:candidate=true`; the supported pinning mechanism remains
+> `foundry-agent.json`, which always points at the deployed-of-record
+> version. AgentOps uses prompt SHAs and git SHAs as the durable
+> identity, not old candidate version numbers.
 
 The dev deploy workflow stages a candidate (same logic), evaluates it,
 summarizes the deployment via `prompt_deploy summarize`, and uploads

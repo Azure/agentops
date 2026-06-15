@@ -12,9 +12,10 @@
 # Notes:
 #   - Each PR run creates or reuses a candidate version in the dev
 #     Foundry project. AgentOps deduplicates only when the prompt is
-#     byte-identical to the current seed version's instructions; PR
-#     candidates can therefore accumulate over time and may need to be
-#     cleaned up out-of-band.
+#     byte-identical to the current seed version's instructions.
+#     Candidate versions are tagged with `agentops:candidate=true` and
+#     `agentops:pr=<number>` so portal viewers can filter them out and
+#     consumers that resolve "latest" can refuse to pick them up.
 #   - Merge is what promotes the candidate via the deploy pipeline.
 #     This PR pipeline does not record the candidate as deployed.
 #

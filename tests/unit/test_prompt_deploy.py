@@ -454,3 +454,208 @@ def test_create_agent_version_body_uses_flat_definition_dict(monkeypatch) -> Non
     assert body["definition"]["kind"] == "prompt"
     assert body["metadata"] == {"agentops.env": "dev"}
     assert body["description"] == "desc"
+
+
+# ---------------------------------------------------------------------------
+# Candidate tagging (issue #214)
+#
+# When the staging step runs from a PR-stage workflow, the version it creates
+# in Foundry must carry `agentops:candidate=true` so portal viewers can filter
+# it out and downstream consumers can refuse to resolve "latest" to it.
+# Deployed-of-record runs (push / workflow_dispatch / Azure DevOps non-PR)
+# must NOT carry that tag.
+# ---------------------------------------------------------------------------
+
+
+def _clear_ci_env(monkeypatch) -> None:
+    """Drop CI env vars that ``_detect_pr_stage`` reads, so tests start clean."""
+
+    for name in (
+        "GITHUB_EVENT_NAME",
+        "GITHUB_REF",
+        "GITHUB_REF_NAME",
+        "BUILD_REASON",
+        "SYSTEM_PULLREQUEST_PULLREQUESTNUMBER",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_detect_pr_stage_returns_pr_number_in_github_pull_request(monkeypatch) -> None:
+    _clear_ci_env(monkeypatch)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_REF", "refs/pull/214/merge")
+
+    assert prompt_deploy._detect_pr_stage() == "214"
+
+
+def test_detect_pr_stage_falls_back_to_ref_name(monkeypatch) -> None:
+    _clear_ci_env(monkeypatch)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_REF", "")
+    monkeypatch.setenv("GITHUB_REF_NAME", "42/merge")
+
+    assert prompt_deploy._detect_pr_stage() == "42"
+
+
+def test_detect_pr_stage_returns_empty_string_when_pr_number_unknown(monkeypatch) -> None:
+    _clear_ci_env(monkeypatch)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/feature")
+
+    # PR context but no parseable number: still flag as candidate.
+    assert prompt_deploy._detect_pr_stage() == ""
+
+
+def test_detect_pr_stage_returns_none_for_push_or_dispatch(monkeypatch) -> None:
+    _clear_ci_env(monkeypatch)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+
+    assert prompt_deploy._detect_pr_stage() is None
+
+
+def test_detect_pr_stage_returns_pr_number_in_azure_devops(monkeypatch) -> None:
+    _clear_ci_env(monkeypatch)
+    monkeypatch.setenv("BUILD_REASON", "PullRequest")
+    monkeypatch.setenv("SYSTEM_PULLREQUEST_PULLREQUESTNUMBER", "77")
+
+    assert prompt_deploy._detect_pr_stage() == "77"
+
+
+def test_detect_pr_stage_returns_none_when_no_ci_env(monkeypatch) -> None:
+    _clear_ci_env(monkeypatch)
+
+    assert prompt_deploy._detect_pr_stage() is None
+
+
+def test_stage_prompt_agent_candidate_tags_pr_versions(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """In a GitHub PR context, the version created in Foundry must carry
+    ``agentops:candidate=true`` and ``agentops:pr=<number>`` so portal
+    viewers and downstream resolvers can recognize it as ephemeral.
+    """
+
+    _clear_ci_env(monkeypatch)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request")
+    monkeypatch.setenv("GITHUB_REF", "refs/pull/214/merge")
+
+    config = tmp_path / "agentops.yaml"
+    dataset = tmp_path / "data.jsonl"
+    prompt = tmp_path / "prompt.md"
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    prompt.write_text("new instructions\n", encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: travel-agent:3",
+                "dataset: data.jsonl",
+                "prompt_file: prompt.md",
+                "project_endpoint: https://example.services.ai.azure.com/api/projects/p",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    current = SimpleNamespace(
+        id="agent-version-3",
+        version="3",
+        definition={"kind": "prompt", "model": "gpt-4o-mini", "instructions": "old"},
+        metadata={},
+    )
+    captured: dict = {}
+
+    monkeypatch.setattr(
+        prompt_deploy,
+        "_get_agent_version",
+        lambda endpoint, name, version: current,
+    )
+
+    def fake_create(endpoint, name, definition, *, metadata, description):
+        captured["metadata"] = metadata
+        return SimpleNamespace(id="agent-version-4", version="4")
+
+    monkeypatch.setattr(prompt_deploy, "_create_agent_version", fake_create)
+
+    prompt_deploy.stage_prompt_agent_candidate(
+        config_path=config,
+        environment="dev",
+        output_path=tmp_path / ".agentops/deployments/foundry-agent.json",
+        eval_config_path=tmp_path / ".agentops/deployments/agentops.candidate.yaml",
+    )
+
+    metadata = captured["metadata"]
+    assert metadata["agentops:candidate"] == "true"
+    assert metadata["agentops:pr"] == "214"
+    assert "agentops:created_at" in metadata
+    # Existing deployment metadata is preserved alongside candidate tags.
+    assert metadata["agentops.env"] == "dev"
+
+
+def test_stage_prompt_agent_candidate_does_not_tag_deployed_of_record(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Push to main / workflow_dispatch / non-PR Azure DevOps runs must NOT
+    carry the ``agentops:candidate`` tag — absence of the tag is what marks
+    a version as deployed of record.
+    """
+
+    _clear_ci_env(monkeypatch)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/main")
+
+    config = tmp_path / "agentops.yaml"
+    dataset = tmp_path / "data.jsonl"
+    prompt = tmp_path / "prompt.md"
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    prompt.write_text("new instructions\n", encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: travel-agent:3",
+                "dataset: data.jsonl",
+                "prompt_file: prompt.md",
+                "project_endpoint: https://example.services.ai.azure.com/api/projects/p",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    current = SimpleNamespace(
+        id="agent-version-3",
+        version="3",
+        definition={"kind": "prompt", "model": "gpt-4o-mini", "instructions": "old"},
+        metadata={},
+    )
+    captured: dict = {}
+
+    monkeypatch.setattr(
+        prompt_deploy,
+        "_get_agent_version",
+        lambda endpoint, name, version: current,
+    )
+
+    def fake_create(endpoint, name, definition, *, metadata, description):
+        captured["metadata"] = metadata
+        return SimpleNamespace(id="agent-version-4", version="4")
+
+    monkeypatch.setattr(prompt_deploy, "_create_agent_version", fake_create)
+
+    prompt_deploy.stage_prompt_agent_candidate(
+        config_path=config,
+        environment="dev",
+        output_path=tmp_path / ".agentops/deployments/foundry-agent.json",
+        eval_config_path=tmp_path / ".agentops/deployments/agentops.candidate.yaml",
+    )
+
+    metadata = captured["metadata"]
+    assert "agentops:candidate" not in metadata
+    assert "agentops:pr" not in metadata
+    assert "agentops:created_at" not in metadata
+    # Deployment-identity metadata is still present.
+    assert metadata["agentops.env"] == "dev"
+
