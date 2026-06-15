@@ -424,7 +424,57 @@ def _deployment_metadata(*, environment: str, prompt_hash: str) -> Dict[str, str
     workflow_url = _workflow_url()
     if workflow_url:
         metadata["agentops.workflow_url"] = workflow_url[:512]
+
+    # When the staging step is invoked from a PR-stage workflow, mark the
+    # version as a candidate so portal viewers can filter it out and naive
+    # consumers that resolve "latest" can refuse to pick it up. See issue
+    # #214 for the full rationale.
+    pr_number = _detect_pr_stage()
+    if pr_number is not None:
+        metadata["agentops:candidate"] = "true"
+        if pr_number:
+            metadata["agentops:pr"] = pr_number[:512]
+        metadata["agentops:created_at"] = datetime.now(timezone.utc).isoformat()
+
     return {key: value for key, value in metadata.items() if value}
+
+
+def _detect_pr_stage() -> Optional[str]:
+    """Return the PR number string when running in a PR-stage context.
+
+    Returns:
+        - A PR number (e.g. ``"42"``) when both the PR context and number are
+          identifiable.
+        - An empty string when the PR context is detected but the number cannot
+          be parsed (the version is still flagged as a candidate).
+        - ``None`` when no PR context is detected (deployed-of-record path).
+
+    Detection covers the two CI platforms AgentOps generates workflows for:
+    GitHub Actions (``GITHUB_EVENT_NAME == 'pull_request'``) and Azure
+    DevOps (``BUILD_REASON == 'PullRequest'``).
+    """
+
+    if os.environ.get("GITHUB_EVENT_NAME") == "pull_request":
+        ref = os.environ.get("GITHUB_REF", "")
+        # ``refs/pull/<N>/merge`` or ``refs/pull/<N>/head``.
+        if ref.startswith("refs/pull/"):
+            parts = ref.split("/")
+            if len(parts) >= 3 and parts[2].isdigit():
+                return parts[2]
+        ref_name = os.environ.get("GITHUB_REF_NAME", "")
+        # GITHUB_REF_NAME for PRs is shaped like ``<N>/merge``.
+        head = ref_name.split("/", 1)[0] if ref_name else ""
+        if head.isdigit():
+            return head
+        return ""
+
+    if os.environ.get("BUILD_REASON") == "PullRequest":
+        return (
+            os.environ.get("SYSTEM_PULLREQUEST_PULLREQUESTNUMBER")
+            or ""
+        )
+
+    return None
 
 
 def _git_sha() -> str:
