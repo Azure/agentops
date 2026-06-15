@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-06-15
+
 ### Changed
 - **PR-stage Foundry prompt-agent versions are now tagged at the source.** When
   `agentops.pipeline.prompt_deploy stage` runs in a PR context (GitHub Actions
