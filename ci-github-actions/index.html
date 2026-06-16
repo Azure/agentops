@@ -235,7 +235,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../tutorial-end-to-end/" class="md-tabs__link">
+        <a href="../tutorial-prompt-agent/" class="md-tabs__link">
           
   
   Tutorials
@@ -455,53 +455,53 @@
   
   
     <li class="md-nav__item">
+      <a href="../tutorial-prompt-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prompt Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted or HTTP Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../tutorial-end-to-end/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    End-to-End
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-hosted-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Hosted Agent Quickstart
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-prompt-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Prompt Agent Quickstart
+    Full End-to-End Tutorial
   </span>
   
 
@@ -591,27 +591,6 @@
   
   <span class="md-ellipsis">
     Core Concepts
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../bundles/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Bundles
   </span>
   
 
@@ -1606,69 +1585,68 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 </tbody>
 </table>
 <h2 id="gitflow-assumed">GitFlow assumed<a class="headerlink" href="#gitflow-assumed" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>flowchart LR
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    feat[&quot;feature/*&quot;] --&gt;|PR| prGate1{{&quot;agentops-pr.yml&lt;br/&gt;(gate)&quot;}}
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    prGate1 --&gt;|merge| dev[&quot;develop&quot;]
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    dev --&gt; deployDev[&quot;agentops-deploy-dev.yml&quot;]
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    deployDev --&gt; DEV([&quot;DEV&quot;])
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    rel[&quot;release/*&quot;] --&gt;|push| deployQa[&quot;agentops-deploy-qa.yml&quot;]
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    deployQa --&gt; QA([&quot;QA&quot;])
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    rel --&gt;|PR| prGate2{{&quot;agentops-pr.yml&lt;br/&gt;(gate)&quot;}}
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    prGate2 --&gt;|merge| main[&quot;main&quot;]
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    main --&gt; deployProd[&quot;agentops-deploy-prod.yml&quot;]
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    deployProd --&gt; PROD([&quot;PROD&lt;br/&gt;(required reviewers)&quot;])
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    class prGate1,prGate2 gate;
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    class DEV,QA,PROD env;
-</code></pre></div>
+<pre class="mermaid"><code>flowchart LR
+    feat["feature/*"] --&gt;|PR| prGate1{{"agentops-pr.yml&lt;br/&gt;(gate)"}}
+    prGate1 --&gt;|merge| dev["develop"]
+    dev --&gt; deployDev["agentops-deploy-dev.yml"]
+    deployDev --&gt; DEV(["DEV"])
+
+    rel["release/*"] --&gt;|push| deployQa["agentops-deploy-qa.yml"]
+    deployQa --&gt; QA(["QA"])
+
+    rel --&gt;|PR| prGate2{{"agentops-pr.yml&lt;br/&gt;(gate)"}}
+    prGate2 --&gt;|merge| main["main"]
+    main --&gt; deployProd["agentops-deploy-prod.yml"]
+    deployProd --&gt; PROD(["PROD&lt;br/&gt;(required reviewers)"])
+
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
+    class prGate1,prGate2 gate;
+    class DEV,QA,PROD env;</code></pre>
 <p>If you are on trunk-based development, generate only the templates you
 need: <code>agentops workflow generate --kinds pr,dev,prod</code>.</p>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># 1. Analyze and fix eval setup before the first blocking run.</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1"># 2. Make sure your eval works locally first.</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>run
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># 3. Analyze the repo shape before generating workflows.</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># 4. Generate the PR gate first.</span>
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="c1"># 5. Configure GitHub (see sections below):</span>
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="c1">#    - OIDC repo variables</span>
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="c1">#    - dev environment</span>
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="c1">#    - branch protection on develop and main</span>
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>
-<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a><span class="c1"># 6. Commit and push the PR gate.</span>
-<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>
-<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="c1"># 7. Only after deploy wiring is real, generate the full scaffold.</span>
-<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="c1">#    auto uses azd when azure.yaml exists, or prompt-agent when agentops.yaml</span>
-<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="c1">#    targets a Foundry prompt agent (name:version).</span>
-<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod<span class="w"> </span>--deploy-mode<span class="w"> </span>auto<span class="w"> </span>--force
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 1. Analyze and fix eval setup before the first blocking run.</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># 2. Make sure your eval works locally first.</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>run
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># 3. Analyze the repo shape before generating workflows.</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="c1"># 4. Generate the PR gate first.</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="c1"># 5. Configure GitHub (see sections below):</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="c1">#    - OIDC repo variables</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="c1">#    - dev environment</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="c1">#    - branch protection on develop and main</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="c1"># 6. Commit and push the PR gate.</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="c1"># 7. Only after deploy wiring is real, generate the full scaffold.</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="c1">#    auto uses azd when azure.yaml exists, or prompt-agent when agentops.yaml</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="c1">#    targets a Foundry prompt agent (name:version).</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod<span class="w"> </span>--deploy-mode<span class="w"> </span>auto<span class="w"> </span>--force
 </code></pre></div>
 <h2 id="copilot-assisted-setup">Copilot-assisted setup<a class="headerlink" href="#copilot-assisted-setup" title="Permanent link">&para;</a></h2>
 <p>The GitHub setup spans repository creation, Azure OIDC, Actions variables,
 GitHub Environments, and branch protection. For a smoother first run, install
 the AgentOps workflow skill and hand this setup to Copilot:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot<span class="w"> </span>--force
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot<span class="w"> </span>--force
 </code></pre></div>
 <p>Then open Copilot and run <code>/skills</code>. Confirm <code>agentops-workflow</code> is loaded
 before continuing.</p>
 <p>When the skill is loaded, ask Copilot:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>Use the AgentOps workflow skill to get the generated AgentOps GitHub Actions
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>workflows running end to end.
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>This may be a new folder with no Git repo or GitHub remote yet. Create or
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>connect the GitHub repo if needed, wire Azure OIDC and required Actions
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>variables, verify the OIDC principal has Foundry User access, create only the
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>environments used by the generated workflows, show me the plan before changing
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>GitHub or Azure, and call out anything that needs owner/admin permission.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>Use the AgentOps workflow skill to get the generated AgentOps GitHub Actions
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>workflows running end to end.
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>This may be a new folder with no Git repo or GitHub remote yet. Create or
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>connect the GitHub repo if needed, wire Azure OIDC and required Actions
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>variables, verify the OIDC principal has Foundry User access, create only the
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>environments used by the generated workflows, show me the plan before changing
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>GitHub or Azure, and call out anything that needs owner/admin permission.
 </code></pre></div>
 <h2 id="configuration-walkthrough">Configuration walkthrough<a class="headerlink" href="#configuration-walkthrough" title="Permanent link">&para;</a></h2>
 <h3 id="1-repository-variables-oidc">1. Repository variables (OIDC)<a class="headerlink" href="#1-repository-variables-oidc" title="Permanent link">&para;</a></h3>
@@ -1768,7 +1746,7 @@ Monitor Logs.</p>
 when the workflow's <code>environment:</code> matches.</p>
 <h3 id="3-analyze-evaluation-setup-first">3. Analyze evaluation setup first<a class="headerlink" href="#3-analyze-evaluation-setup-first" title="Permanent link">&para;</a></h3>
 <p>Before making eval a required PR/deploy gate, run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>markdown
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>markdown
 </code></pre></div>
 <p>This command is read-only and local-only. It checks whether <code>agentops.yaml</code>,
 the target kind, and the dataset columns are ready for <code>agentops eval run</code>. If
@@ -1783,7 +1761,7 @@ prompt.</p>
 while Azure Developer CLI owns infrastructure, packaging, deployment, and
 hooks declared in <code>azure.yaml</code>.</p>
 <p>Before choosing manually, run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>markdown
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>markdown
 </code></pre></div>
 <p>The analyzer is read-only and local-only. It looks for <code>azure.yaml</code>, Bicep
 files, <code>agentops.yaml</code>, Foundry prompt-agent shape, source-controlled prompt
@@ -1824,7 +1802,7 @@ is <code>auto</code>; the command output prints the selected effective mode, for
 </tbody>
 </table>
 <p>For azd-managed repos:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod<span class="w"> </span>--deploy-mode<span class="w"> </span>azd<span class="w"> </span>--force
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod<span class="w"> </span>--deploy-mode<span class="w"> </span>azd<span class="w"> </span>--force
 </code></pre></div>
 <p>The generated deploy workflows:</p>
 <ol>
@@ -1853,14 +1831,14 @@ commands.</p>
 <h4 id="foundry-prompt-agent">Foundry prompt agent<a class="headerlink" href="#foundry-prompt-agent" title="Permanent link">&para;</a></h4>
 <p>For the simplest Foundry prompt-agent workflow, keep the instructions in
 source control and point <code>agentops.yaml</code> at them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;quickstart-agent:2&quot;</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nt">execution</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cloud</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nt">prompt_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/prompts/agent-instructions.md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;quickstart-agent:2&quot;</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nt">execution</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cloud</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="nt">prompt_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/prompts/agent-instructions.md</span>
 </code></pre></div>
 <p>Then generate prompt-agent deploy workflows:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod<span class="w"> </span>--deploy-mode<span class="w"> </span>prompt-agent<span class="w"> </span>--force
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod<span class="w"> </span>--deploy-mode<span class="w"> </span>prompt-agent<span class="w"> </span>--force
 </code></pre></div>
 <p>Each deploy workflow does this:</p>
 <ol>
@@ -1881,40 +1859,40 @@ deployment record, and Cockpit visibility.</p>
 still be regenerated by older AgentOps versions, but new prompt-agent gates use
 AgentOps cloud eval so threshold failures produce normalized PR evidence.</p>
 <h4 id="container-apps">Container Apps<a class="headerlink" href="#container-apps" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Build</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Build image</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="no">az acr build \</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">      </span><span class="no">--registry &quot;${{ vars.ACR_NAME }}&quot; \</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">      </span><span class="no">--image &quot;myapp:${{ github.sha }}&quot; \</span>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">      </span><span class="no">.</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="c1"># Deploy</span>
-<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy to ACA</span>
-<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">    </span><span class="no">az containerapp update \</span>
-<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">      </span><span class="no">--name &quot;${{ vars.ACA_APP_NAME }}&quot; \</span>
-<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">      </span><span class="no">--resource-group &quot;${{ vars.AZURE_RESOURCE_GROUP }}&quot; \</span>
-<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">      </span><span class="no">--image &quot;${{ vars.ACR_NAME }}.azurecr.io/myapp:${{ github.sha }}&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Build</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Build image</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="no">az acr build \</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">      </span><span class="no">--registry &quot;${{ vars.ACR_NAME }}&quot; \</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">      </span><span class="no">--image &quot;myapp:${{ github.sha }}&quot; \</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">      </span><span class="no">.</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="c1"># Deploy</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy to ACA</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="w">    </span><span class="no">az containerapp update \</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">      </span><span class="no">--name &quot;${{ vars.ACA_APP_NAME }}&quot; \</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">      </span><span class="no">--resource-group &quot;${{ vars.AZURE_RESOURCE_GROUP }}&quot; \</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">      </span><span class="no">--image &quot;${{ vars.ACR_NAME }}.azurecr.io/myapp:${{ github.sha }}&quot;</span>
 </code></pre></div>
 <h4 id="app-service">App Service<a class="headerlink" href="#app-service" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Build</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/setup-python@v6</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> python-version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3.11&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pip install -r requirements.txt -t ./dist</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cp -r src ./dist/</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># Deploy</span>
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/webapps-deploy@v3</span>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="nt">app-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.WEBAPP_NAME }}</span>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">    </span><span class="nt">package</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./dist</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Build</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/setup-python@v6</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> python-version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3.11&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pip install -r requirements.txt -t ./dist</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cp -r src ./dist/</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># Deploy</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/webapps-deploy@v3</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">    </span><span class="nt">app-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.WEBAPP_NAME }}</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">    </span><span class="nt">package</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./dist</span>
 </code></pre></div>
 <h4 id="foundry-hosted-agent">Foundry hosted agent<a class="headerlink" href="#foundry-hosted-agent" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Build is typically empty: hosted agents are configured, not packaged.</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="c1"># Deploy: publish a new agent version with whatever your project uses</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="c1"># to manage Foundry agents (project-specific tooling).</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Build is typically empty: hosted agents are configured, not packaged.</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="c1"># Deploy: publish a new agent version with whatever your project uses</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c1"># to manage Foundry agents (project-specific tooling).</span>
 </code></pre></div>
 <h4 id="zero-trust-deployment-with-azd">Zero-trust deployment with azd<a class="headerlink" href="#zero-trust-deployment-with-azd" title="Permanent link">&para;</a></h4>
 <p>If you ask a coding agent to generate a zero-trust deployment, have it
@@ -1928,7 +1906,7 @@ path is valid locally, regenerate the workflows with
 the Azure AI Landing Zone pattern, use AgentOps to turn the deployment path into
 actionable readiness: landing-zone preflight, azd/Bicep workflow stages, Doctor
 checks, eval gates, and post-deploy evidence.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>markdown<span class="w"> </span>--out<span class="w"> </span>agentops-workflow-plan.md
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>markdown<span class="w"> </span>--out<span class="w"> </span>agentops-workflow-plan.md
 </code></pre></div>
 <p>Use the output as the plan for your coding agent:</p>
 <ol>
@@ -2045,22 +2023,22 @@ gate fails with the failing threshold rows in <code>report.md</code>.</p>
 </tbody>
 </table>
 <h2 id="cli-reference">CLI reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze<span class="w">                          </span><span class="c1"># inspect eval setup before first run</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>promote-traces<span class="w"> </span>--source<span class="w"> </span>traces.jsonl<span class="w"> </span>--apply
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>--evidence-pack<span class="w">                </span><span class="c1"># write release evidence</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w">                      </span><span class="c1"># inspect repo and recommend stages</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>json<span class="w">        </span><span class="c1"># stable machine-readable analysis</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr<span class="w">          </span><span class="c1"># PR gate</span>
-<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w">                     </span><span class="c1"># PR + DEV/QA/PROD; deploy mode defaults to auto</span>
-<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,prod<span class="w"> </span><span class="c1"># subset (trunk-based)</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>doctor<span class="w">      </span><span class="c1"># optional scheduled Doctor workflow</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--deploy-mode<span class="w"> </span>azd<span class="w">   </span><span class="c1"># delegate deploy to azd</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--deploy-mode<span class="w"> </span>prompt-agent<span class="w"> </span><span class="c1"># Foundry prompt deployment</span>
-<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--doctor-gate<span class="w"> </span>warning<span class="w"> </span><span class="c1"># PR also blocks on warnings</span>
-<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--doctor-gate<span class="w"> </span>none<span class="w">  </span><span class="c1"># PR Doctor advisory (pre-1.x)</span>
-<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--platform<span class="w"> </span>azure-devops
-<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--force<span class="w">             </span><span class="c1"># overwrite existing files</span>
-<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--dir<span class="w"> </span>&lt;path&gt;<span class="w">        </span><span class="c1"># different repo root</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze<span class="w">                          </span><span class="c1"># inspect eval setup before first run</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>promote-traces<span class="w"> </span>--source<span class="w"> </span>traces.jsonl<span class="w"> </span>--apply
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>--evidence-pack<span class="w">                </span><span class="c1"># write release evidence</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w">                      </span><span class="c1"># inspect repo and recommend stages</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze<span class="w"> </span>--format<span class="w"> </span>json<span class="w">        </span><span class="c1"># stable machine-readable analysis</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr<span class="w">          </span><span class="c1"># PR gate</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w">                     </span><span class="c1"># PR + DEV/QA/PROD; deploy mode defaults to auto</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,prod<span class="w"> </span><span class="c1"># subset (trunk-based)</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>doctor<span class="w">      </span><span class="c1"># optional scheduled Doctor workflow</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--deploy-mode<span class="w"> </span>azd<span class="w">   </span><span class="c1"># delegate deploy to azd</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--deploy-mode<span class="w"> </span>prompt-agent<span class="w"> </span><span class="c1"># Foundry prompt deployment</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--doctor-gate<span class="w"> </span>warning<span class="w"> </span><span class="c1"># PR also blocks on warnings</span>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--doctor-gate<span class="w"> </span>none<span class="w">  </span><span class="c1"># PR Doctor advisory (pre-1.x)</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--platform<span class="w"> </span>azure-devops
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--force<span class="w">             </span><span class="c1"># overwrite existing files</span>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--dir<span class="w"> </span>&lt;path&gt;<span class="w">        </span><span class="c1"># different repo root</span>
 </code></pre></div>
 <table>
 <thead>

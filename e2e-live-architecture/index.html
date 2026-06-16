@@ -235,7 +235,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../tutorial-end-to-end/" class="md-tabs__link">
+        <a href="../tutorial-prompt-agent/" class="md-tabs__link">
           
   
   Tutorials
@@ -455,53 +455,53 @@
   
   
     <li class="md-nav__item">
+      <a href="../tutorial-prompt-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prompt Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted or HTTP Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../tutorial-end-to-end/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    End-to-End
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-hosted-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Hosted Agent Quickstart
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-prompt-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Prompt Agent Quickstart
+    Full End-to-End Tutorial
   </span>
   
 
@@ -591,27 +591,6 @@
   
   <span class="md-ellipsis">
     Core Concepts
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../bundles/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Bundles
   </span>
   
 
@@ -1209,23 +1188,22 @@ env vars <code>azure/login</code> exports.</p>
 exfiltrate any usable Azure credential - only the trust policy on the
 Entra app needs to be revoked to cut access.</p>
 <h2 id="job-graph">Job graph<a class="headerlink" href="#job-graph" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>flowchart TD
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    bootstrap([&quot;bootstrap-live&lt;br/&gt;&lt;i&gt;deploys per-run ACA&lt;/i&gt;&quot;])
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    foundryPrompt[&quot;live-foundry-prompt&quot;]
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    foundryHosted[&quot;live-foundry-hosted&quot;]
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    httpAca[&quot;live-http-aca&quot;]
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    modelDirect[&quot;live-model-direct&quot;]
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    teardown([&quot;teardown&lt;br/&gt;&lt;i&gt;always() - sweeps stale&lt;/i&gt;&quot;])
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    bootstrap --&gt; foundryPrompt
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    bootstrap --&gt; foundryHosted
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    bootstrap --&gt; httpAca
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    bootstrap --&gt; modelDirect
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    foundryPrompt --&gt; teardown
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    foundryHosted --&gt; teardown
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    httpAca --&gt; teardown
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    modelDirect --&gt; teardown
-</code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    bootstrap(["bootstrap-live&lt;br/&gt;&lt;i&gt;deploys per-run ACA&lt;/i&gt;"])
+    foundryPrompt["live-foundry-prompt"]
+    foundryHosted["live-foundry-hosted"]
+    httpAca["live-http-aca"]
+    modelDirect["live-model-direct"]
+    teardown(["teardown&lt;br/&gt;&lt;i&gt;always() - sweeps stale&lt;/i&gt;"])
+
+    bootstrap --&gt; foundryPrompt
+    bootstrap --&gt; foundryHosted
+    bootstrap --&gt; httpAca
+    bootstrap --&gt; modelDirect
+    foundryPrompt --&gt; teardown
+    foundryHosted --&gt; teardown
+    httpAca --&gt; teardown
+    modelDirect --&gt; teardown</code></pre>
 <p><code>bootstrap-live</code> only runs <code>perrun.bicep</code> if the requested scenarios
 include <code>http-aca</code>. The four scenario jobs each render their own
 <code>agentops.yaml</code> via <code>scripts/e2e_render_config.py</code>, run <code>agentops eval</code>,

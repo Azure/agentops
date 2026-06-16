@@ -235,7 +235,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../tutorial-end-to-end/" class="md-tabs__link">
+        <a href="../tutorial-prompt-agent/" class="md-tabs__link">
           
   
   Tutorials
@@ -455,53 +455,53 @@
   
   
     <li class="md-nav__item">
+      <a href="../tutorial-prompt-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prompt Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted or HTTP Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../tutorial-end-to-end/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    End-to-End
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-hosted-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Hosted Agent Quickstart
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-prompt-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Prompt Agent Quickstart
+    Full End-to-End Tutorial
   </span>
   
 
@@ -591,27 +591,6 @@
   
   <span class="md-ellipsis">
     Core Concepts
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../bundles/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Bundles
   </span>
   
 
@@ -2946,14 +2925,13 @@
 <p><strong>Workflow file</strong>: <code>.github/workflows/staging.yml</code></p>
 <p><strong>Trigger</strong>: Push to any <code>release/*</code> branch</p>
 <h3 id="pipeline-flow">Pipeline Flow<a class="headerlink" href="#pipeline-flow" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>flowchart TD
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    push([&quot;push to release/v0.2.0&quot;])
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    build[&quot;_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.1.dev3 (setuptools-scm)&quot;]
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    publish[&quot;publish-testpypi&lt;br/&gt;&lt;i&gt;Upload to TestPyPI (staging environment)&lt;/i&gt;&lt;br/&gt;Uses TEST_PYPI_TOKEN secret&quot;]
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    verify[&quot;verify-testpypi&lt;br/&gt;&lt;i&gt;Install from TestPyPI in fresh environment&lt;/i&gt;&lt;br/&gt;agentops --version / --help / init&quot;]
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    push --&gt; build --&gt; publish --&gt; verify
-</code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    push(["push to release/v0.2.0"])
+    build["_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.1.dev3 (setuptools-scm)"]
+    publish["publish-testpypi&lt;br/&gt;&lt;i&gt;Upload to TestPyPI (staging environment)&lt;/i&gt;&lt;br/&gt;Uses TEST_PYPI_TOKEN secret"]
+    verify["verify-testpypi&lt;br/&gt;&lt;i&gt;Install from TestPyPI in fresh environment&lt;/i&gt;&lt;br/&gt;agentops --version / --help / init"]
+
+    push --&gt; build --&gt; publish --&gt; verify</code></pre>
 <h3 id="what-gets-validated">What Gets Validated<a class="headerlink" href="#what-gets-validated" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>Tests pass</strong> - the full test suite runs before building</li>
@@ -2965,28 +2943,28 @@
 </ol>
 <h3 id="iterating-on-a-release-branch">Iterating on a Release Branch<a class="headerlink" href="#iterating-on-a-release-branch" title="Permanent link">&para;</a></h3>
 <p>If staging fails, fix the issue and push again:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># On your release/v0.2.0 branch</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="c1"># ... fix the issue ...</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>git<span class="w"> </span>add<span class="w"> </span>.
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct packaging issue&quot;</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># Staging pipeline re-runs automatically</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># On your release/v0.2.0 branch</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># ... fix the issue ...</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>git<span class="w"> </span>add<span class="w"> </span>.
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct packaging issue&quot;</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># Staging pipeline re-runs automatically</span>
 </code></pre></div>
 <p>Each push generates a new dev version (e.g. <code>0.2.1.dev4</code>, <code>0.2.1.dev5</code>), so there are no version conflicts on TestPyPI. The <code>skip-existing: true</code> flag also prevents failures if the same version is re-uploaded.</p>
 <h3 id="manual-verification-optional">Manual Verification (Optional)<a class="headerlink" href="#manual-verification-optional" title="Permanent link">&para;</a></h3>
 <p>After the staging pipeline passes, you can manually test the package:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Install the specific dev version from TestPyPI</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==0.2.1.dev3&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>agentops<span class="w"> </span>--version
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>agentops<span class="w"> </span>--help
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># Test init in a temp directory</span>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>agentops<span class="w"> </span>init
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>ls<span class="w"> </span>.agentops/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Install the specific dev version from TestPyPI</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==0.2.1.dev3&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>agentops<span class="w"> </span>--version
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>agentops<span class="w"> </span>--help
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># Test init in a temp directory</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>agentops<span class="w"> </span>init
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>ls<span class="w"> </span>.agentops/
 </code></pre></div>
 <blockquote>
 <p><strong>Note</strong>: <code>--extra-index-url https://pypi.org/simple/</code> is required so that dependencies (typer, pydantic, ruamel.yaml) resolve from the real PyPI.</p>
@@ -3002,10 +2980,10 @@
 <h3 id="81-test-the-staging-pipeline">8.1 Test the Staging Pipeline<a class="headerlink" href="#81-test-the-staging-pipeline" title="Permanent link">&para;</a></h3>
 <h4 id="step-1-create-a-test-release-branch">Step 1: Create a Test Release Branch<a class="headerlink" href="#step-1-create-a-test-release-branch" title="Permanent link">&para;</a></h4>
 <p>From the branch that contains your workflow changes (or from <code>develop</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w">          </span><span class="c1"># or your feature branch with workflow changes</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w">          </span><span class="c1"># or your feature branch with workflow changes</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
 </code></pre></div>
 <p>This triggers the <code>staging.yml</code> workflow automatically.</p>
 <h4 id="step-2-monitor-the-pipeline">Step 2: Monitor the Pipeline<a class="headerlink" href="#step-2-monitor-the-pipeline" title="Permanent link">&para;</a></h4>
@@ -3013,45 +2991,45 @@
 <li>Go to <strong>Actions</strong> tab → find the <strong>Staging</strong> workflow run for <code>release/v0.0.0-test</code></li>
 <li>Watch all 3 jobs:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Job 1: build / build        → Should tests pass? Package build?
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Job 2: publish-testpypi     → Does TestPyPI upload succeed?
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>Job 3: verify-testpypi      → Can the package install and run?
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Job 1: build / build        → Should tests pass? Package build?
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>Job 2: publish-testpypi     → Does TestPyPI upload succeed?
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>Job 3: verify-testpypi      → Can the package install and run?
 </code></pre></div>
 <ol>
 <li>Click into each job to inspect step-level output</li>
 <li>If a job fails, read the logs, fix the issue, push again:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Fix and re-push</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>git<span class="w"> </span>add<span class="w"> </span>.
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct workflow issue&quot;</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="c1"># Pipeline re-runs automatically</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Fix and re-push</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git<span class="w"> </span>add<span class="w"> </span>.
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct workflow issue&quot;</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="c1"># Pipeline re-runs automatically</span>
 </code></pre></div>
 <h4 id="step-3-verify-on-testpypi-optional">Step 3: Verify on TestPyPI (Optional)<a class="headerlink" href="#step-3-verify-on-testpypi-optional" title="Permanent link">&para;</a></h4>
 <p>Confirm the test package appeared on TestPyPI:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Check the version that was published</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Install and test manually</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==</span><span class="k">$(</span>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
-<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
-<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>agentops<span class="w"> </span>--version
-<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>agentops<span class="w"> </span>--help
-<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>
-<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="c1"># Test init</span>
-<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
-<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>agentops<span class="w"> </span>init
-<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>ls<span class="w"> </span>.agentops/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Check the version that was published</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Install and test manually</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==</span><span class="k">$(</span>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
+<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
+<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>agentops<span class="w"> </span>--version
+<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>agentops<span class="w"> </span>--help
+<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>
+<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="c1"># Test init</span>
+<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
+<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>agentops<span class="w"> </span>init
+<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>ls<span class="w"> </span>.agentops/
 </code></pre></div>
 <h4 id="step-4-clean-up-the-test-branch">Step 4: Clean Up the Test Branch<a class="headerlink" href="#step-4-clean-up-the-test-branch" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Delete remote branch</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># Switch back and delete local branch</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Delete remote branch</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Switch back and delete local branch</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
 </code></pre></div>
 <h3 id="82-test-the-full-release-pipeline-including-pypi-approval-gate">8.2 Test the Full Release Pipeline (Including PyPI Approval Gate)<a class="headerlink" href="#82-test-the-full-release-pipeline-including-pypi-approval-gate" title="Permanent link">&para;</a></h3>
 <blockquote>
@@ -3059,8 +3037,8 @@
 </blockquote>
 <h4 id="step-1-create-a-test-tag">Step 1: Create a Test Tag<a class="headerlink" href="#step-1-create-a-test-tag" title="Permanent link">&para;</a></h4>
 <p>From <code>develop</code> or your feature branch:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.0.0-test.1
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.0.0-test.1
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.0.0-test.1
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.0.0-test.1
 </code></pre></div>
 <p>This triggers the <code>release.yml</code> workflow.</p>
 <h4 id="step-2-monitor-the-pipeline_1">Step 2: Monitor the Pipeline<a class="headerlink" href="#step-2-monitor-the-pipeline_1" title="Permanent link">&para;</a></h4>
@@ -3068,11 +3046,11 @@
 <li>Go to <strong>Actions</strong> tab → find the <strong>Release</strong> workflow run for <code>v0.0.0-test.1</code></li>
 <li>Watch the jobs execute in sequence:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>Job 1: build / build        ✅ Tests + build
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>Job 2: publish-testpypi     ✅ Upload to TestPyPI
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>Job 3: verify-testpypi      ✅ Install + smoke test
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>Job 4: publish-pypi         ⏸️  PAUSES - waiting for approval
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>Job 5: github-release       ⏳ Waiting for Job 4
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>Job 1: build / build        ✅ Tests + build
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>Job 2: publish-testpypi     ✅ Upload to TestPyPI
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>Job 3: verify-testpypi      ✅ Install + smoke test
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>Job 4: publish-pypi         ⏸️  PAUSES - waiting for approval
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>Job 5: github-release       ⏳ Waiting for Job 4
 </code></pre></div>
 <ol>
 <li>At the <code>publish-pypi</code> step, you have two choices:</li>
@@ -3089,12 +3067,12 @@
 </ol>
 <p>This validates that the environment protection rules and reviewer requirements work correctly.</p>
 <h4 id="step-4-clean-up">Step 4: Clean Up<a class="headerlink" href="#step-4-clean-up" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Delete the test tag (remote and local)</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>v0.0.0-test.1
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>git<span class="w"> </span>tag<span class="w"> </span>-d<span class="w"> </span>v0.0.0-test.1
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="c1"># If a GitHub Release was created, delete it manually:</span>
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="c1"># Go to Releases → find v0.0.0-test.1 → Delete</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Delete the test tag (remote and local)</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>v0.0.0-test.1
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>git<span class="w"> </span>tag<span class="w"> </span>-d<span class="w"> </span>v0.0.0-test.1
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="c1"># If a GitHub Release was created, delete it manually:</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="c1"># Go to Releases → find v0.0.0-test.1 → Delete</span>
 </code></pre></div>
 <p>If you approved the PyPI publish, the test version (<code>0.0.0.test1</code>) will exist on PyPI permanently (PyPI versions cannot be deleted, only yanked). This is harmless but visible.</p>
 <h3 id="83-quick-e2e-test-summary">8.3 Quick E2E Test Summary<a class="headerlink" href="#83-quick-e2e-test-summary" title="Permanent link">&para;</a></h3>
@@ -3136,41 +3114,40 @@
 </table>
 <h3 id="84-testing-workflow-changes-on-a-feature-branch">8.4 Testing Workflow Changes on a Feature Branch<a class="headerlink" href="#84-testing-workflow-changes-on-a-feature-branch" title="Permanent link">&para;</a></h3>
 <p>If you're modifying the workflow files on a feature branch (not yet merged to <code>develop</code>), you can still test them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1"># Your workflow changes are on feature/my-ci-changes</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="c1"># Create a test release branch directly from your feature branch</span>
-<a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>
-<a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a><span class="c1"># GitHub Actions uses the workflow files from the pushed branch,</span>
-<a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a><span class="c1"># so your modifications are what actually runs</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Your workflow changes are on feature/my-ci-changes</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Create a test release branch directly from your feature branch</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="c1"># GitHub Actions uses the workflow files from the pushed branch,</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="c1"># so your modifications are what actually runs</span>
 </code></pre></div>
 <p>This is useful because GitHub Actions reads workflow files from the branch being pushed, not from <code>main</code> or <code>develop</code>. Your modified workflows execute immediately without needing to merge first.</p>
 <p>After testing:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Clean up</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1"># Clean up</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
 </code></pre></div>
 <h2 id="9-production-release-pipeline-pypi">9. Production Release Pipeline (PyPI)<a class="headerlink" href="#9-production-release-pipeline-pypi" title="Permanent link">&para;</a></h2>
 <p>The production pipeline publishes a final release to PyPI and creates a GitHub Release.</p>
 <p><strong>Workflow file</strong>: <code>.github/workflows/release.yml</code></p>
 <p><strong>Trigger</strong>: Push a <code>v*</code> tag (e.g. <code>v0.2.0</code>)</p>
 <h3 id="pipeline-flow_1">Pipeline Flow<a class="headerlink" href="#pipeline-flow_1" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>flowchart TD
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>    tag([&quot;push tag v0.2.0&quot;])
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>    build[&quot;_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.0 (clean, from tag)&quot;]
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>    publishTest[&quot;publish-testpypi&lt;br/&gt;&lt;i&gt;Final TestPyPI upload (clean version)&lt;/i&gt;&quot;]
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>    verifyTest[&quot;verify-testpypi&lt;br/&gt;&lt;i&gt;Smoke test from TestPyPI&lt;/i&gt;&quot;]
-<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>    publishPypipublish-pypi ⏸&lt;br/&gt;&lt;i&gt;PAUSES - requires approval&lt;/i&gt;&lt;br/&gt;Uses PYPI_TOKEN&lt;br/&gt;environment: release
-<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>    ghRelease[&quot;github-release&lt;br/&gt;&lt;i&gt;Creates GitHub Release with artifacts&lt;/i&gt;&lt;br/&gt;Auto-generated release notes&quot;]
-<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>
-<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>    tag --&gt; build --&gt; publishTest --&gt; verifyTest --&gt; publishPypi --&gt; ghRelease
-<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>
-<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
-<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>    class publishPypi gate;
-</code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    tag(["push tag v0.2.0"])
+    build["_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.0 (clean, from tag)"]
+    publishTest["publish-testpypi&lt;br/&gt;&lt;i&gt;Final TestPyPI upload (clean version)&lt;/i&gt;"]
+    verifyTest["verify-testpypi&lt;br/&gt;&lt;i&gt;Smoke test from TestPyPI&lt;/i&gt;"]
+    publishPypipublish-pypi ⏸&lt;br/&gt;&lt;i&gt;PAUSES - requires approval&lt;/i&gt;&lt;br/&gt;Uses PYPI_TOKEN&lt;br/&gt;environment: release
+    ghRelease["github-release&lt;br/&gt;&lt;i&gt;Creates GitHub Release with artifacts&lt;/i&gt;&lt;br/&gt;Auto-generated release notes"]
+
+    tag --&gt; build --&gt; publishTest --&gt; verifyTest --&gt; publishPypi --&gt; ghRelease
+
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    class publishPypi gate;</code></pre>
 <h3 id="step-by-step-cutting-a-release">Step-by-Step: Cutting a Release<a class="headerlink" href="#step-by-step-cutting-a-release" title="Permanent link">&para;</a></h3>
 <h4 id="step-1-cut-the-release-one-click">Step 1: Cut the Release (One-Click)<a class="headerlink" href="#step-1-cut-the-release-one-click" title="Permanent link">&para;</a></h4>
 <ol>
@@ -3186,11 +3163,11 @@
 - Opens a PR: <code>release/v0.2.0</code> → <code>main</code></p>
 <blockquote>
 <p><strong>Alternative (manual)</strong>: If you prefer to create the release branch locally:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.2.0
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="c1"># Edit CHANGELOG.md manually</span>
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;chore: prepare release 0.2.0&quot;</span>
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.2.0
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="c1"># Edit CHANGELOG.md manually</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;chore: prepare release 0.2.0&quot;</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
 </code></pre></div></p>
 </blockquote>
 <h4 id="step-2-wait-for-staging">Step 2: Wait for Staging<a class="headerlink" href="#step-2-wait-for-staging" title="Permanent link">&para;</a></h4>
@@ -3213,10 +3190,10 @@
 <li>Get the required reviews and merge</li>
 </ol>
 <h4 id="step-5-tag-the-release">Step 5: Tag the Release<a class="headerlink" href="#step-5-tag-the-release" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
-<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.2.0
-<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.2.0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.2.0
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.2.0
 </code></pre></div>
 <p>This triggers the <a href="#8-production-release-pipeline-pypi">production release pipeline</a>.</p>
 <h4 id="step-6-approve-the-pypi-publish">Step 6: Approve the PyPI Publish<a class="headerlink" href="#step-6-approve-the-pypi-publish" title="Permanent link">&para;</a></h4>
@@ -3229,23 +3206,23 @@
 <li>The <code>github-release</code> job creates a GitHub Release with the built artifacts and auto-generated release notes</li>
 </ol>
 <h4 id="step-7-post-release-cleanup">Step 7: Post-Release Cleanup<a class="headerlink" href="#step-7-post-release-cleanup" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Sync the tag back to develop</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>git<span class="w"> </span>merge<span class="w"> </span>main
-<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>
-<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="c1"># Delete the release branch (remote and local)</span>
-<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.2.0
-<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.2.0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Sync the tag back to develop</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>git<span class="w"> </span>merge<span class="w"> </span>main
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="c1"># Delete the release branch (remote and local)</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.2.0
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.2.0
 </code></pre></div>
 <h4 id="step-8-verify-the-published-package">Step 8: Verify the Published Package<a class="headerlink" href="#step-8-verify-the-published-package" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="c1"># Install from PyPI</span>
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>pip<span class="w"> </span>install<span class="w"> </span>agentops-accelerator<span class="o">==</span><span class="m">0</span>.2.0
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>
-<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="c1"># Verify</span>
-<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>agentops<span class="w"> </span>--version<span class="w">    </span><span class="c1"># Should show 0.2.0</span>
-<a id="__codelineno-26-6" name="__codelineno-26-6" href="#__codelineno-26-6"></a>agentops<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="c1"># Install from PyPI</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>pip<span class="w"> </span>install<span class="w"> </span>agentops-accelerator<span class="o">==</span><span class="m">0</span>.2.0
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>
+<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="c1"># Verify</span>
+<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>agentops<span class="w"> </span>--version<span class="w">    </span><span class="c1"># Should show 0.2.0</span>
+<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>agentops<span class="w"> </span>--help
 </code></pre></div>
 <p>Check the published package:
 - PyPI: https://pypi.org/project/agentops-accelerator/0.2.0/
@@ -3327,41 +3304,41 @@
 <h2 id="11-workflow-file-reference">11. Workflow File Reference<a class="headerlink" href="#11-workflow-file-reference" title="Permanent link">&para;</a></h2>
 <p>All workflow files are in <code>.github/workflows/</code>:</p>
 <h3 id="ciyml-continuous-integration"><code>ci.yml</code> - Continuous Integration<a class="headerlink" href="#ciyml-continuous-integration" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Trigger: push to develop, PR to develop
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>Flow:    lint → test (matrix) → coverage
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>         + on develop push: publish-dev → verify-dev (TestPyPI)
-<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>Purpose: Quality gate for all code changes; auto-publish dev builds
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>Trigger: push to develop, PR to develop
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>Flow:    lint → test (matrix) → coverage
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>         + on develop push: publish-dev → verify-dev (TestPyPI)
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>Purpose: Quality gate for all code changes; auto-publish dev builds
 </code></pre></div>
 <p>Key detail: <code>publish-dev</code> and <code>verify-dev</code> only run on pushes to <code>develop</code> (not PRs). Every merge to develop produces a dev version on TestPyPI (e.g. <code>0.1.3.dev12</code>) via setuptools-scm. PRs to <code>main</code> are not covered by CI because they come from <code>release/*</code> branches which are already validated by the staging pipeline.</p>
 <h3 id="_buildyml-reusable-build"><code>_build.yml</code> - Reusable Build<a class="headerlink" href="#_buildyml-reusable-build" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>Trigger: workflow_call (called by staging.yml and release.yml)
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>Flow:    checkout (full history) → uv sync → pytest → uv build → upload artifact
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>Purpose: Single source of truth for the build process
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>Trigger: workflow_call (called by staging.yml and release.yml)
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>Flow:    checkout (full history) → uv sync → pytest → uv build → upload artifact
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>Purpose: Single source of truth for the build process
 </code></pre></div>
 <p>Key detail: Uses <code>fetch-depth: 0</code> to ensure setuptools-scm has full git history for version derivation.</p>
 <h3 id="stagingyml-staging-pipeline"><code>staging.yml</code> - Staging Pipeline<a class="headerlink" href="#stagingyml-staging-pipeline" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>Trigger: push to release/* branches, or workflow_dispatch
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>Flow:    _build → publish-testpypi → verify-testpypi
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>Purpose: Validate release candidates before production
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Trigger: push to release/* branches, or workflow_dispatch
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>Flow:    _build → publish-testpypi → verify-testpypi
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>Purpose: Validate release candidates before production
 </code></pre></div>
 <p>Key details:
 - <code>skip-existing: true</code> allows re-pushes without upload failures
 - Verify step uses a retry loop (5 attempts, 30s apart) for TestPyPI index propagation
 - Smoke tests cover <code>--version</code>, <code>--help</code>, and <code>agentops init</code></p>
 <h3 id="releaseyml-production-release"><code>release.yml</code> - Production Release<a class="headerlink" href="#releaseyml-production-release" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>Trigger: push v* tags, or workflow_dispatch
-<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi (approval) → github-release
-<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>Purpose: Publish to PyPI and create GitHub Release
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>Trigger: push v* tags, or workflow_dispatch
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi (approval) → github-release
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>Purpose: Publish to PyPI and create GitHub Release
 </code></pre></div>
 <p>Key details:
 - <code>publish-pypi</code> uses <code>environment: release</code> which requires reviewer approval
 - <code>github-release</code> uses <code>gh release create</code> with <code>--generate-notes</code> for automatic release notes
 - Built artifacts (.whl, .tar.gz) are attached to the GitHub Release</p>
 <h3 id="cut-releaseyml-cut-release-manual-dispatch"><code>cut-release.yml</code> - Cut Release (Manual Dispatch)<a class="headerlink" href="#cut-releaseyml-cut-release-manual-dispatch" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>Trigger: workflow_dispatch (manual button in Actions tab)
-<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>Input:   version - semver string (e.g. 0.2.0)
-<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>Flow:    validate → create release branch → update CHANGELOG → push → open PR
-<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>Purpose: One-click release branch creation from develop
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>Trigger: workflow_dispatch (manual button in Actions tab)
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>Input:   version - semver string (e.g. 0.2.0)
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>Flow:    validate → create release branch → update CHANGELOG → push → open PR
+<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>Purpose: One-click release branch creation from develop
 </code></pre></div>
 <p>Key details:
 - Creates <code>release/v&lt;version&gt;</code> branch from <code>develop</code>
@@ -3541,44 +3518,43 @@
 </tbody>
 </table>
 <h2 id="architecture-diagram">Architecture Diagram<a class="headerlink" href="#architecture-diagram" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>flowchart TD
-<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>    feat[&quot;feature/*&quot;] --&gt;|PR| develop([&quot;develop&quot;])
-<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>    develop --&gt; ci[&quot;CI (ci.yml)&lt;br/&gt;lint + test + coverage&lt;br/&gt;publish-dev → TestPyPI (dev version)&quot;]
-<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a>    develop --&gt; cutCut Release (cut-release.yml)&lt;br/&gt;manual dispatch - enter version
-<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a>    cut --&gt; rel([&quot;release/v0.2.0&quot;])
-<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a>
-<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a>    rel --&gt; stagingBuild[&quot;_build&lt;br/&gt;test + build&quot;]
-<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a>    stagingBuild --&gt; stagingTest[&quot;TestPyPI publish&quot;]
-<a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a>    stagingTest --&gt; stagingVerify[&quot;Verify install&quot;]
-<a id="__codelineno-32-10" name="__codelineno-32-10" href="#__codelineno-32-10"></a>
-<a id="__codelineno-32-11" name="__codelineno-32-11" href="#__codelineno-32-11"></a>    rel --&gt;|PR| main([&quot;main&quot;])
-<a id="__codelineno-32-12" name="__codelineno-32-12" href="#__codelineno-32-12"></a>    main --&gt;|tag| tag([&quot;v0.2.0&quot;])
-<a id="__codelineno-32-13" name="__codelineno-32-13" href="#__codelineno-32-13"></a>
-<a id="__codelineno-32-14" name="__codelineno-32-14" href="#__codelineno-32-14"></a>    tag --&gt; relBuild[&quot;_build&quot;]
-<a id="__codelineno-32-15" name="__codelineno-32-15" href="#__codelineno-32-15"></a>    relBuild --&gt; relTest[&quot;TestPyPI&quot;]
-<a id="__codelineno-32-16" name="__codelineno-32-16" href="#__codelineno-32-16"></a>    relTest --&gt; relVerify[&quot;Verify&quot;]
-<a id="__codelineno-32-17" name="__codelineno-32-17" href="#__codelineno-32-17"></a>    relVerify --&gt; relPypiPyPI&lt;br/&gt;(approval)
-<a id="__codelineno-32-18" name="__codelineno-32-18" href="#__codelineno-32-18"></a>    relPypi --&gt; relGh[&quot;GitHub Release&quot;]
-<a id="__codelineno-32-19" name="__codelineno-32-19" href="#__codelineno-32-19"></a>
-<a id="__codelineno-32-20" name="__codelineno-32-20" href="#__codelineno-32-20"></a>    main --&gt;|merge back| develop
-<a id="__codelineno-32-21" name="__codelineno-32-21" href="#__codelineno-32-21"></a>
-<a id="__codelineno-32-22" name="__codelineno-32-22" href="#__codelineno-32-22"></a>    subgraph Staging[&quot;Staging (staging.yml)&quot;]
-<a id="__codelineno-32-23" name="__codelineno-32-23" href="#__codelineno-32-23"></a>        stagingBuild
-<a id="__codelineno-32-24" name="__codelineno-32-24" href="#__codelineno-32-24"></a>        stagingTest
-<a id="__codelineno-32-25" name="__codelineno-32-25" href="#__codelineno-32-25"></a>        stagingVerify
-<a id="__codelineno-32-26" name="__codelineno-32-26" href="#__codelineno-32-26"></a>    end
-<a id="__codelineno-32-27" name="__codelineno-32-27" href="#__codelineno-32-27"></a>
-<a id="__codelineno-32-28" name="__codelineno-32-28" href="#__codelineno-32-28"></a>    subgraph Release[&quot;Release (release.yml)&quot;]
-<a id="__codelineno-32-29" name="__codelineno-32-29" href="#__codelineno-32-29"></a>        relBuild
-<a id="__codelineno-32-30" name="__codelineno-32-30" href="#__codelineno-32-30"></a>        relTest
-<a id="__codelineno-32-31" name="__codelineno-32-31" href="#__codelineno-32-31"></a>        relVerify
-<a id="__codelineno-32-32" name="__codelineno-32-32" href="#__codelineno-32-32"></a>        relPypi
-<a id="__codelineno-32-33" name="__codelineno-32-33" href="#__codelineno-32-33"></a>        relGh
-<a id="__codelineno-32-34" name="__codelineno-32-34" href="#__codelineno-32-34"></a>    end
-<a id="__codelineno-32-35" name="__codelineno-32-35" href="#__codelineno-32-35"></a>
-<a id="__codelineno-32-36" name="__codelineno-32-36" href="#__codelineno-32-36"></a>    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
-<a id="__codelineno-32-37" name="__codelineno-32-37" href="#__codelineno-32-37"></a>    class cut,relPypi gate;
-</code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    feat["feature/*"] --&gt;|PR| develop(["develop"])
+    develop --&gt; ci["CI (ci.yml)&lt;br/&gt;lint + test + coverage&lt;br/&gt;publish-dev → TestPyPI (dev version)"]
+    develop --&gt; cutCut Release (cut-release.yml)&lt;br/&gt;manual dispatch - enter version
+    cut --&gt; rel(["release/v0.2.0"])
+
+    rel --&gt; stagingBuild["_build&lt;br/&gt;test + build"]
+    stagingBuild --&gt; stagingTest["TestPyPI publish"]
+    stagingTest --&gt; stagingVerify["Verify install"]
+
+    rel --&gt;|PR| main(["main"])
+    main --&gt;|tag| tag(["v0.2.0"])
+
+    tag --&gt; relBuild["_build"]
+    relBuild --&gt; relTest["TestPyPI"]
+    relTest --&gt; relVerify["Verify"]
+    relVerify --&gt; relPypiPyPI&lt;br/&gt;(approval)
+    relPypi --&gt; relGh["GitHub Release"]
+
+    main --&gt;|merge back| develop
+
+    subgraph Staging["Staging (staging.yml)"]
+        stagingBuild
+        stagingTest
+        stagingVerify
+    end
+
+    subgraph Release["Release (release.yml)"]
+        relBuild
+        relTest
+        relVerify
+        relPypi
+        relGh
+    end
+
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    class cut,relPypi gate;</code></pre>
 
 
 

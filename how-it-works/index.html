@@ -13,7 +13,7 @@
       
       
       
-        <link rel="prev" href="../tutorial-prompt-agent-quickstart/">
+        <link rel="prev" href="../tutorial-end-to-end/">
       
       
         <link rel="next" href="../concepts/">
@@ -235,7 +235,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../tutorial-end-to-end/" class="md-tabs__link">
+        <a href="../tutorial-prompt-agent/" class="md-tabs__link">
           
   
   Tutorials
@@ -455,53 +455,53 @@
   
   
     <li class="md-nav__item">
+      <a href="../tutorial-prompt-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prompt Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted or HTTP Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../tutorial-end-to-end/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    End-to-End
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-hosted-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Hosted Agent Quickstart
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-prompt-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Prompt Agent Quickstart
+    Full End-to-End Tutorial
   </span>
   
 
@@ -927,27 +927,6 @@
   
   <span class="md-ellipsis">
     Core Concepts
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../bundles/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Bundles
   </span>
   
 
@@ -1791,24 +1770,23 @@ triage step: it inspects <code>agentops.yaml</code>, dataset columns, and local 
 signals, then tells you whether <code>agentops eval run</code> is ready or whether Copilot
 should use <code>agentops-config</code>, <code>agentops-dataset</code>, or <code>agentops-eval</code> to adapt
 the setup.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>flowchart TD
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    A[&quot;agentops init&quot;] --&gt; B[&quot;agentops eval analyze&quot;]
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    B --&gt; C{&quot;Eval setup ready?&quot;}
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    C --&gt;|yes| D[&quot;agentops eval run&quot;]
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    C --&gt;|no / complex| E[&quot;Copilot + AgentOps skills&quot;]
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    E --&gt; F[&quot;agentops-config / agentops-dataset / agentops-eval&quot;]
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    F --&gt; B
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    D --&gt; G[&quot;results.json + report.md&quot;]
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    G --&gt; H[&quot;agentops workflow analyze&quot;]
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    H --&gt; I{&quot;CI/CD shape clear?&quot;}
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    I --&gt;|yes| J[&quot;workflow generate --deploy-mode auto&quot;]
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    I --&gt;|complex accelerator| K[&quot;Copilot + agentops-workflow&quot;]
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    J --&gt; L[&quot;Deterministic CI/CD&quot;]
-<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    K --&gt; L
-<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    L --&gt; M[&quot;agentops doctor&quot;]
-<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    M --&gt; N[&quot;doctor --evidence-pack&quot;]
-<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    N --&gt; O[&quot;agentops cockpit&quot;]
-</code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    A["agentops init"] --&gt; B["agentops eval analyze"]
+    B --&gt; C{"Eval setup ready?"}
+    C --&gt;|yes| D["agentops eval run"]
+    C --&gt;|no / complex| E["Copilot + AgentOps skills"]
+    E --&gt; F["agentops-config / agentops-dataset / agentops-eval"]
+    F --&gt; B
+    D --&gt; G["results.json + report.md"]
+    G --&gt; H["agentops workflow analyze"]
+    H --&gt; I{"CI/CD shape clear?"}
+    I --&gt;|yes| J["workflow generate --deploy-mode auto"]
+    I --&gt;|complex accelerator| K["Copilot + agentops-workflow"]
+    J --&gt; L["Deterministic CI/CD"]
+    K --&gt; L
+    L --&gt; M["agentops doctor"]
+    M --&gt; N["doctor --evidence-pack"]
+    N --&gt; O["agentops cockpit"]</code></pre>
 <p>For AI Landing Zone projects, <code>workflow analyze</code> surfaces the official
 <code>scripts/Invoke-PreflightChecks.ps1</code> path when present. Generated azd workflows
 run that preflight before <code>azd provision</code>, and Doctor reports AI Landing Zone
@@ -1816,26 +1794,25 @@ deployment readiness under Operational Excellence so teams can see whether
 preflight, eval config, workflow deployment, and private-network runner planning
 are wired together.</p>
 <p>When you run <code>agentops eval run</code>, the following happens step by step:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>flowchart TD
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    A[&quot;CLI parses args&quot;] --&gt; B[&quot;Load agentops.yaml&quot;]
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    B --&gt; C[&quot;classify_agent&quot;]
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    C --&gt; D[&quot;Pre-flight checks&quot;]
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    D --&gt; E{&quot;execution mode&quot;}
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    E --&gt;|local/cloud| F[&quot;Read JSONL dataset&quot;]
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    F --&gt; G[&quot;Invoke target per row or submit Foundry cloud eval&quot;]
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    G --&gt; H[&quot;Run/collect evaluator scores&quot;]
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>    E --&gt;|azd| AZD[&quot;Call azd ai agent eval using eval.yaml&quot;]
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>    AZD --&gt; H
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>    H --&gt; I[&quot;Evaluate thresholds&quot;]
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    I --&gt; J[&quot;Write results.json + report.md&quot;]
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>    J --&gt; K[&quot;Sync .agentops/results/latest&quot;]
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    K --&gt; L{&quot;Publish configured?&quot;}
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    L --&gt;|Classic| M[&quot;Upload local metrics to Foundry&quot;]
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    L --&gt;|Cloud| N[&quot;Submit server-side Foundry eval&quot;]
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    L --&gt;|No| O[&quot;Return exit code&quot;]
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    M --&gt; O
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>    N --&gt; O
-</code></pre></div>
+<pre class="mermaid"><code>flowchart TD
+    A["CLI parses args"] --&gt; B["Load agentops.yaml"]
+    B --&gt; C["classify_agent"]
+    C --&gt; D["Pre-flight checks"]
+    D --&gt; E{"execution mode"}
+    E --&gt;|local/cloud| F["Read JSONL dataset"]
+    F --&gt; G["Invoke target per row or submit Foundry cloud eval"]
+    G --&gt; H["Run/collect evaluator scores"]
+    E --&gt;|azd| AZD["Call azd ai agent eval using eval.yaml"]
+    AZD --&gt; H
+    H --&gt; I["Evaluate thresholds"]
+    I --&gt; J["Write results.json + report.md"]
+    J --&gt; K["Sync .agentops/results/latest"]
+    K --&gt; L{"Publish configured?"}
+    L --&gt;|Classic| M["Upload local metrics to Foundry"]
+    L --&gt;|Cloud| N["Submit server-side Foundry eval"]
+    L --&gt;|No| O["Return exit code"]
+    M --&gt; O
+    N --&gt; O</code></pre>
 <p>Exit codes are <code>0</code> when all thresholds pass, <code>2</code> when one or more thresholds
 fail, and <code>1</code> for runtime or configuration errors.</p>
 <h2 id="poc-to-production-readiness-flow">POC-to-production readiness flow<a class="headerlink" href="#poc-to-production-readiness-flow" title="Permanent link">&para;</a></h2>
@@ -1844,17 +1821,16 @@ contract. Instead, it projects the signals already produced by evals, Doctor,
 workflow files, Foundry control-plane checks, Azure Monitor, AI Landing Zone
 readiness, trace-regression manifests, and optional governance artifacts
 (ASSERT, ACS, red-team evidence indexes) into a release evidence pack:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>flowchart LR
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    E[&quot;eval run&quot;] --&gt; R[&quot;results.json/report.md&quot;]
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    R --&gt; D[&quot;doctor&quot;]
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    D --&gt; P[&quot;doctor --evidence-pack&quot;]
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    T[&quot;exported Foundry/App Insights traces&quot;] --&gt; PT[&quot;eval promote-traces --apply&quot;]
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    PT --&gt; M[&quot;trace-regression-manifest.json&quot;]
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    M --&gt; P
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>    W[&quot;workflow generate&quot;] --&gt; P
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>    G[&quot;ASSERT / ACS / red-team evidence paths&quot;] --&gt; P
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>    P --&gt; J[&quot;evidence.json/evidence.md&quot;]
-</code></pre></div>
+<pre class="mermaid"><code>flowchart LR
+    E["eval run"] --&gt; R["results.json/report.md"]
+    R --&gt; D["doctor"]
+    D --&gt; P["doctor --evidence-pack"]
+    T["exported Foundry/App Insights traces"] --&gt; PT["eval promote-traces --apply"]
+    PT --&gt; M["trace-regression-manifest.json"]
+    M --&gt; P
+    W["workflow generate"] --&gt; P
+    G["ASSERT / ACS / red-team evidence paths"] --&gt; P
+    P --&gt; J["evidence.json/evidence.md"]</code></pre>
 <ul>
 <li><code>evidence.json</code> is the stable machine-readable contract (<code>version: 1</code>).</li>
 <li><code>evidence.md</code> is the PR/release-review summary.</li>
@@ -1877,16 +1853,15 @@ ask Copilot to apply the matching skill.</p>
 it reports whether AgentOps Copilot skills are installed in the repo, suggests
 <code>agentops skills install --platform copilot</code> when they are missing, and prints a
 single prompt to paste into Copilot.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>flowchart LR
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    EA[&quot;eval analyze&quot;] --&gt; ER[&quot;eval run&quot;]
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    EA --&gt; ES[&quot;Copilot skills when setup is ambiguous&quot;]
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    ES --&gt; ER
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    WA[&quot;workflow analyze&quot;] --&gt; WG[&quot;workflow generate&quot;]
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    WA --&gt; WS[&quot;Copilot workflow skill when deployment is project-specific&quot;]
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    ER --&gt; WA
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    WG --&gt; CI[&quot;Deterministic CI/CD&quot;]
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    WS --&gt; CI
-</code></pre></div>
+<pre class="mermaid"><code>flowchart LR
+    EA["eval analyze"] --&gt; ER["eval run"]
+    EA --&gt; ES["Copilot skills when setup is ambiguous"]
+    ES --&gt; ER
+    WA["workflow analyze"] --&gt; WG["workflow generate"]
+    WA --&gt; WS["Copilot workflow skill when deployment is project-specific"]
+    ER --&gt; WA
+    WG --&gt; CI["Deterministic CI/CD"]
+    WS --&gt; CI</code></pre>
 <h2 id="cli-commands">CLI Commands<a class="headerlink" href="#cli-commands" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -2003,29 +1978,29 @@ small directory for datasets, local environment values, run history, and
 (optionally) skills. <code>agentops init</code> writes AgentOps-owned local Azure values to
 <code>.agentops/.env</code> by default. Existing or explicitly requested azd workspaces
 continue to use <code>.azure/&lt;env&gt;/.env</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>&lt;project root&gt;/
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── agentops.yaml              # Single source of truth (flat 1.0 schema)
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>├── .agentops/
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>│   ├── data/
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>│   │   └── smoke.jsonl        # Sample dataset (created by `agentops init`)
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>│   ├── .env                   # Local Azure values; ignored by `.agentops/.gitignore`
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>│   ├── results/
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>│   │   ├── 2026-05-06T14-30-22Z/  # Timestamped run (immutable history)
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>│   │   │   ├── results.json
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>│   │   │   ├── report.md
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a>│   │   │   └── cloud_evaluation.json   # only when `publish:` was set
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>│   │   └── latest/                # Mirror of the most recent run
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>│   └── agent/                 # Doctor history (history.jsonl + report.md)
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>├── .azure/                    # Optional: existing or explicit azd env folder
-<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>│   ├── config.json            # `defaultEnvironment` pointer
-<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>│   ├── .gitignore
-<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>│   └── dev/
-<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>│       └── .env               # AZURE_AI_FOUNDRY_PROJECT_ENDPOINT,
-<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>│                              #  APPLICATIONINSIGHTS_CONNECTION_STRING, …
-<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>└── .github/skills/            # Coding agent skills (Copilot)
-<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>    ├── agentops-config/SKILL.md
-<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>    ├── agentops-eval/SKILL.md
-<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>    └── ...
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;project root&gt;/
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── agentops.yaml              # Single source of truth (flat 1.0 schema)
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── .agentops/
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>│   ├── data/
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│   │   └── smoke.jsonl        # Sample dataset (created by `agentops init`)
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│   ├── .env                   # Local Azure values; ignored by `.agentops/.gitignore`
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>│   ├── results/
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│   │   ├── 2026-05-06T14-30-22Z/  # Timestamped run (immutable history)
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>│   │   │   ├── results.json
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│   │   │   ├── report.md
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>│   │   │   └── cloud_evaluation.json   # only when `publish:` was set
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│   │   └── latest/                # Mirror of the most recent run
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>│   └── agent/                 # Doctor history (history.jsonl + report.md)
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>├── .azure/                    # Optional: existing or explicit azd env folder
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>│   ├── config.json            # `defaultEnvironment` pointer
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>│   ├── .gitignore
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>│   └── dev/
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>│       └── .env               # AZURE_AI_FOUNDRY_PROJECT_ENDPOINT,
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>│                              #  APPLICATIONINSIGHTS_CONNECTION_STRING, …
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>└── .github/skills/            # Coding agent skills (Copilot)
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    ├── agentops-config/SKILL.md
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    ├── agentops-eval/SKILL.md
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    └── ...
 </code></pre></div>
 <p>The legacy layered layout (<code>.agentops/config.yaml</code> + <code>bundles/</code> +
 <code>datasets/*.yaml</code> + <code>run.yaml</code>) <strong>no longer exists</strong>. The new schema is
@@ -2036,9 +2011,9 @@ an actionable error.</p>
 <h2 id="agentopsyaml-flat-10-schema"><code>agentops.yaml</code> (flat 1.0 schema)<a class="headerlink" href="#agentopsyaml-flat-10-schema" title="Permanent link">&para;</a></h2>
 <h3 id="minimal-config">Minimal config<a class="headerlink" href="#minimal-config" title="Permanent link">&para;</a></h3>
 <p>The minimum is three lines:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-rag:3</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./qa.jsonl</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-rag:3</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./qa.jsonl</span>
 </code></pre></div>
 <p>That's a complete config. AgentOps:</p>
 <ul>
@@ -2166,37 +2141,37 @@ it does not replace the Foundry Toolkit, Foundry SDK, <code>microsoft-foundry</c
 or azd paths that create and deploy them.</p>
 <h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
 <p><strong>Foundry prompt agent (RAG evaluators auto-selected from dataset rows):</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-rag:3</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">  </span><span class="nt">groundedness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=10&quot;</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="nt">publish</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">         </span><span class="c1"># local run, then upload metrics to Classic Foundry</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-rag:3</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">groundedness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=10&quot;</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="nt">publish</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">         </span><span class="c1"># local run, then upload metrics to Classic Foundry</span>
 </code></pre></div>
 <p><strong>HTTP-deployed agent (LangGraph / ACA / custom REST):</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://my-aca-app.eastus2.azurecontainerapps.io/chat</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span><span class="w">            </span><span class="c1"># default is &quot;message&quot;</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span><span class="w">              </span><span class="c1"># dot-path; default is &quot;text&quot;</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">APP_API_TOKEN</span><span class="w">    </span><span class="c1"># value used as Bearer token</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://my-aca-app.eastus2.azurecontainerapps.io/chat</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span><span class="w">            </span><span class="c1"># default is &quot;message&quot;</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span><span class="w">              </span><span class="c1"># dot-path; default is &quot;text&quot;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">APP_API_TOKEN</span><span class="w">    </span><span class="c1"># value used as Bearer token</span>
 </code></pre></div>
 <p><strong>Raw model deployment:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">model:gpt-4o-mini</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=4&quot;</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=8&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">model:gpt-4o-mini</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=4&quot;</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=8&quot;</span>
 </code></pre></div>
 <p><strong>Run in New Foundry server-side (preview):</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-rag:3</span><span class="w">                   </span><span class="c1"># name:version is required for cloud mode</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nt">execution</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cloud</span>
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="c1"># project_endpoint: &quot;https://&lt;resource&gt;.services.ai.azure.com/api/projects/&lt;p&gt;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-rag:3</span><span class="w">                   </span><span class="c1"># name:version is required for cloud mode</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="nt">execution</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cloud</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># project_endpoint: &quot;https://&lt;resource&gt;.services.ai.azure.com/api/projects/&lt;p&gt;&quot;</span>
 </code></pre></div>
 <h2 id="datasets">Datasets<a class="headerlink" href="#datasets" title="Permanent link">&para;</a></h2>
 <p>A dataset is a plain JSONL file. One row per line. No companion YAML.</p>
@@ -2242,11 +2217,11 @@ or azd paths that create and deploy them.</p>
 </tbody>
 </table>
 <p>Example RAG row:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="p">{</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">}</span>
 </code></pre></div>
 <h3 id="local-jsonl-vs-foundry-datadatasets">Local JSONL vs Foundry Data/Datasets<a class="headerlink" href="#local-jsonl-vs-foundry-datadatasets" title="Permanent link">&para;</a></h3>
 <p>The JSONL file referenced by <code>dataset:</code> is the AgentOps source of truth. It
@@ -2263,24 +2238,24 @@ creates a new version.</p>
 as backing project assets named like <code>eval-data-*</code> in <strong>Data &gt; Datasets</strong>. Those
 assets are cloud-eval artifacts, not separate hand-authored AgentOps datasets.</p>
 <p>AgentOps records this lineage in <code>cloud_evaluation.json</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="p">{</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span><span class="nt">&quot;dataset&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;foundry&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">    </span><span class="nt">&quot;requested_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auto&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">    </span><span class="nt">&quot;source_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;file_id&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span><span class="nt">&quot;local_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.agentops/data/smoke.jsonl&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span><span class="nt">&quot;sha256&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">    </span><span class="nt">&quot;foundry_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;agentops-smoke&quot;</span><span class="p">,</span>
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="nt">&quot;foundry_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha256-...&quot;</span>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="p">{</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">&quot;dataset&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">    </span><span class="nt">&quot;mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;foundry&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="nt">&quot;requested_mode&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;auto&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nt">&quot;source_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;file_id&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="nt">&quot;local_path&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;.agentops/data/smoke.jsonl&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">    </span><span class="nt">&quot;sha256&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;...&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="w">    </span><span class="nt">&quot;foundry_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;agentops-smoke&quot;</span><span class="p">,</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">    </span><span class="nt">&quot;foundry_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha256-...&quot;</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span><span class="p">}</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="p">}</span>
 </code></pre></div>
 <p>You can pin the Foundry dataset identity or force inline compatibility:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nt">dataset_sync</span><span class="p">:</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span><span class="w">                  </span><span class="c1"># auto | foundry | inline</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agentops-smoke</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">content-hash</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nt">dataset_sync</span><span class="p">:</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">auto</span><span class="w">                  </span><span class="c1"># auto | foundry | inline</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agentops-smoke</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">content-hash</span>
 </code></pre></div>
 <p>Use <code>dataset_sync.mode: foundry</code> when a pipeline must fail rather than fall
 back to inline data if dataset upload/reuse fails. Use
@@ -2307,8 +2282,8 @@ models like <code>gpt-4o</code>, <code>gpt-4o-mini</code>, <code>gpt-4.1</code>,
 reasoning models</strong> (<code>o1</code>, <code>o3</code>, <code>o4</code>, <code>gpt-5</code>, <code>gpt-5-nano</code>) - they are
 slower, more expensive, and may not follow the evaluator prompt format.</p>
 <p>Set the deployment via env vars before running:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_OPENAI_ENDPOINT</span><span class="o">=</span><span class="s2">&quot;https://&lt;account&gt;.openai.azure.com/&quot;</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_OPENAI_DEPLOYMENT</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_OPENAI_ENDPOINT</span><span class="o">=</span><span class="s2">&quot;https://&lt;account&gt;.openai.azure.com/&quot;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AZURE_OPENAI_DEPLOYMENT</span><span class="o">=</span><span class="s2">&quot;gpt-4o-mini&quot;</span>
 </code></pre></div>
 <h2 id="thresholds">Thresholds<a class="headerlink" href="#thresholds" title="Permanent link">&para;</a></h2>
 <p>Threshold expressions accept:</p>
@@ -2496,7 +2471,7 @@ in this codebase.</p>
 <li><code>report.md</code>: human-readable summary for review.</li>
 </ul>
 <p>When you run:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>run
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>run
 </code></pre></div>
 <p>AgentOps writes to both:</p>
 <ul>
@@ -2506,22 +2481,22 @@ in this codebase.</p>
 <p>If you pass <code>--output</code>, AgentOps writes to that directory and still updates <code>.agentops/results/latest/</code> with the newest run content.</p>
 <h2 id="testing">Testing<a class="headerlink" href="#testing" title="Permanent link">&para;</a></h2>
 <p>Tests live in <code>tests/</code> and are organized as:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>tests/
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>├── fixtures/
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>│   ├── fake_eval_runner.py          # Fake backend for integration tests
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>│   └── fake_adapter.py              # Fake local adapter (stdin/stdout JSON echo)
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>├── integration/
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>│   └── test_eval_run_integration.py # End-to-end via local adapter backend
-<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a>└── unit/
-<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>    ├── test_models.py               # Pydantic model validation
-<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>    ├── test_reporter.py             # Threshold evaluation + report
-<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>    ├── test_yaml_loader.py          # YAML loading + env-var interpolation
-<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>    ├── test_foundry_backend.py      # Foundry backend helpers (mocked)
-<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>    ├── test_http_backend.py         # HTTP backend helpers
-<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a>    └── test_initializer.py          # Workspace scaffolding
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>tests/
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>├── fixtures/
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>│   ├── fake_eval_runner.py          # Fake backend for integration tests
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>│   └── fake_adapter.py              # Fake local adapter (stdin/stdout JSON echo)
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>├── integration/
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>│   └── test_eval_run_integration.py # End-to-end via local adapter backend
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>└── unit/
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a>    ├── test_models.py               # Pydantic model validation
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a>    ├── test_reporter.py             # Threshold evaluation + report
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a>    ├── test_yaml_loader.py          # YAML loading + env-var interpolation
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a>    ├── test_foundry_backend.py      # Foundry backend helpers (mocked)
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>    ├── test_http_backend.py         # HTTP backend helpers
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a>    └── test_initializer.py          # Workspace scaffolding
 </code></pre></div>
 <p>Run all tests:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-x<span class="w"> </span>-q
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests/<span class="w"> </span>-x<span class="w"> </span>-q
 </code></pre></div>
 <p>Key testing rules:
 - All Azure SDK calls must be <strong>mocked</strong> - tests run without Azure credentials.

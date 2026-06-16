@@ -16,7 +16,7 @@
         <link rel="prev" href="../how-it-works/">
       
       
-        <link rel="next" href="../bundles/">
+        <link rel="next" href="../foundry-evaluation-sdk-built-in-evaluators/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -235,7 +235,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../tutorial-end-to-end/" class="md-tabs__link">
+        <a href="../tutorial-prompt-agent/" class="md-tabs__link">
           
   
   Tutorials
@@ -455,53 +455,53 @@
   
   
     <li class="md-nav__item">
+      <a href="../tutorial-prompt-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prompt Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted or HTTP Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../tutorial-end-to-end/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    End-to-End
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-hosted-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Hosted Agent Quickstart
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-prompt-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Prompt Agent Quickstart
+    Full End-to-End Tutorial
   </span>
   
 
@@ -754,27 +754,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../bundles/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Bundles
-  </span>
-  
-
-      </a>
     </li>
   
 
@@ -1304,28 +1283,27 @@ regression data.</p>
 <p>The short version is: <strong>Foundry operates the agent; AgentOps turns that operating
 signal into repo-side release proof.</strong></p>
 <h2 id="how-an-evaluation-works">How an Evaluation Works<a class="headerlink" href="#how-an-evaluation-works" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>graph TD
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    A[agentops.yaml target dataset thresholds]
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    B[JSONL dataset rows]
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    C[AgentOps runner]
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    D[Foundry target]
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    E[HTTP target]
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    F[Model target]
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    G[Evaluators and thresholds]
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    H[results.json]
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    I[report.md]
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    A --&gt; C
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    B --&gt; C
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    C --&gt; D
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    C --&gt; E
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    C --&gt; F
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    D --&gt; G
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    E --&gt; G
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    F --&gt; G
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    G --&gt; H
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    G --&gt; I
-</code></pre></div>
+<pre class="mermaid"><code>graph TD
+    A[agentops.yaml target dataset thresholds]
+    B[JSONL dataset rows]
+    C[AgentOps runner]
+    D[Foundry target]
+    E[HTTP target]
+    F[Model target]
+    G[Evaluators and thresholds]
+    H[results.json]
+    I[report.md]
+
+    A --&gt; C
+    B --&gt; C
+    C --&gt; D
+    C --&gt; E
+    C --&gt; F
+    D --&gt; G
+    E --&gt; G
+    F --&gt; G
+    G --&gt; H
+    G --&gt; I</code></pre>
 <blockquote>
 <p>Exit code: <code>0</code> = pass, <code>2</code> = threshold fail, <code>1</code> = error</p>
 </blockquote>
@@ -1335,20 +1313,20 @@ signal into repo-side release proof.</strong></p>
 <code>agentops.yaml</code> file at the project root. <code>.agentops/</code> is the
 AgentOps-managed workspace for seed inputs, local run history, Doctor cache,
 and generated release evidence. It is not a second <code>.foundry/</code> directory.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>agentops.yaml          # flat config: agent, dataset, thresholds
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>.agentops/
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── data/              # dataset rows (JSONL)
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>├── results/           # run outputs + latest/ pointer
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>├── agent/             # Doctor history and reports
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>└── release/           # evidence.json/evidence.md when generated
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>agentops.yaml          # flat config: agent, dataset, thresholds
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>.agentops/
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── data/              # dataset rows (JSONL)
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── results/           # run outputs + latest/ pointer
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── agent/             # Doctor history and reports
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>└── release/           # evidence.json/evidence.md when generated
 </code></pre></div>
 <h3 id="agentops-config">AgentOps Config<a class="headerlink" href="#agentops-config" title="Permanent link">&para;</a></h3>
 <p>A YAML file named <code>agentops.yaml</code> that connects <strong>what</strong> to evaluate,
 <strong>which dataset</strong> to use, and <strong>which thresholds</strong> gate the run.</p>
 <p>The minimum is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;my-agent:1&quot;</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;my-agent:1&quot;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
 </code></pre></div>
 <p>Common <code>agent:</code> values:</p>
 <table>
@@ -1385,7 +1363,7 @@ and generated release evidence. It is not a second <code>.foundry/</code> direct
 and usually an <code>expected</code> reference answer. Some scenarios add extra
 fields like <code>context</code> (RAG), <code>tool_definitions</code>, or <code>tool_calls</code> (agent
 workflows).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is Python?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Python is a programming language.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is Python?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Python is a programming language.&quot;</span><span class="p">}</span>
 </code></pre></div>
 <h3 id="evaluator">Evaluator<a class="headerlink" href="#evaluator" title="Permanent link">&para;</a></h3>
 <p>A scoring function that measures one aspect of the target response.
@@ -1518,9 +1496,9 @@ execution to azd, then normalizes metrics, binds thresholds, writes
 <code>results.json</code>, and fails closed for thresholds that have no emitted metric.
 Rubric evaluator dimensions are treated as first-class metric names.</p>
 <p>Governance artifacts are optional evidence inputs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">assert_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.assert/evaluation-policy.yaml</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">acs_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acs.yaml</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">redteam_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/governance/redteam-plan.md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">assert_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.assert/evaluation-policy.yaml</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">acs_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acs.yaml</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">redteam_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/governance/redteam-plan.md</span>
 </code></pre></div>
 <p>AgentOps records path, hash, status, and ACS checkpoint coverage in Doctor,
 Cockpit, and release evidence. ASSERT execution, ACS enforcement, Guided
@@ -1565,9 +1543,9 @@ Guardrail setup, and red-team scans remain in their owning tools.</p>
 </table>
 <p>Use one of the three hands-on tutorials for scenario coverage:</p>
 <ul>
-<li><a href="../tutorial-prompt-agent-quickstart/">Foundry Prompt Agent tutorial</a> for Foundry
+<li><a href="../tutorial-prompt-agent/">Foundry Prompt Agent tutorial</a> for Foundry
   prompt agents referenced as <code>name:version</code>.</li>
-<li><a href="../tutorial-hosted-agent-quickstart/">Hosted or HTTP Agent tutorial</a> for Foundry
+<li><a href="../tutorial-hosted-agent/">Hosted or HTTP Agent tutorial</a> for Foundry
   hosted endpoints, generic HTTP agents, RAG services, and code-based workflows.</li>
 <li><a href="../tutorial-end-to-end/">End-to-end tutorial</a> for the complete Foundry +
   AgentOps loop, including CI/CD, observability, red-team follow-through,
@@ -1576,16 +1554,16 @@ Guardrail setup, and red-team scans remain in their owning tools.</p>
 <h2 id="configuration-model">Configuration Model<a class="headerlink" href="#configuration-model" title="Permanent link">&para;</a></h2>
 <p><code>agentops.yaml</code> is the single source of truth. Keep it small and add only
 the fields your target needs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
 </code></pre></div>
 <p>See <a href="../how-it-works/">how-it-works.md</a> for the full schema, endpoint
 fields, validation rules, and more examples.</p>

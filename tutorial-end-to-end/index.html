@@ -13,10 +13,10 @@
       
       
       
-        <link rel="prev" href="..">
+        <link rel="prev" href="../tutorial-hosted-agent/">
       
       
-        <link rel="next" href="../tutorial-hosted-agent-quickstart/">
+        <link rel="next" href="../how-it-works/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -24,7 +24,7 @@
     
     
       
-        <title>End-to-End - AgentOps Accelerator</title>
+        <title>Full End-to-End Tutorial - AgentOps Accelerator</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#end-to-end-tutorial-release-readiness-for-foundry-agents" class="md-skip">
+        <a href="#full-end-to-end-tutorial-sandbox-to-production-readiness" class="md-skip">
           Skip to content
         </a>
       
@@ -113,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              End-to-End
+              Full End-to-End Tutorial
             
           </span>
         </div>
@@ -237,7 +237,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="./" class="md-tabs__link">
+        <a href="../tutorial-prompt-agent/" class="md-tabs__link">
           
   
   Tutorials
@@ -457,6 +457,48 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-prompt-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prompt Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted or HTTP Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -473,7 +515,7 @@
           
   
   <span class="md-ellipsis">
-    End-to-End
+    Full End-to-End Tutorial
   </span>
   
 
@@ -484,7 +526,7 @@
         
   
   <span class="md-ellipsis">
-    End-to-End
+    Full End-to-End Tutorial
   </span>
   
 
@@ -742,48 +784,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-hosted-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Hosted Agent Quickstart
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../tutorial-prompt-agent-quickstart/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Prompt Agent Quickstart
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -864,27 +864,6 @@
   
   <span class="md-ellipsis">
     Core Concepts
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../bundles/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Bundles
   </span>
   
 
@@ -1508,18 +1487,15 @@
   
 
 
-<h1 id="end-to-end-tutorial-release-readiness-for-foundry-agents">End-to-end tutorial: release readiness for Foundry agents<a class="headerlink" href="#end-to-end-tutorial-release-readiness-for-foundry-agents" title="Permanent link">&para;</a></h1>
-<p>This tutorial is the full path. Use it after one of the type-specific tutorials when you
-want to validate the complete develop -&gt; evaluate -&gt; release -&gt; observe loop
-across <strong>sandbox</strong>, <strong>dev</strong>, <strong>qa</strong>, and <strong>prod</strong> environments. The two
-type-specific tutorials cover the same loop for a single agent type in a sandbox + dev
-arrangement; this tutorial expands the journey through every release stage.</p>
-<p>It is inspired by the Azure Samples repo
-<a href="https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe">Mind the Gap In Your AI Agent Observability</a>.
-That sample goes deep on Foundry SDK notebooks, tracing, evaluation, and
-red-team scans. This AgentOps tutorial does not copy those labs. It shows where
-AgentOps fits around the same lifecycle as the repo-side readiness and evidence
-layer.</p>
+<h1 id="full-end-to-end-tutorial-sandbox-to-production-readiness">Full end-to-end tutorial: sandbox to production readiness<a class="headerlink" href="#full-end-to-end-tutorial-sandbox-to-production-readiness" title="Permanent link">&para;</a></h1>
+<p>This is the complete release path. Use it after one of the type-specific
+tutorials when you want to validate the full develop -&gt; evaluate -&gt; release -&gt;
+observe loop across <strong>sandbox</strong>, <strong>dev</strong>, <strong>qa</strong>, and <strong>prod</strong> environments.</p>
+<p>The Prompt Agent and Hosted/HTTP Agent tutorials prove one target type in a
+small sandbox + dev loop with a PR gate. This end-to-end tutorial expands that
+same readiness model into the full promotion journey: multi-environment
+topology, generated workflows, release evidence, approval gates, observability,
+and trace-driven regression learning.</p>
 <p><img alt="Foundry Control Plane" src="../media/foundry-control-plane.png" /></p>
 <p>Foundry gives you the control plane: fleet management, observability, security,
 and compliance. AgentOps adds the repo contract around that control plane:
@@ -2090,7 +2066,7 @@ deploy workflow runs against a dev / qa / prod Foundry project that does
 not yet contain the agent, it reads that block plus <code>prompt_file</code> and
 creates the first version automatically. No per-environment manual
 seeding. See the
-<a href="../tutorial-prompt-agent-quickstart/">prompt-agent tutorial</a> for the
+<a href="../tutorial-prompt-agent/">prompt-agent tutorial</a> for the
 full multi-environment journey.</p>
 </blockquote>
 <p>Before running that workflow, make the PR gate runnable in GitHub. Install the
@@ -2620,10 +2596,10 @@ links out to Foundry / Azure Monitor for live runtime data.</p>
 <ul>
 <li><strong>Detailed prompt-agent walkthrough</strong> (sandbox + dev journey, regression
   PR, Doctor-blocking gate, fix + redeploy):
-  <a href="../tutorial-prompt-agent-quickstart/">tutorial-prompt-agent-quickstart.md</a>.</li>
+  <a href="../tutorial-prompt-agent/">tutorial-prompt-agent.md</a>.</li>
 <li><strong>Detailed hosted-agent walkthrough</strong> (same sandbox + dev story but
   for endpoints, with the git SHA / image tag identity story):
-  <a href="../tutorial-hosted-agent-quickstart/">tutorial-hosted-agent-quickstart.md</a>.</li>
+  <a href="../tutorial-hosted-agent/">tutorial-hosted-agent.md</a>.</li>
 <li><strong>CI/CD reference</strong> (<a href="../ci-github-actions/">docs/ci-github-actions.md</a>)
   for full <code>agentops workflow generate</code> flag reference including the
   <code>--doctor-gate</code> semantics.</li>
