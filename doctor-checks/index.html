@@ -1,0 +1,1851 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Continuous evaluation, safety testing, observability, and release readiness for Microsoft Foundry agents">
+      
+      
+        <meta name="author" content="Paulo Lacerda">
+      
+      
+      
+        <link rel="prev" href="../foundry-evaluation-sdk-built-in-evaluators/">
+      
+      
+        <link rel="next" href="../doctor-explained/">
+      
+      
+      <link rel="icon" href="../media/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.34">
+    
+    
+      
+        <title>Checks - AgentOps Accelerator</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.35f28582.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../styles.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="blue">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#agentops-doctor-checks-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="AgentOps Accelerator" class="md-header__button md-logo" aria-label="AgentOps Accelerator" data-md-component="logo">
+      
+  <img src="../media/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            AgentOps Accelerator
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Checks
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="blue"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="blue"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/Azure/agentops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Azure/agentops
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../tutorial-end-to-end/" class="md-tabs__link">
+          
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../how-it-works/" class="md-tabs__link">
+          
+  
+  Concepts
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../foundry-evaluation-sdk-built-in-evaluators/" class="md-tabs__link">
+          
+  
+  Evaluation
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  Doctor
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../ci-github-actions/" class="md-tabs__link">
+          
+  
+  CI/CD
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../e2e-live-architecture/" class="md-tabs__link">
+          
+  
+  Live End-to-End
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="AgentOps Accelerator" class="md-nav__button md-logo" aria-label="AgentOps Accelerator" data-md-component="logo">
+      
+  <img src="../media/logo.png" alt="logo">
+
+    </a>
+    AgentOps Accelerator
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/Azure/agentops" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    Azure/agentops
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Tutorials
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Tutorials
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-end-to-end/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    End-to-End
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent-quickstart/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted Agent Quickstart
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-prompt-agent-quickstart/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Prompt Agent Quickstart
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Concepts
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            Concepts
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-it-works/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    How It Works
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Core Concepts
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bundles/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Bundles
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Evaluation
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            Evaluation
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundry-evaluation-sdk-built-in-evaluators/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Built-in Evaluators
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Doctor
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Doctor
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Checks
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Checks
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#data-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data sources
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      Catalogue
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Catalogue">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      🛡️ Security
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operational-excellence" class="md-nav__link">
+    <span class="md-ellipsis">
+      ⚙️ Operational Excellence
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reliability" class="md-nav__link">
+    <span class="md-ellipsis">
+      🛟 Reliability
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      ⚡ Performance
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      🎯 Quality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#responsible-ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      🪞 Responsible AI
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuring-the-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuring the checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      Roadmap
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../doctor-explained/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Explained
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    CI/CD
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            CI/CD
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ci-github-actions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    GitHub Actions
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release-process/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Release Process
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Live End-to-End
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Live End-to-End
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../e2e-live-architecture/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../e2e-live-setup/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Setup
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#data-sources" class="md-nav__link">
+    <span class="md-ellipsis">
+      Data sources
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#catalogue" class="md-nav__link">
+    <span class="md-ellipsis">
+      Catalogue
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Catalogue">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#security" class="md-nav__link">
+    <span class="md-ellipsis">
+      🛡️ Security
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#operational-excellence" class="md-nav__link">
+    <span class="md-ellipsis">
+      ⚙️ Operational Excellence
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reliability" class="md-nav__link">
+    <span class="md-ellipsis">
+      🛟 Reliability
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    <span class="md-ellipsis">
+      ⚡ Performance
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#quality" class="md-nav__link">
+    <span class="md-ellipsis">
+      🎯 Quality
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#responsible-ai" class="md-nav__link">
+    <span class="md-ellipsis">
+      🪞 Responsible AI
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuring-the-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuring the checks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#roadmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      Roadmap
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="agentops-doctor-checks-reference"><code>agentops doctor</code> — checks reference<a class="headerlink" href="#agentops-doctor-checks-reference" title="Permanent link">&para;</a></h1>
+<p>This page is the canonical inventory of every check the AgentOps
+Doctor runs. Each row tells you the <strong>finding id</strong> that surfaces in
+<code>report.md</code> / the cockpit, the <strong>WAF pillar</strong> the check belongs to,
+the <strong>data source</strong> it reads, and the <strong>detection signal</strong> (the rule
+itself, in plain English).</p>
+<blockquote>
+<p><strong>Tip:</strong> the same catalog is browsable from the terminal:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>explain<span class="w">                    </span><span class="c1"># paged manual: sources + flow</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>explain<span class="w"> </span>--open<span class="w">             </span><span class="c1"># browser-friendly copy for printing</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>explain<span class="w"> </span>-f<span class="w"> </span>markdown<span class="w"> </span>-o<span class="w"> </span>doctor.md
+</code></pre></div>
+<p>Use <code>agentops doctor --help</code> for terse syntax and options. Use
+<code>agentops doctor explain</code> for the Linux-style command manual, including
+sources, execution flow, examples, and the check catalog. Add <code>--open</code>
+when you want a printable browser view, or <code>--format markdown --out</code> when
+you want a shareable document. Use this page for the deeper "how each
+rule detects the signal" reference.</p>
+</blockquote>
+<p>Two conventions across the table:</p>
+<ul>
+<li><strong>Mechanism = <code>programmatic</code></strong> — the rule is deterministic: an SDK
+  call, a KQL query, a regex, a timestamp comparison, or a statistic.
+  Fast, reproducible, free to run, and always on.</li>
+<li><strong>Mechanism = <code>llm-judged</code></strong> — the rule asks a judge model to look
+  at semantic signals a regex can't see (jailbreak surface, evaluator
+  coverage, etc.). Gated by <code>checks.llm_assist.enabled</code>, capped at
+  <code>warning</code> severity, never affects CI exit codes.</li>
+</ul>
+<h2 id="data-sources">Data sources<a class="headerlink" href="#data-sources" title="Permanent link">&para;</a></h2>
+<p>The Doctor reaches Azure through five sources, all configured in
+<code>.agentops/agent.yaml</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Reads</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>workspace_files</code></td>
+<td><code>.agentops/</code>, <code>agentops.yaml</code>, <code>.github/workflows/</code>, <code>.azuredevops/pipelines/</code>, AI Landing Zone signals, <code>CHANGELOG.md</code>, spec-kit / <code>AGENTS.md</code></td>
+</tr>
+<tr>
+<td><code>results_history</code></td>
+<td>Local <code>.agentops/results/*/results.json</code> first; Foundry cloud evaluation runs as fallback when local history is missing or too short</td>
+</tr>
+<tr>
+<td><code>azure_monitor</code></td>
+<td>Application Insights / Log Analytics via REST (KQL)</td>
+</tr>
+<tr>
+<td><code>foundry_control</code></td>
+<td>Foundry project / agents / evaluation rules via <code>azure-ai-projects</code></td>
+</tr>
+<tr>
+<td><code>azure_resources</code></td>
+<td>Cognitive Services account properties via <code>azure-mgmt-cognitiveservices</code>; inferred from explicit config, AZD <code>.azure/&lt;env&gt;/.env</code> when present, or Foundry endpoint/account matching</td>
+</tr>
+</tbody>
+</table>
+<p>The LLM-judged rules additionally use the Foundry project's OpenAI
+client (auto-discovered) as the judge model.</p>
+<p>Azure sources fail open. When Doctor cannot authenticate, infer an AZD
+environment, match a single Azure AI account, or read a resource, it
+records a diagnostic with the reason and suggested setup step instead of
+stopping the whole run.</p>
+<h2 id="catalogue">Catalogue<a class="headerlink" href="#catalogue" title="Permanent link">&para;</a></h2>
+<h3 id="security">🛡️ Security<a class="headerlink" href="#security" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Finding id</th>
+<th>Severity</th>
+<th>Source</th>
+<th>Mechanism</th>
+<th>Detection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>waf.security.local_auth_disabled</code></td>
+<td>warning</td>
+<td><code>azure_resources</code></td>
+<td>programmatic</td>
+<td><code>account.disable_local_auth == true</code></td>
+</tr>
+<tr>
+<td><code>waf.security.managed_identity</code></td>
+<td>warning</td>
+<td><code>azure_resources</code></td>
+<td>programmatic</td>
+<td><code>account.identity.type in {SystemAssigned, UserAssigned}</code></td>
+</tr>
+<tr>
+<td><code>waf.security.public_network_access</code></td>
+<td>warning</td>
+<td><code>azure_resources</code></td>
+<td>programmatic</td>
+<td><code>account.publicNetworkAccess == Disabled</code> (or private endpoint present)</td>
+</tr>
+<tr>
+<td><code>waf.security.diagnostic_settings</code></td>
+<td>warning</td>
+<td><code>azure_resources</code></td>
+<td>programmatic</td>
+<td>account has ≥1 diagnostic setting with a <code>workspace_id</code></td>
+</tr>
+<tr>
+<td><code>safety.runtime.content_filter</code></td>
+<td>warning</td>
+<td><code>azure_monitor</code></td>
+<td>programmatic</td>
+<td>KQL hits on <code>gen_ai.response.finish_reasons contains content_filter</code></td>
+</tr>
+<tr>
+<td><code>responsible_ai.llm.prompt_jailbreak_surface</code></td>
+<td>info / warning</td>
+<td><code>foundry_control</code></td>
+<td>llm-judged</td>
+<td>judge model scans system prompt for override-phrasing, embedded secrets, unbounded role-play</td>
+</tr>
+</tbody>
+</table>
+<h3 id="operational-excellence">⚙️ Operational Excellence<a class="headerlink" href="#operational-excellence" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Finding id</th>
+<th>Severity</th>
+<th>Source</th>
+<th>Mechanism</th>
+<th>Detection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>opex.unpinned_agent</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td><code>agentops.yaml</code> has <code>agent:</code> without a <code>:version</code> suffix</td>
+</tr>
+<tr>
+<td><code>opex.no_thresholds</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td><code>agentops.yaml</code> has no <code>thresholds:</code> block</td>
+</tr>
+<tr>
+<td><code>opex.no_pr_gate</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td><code>.github/workflows/agentops-pr.yml</code> missing</td>
+</tr>
+<tr>
+<td><code>opex.no_deploy_workflow</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>no <code>.github/workflows/agentops-deploy-*.yml</code></td>
+</tr>
+<tr>
+<td><code>opex.results_not_gitignored</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td><code>.agentops/results/</code> not in any reachable <code>.gitignore</code></td>
+</tr>
+<tr>
+<td><code>opex.unversioned_dataset</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>dataset YAMLs lack a top-level <code>version:</code></td>
+</tr>
+<tr>
+<td><code>opex.unversioned_bundle</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>bundle YAMLs lack a top-level <code>version:</code></td>
+</tr>
+<tr>
+<td><code>opex.results_dir_bloat</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td><code>.agentops/results/</code> holds &gt; 50 run folders</td>
+</tr>
+<tr>
+<td><code>opex.workflow_concurrency_lock</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>AgentOps workflows missing a top-level <code>concurrency:</code> block</td>
+</tr>
+<tr>
+<td><code>opex.workflow_action_sha_pinning</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td><code>uses:</code> pinned to tag instead of 40-char SHA</td>
+</tr>
+<tr>
+<td><code>opex.ailz_readiness</code></td>
+<td>info</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>canonical AI Landing Zone signals detected; reports deployment readiness dimensions</td>
+</tr>
+<tr>
+<td><code>opex.ailz_gaps</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>AI Landing Zone signals detected but preflight, eval config, azd workflow, or private-runner path needs attention</td>
+</tr>
+<tr>
+<td><code>opex.release.no_eval_evidence</code></td>
+<td>warning</td>
+<td><code>workspace_files</code> + <code>results_history</code></td>
+<td>programmatic</td>
+<td>AgentOps workspace detected but no completed eval run is available for release evidence</td>
+</tr>
+<tr>
+<td><code>opex.release.latest_eval_failed</code></td>
+<td>critical</td>
+<td><code>results_history</code></td>
+<td>programmatic</td>
+<td>latest eval run exists but did not pass</td>
+</tr>
+<tr>
+<td><code>opex.release.no_baseline</code></td>
+<td>warning</td>
+<td><code>workspace_files</code> + <code>results_history</code></td>
+<td>programmatic</td>
+<td>eval evidence exists but no baseline/comparison is available for regression decisions</td>
+</tr>
+<tr>
+<td><code>opex.release.no_trace_regression_dataset</code></td>
+<td>info</td>
+<td><code>workspace_files</code> + <code>results_history</code></td>
+<td>programmatic</td>
+<td>no <code>.agentops/data/trace-regression-manifest.json</code> exists yet</td>
+</tr>
+<tr>
+<td><code>opex.release.no_continuous_eval</code></td>
+<td>warning</td>
+<td><code>foundry_control</code></td>
+<td>programmatic</td>
+<td>Foundry control plane is reachable but no enabled continuous evaluation rule was detected</td>
+</tr>
+<tr>
+<td><code>opex.no_foundry_control_configured</code></td>
+<td>warning</td>
+<td><code>foundry_control</code></td>
+<td>programmatic</td>
+<td>Foundry control plane unreachable</td>
+</tr>
+<tr>
+<td><code>opex.stale_evaluation</code></td>
+<td>warning / critical</td>
+<td><code>results_history</code></td>
+<td>programmatic</td>
+<td>latest run older than <code>stale_after_days</code> (critical at 2×)</td>
+</tr>
+<tr>
+<td><code>opex.flaky_metric.&lt;metric&gt;</code></td>
+<td>warning</td>
+<td><code>results_history</code></td>
+<td>programmatic</td>
+<td>coefficient of variation across last N runs &gt; <code>flaky_cv_threshold</code></td>
+</tr>
+<tr>
+<td><code>opex.no_token_telemetry</code></td>
+<td>warning</td>
+<td><code>azure_monitor</code></td>
+<td>programmatic</td>
+<td><code>request_count &gt; 0</code> but <code>gen_ai.usage.input_tokens + output_tokens == 0</code></td>
+</tr>
+<tr>
+<td><code>opex.max_tokens_undefined</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>no <code>max_tokens:</code> or <code>max_completion_tokens:</code> declared in any <code>agentops.yaml</code> / bundle YAML that configures a model</td>
+</tr>
+<tr>
+<td><code>opex.llm.bundle_coverage</code></td>
+<td>info / warning</td>
+<td><code>workspace_files</code></td>
+<td>llm-judged</td>
+<td>judge compares bundle YAML against agent description and flags missing built-ins</td>
+</tr>
+<tr>
+<td><code>opex.spec_conformance.spec_missing</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>spec-driven setup detected (<code>.specify/</code>, <code>AGENTS.md</code>, or Copilot instructions) but no readable spec body, so Doctor cannot verify bundles / datasets / tasks against intended agent behavior</td>
+</tr>
+<tr>
+<td><code>opex.spec_conformance.tasks_stale</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>unchecked task-list items in the spec have remained open past <code>stale_after_days</code>, which suggests the implementation plan may be stale or the task list was not maintained</td>
+</tr>
+<tr>
+<td><code>opex.spec_conformance.tasks_orphaned</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>checked task references a path missing from workspace</td>
+</tr>
+<tr>
+<td><code>opex.spec_conformance.evaluator_drift</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>evaluator mentioned in spec absent from <code>agentops.yaml</code></td>
+</tr>
+<tr>
+<td><code>opex.spec_conformance.dataset_drift</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>dataset mentioned in spec absent from <code>.agentops/data/</code></td>
+</tr>
+<tr>
+<td><code>opex.spec_conformance.agent_drift</code></td>
+<td>warning</td>
+<td><code>workspace_files</code></td>
+<td>programmatic</td>
+<td>spec <code>agent_id</code> doesn't match <code>agentops.yaml</code></td>
+</tr>
+<tr>
+<td><code>opex.spec_conformance.llm.implementation_gap</code></td>
+<td>info / warning</td>
+<td><code>workspace_files</code></td>
+<td>llm-judged</td>
+<td>judge compares spec capabilities to workspace fingerprint</td>
+</tr>
+</tbody>
+</table>
+<h3 id="reliability">🛟 Reliability<a class="headerlink" href="#reliability" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Finding id</th>
+<th>Severity</th>
+<th>Source</th>
+<th>Mechanism</th>
+<th>Detection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>errors.production_rate</code></td>
+<td>warning / critical</td>
+<td><code>azure_monitor</code></td>
+<td>programmatic</td>
+<td>KQL <code>errors / requests &gt; rate_threshold</code> (critical at 2×)</td>
+</tr>
+<tr>
+<td><code>errors.foundry_runs</code></td>
+<td>warning</td>
+<td><code>foundry_control</code></td>
+<td>programmatic</td>
+<td><code>foundry.failure_rate &gt; rate_threshold</code></td>
+</tr>
+<tr>
+<td><code>errors.no_runtime_telemetry</code></td>
+<td>warning</td>
+<td><code>azure_monitor</code></td>
+<td>programmatic</td>
+<td><code>monitor.status == ok AND request_count == 0</code> over lookback</td>
+</tr>
+<tr>
+<td><code>errors.rate_limit_pressure</code></td>
+<td>warning / critical</td>
+<td><code>azure_monitor</code></td>
+<td>programmatic</td>
+<td>KQL counts dependency calls with <code>resultCode == 429</code>; escalates at 2× the floor</td>
+</tr>
+</tbody>
+</table>
+<h3 id="performance">⚡ Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Finding id</th>
+<th>Severity</th>
+<th>Source</th>
+<th>Mechanism</th>
+<th>Detection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>latency</code></td>
+<td>warning / critical</td>
+<td><code>azure_monitor</code> + <code>results_history</code></td>
+<td>programmatic</td>
+<td><code>p95_seconds &gt; p95_threshold_seconds</code> (critical at 2×)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="quality">🎯 Quality<a class="headerlink" href="#quality" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Finding id</th>
+<th>Severity</th>
+<th>Source</th>
+<th>Mechanism</th>
+<th>Detection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>regression.&lt;metric&gt;</code></td>
+<td>warning / critical</td>
+<td><code>results_history</code></td>
+<td>programmatic</td>
+<td><code>latest_metric - baseline_metric &gt; threshold_drop</code> per metric</td>
+</tr>
+</tbody>
+</table>
+<h3 id="responsible-ai">🪞 Responsible AI<a class="headerlink" href="#responsible-ai" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Finding id</th>
+<th>Severity</th>
+<th>Source</th>
+<th>Mechanism</th>
+<th>Detection</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>safety</code></td>
+<td>warning</td>
+<td><code>results_history</code></td>
+<td>programmatic</td>
+<td>row-level content-safety metric at or above <code>severity_floor</code> in the latest eval</td>
+</tr>
+<tr>
+<td><code>safety.config.continuous_eval_missing</code></td>
+<td>warning</td>
+<td><code>foundry_control</code></td>
+<td>programmatic</td>
+<td><code>foundry.evaluation_rules</code> empty while agents exist</td>
+</tr>
+<tr>
+<td><code>safety.config.continuous_eval_disabled</code></td>
+<td>warning</td>
+<td><code>foundry_control</code></td>
+<td>programmatic</td>
+<td>any <code>evaluation_rule.enabled == false</code></td>
+</tr>
+<tr>
+<td><code>responsible_ai.llm.prompt_transparency</code></td>
+<td>info / warning</td>
+<td><code>foundry_control</code></td>
+<td>llm-judged</td>
+<td>judge scans agent instructions for AI-disclosure / source-citation / role-scope</td>
+</tr>
+<tr>
+<td><code>responsible_ai.llm.prompt_safety_guardrails</code></td>
+<td>info / warning</td>
+<td><code>foundry_control</code></td>
+<td>llm-judged</td>
+<td>judge looks for refusal patterns across the four harm categories</td>
+</tr>
+<tr>
+<td><code>responsible_ai.llm.dataset_pii_risk</code></td>
+<td>info / warning</td>
+<td><code>workspace_files</code></td>
+<td>llm-judged</td>
+<td>judge scans <code>.agentops/data/*.jsonl</code> sample for PII</td>
+</tr>
+<tr>
+<td><code>responsible_ai.llm.dataset_bias_signals</code></td>
+<td>info / warning</td>
+<td><code>workspace_files</code></td>
+<td>llm-judged</td>
+<td>judge scores dataset sample for demographic / role / domain / tone skew</td>
+</tr>
+</tbody>
+</table>
+<h2 id="configuring-the-checks">Configuring the checks<a class="headerlink" href="#configuring-the-checks" title="Permanent link">&para;</a></h2>
+<p>Every threshold lives in <code>.agentops/agent.yaml</code> under <code>checks.&lt;rule&gt;</code>.
+For example, to make the regression check more sensitive:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">checks</span><span class="p">:</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">regression</span><span class="p">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">threshold_drop</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.05</span><span class="w">      </span><span class="c1"># 5 percentage points instead of the default 10</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">min_runs</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">               </span><span class="c1"># need at least 5 runs for a baseline</span>
+</code></pre></div>
+<p>To suppress a specific rule entirely, add it to <code>checks.&lt;rule&gt;.skip</code>
+(where supported) or use the CLI flag:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>--categories<span class="w"> </span>quality,operational_excellence
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>--exclude-rules<span class="w"> </span>waf.security.diagnostic_settings
+</code></pre></div>
+<h2 id="roadmap">Roadmap<a class="headerlink" href="#roadmap" title="Permanent link">&para;</a></h2>
+<p>The following items are on the AI Landing Zones Checklist but <strong>do not
+ship a rule today</strong>. They appear here so users know what's coming and
+can prioritize:</p>
+<table>
+<thead>
+<tr>
+<th>AI.X</th>
+<th>Pillar</th>
+<th>Plan</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AI.10</td>
+<td>Reliability</td>
+<td>TPM/RPM quota adequacy via <code>azure-mgmt-monitor</code> metrics (<code>OpenAI/Quota/UtilizationPercentage</code>)</td>
+</tr>
+<tr>
+<td>AI.155</td>
+<td>Reliability</td>
+<td>Provisioned-throughput utilization via <code>azureOpenAIProvisionedManagedUtilization</code> metric</td>
+</tr>
+<tr>
+<td>AI.158</td>
+<td>Reliability</td>
+<td>AI Search replica count via <code>azure-mgmt-search</code> (<code>searchService.replicaCount &gt;= 2</code>)</td>
+</tr>
+<tr>
+<td>AI.140</td>
+<td>Performance</td>
+<td>Token-consumption benchmark vs configured target</td>
+</tr>
+<tr>
+<td>AI.25</td>
+<td>Cost</td>
+<td>Cost-per-model tracking via Azure Cost Management API</td>
+</tr>
+</tbody>
+</table>
+<p>Each requires a new Azure SDK dependency; we will land them
+incrementally as workloads adopt them.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <div style="
+  background-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  text-align: center;
+  font-size: 0.95em;
+  padding: 1em 0;
+">
+  &copy; 2026 AgentOps Accelerator &mdash; built for shipping Foundry agents with confidence
+</div>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.top", "navigation.tracking", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "content.tabs.link"], "search": "../assets/javascripts/workers/search.07f07601.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.56dfad97.min.js"></script>
+      
+    
+  </body>
+</html>
