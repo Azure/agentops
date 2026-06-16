@@ -1,9 +1,16 @@
 <h1 align="center">AgentOps Accelerator</h1>
 
 <p align="center">
-<b>The open-source AgentOps jumpstart for continuous evaluation, safety testing, observability, and release readiness of Microsoft Foundry agents.</b>
+<b>Evaluate. Ship. Observe. Own.</b>
 <br/>
-Can we ship it, and how do we know?
+Continuous evaluation, safety testing, observability, and release readiness for Microsoft Foundry agents.
+</p>
+
+<p align="center">
+<a href="https://aka.ms/agentops-accelerator"><b>Documentation</b></a> |
+<a href="https://pypi.org/project/agentops-accelerator/">PyPI</a> |
+<a href="https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator">VS Code Extension</a> |
+<a href="https://github.com/Azure/agentops/releases/latest">Latest release</a>
 </p>
 
 <p align="center">
@@ -11,219 +18,44 @@ Can we ship it, and how do we know?
 <a href="https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator"><img alt="VS Code Extension" src="https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg?logo=visualstudiocode"/></a>
 <a href="https://github.com/Azure/agentops/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Azure/agentops/actions/workflows/ci.yml/badge.svg?branch=develop"/></a>
 <a href="https://github.com/Azure/agentops/actions/workflows/release.yml"><img alt="Release" src="https://github.com/Azure/agentops/actions/workflows/release.yml/badge.svg"/></a>
-<a href="https://github.com/Azure/agentops"><img alt="Status: Preview" src="https://img.shields.io/badge/Status-Preview-orange.svg"/></a>
-<br/>
-<a href="https://www.python.org/downloads/"><img alt="Python 3.11+" src="https://img.shields.io/badge/Python-3.11%2B-3776AB.svg"/></a>
-<a href="https://typer.tiangolo.com/"><img alt="CLI: Typer" src="https://img.shields.io/badge/CLI-Typer-5A67D8.svg"/></a>
-<a href="https://learn.microsoft.com/azure/ai-foundry/"><img alt="Built on Microsoft Foundry" src="https://img.shields.io/badge/Built%20on-Microsoft%20Foundry-0078D4.svg"/></a>
 <a href="https://github.com/Azure/agentops/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
 </p>
 
-## Overview
+AgentOps Accelerator helps Microsoft Foundry agent teams evaluate quality, prepare releases, monitor behavior, and stay accountable after launch. It gives you a practical starting point for agent operations, with Foundry integration as the default path and deeper setup guidance in the full docs.
 
-AgentOps Accelerator is an open-source AgentOps jumpstart that standardizes
-continuous evaluation, safety testing, observability, and release readiness
-for enterprise AI agents on Microsoft Foundry. It connects Foundry Evaluations,
-ASSERT, the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your CI/CD
-platform into one repeatable release loop, packaging every result into a
-stable evidence pack that proves the release is ready for production.
-
-The output is a clear answer to the two questions reviewers actually ask:
-can we ship it, and how do we know?
-
-### Core outputs
-
-| Artifact | Produced by | Audience |
-|---|---|---|
-| `results.json` | `agentops eval run` | CI / automation |
-| `report.md` | `agentops eval run` | PR reviewers |
-| `.agentops/assert/latest.json` | `agentops assert run` | Evidence pack, CI gate |
-| `.agentops/redteam/latest.json` | `agentops redteam run` | Evidence pack, CI gate |
-| `evidence.json` / `evidence.md` | `agentops doctor --evidence-pack` | Release approver |
-| Cockpit (localhost) | `agentops cockpit` | Engineer reviewing readiness |
-
-### Exit-code contract
-
-AgentOps commands exit with `0` when execution succeeded and every gate
-passed, with `2` when execution itself succeeded but a threshold, an ASSERT
-violation, a red-team attack-success rate, or a Doctor severity gate
-failed, and with `1` for runtime or configuration errors. Pipelines can
-rely on this contract without parsing output.
-
-## AgentOps and Microsoft Foundry
-
-Foundry and AgentOps are designed to meet at the release boundary. Foundry is
-where teams create, deploy, run, observe, and investigate agents. AgentOps is
-the repo-side operating layer that turns those signals into a repeatable
-ship/no-ship workflow.
-
-| Moment | Foundry / Azure does | AgentOps adds |
-|---|---|---|
-| Build and version | Foundry portal, Foundry SDK/Toolkit, `microsoft-foundry` skill, azd | Pins the exact candidate in `agentops.yaml` and generates the PR/release gate around it |
-| Evaluate and compare | Foundry Evaluations, `azd ai agent eval`, Rubric evaluator, and official CI actions/extensions | Keeps datasets and thresholds in the repo, records evidence, normalizes azd/Rubric outputs, and provides local/fallback runs for non-prompt targets |
-| Probe safety | ASSERT framework, PyRIT-backed AI Red Teaming agent | Runs both as active CI steps via `agentops assert run` and `agentops redteam run`, normalizes verdicts, and gates the pipeline |
-| Observe and investigate | Foundry Monitor, Traces, Azure Monitor, App Insights | Surfaces deep links, telemetry readiness, Doctor findings, and Cockpit navigation |
-| Decide release | Branch protection, environments, approvals | Packages `evidence.json` / `evidence.md` for promotion review |
-| Govern controls | ACS, Foundry Guardrails | References reviewed artifacts by path/hash/status without executing or applying the external controls |
-| Improve from production | Production traces and Foundry datasets | Promotes reviewed trace learnings into regression candidates |
-
-The rhythm is simple: build and operate the agent in Foundry, keep the release
-contract in the repo, and let AgentOps connect the two into a clean review loop.
-
-## Quickstart
-
-### 1) Install
+## Get started
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -U pip
-python -m pip install --upgrade "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"
-```
-
-This installs the current AgentOps source from GitHub. After the next package
-release, you can switch the install line back to `agentops-accelerator[foundry]`
-from PyPI.
-
-### 2) Bootstrap
-
-```powershell
+python -m pip install agentops-accelerator
 agentops init
-```
-
-This writes a single `agentops.yaml` at the project root and an
-AgentOps-managed workspace under `.agentops/` for seed data, run history, and
-generated evidence. It is not a second `.foundry/` project directory.
-
-### 3) Configure your agent
-
-Pick one of these forms for the `agent:` field - AgentOps classifies the target automatically:
-
-```yaml
-agent: "my-rag:3"                          # Foundry prompt agent (name:version)
-agent: "https://...services.ai.azure.com/.../agents/<id>"  # Foundry hosted endpoint
-agent: "https://api.example.com/chat"      # any HTTP/JSON agent (ACA, AKS, custom)
-agent: "model:gpt-4o"                       # raw Foundry model deployment
-```
-
-AgentOps supports both Foundry Prompt Agents and Hosted Agents as evaluation
-and readiness targets. Create and deploy them with Foundry tools, then reference
-the published candidate in `agentops.yaml`.
-
-For the smoke dataset, create a Foundry prompt agent such as
-`agentops-smoke` and publish it with instructions that copy exact-answer
-requests verbatim:
-
-```text
-If the user message starts with "Answer with exactly this sentence:",
-copy only the sentence after that prefix. Do not add greetings,
-markdown, citations, caveats, or explanations.
-```
-
-Evaluators come from dataset shape: `context` triggers RAG checks;
-`tool_calls` / `tool_definitions` trigger tool-use checks. Minimal config:
-
-```yaml
-version: 1
-agent: "agentops-smoke:2"  # Foundry saves the first published version as v2
-dataset: .agentops/data/smoke.jsonl
-```
-
-### 4) Run
-
-```powershell
-az login
-$env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT = "https://<resource>.services.ai.azure.com/api/projects/<project>"
-$env:AZURE_OPENAI_ENDPOINT = "https://<openai-resource>.openai.azure.com"
-$env:AZURE_OPENAI_DEPLOYMENT = "gpt-4o-mini"
 agentops eval analyze
 agentops eval run
 agentops doctor --evidence-pack
 ```
 
-For Foundry targets, use either `project_endpoint:` in `agentops.yaml` or
-`AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. Config wins when both are set.
+## What it helps you do
 
-Outputs land in `.agentops/results/latest/`:
+Use AgentOps Accelerator when you need to:
 
-- `results.json` - machine-readable (versioned, stable schema)
-- `report.md` - human-readable, PR-friendly
+- Evaluate an agent before release
+- Compare changes across versions
+- Capture release evidence
+- Monitor agent quality and regressions
+- Give teams a repeatable way to own agent behavior in production
 
-Release evidence lands in `.agentops/release/latest/`:
+The accelerator keeps the local workflow simple, then points you to the full
+docs when you are ready to configure pipelines, dashboards, and release
+practices.
 
-- `evidence.json` - machine-readable production-readiness projection
-- `evidence.md` - PR/release summary
+## Learn more
 
-Capture the first successful run as a baseline:
+For setup guides, tutorials, architecture, CI/CD guidance, Doctor checks, and
+evaluator reference, see:
 
-```powershell
-New-Item -ItemType Directory -Force .agentops\baseline | Out-Null
-Copy-Item .agentops\results\latest\results.json .agentops\baseline\results.json
-```
-
-To see a visible comparison, publish a new agent version with a prompt
-that paraphrases instead of copying exact-answer requests, update
-`agentops.yaml` to that new `name:version`, and compare against the
-baseline:
-
-```powershell
-agentops eval run --baseline .agentops/baseline/results.json
-```
-
-The report grows a `Comparison vs Baseline` section with per-metric deltas.
-
----
-
-## Commands
-
-Install optional extras as needed: `[foundry]` for eval runtime, `[agent]` for
-Doctor/Cockpit, and `[mcp]` for MCP.
-
-- `agentops --version` - show installed version.
-- `agentops init` - bootstrap config and seed data.
-- `agentops eval analyze` - check eval readiness.
-- `agentops eval init` - bootstrap an azd `eval.yaml` recipe and wire `execution: azd`.
-- `agentops eval run [--baseline PATH]` - run an evaluation.
-- `agentops eval promote-traces --source FILE [--apply]` - promote traces.
-- `agentops report generate` - regenerate `report.md`.
-- `agentops workflow analyze` - recommend CI/CD shape.
-- `agentops workflow generate` - generate CI/CD workflows.
-- `agentops skills install` - install Copilot or Claude skills.
-- `agentops mcp serve` - start the MCP server.
-- `agentops doctor [--evidence-pack]` - run readiness checks.
-- `agentops cockpit` - open the local Cockpit.
-- `agentops agent serve` - serve Doctor as a Copilot Extension.
-
-## AgentOps Cockpit
-
-`agentops cockpit` opens a localhost command center for the current workspace.
-It combines eval history, Doctor findings, workflow status, and links to the
-matching Foundry and Azure Monitor views.
-
-Cockpit sections, in display order:
-
-- **Foundry connection** - project, tenant, agent, App Insights.
-- **Foundry launchpad** - links for the agent, project, and telemetry.
-- **Observability readiness** - tracing, evals, red team, alerts.
-- **AgentOps Doctor** - latest Doctor findings.
-- **Eval gate summary** - local and CI gate history.
-- **Quality gate summary** - score trends and regressions.
-- **Production signal** - App Insights health snapshot.
-- **CI/CD Pipelines** - GitHub Actions status.
-- **Next actions** - contextual recommendations.
-
-## Documentation
-
-- [Foundry Prompt Agent tutorial](docs/tutorial-prompt-agent-quickstart.md) - use this when the Foundry target is `agent: name:version`. Walks the sandbox → dev journey with a PR gate.
-- [Hosted or HTTP Agent tutorial](docs/tutorial-hosted-agent-quickstart.md) - use this when the target is a Foundry hosted or HTTP endpoint URL. Same sandbox → dev journey for endpoint-based agents.
-- [End-to-end tutorial](docs/tutorial-end-to-end.md) - extends either of the above with the full sandbox → dev → qa → prod promotion, Foundry red-team scans, and trace-to-regression promotion.
-- [Core concepts](docs/concepts.md)
-- [How it works](docs/how-it-works.md)
-- [Doctor explained](docs/doctor-explained.md)
-- [CI/CD with GitHub Actions](docs/ci-github-actions.md)
-- [Built-in evaluator reference](docs/foundry-evaluation-sdk-built-in-evaluators.md)
-- [Release process](docs/release-process.md)
+<p align="center">
+<a href="https://aka.ms/agentops-accelerator"><b>https://aka.ms/agentops-accelerator</b></a>
+</p>
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for architecture rules, testing, and contribution flow.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development, testing, and contribution guidance.

@@ -60,7 +60,7 @@ def _no_foundry_control_finding(diag: dict) -> Finding:
         recommendation=(
             "Set `sources.foundry_control.project_endpoint` (or the "
             "`AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` env var) in "
-            "`.agentops/agent.yaml`, install the `[foundry]` extra, "
+            "`.agentops/agent.yaml`, install AgentOps, "
             "and grant the running identity at least `Reader` on the "
             "Foundry project. If this project does not use Foundry, "
             "set `sources.foundry_control.enabled: false` to opt out "

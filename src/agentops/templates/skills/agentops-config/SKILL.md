@@ -17,7 +17,7 @@ then return here once there is a `name:version` or URL.
 
 ## Step 0 - Prerequisites
 
-1. `pip install "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"` if `agentops` is missing.
+1. `pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"` if `agentops` is missing.
 2. Run `agentops eval analyze` first. If it reports missing or ambiguous
    target/dataset/scenario signals, use this skill to adapt the config.
 3. If `agentops.yaml` does not exist, run `agentops init` first. The init

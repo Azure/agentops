@@ -301,7 +301,7 @@ def _collect_foundry_eval_runs(
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
             "azure-ai-projects / azure-identity not installed "
-            "(install agentops-accelerator[foundry])"
+            "(install agentops-accelerator)"
         )
         log.info("Foundry cloud eval history unavailable: %s", exc)
         return [], diagnostics

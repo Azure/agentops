@@ -15,7 +15,7 @@ with a `name:version` or URL.
 
 ## Step 0 - Setup
 
-1. Install if missing: `pip install "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"`.
+1. Install if missing: `pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"`.
 2. If `agentops.yaml` does not exist at the project root, run `agentops init`.
    The init wizard prompts (azd-style) for the Foundry project endpoint,
    agent reference, and dataset path, persists each answer to

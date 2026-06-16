@@ -50,7 +50,7 @@ stages:
 
                 - bash: |
                     python -m pip install --upgrade pip
-                    python -m pip install "agentops-accelerator[foundry]__AGENTOPS_INSTALL_SPEC__"
+                    python -m pip install "agentops-accelerator__AGENTOPS_INSTALL_SPEC__"
                   displayName: Install AgentOps Toolkit
 
 __EVAL_TASKS__
