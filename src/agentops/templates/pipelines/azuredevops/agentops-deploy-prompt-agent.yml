@@ -48,7 +48,7 @@ stages:
               scriptLocation: inlineScript
               inlineScript: |
                 python -m pip install --upgrade pip
-                python -m pip install "agentops-accelerator[foundry]__AGENTOPS_INSTALL_SPEC__"
+                python -m pip install "agentops-accelerator__AGENTOPS_INSTALL_SPEC__"
                 python -m agentops.pipeline.prompt_deploy stage \
                   --config "$(AGENTOPS_CONFIG)" \
                   --environment "$(TARGET_ENVIRONMENT)" \

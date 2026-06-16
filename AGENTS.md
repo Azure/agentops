@@ -472,7 +472,7 @@ Authentication rule (Windows-friendly):
 
 Recommended default behavior:
 - Keep Foundry cloud mode as the default for `name:version` agents
-- Install Azure runtime dependencies via the `[foundry]` extra
+- Install AgentOps normally; Foundry runtime dependencies are part of the default package
 - Keep Azure SDK imports inside functions (lazy) in `pipeline/` and `agent/`
 - Do not hardcode `api_version` in `get_openai_client()` — the SDK picks it
 

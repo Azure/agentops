@@ -114,7 +114,7 @@ __AILZ_PREFLIGHT_COMMAND__
 
       - name: Install AgentOps Toolkit
         run: |
-          uv pip install --system "agentops-accelerator[foundry]__AGENTOPS_INSTALL_SPEC__"
+          uv pip install --system "agentops-accelerator__AGENTOPS_INSTALL_SPEC__"
 
 __EVAL_STEPS__
 
