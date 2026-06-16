@@ -35,8 +35,8 @@ agentops init
 
 Next, follow the tutorial that matches your agent type:
 
-- [Prompt Agent tutorial](https://aka.ms/agentops-accelerator/tutorial-prompt-agent/)
-- [Hosted or HTTP Agent tutorial](https://aka.ms/agentops-accelerator/tutorial-hosted-agent/)
+- [Prompt Agent tutorial](https://azure.github.io/agentops/tutorial-prompt-agent/)
+- [Hosted or HTTP Agent tutorial](https://azure.github.io/agentops/tutorial-hosted-agent/)
 
 ## What it helps you do
 
