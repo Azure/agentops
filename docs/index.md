@@ -22,11 +22,6 @@
 </div>
 </div>
 
-<video class="agentops-hero-video" controls muted loop playsinline preload="metadata">
-  <source src="media/agentops-overview.mp4" type="video/mp4">
-  Your browser does not support the video tag.
-</video>
-
 ## What AgentOps does
 
 AgentOps turns Foundry evaluation, safety, and observability signals into a
@@ -34,6 +29,15 @@ repeatable ship/no-ship workflow. It connects Foundry Evaluations, the ASSERT
 safety framework, the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your
 CI/CD platform into one release loop, packaging every result into a stable
 evidence pack that proves a release is ready for production.
+
+<div class="agentops-video-embed">
+  <iframe
+    src="https://www.youtube-nocookie.com/embed/-uYMYzdKCZ4?vq=hd1080&hd=1"
+    title="AgentOps Accelerator overview"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    allowfullscreen>
+  </iframe>
+</div>
 
 Foundry runs the agent. AgentOps proves the release is ready with eval gates,
 Doctor readiness checks, generated CI/CD, release evidence, and trace-driven
@@ -43,8 +47,8 @@ regression loops.
 
 <div class="agentops-card" markdown>
 ### :material-rocket-launch: Get started
-Follow the [end-to-end tutorial](tutorial-end-to-end.md) to go from an empty
-repo to a gated release loop.
+Start with the [Prompt Agent tutorial](tutorial-prompt-agent.md) to learn the
+sandbox -> dev PR gate flow.
 </div>
 
 <div class="agentops-card" markdown>

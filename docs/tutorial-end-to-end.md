@@ -1,17 +1,14 @@
-# End-to-end tutorial: release readiness for Foundry agents
+# Full end-to-end tutorial: sandbox to production readiness
 
-This tutorial is the full path. Use it after one of the type-specific tutorials when you
-want to validate the complete develop -> evaluate -> release -> observe loop
-across **sandbox**, **dev**, **qa**, and **prod** environments. The two
-type-specific tutorials cover the same loop for a single agent type in a sandbox + dev
-arrangement; this tutorial expands the journey through every release stage.
+This is the complete release path. Use it after one of the type-specific
+tutorials when you want to validate the full develop -> evaluate -> release ->
+observe loop across **sandbox**, **dev**, **qa**, and **prod** environments.
 
-It is inspired by the Azure Samples repo
-[Mind the Gap In Your AI Agent Observability](https://github.com/Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop/tree/2026-04-aie-europe).
-That sample goes deep on Foundry SDK notebooks, tracing, evaluation, and
-red-team scans. This AgentOps tutorial does not copy those labs. It shows where
-AgentOps fits around the same lifecycle as the repo-side readiness and evidence
-layer.
+The Prompt Agent and Hosted/HTTP Agent tutorials prove one target type in a
+small sandbox + dev loop with a PR gate. This end-to-end tutorial expands that
+same readiness model into the full promotion journey: multi-environment
+topology, generated workflows, release evidence, approval gates, observability,
+and trace-driven regression learning.
 
 ![Foundry Control Plane](media/foundry-control-plane.png)
 
@@ -502,7 +499,7 @@ agentops workflow generate `
 > not yet contain the agent, it reads that block plus `prompt_file` and
 > creates the first version automatically. No per-environment manual
 > seeding. See the
-> [prompt-agent tutorial](tutorial-prompt-agent-quickstart.md) for the
+> [prompt-agent tutorial](tutorial-prompt-agent.md) for the
 > full multi-environment journey.
 
 Before running that workflow, make the PR gate runnable in GitHub. Install the
@@ -1024,10 +1021,10 @@ You are ready for a release review when:
 
 - **Detailed prompt-agent walkthrough** (sandbox + dev journey, regression
   PR, Doctor-blocking gate, fix + redeploy):
-  [tutorial-prompt-agent-quickstart.md](tutorial-prompt-agent-quickstart.md).
+  [tutorial-prompt-agent.md](tutorial-prompt-agent.md).
 - **Detailed hosted-agent walkthrough** (same sandbox + dev story but
   for endpoints, with the git SHA / image tag identity story):
-  [tutorial-hosted-agent-quickstart.md](tutorial-hosted-agent-quickstart.md).
+  [tutorial-hosted-agent.md](tutorial-hosted-agent.md).
 - **CI/CD reference** ([docs/ci-github-actions.md](ci-github-actions.md))
   for full `agentops workflow generate` flag reference including the
   `--doctor-gate` semantics.
