@@ -11,12 +11,108 @@
   --md-accent-fg-color: #0078D4;
 }
 
-/* Landing hero */
-.agentops-hero {
+/* Landing banner (hero) */
+.agentops-banner {
+  position: relative;
+  margin: -0.6rem 0 1.6rem 0;
+  padding: 2.8rem 2.2rem 2.4rem 2.2rem;
+  border-radius: 18px;
+  overflow: hidden;
+  color: #fff;
+  background: linear-gradient(135deg, #062a63 0%, #0078D4 46%, #7e3ff2 100%);
+  box-shadow: 0 16px 48px rgba(7, 35, 90, 0.35);
+}
+
+.agentops-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 82% -20%, rgba(255, 255, 255, 0.30), transparent 52%),
+    radial-gradient(circle at -10% 120%, rgba(126, 63, 242, 0.45), transparent 55%);
+  pointer-events: none;
+}
+
+.agentops-banner-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.agentops-banner-head {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.4rem;
+  align-items: center;
+  gap: 1rem;
+  margin: 0 0 0.6rem 0;
+}
+
+.agentops-banner-logo {
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  margin: 0;
+  flex: none;
+  display: block;
+}
+
+.agentops-banner h1 {
+  color: #fff;
+  font-weight: 800;
+  font-size: 2.4rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.agentops-banner h1 .headerlink {
+  display: none;
+}
+
+.agentops-banner-tagline {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  max-width: 640px;
+  margin: 0 0 0.6rem 0;
+}
+
+.agentops-banner-question {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin: 0.2rem 0 1.2rem 0;
+}
+
+.agentops-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.agentops-banner-actions .md-button--pill {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.42);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+.agentops-banner-actions .md-button--pill:hover {
+  background: rgba(255, 255, 255, 0.30);
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+@media screen and (max-width: 600px) {
+  .agentops-banner {
+    padding: 2rem 1.3rem 1.8rem 1.3rem;
+    border-radius: 14px;
+  }
+  .agentops-banner h1 {
+    font-size: 2rem;
+  }
+  .agentops-banner-tagline {
+    font-size: 1rem;
+  }
 }
 
 .agentops-tagline {

@@ -12,15 +12,15 @@ theme:
   icon:
     repo: fontawesome/brands/github
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
+    # Light is the default. The first entry is used on first visit; the
+    # toggle persists the visitor's choice afterwards.
+    - scheme: default
       primary: custom
       accent: blue
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+    - scheme: slate
       primary: custom
       accent: blue
       toggle:

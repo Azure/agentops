@@ -1,21 +1,26 @@
-<div class="agentops-hero" markdown>
+<div class="agentops-banner" markdown>
+<div class="agentops-banner-inner" markdown>
 
-<img src="media/logo.png" alt="AgentOps" width="84" align="left"/>
-
+<div class="agentops-banner-head" markdown>
+<img class="agentops-banner-logo" src="media/logo.png" alt="AgentOps" />
 # AgentOps Accelerator
-
-<p class="agentops-tagline">The open-source AgentOps jumpstart for continuous evaluation, safety testing, observability, and release readiness of Microsoft Foundry agents.</p>
-
-**Can we ship it, and how do we know?**
-
 </div>
 
+<p class="agentops-banner-tagline">The open-source AgentOps jumpstart for continuous evaluation, safety testing, observability, and release readiness of Microsoft Foundry agents.</p>
+
+<p class="agentops-banner-question">Evaluate. Ship. Observe. Own.</p>
+
+<div class="agentops-banner-actions" markdown>
 [Latest Release {{ latest_release("Azure/agentops") }} :material-tag:](https://github.com/Azure/agentops/releases/latest){ .md-button--pill }
 [PyPI :material-language-python:](https://pypi.org/project/agentops-accelerator/){ .md-button--pill }
 [VS Code Extension :material-microsoft-visual-studio-code:](https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator){ .md-button--pill }
 {% set rc_tag = latest_release_candidate("Azure/agentops") %}{% if rc_tag %}
 [Pre-release {{ rc_tag }} :material-tag:]({{ latest_release_candidate_url("Azure/agentops") }}){ data-md-color-accent="orange" .md-button--pill .md-button--pill--rc }
 {% endif %}
+</div>
+
+</div>
+</div>
 
 <video class="agentops-hero-video" controls muted loop playsinline preload="metadata">
   <source src="media/agentops-overview.mp4" type="video/mp4">
