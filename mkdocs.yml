@@ -1,0 +1,93 @@
+site_name: AgentOps Accelerator
+site_description: Continuous evaluation, safety testing, observability, and release readiness for Microsoft Foundry agents
+site_author: Paulo Lacerda
+repo_url: https://github.com/Azure/agentops
+repo_name: Azure/agentops
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  logo: media/logo.png
+  favicon: media/logo.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.tracking
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+plugins:
+  - search
+  - macros
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+nav:
+  - Home: index.md
+  - Tutorials:
+      - End-to-End: tutorial-end-to-end.md
+      - Hosted Agent Quickstart: tutorial-hosted-agent-quickstart.md
+      - Prompt Agent Quickstart: tutorial-prompt-agent-quickstart.md
+  - Concepts:
+      - How It Works: how-it-works.md
+      - Core Concepts: concepts.md
+      - Bundles: bundles.md
+  - Evaluation:
+      - Built-in Evaluators: foundry-evaluation-sdk-built-in-evaluators.md
+  - Doctor:
+      - Checks: doctor-checks.md
+      - Explained: doctor-explained.md
+  - CI/CD:
+      - GitHub Actions: ci-github-actions.md
+      - Release Process: release-process.md
+  - Live End-to-End:
+      - Architecture: e2e-live-architecture.md
+      - Setup: e2e-live-setup.md
+extra:
+  generator: false
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Azure/agentops
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/agentops-accelerator/
+extra_css:
+  - styles.css

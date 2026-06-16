@@ -1,0 +1,114 @@
+/* AgentOps brand primary (Azure / Foundry blue) */
+[data-md-color-primary=custom] {
+  --md-primary-fg-color: #0078D4;
+  --md-primary-fg-color--light: #2B88D8;
+  --md-primary-fg-color--dark: #005A9E;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+
+[data-md-color-accent=blue] {
+  --md-accent-fg-color: #0078D4;
+}
+
+/* Landing hero */
+.agentops-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.agentops-tagline {
+  font-size: 1.05rem;
+  color: var(--md-default-fg-color--light);
+  margin: 0.2rem 0 0.6rem 0;
+}
+
+.agentops-hero-video {
+  width: 100%;
+  max-width: 900px;
+  border-radius: 14px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.20);
+  margin: 1.6rem 0 0.6rem 0;
+  display: block;
+  background: #000;
+}
+
+[data-md-color-scheme="slate"] .agentops-hero-video {
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+}
+
+/* Pill buttons for release / install links */
+.md-button--pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+
+  padding: 0.3em 0.85em;
+  font-size: 0.72rem;
+  font-weight: 500;
+
+  background-color: #f6f8fa;
+  color: #0969da;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.md-button--pill:hover {
+  background-color: #eef1f4;
+  border-color: #c5ccd3;
+}
+
+[data-md-color-scheme="slate"] .md-button--pill {
+  background-color: #1c2128;
+  color: #4493f8;
+  border-color: #30363d;
+}
+
+.md-button--pill--rc {
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+}
+
+.md-button--pill--rc:hover {
+  background-color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}
+
+/* Feature cards on the landing page */
+.agentops-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 1.2rem 0;
+}
+
+.agentops-card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  background: var(--md-default-bg-color);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.agentops-card:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.agentops-card h3 {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.95rem;
+}
+
+.agentops-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+}
