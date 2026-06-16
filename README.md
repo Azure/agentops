@@ -28,10 +28,15 @@ AgentOps Accelerator helps Microsoft Foundry agent teams evaluate quality, prepa
 ```powershell
 python -m pip install agentops-accelerator
 agentops init
-agentops eval analyze
-agentops eval run
-agentops doctor --evidence-pack
 ```
+
+`agentops init` starts a guided setup that creates your `agentops.yaml` and
+`.agentops/` workspace.
+
+Next, follow the tutorial that matches your agent type:
+
+- [Prompt Agent tutorial](https://aka.ms/agentops-accelerator/tutorial-prompt-agent/)
+- [Hosted or HTTP Agent tutorial](https://aka.ms/agentops-accelerator/tutorial-hosted-agent/)
 
 ## What it helps you do
 
