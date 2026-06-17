@@ -277,9 +277,9 @@ The staging pipeline validates a release candidate by publishing to TestPyPI and
 ```mermaid
 flowchart TD
     push(["push to release/v0.2.0"])
-    build["_build<br/><i>tests + package</i><br/>Version: 0.2.1.dev3 (setuptools-scm)"]
-    publish["publish-testpypi<br/><i>Upload to TestPyPI (staging environment)</i><br/>Uses TEST_PYPI_TOKEN secret"]
-    verify["verify-testpypi<br/><i>Install from TestPyPI in fresh environment</i><br/>agentops --version / --help / init"]
+    build["_build<br/>tests + package<br/>Version: 0.2.1.dev3 (setuptools-scm)"]
+    publish["publish-testpypi<br/>Upload to TestPyPI (staging environment)<br/>Uses TEST_PYPI_TOKEN secret"]
+    verify["verify-testpypi<br/>Install from TestPyPI in fresh environment<br/>agentops --version / --help / init"]
 
     push --> build --> publish --> verify
 ```
@@ -513,11 +513,11 @@ The production pipeline publishes a final release to PyPI and creates a GitHub R
 ```mermaid
 flowchart TD
     tag(["push tag v0.2.0"])
-    build["_build<br/><i>tests + package</i><br/>Version: 0.2.0 (clean, from tag)"]
-    publishTest["publish-testpypi<br/><i>Final TestPyPI upload (clean version)</i>"]
-    verifyTest["verify-testpypi<br/><i>Smoke test from TestPyPI</i>"]
-    publishPypi{{"publish-pypi ⏸<br/><i>PAUSES - requires approval</i><br/>Uses PYPI_TOKEN<br/>environment: release"}}
-    ghRelease["github-release<br/><i>Creates GitHub Release with artifacts</i><br/>Auto-generated release notes"]
+    build["_build<br/>tests + package<br/>Version: 0.2.0 (clean, from tag)"]
+    publishTest["publish-testpypi<br/>Final TestPyPI upload (clean version)"]
+    verifyTest["verify-testpypi<br/>Smoke test from TestPyPI"]
+    publishPypi{{"publish-pypi (pauses)<br/>requires approval<br/>Uses PYPI_TOKEN<br/>environment: release"}}
+    ghRelease["github-release<br/>Creates GitHub Release with artifacts<br/>Auto-generated release notes"]
 
     tag --> build --> publishTest --> verifyTest --> publishPypi --> ghRelease
 
