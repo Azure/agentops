@@ -1,4 +1,10 @@
-"""Wrapper helpers for ``azd ai agent eval init``."""
+"""Wrapper helpers for ``azd ai agent eval`` recipe generation.
+
+The ``azure.ai.agents`` azd extension renamed this subcommand in 0.1.40:
+``azd ai agent eval init`` became ``azd ai agent eval generate``. These helpers
+prefer the new ``generate`` name and fall back to the legacy ``init`` name so
+AgentOps keeps working across extension versions.
+"""
 
 from __future__ import annotations
 
@@ -62,9 +68,11 @@ def run_azd_eval_init(
     force: bool = False,
     timeout_seconds: float = AZD_EVAL_TIMEOUT_SECONDS,
 ) -> AzdEvalInitResult:
-    """Run ``azd ai agent eval init`` and persist ``eval_recipe``.
+    """Run ``azd ai agent eval generate`` and persist ``eval_recipe``.
 
-    The azd command remains the source of truth for generating datasets,
+    Prefers the ``generate`` subcommand (azure.ai.agents >= 0.1.40) and falls
+    back to the legacy ``init`` subcommand on older extensions. The azd command
+    remains the source of truth for generating datasets,
     evaluators, and rubric assets. AgentOps only delegates the command, finds the
     generated recipe, and records the recipe path in ``agentops.yaml`` so future
     gates are deterministic.
@@ -95,17 +103,18 @@ def run_azd_eval_init(
             f"{AZD_EXTENSION_NAME}`), then rerun `agentops eval init`."
         )
 
-    command = ["azd", "--no-prompt", "ai", "agent", "eval", "init"]
+    base_command = ["azd", "--no-prompt", "ai", "agent", "eval"]
+    arguments: list[str] = []
     project_endpoint = _project_endpoint_from_config_or_env(resolved_config)
     if project_endpoint:
-        command.extend(["--project-endpoint", project_endpoint])
+        arguments.extend(["--project-endpoint", project_endpoint])
     agent_name = _agent_name_from_config(resolved_config)
     if agent_name:
-        command.extend(["--agent", agent_name])
+        arguments.extend(["--agent", agent_name])
     effective_dataset = dataset or _dataset_from_config(resolved_config)
     instruction_file = _prompt_file_from_config(resolved_config)
     if effective_dataset is None and instruction_file is not None:
-        command.extend(
+        arguments.extend(
             [
                 "--gen-instruction-file",
                 _command_path(instruction_file, workspace=root),
@@ -113,47 +122,29 @@ def run_azd_eval_init(
         )
     eval_model = _eval_model_from_config(resolved_config)
     if eval_model:
-        command.extend(["--eval-model", eval_model])
+        arguments.extend(["--eval-model", eval_model])
     if effective_dataset is not None:
         effective_dataset = _azd_dataset_from_agentops_dataset(
             effective_dataset,
             workspace=root,
         )
-        command.extend(
+        arguments.extend(
             ["--dataset", _command_path(effective_dataset, workspace=root)]
         )
         for evaluator in _azd_evaluators_from_config(resolved_config):
-            command.extend(["--evaluator", evaluator])
+            arguments.extend(["--evaluator", evaluator])
 
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(root),
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-    except FileNotFoundError as exc:
-        raise AzdBackendError(
-            "azd was not found on PATH. Install the Azure Developer CLI and the "
-            f"`{AZD_EXTENSION_NAME}` extension, then rerun `agentops eval init`."
-        ) from exc
-    except subprocess.TimeoutExpired as exc:
-        raise AzdBackendError(
-            f"{' '.join(command)} timed out after {timeout_seconds:g}s."
-        ) from exc
-
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or f"exit code {completed.returncode}"
-        raise AzdBackendError(f"azd ai agent eval init failed: {detail}")
+    completed = _run_eval_subcommand(
+        base_command,
+        arguments,
+        cwd=root,
+        timeout_seconds=timeout_seconds,
+    )
 
     recipe = find_eval_yaml(root)
     if recipe is None:
         raise AzdBackendError(
-            "azd ai agent eval init completed, but AgentOps could not find the "
+            "azd ai agent eval completed, but AgentOps could not find the "
             "generated eval.yaml. Move it under the workspace root or src/<agent>/ "
             "and set `eval_recipe:` in agentops.yaml."
         )
@@ -173,6 +164,107 @@ def _find_recipe_if_unambiguous(workspace: Path) -> Optional[Path]:
         return find_eval_yaml(workspace)
     except AzdEvalRecipeError:
         return None
+
+
+# azd renamed this subcommand in the ``azure.ai.agents`` extension 0.1.40:
+# ``init`` became ``generate``. Try the new name first and fall back to the
+# legacy name so AgentOps works whether the consumer has an old or new
+# extension installed.
+_EVAL_SUBCOMMANDS: tuple[str, ...] = ("generate", "init")
+
+
+def _eval_subcommand_unsupported(*outputs: str) -> bool:
+    """Return True when azd reports the eval subcommand name is unknown/deprecated.
+
+    Matches the azd/cobra-style messages emitted when an installed
+    ``azure.ai.agents`` extension does not recognise a subcommand name (older
+    extensions lack ``generate``) or reports the legacy ``init`` name as
+    deprecated (newer extensions). Centralised here so the fallback decision is
+    unit-testable and robust to minor wording changes.
+    """
+    haystack = " ".join(text.lower() for text in outputs if text)
+    return any(
+        phrase in haystack
+        for phrase in (
+            "unknown command",
+            "unrecognized",
+            "is not a valid",
+            "invalid command",
+            "is deprecated, use",
+        )
+    )
+
+
+def _azd_failure_detail(completed: "subprocess.CompletedProcess[str]") -> str:
+    return (
+        completed.stderr.strip()
+        or completed.stdout.strip()
+        or f"exit code {completed.returncode}"
+    )
+
+
+def _run_eval_subcommand(
+    base_command: list[str],
+    arguments: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float,
+) -> "subprocess.CompletedProcess[str]":
+    """Run ``azd ai agent eval <subcommand>`` resiliently across extensions.
+
+    Prefers ``generate`` (azure.ai.agents >= 0.1.40) and falls back to the
+    legacy ``init`` subcommand when the installed extension does not recognise
+    ``generate``. A non-zero result that is not a subcommand-name problem (for
+    example an authentication or endpoint error) is surfaced immediately rather
+    than masked by the fallback, preserving the previous error behaviour.
+    """
+    last_completed: Optional["subprocess.CompletedProcess[str]"] = None
+    for subcommand in _EVAL_SUBCOMMANDS:
+        command = [*base_command, subcommand, *arguments]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=str(cwd),
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise AzdBackendError(
+                "azd was not found on PATH. Install the Azure Developer CLI and "
+                f"the `{AZD_EXTENSION_NAME}` extension, then rerun `agentops eval "
+                "init`."
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise AzdBackendError(
+                f"{' '.join(command)} timed out after {timeout_seconds:g}s."
+            ) from exc
+
+        if completed.returncode == 0:
+            return completed
+
+        if _eval_subcommand_unsupported(completed.stderr, completed.stdout):
+            # This subcommand name is not supported (or is deprecated) by the
+            # installed extension. Remember it and try the next candidate.
+            last_completed = completed
+            continue
+
+        # A real failure (not a subcommand-name issue): surface it now.
+        raise AzdBackendError(
+            f"azd ai agent eval {subcommand} failed: {_azd_failure_detail(completed)}"
+        )
+
+    if last_completed is not None:
+        detail = _azd_failure_detail(last_completed)
+    else:  # pragma: no cover - _EVAL_SUBCOMMANDS is never empty
+        detail = (
+            "no azd eval subcommand (generate/init) was accepted by the "
+            f"installed `{AZD_EXTENSION_NAME}` extension"
+        )
+    raise AzdBackendError(f"azd ai agent eval failed: {detail}")
 
 
 def _dataset_from_config(config_path: Path) -> Optional[Path]:
