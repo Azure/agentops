@@ -2818,9 +2818,9 @@
 <h3 id="pipeline-flow">Pipeline Flow<a class="headerlink" href="#pipeline-flow" title="Permanent link">&para;</a></h3>
 <pre class="mermaid"><code>flowchart TD
     push(["push to release/v0.2.0"])
-    build["_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.1.dev3 (setuptools-scm)"]
-    publish["publish-testpypi&lt;br/&gt;&lt;i&gt;Upload to TestPyPI (staging environment)&lt;/i&gt;&lt;br/&gt;Uses TEST_PYPI_TOKEN secret"]
-    verify["verify-testpypi&lt;br/&gt;&lt;i&gt;Install from TestPyPI in fresh environment&lt;/i&gt;&lt;br/&gt;agentops --version / --help / init"]
+    build["_build&lt;br/&gt;tests + package&lt;br/&gt;Version: 0.2.1.dev3 (setuptools-scm)"]
+    publish["publish-testpypi&lt;br/&gt;Upload to TestPyPI (staging environment)&lt;br/&gt;Uses TEST_PYPI_TOKEN secret"]
+    verify["verify-testpypi&lt;br/&gt;Install from TestPyPI in fresh environment&lt;br/&gt;agentops --version / --help / init"]
 
     push --&gt; build --&gt; publish --&gt; verify</code></pre>
 <h3 id="what-gets-validated">What Gets Validated<a class="headerlink" href="#what-gets-validated" title="Permanent link">&para;</a></h3>
@@ -3029,11 +3029,11 @@
 <h3 id="pipeline-flow_1">Pipeline Flow<a class="headerlink" href="#pipeline-flow_1" title="Permanent link">&para;</a></h3>
 <pre class="mermaid"><code>flowchart TD
     tag(["push tag v0.2.0"])
-    build["_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.0 (clean, from tag)"]
-    publishTest["publish-testpypi&lt;br/&gt;&lt;i&gt;Final TestPyPI upload (clean version)&lt;/i&gt;"]
-    verifyTest["verify-testpypi&lt;br/&gt;&lt;i&gt;Smoke test from TestPyPI&lt;/i&gt;"]
-    publishPypipublish-pypi ⏸&lt;br/&gt;&lt;i&gt;PAUSES - requires approval&lt;/i&gt;&lt;br/&gt;Uses PYPI_TOKEN&lt;br/&gt;environment: release
-    ghRelease["github-release&lt;br/&gt;&lt;i&gt;Creates GitHub Release with artifacts&lt;/i&gt;&lt;br/&gt;Auto-generated release notes"]
+    build["_build&lt;br/&gt;tests + package&lt;br/&gt;Version: 0.2.0 (clean, from tag)"]
+    publishTest["publish-testpypi&lt;br/&gt;Final TestPyPI upload (clean version)"]
+    verifyTest["verify-testpypi&lt;br/&gt;Smoke test from TestPyPI"]
+    publishPypipublish-pypi (pauses)&lt;br/&gt;requires approval&lt;br/&gt;Uses PYPI_TOKEN&lt;br/&gt;environment: release
+    ghRelease["github-release&lt;br/&gt;Creates GitHub Release with artifacts&lt;br/&gt;Auto-generated release notes"]
 
     tag --&gt; build --&gt; publishTest --&gt; verifyTest --&gt; publishPypi --&gt; ghRelease
 
