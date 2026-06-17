@@ -1,4 +1,4 @@
-# Hosted or HTTP Agent tutorial: sandbox to dev with PR gate
+# Endpoint to dev
 
 Use this tutorial when the agent is reachable as an endpoint URL. The
 example creates a small **Travel Agent** HTTP endpoint locally (your
@@ -14,45 +14,38 @@ arrangement:
   normalized `results.json`, runs Doctor with `--severity-fail critical`
   so regressions block the PR, and produces release evidence.
 
-The toolkit benefit is the same as the prompt-agent tutorial, adapted
-for endpoint-based agents: you author and iterate against a local
-sandbox, then let CI verify the deployed dev environment is still
-healthy on every PR. Production-readiness gates (eval thresholds plus
-Doctor critical findings) sit between you and a merge.
-
-## Repository set used in this tutorial
-
-This tutorial intentionally connects the hosted-agent path to the
-Microsoft projects that make the Operate story complete. The official
-Foundry extension, Azure services, and AgentOps workflow remain the
-actual runtime path.
-
-| Repository / skill | Role in the journey |
-|---|---|
-| `Azure/agentops` | Provides endpoint evaluation, thresholds, `results.json`, Doctor, Cockpit, and evidence. |
-| `microsoft-foundry` skill (Copilot Chat) | External, not bundled with AgentOps. Demonstrates how a skill outside the AgentOps toolkit can guide Foundry hosted agent creation and Operate wiring. The tutorial gives a portal-first fallback because the skill is optional. |
-| `microsoft/ai-agent-evals` | Reference for Foundry prompt-agent eval behavior; hosted endpoints use AgentOps local eval because CI must invoke your endpoint directly. |
-| `microsoft/foundry-toolkit` | Frames the Hosted Agent create/debug/deploy flow and the Operate handoff in VS Code. |
-| `microsoft/azure-skills` | Shows where the Microsoft Foundry skill can guide hosted-agent CI/CD, observe, and trace-regression follow-through. |
-| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference for the Foundry Observe/Optimize/Protect loop: OpenTelemetry traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
+The AgentOps Accelerator benefit is the same as the prompt-agent tutorial,
+adapted for endpoint-based agents: you author and iterate against a local
+sandbox, then let CI verify the deployed dev environment is still healthy on
+every PR. Production-readiness gates (eval thresholds plus Doctor critical
+findings) sit between you and a merge.
 
 ## Before you run the tutorial
 
-Do this once before a live walkthrough or guided session. The goal is to keep the
-demo focused on the hosted-agent, observability, and AgentOps flow, not on
-unexpected permission prompts.
+Run through this once before a live walkthrough or guided session, grouped by
+area. It keeps the demo focused on the hosted-agent, observability, and AgentOps
+flow instead of unexpected permission prompts.
 
-| Check | Why it matters |
-|---|---|
-| Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry project. | AgentOps discovery, Doctor, Cockpit, and telemetry setup all use that Azure context. |
-| You can create or use a Foundry project and a chat-capable Azure OpenAI deployment. | Local endpoint evals still need a judge model for quality scoring. |
-| You can create or attach Application Insights, or you already have an App Insights connection string. | The local FastAPI sample emits OpenTelemetry spans only after telemetry is configured. |
-| You can deploy or expose the hosted endpoint that CI will call. | `localhost` is fine for local eval, but GitHub Actions or Azure Pipelines need a reachable HTTPS URL. |
-| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | The PR gate only runs after the repo is published. |
-| GitHub CLI is authenticated with `gh auth login` if you use GitHub PR commands while testing CI. | The workflow handoff is smoother when repo, PR, and Actions access are already confirmed. |
-| You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth, endpoint settings, and evaluator settings. |
-| You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure. |
-| Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills. | The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps. |
+**Foundry projects**
+
+- A Foundry project plus one chat-capable deployment (the judge model). Local endpoint evals still need it for quality scoring.
+
+**Azure**
+
+- Azure CLI installed and `az login` working on the tenant that owns the Foundry project.
+- Application Insights, or an App Insights connection string. The local FastAPI sample emits OpenTelemetry spans only after telemetry is configured.
+- A hosted endpoint CI can reach. `localhost` is fine for local eval, but GitHub Actions or Azure Pipelines need a reachable HTTPS URL.
+- An Entra app registration with federated credentials (OIDC), or an admin ready to provide the client, tenant, and subscription id.
+
+**GitHub**
+
+- Push access to the tutorial repo and permission to run GitHub Actions or Azure Pipelines. The PR gate only runs after a push.
+- A GitHub environment named `dev` with Actions variables and secrets for Azure auth, the endpoint, and evaluator settings.
+- `gh auth login` authenticated for the PR commands.
+
+**Coding agent**
+
+- Your coding-agent CLI (Copilot or similar) signed in before you run AgentOps skills, so it can read the repo and propose the GitHub and Azure setup steps.
 
 Unlike the Prompt Agent tutorial, this endpoint tutorial does not point the
 generated PR workflow at `ai-agent-evals`. Hosted and HTTP agents are evaluated
@@ -102,20 +95,16 @@ git commit SHA (and container image tag, if you containerize)
 
 ## Journey you will exercise
 
-```
-sandbox (local FastAPI)
-   │  iterate, regress, fix locally with `agentops eval run`
-   ▼
-PR opened with code change
-   │  PR workflow evaluates dev URL with --doctor-gate critical
-   ▼
-PR green ── merge ── deploy workflow updates dev endpoint
-   │
-   ▼
-deploy workflow re-runs eval + Doctor against the freshly updated dev URL
-   │
-   ▼
-green dev → ready for promotion to qa / prod
+One endpoint, four steps:
+
+```mermaid
+flowchart LR
+    A["<b>Test locally</b><br/>against sandbox"]
+    B["<b>Open PR</b><br/>check dev URL"]
+    C["<b>Deploy dev</b><br/>after merge"]
+    D["<b>Check readiness</b><br/>evals and Doctor"]
+
+    A --> B --> C --> D
 ```
 
 | Stage | Main tool | What you do | AgentOps role |
@@ -900,3 +889,11 @@ You are done when:
   to see the full prompt-as-code regression journey (stage-then-eval
   at PR time, no per-PR deploys required) and contrast the two
   architectures.
+
+## Repos and skills used
+
+| Repository / skill | Used for |
+|---|---|
+| `Azure/agentops` | CLI, endpoint eval, PR gate, Doctor, Cockpit, evidence. |
+| `microsoft-foundry` skill (optional) | Guides Foundry hosted-agent creation in Copilot Chat. Portal fallback included. |
+| `microsoft/foundry-toolkit` | Create, debug, and deploy the Hosted Agent and copy its endpoint URL. |

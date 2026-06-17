@@ -1,4 +1,4 @@
-# GitOps Guide: Building and Releasing AgentOps Toolkit
+# GitOps Guide: Building and Releasing AgentOps Accelerator
 
 This guide is a comprehensive instruction manual for engineers working on the **agentops-accelerator** project. It covers the full GitOps lifecycle - from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.
 

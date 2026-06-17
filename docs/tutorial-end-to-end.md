@@ -1,4 +1,4 @@
-# Full end-to-end tutorial: sandbox to production readiness
+# Sandbox to production
 
 This is the complete release path. Use it after one of the type-specific
 tutorials when you want to validate the full develop -> evaluate -> release ->
@@ -36,12 +36,12 @@ review.
 
 ```
 .azure/
-├── config.json            # defaultEnvironment: sandbox
-├── .gitignore             # excludes */.env
-├── sandbox/.env           # team authoring / experimentation space (Foundry project for prompts, or local/shared app for hosted agents)
-├── dev/.env               # team-shared dev project / endpoint (PR + deploy gate)
-├── qa/.env                # qa project / endpoint
-└── prod/.env              # production project / endpoint
+├── config.json            # default: sandbox
+├── .gitignore             # excludes secrets
+├── sandbox/.env           # authoring
+├── dev/.env               # PR and deploy gate
+├── qa/.env                # release validation
+└── prod/.env              # production
 ```
 
 For **prompt agents**, each `.env` points at a different Foundry project so
@@ -50,14 +50,12 @@ playground saves in sandbox don't appear in dev. For **hosted agents**, each
 the agent URL (`AGENTOPS_AGENT_ENDPOINT`) differs per environment because the
 hosted endpoint itself is the per-environment artifact.
 
-> **Why a separate sandbox?** When authors save in the Foundry playground,
-> the platform auto-increments the version every save. If experimentation
-> happens in the same project that CI promotes from, dev fills up with
-> half-baked versions and traceability and rollback become messy. Sandbox
-> is the team's authoring and experimentation space (one project works
-> for most teams; split per-stream or per-developer only if save
-> collisions become a real problem); dev is the gated promotion target
-> CI writes to.
+> **Why a separate sandbox?**
+>
+> - Sandbox is where authors experiment and save freely.
+> - Dev is the gated target that CI writes to.
+> - Keeping them separate avoids half-baked versions in dev and keeps rollback cleaner.
+> - Start with one sandbox. Split only if save collisions become a real problem.
 
 > **Name the Azure resources before provisioning.** When you use the Foundry
 > portal, `microsoft-foundry` skill, or Foundry Toolkit for this tutorial, specify
@@ -110,22 +108,31 @@ contents that produced it.
 
 ## Prerequisites
 
-Do this once before a live walkthrough or guided session. The goal is to keep the
-tutorial focused on the release-readiness loop, not on unexpected permission
-prompts.
+Do this once before a live walkthrough or guided session, grouped by area. It
+keeps the tutorial focused on the release-readiness loop instead of unexpected
+permission prompts.
 
-| Check | Why it matters |
-|---|---|
-| Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry project. | AgentOps, Foundry SDK calls, Doctor, Cockpit, and CI setup all need the same Azure identity context. |
-| You have the Foundry project endpoint and can create or publish one Travel Agent target. | The target is either `travel-agent:<version>` for prompt agents or an HTTP endpoint for hosted agents. |
-| You have a chat-capable Azure OpenAI deployment, for example `gpt-4o-mini`. | Local evals and CI variables need a judge model for evaluator calls. |
-| Application Insights is connected to the Foundry project or agent runtime, or you can create/attach it. For Foundry trace-to-dataset flows, you can also grant Reader on App Insights and its backing Log Analytics workspace to the Foundry project managed identity. | Foundry Traces, Operate metrics/Ask AI when available, trace sampling, Azure Monitor, Doctor, Cockpit, and evidence links need telemetry. |
-| You can deploy or expose any hosted endpoint that CI will call. | `localhost` works for local eval; remote CI needs a reachable HTTPS URL. |
-| You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines. | PR and environment workflows only run after the repo is published. |
-| GitHub CLI is authenticated with `gh auth login` if you use GitHub PR commands while testing CI. | The regression and release-gate steps are smoother when repo, PR, and Actions access are already confirmed. |
-| You can create GitHub environments such as `dev`, `qa`, and `production`, or the equivalent Azure DevOps variables/service connections. | The full lifecycle workflow separates PR checks from environment release gates. |
-| You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI/CD cannot authenticate to Azure. |
-| Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills. | The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps. |
+**Foundry projects**
+
+- The Foundry project endpoint plus one Travel Agent target you can publish or expose: `travel-agent:<version>` for prompt agents, or an HTTP endpoint for hosted agents.
+- A chat-capable Azure OpenAI deployment, for example `gpt-4o-mini`. Local evals and CI need a judge model for evaluator calls.
+
+**Azure**
+
+- Azure CLI installed and `az login` working on the tenant that owns the Foundry project.
+- Application Insights connected to the Foundry project or agent runtime, or one you can create/attach. For trace-to-dataset flows, also grant Reader on App Insights and its Log Analytics workspace to the Foundry project managed identity.
+- A hosted endpoint CI can reach. `localhost` works for local eval, but remote CI needs a reachable HTTPS URL.
+- An Entra app registration with federated credentials (OIDC), or an admin ready to provide the client, tenant, and subscription id.
+
+**GitHub**
+
+- Push access to the tutorial repo and permission to run GitHub Actions or Azure Pipelines. PR and environment workflows only run after a push.
+- GitHub environments such as `dev`, `qa`, and `production`, or the equivalent Azure DevOps variables and service connections.
+- `gh auth login` authenticated for the PR commands.
+
+**Coding agent**
+
+- Your coding-agent CLI (Copilot or similar) signed in before you run AgentOps skills, so it can read the repo and propose the GitHub and Azure setup steps.
 
 Install AgentOps in a clean tutorial workspace:
 
@@ -150,21 +157,6 @@ python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.
 You will provide the target values through the interactive `agentops init`
 wizard. The evaluator endpoint/deployment is separate: set it only when running
 local evals or configuring CI variables.
-
-## Repository set for this tutorial
-
-This tutorial is meant to show the power of Foundry plus repo-side operations,
-not a self-contained AgentOps-only workflow. Use this repository set for a
-coherent path that connects the official Foundry product surfaces, the CI/CD
-evaluation runner, skill guidance, and AgentOps readiness evidence.
-
-| Repository | Role in the combined story |
-|---|---|
-| `Azure/agentops` | Repo-side release readiness, Doctor, Cockpit, and evidence layer. |
-| `microsoft/ai-agent-evals` | Reference for Foundry-native eval Action/task behavior. AgentOps cloud eval is the default prompt-agent gate so threshold failures become normalized PR evidence. |
-| `microsoft/foundry-toolkit` | VS Code create/debug/deploy surface for the Operate/readiness handoff. |
-| `microsoft/azure-skills` | Microsoft Foundry skill guidance for observe, CI/CD monitoring, regression, and trace follow-through. |
-| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference path for Foundry Observe/Optimize/Protect: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
 
 ## 1. Create the Travel Agent target
 
@@ -1031,3 +1023,12 @@ You are ready for a release review when:
 - **Doctor explainer** ([docs/doctor-explained.md](doctor-explained.md))
   for the full readiness check catalog and severity rules that drive
   the `--doctor-gate` block decision.
+
+## Repos and skills used
+
+| Repository / skill | Used for |
+|---|---|
+| `Azure/agentops` | CLI, eval runner, PR and environment gates, Doctor, Cockpit, evidence. |
+| `microsoft-foundry` skill (optional) | Guides Foundry project creation and environment wiring in Copilot Chat. Portal fallback included. |
+| `microsoft/foundry-toolkit` | Create, debug, and deploy the agent and copy its endpoint URL. |
+| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Optional reference path for Foundry traces, evaluations, and red-team scans. |

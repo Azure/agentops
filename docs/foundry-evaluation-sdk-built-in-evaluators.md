@@ -1,10 +1,11 @@
 # Foundry Evaluation SDK Built-in Evaluators (AgentOps)
 
-This guide maps Microsoft Foundry built-in evaluators to the configuration model used by AgentOps Toolkit.
+This guide maps Microsoft Foundry built-in evaluators to the configuration model used by AgentOps Accelerator.
 
 ## 1) AgentOps config shape (quick reference)
 
-In AgentOps, each evaluator is configured under `bundle.evaluators[]`:
+In AgentOps, each evaluator is configured as an entry in the top-level
+`evaluators:` list of `agentops.yaml`:
 
 ```yaml
 evaluators:
@@ -76,7 +77,7 @@ evaluators:
 | `AzureOpenAITextSimilarityGrader` | Azure OpenAI grader | text + `ground_truth` equivalent | grader init requires template/model config | explicit `init` + explicit `input_mapping` |
 | `AzureOpenAIGrader` | Azure OpenAI grader | template-defined | grader init requires rubric/template | explicit `init` + explicit `input_mapping` |
 
-## 4) Practical rules for AgentOps bundles
+## 4) Practical rules for AgentOps evaluators
 
 - Always set `source: foundry` for Foundry SDK evaluators.
 - For preview evaluators, always provide explicit:
@@ -89,7 +90,7 @@ evaluators:
 
 ## 5) Examples by evaluator type
 
-The following examples show one practical bundle snippet for each evaluator family used in AgentOps:
+The following examples show one practical config snippet for each evaluator family used in AgentOps:
 
 - `5.1` AI-assisted quality evaluators (`model_config`)
 - `5.2` Risk/safety evaluators (`azure_ai_project`)

@@ -1,4 +1,4 @@
-# Prompt Agent tutorial: sandbox to dev with PR gate
+# Sandbox to dev
 
 Use this tutorial when you want a Foundry-managed prompt agent referenced as
 `name:version`. The example creates a small **Travel Agent** in Foundry and
@@ -6,123 +6,120 @@ then uses AgentOps to add repo-side readiness, a PR gate that catches
 regressions before merge, a `dev` deploy workflow, Doctor evidence, and
 Cockpit.
 
-This path validates the Foundry-native multi-environment route:
+You will do four things:
 
-- Foundry owns the prompt agent runtime, cloud evaluation execution, traces,
-  Rubric evaluator definitions, traces, Guardrails, red-team scans, and
-  Operate dashboards in **each environment**.
-- AgentOps owns repo-side readiness: source-controlled prompts, CI gates,
-  Doctor blocking, release evidence, threshold enforcement, ASSERT/ACS evidence
-  references, and Cockpit.
+1. **Evaluate** a prompt agent while you are still experimenting in sandbox.
+2. **Ship** the prompt through GitHub so the same reviewed file is deployed to dev.
+3. **Observe** the dev run with traces, telemetry, and Doctor findings.
+4. **Own** the release decision with evidence, thresholds, and a Cockpit summary.
 
-The toolkit benefit is the **release loop across environments**. You will
-author the prompt in a **sandbox** Foundry project where saves are
-experimentation only and never trigger CI, then let CI prove the prompt
-is safe to merge by staging it as a candidate in the team's **dev**
-Foundry project, evaluating that exact candidate, running Doctor against
-the result, and — only when both pass — promoting the deploy.
+```mermaid
+flowchart LR
+    E["<b>Evaluate</b><br/>Author in sandbox<br/>Run evals<br/>Catch weak answers"]
+    S["<b>Ship</b><br/>Move prompt to git<br/>Open PR<br/>Deploy to dev"]
+    O["<b>Observe</b><br/>Read traces<br/>Run Doctor<br/>Check telemetry"]
+    W["<b>Own</b><br/>Review evidence<br/>Block regressions<br/>Make ship/no-ship call"]
 
-Pay special attention to Doctor in this tutorial: it does not only report
-whether thresholds passed, it also catches slow regressions (for example,
-`groundedness` drifting from 5.0 to 4.0) that the threshold gate would
-otherwise miss. When the PR workflow runs Doctor with
-`--severity-fail critical`, those regression findings **block the PR**
-the same way a failed threshold would.
+    E --> S --> O --> W
+```
 
-## Repository set used in this tutorial
-
-This tutorial intentionally shows the broader Foundry ecosystem, not only
-AgentOps. The repository / skill set below keeps the CLI, workflow runner,
-toolkit reference, and skill guidance aligned in one cohesive demo
-environment.
-
-| Repository / skill | Role in the journey |
-|---|---|
-| `Azure/agentops` | Provides the AgentOps CLI, workflow generation, Doctor, Cockpit, and release evidence flow. |
-| `microsoft-foundry` skill (Copilot Chat) | External, not bundled with AgentOps. Demonstrates how a skill outside the AgentOps toolkit can guide Foundry project creation. The tutorial gives a portal-first fallback because the skill is optional. |
-| `azd ai agent eval` / `microsoft/ai-agent-evals` | Foundry-native eval paths. AgentOps can wrap azd `eval.yaml` recipes (`execution: azd`) or invoke Foundry cloud eval directly; in both cases AgentOps normalizes threshold evidence and release artifacts. |
-| `microsoft/foundry-toolkit` | Frames the VS Code create/debug experience and the Operate handoff after a prompt version is ready. |
-| `microsoft/azure-skills` | Connects Copilot guidance to Foundry observe, CI/CD, regression, and trace follow-through. |
-| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference for the Foundry Observe/Optimize/Protect loop: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
+The important idea is simple: sandbox is for trying things, Git is the source
+of truth, and dev is where CI proves the reviewed prompt is safe to merge.
+Doctor is the final guardrail: if it finds a critical regression, the PR should
+not ship.
 
 ## Before you run the tutorial
 
-Do this once before a live walkthrough or guided session. The goal is to keep
-the demo focused on the Foundry plus AgentOps flow, not on unexpected
-permission prompts.
+Run through this once before a live walkthrough or guided session, grouped by
+area. It keeps the demo focused on the Foundry plus AgentOps flow instead of
+unexpected permission prompts.
 
-| Check | Why it matters |
+**Foundry projects**
+
+- Two projects you can use: a sandbox where you publish the prompt agent, and a shared dev for the PR gate. You publish only in sandbox; CI bootstraps dev (and later qa / prod).
+- The same model deployment name (for example `gpt-4o-mini`) in every project you deploy to. A missing deployment in dev breaks the first bootstrap.
+
+**Azure**
+
+- Azure CLI installed and `az login` working on the tenant that owns the Foundry projects.
+- Application Insights for the dev project, with Reader granted to the dev project's managed identity on that resource (and its Log Analytics workspace when workspace-based). This powers telemetry; sandbox is optional.
+- An Entra app registration with federated credentials (OIDC), or an admin ready to provide the client, tenant, and subscription id.
+
+**GitHub**
+
+- Push access to the tutorial repo and permission to run GitHub Actions. The PR gate only runs after a push.
+- A GitHub environment named `dev` with Actions variables and secrets for Azure auth and the dev project endpoint.
+- `gh auth login` authenticated for the PR commands.
+
+**Coding agent**
+
+- Your coding-agent CLI (Copilot or similar) signed in before you run AgentOps skills, so it can read the repo and propose the GitHub and Azure setup steps.
+
+## What happens in this tutorial
+
+One prompt, four steps:
+
+```mermaid
+flowchart LR
+    A["<b>Test prompt</b><br/>in sandbox"]
+    B["<b>Move prompt</b><br/>to Git"]
+    C["<b>Create dev agent</b><br/>with CI"]
+    D["<b>Block regressions</b><br/>in the PR gate"]
+
+    A --> B --> C --> D
+```
+
+Use the diagram as a checklist:
+
+| Step | What it means |
 |---|---|
-| Azure CLI is installed and `az login` succeeds with the tenant that owns the Foundry projects. | AgentOps, Foundry SDK calls, and CI setup all need the same Azure identity context. |
-| You can create **two** Foundry projects in the same Azure subscription (or have two existing projects you can use). | The tutorial uses a sandbox project for authoring and experimentation plus a shared dev project for the PR gate. You only need to publish the agent in sandbox — CI auto-bootstraps it in dev (and later qa / prod). |
-| You can publish a prompt agent in the **sandbox** Foundry project. | The tutorial seeds `travel-agent:2` only in sandbox (Foundry portal typically numbers the first published version `:2`, not `:1`). Dev / qa / prod start empty; the prompt-agent deploy workflow creates the first version in those projects automatically using `prompt_agent_bootstrap` defaults plus `prompt_file`. |
-| The **same model deployment name** (for example `gpt-4o-mini`) exists in every Foundry project you plan to deploy to. | `prompt_agent_bootstrap.model` is a single value reused for every environment. If dev does not have that deployment, the first auto-bootstrap fails. |
-| You can create or attach Application Insights for at least the dev Foundry project, and can grant Reader to the dev project's managed identity on that App Insights resource and its backing Log Analytics workspace when workspace-based. | Foundry Traces, the Operate dashboard, trace-to-dataset generation, Doctor, and Cockpit need telemetry to tell the observability story. Sandbox observability is optional. |
-| You can push to the tutorial GitHub repository and run GitHub Actions. | The PR gate only runs after the repo is pushed. |
-| GitHub CLI is authenticated with `gh auth login` if you use the PR commands in this tutorial. | The regression step opens PRs and sends the reader directly to the workflow run. |
-| You can create a GitHub environment named `dev` and add Actions variables/secrets. | The generated workflow uses that environment for Azure auth and the dev Foundry project endpoint. |
-| You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID. | The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure. |
-| Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills. | The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps. |
+| **Test prompt** | Try the prompt in sandbox and publish a version when it looks ready. |
+| **Move prompt** | Copy the tested instructions into `.agentops/prompts/travel-agent.md`. Git becomes the source of truth. |
+| **Create dev agent** | Leave dev empty. CI reads `agentops.yaml` and creates or updates the dev agent. |
+| **Block regressions** | CI evaluates dev, applies thresholds, and runs Doctor. Serious regressions stop the PR. |
 
-## Mental model: sandbox, dev, and what crosses environments
+### Why the SHA matters
 
-Before the hands-on steps, hold this picture in your head:
+Foundry version numbers are local to each project, so sandbox
+`travel-agent:2` may not match the version number in dev, qa, or prod.
+AgentOps compares the prompt content instead.
 
-```
-sandbox Foundry project              dev Foundry project
-(authoring + experimentation;        (shared environment, PR gate target,
- used by you or the team)             where merge deploys land)
-    │                                          │
-    │  travel-agent:2 (your first publish      │  (empty — no agent here yet;
-    │   in sandbox; Foundry portal numbers     │   CI auto-creates the agent
-    │   it starting from :2)                   │   on the first deploy via
-    │  travel-agent:3,4,5,... (free saves)     │   prompt_agent_bootstrap; the
-    │                                          │   number Foundry assigns there
-    │                                          │   is environment-local)
-    │                                          │
-    └──── git is the source of truth ─────────►│
-          .agentops/prompts/travel-agent.md
-          prompt_sha256 + git_sha
-```
+Each version created by AgentOps includes:
 
-Two ideas to internalize:
+- `agentops.prompt_sha256`, identifies the prompt text.
+- `agentops.git_sha`, identifies the git commit that produced it.
 
-1. **The prompt in `git` is the source of truth.** The file
-   `.agentops/prompts/travel-agent.md` is what CI reads and what reviewers
-   diff. Each Foundry project's version numbers count its own saves and
-   are environment-local.
-2. **You only author the agent in sandbox.** Dev, qa, and prod start
-   empty. When the prompt-agent deploy workflow runs against an empty
-   environment, it reads `prompt_agent_bootstrap` from `agentops.yaml`
-   plus `prompt_file`, then creates the first version of the agent
-   automatically in that environment. You never seed dev / qa / prod by
-   hand.
-3. **Cross-environment identity is the SHA, not the number.** AgentOps
-   embeds `agentops.prompt_sha256` and `agentops.git_sha` into every
-   Foundry version it creates, and writes the same identifiers into the
-   per-environment deploy artifact `foundry-agent.json`. When you ask
-   "is the same prompt running in sandbox, dev, and prod?", you compare
-   SHAs, not version numbers. The version numbers will differ.
+AgentOps also saves these two SHAs to a small deploy record named
+`foundry-agent.json`. Each environment gets its own copy when its deploy
+runs, so there is one for dev, one for qa, and one for prod.
 
-The longer walkthrough of that identity story is in step 15, when you
-have a real `foundry-agent.json` artifact to open.
+To check whether two environments are running the same prompt, open each
+`foundry-agent.json` and compare the SHAs. Do not compare the Foundry
+version numbers, since each project numbers its versions on its own.
+
+Step 15 walks through this in detail, once you have a real
+`foundry-agent.json` to open.
 
 ## Journey you will exercise
 
 | Step | Main tool | What you do | AgentOps role |
 |---|---|---|---|
-| Create two Foundry projects | Foundry portal (or `microsoft-foundry` skill) | Create `travel-agent-sandbox` (where you author) and `travel-agent-dev` (left empty — CI seeds it). | No ownership; AgentOps consumes the published baseline from sandbox and bootstraps dev. |
-| Author in sandbox | Foundry playground | Iterate on the prompt safely in sandbox Foundry. | Optional spot-check via local `agentops eval run`. |
-| Promote the prompt to git | Editor | Copy validated instructions into `.agentops/prompts/travel-agent.md`. | The CI gate reads this file. |
-| First green PR + dev deploy | GitHub Actions + Foundry dev project | Push prompt, open PR, watch CI auto-bootstrap the first version of `travel-agent` in dev from `prompt_agent_bootstrap` (the dev project is still empty at this point), evaluate it, run Doctor; merge; deploy lands in dev. | Owns the gate, the bootstrap-on-first-deploy, the threshold decision, the Doctor blocking step, the deploy artifact, and the release evidence. |
-| Force a regression | Editor + GitHub Actions | Edit the prompt to a worse version, push, observe BOTH eval threshold failure AND Doctor regression CRITICAL. | Catches the regression at PR time, not after merge. |
-| Fix and redeploy | Editor + GitHub Actions | Restore prompt, push, PR green, merge, deploy. | Records the recovery. |
-| Review readiness | AgentOps Doctor + Cockpit | Check CI, eval, telemetry, evidence, and links. | Turns scattered signals into release blockers, warnings, evidence files, and next actions. |
+| Create two Foundry projects | Foundry portal (or `microsoft-foundry` skill) | Create a sandbox project and a dev project. | Reads the sandbox baseline, bootstraps dev. |
+| Seed and test the agent | Foundry playground | Seed `travel-agent` in sandbox, test it in the playground. | None yet; you are still authoring. |
+| Create the eval dataset | Editor (or `/skills agentops-dataset`) | Write a small JSONL at `.agentops/data/travel-smoke.jsonl`. | The eval runs against this dataset. |
+| Initialize AgentOps | `agentops init` | Generate `agentops.yaml` pointing `dataset:` at your JSONL. | Wires the prompt, dataset, and thresholds together. |
+| Promote the prompt to git | Editor | Save the prompt as `.agentops/prompts/travel-agent.md`. | The eval and CI gate read this file. |
+| Run the eval locally | `agentops eval run` | Score the prompt against the dataset before you push. | Same eval the CI gate runs; check thresholds early. |
+| Generate CI workflows | AgentOps | Generate the GitHub Actions workflows. | Wires the eval and Doctor into the PR gate. |
+| First green PR + dev deploy | GitHub Actions + Foundry dev | Push, open PR, let CI gate and deploy run. | Bootstraps dev from `prompt_agent_bootstrap`, runs the eval gate and Doctor, deploys. |
+| Force a regression | Editor + GitHub Actions | Push a worse prompt, watch the PR block. | Fails on eval threshold and Doctor CRITICAL. |
+| Fix and redeploy | Editor + GitHub Actions | Restore the prompt, merge, deploy. | Records the recovery. |
+| Review readiness | AgentOps Doctor + Cockpit | Check CI, eval, telemetry, and evidence. | Turns signals into blockers, warnings, and next actions. |
 
 ## 1. Create a clean workspace and install AgentOps
 
-Create a workspace folder and install the toolkit before any other tool
-runs. The skills and CLI commands later in the tutorial all depend on this.
+Create a workspace folder and install AgentOps Accelerator before any other
+tool runs. The skills and CLI commands later in the tutorial all depend on this.
 
 ```powershell
 mkdir agentops-prompt-quickstart
@@ -134,13 +131,19 @@ python -m pip install "agentops-accelerator[foundry,agent]"
 agentops --version
 ```
 
-For normal usage, prefer the published package above. For this tutorial
-path, install the aligned reference branch so the CLI, generated
-workflows, and tutorial steps stay in sync:
+The `[foundry,agent]` part installs two optional add-ons on top of the base CLI:
 
-```powershell
-python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
-```
+!!! note "Why the `[foundry,agent]` extras"
+    - `foundry`: the Azure AI Foundry libraries used to publish the prompt agent,
+      read traces, and run the eval against a Foundry project.
+    - `agent`: the pieces AgentOps needs to treat the agent as a deployable
+      artifact, such as bootstrap, regression checks, and CI workflow generation.
+
+    Installing `agentops-accelerator` alone gives you the core CLI, but not the
+    Foundry and agent libraries. Without the extras, the tutorial steps that
+    publish the agent, run the eval, or generate the CI workflows fail when they
+    try to import those dependencies. This tutorial uses both add-ons, so keep
+    them in the command.
 
 ## 2. Install the AgentOps Copilot skills
 
@@ -149,7 +152,7 @@ and Doctor flows. Install them now so they are available when you hand off
 to Copilot Chat later.
 
 ```powershell
-agentops skills install --platform copilot --force
+agentops skills install --platform copilot
 ```
 
 That command installs the AgentOps skills (`agentops-eval`,
@@ -157,11 +160,12 @@ That command installs the AgentOps skills (`agentops-eval`,
 into `.github/skills/` so Copilot can pick them up when you say `/skills`
 in chat.
 
-The `microsoft-foundry` skill used in step 3 is **separate and external**
-to AgentOps. If it is not already available in your Copilot Chat session,
-the tutorial falls back to the Foundry portal for the project creation
-step. The intent is intentional: this is where AgentOps and other skills
-meet, not a place where AgentOps imposes a particular skill stack.
+!!! note "About the `microsoft-foundry` skill"
+    The `microsoft-foundry` skill used in step 3 is **separate and external**
+    to AgentOps. If it is not already available in your Copilot Chat session,
+    the tutorial falls back to the Foundry portal for the project creation
+    step. That is by design: this is where AgentOps and other skills meet, not
+    a place where AgentOps imposes a particular skill stack.
 
 ## 3. Create the two Foundry projects
 
@@ -174,19 +178,17 @@ names so the rest of the tutorial reads naturally:
 - `travel-agent-dev` — the first shared environment. The PR gate stages
   candidates here, and the dev deploy workflow lands here.
 
-> **Team scaling.** A single sandbox project works fine for a solo
-> walkthrough and for small teams. If you grow to the point that
-> simultaneous saves collide, or different feature streams need to
-> experiment in isolation, you can split into per-stream sandboxes
-> (`travel-agent-checkout-sandbox`, `travel-agent-search-sandbox`, etc.)
-> or per-developer sandboxes. AgentOps does not care how many sandbox
-> projects exist; only the dev / qa / prod chain is what CI promotes
-> through.
+!!! note "Team scaling"
+    One sandbox project is enough for a solo walkthrough or a small team. If
+    saves start to collide or feature streams need isolation, split into
+    per-stream or per-developer sandboxes. AgentOps does not care how many
+    sandboxes exist; CI only promotes through the dev / qa / prod chain.
 
-> **Enterprise provisioning option.** This quickstart creates only the Foundry
-> resources needed for the video path. For a fuller Azure baseline with
-> networking, identity, security, and operations patterns, see
-> [Azure AI Landing Zone](https://aka.ms/ailz).
+!!! note "Enterprise provisioning option"
+    This quickstart creates only the Foundry resources this tutorial needs.
+    For a fuller Azure baseline with networking, identity, security, and
+    operations patterns, see
+    [Azure AI Landing Zone](https://aka.ms/ailz).
 
 ### Path A — Foundry portal (always available)
 
@@ -212,11 +214,11 @@ names so the rest of the tutorial reads naturally:
 #### Path A follow-up — grant agent-build and data-plane access manually
 
 Creating a project through the portal only assigns you `Foundry User` **at
-the project scope**. In the Foundry UI, creating/building agents can also
+the project scope**. In the Foundry UI, creating or building agents can also
 require `Foundry User` on the parent Foundry / AI Services resource. Some
-portal screens still use the previous role name, `Azure AI User`, while the
-Azure RBAC role name is now `Foundry User`. If that role is missing, the portal
-blocks step 4 with:
+portal screens still show the previous role name, `Azure AI User`, even though
+the current Azure RBAC name is `Foundry User`. When that role is missing, step
+4 is blocked with this message:
 
 ```text
 You don't have permission to build agents in this project.
@@ -230,7 +232,7 @@ the subscription is not enough: the built-in `Owner` role definition has
 `actions: ["*"]` but `dataActions: []`, so it grants full control plane and zero
 data plane on Cognitive Services accounts.
 
-Skipping the OpenAI role is what causes the eval grader to fail later with::
+Skipping the OpenAI role is what causes the eval grader to fail later with:
 
     PermissionDenied: The principal `<your-objectId>` lacks the required
     data action `Microsoft.CognitiveServices/accounts/OpenAI/deployments/
@@ -298,6 +300,11 @@ AgentOps Doctor will detect the missing assignment in a future release,
 but until then this is a manual one-time setup step per new environment.
 
 ### Path B — `microsoft-foundry` skill (if available)
+
+This skill is external and is **not** installed by AgentOps, so there is no
+`pip install` or `agentops skills install` that adds it. It either ships with
+your Copilot / coding-agent environment or it does not. If it is not in your
+session, skip this path and use Path A (portal), which always works.
 
 If your Copilot session already has the external `microsoft-foundry`
 skill, you can drive the same outcome from chat. In Copilot, run:
@@ -2059,3 +2066,10 @@ Where to go next:
 - Use `/skills agentops-governance` to add ASSERT, ACS, Guardrail review, and
   red-team evidence artifacts when your release process is ready for those
   controls.
+
+## Repos and skills used
+
+| Repository / skill | Used for |
+|---|---|
+| `Azure/agentops` | CLI, workflows, PR gate, Doctor, Cockpit. |
+| `microsoft-foundry` skill (optional) | Guides Foundry project creation in Copilot Chat. Portal fallback included. |

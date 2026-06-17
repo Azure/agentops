@@ -1,3 +1,9 @@
+---
+hide:
+  - navigation
+  - toc
+---
+
 <div class="agentops-banner" markdown>
 <div class="agentops-banner-inner" markdown>
 
@@ -30,6 +36,9 @@ safety framework, the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your
 CI/CD platform into one release loop, packaging every result into a stable
 evidence pack that proves a release is ready for production.
 
+Foundry runs the agent. AgentOps proves readiness with eval gates, Doctor checks,
+generated CI/CD, release evidence, and trace-driven regression loops.
+
 <div class="agentops-video-embed">
   <iframe
     src="https://www.youtube-nocookie.com/embed/-uYMYzdKCZ4?vq=hd1080&hd=1"
@@ -38,10 +47,6 @@ evidence pack that proves a release is ready for production.
     allowfullscreen>
   </iframe>
 </div>
-
-Foundry runs the agent. AgentOps proves the release is ready with eval gates,
-Doctor readiness checks, generated CI/CD, release evidence, and trace-driven
-regression loops.
 
 <div class="agentops-cards" markdown>
 
@@ -70,29 +75,6 @@ safety, and red teaming on every PR.
 </div>
 
 </div>
-
-## Core outputs
-
-| Artifact | Produced by | Audience |
-|---|---|---|
-| `results.json` | `agentops eval run` | CI / automation |
-| `report.md` | `agentops eval run` | PR reviewers |
-| `evidence.json` / `evidence.md` | `agentops doctor --evidence-pack` | Release approver |
-| Cockpit (localhost) | `agentops cockpit` | Engineer reviewing readiness |
-
-## Install
-
-```bash
-pip install agentops-accelerator
-agentops --version
-```
-
-Then scaffold a workspace:
-
-```bash
-agentops init
-agentops doctor
-```
 
 ## Contributing
 

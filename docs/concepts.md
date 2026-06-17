@@ -27,6 +27,35 @@ regression data.
 The short version is: **Foundry operates the agent; AgentOps turns that operating
 signal into repo-side release proof.**
 
+## What AgentOps produces
+
+AgentOps Accelerator turns every readiness run into outputs that people and CI
+can both use.
+
+| Output | Use it for |
+|---|---|
+| `report.md` | PR review: what passed, what failed, and what changed from the baseline. |
+| `results.json` | CI automation: stable metrics, thresholds, exit status, and target details. |
+| `evidence.md` / `evidence.json` | Release approval: the proof package for the ship/no-ship decision. |
+| Cockpit | Local review: latest evals, Doctor findings, evidence, and next actions in one view. |
+
+## Reference architecture
+
+Use this as the mental model for the AgentOps loop: build and learn in a
+sandbox, commit the release contract to source control, promote through
+environments with evidence, then feed production learning back into the next
+evaluation set.
+
+![AgentOps Accelerator reference architecture](media/agentops-architecture.png){ .agentops-reference-architecture }
+
+| Area | What it owns |
+|---|---|
+| **Sandbox inner loop** | Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted. |
+| **AgentOps Accelerator** | Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence. |
+| **Foundry** | Own managed agent projects, Prompt Agent and Hosted Agent runtime options, traces, operate views, guardrails, and evaluations where applicable. |
+| **Outer loop delivery** | Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check. |
+| **Operate and improve** | Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases. |
+
 ## How an Evaluation Works
 
 ```mermaid
