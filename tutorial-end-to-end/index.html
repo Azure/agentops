@@ -13,10 +13,6 @@
       
       
       
-        <link rel="prev" href="../tutorial-hosted-agent/">
-      
-      
-        <link rel="next" href="../how-it-works/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -24,7 +20,7 @@
     
     
       
-        <title>Full End-to-End Tutorial - AgentOps Accelerator</title>
+        <title>Sandbox to production - AgentOps Accelerator</title>
       
     
     
@@ -113,7 +109,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Full End-to-End Tutorial
+              Sandbox to production
             
           </span>
         </div>
@@ -231,12 +227,10 @@
         
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../tutorial-prompt-agent/" class="md-tabs__link">
           
   
@@ -255,25 +249,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../how-it-works/" class="md-tabs__link">
-          
-  
-  Concepts
-
-        </a>
-      </li>
-    
-  
-
-      
-        
-  
-  
-  
-    
-    
-      <li class="md-tabs__item">
-        <a href="../foundry-evaluation-sdk-built-in-evaluators/" class="md-tabs__link">
+        <a href="../evaluation/" class="md-tabs__link">
           
   
   Evaluation
@@ -291,10 +267,10 @@
     
     
       <li class="md-tabs__item">
-        <a href="../doctor-checks/" class="md-tabs__link">
+        <a href="../ship/" class="md-tabs__link">
           
   
-  Doctor
+  Ship
 
         </a>
       </li>
@@ -306,13 +282,30 @@
   
   
   
+    <li class="md-tabs__item">
+      <a href="../observe/" class="md-tabs__link">
+        
+  
+    
+  
+  Observe
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
     
     
       <li class="md-tabs__item">
-        <a href="../ci-github-actions/" class="md-tabs__link">
+        <a href="../own/" class="md-tabs__link">
           
   
-  CI/CD
+  Own
 
         </a>
       </li>
@@ -394,30 +387,25 @@
       
   
   
-    
   
   
-  
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
         
           
-          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -428,7 +416,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_2">
             <span class="md-nav__icon md-icon"></span>
             Tutorials
@@ -463,304 +451,15 @@
   
   
     <li class="md-nav__item">
-      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+      <a href="../tutorial-http-agent/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Hosted or HTTP Agent Tutorial
+    HTTP Agent Tutorial
   </span>
   
 
       </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    Full End-to-End Tutorial
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  <span class="md-ellipsis">
-    Full End-to-End Tutorial
-  </span>
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#what-you-will-validate" class="md-nav__link">
-    <span class="md-ellipsis">
-      What you will validate
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#multi-environment-topology" class="md-nav__link">
-    <span class="md-ellipsis">
-      Multi-environment topology
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-cross-environment-identity-story-versioning-callout" class="md-nav__link">
-    <span class="md-ellipsis">
-      The cross-environment identity story (versioning callout)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      Prerequisites
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#1-create-the-travel-agent-target" class="md-nav__link">
-    <span class="md-ellipsis">
-      1. Create the Travel Agent target
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="1. Create the Travel Agent target">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#option-a-create-a-prompt-agent-in-foundry" class="md-nav__link">
-    <span class="md-ellipsis">
-      Option A: create a Prompt Agent in Foundry
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#option-b-create-a-hostedhttp-travel-agent-endpoint" class="md-nav__link">
-    <span class="md-ellipsis">
-      Option B: create a Hosted/HTTP Travel Agent endpoint
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#grant-agent-build-and-data-plane-access-to-your-identity-and-foundry-managed-identities" class="md-nav__link">
-    <span class="md-ellipsis">
-      Grant agent-build and data-plane access to your identity and Foundry managed identities
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#2-create-the-travel-eval-dataset" class="md-nav__link">
-    <span class="md-ellipsis">
-      2. Create the travel eval dataset
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#3-initialize-the-repo-side-release-contract-interactively" class="md-nav__link">
-    <span class="md-ellipsis">
-      3. Initialize the repo-side release contract interactively
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#4-decide-the-eval-runner" class="md-nav__link">
-    <span class="md-ellipsis">
-      4. Decide the eval runner
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#5-run-the-first-eval" class="md-nav__link">
-    <span class="md-ellipsis">
-      5. Run the first eval
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#6-force-a-regression-and-recover" class="md-nav__link">
-    <span class="md-ellipsis">
-      6. Force a regression and recover
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="6. Force a regression and recover">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#prompt-agent-regression" class="md-nav__link">
-    <span class="md-ellipsis">
-      Prompt Agent regression
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#hostedhttp-regression" class="md-nav__link">
-    <span class="md-ellipsis">
-      Hosted/HTTP regression
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#7-add-cicd-gates" class="md-nav__link">
-    <span class="md-ellipsis">
-      7. Add CI/CD gates
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#8-wire-observability" class="md-nav__link">
-    <span class="md-ellipsis">
-      8. Wire observability
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#9-run-doctor-and-create-release-evidence" class="md-nav__link">
-    <span class="md-ellipsis">
-      9. Run Doctor and create release evidence
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#10-run-foundry-red-team-scans" class="md-nav__link">
-    <span class="md-ellipsis">
-      10. Run Foundry red-team scans
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#11-promote-production-traces-into-regression-candidates" class="md-nav__link">
-    <span class="md-ellipsis">
-      11. Promote production traces into regression candidates
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#12-open-cockpit" class="md-nav__link">
-    <span class="md-ellipsis">
-      12. Open Cockpit
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#completion-checklist" class="md-nav__link">
-    <span class="md-ellipsis">
-      Completion checklist
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#where-to-go-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      Where to go next
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#repos-and-skills-used" class="md-nav__link">
-    <span class="md-ellipsis">
-      Repos and skills used
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -799,7 +498,7 @@
             
   
   <span class="md-ellipsis">
-    Concepts
+    Evaluation
   </span>
   
 
@@ -809,98 +508,30 @@
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
-            Concepts
-          </label>
-          <ul class="md-nav__list" data-md-scrollfix>
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../how-it-works/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    How It Works
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../concepts/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Core Concepts
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-          </ul>
-        </nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    
-    
-    
-      
-      
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
-        
-          
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
-            
-  
-  <span class="md-ellipsis">
-    Evaluation
-  </span>
-  
-
-            <span class="md-nav__icon md-icon"></span>
-          </label>
-        
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4">
-            <span class="md-nav__icon md-icon"></span>
             Evaluation
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluation/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Overview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
             
               
                 
@@ -949,24 +580,24 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
             
   
   <span class="md-ellipsis">
-    Doctor
+    Ship
   </span>
   
 
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_5">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
-            Doctor
+            Ship
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -977,11 +608,11 @@
   
   
     <li class="md-nav__item">
-      <a href="../doctor-checks/" class="md-nav__link">
+      <a href="../ship/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Checks
+    Overview
   </span>
   
 
@@ -998,11 +629,11 @@
   
   
     <li class="md-nav__item">
-      <a href="../doctor-explained/" class="md-nav__link">
+      <a href="../ci-github-actions/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Explained
+    GitHub Actions
   </span>
   
 
@@ -1015,6 +646,26 @@
           </ul>
         </nav>
       
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observe/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Observe
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -1045,7 +696,7 @@
             
   
   <span class="md-ellipsis">
-    CI/CD
+    Own
   </span>
   
 
@@ -1055,7 +706,7 @@
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
-            CI/CD
+            Own
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -1066,11 +717,53 @@
   
   
     <li class="md-nav__item">
-      <a href="../ci-github-actions/" class="md-nav__link">
+      <a href="../own/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    GitHub Actions
+    Overview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../doctor-checks/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Doctor Checks
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../doctor-explained/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Doctor Explained
   </span>
   
 
@@ -2404,14 +2097,14 @@ links out to Foundry / Azure Monitor for live runtime data.</p>
 <ul>
 <li><strong>Detailed prompt-agent walkthrough</strong> (sandbox + dev journey, regression
   PR, Doctor-blocking gate, fix + redeploy):
-  <a href="../tutorial-prompt-agent/">tutorial-prompt-agent.md</a>.</li>
-<li><strong>Detailed hosted-agent walkthrough</strong> (same sandbox + dev story but
+  <a href="../tutorial-prompt-agent/">Prompt agent tutorial</a>.</li>
+<li><strong>Detailed HTTP-agent walkthrough</strong> (same sandbox + dev story but
   for endpoints, with the git SHA / image tag identity story):
-  <a href="../tutorial-hosted-agent/">tutorial-hosted-agent.md</a>.</li>
-<li><strong>CI/CD reference</strong> (<a href="../ci-github-actions/">docs/ci-github-actions.md</a>)
+  <a href="../tutorial-http-agent/">HTTP agent tutorial</a>.</li>
+<li><strong>CI/CD reference</strong> (<a href="../ship/">Ship</a> and <a href="../ci-github-actions/">GitHub Actions</a>)
   for full <code>agentops workflow generate</code> flag reference including the
   <code>--doctor-gate</code> semantics.</li>
-<li><strong>Doctor explainer</strong> (<a href="../doctor-explained/">docs/doctor-explained.md</a>)
+<li><strong>Doctor explainer</strong> (<a href="../doctor-explained/">Doctor explained</a>)
   for the full readiness check catalog and severity rules that drive
   the <code>--doctor-gate</code> block decision.</li>
 </ul>

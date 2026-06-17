@@ -13,6 +13,10 @@
       
       
       
+        <link rel="prev" href="../tutorial-http-agent/">
+      
+      
+        <link rel="next" href="../foundry-evaluation-sdk-built-in-evaluators/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -20,7 +24,7 @@
     
     
       
-        <title>Concepts - AgentOps Accelerator</title>
+        <title>Overview - AgentOps Accelerator</title>
       
     
     
@@ -74,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#concepts" class="md-skip">
+        <a href="#evaluation" class="md-skip">
           Skip to content
         </a>
       
@@ -109,7 +113,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Concepts
+              Overview
             
           </span>
         </div>
@@ -245,11 +249,13 @@
         
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href="../evaluation/" class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
           
   
   Evaluation
@@ -476,25 +482,30 @@
       
   
   
+    
   
   
+  
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
         
           
-          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -505,7 +516,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3">
             <span class="md-nav__icon md-icon"></span>
             Evaluation
@@ -516,10 +527,30 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../evaluation/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Overview
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   <span class="md-ellipsis">
@@ -528,6 +559,89 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-an-evaluation-is" class="md-nav__link">
+    <span class="md-ellipsis">
+      What an evaluation is
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#target-kinds" class="md-nav__link">
+    <span class="md-ellipsis">
+      Target kinds
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#datasets-and-scenarios" class="md-nav__link">
+    <span class="md-ellipsis">
+      Datasets and scenarios
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluators" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluators
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#evaluation-path-where-the-run-executes" class="md-nav__link">
+    <span class="md-ellipsis">
+      Evaluation path: where the run executes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mini-glossary" class="md-nav__link">
+    <span class="md-ellipsis">
+      Mini-glossary
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configuration model
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -807,123 +921,54 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#agentops-microsoft-foundry" class="md-nav__link">
+  <a href="#what-an-evaluation-is" class="md-nav__link">
     <span class="md-ellipsis">
-      AgentOps + Microsoft Foundry
+      What an evaluation is
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-agentops-produces" class="md-nav__link">
+  <a href="#target-kinds" class="md-nav__link">
     <span class="md-ellipsis">
-      What AgentOps produces
+      Target kinds
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#reference-architecture" class="md-nav__link">
+  <a href="#datasets-and-scenarios" class="md-nav__link">
     <span class="md-ellipsis">
-      Reference architecture
+      Datasets and scenarios
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#how-an-evaluation-works" class="md-nav__link">
+  <a href="#evaluators" class="md-nav__link">
     <span class="md-ellipsis">
-      How an Evaluation Works
+      Evaluators
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#core-concepts" class="md-nav__link">
+  <a href="#evaluation-path-where-the-run-executes" class="md-nav__link">
     <span class="md-ellipsis">
-      Core Concepts
+      Evaluation path: where the run executes
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Core Concepts">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#workspace" class="md-nav__link">
-    <span class="md-ellipsis">
-      Workspace
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#agentops-config" class="md-nav__link">
-    <span class="md-ellipsis">
-      AgentOps Config
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#dataset" class="md-nav__link">
-    <span class="md-ellipsis">
-      Dataset
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#evaluator" class="md-nav__link">
-    <span class="md-ellipsis">
-      Evaluator
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#target-resolver" class="md-nav__link">
-    <span class="md-ellipsis">
-      Target resolver
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#prompt-agent-vs-hosted-agent" class="md-nav__link">
-    <span class="md-ellipsis">
-      Prompt Agent vs Hosted Agent
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#evaluation-path" class="md-nav__link">
-    <span class="md-ellipsis">
-      Evaluation path
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#evaluation-scenarios" class="md-nav__link">
+  <a href="#mini-glossary" class="md-nav__link">
     <span class="md-ellipsis">
-      Evaluation Scenarios
+      Mini-glossary
     </span>
   </a>
   
@@ -932,7 +977,7 @@
         <li class="md-nav__item">
   <a href="#configuration-model" class="md-nav__link">
     <span class="md-ellipsis">
-      Configuration Model
+      Configuration model
     </span>
   </a>
   
@@ -956,95 +1001,34 @@
   
 
 
-<h1 id="concepts">Concepts<a class="headerlink" href="#concepts" title="Permanent link">&para;</a></h1>
-<p>This page explains the core AgentOps building blocks. For the full schema
-reference and architecture details, see <a href="../how-it-works/">how-it-works.md</a>.</p>
-<h2 id="agentops-microsoft-foundry">AgentOps + Microsoft Foundry<a class="headerlink" href="#agentops-microsoft-foundry" title="Permanent link">&para;</a></h2>
-<p>AgentOps helps teams answer two release questions for a Foundry agent:
-<strong>can we ship it, and where is the proof?</strong></p>
-<p>Foundry is the agent control plane: create, deploy, run, trace, monitor,
-evaluate, and investigate. AgentOps is the repo-side operating layer that turns
-those signals into a repeatable release loop:</p>
-<ul>
-<li>Source-controlled eval config</li>
-<li>Local and CI quality gates</li>
-<li>Stable <code>results.json</code> and PR-friendly <code>report.md</code></li>
-<li>Doctor diagnostics and release evidence</li>
-<li>Trace-to-dataset promotion</li>
-<li>Generated workflows and a local Cockpit</li>
-</ul>
-<p>Use Foundry for runtime, evaluation, observability, and official drilldown. Use
-AgentOps to keep the release contract close to the code: initialize, evaluate,
-compare, run Doctor, produce evidence, and promote reviewed traces back into
-regression data.</p>
-<p>The short version is: <strong>Foundry operates the agent; AgentOps turns that operating
-signal into repo-side release proof.</strong></p>
-<h2 id="what-agentops-produces">What AgentOps produces<a class="headerlink" href="#what-agentops-produces" title="Permanent link">&para;</a></h2>
-<p>AgentOps Accelerator turns every readiness run into outputs that people and CI
-can both use.</p>
-<table>
-<thead>
-<tr>
-<th>Output</th>
-<th>Use it for</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>report.md</code></td>
-<td>PR review: what passed, what failed, and what changed from the baseline.</td>
-</tr>
-<tr>
-<td><code>results.json</code></td>
-<td>CI automation: stable metrics, thresholds, exit status, and target details.</td>
-</tr>
-<tr>
-<td><code>evidence.md</code> / <code>evidence.json</code></td>
-<td>Release approval: the proof package for the ship/no-ship decision.</td>
-</tr>
-<tr>
-<td>Cockpit</td>
-<td>Local review: latest evals, Doctor findings, evidence, and next actions in one view.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="reference-architecture">Reference architecture<a class="headerlink" href="#reference-architecture" title="Permanent link">&para;</a></h2>
-<p>Use this as the mental model for the AgentOps loop: build and learn in a
-sandbox, commit the release contract to source control, promote through
-environments with evidence, then feed production learning back into the next
-evaluation set.</p>
-<p><img alt="AgentOps Accelerator reference architecture" class="agentops-reference-architecture" src="../media/agentops-architecture.png" /></p>
-<table>
-<thead>
-<tr>
-<th>Area</th>
-<th>What it owns</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Sandbox inner loop</strong></td>
-<td>Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted.</td>
-</tr>
-<tr>
-<td><strong>AgentOps Accelerator</strong></td>
-<td>Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence.</td>
-</tr>
-<tr>
-<td><strong>Foundry</strong></td>
-<td>Own managed agent projects, Prompt Agent and Hosted Agent runtime options, traces, operate views, guardrails, and evaluations where applicable.</td>
-</tr>
-<tr>
-<td><strong>Outer loop delivery</strong></td>
-<td>Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check.</td>
-</tr>
-<tr>
-<td><strong>Operate and improve</strong></td>
-<td>Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases.</td>
-</tr>
-</tbody>
-</table>
-<h2 id="how-an-evaluation-works">How an Evaluation Works<a class="headerlink" href="#how-an-evaluation-works" title="Permanent link">&para;</a></h2>
+<h1 id="evaluation">Evaluation<a class="headerlink" href="#evaluation" title="Permanent link">&para;</a></h1>
+<p>This is the canonical page for how evaluation works in AgentOps. An evaluation
+runs a dataset against a target agent, scores the responses, and gates the
+result against thresholds. Foundry operates the agent at runtime; AgentOps turns
+that run into repo-side release proof.</p>
+<p>If you want a hands-on walkthrough instead of a reference, start with the
+<a href="../tutorial-prompt-agent/">Prompt agent tutorial</a> or the
+<a href="../tutorial-http-agent/">HTTP agent tutorial</a>.</p>
+<h2 id="what-an-evaluation-is">What an evaluation is<a class="headerlink" href="#what-an-evaluation-is" title="Permanent link">&para;</a></h2>
+<p>An evaluation is defined by one flat file, <code>agentops.yaml</code>. It connects three
+things: the <strong>agent</strong> (the target to evaluate), the <strong>dataset</strong> (the rows to
+send), and the <strong>thresholds</strong> (the quality gates that decide pass or fail).</p>
+<p>The minimum config is three lines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;travel-agent:1&quot;</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
+</code></pre></div>
+<p>The AgentOps runner reads that config, sends each dataset row to the target,
+collects responses, scores them with evaluators, and checks the scores against
+your thresholds. It writes two outputs every run: <code>results.json</code> for automation
+and <code>report.md</code> for human review.</p>
+<div class="admonition info">
+<p class="admonition-title">Exit codes are the CI contract</p>
+<p>The runner returns <code>0</code> when every threshold passes, <code>2</code> when the run
+succeeded but one or more thresholds failed, and <code>1</code> for a runtime or
+configuration error. These three codes are the public gate contract. CI
+treats <code>2</code> as a hard fail so a deploy never runs on a regression.</p>
+</div>
 <pre class="mermaid"><code>graph TD
     A[agentops.yaml target dataset thresholds]
     B[JSONL dataset rows]
@@ -1066,266 +1050,209 @@ evaluation set.</p>
     F --&gt; G
     G --&gt; H
     G --&gt; I</code></pre>
-<blockquote>
-<p>Exit code: <code>0</code> = pass, <code>2</code> = threshold fail, <code>1</code> = error</p>
-</blockquote>
-<h2 id="core-concepts">Core Concepts<a class="headerlink" href="#core-concepts" title="Permanent link">&para;</a></h2>
-<h3 id="workspace">Workspace<a class="headerlink" href="#workspace" title="Permanent link">&para;</a></h3>
-<p>Created by <code>agentops init</code>. The release-gate config lives in the flat
-<code>agentops.yaml</code> file at the project root. <code>.agentops/</code> is the
-AgentOps-managed workspace for seed inputs, local run history, Doctor cache,
-and generated release evidence. It is not a second <code>.foundry/</code> directory.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>agentops.yaml          # flat config: agent, dataset, thresholds
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>.agentops/
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── data/              # dataset rows (JSONL)
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── results/           # run outputs + latest/ pointer
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── agent/             # Doctor history and reports
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>└── release/           # evidence.json/evidence.md when generated
-</code></pre></div>
-<h3 id="agentops-config">AgentOps Config<a class="headerlink" href="#agentops-config" title="Permanent link">&para;</a></h3>
-<p>A YAML file named <code>agentops.yaml</code> that connects <strong>what</strong> to evaluate,
-<strong>which dataset</strong> to use, and <strong>which thresholds</strong> gate the run.</p>
-<p>The minimum is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;my-agent:1&quot;</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
-</code></pre></div>
-<p>Common <code>agent:</code> values:</p>
+<h2 id="target-kinds">Target kinds<a class="headerlink" href="#target-kinds" title="Permanent link">&para;</a></h2>
+<p>AgentOps resolves the <code>agent:</code> value into one of four target kinds by its shape.
+You do not choose a backend by hand; the shape of <code>agent:</code> selects both the kind
+and the fields that make sense for it.</p>
 <table>
 <thead>
 <tr>
-<th>Agent value</th>
-<th>Target kind</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>"support-bot:1"</code></td>
-<td>Foundry prompt agent (<code>name:version</code>)</td>
-</tr>
-<tr>
-<td><code>"https://...services.ai.azure.com/.../agents/&lt;id&gt;"</code></td>
-<td>Foundry hosted agent endpoint</td>
-</tr>
-<tr>
-<td><code>"https://api.example.com/chat"</code></td>
-<td>HTTP/JSON agent</td>
-</tr>
-<tr>
-<td><code>"model:gpt-4o-mini"</code></td>
-<td>Direct model deployment</td>
-</tr>
-</tbody>
-</table>
-<p>HTTP targets can add top-level mapping fields such as <code>request_field</code>,
-<code>response_field</code>, <code>tool_calls_field</code>, <code>auth_header_env</code>, and
-<code>extra_fields</code>.</p>
-<h3 id="dataset">Dataset<a class="headerlink" href="#dataset" title="Permanent link">&para;</a></h3>
-<p>A JSONL file containing evaluation rows. Each row has an <code>input</code> prompt
-and usually an <code>expected</code> reference answer. Some scenarios add extra
-fields like <code>context</code> (RAG), <code>tool_definitions</code>, or <code>tool_calls</code> (agent
-workflows).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is Python?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Python is a programming language.&quot;</span><span class="p">}</span>
-</code></pre></div>
-<h3 id="evaluator">Evaluator<a class="headerlink" href="#evaluator" title="Permanent link">&para;</a></h3>
-<p>A scoring function that measures one aspect of the target response.
-Evaluators can be:</p>
-<ul>
-<li><strong>AI-assisted</strong> (Foundry) - use a judge model to score responses on
-  criteria like coherence, fluency, similarity, or groundedness.</li>
-<li><strong>Local metrics</strong> - computed without a judge model, such as
-  <code>avg_latency_seconds</code> or <code>F1ScoreEvaluator</code> for exact-reference model checks.</li>
-</ul>
-<p>AgentOps auto-selects evaluators from the target kind and dataset shape.
-Use <code>evaluators:</code> in <code>agentops.yaml</code> only when you need to override that
-selection. See
-<a href="../foundry-evaluation-sdk-built-in-evaluators/">foundry-evaluation-sdk-built-in-evaluators.md</a>
-for the complete evaluator reference.</p>
-<h3 id="target-resolver">Target resolver<a class="headerlink" href="#target-resolver" title="Permanent link">&para;</a></h3>
-<p>The execution engine sends dataset rows to the target and collects
-responses. AgentOps automatically selects the target kind from <code>agent:</code>.</p>
-<table>
-<thead>
-<tr>
-<th><code>agent:</code> shape</th>
+<th><code>agent:</code> value</th>
 <th>Target kind</th>
 <th>Use case</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>name:version</code></td>
+<td><code>"travel-agent:1"</code> (<code>name:version</code>)</td>
 <td>Foundry prompt agent</td>
 <td>Foundry Agent Service agents</td>
 </tr>
 <tr>
-<td><code>https://...services.ai.azure.com/.../agents/...</code></td>
-<td>Foundry hosted agent endpoint</td>
-<td>Hosted Agent URL target</td>
+<td><code>"https://...services.ai.azure.com/.../agents/&lt;id&gt;"</code></td>
+<td>Foundry hosted agent</td>
+<td>A deployed agent endpoint on a Foundry domain</td>
 </tr>
 <tr>
-<td><code>https://...</code></td>
+<td><code>"https://api.example.com/chat"</code></td>
 <td>HTTP/JSON endpoint</td>
 <td>LangGraph, Agent Framework, ACA, AKS, custom REST</td>
 </tr>
 <tr>
-<td><code>model:&lt;deployment&gt;</code></td>
+<td><code>"model:gpt-4o-mini"</code></td>
 <td>Model-direct</td>
 <td>Raw model deployment checks</td>
 </tr>
 </tbody>
 </table>
-<h3 id="prompt-agent-vs-hosted-agent">Prompt Agent vs Hosted Agent<a class="headerlink" href="#prompt-agent-vs-hosted-agent" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Term</th>
-<th>What it means</th>
-<th>Who creates/deploys it</th>
-<th>How AgentOps uses it</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Foundry Prompt Agent</strong></td>
-<td>A Foundry-managed agent version referenced as <code>name:version</code>.</td>
-<td>Foundry portal, Foundry SDK/Toolkit, or <code>microsoft-foundry</code> skill.</td>
-<td>Can run locally through AgentOps or server-side with <code>execution: cloud</code>.</td>
-</tr>
-<tr>
-<td><strong>Foundry Hosted Agent</strong></td>
-<td>A deployed agent endpoint on a Foundry domain.</td>
-<td>Foundry Agent Service / Hosted Agent tooling.</td>
-<td>Evaluated as a URL target by the AgentOps local runner.</td>
-</tr>
-<tr>
-<td><strong>HTTP/JSON agent</strong></td>
-<td>A custom endpoint outside the Foundry agent URL shape.</td>
-<td>The app's own deployment path, often azd, ACA, AKS, or another host.</td>
-<td>Evaluated as a URL target with request/response mapping fields.</td>
-</tr>
-</tbody>
-</table>
-<p>AgentOps does not replace the tools that create or deploy agents. It references
-the candidate that those tools produced and turns the evaluation, Doctor, and
-evidence outputs into a release gate.</p>
-<h3 id="evaluation-path">Evaluation path<a class="headerlink" href="#evaluation-path" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Target</th>
-<th>Foundry server-side eval through AgentOps</th>
-<th>AgentOps local runner</th>
-<th>Recommended default</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Foundry Prompt Agent (<code>name:version</code>)</td>
-<td>Yes, with <code>execution: cloud</code></td>
-<td>Yes</td>
-<td>Use cloud for official Foundry-hosted runs; use local for fast feedback or fallback.</td>
-</tr>
-<tr>
-<td>Foundry Hosted Agent URL</td>
-<td>No</td>
-<td>Yes</td>
-<td>Use local runner; optionally publish local metrics to Foundry with <code>publish: true</code>.</td>
-</tr>
-<tr>
-<td>Generic HTTP/JSON endpoint</td>
-<td>No</td>
-<td>Yes</td>
-<td>Use local runner.</td>
-</tr>
-<tr>
-<td>Raw model deployment (<code>model:&lt;name&gt;</code>)</td>
-<td>No</td>
-<td>Yes</td>
-<td>Use local runner.</td>
-</tr>
-</tbody>
-</table>
-<p>For prompt-agent CI pipelines, prefer AgentOps cloud eval when the repo needs a
-merge/deploy gate: Foundry executes the managed eval, and AgentOps enforces
-thresholds, baselines, Doctor readiness, release evidence, and
-trace-to-regression review. The standalone Microsoft Foundry AI Agent Evaluation
-Action/task remains useful for platform-native validation outside the AgentOps
-release-readiness flow.</p>
-<p>If a Foundry project already uses the public-preview <code>azd ai agent eval</code> recipe
-flow, set <code>execution: azd</code> and <code>eval_recipe: eval.yaml</code>. AgentOps delegates eval
-execution to azd, then normalizes metrics, binds thresholds, writes
-<code>results.json</code>, and fails closed for thresholds that have no emitted metric.
-Rubric evaluator dimensions are treated as first-class metric names.</p>
-<p>Governance artifacts are optional evidence inputs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">assert_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.assert/evaluation-policy.yaml</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">acs_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acs.yaml</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">redteam_path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/governance/redteam-plan.md</span>
+<div class="admonition note">
+<p class="admonition-title">HTTP targets need request and response mapping</p>
+<p>A custom HTTP endpoint rarely matches AgentOps defaults exactly, so you map
+its request and response shape with top-level fields. Use <code>request_field</code>
+and <code>response_field</code> (dot-paths) to point at the right JSON keys,
+<code>tool_calls_field</code> for tool output, <code>auth_header_env</code> to name an env var
+holding a Bearer token, and <code>extra_fields</code> for any static body fields.</p>
+</div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://my-aca-app.eastus2.azurecontainerapps.io/chat</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span><span class="w">            </span><span class="c1"># default is &quot;message&quot;</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span><span class="w">              </span><span class="c1"># dot-path; default is &quot;text&quot;</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">APP_API_TOKEN</span><span class="w">    </span><span class="c1"># value is sent as a Bearer token</span>
 </code></pre></div>
-<p>AgentOps records path, hash, status, and ACS checkpoint coverage in Doctor,
-Cockpit, and release evidence. ASSERT execution, ACS enforcement, Guided
-Guardrail setup, and red-team scans remain in their owning tools.</p>
-<h2 id="evaluation-scenarios">Evaluation Scenarios<a class="headerlink" href="#evaluation-scenarios" title="Permanent link">&para;</a></h2>
-<p>AgentOps auto-selects common evaluation patterns from the dataset:</p>
+<h2 id="datasets-and-scenarios">Datasets and scenarios<a class="headerlink" href="#datasets-and-scenarios" title="Permanent link">&para;</a></h2>
+<p>A dataset is a plain JSONL file, one evaluation row per line. Each row has an
+<code>input</code> prompt and usually an <code>expected</code> reference answer. Optional fields drive
+which evaluators run.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span><span class="p">}</span>
+</code></pre></div>
+<p>The presence of optional fields tells AgentOps which evaluation scenario you are
+running. You do not declare the scenario; the row shape implies it.</p>
 <table>
 <thead>
 <tr>
 <th>Scenario</th>
-<th>Signal</th>
+<th>Signal in the row</th>
 <th>Purpose</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><strong>Model quality</strong></td>
-<td><code>model:&lt;deployment&gt;</code> + <code>expected</code></td>
+<td>Model quality</td>
+<td><code>model:&lt;deployment&gt;</code> target plus <code>expected</code></td>
 <td>Direct model checks</td>
 </tr>
 <tr>
-<td><strong>RAG</strong></td>
+<td>RAG</td>
 <td><code>context</code></td>
 <td>Grounding and retrieval checks</td>
 </tr>
 <tr>
-<td><strong>Conversational</strong></td>
-<td><code>input</code> + <code>expected</code></td>
+<td>Conversational</td>
+<td><code>input</code> plus <code>expected</code></td>
 <td>Chatbot and Q&amp;A quality</td>
 </tr>
 <tr>
-<td><strong>Agent workflow</strong></td>
-<td><code>tool_calls</code> + <code>tool_definitions</code></td>
+<td>Agent workflow</td>
+<td><code>tool_calls</code> plus <code>tool_definitions</code></td>
 <td>Tool-use quality</td>
 </tr>
 <tr>
-<td><strong>Content safety</strong></td>
+<td>Content safety</td>
 <td>Safety evaluators</td>
 <td>Responsible AI checks</td>
 </tr>
 </tbody>
 </table>
-<p>Use the hands-on tutorials for scenario coverage:</p>
-<ul>
-<li><a href="../tutorial-prompt-agent/">Prompt agent tutorial</a> for Foundry
-  prompt agents referenced as <code>name:version</code>.</li>
-<li><a href="../tutorial-http-agent/">HTTP agent tutorial</a> for HTTP agents,
-  RAG services, and code-based workflows behind a JSON endpoint.</li>
-</ul>
-<h2 id="configuration-model">Configuration Model<a class="headerlink" href="#configuration-model" title="Permanent link">&para;</a></h2>
-<p><code>agentops.yaml</code> is the single source of truth. Keep it small and add only
-the fields your target needs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
+<h2 id="evaluators">Evaluators<a class="headerlink" href="#evaluators" title="Permanent link">&para;</a></h2>
+<p>An evaluator is a scoring function that measures one aspect of a response. They
+come in two flavors. <strong>AI-assisted</strong> evaluators use a judge model to score
+qualities like coherence, similarity, or groundedness. <strong>Local metrics</strong> are
+computed without a judge, such as <code>avg_latency_seconds</code> or <code>F1ScoreEvaluator</code>
+for exact-reference checks.</p>
+<p>AgentOps auto-selects evaluators from the target kind and the dataset shape, so a
+three-line config still scores the right things. Prompt and hosted agents get
+answer-quality judges, <code>context</code> rows add the RAG set, and tool rows add the
+tool-use set.</p>
+<div class="admonition note">
+<p class="admonition-title">Override only when you must</p>
+<p>Set the <code>evaluators:</code> list in <code>agentops.yaml</code> only when you need to replace
+the auto-selection. It is an escape hatch, not the normal path. For the full
+catalog of evaluator names and their required inputs, see
+<a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>.</p>
+</div>
+<h2 id="evaluation-path-where-the-run-executes">Evaluation path: where the run executes<a class="headerlink" href="#evaluation-path-where-the-run-executes" title="Permanent link">&para;</a></h2>
+<p>The <code>execution:</code> field decides where the evaluation actually runs. Local is the
+default and works for every target. Cloud runs a Foundry prompt agent
+server-side. The azd recipe path delegates to an existing <code>azd ai agent eval</code>
+flow.</p>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Cloud (<code>execution: cloud</code>)</th>
+<th>Local runner</th>
+<th>Recommended default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Foundry prompt agent (<code>name:version</code>)</td>
+<td>Yes</td>
+<td>Yes</td>
+<td>Cloud for official Foundry runs; local for fast feedback</td>
+</tr>
+<tr>
+<td>Foundry hosted agent URL</td>
+<td>No</td>
+<td>Yes</td>
+<td>Local runner; optionally <code>publish: true</code></td>
+</tr>
+<tr>
+<td>Generic HTTP/JSON endpoint</td>
+<td>No</td>
+<td>Yes</td>
+<td>Local runner</td>
+</tr>
+<tr>
+<td>Raw model deployment (<code>model:&lt;name&gt;</code>)</td>
+<td>No</td>
+<td>Yes</td>
+<td>Local runner</td>
+</tr>
+</tbody>
+</table>
+<p>For prompt-agent CI pipelines that need a merge or deploy gate, prefer cloud
+eval. Foundry executes the managed evaluation and AgentOps enforces thresholds,
+baselines, Doctor readiness, and release evidence.</p>
+<div class="admonition info">
+<p class="admonition-title">Reusing an azd eval recipe</p>
+<p>If a Foundry project already uses the public-preview <code>azd ai agent eval</code>
+recipe, set <code>execution: azd</code> and <code>eval_recipe: eval.yaml</code>. AgentOps
+delegates execution to azd, normalizes the metrics, binds thresholds, writes
+<code>results.json</code>, and fails closed for any threshold that has no emitted
+metric. Rubric evaluator dimensions are treated as first-class metric names.</p>
+</div>
+<h2 id="mini-glossary">Mini-glossary<a class="headerlink" href="#mini-glossary" title="Permanent link">&para;</a></h2>
+<p>The tutorials defer to these definitions, so they live here once.</p>
+<div class="admonition note">
+<p class="admonition-title">Dimension</p>
+<p>A dimension is a single named axis a rubric or evaluator scores. A Travel
+Agent rubric might score the dimensions <code>helpfulness</code>, <code>safety</code>, and
+<code>format_adherence</code> separately, so one response produces one score per
+dimension rather than a single blended number.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Rubric</p>
+<p>A rubric is an evaluator that scores responses against a written scoring
+guide, usually one score per dimension. For example, a rubric can define
+<code>helpfulness: 1 to 5</code> with a short description of what a 1 and a 5 look like,
+and the judge model applies that guide to each row. Rubric dimensions become
+metric names you can put thresholds on.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">smoke-core</p>
+<p>A smoke-core is a small, fast smoke dataset plus the minimal evaluator set
+that gates it. It is the quick check you run on every change to catch obvious
+breakage in seconds, before the larger scenario datasets run. Think of it as
+the few rows and one or two evaluators that must always pass.</p>
+</div>
+<h2 id="configuration-model">Configuration model<a class="headerlink" href="#configuration-model" title="Permanent link">&para;</a></h2>
+<p><code>agentops.yaml</code> is the single source of truth. Keep it small and add only the
+fields your target needs. For the complete schema, every top-level field, and
+more examples, see <a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>
+for evaluator config and the tutorials for end-to-end setups.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
 </code></pre></div>
-<p>See <a href="../how-it-works/">how-it-works.md</a> for the full schema, endpoint
-fields, validation rules, and more examples.</p>
 
 
 
