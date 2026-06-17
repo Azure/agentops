@@ -1013,14 +1013,14 @@ You are ready for a release review when:
 
 - **Detailed prompt-agent walkthrough** (sandbox + dev journey, regression
   PR, Doctor-blocking gate, fix + redeploy):
-  [tutorial-prompt-agent.md](tutorial-prompt-agent.md).
-- **Detailed hosted-agent walkthrough** (same sandbox + dev story but
+  [Prompt agent tutorial](tutorial-prompt-agent.md).
+- **Detailed HTTP-agent walkthrough** (same sandbox + dev story but
   for endpoints, with the git SHA / image tag identity story):
-  [tutorial-hosted-agent.md](tutorial-hosted-agent.md).
-- **CI/CD reference** ([docs/ci-github-actions.md](ci-github-actions.md))
+  [HTTP agent tutorial](tutorial-http-agent.md).
+- **CI/CD reference** ([Ship](ship.md) and [GitHub Actions](ci-github-actions.md))
   for full `agentops workflow generate` flag reference including the
   `--doctor-gate` semantics.
-- **Doctor explainer** ([docs/doctor-explained.md](doctor-explained.md))
+- **Doctor explainer** ([Doctor explained](doctor-explained.md))
   for the full readiness check catalog and severity rules that drive
   the `--doctor-gate` block decision.
 

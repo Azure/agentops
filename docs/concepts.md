@@ -225,15 +225,12 @@ AgentOps auto-selects common evaluation patterns from the dataset:
 | **Agent workflow** | `tool_calls` + `tool_definitions` | Tool-use quality |
 | **Content safety** | Safety evaluators | Responsible AI checks |
 
-Use one of the three hands-on tutorials for scenario coverage:
+Use the hands-on tutorials for scenario coverage:
 
-- [Foundry Prompt Agent tutorial](tutorial-prompt-agent.md) for Foundry
+- [Prompt agent tutorial](tutorial-prompt-agent.md) for Foundry
   prompt agents referenced as `name:version`.
-- [Hosted or HTTP Agent tutorial](tutorial-hosted-agent.md) for Foundry
-  hosted endpoints, generic HTTP agents, RAG services, and code-based workflows.
-- [End-to-end tutorial](tutorial-end-to-end.md) for the complete Foundry +
-  AgentOps loop, including CI/CD, observability, red-team follow-through,
-  Doctor, release evidence, and trace regression.
+- [HTTP agent tutorial](tutorial-http-agent.md) for HTTP agents,
+  RAG services, and code-based workflows behind a JSON endpoint.
 
 ## Configuration Model
 

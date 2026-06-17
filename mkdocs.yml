@@ -69,18 +69,18 @@ nav:
   - Overview: index.md
   - Tutorials:
       - Prompt Agent Tutorial: tutorial-prompt-agent.md
-      - Hosted or HTTP Agent Tutorial: tutorial-hosted-agent.md
-      - Full End-to-End Tutorial: tutorial-end-to-end.md
-  - Concepts:
-      - How It Works: how-it-works.md
-      - Core Concepts: concepts.md
+      - HTTP Agent Tutorial: tutorial-http-agent.md
   - Evaluation:
+      - Overview: evaluation.md
       - Built-in Evaluators: foundry-evaluation-sdk-built-in-evaluators.md
-  - Doctor:
-      - Checks: doctor-checks.md
-      - Explained: doctor-explained.md
-  - CI/CD:
+  - Ship:
+      - Overview: ship.md
       - GitHub Actions: ci-github-actions.md
+  - Observe: observe.md
+  - Own:
+      - Overview: own.md
+      - Doctor Checks: doctor-checks.md
+      - Doctor Explained: doctor-explained.md
 extra:
   generator: false
   social:

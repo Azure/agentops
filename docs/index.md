@@ -52,26 +52,33 @@ generated CI/CD, release evidence, and trace-driven regression loops.
 
 <div class="agentops-card" markdown>
 ### :material-rocket-launch: Get started
-Start with the [Prompt Agent tutorial](tutorial-prompt-agent.md) to learn the
-sandbox -> dev PR gate flow.
+Start with the [Prompt Agent tutorial](tutorial-prompt-agent.md) or the
+[HTTP Agent tutorial](tutorial-http-agent.md) to learn the sandbox to dev PR
+gate flow end to end.
 </div>
 
 <div class="agentops-card" markdown>
-### :material-cog: How it works
-Read [How It Works](how-it-works.md) for the architecture and the principles
-behind the CLI, Cockpit, and skills.
+### :material-clipboard-check: Evaluate
+Read [Evaluation](evaluation.md) to learn how datasets, evaluators, thresholds,
+and rubrics turn an agent into a pass or fail gate.
 </div>
 
 <div class="agentops-card" markdown>
-### :material-stethoscope: Doctor
-See the [Doctor checks](doctor-checks.md) that score release readiness and
-produce an evidence pack.
+### :material-source-branch: Ship
+[Ship](ship.md) explains the generated PR gate and dev deploy workflows, and how
+candidate versions become a release.
 </div>
 
 <div class="agentops-card" markdown>
-### :material-source-branch: CI/CD
-Generate gated [GitHub Actions](ci-github-actions.md) workflows that run evals,
-safety, and red teaming on every PR.
+### :material-radar: Observe
+[Observe](observe.md) covers Foundry traces and Azure Monitor, and how
+production signals feed continuous evaluation.
+</div>
+
+<div class="agentops-card" markdown>
+### :material-stethoscope: Own
+[Own](own.md) shows how Doctor scores readiness and packages an evidence pack so
+you can make the ship or no-ship call.
 </div>
 
 </div>
