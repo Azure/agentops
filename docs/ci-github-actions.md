@@ -527,14 +527,3 @@ keep their generated `--severity-fail` value until you re-generate with
 - **Regression baseline** - wire deploy templates to download the
   previous run's `results.json` artifact and call
   `agentops eval run --baseline <results.json>`.
-
-## Migration from the older 3-template layout
-
-If your repository still has `agentops-eval.yml`, `agentops-eval-ci.yml`,
-or `agentops-eval-cd.yml` from a prior version of AgentOps:
-
-1. Delete the three old files.
-2. Run `agentops workflow generate`.
-3. Re-add Build / Deploy commands you had customised.
-4. Update branch-protection status checks to point at the new
-   `AgentOps PR` job.
