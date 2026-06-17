@@ -3,7 +3,8 @@
 A 10-minute read for a platform, observability, or AI engineer (and
 the engineering managers who own those teams) who runs
 `agentops doctor` for the first time. For step-by-step setup, see
-the [end-to-end tutorial](tutorial-end-to-end.md).
+the [Prompt agent tutorial](tutorial-prompt-agent.md) or the
+[HTTP agent tutorial](tutorial-http-agent.md).
 
 ## 1. What the Doctor is - and isn't
 
@@ -411,7 +412,7 @@ members and CI.
 ## 11. Next steps
 
 - Walk through a full setup with Azure resources:
-  [end-to-end tutorial](tutorial-end-to-end.md).
+  [HTTP agent tutorial](tutorial-http-agent.md).
 - Open the workspace command center: `agentops cockpit` shows eval
   history, Doctor findings, CI/CD status, telemetry readiness, and
   Foundry/Azure navigation.
