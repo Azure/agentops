@@ -221,7 +221,7 @@
   
     
   
-  Home
+  Overview
 
       </a>
     </li>
@@ -399,7 +399,7 @@
         
   
   <span class="md-ellipsis">
-    Home
+    Overview
   </span>
   
 
@@ -732,9 +732,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-practical-rules-for-agentops-bundles" class="md-nav__link">
+  <a href="#4-practical-rules-for-agentops-evaluators" class="md-nav__link">
     <span class="md-ellipsis">
-      4) Practical rules for AgentOps bundles
+      4) Practical rules for AgentOps evaluators
     </span>
   </a>
   
@@ -1140,9 +1140,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-practical-rules-for-agentops-bundles" class="md-nav__link">
+  <a href="#4-practical-rules-for-agentops-evaluators" class="md-nav__link">
     <span class="md-ellipsis">
-      4) Practical rules for AgentOps bundles
+      4) Practical rules for AgentOps evaluators
     </span>
   </a>
   
@@ -1230,9 +1230,10 @@
 
 
 <h1 id="foundry-evaluation-sdk-built-in-evaluators-agentops">Foundry Evaluation SDK Built-in Evaluators (AgentOps)<a class="headerlink" href="#foundry-evaluation-sdk-built-in-evaluators-agentops" title="Permanent link">&para;</a></h1>
-<p>This guide maps Microsoft Foundry built-in evaluators to the configuration model used by AgentOps Toolkit.</p>
+<p>This guide maps Microsoft Foundry built-in evaluators to the configuration model used by AgentOps Accelerator.</p>
 <h2 id="1-agentops-config-shape-quick-reference">1) AgentOps config shape (quick reference)<a class="headerlink" href="#1-agentops-config-shape-quick-reference" title="Permanent link">&para;</a></h2>
-<p>In AgentOps, each evaluator is configured under <code>bundle.evaluators[]</code>:</p>
+<p>In AgentOps, each evaluator is configured as an entry in the top-level
+<code>evaluators:</code> list of <code>agentops.yaml</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">evaluators</span><span class="p">:</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SimilarityEvaluator</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">foundry</span>
@@ -1532,7 +1533,7 @@
 </tr>
 </tbody>
 </table>
-<h2 id="4-practical-rules-for-agentops-bundles">4) Practical rules for AgentOps bundles<a class="headerlink" href="#4-practical-rules-for-agentops-bundles" title="Permanent link">&para;</a></h2>
+<h2 id="4-practical-rules-for-agentops-evaluators">4) Practical rules for AgentOps evaluators<a class="headerlink" href="#4-practical-rules-for-agentops-evaluators" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Always set <code>source: foundry</code> for Foundry SDK evaluators.</li>
 <li>For preview evaluators, always provide explicit:</li>
@@ -1544,7 +1545,7 @@
 <li>For agent evaluators, use structured fields in dataset rows (messages, tool calls, tool definitions) and map with <code>$row.&lt;field&gt;</code>.</li>
 </ul>
 <h2 id="5-examples-by-evaluator-type">5) Examples by evaluator type<a class="headerlink" href="#5-examples-by-evaluator-type" title="Permanent link">&para;</a></h2>
-<p>The following examples show one practical bundle snippet for each evaluator family used in AgentOps:</p>
+<p>The following examples show one practical config snippet for each evaluator family used in AgentOps:</p>
 <ul>
 <li><code>5.1</code> AI-assisted quality evaluators (<code>model_config</code>)</li>
 <li><code>5.2</code> Risk/safety evaluators (<code>azure_ai_project</code>)</li>

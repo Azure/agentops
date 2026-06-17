@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#full-end-to-end-tutorial-sandbox-to-production-readiness" class="md-skip">
+        <a href="#sandbox-to-production" class="md-skip">
           Skip to content
         </a>
       
@@ -221,7 +221,7 @@
   
     
   
-  Home
+  Overview
 
       </a>
     </li>
@@ -399,7 +399,7 @@
         
   
   <span class="md-ellipsis">
-    Home
+    Overview
   </span>
   
 
@@ -584,15 +584,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#repository-set-for-this-tutorial" class="md-nav__link">
-    <span class="md-ellipsis">
-      Repository set for this tutorial
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#1-create-the-travel-agent-target" class="md-nav__link">
     <span class="md-ellipsis">
       1. Create the Travel Agent target
@@ -770,6 +761,15 @@
   <a href="#where-to-go-next" class="md-nav__link">
     <span class="md-ellipsis">
       Where to go next
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#repos-and-skills-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      Repos and skills used
     </span>
   </a>
   
@@ -1278,15 +1278,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#repository-set-for-this-tutorial" class="md-nav__link">
-    <span class="md-ellipsis">
-      Repository set for this tutorial
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#1-create-the-travel-agent-target" class="md-nav__link">
     <span class="md-ellipsis">
       1. Create the Travel Agent target
@@ -1469,6 +1460,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#repos-and-skills-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      Repos and skills used
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1487,7 +1487,7 @@
   
 
 
-<h1 id="full-end-to-end-tutorial-sandbox-to-production-readiness">Full end-to-end tutorial: sandbox to production readiness<a class="headerlink" href="#full-end-to-end-tutorial-sandbox-to-production-readiness" title="Permanent link">&para;</a></h1>
+<h1 id="sandbox-to-production">Sandbox to production<a class="headerlink" href="#sandbox-to-production" title="Permanent link">&para;</a></h1>
 <p>This is the complete release path. Use it after one of the type-specific
 tutorials when you want to validate the full develop -&gt; evaluate -&gt; release -&gt;
 observe loop across <strong>sandbox</strong>, <strong>dev</strong>, <strong>qa</strong>, and <strong>prod</strong> environments.</p>
@@ -1587,12 +1587,12 @@ review.</p>
 </table>
 <h2 id="multi-environment-topology">Multi-environment topology<a class="headerlink" href="#multi-environment-topology" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>.azure/
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── config.json            # defaultEnvironment: sandbox
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── .gitignore             # excludes */.env
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── sandbox/.env           # team authoring / experimentation space (Foundry project for prompts, or local/shared app for hosted agents)
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── dev/.env               # team-shared dev project / endpoint (PR + deploy gate)
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── qa/.env                # qa project / endpoint
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>└── prod/.env              # production project / endpoint
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── config.json            # default: sandbox
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── .gitignore             # excludes secrets
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── sandbox/.env           # authoring
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── dev/.env               # PR and deploy gate
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── qa/.env                # release validation
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>└── prod/.env              # production
 </code></pre></div>
 <p>For <strong>prompt agents</strong>, each <code>.env</code> points at a different Foundry project so
 playground saves in sandbox don't appear in dev. For <strong>hosted agents</strong>, each
@@ -1600,14 +1600,13 @@ playground saves in sandbox don't appear in dev. For <strong>hosted agents</stro
 the agent URL (<code>AGENTOPS_AGENT_ENDPOINT</code>) differs per environment because the
 hosted endpoint itself is the per-environment artifact.</p>
 <blockquote>
-<p><strong>Why a separate sandbox?</strong> When authors save in the Foundry playground,
-the platform auto-increments the version every save. If experimentation
-happens in the same project that CI promotes from, dev fills up with
-half-baked versions and traceability and rollback become messy. Sandbox
-is the team's authoring and experimentation space (one project works
-for most teams; split per-stream or per-developer only if save
-collisions become a real problem); dev is the gated promotion target
-CI writes to.</p>
+<p><strong>Why a separate sandbox?</strong></p>
+<ul>
+<li>Sandbox is where authors experiment and save freely.</li>
+<li>Dev is the gated target that CI writes to.</li>
+<li>Keeping them separate avoids half-baked versions in dev and keeps rollback cleaner.</li>
+<li>Start with one sandbox. Split only if save collisions become a real problem.</li>
+</ul>
 <p><strong>Name the Azure resources before provisioning.</strong> When you use the Foundry
 portal, <code>microsoft-foundry</code> skill, or Foundry Toolkit for this tutorial, specify
 the resource group, Foundry / AI Services resource name, region, and model
@@ -1653,59 +1652,31 @@ hosted agents. That means: given any deployed environment, you can trace
 back to the exact git commit and (for prompt agents) the exact prompt
 contents that produced it.</p>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
-<p>Do this once before a live walkthrough or guided session. The goal is to keep the
-tutorial focused on the release-readiness loop, not on unexpected permission
-prompts.</p>
-<table>
-<thead>
-<tr>
-<th>Check</th>
-<th>Why it matters</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Azure CLI is installed and <code>az login</code> succeeds with the tenant that owns the Foundry project.</td>
-<td>AgentOps, Foundry SDK calls, Doctor, Cockpit, and CI setup all need the same Azure identity context.</td>
-</tr>
-<tr>
-<td>You have the Foundry project endpoint and can create or publish one Travel Agent target.</td>
-<td>The target is either <code>travel-agent:&lt;version&gt;</code> for prompt agents or an HTTP endpoint for hosted agents.</td>
-</tr>
-<tr>
-<td>You have a chat-capable Azure OpenAI deployment, for example <code>gpt-4o-mini</code>.</td>
-<td>Local evals and CI variables need a judge model for evaluator calls.</td>
-</tr>
-<tr>
-<td>Application Insights is connected to the Foundry project or agent runtime, or you can create/attach it. For Foundry trace-to-dataset flows, you can also grant Reader on App Insights and its backing Log Analytics workspace to the Foundry project managed identity.</td>
-<td>Foundry Traces, Operate metrics/Ask AI when available, trace sampling, Azure Monitor, Doctor, Cockpit, and evidence links need telemetry.</td>
-</tr>
-<tr>
-<td>You can deploy or expose any hosted endpoint that CI will call.</td>
-<td><code>localhost</code> works for local eval; remote CI needs a reachable HTTPS URL.</td>
-</tr>
-<tr>
-<td>You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines.</td>
-<td>PR and environment workflows only run after the repo is published.</td>
-</tr>
-<tr>
-<td>GitHub CLI is authenticated with <code>gh auth login</code> if you use GitHub PR commands while testing CI.</td>
-<td>The regression and release-gate steps are smoother when repo, PR, and Actions access are already confirmed.</td>
-</tr>
-<tr>
-<td>You can create GitHub environments such as <code>dev</code>, <code>qa</code>, and <code>production</code>, or the equivalent Azure DevOps variables/service connections.</td>
-<td>The full lifecycle workflow separates PR checks from environment release gates.</td>
-</tr>
-<tr>
-<td>You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID.</td>
-<td>The workflow skill can wire OIDC cleanly; without this, CI/CD cannot authenticate to Azure.</td>
-</tr>
-<tr>
-<td>Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills.</td>
-<td>The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps.</td>
-</tr>
-</tbody>
-</table>
+<p>Do this once before a live walkthrough or guided session, grouped by area. It
+keeps the tutorial focused on the release-readiness loop instead of unexpected
+permission prompts.</p>
+<p><strong>Foundry projects</strong></p>
+<ul>
+<li>The Foundry project endpoint plus one Travel Agent target you can publish or expose: <code>travel-agent:&lt;version&gt;</code> for prompt agents, or an HTTP endpoint for hosted agents.</li>
+<li>A chat-capable Azure OpenAI deployment, for example <code>gpt-4o-mini</code>. Local evals and CI need a judge model for evaluator calls.</li>
+</ul>
+<p><strong>Azure</strong></p>
+<ul>
+<li>Azure CLI installed and <code>az login</code> working on the tenant that owns the Foundry project.</li>
+<li>Application Insights connected to the Foundry project or agent runtime, or one you can create/attach. For trace-to-dataset flows, also grant Reader on App Insights and its Log Analytics workspace to the Foundry project managed identity.</li>
+<li>A hosted endpoint CI can reach. <code>localhost</code> works for local eval, but remote CI needs a reachable HTTPS URL.</li>
+<li>An Entra app registration with federated credentials (OIDC), or an admin ready to provide the client, tenant, and subscription id.</li>
+</ul>
+<p><strong>GitHub</strong></p>
+<ul>
+<li>Push access to the tutorial repo and permission to run GitHub Actions or Azure Pipelines. PR and environment workflows only run after a push.</li>
+<li>GitHub environments such as <code>dev</code>, <code>qa</code>, and <code>production</code>, or the equivalent Azure DevOps variables and service connections.</li>
+<li><code>gh auth login</code> authenticated for the PR commands.</li>
+</ul>
+<p><strong>Coding agent</strong></p>
+<ul>
+<li>Your coding-agent CLI (Copilot or similar) signed in before you run AgentOps skills, so it can read the repo and propose the GitHub and Azure setup steps.</li>
+</ul>
 <p>Install AgentOps in a clean tutorial workspace:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">mkdir</span> <span class="n">agentops-end-to-end</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd </span><span class="n">agentops-end-to-end</span>
@@ -1723,41 +1694,6 @@ tutorial steps stay in sync:</p>
 <p>You will provide the target values through the interactive <code>agentops init</code>
 wizard. The evaluator endpoint/deployment is separate: set it only when running
 local evals or configuring CI variables.</p>
-<h2 id="repository-set-for-this-tutorial">Repository set for this tutorial<a class="headerlink" href="#repository-set-for-this-tutorial" title="Permanent link">&para;</a></h2>
-<p>This tutorial is meant to show the power of Foundry plus repo-side operations,
-not a self-contained AgentOps-only workflow. Use this repository set for a
-coherent path that connects the official Foundry product surfaces, the CI/CD
-evaluation runner, skill guidance, and AgentOps readiness evidence.</p>
-<table>
-<thead>
-<tr>
-<th>Repository</th>
-<th>Role in the combined story</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Azure/agentops</code></td>
-<td>Repo-side release readiness, Doctor, Cockpit, and evidence layer.</td>
-</tr>
-<tr>
-<td><code>microsoft/ai-agent-evals</code></td>
-<td>Reference for Foundry-native eval Action/task behavior. AgentOps cloud eval is the default prompt-agent gate so threshold failures become normalized PR evidence.</td>
-</tr>
-<tr>
-<td><code>microsoft/foundry-toolkit</code></td>
-<td>VS Code create/debug/deploy surface for the Operate/readiness handoff.</td>
-</tr>
-<tr>
-<td><code>microsoft/azure-skills</code></td>
-<td>Microsoft Foundry skill guidance for observe, CI/CD monitoring, regression, and trace follow-through.</td>
-</tr>
-<tr>
-<td><code>Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop</code></td>
-<td>Reference path for Foundry Observe/Optimize/Protect: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through.</td>
-</tr>
-</tbody>
-</table>
 <h2 id="1-create-the-travel-agent-target">1. Create the Travel Agent target<a class="headerlink" href="#1-create-the-travel-agent-target" title="Permanent link">&para;</a></h2>
 <p>Choose one path. The rest of the tutorial works with either target.</p>
 <h3 id="option-a-create-a-prompt-agent-in-foundry">Option A: create a Prompt Agent in Foundry<a class="headerlink" href="#option-a-create-a-prompt-agent-in-foundry" title="Permanent link">&para;</a></h3>
@@ -2607,6 +2543,33 @@ links out to Foundry / Azure Monitor for live runtime data.</p>
   for the full readiness check catalog and severity rules that drive
   the <code>--doctor-gate</code> block decision.</li>
 </ul>
+<h2 id="repos-and-skills-used">Repos and skills used<a class="headerlink" href="#repos-and-skills-used" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Repository / skill</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Azure/agentops</code></td>
+<td>CLI, eval runner, PR and environment gates, Doctor, Cockpit, evidence.</td>
+</tr>
+<tr>
+<td><code>microsoft-foundry</code> skill (optional)</td>
+<td>Guides Foundry project creation and environment wiring in Copilot Chat. Portal fallback included.</td>
+</tr>
+<tr>
+<td><code>microsoft/foundry-toolkit</code></td>
+<td>Create, debug, and deploy the agent and copy its endpoint URL.</td>
+</tr>
+<tr>
+<td><code>Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop</code></td>
+<td>Optional reference path for Foundry traces, evaluations, and red-team scans.</td>
+</tr>
+</tbody>
+</table>
 
 
 

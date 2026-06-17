@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#hosted-or-http-agent-tutorial-sandbox-to-dev-with-pr-gate" class="md-skip">
+        <a href="#endpoint-to-dev" class="md-skip">
           Skip to content
         </a>
       
@@ -221,7 +221,7 @@
   
     
   
-  Home
+  Overview
 
       </a>
     </li>
@@ -399,7 +399,7 @@
         
   
   <span class="md-ellipsis">
-    Home
+    Overview
   </span>
   
 
@@ -525,15 +525,6 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#repository-set-used-in-this-tutorial" class="md-nav__link">
-    <span class="md-ellipsis">
-      Repository set used in this tutorial
-    </span>
-  </a>
-  
-</li>
       
         <li class="md-nav__item">
   <a href="#before-you-run-the-tutorial" class="md-nav__link">
@@ -734,6 +725,15 @@
   <a href="#where-to-go-next" class="md-nav__link">
     <span class="md-ellipsis">
       Where to go next
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#repos-and-skills-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      Repos and skills used
     </span>
   </a>
   
@@ -1227,15 +1227,6 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#repository-set-used-in-this-tutorial" class="md-nav__link">
-    <span class="md-ellipsis">
-      Repository set used in this tutorial
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#before-you-run-the-tutorial" class="md-nav__link">
     <span class="md-ellipsis">
       Before you run the tutorial
@@ -1439,6 +1430,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#repos-and-skills-used" class="md-nav__link">
+    <span class="md-ellipsis">
+      Repos and skills used
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1457,7 +1457,7 @@
   
 
 
-<h1 id="hosted-or-http-agent-tutorial-sandbox-to-dev-with-pr-gate">Hosted or HTTP Agent tutorial: sandbox to dev with PR gate<a class="headerlink" href="#hosted-or-http-agent-tutorial-sandbox-to-dev-with-pr-gate" title="Permanent link">&para;</a></h1>
+<h1 id="endpoint-to-dev">Endpoint to dev<a class="headerlink" href="#endpoint-to-dev" title="Permanent link">&para;</a></h1>
 <p>Use this tutorial when the agent is reachable as an endpoint URL. The
 example creates a small <strong>Travel Agent</strong> HTTP endpoint locally (your
 <strong>sandbox</strong>), then shows how to swap in a deployed Foundry Hosted Agent
@@ -1471,100 +1471,36 @@ arrangement:</p>
   normalized <code>results.json</code>, runs Doctor with <code>--severity-fail critical</code>
   so regressions block the PR, and produces release evidence.</li>
 </ul>
-<p>The toolkit benefit is the same as the prompt-agent tutorial, adapted
-for endpoint-based agents: you author and iterate against a local
-sandbox, then let CI verify the deployed dev environment is still
-healthy on every PR. Production-readiness gates (eval thresholds plus
-Doctor critical findings) sit between you and a merge.</p>
-<h2 id="repository-set-used-in-this-tutorial">Repository set used in this tutorial<a class="headerlink" href="#repository-set-used-in-this-tutorial" title="Permanent link">&para;</a></h2>
-<p>This tutorial intentionally connects the hosted-agent path to the
-Microsoft projects that make the Operate story complete. The official
-Foundry extension, Azure services, and AgentOps workflow remain the
-actual runtime path.</p>
-<table>
-<thead>
-<tr>
-<th>Repository / skill</th>
-<th>Role in the journey</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>Azure/agentops</code></td>
-<td>Provides endpoint evaluation, thresholds, <code>results.json</code>, Doctor, Cockpit, and evidence.</td>
-</tr>
-<tr>
-<td><code>microsoft-foundry</code> skill (Copilot Chat)</td>
-<td>External, not bundled with AgentOps. Demonstrates how a skill outside the AgentOps toolkit can guide Foundry hosted agent creation and Operate wiring. The tutorial gives a portal-first fallback because the skill is optional.</td>
-</tr>
-<tr>
-<td><code>microsoft/ai-agent-evals</code></td>
-<td>Reference for Foundry prompt-agent eval behavior; hosted endpoints use AgentOps local eval because CI must invoke your endpoint directly.</td>
-</tr>
-<tr>
-<td><code>microsoft/foundry-toolkit</code></td>
-<td>Frames the Hosted Agent create/debug/deploy flow and the Operate handoff in VS Code.</td>
-</tr>
-<tr>
-<td><code>microsoft/azure-skills</code></td>
-<td>Shows where the Microsoft Foundry skill can guide hosted-agent CI/CD, observe, and trace-regression follow-through.</td>
-</tr>
-<tr>
-<td><code>Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop</code></td>
-<td>Reference for the Foundry Observe/Optimize/Protect loop: OpenTelemetry traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through.</td>
-</tr>
-</tbody>
-</table>
+<p>The AgentOps Accelerator benefit is the same as the prompt-agent tutorial,
+adapted for endpoint-based agents: you author and iterate against a local
+sandbox, then let CI verify the deployed dev environment is still healthy on
+every PR. Production-readiness gates (eval thresholds plus Doctor critical
+findings) sit between you and a merge.</p>
 <h2 id="before-you-run-the-tutorial">Before you run the tutorial<a class="headerlink" href="#before-you-run-the-tutorial" title="Permanent link">&para;</a></h2>
-<p>Do this once before a live walkthrough or guided session. The goal is to keep the
-demo focused on the hosted-agent, observability, and AgentOps flow, not on
-unexpected permission prompts.</p>
-<table>
-<thead>
-<tr>
-<th>Check</th>
-<th>Why it matters</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Azure CLI is installed and <code>az login</code> succeeds with the tenant that owns the Foundry project.</td>
-<td>AgentOps discovery, Doctor, Cockpit, and telemetry setup all use that Azure context.</td>
-</tr>
-<tr>
-<td>You can create or use a Foundry project and a chat-capable Azure OpenAI deployment.</td>
-<td>Local endpoint evals still need a judge model for quality scoring.</td>
-</tr>
-<tr>
-<td>You can create or attach Application Insights, or you already have an App Insights connection string.</td>
-<td>The local FastAPI sample emits OpenTelemetry spans only after telemetry is configured.</td>
-</tr>
-<tr>
-<td>You can deploy or expose the hosted endpoint that CI will call.</td>
-<td><code>localhost</code> is fine for local eval, but GitHub Actions or Azure Pipelines need a reachable HTTPS URL.</td>
-</tr>
-<tr>
-<td>You can push to the tutorial GitHub repository and run GitHub Actions or Azure Pipelines.</td>
-<td>The PR gate only runs after the repo is published.</td>
-</tr>
-<tr>
-<td>GitHub CLI is authenticated with <code>gh auth login</code> if you use GitHub PR commands while testing CI.</td>
-<td>The workflow handoff is smoother when repo, PR, and Actions access are already confirmed.</td>
-</tr>
-<tr>
-<td>You can create a GitHub environment named <code>dev</code> and add Actions variables/secrets.</td>
-<td>The generated workflow uses that environment for Azure auth, endpoint settings, and evaluator settings.</td>
-</tr>
-<tr>
-<td>You can create an Entra app registration with federated credentials, or an admin is ready to provide the client ID, tenant ID, and subscription ID.</td>
-<td>The workflow skill can wire OIDC cleanly; without this, CI cannot authenticate to Azure.</td>
-</tr>
-<tr>
-<td>Copilot or your coding-agent CLI is signed in before you ask it to run AgentOps skills.</td>
-<td>The skill handoff assumes an authenticated coding-agent session that can read the repo and propose GitHub/Azure setup steps.</td>
-</tr>
-</tbody>
-</table>
+<p>Run through this once before a live walkthrough or guided session, grouped by
+area. It keeps the demo focused on the hosted-agent, observability, and AgentOps
+flow instead of unexpected permission prompts.</p>
+<p><strong>Foundry projects</strong></p>
+<ul>
+<li>A Foundry project plus one chat-capable deployment (the judge model). Local endpoint evals still need it for quality scoring.</li>
+</ul>
+<p><strong>Azure</strong></p>
+<ul>
+<li>Azure CLI installed and <code>az login</code> working on the tenant that owns the Foundry project.</li>
+<li>Application Insights, or an App Insights connection string. The local FastAPI sample emits OpenTelemetry spans only after telemetry is configured.</li>
+<li>A hosted endpoint CI can reach. <code>localhost</code> is fine for local eval, but GitHub Actions or Azure Pipelines need a reachable HTTPS URL.</li>
+<li>An Entra app registration with federated credentials (OIDC), or an admin ready to provide the client, tenant, and subscription id.</li>
+</ul>
+<p><strong>GitHub</strong></p>
+<ul>
+<li>Push access to the tutorial repo and permission to run GitHub Actions or Azure Pipelines. The PR gate only runs after a push.</li>
+<li>A GitHub environment named <code>dev</code> with Actions variables and secrets for Azure auth, the endpoint, and evaluator settings.</li>
+<li><code>gh auth login</code> authenticated for the PR commands.</li>
+</ul>
+<p><strong>Coding agent</strong></p>
+<ul>
+<li>Your coding-agent CLI (Copilot or similar) signed in before you run AgentOps skills, so it can read the repo and propose the GitHub and Azure setup steps.</li>
+</ul>
 <p>Unlike the Prompt Agent tutorial, this endpoint tutorial does not point the
 generated PR workflow at <code>ai-agent-evals</code>. Hosted and HTTP agents are evaluated
 through the AgentOps local runner because CI must invoke your endpoint, extract
@@ -1621,20 +1557,14 @@ release evidence, so the eval result and the source code stay linked
 across environments.</p>
 </blockquote>
 <h2 id="journey-you-will-exercise">Journey you will exercise<a class="headerlink" href="#journey-you-will-exercise" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sandbox (local FastAPI)
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>   │  iterate, regress, fix locally with `agentops eval run`
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>   ▼
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>PR opened with code change
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>   │  PR workflow evaluates dev URL with --doctor-gate critical
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>   ▼
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>PR green ── merge ── deploy workflow updates dev endpoint
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>   │
-<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>   ▼
-<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>deploy workflow re-runs eval + Doctor against the freshly updated dev URL
-<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>   │
-<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>   ▼
-<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>green dev → ready for promotion to qa / prod
-</code></pre></div>
+<p>One endpoint, four steps:</p>
+<pre class="mermaid"><code>flowchart LR
+    A["&lt;b&gt;Test locally&lt;/b&gt;&lt;br/&gt;against sandbox"]
+    B["&lt;b&gt;Open PR&lt;/b&gt;&lt;br/&gt;check dev URL"]
+    C["&lt;b&gt;Deploy dev&lt;/b&gt;&lt;br/&gt;after merge"]
+    D["&lt;b&gt;Check readiness&lt;/b&gt;&lt;br/&gt;evals and Doctor"]
+
+    A --&gt; B --&gt; C --&gt; D</code></pre>
 <table>
 <thead>
 <tr>
@@ -1714,87 +1644,87 @@ networking, identity, security, and operations patterns, see
 <a href="https://aka.ms/ailz">Azure AI Landing Zone</a>.</p>
 </blockquote>
 <h2 id="1-create-a-clean-workspace-and-install-dependencies">1. Create a clean workspace and install dependencies<a class="headerlink" href="#1-create-a-clean-workspace-and-install-dependencies" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">mkdir</span> <span class="n">agentops-hosted-quickstart</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">cd </span><span class="n">agentops-hosted-quickstart</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-U</span> <span class="n">pip</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;agentops-accelerator[foundry,agent]&quot;</span> <span class="n">fastapi</span> <span class="s2">&quot;uvicorn[standard]&quot;</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">agentops</span> <span class="p">-</span><span class="n">-version</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">mkdir</span> <span class="n">agentops-hosted-quickstart</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">cd </span><span class="n">agentops-hosted-quickstart</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-U</span> <span class="n">pip</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;agentops-accelerator[foundry,agent]&quot;</span> <span class="n">fastapi</span> <span class="s2">&quot;uvicorn[standard]&quot;</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">agentops</span> <span class="p">-</span><span class="n">-version</span>
 </code></pre></div>
 <p>For normal usage, prefer the published package above. For this tutorial path,
 install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop&quot;</span>
 </code></pre></div>
 <h2 id="2-create-the-travel-agent-endpoint">2. Create the Travel Agent endpoint<a class="headerlink" href="#2-create-the-travel-agent-endpoint" title="Permanent link">&para;</a></h2>
 <p>Create a minimal HTTP agent with the same travel behavior you would later deploy
 with Foundry Toolkit, Azure Container Apps, AKS, or another hosting path.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="sh">@&#39;</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="sh">import os</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="sh">from fastapi import FastAPI</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="sh">from pydantic import BaseModel</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="sh">app = FastAPI(title=&quot;Travel Agent&quot;)</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="sh">class ChatRequest(BaseModel):</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="sh">    message: str</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="sh">def plan_trip(message: str) -&gt; str:</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="sh">    if os.getenv(&quot;TRAVEL_AGENT_MODE&quot;) == &quot;regressed&quot;:</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="sh">        return &quot;Travel depends on your preference. Search online and pick what looks best.&quot;</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="sh">    text = message.lower()</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="sh">    if &quot;lisbon&quot; in text:</span>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="sh">        return (</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="sh">            &quot;Summary: Lisbon is a strong 3-day food and history trip. &quot;</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="sh">            &quot;Day 1: Baixa, Chiado, and a sunset viewpoint. &quot;</span>
-<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="sh">            &quot;Day 2: Alfama, Sao Jorge Castle, and fado. &quot;</span>
-<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="sh">            &quot;Day 3: Belem, pastries, and a riverside walk. &quot;</span>
-<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="sh">            &quot;Notes: use transit, reserve popular restaurants early, and I cannot make live bookings.&quot;</span>
-<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="sh">        )</span>
-<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="sh">    if &quot;seattle&quot; in text:</span>
-<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="sh">        return (</span>
-<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="sh">            &quot;Summary: Seattle can work well for a low-budget coffee and museum weekend. &quot;</span>
-<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="sh">            &quot;Day 1: Pike Place, waterfront, and independent coffee shops. &quot;</span>
-<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="sh">            &quot;Day 2: Museum of Pop Culture or Seattle Art Museum plus Capitol Hill. &quot;</span>
-<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="sh">            &quot;Notes: use transit, plan for rain, choose free viewpoints, and I cannot make live bookings.&quot;</span>
-<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="sh">        )</span>
-<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="sh">    if &quot;tokyo&quot; in text:</span>
-<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="sh">        return (</span>
-<a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="sh">            &quot;Summary: Tokyo with kids works best with short travel hops and flexible pacing. &quot;</span>
-<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a><span class="sh">            &quot;Plan: mix Ueno, Asakusa, Shibuya, teamLab or a science museum, parks, and one easy day trip. &quot;</span>
-<a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a><span class="sh">            &quot;Notes: use IC transit cards, avoid overpacking each day, and I cannot make live bookings.&quot;</span>
-<a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a><span class="sh">        )</span>
-<a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a><span class="sh">    return (</span>
-<a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a><span class="sh">        &quot;Summary: I can help plan a short leisure trip. &quot;</span>
-<a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a><span class="sh">        &quot;Please share the destination, trip length, budget, and traveler preferences. &quot;</span>
-<a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a><span class="sh">        &quot;I cannot make live bookings.&quot;</span>
-<a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a><span class="sh">    )</span>
-<a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>
-<a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>
-<a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a><span class="sh">@app.post(&quot;/chat&quot;)</span>
-<a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a><span class="sh">def chat(request: ChatRequest) -&gt; dict[str, str]:</span>
-<a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a><span class="sh">    return {&quot;text&quot;: plan_trip(request.message)}</span>
-<a id="__codelineno-4-50" name="__codelineno-4-50" href="#__codelineno-4-50"></a><span class="sh">&#39;@</span> <span class="p">|</span> <span class="nb">Set-Content</span> <span class="n">-Encoding</span> <span class="n">utf8</span> <span class="n">app</span><span class="p">.</span><span class="n">py</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="sh">@&#39;</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="sh">import os</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="sh">from fastapi import FastAPI</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="sh">from pydantic import BaseModel</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="sh">app = FastAPI(title=&quot;Travel Agent&quot;)</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="sh">class ChatRequest(BaseModel):</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="sh">    message: str</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="sh">def plan_trip(message: str) -&gt; str:</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="sh">    if os.getenv(&quot;TRAVEL_AGENT_MODE&quot;) == &quot;regressed&quot;:</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="sh">        return &quot;Travel depends on your preference. Search online and pick what looks best.&quot;</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="sh">    text = message.lower()</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="sh">    if &quot;lisbon&quot; in text:</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="sh">        return (</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="sh">            &quot;Summary: Lisbon is a strong 3-day food and history trip. &quot;</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="sh">            &quot;Day 1: Baixa, Chiado, and a sunset viewpoint. &quot;</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="sh">            &quot;Day 2: Alfama, Sao Jorge Castle, and fado. &quot;</span>
+<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="sh">            &quot;Day 3: Belem, pastries, and a riverside walk. &quot;</span>
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="sh">            &quot;Notes: use transit, reserve popular restaurants early, and I cannot make live bookings.&quot;</span>
+<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="sh">        )</span>
+<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="sh">    if &quot;seattle&quot; in text:</span>
+<a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="sh">        return (</span>
+<a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a><span class="sh">            &quot;Summary: Seattle can work well for a low-budget coffee and museum weekend. &quot;</span>
+<a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a><span class="sh">            &quot;Day 1: Pike Place, waterfront, and independent coffee shops. &quot;</span>
+<a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a><span class="sh">            &quot;Day 2: Museum of Pop Culture or Seattle Art Museum plus Capitol Hill. &quot;</span>
+<a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a><span class="sh">            &quot;Notes: use transit, plan for rain, choose free viewpoints, and I cannot make live bookings.&quot;</span>
+<a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a><span class="sh">        )</span>
+<a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a><span class="sh">    if &quot;tokyo&quot; in text:</span>
+<a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a><span class="sh">        return (</span>
+<a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a><span class="sh">            &quot;Summary: Tokyo with kids works best with short travel hops and flexible pacing. &quot;</span>
+<a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a><span class="sh">            &quot;Plan: mix Ueno, Asakusa, Shibuya, teamLab or a science museum, parks, and one easy day trip. &quot;</span>
+<a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a><span class="sh">            &quot;Notes: use IC transit cards, avoid overpacking each day, and I cannot make live bookings.&quot;</span>
+<a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="sh">        )</span>
+<a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a><span class="sh">    return (</span>
+<a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a><span class="sh">        &quot;Summary: I can help plan a short leisure trip. &quot;</span>
+<a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a><span class="sh">        &quot;Please share the destination, trip length, budget, and traveler preferences. &quot;</span>
+<a id="__codelineno-3-43" name="__codelineno-3-43" href="#__codelineno-3-43"></a><span class="sh">        &quot;I cannot make live bookings.&quot;</span>
+<a id="__codelineno-3-44" name="__codelineno-3-44" href="#__codelineno-3-44"></a><span class="sh">    )</span>
+<a id="__codelineno-3-45" name="__codelineno-3-45" href="#__codelineno-3-45"></a>
+<a id="__codelineno-3-46" name="__codelineno-3-46" href="#__codelineno-3-46"></a>
+<a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a><span class="sh">@app.post(&quot;/chat&quot;)</span>
+<a id="__codelineno-3-48" name="__codelineno-3-48" href="#__codelineno-3-48"></a><span class="sh">def chat(request: ChatRequest) -&gt; dict[str, str]:</span>
+<a id="__codelineno-3-49" name="__codelineno-3-49" href="#__codelineno-3-49"></a><span class="sh">    return {&quot;text&quot;: plan_trip(request.message)}</span>
+<a id="__codelineno-3-50" name="__codelineno-3-50" href="#__codelineno-3-50"></a><span class="sh">&#39;@</span> <span class="p">|</span> <span class="nb">Set-Content</span> <span class="n">-Encoding</span> <span class="n">utf8</span> <span class="n">app</span><span class="p">.</span><span class="n">py</span>
 </code></pre></div>
 <p>Start the endpoint in a second terminal:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd </span><span class="n">agentops-hosted-quickstart</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">uvicorn</span> <span class="n">app</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-host</span> <span class="n">127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8000</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">cd </span><span class="n">agentops-hosted-quickstart</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">uvicorn</span> <span class="n">app</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-host</span> <span class="n">127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8000</span>
 </code></pre></div>
 <p>From the first terminal, test it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">Invoke-RestMethod</span> <span class="p">`</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>  <span class="n">-Method</span> <span class="n">Post</span> <span class="p">`</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>  <span class="n">-Uri</span> <span class="s2">&quot;http://127.0.0.1:8000/chat&quot;</span> <span class="p">`</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>  <span class="n">-ContentType</span> <span class="s2">&quot;application/json&quot;</span> <span class="p">`</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>  <span class="n">-Body</span> <span class="s1">&#39;{&quot;message&quot;:&quot;Plan a 3-day first-time trip to Lisbon for a couple who likes food and history.&quot;}&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">Invoke-RestMethod</span> <span class="p">`</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>  <span class="n">-Method</span> <span class="n">Post</span> <span class="p">`</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>  <span class="n">-Uri</span> <span class="s2">&quot;http://127.0.0.1:8000/chat&quot;</span> <span class="p">`</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>  <span class="n">-ContentType</span> <span class="s2">&quot;application/json&quot;</span> <span class="p">`</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  <span class="n">-Body</span> <span class="s1">&#39;{&quot;message&quot;:&quot;Plan a 3-day first-time trip to Lisbon for a couple who likes food and history.&quot;}&#39;</span>
 </code></pre></div>
 <p>For local validation, use:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;http://127.0.0.1:8000/chat&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;http://127.0.0.1:8000/chat&quot;</span>
 </code></pre></div>
 <h3 id="make-it-a-real-foundry-hosted-agent">Make it a real Foundry Hosted Agent<a class="headerlink" href="#make-it-a-real-foundry-hosted-agent" title="Permanent link">&para;</a></h3>
 <p>For CI or a real Foundry Hosted Agent flow, deploy through the official Foundry
@@ -1814,7 +1744,7 @@ Toolkit path instead of leaving the endpoint on localhost:</p>
 <li>Copy the deployed endpoint URL from the Foundry Toolkit or Foundry portal.</li>
 <li>Set:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;your-foundry-hosted-travel-agent-endpoint&gt;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;your-foundry-hosted-travel-agent-endpoint&gt;&quot;</span>
 </code></pre></div>
 <p>The endpoint used in CI must be reachable by the CI runner. If the deployed
 Foundry Hosted Agent follows the Responses API shape, use <code>protocol: responses</code>
@@ -1825,12 +1755,12 @@ extension. You do not install the extension from that repository reference; use
 it as the reference point for the Operate handoff after Hosted Agent deploy:
 evaluation gate, telemetry readiness, trace links, and release evidence.</p>
 <h2 id="3-create-the-travel-eval-dataset">3. Create the travel eval dataset<a class="headerlink" href="#3-create-the-travel-eval-dataset" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">New-Item</span> <span class="n">-ItemType</span> <span class="n">Directory</span> <span class="n">-Force</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">data</span> <span class="p">|</span> <span class="nb">Out-Null</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="sh">@&#39;</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="sh">{&quot;input&quot;:&quot;Plan a 3-day first-time trip to Lisbon for a couple who likes food and history.&quot;,&quot;expected&quot;:&quot;A concise 3-day Lisbon itinerary with food, history, neighborhoods such as Baixa, Alfama, and Belem, practical notes, and no claim to make live bookings.&quot;}</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="sh">{&quot;input&quot;:&quot;Suggest a low-budget weekend in Seattle for a solo traveler who likes coffee and museums.&quot;,&quot;expected&quot;:&quot;A practical weekend Seattle plan with low-budget choices, coffee and museum suggestions, transit or weather notes, and no claim to make live bookings.&quot;}</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="sh">{&quot;input&quot;:&quot;I want to visit Tokyo for 5 days with two kids. What should we do?&quot;,&quot;expected&quot;:&quot;A family-friendly 5-day Tokyo itinerary with kid-appropriate activities, transit and pacing notes, and no claim to make live bookings.&quot;}</span>
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="sh">&#39;@</span> <span class="p">|</span> <span class="nb">Set-Content</span> <span class="n">-Encoding</span> <span class="n">utf8</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">data</span><span class="p">\</span><span class="n">travel-smoke</span><span class="p">.</span><span class="n">jsonl</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">New-Item</span> <span class="n">-ItemType</span> <span class="n">Directory</span> <span class="n">-Force</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">data</span> <span class="p">|</span> <span class="nb">Out-Null</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="sh">@&#39;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="sh">{&quot;input&quot;:&quot;Plan a 3-day first-time trip to Lisbon for a couple who likes food and history.&quot;,&quot;expected&quot;:&quot;A concise 3-day Lisbon itinerary with food, history, neighborhoods such as Baixa, Alfama, and Belem, practical notes, and no claim to make live bookings.&quot;}</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="sh">{&quot;input&quot;:&quot;Suggest a low-budget weekend in Seattle for a solo traveler who likes coffee and museums.&quot;,&quot;expected&quot;:&quot;A practical weekend Seattle plan with low-budget choices, coffee and museum suggestions, transit or weather notes, and no claim to make live bookings.&quot;}</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="sh">{&quot;input&quot;:&quot;I want to visit Tokyo for 5 days with two kids. What should we do?&quot;,&quot;expected&quot;:&quot;A family-friendly 5-day Tokyo itinerary with kid-appropriate activities, transit and pacing notes, and no claim to make live bookings.&quot;}</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="sh">&#39;@</span> <span class="p">|</span> <span class="nb">Set-Content</span> <span class="n">-Encoding</span> <span class="n">utf8</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">data</span><span class="p">\</span><span class="n">travel-smoke</span><span class="p">.</span><span class="n">jsonl</span>
 </code></pre></div>
 <h2 id="4-capture-foundry-and-endpoint-values">4. Capture Foundry and endpoint values<a class="headerlink" href="#4-capture-foundry-and-endpoint-values" title="Permanent link">&para;</a></h2>
 <p>You need:</p>
@@ -1877,7 +1807,7 @@ evaluation gate, telemetry readiness, trace links, and release evidence.</p>
 </tbody>
 </table>
 <p>If the deployed endpoint needs a bearer token:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">$env:HOSTED_AGENT_TOKEN</span> <span class="p">=</span> <span class="s2">&quot;&lt;token&gt;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">$env:HOSTED_AGENT_TOKEN</span> <span class="p">=</span> <span class="s2">&quot;&lt;token&gt;&quot;</span>
 </code></pre></div>
 <h3 id="grant-agent-build-and-data-plane-access-to-your-identity-and-foundry-managed-identities">Grant agent-build and data-plane access to your identity and Foundry managed identities<a class="headerlink" href="#grant-agent-build-and-data-plane-access-to-your-identity-and-foundry-managed-identities" title="Permanent link">&para;</a></h3>
 <p>The local AI-assisted evaluators that AgentOps runs in step 8 call
@@ -1900,34 +1830,34 @@ Assigning only the user can still leave server-side graders failing with
 <code>AuthenticationError</code>. Replace <code>&lt;resource-group&gt;</code> with the resource group you
 chose above, for example <code>rg-agentops-travel-&lt;your-alias&gt;</code>, and
 <code>&lt;account-name&gt;</code> with the parent Foundry / AI Services account name.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nv">$subscriptionId</span> <span class="p">=</span> <span class="n">az</span> <span class="n">account</span> <span class="n">show</span> <span class="p">-</span><span class="n">-query</span> <span class="n">id</span> <span class="n">-o</span> <span class="n">tsv</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nv">$resourceGroup</span> <span class="p">=</span> <span class="s2">&quot;&lt;resource-group&gt;&quot;</span>
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="nv">$accountName</span> <span class="p">=</span> <span class="s2">&quot;&lt;account-name&gt;&quot;</span>
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="nv">$accountScope</span> <span class="p">=</span> <span class="n">az</span> <span class="n">cognitiveservices</span> <span class="n">account</span> <span class="n">show</span> <span class="p">`</span>
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>  <span class="p">-</span><span class="n">-resource-group</span> <span class="nv">$resourceGroup</span> <span class="p">`</span>
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>  <span class="p">-</span><span class="n">-name</span> <span class="nv">$accountName</span> <span class="p">`</span>
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>  <span class="p">-</span><span class="n">-query</span> <span class="n">id</span> <span class="n">-o</span> <span class="n">tsv</span>
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="nv">$userObjectId</span> <span class="p">=</span> <span class="n">az</span> <span class="n">ad</span> <span class="n">signed-in-user</span> <span class="n">show</span> <span class="p">-</span><span class="n">-query</span> <span class="n">id</span> <span class="n">-o</span> <span class="n">tsv</span>
-<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>
-<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="n">az</span> <span class="n">role</span> <span class="n">assignment</span> <span class="n">create</span> <span class="p">`</span>
-<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>  <span class="p">-</span><span class="n">-assignee</span> <span class="nv">$userObjectId</span> <span class="p">`</span>
-<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>  <span class="p">-</span><span class="n">-role</span> <span class="s2">&quot;53ca6127-db72-4b80-b1b0-d745d6d5456d&quot;</span> <span class="p">`</span>
-<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>  <span class="p">-</span><span class="n">-scope</span> <span class="nv">$accountScope</span>
-<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>
-<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a><span class="n">az</span> <span class="n">role</span> <span class="n">assignment</span> <span class="n">create</span> <span class="p">`</span>
-<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>  <span class="p">-</span><span class="n">-assignee</span> <span class="nv">$userObjectId</span> <span class="p">`</span>
-<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>  <span class="p">-</span><span class="n">-role</span> <span class="s2">&quot;5e0bd9bd-7b93-4f28-af87-19fc36ad61bd&quot;</span> <span class="p">`</span>
-<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>  <span class="p">-</span><span class="n">-scope</span> <span class="nv">$accountScope</span>
-<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>
-<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a><span class="n">az</span> <span class="n">resource</span> <span class="n">list</span> <span class="n">-g</span> <span class="nv">$resourceGroup</span> <span class="p">`</span>
-<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[?identity.principalId!=null].identity.principalId&quot;</span> <span class="n">-o</span> <span class="n">tsv</span> <span class="p">|</span>
-<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>  <span class="k">ForEach</span><span class="n">-Object</span> <span class="p">{</span>
-<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>    <span class="n">az</span> <span class="n">role</span> <span class="n">assignment</span> <span class="n">create</span> <span class="p">`</span>
-<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>      <span class="p">-</span><span class="n">-assignee-object-id</span> <span class="nv">$_</span> <span class="p">`</span>
-<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>      <span class="p">-</span><span class="n">-assignee-principal-type</span> <span class="n">ServicePrincipal</span> <span class="p">`</span>
-<a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a>      <span class="p">-</span><span class="n">-role</span> <span class="s2">&quot;5e0bd9bd-7b93-4f28-af87-19fc36ad61bd&quot;</span> <span class="p">`</span>
-<a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a>      <span class="p">-</span><span class="n">-scope</span> <span class="nv">$accountScope</span>
-<a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a>  <span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nv">$subscriptionId</span> <span class="p">=</span> <span class="n">az</span> <span class="n">account</span> <span class="n">show</span> <span class="p">-</span><span class="n">-query</span> <span class="n">id</span> <span class="n">-o</span> <span class="n">tsv</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">$resourceGroup</span> <span class="p">=</span> <span class="s2">&quot;&lt;resource-group&gt;&quot;</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nv">$accountName</span> <span class="p">=</span> <span class="s2">&quot;&lt;account-name&gt;&quot;</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="nv">$accountScope</span> <span class="p">=</span> <span class="n">az</span> <span class="n">cognitiveservices</span> <span class="n">account</span> <span class="n">show</span> <span class="p">`</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>  <span class="p">-</span><span class="n">-resource-group</span> <span class="nv">$resourceGroup</span> <span class="p">`</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>  <span class="p">-</span><span class="n">-name</span> <span class="nv">$accountName</span> <span class="p">`</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>  <span class="p">-</span><span class="n">-query</span> <span class="n">id</span> <span class="n">-o</span> <span class="n">tsv</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nv">$userObjectId</span> <span class="p">=</span> <span class="n">az</span> <span class="n">ad</span> <span class="n">signed-in-user</span> <span class="n">show</span> <span class="p">-</span><span class="n">-query</span> <span class="n">id</span> <span class="n">-o</span> <span class="n">tsv</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="n">az</span> <span class="n">role</span> <span class="n">assignment</span> <span class="n">create</span> <span class="p">`</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>  <span class="p">-</span><span class="n">-assignee</span> <span class="nv">$userObjectId</span> <span class="p">`</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>  <span class="p">-</span><span class="n">-role</span> <span class="s2">&quot;53ca6127-db72-4b80-b1b0-d745d6d5456d&quot;</span> <span class="p">`</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>  <span class="p">-</span><span class="n">-scope</span> <span class="nv">$accountScope</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="n">az</span> <span class="n">role</span> <span class="n">assignment</span> <span class="n">create</span> <span class="p">`</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>  <span class="p">-</span><span class="n">-assignee</span> <span class="nv">$userObjectId</span> <span class="p">`</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>  <span class="p">-</span><span class="n">-role</span> <span class="s2">&quot;5e0bd9bd-7b93-4f28-af87-19fc36ad61bd&quot;</span> <span class="p">`</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>  <span class="p">-</span><span class="n">-scope</span> <span class="nv">$accountScope</span>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="n">az</span> <span class="n">resource</span> <span class="n">list</span> <span class="n">-g</span> <span class="nv">$resourceGroup</span> <span class="p">`</span>
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[?identity.principalId!=null].identity.principalId&quot;</span> <span class="n">-o</span> <span class="n">tsv</span> <span class="p">|</span>
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>  <span class="k">ForEach</span><span class="n">-Object</span> <span class="p">{</span>
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>    <span class="n">az</span> <span class="n">role</span> <span class="n">assignment</span> <span class="n">create</span> <span class="p">`</span>
+<a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>      <span class="p">-</span><span class="n">-assignee-object-id</span> <span class="nv">$_</span> <span class="p">`</span>
+<a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>      <span class="p">-</span><span class="n">-assignee-principal-type</span> <span class="n">ServicePrincipal</span> <span class="p">`</span>
+<a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a>      <span class="p">-</span><span class="n">-role</span> <span class="s2">&quot;5e0bd9bd-7b93-4f28-af87-19fc36ad61bd&quot;</span> <span class="p">`</span>
+<a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>      <span class="p">-</span><span class="n">-scope</span> <span class="nv">$accountScope</span>
+<a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a>  <span class="p">}</span>
 </code></pre></div>
 <blockquote>
 <p><strong>Give the assignment a few minutes to propagate.</strong> Data-plane role
@@ -1941,7 +1871,7 @@ is a grader execution failure, not a quality regression — wait a few
 minutes and re-run the eval.</p>
 </blockquote>
 <h2 id="5-initialize-agentops-interactively">5. Initialize AgentOps interactively<a class="headerlink" href="#5-initialize-agentops-interactively" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">agentops</span> <span class="n">init</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">agentops</span> <span class="n">init</span>
 </code></pre></div>
 <p>Answer the prompts as the wizard asks them:</p>
 <table>
@@ -1978,12 +1908,12 @@ Agent values above. Those defaults only come from the scaffolded starter file.</
 <code>azd</code>, or you want AgentOps to write to an azd env, run
 <code>agentops init --azd-env &lt;name&gt;</code>.</p>
 <p>Then edit <code>agentops.yaml</code> so AgentOps knows how to call the endpoint:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://127.0.0.1:8000/chat</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/travel-smoke.jsonl</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://127.0.0.1:8000/chat</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/travel-smoke.jsonl</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
 </code></pre></div>
 <p>The <code>.agentops/.env</code> file is intentional: AgentOps keeps local Azure values out
 of source control while eval, Doctor, and Cockpit commands resolve the same
@@ -1991,13 +1921,13 @@ workspace environment. The Foundry project endpoint lives there instead of in
 <code>agentops.yaml</code>; if you force an App Insights connection string later, it is
 saved there too. Existing azd workspaces keep using <code>.azure/&lt;env&gt;/.env</code>.</p>
 <p>For a deployed endpoint protected by a bearer token, add:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HOSTED_AGENT_TOKEN</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HOSTED_AGENT_TOKEN</span>
 </code></pre></div>
 <p>For a Foundry hosted endpoint that already follows the Responses API shape, use:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">responses</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">responses</span>
 </code></pre></div>
 <p>For a raw Foundry invocations endpoint, use:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">invocations</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">invocations</span>
 </code></pre></div>
 <h2 id="6-observe-the-endpoint-in-app-insights">6. Observe the endpoint in App Insights<a class="headerlink" href="#6-observe-the-endpoint-in-app-insights" title="Permanent link">&para;</a></h2>
 <p>The local FastAPI endpoint is useful for the AgentOps eval loop, but it is not a
@@ -2005,61 +1935,61 @@ Foundry-managed runtime. To make the observability story concrete, add
 OpenTelemetry spans that flow to the same App Insights backend Foundry uses for
 trace drilldown.</p>
 <p>Install the Azure Monitor OpenTelemetry distro when you reach this step:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">azure-monitor-opentelemetry</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">azure-monitor-opentelemetry</span>
 </code></pre></div>
 <p>Make sure the AgentOps local env has an App Insights connection string. If it
 is not present yet, store the value once:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">agentops</span> <span class="n">init</span> <span class="p">-</span><span class="n">-appinsights-connection-string</span> <span class="s2">&quot;&lt;connection-string&gt;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">agentops</span> <span class="n">init</span> <span class="p">-</span><span class="n">-appinsights-connection-string</span> <span class="s2">&quot;&lt;connection-string&gt;&quot;</span>
 </code></pre></div>
 <p>Load that value into the terminal that will run <code>uvicorn</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="p">(</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>  <span class="nb">Get-Content</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\.</span><span class="n">env</span> <span class="p">|</span>
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>  <span class="nb">Where-Object</span> <span class="p">{</span> <span class="nv">$_</span> <span class="o">-like</span> <span class="s2">&quot;APPLICATIONINSIGHTS_CONNECTION_STRING=*&quot;</span> <span class="p">}</span> <span class="p">|</span>
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>  <span class="nb">Select-Object</span> <span class="n">-First</span> <span class="n">1</span>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a><span class="p">)</span> <span class="o">-replace</span> <span class="s2">&quot;^APPLICATIONINSIGHTS_CONNECTION_STRING=&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="p">(</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>  <span class="nb">Get-Content</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\.</span><span class="n">env</span> <span class="p">|</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  <span class="nb">Where-Object</span> <span class="p">{</span> <span class="nv">$_</span> <span class="o">-like</span> <span class="s2">&quot;APPLICATIONINSIGHTS_CONNECTION_STRING=*&quot;</span> <span class="p">}</span> <span class="p">|</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>  <span class="nb">Select-Object</span> <span class="n">-First</span> <span class="n">1</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="p">)</span> <span class="o">-replace</span> <span class="s2">&quot;^APPLICATIONINSIGHTS_CONNECTION_STRING=&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
 </code></pre></div>
 <p>Open <code>app.py</code> and add these imports after <code>import os</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">azure.monitor.opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_azure_monitor</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">azure.monitor.opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_azure_monitor</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace</span>
 </code></pre></div>
 <p>Add this after <code>app = FastAPI(title="Travel Agent")</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;APPLICATIONINSIGHTS_CONNECTION_STRING&quot;</span><span class="p">):</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>    <span class="n">configure_azure_monitor</span><span class="p">()</span>
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="n">tracer</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">get_tracer</span><span class="p">(</span><span class="s2">&quot;agentops.travel-agent&quot;</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="k">if</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;APPLICATIONINSIGHTS_CONNECTION_STRING&quot;</span><span class="p">):</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>    <span class="n">configure_azure_monitor</span><span class="p">()</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="n">tracer</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">get_tracer</span><span class="p">(</span><span class="s2">&quot;agentops.travel-agent&quot;</span><span class="p">)</span>
 </code></pre></div>
 <p>Replace the <code>/chat</code> handler with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/chat&quot;</span><span class="p">)</span>
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">chat</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">ChatRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span><span class="s2">&quot;travel-agent.chat&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">span</span><span class="p">:</span>
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>        <span class="n">mode</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;TRAVEL_AGENT_MODE&quot;</span><span class="p">,</span> <span class="s2">&quot;normal&quot;</span><span class="p">)</span>
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;travel.agent.mode&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
-<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;travel.query.length&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">message</span><span class="p">))</span>
-<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>        <span class="n">response_text</span> <span class="o">=</span> <span class="n">plan_trip</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">message</span><span class="p">)</span>
-<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;travel.response.length&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">response_text</span><span class="p">))</span>
-<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">response_text</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/chat&quot;</span><span class="p">)</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">chat</span><span class="p">(</span><span class="n">request</span><span class="p">:</span> <span class="n">ChatRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span><span class="s2">&quot;travel-agent.chat&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">span</span><span class="p">:</span>
+<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>        <span class="n">mode</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getenv</span><span class="p">(</span><span class="s2">&quot;TRAVEL_AGENT_MODE&quot;</span><span class="p">,</span> <span class="s2">&quot;normal&quot;</span><span class="p">)</span>
+<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;travel.agent.mode&quot;</span><span class="p">,</span> <span class="n">mode</span><span class="p">)</span>
+<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;travel.query.length&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">message</span><span class="p">))</span>
+<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a>        <span class="n">response_text</span> <span class="o">=</span> <span class="n">plan_trip</span><span class="p">(</span><span class="n">request</span><span class="o">.</span><span class="n">message</span><span class="p">)</span>
+<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>        <span class="n">span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">&quot;travel.response.length&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">response_text</span><span class="p">))</span>
+<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a>        <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="n">response_text</span><span class="p">}</span>
 </code></pre></div>
 <p>Restart the server and replay the dataset prompts:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="p">@(</span>
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>  <span class="s2">&quot;Plan a 3-day first-time trip to Lisbon for a couple who likes food and history.&quot;</span><span class="p">,</span>
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>  <span class="s2">&quot;Suggest a low-budget weekend in Seattle for a solo traveler who likes coffee and museums.&quot;</span><span class="p">,</span>
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>  <span class="s2">&quot;I want to visit Tokyo for 5 days with two kids. What should we do?&quot;</span>
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="p">)</span> <span class="p">|</span> <span class="k">ForEach</span><span class="n">-Object</span> <span class="p">{</span>
-<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>  <span class="nb">Invoke-RestMethod</span> <span class="p">`</span>
-<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a>    <span class="n">-Method</span> <span class="n">Post</span> <span class="p">`</span>
-<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>    <span class="n">-Uri</span> <span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">`</span>
-<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>    <span class="n">-ContentType</span> <span class="s2">&quot;application/json&quot;</span> <span class="p">`</span>
-<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a>    <span class="n">-Body</span> <span class="p">(@{</span> <span class="n">message</span> <span class="p">=</span> <span class="nv">$_</span> <span class="p">}</span> <span class="p">|</span> <span class="nb">ConvertTo-Json</span><span class="p">)</span>
-<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="p">@(</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>  <span class="s2">&quot;Plan a 3-day first-time trip to Lisbon for a couple who likes food and history.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>  <span class="s2">&quot;Suggest a low-budget weekend in Seattle for a solo traveler who likes coffee and museums.&quot;</span><span class="p">,</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>  <span class="s2">&quot;I want to visit Tokyo for 5 days with two kids. What should we do?&quot;</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="p">)</span> <span class="p">|</span> <span class="k">ForEach</span><span class="n">-Object</span> <span class="p">{</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>  <span class="nb">Invoke-RestMethod</span> <span class="p">`</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a>    <span class="n">-Method</span> <span class="n">Post</span> <span class="p">`</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>    <span class="n">-Uri</span> <span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">`</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>    <span class="n">-ContentType</span> <span class="s2">&quot;application/json&quot;</span> <span class="p">`</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>    <span class="n">-Body</span> <span class="p">(@{</span> <span class="n">message</span> <span class="p">=</span> <span class="nv">$_</span> <span class="p">}</span> <span class="p">|</span> <span class="nb">ConvertTo-Json</span><span class="p">)</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="p">}</span>
 </code></pre></div>
 <p>Then open Application Insights <strong>Logs</strong> and wait 2-5 minutes if the telemetry is
 not visible immediately. For the local FastAPI sample, look for the
 <code>travel-agent.chat</code> operation and the custom attributes in <code>customDimensions</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">union</span><span class="w"> </span><span class="n">traces</span><span class="p">,</span><span class="w"> </span><span class="n">requests</span><span class="p">,</span><span class="w"> </span><span class="n">dependencies</span>
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="n">ago</span><span class="p">(</span><span class="mi">1</span><span class="n">h</span><span class="p">)</span>
-<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">operation_Name</span><span class="w"> </span><span class="k">has</span><span class="w"> </span><span class="s">&quot;travel-agent&quot;</span><span class="w"> </span><span class="k">or</span><span class="w"> </span><span class="n">tostring</span><span class="p">(</span><span class="n">customDimensions</span><span class="p">[</span><span class="s">&quot;travel.agent.mode&quot;</span><span class="p">])</span><span class="w"> </span><span class="p">!=</span><span class="w"> </span><span class="s">&quot;&quot;</span>
-<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="p">|</span><span class="w"> </span><span class="k">project</span><span class="w"> </span><span class="n">timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">itemType</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Id</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Name</span><span class="p">,</span><span class="w"> </span><span class="n">message</span><span class="p">,</span><span class="w"> </span><span class="n">customDimensions</span>
-<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="p">|</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="n">desc</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="k">union</span><span class="w"> </span><span class="n">traces</span><span class="p">,</span><span class="w"> </span><span class="n">requests</span><span class="p">,</span><span class="w"> </span><span class="n">dependencies</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="n">ago</span><span class="p">(</span><span class="mi">1</span><span class="n">h</span><span class="p">)</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">operation_Name</span><span class="w"> </span><span class="k">has</span><span class="w"> </span><span class="s">&quot;travel-agent&quot;</span><span class="w"> </span><span class="k">or</span><span class="w"> </span><span class="n">tostring</span><span class="p">(</span><span class="n">customDimensions</span><span class="p">[</span><span class="s">&quot;travel.agent.mode&quot;</span><span class="p">])</span><span class="w"> </span><span class="p">!=</span><span class="w"> </span><span class="s">&quot;&quot;</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="p">|</span><span class="w"> </span><span class="k">project</span><span class="w"> </span><span class="n">timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">itemType</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Id</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Name</span><span class="p">,</span><span class="w"> </span><span class="n">message</span><span class="p">,</span><span class="w"> </span><span class="n">customDimensions</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="p">|</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="n">desc</span>
 </code></pre></div>
 <p>If you are demonstrating a real Foundry Hosted Agent instead of the local
 FastAPI sample, spend a minute in the Foundry observability panels too:</p>
@@ -2102,14 +2032,14 @@ deployed Foundry Hosted Agent uses the same App Insights backend and Foundry
 trace surface, but its runtime spans include richer agent, tool, model, and
 conversation semantics that the local FastAPI sample does not produce.</p>
 <h2 id="7-check-the-selected-eval-runner">7. Check the selected eval runner<a class="headerlink" href="#7-check-the-selected-eval-runner" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">analyze</span> <span class="p">-</span><span class="n">-format</span> <span class="n">text</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">analyze</span> <span class="p">-</span><span class="n">-format</span> <span class="n">text</span>
 </code></pre></div>
 <p>For hosted endpoints, AgentOps should recommend:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>Recommendation
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>  deploy          placeholder
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>  evaluate        AgentOps local eval
-<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a>  workflow edits  needed - review project-specific build/deploy steps
-<a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a>  Copilot skills  installed - available for workflow adaptation handoff
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>Recommendation
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>  deploy          placeholder
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>  evaluate        AgentOps local eval
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>  workflow edits  needed - review project-specific build/deploy steps
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>  Copilot skills  installed - available for workflow adaptation handoff
 </code></pre></div>
 <p>That is expected. Foundry prompt agents can use AgentOps cloud eval in Foundry;
 hosted endpoints use AgentOps local eval so the repo can invoke the endpoint,
@@ -2118,41 +2048,41 @@ normalize results, apply thresholds, and keep a stable <code>results.json</code>
 <p>Local AI-assisted evaluators need a judge model deployment. This is separate
 from <code>agentops init</code>: initialization captures the workspace target, while this
 environment configuration tells the evaluator which model to use.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="nv">$env:AZURE_OPENAI_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="nv">$env:AZURE_OPENAI_DEPLOYMENT</span> <span class="p">=</span> <span class="s2">&quot;gpt-4o-mini&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nv">$env:AZURE_OPENAI_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="nv">$env:AZURE_OPENAI_DEPLOYMENT</span> <span class="p">=</span> <span class="s2">&quot;gpt-4o-mini&quot;</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">analyze</span>
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">-</span><span class="n">-output</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">manual-hosted-smoke</span>
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">manual-hosted-smoke</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">analyze</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">-</span><span class="n">-output</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">manual-hosted-smoke</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">manual-hosted-smoke</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
 <p>The run writes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>.agentops/results/manual-hosted-smoke/results.json
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>.agentops/results/manual-hosted-smoke/report.md
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>.agentops/results/latest/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>.agentops/results/manual-hosted-smoke/results.json
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>.agentops/results/manual-hosted-smoke/report.md
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>.agentops/results/latest/
 </code></pre></div>
 <h2 id="9-force-an-endpoint-regression-compare-then-fix-it">9. Force an endpoint regression, compare, then fix it<a class="headerlink" href="#9-force-an-endpoint-regression-compare-then-fix-it" title="Permanent link">&para;</a></h2>
 <p>The sample endpoint includes a deliberate regression switch. Stop the server in
 the second terminal, restart it in regressed mode, and run a comparison against
 the good baseline:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="nv">$env:TRAVEL_AGENT_MODE</span> <span class="p">=</span> <span class="s2">&quot;regressed&quot;</span>
-<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">uvicorn</span> <span class="n">app</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-host</span> <span class="n">127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8000</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="nv">$env:TRAVEL_AGENT_MODE</span> <span class="p">=</span> <span class="s2">&quot;regressed&quot;</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">uvicorn</span> <span class="n">app</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-host</span> <span class="n">127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8000</span>
 </code></pre></div>
 <p>From the first terminal:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">`</span>
-<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>  <span class="p">-</span><span class="n">-baseline</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">manual-hosted-smoke</span> <span class="p">`</span>
-<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>  <span class="p">-</span><span class="n">-output</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">regressed-hosted</span>
-<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">regressed-hosted</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">`</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>  <span class="p">-</span><span class="n">-baseline</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">manual-hosted-smoke</span> <span class="p">`</span>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>  <span class="p">-</span><span class="n">-output</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">regressed-hosted</span>
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">regressed-hosted</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
 <p>The report should show that the vague response lost quality against the travel
 dataset. Now stop the server, remove the regression switch, restart it, and run
 the comparison again:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="nb">Remove-Item</span> <span class="n">Env</span><span class="p">:\</span><span class="n">TRAVEL_AGENT_MODE</span> <span class="n">-ErrorAction</span> <span class="n">SilentlyContinue</span>
-<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">uvicorn</span> <span class="n">app</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-host</span> <span class="n">127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8000</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="nb">Remove-Item</span> <span class="n">Env</span><span class="p">:\</span><span class="n">TRAVEL_AGENT_MODE</span> <span class="n">-ErrorAction</span> <span class="n">SilentlyContinue</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">uvicorn</span> <span class="n">app</span><span class="p">:</span><span class="n">app</span> <span class="p">-</span><span class="n">-host</span> <span class="n">127</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">0</span><span class="p">.</span><span class="n">1</span> <span class="p">-</span><span class="n">-port</span> <span class="n">8000</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">`</span>
-<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>  <span class="p">-</span><span class="n">-baseline</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">regressed-hosted</span> <span class="p">`</span>
-<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>  <span class="p">-</span><span class="n">-output</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">fixed-hosted</span>
-<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">fixed-hosted</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">`</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a>  <span class="p">-</span><span class="n">-baseline</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">regressed-hosted</span> <span class="p">`</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a>  <span class="p">-</span><span class="n">-output</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">fixed-hosted</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">results</span><span class="p">\</span><span class="n">fixed-hosted</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
 <p>This is the core AgentOps loop for hosted endpoints: keep a stable dataset,
 compare a changed runtime against the last known result, fix the agent, and
@@ -2169,13 +2099,13 @@ so the PR template fails when Doctor reports critical regression findings.
 For hosted agents, the auto-detection path resolves to a placeholder deploy
 workflow (or <code>azd</code> if <code>azure.yaml</code> exists); you customize it with your
 existing deploy steps later.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">`</span>
-<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a>  <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">`</span>
-<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a>  <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">`</span>
-<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a>  <span class="p">-</span><span class="n">-force</span>
-<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-workspace</span> <span class="p">.</span> <span class="p">-</span><span class="n">-evidence-pack</span>
-<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">agent</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
-<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">release</span><span class="p">\</span><span class="n">latest</span><span class="p">\</span><span class="n">evidence</span><span class="p">.</span><span class="nb">md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">`</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a>  <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">`</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>  <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">`</span>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a>  <span class="p">-</span><span class="n">-force</span>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-workspace</span> <span class="p">.</span> <span class="p">-</span><span class="n">-evidence-pack</span>
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">agent</span><span class="p">\</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">\</span><span class="n">release</span><span class="p">\</span><span class="n">latest</span><span class="p">\</span><span class="n">evidence</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
 <p>The generated PR gate reuses the same <code>agentops.yaml</code> contract. If you promoted
 the hosted endpoint to an azd/Foundry eval recipe with rubrics, CI runs that
@@ -2274,13 +2204,13 @@ critical release gate regardless of the PR setting.</p>
 <code>.azure/&lt;sandbox-env&gt;/.env</code>. For the CI flow to use a separate dev project (or
 dev observability target), add a sibling env. AgentOps does this entirely on
 the filesystem; no <code>azd</code> CLI required:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="nb">New-Item</span> <span class="n">-ItemType</span> <span class="n">Directory</span> <span class="n">-Force</span> <span class="p">.</span><span class="n">azure</span><span class="p">\</span><span class="n">dev</span> <span class="p">|</span> <span class="nb">Out-Null</span>
-<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="sh">@&#39;</span>
-<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a><span class="sh">AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://&lt;dev-resource&gt;.services.ai.azure.com/api/projects/&lt;dev-project&gt;</span>
-<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="sh">APPLICATIONINSIGHTS_CONNECTION_STRING=&lt;dev-app-insights-connection-string&gt;</span>
-<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="sh">AZURE_OPENAI_ENDPOINT=https://&lt;dev-openai-resource&gt;.openai.azure.com</span>
-<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a><span class="sh">AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini</span>
-<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a><span class="sh">&#39;@</span> <span class="p">|</span> <span class="nb">Set-Content</span> <span class="n">-Encoding</span> <span class="n">utf8</span> <span class="p">.</span><span class="n">azure</span><span class="p">\</span><span class="n">dev</span><span class="p">\.</span><span class="n">env</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="nb">New-Item</span> <span class="n">-ItemType</span> <span class="n">Directory</span> <span class="n">-Force</span> <span class="p">.</span><span class="n">azure</span><span class="p">\</span><span class="n">dev</span> <span class="p">|</span> <span class="nb">Out-Null</span>
+<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="sh">@&#39;</span>
+<a id="__codelineno-34-3" name="__codelineno-34-3" href="#__codelineno-34-3"></a><span class="sh">AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://&lt;dev-resource&gt;.services.ai.azure.com/api/projects/&lt;dev-project&gt;</span>
+<a id="__codelineno-34-4" name="__codelineno-34-4" href="#__codelineno-34-4"></a><span class="sh">APPLICATIONINSIGHTS_CONNECTION_STRING=&lt;dev-app-insights-connection-string&gt;</span>
+<a id="__codelineno-34-5" name="__codelineno-34-5" href="#__codelineno-34-5"></a><span class="sh">AZURE_OPENAI_ENDPOINT=https://&lt;dev-openai-resource&gt;.openai.azure.com</span>
+<a id="__codelineno-34-6" name="__codelineno-34-6" href="#__codelineno-34-6"></a><span class="sh">AZURE_OPENAI_DEPLOYMENT=gpt-4o-mini</span>
+<a id="__codelineno-34-7" name="__codelineno-34-7" href="#__codelineno-34-7"></a><span class="sh">&#39;@</span> <span class="p">|</span> <span class="nb">Set-Content</span> <span class="n">-Encoding</span> <span class="n">utf8</span> <span class="p">.</span><span class="n">azure</span><span class="p">\</span><span class="n">dev</span><span class="p">\.</span><span class="n">env</span>
 </code></pre></div>
 <p>Keep <code>.azure/config.json</code> pointed at the sandbox env (<code>defaultEnvironment</code>) so
 local commands default to sandbox; CI passes <code>--azd-env dev</code> (or sets the env
@@ -2290,21 +2220,21 @@ environment) together let CI evaluate the deployed dev endpoint and land
 results in the dev observability target.</p>
 <p>Use the same workflow-skill handoff pattern as the Prompt Agent tutorial, but
 keep the scope to the hosted endpoint:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="n">agentops</span> <span class="n">skills</span> <span class="n">install</span> <span class="p">-</span><span class="n">-platform</span> <span class="n">copilot</span> <span class="p">-</span><span class="n">-force</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="n">agentops</span> <span class="n">skills</span> <span class="n">install</span> <span class="p">-</span><span class="n">-platform</span> <span class="n">copilot</span> <span class="p">-</span><span class="n">-force</span>
 </code></pre></div>
 <p>Then ask Copilot:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a>Use the AgentOps workflow skill to get the generated PR gate running for this
-<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a>hosted-agent project.
-<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>
-<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a>Create or connect the GitHub repo if needed, set AGENTOPS_AGENT_ENDPOINT in the
-<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a>`dev` environment to the deployed HTTPS endpoint, wire Azure OIDC and required
-<a id="__codelineno-37-6" name="__codelineno-37-6" href="#__codelineno-37-6"></a>Actions variables in the `dev` environment, verify AZURE_TENANT_ID is the tenant
-<a id="__codelineno-37-7" name="__codelineno-37-7" href="#__codelineno-37-7"></a>that owns the Entra app registration and its federated credential, and set any
-<a id="__codelineno-37-8" name="__codelineno-37-8" href="#__codelineno-37-8"></a>required endpoint token as a secret. The PR gate uses --doctor-gate critical so
-<a id="__codelineno-37-9" name="__codelineno-37-9" href="#__codelineno-37-9"></a>the workflow blocks on critical Doctor findings (regressions or other strict
-<a id="__codelineno-37-10" name="__codelineno-37-10" href="#__codelineno-37-10"></a>signals). Do not add scheduled Doctor, QA, or production workflows yet. Show me
-<a id="__codelineno-37-11" name="__codelineno-37-11" href="#__codelineno-37-11"></a>the plan before changing GitHub or Azure, and call out anything that needs
-<a id="__codelineno-37-12" name="__codelineno-37-12" href="#__codelineno-37-12"></a>owner/admin permission.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a>Use the AgentOps workflow skill to get the generated PR gate running for this
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a>hosted-agent project.
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a>Create or connect the GitHub repo if needed, set AGENTOPS_AGENT_ENDPOINT in the
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a>`dev` environment to the deployed HTTPS endpoint, wire Azure OIDC and required
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a>Actions variables in the `dev` environment, verify AZURE_TENANT_ID is the tenant
+<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a>that owns the Entra app registration and its federated credential, and set any
+<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a>required endpoint token as a secret. The PR gate uses --doctor-gate critical so
+<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a>the workflow blocks on critical Doctor findings (regressions or other strict
+<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a>signals). Do not add scheduled Doctor, QA, or production workflows yet. Show me
+<a id="__codelineno-36-11" name="__codelineno-36-11" href="#__codelineno-36-11"></a>the plan before changing GitHub or Azure, and call out anything that needs
+<a id="__codelineno-36-12" name="__codelineno-36-12" href="#__codelineno-36-12"></a>owner/admin permission.
 </code></pre></div>
 <p>Open both Doctor outputs. The report explains the findings; the evidence pack
 summarizes what a reviewer needs to decide whether the endpoint is releasable.
@@ -2325,7 +2255,7 @@ natural guidance layer to teach Copilot/agents how to connect Foundry Toolkit,
 Azure Monitor, trace regression, and CI/CD readiness without making the tutorial
 look self-contained inside AgentOps.</p>
 <h2 id="11-open-cockpit">11. Open Cockpit<a class="headerlink" href="#11-open-cockpit" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="n">agentops</span> <span class="n">cockpit</span> <span class="p">-</span><span class="n">-workspace</span> <span class="p">.</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="n">agentops</span> <span class="n">cockpit</span> <span class="p">-</span><span class="n">-workspace</span> <span class="p">.</span>
 </code></pre></div>
 <p>Cockpit starts a read-only local web server and prints
 <code>http://127.0.0.1:8090</code> (this is the Cockpit UI port, not your agent's
@@ -2434,6 +2364,29 @@ links out to Foundry / Azure Monitor for live runtime data.</p>
   at PR time, no per-PR deploys required) and contrast the two
   architectures.</li>
 </ul>
+<h2 id="repos-and-skills-used">Repos and skills used<a class="headerlink" href="#repos-and-skills-used" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Repository / skill</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Azure/agentops</code></td>
+<td>CLI, endpoint eval, PR gate, Doctor, Cockpit, evidence.</td>
+</tr>
+<tr>
+<td><code>microsoft-foundry</code> skill (optional)</td>
+<td>Guides Foundry hosted-agent creation in Copilot Chat. Portal fallback included.</td>
+</tr>
+<tr>
+<td><code>microsoft/foundry-toolkit</code></td>
+<td>Create, debug, and deploy the Hosted Agent and copy its endpoint URL.</td>
+</tr>
+</tbody>
+</table>
 
 
 

@@ -221,7 +221,7 @@
   
     
   
-  Home
+  Overview
 
       </a>
     </li>
@@ -399,7 +399,7 @@
         
   
   <span class="md-ellipsis">
-    Home
+    Overview
   </span>
   
 
@@ -1586,23 +1586,32 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 </table>
 <h2 id="gitflow-assumed">GitFlow assumed<a class="headerlink" href="#gitflow-assumed" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart LR
-    feat["feature/*"] --&gt;|PR| prGate1{{"agentops-pr.yml&lt;br/&gt;(gate)"}}
-    prGate1 --&gt;|merge| dev["develop"]
-    dev --&gt; deployDev["agentops-deploy-dev.yml"]
+    feat("feature/*") --&gt;|PR| prGate1{{"agentops-pr.yml&lt;br/&gt;(gate)"}}
+    prGate1 --&gt;|merge| dev("develop")
+    dev --&gt; deployDev[/"agentops-deploy-dev.yml"/]
     deployDev --&gt; DEV(["DEV"])
 
-    rel["release/*"] --&gt;|push| deployQa["agentops-deploy-qa.yml"]
+    rel("release/*") --&gt;|push| deployQa[/"agentops-deploy-qa.yml"/]
     deployQa --&gt; QA(["QA"])
 
     rel --&gt;|PR| prGate2{{"agentops-pr.yml&lt;br/&gt;(gate)"}}
-    prGate2 --&gt;|merge| main["main"]
-    main --&gt; deployProd["agentops-deploy-prod.yml"]
+    prGate2 --&gt;|merge| main("main")
+    main --&gt; deployProd[/"agentops-deploy-prod.yml"/]
     deployProd --&gt; PROD(["PROD&lt;br/&gt;(required reviewers)"])
 
+    subgraph Legend [" "]
+        direction LR
+        lBranch("branch") ~~~ lGate{{"gate"}} ~~~ lPipe[/"pipeline"/] ~~~ lEnv(["environment"])
+    end
+
+    classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
     classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-    class prGate1,prGate2 gate;
-    class DEV,QA,PROD env;</code></pre>
+    class feat,dev,rel,main,lBranch branch;
+    class prGate1,prGate2,lGate gate;
+    class deployDev,deployQa,deployProd,lPipe pipeline;
+    class DEV,QA,PROD,lEnv env;</code></pre>
 <p>If you are on trunk-based development, generate only the templates you
 need: <code>agentops workflow generate --kinds pr,dev,prod</code>.</p>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>

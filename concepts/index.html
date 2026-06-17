@@ -221,7 +221,7 @@
   
     
   
-  Home
+  Overview
 
       </a>
     </li>
@@ -399,7 +399,7 @@
         
   
   <span class="md-ellipsis">
-    Home
+    Overview
   </span>
   
 
@@ -640,6 +640,24 @@
   <a href="#agentops-microsoft-foundry" class="md-nav__link">
     <span class="md-ellipsis">
       AgentOps + Microsoft Foundry
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-agentops-produces" class="md-nav__link">
+    <span class="md-ellipsis">
+      What AgentOps produces
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference architecture
     </span>
   </a>
   
@@ -1137,6 +1155,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#what-agentops-produces" class="md-nav__link">
+    <span class="md-ellipsis">
+      What AgentOps produces
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference architecture
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#how-an-evaluation-works" class="md-nav__link">
     <span class="md-ellipsis">
       How an Evaluation Works
@@ -1282,6 +1318,71 @@ compare, run Doctor, produce evidence, and promote reviewed traces back into
 regression data.</p>
 <p>The short version is: <strong>Foundry operates the agent; AgentOps turns that operating
 signal into repo-side release proof.</strong></p>
+<h2 id="what-agentops-produces">What AgentOps produces<a class="headerlink" href="#what-agentops-produces" title="Permanent link">&para;</a></h2>
+<p>AgentOps Accelerator turns every readiness run into outputs that people and CI
+can both use.</p>
+<table>
+<thead>
+<tr>
+<th>Output</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>report.md</code></td>
+<td>PR review: what passed, what failed, and what changed from the baseline.</td>
+</tr>
+<tr>
+<td><code>results.json</code></td>
+<td>CI automation: stable metrics, thresholds, exit status, and target details.</td>
+</tr>
+<tr>
+<td><code>evidence.md</code> / <code>evidence.json</code></td>
+<td>Release approval: the proof package for the ship/no-ship decision.</td>
+</tr>
+<tr>
+<td>Cockpit</td>
+<td>Local review: latest evals, Doctor findings, evidence, and next actions in one view.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="reference-architecture">Reference architecture<a class="headerlink" href="#reference-architecture" title="Permanent link">&para;</a></h2>
+<p>Use this as the mental model for the AgentOps loop: build and learn in a
+sandbox, commit the release contract to source control, promote through
+environments with evidence, then feed production learning back into the next
+evaluation set.</p>
+<p><img alt="AgentOps Accelerator reference architecture" class="agentops-reference-architecture" src="../media/agentops-architecture.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What it owns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sandbox inner loop</strong></td>
+<td>Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted.</td>
+</tr>
+<tr>
+<td><strong>AgentOps Accelerator</strong></td>
+<td>Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence.</td>
+</tr>
+<tr>
+<td><strong>Foundry</strong></td>
+<td>Own managed agent projects, Prompt Agent and Hosted Agent runtime options, traces, operate views, guardrails, and evaluations where applicable.</td>
+</tr>
+<tr>
+<td><strong>Outer loop delivery</strong></td>
+<td>Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check.</td>
+</tr>
+<tr>
+<td><strong>Operate and improve</strong></td>
+<td>Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="how-an-evaluation-works">How an Evaluation Works<a class="headerlink" href="#how-an-evaluation-works" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>graph TD
     A[agentops.yaml target dataset thresholds]
