@@ -81,7 +81,6 @@ nav:
       - Explained: doctor-explained.md
   - CI/CD:
       - GitHub Actions: ci-github-actions.md
-      - Release Process: release-process.md
 extra:
   generator: false
   social:
