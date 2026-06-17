@@ -93,7 +93,7 @@ done
 ```
 
 PowerShell equivalent: replace `$(...)` with the PowerShell variable
-assignments shown in `docs/tutorial-prompt-agent-quickstart.md`.
+assignments shown in `docs/tutorial-prompt-agent.md`.
 
 If the user has not run `az login` yet, do that first. If
 `az cognitiveservices account list` returns an empty RG, the AI Services
@@ -142,6 +142,23 @@ for the `agent:` field of `agentops.yaml`:
 | Raw Foundry/Azure OpenAI model deployment | `"model:<deployment-name>"` |
 
 If nothing is found, ask the user once for the agent identifier.
+
+For Foundry Prompt Agents authored in the Sandbox portal, do not copy/paste the
+instructions into a file manually. After `agentops.yaml` contains `agent:
+name:version` and the correct project endpoint is available from
+`agentops.yaml`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, or the active
+`.azure/<env>/.env`, run:
+
+```bash
+agentops prompt pull
+```
+
+This writes `.agentops/prompts/<agent-name>.prompt.md` by default, updates
+`prompt_file` in `agentops.yaml` when needed, prints the resolved endpoint and
+agent version before writing, validates that the Foundry definition is a prompt
+agent, and refuses to overwrite changed prompt files unless `--force` is used.
+Use `--out` only when the repository already has a stronger prompt-file
+convention.
 
 ## Step 3 - Make sure the dataset exists
 

@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 from agentops.core.agentops_config import classify_agent
 from agentops.core.azd_eval import AzdEvalRecipeError, find_eval_yaml
+from agentops.core.config_loader import load_agentops_config
+from agentops.core.evaluators import detect_dataset_shape, select_evaluators
 from agentops.pipeline.azd_runner import (
     AZD_EVAL_TIMEOUT_SECONDS,
     AZD_EXTENSION_NAME,
@@ -52,6 +54,18 @@ class AzdEvalInitResult:
     command_ran: bool
     stdout: str = ""
     stderr: str = ""
+    evaluator_source: str = "unknown"
+    evaluator_signals: tuple[str, ...] = ()
+    evaluators: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AzdEvaluatorSelection:
+    """Evaluators selected for azd eval init and the reason for them."""
+
+    names: tuple[str, ...]
+    source: str
+    signals: tuple[str, ...]
 
 
 def run_azd_eval_init(
@@ -114,7 +128,16 @@ def run_azd_eval_init(
     eval_model = _eval_model_from_config(resolved_config)
     if eval_model:
         command.extend(["--eval-model", eval_model])
+    evaluator_selection = AzdEvaluatorSelection(
+        names=(),
+        source="no dataset",
+        signals=("No dataset was available for evaluator inference.",),
+    )
     if effective_dataset is not None:
+        evaluator_selection = _azd_evaluator_selection_from_config(
+            resolved_config,
+            effective_dataset,
+        )
         effective_dataset = _azd_dataset_from_agentops_dataset(
             effective_dataset,
             workspace=root,
@@ -122,7 +145,7 @@ def run_azd_eval_init(
         command.extend(
             ["--dataset", _command_path(effective_dataset, workspace=root)]
         )
-        for evaluator in _azd_evaluators_from_config(resolved_config):
+        for evaluator in evaluator_selection.names:
             command.extend(["--evaluator", evaluator])
 
     try:
@@ -164,6 +187,7 @@ def run_azd_eval_init(
         command_ran=True,
         stdout=completed.stdout,
         stderr=completed.stderr,
+        evaluator_selection=evaluator_selection,
     )
     return result
 
@@ -467,7 +491,10 @@ def _eval_model_from_config(config_path: Path) -> Optional[str]:
     return None
 
 
-def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
+def _azd_evaluator_selection_from_config(
+    config_path: Path,
+    dataset: Path,
+) -> AzdEvaluatorSelection:
     data = load_yaml(config_path)
     raw_evaluators = data.get("evaluators")
     names: list[str] = []
@@ -480,8 +507,33 @@ def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
             mapped = name if name.startswith("builtin.") else _EVALUATOR_NAME_TO_AZD.get(name)
             if mapped and mapped not in names:
                 names.append(mapped)
-    if not names:
-        names.extend(_DEFAULT_AZD_EVALUATORS)
+        selection_source = "explicit agentops.yaml evaluators"
+        signals = ("Using explicit evaluators from agentops.yaml.",)
+    else:
+        selection_source = "AgentOps recommendation"
+        signals = []
+        try:
+            config = load_agentops_config(config_path)
+            target = classify_agent(config.agent, config.protocol)
+            shape = detect_dataset_shape(dataset)
+            presets = select_evaluators(
+                target,
+                shape,
+                threshold_metrics=config.thresholds.keys(),
+            )
+            signals.extend(_dataset_signal_lines(target.kind, shape))
+            for preset in presets:
+                mapped = _EVALUATOR_NAME_TO_AZD.get(preset.name)
+                if mapped and mapped not in names:
+                    names.append(mapped)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            selection_source = "baseline fallback"
+            signals = (
+                f"Could not inspect dataset for evaluator inference: {exc}",
+                "Using baseline evaluators only.",
+            )
+        if not names:
+            names.extend(_DEFAULT_AZD_EVALUATORS)
     raw_rubrics = data.get("rubrics")
     if isinstance(raw_rubrics, list):
         for item in raw_rubrics:
@@ -493,7 +545,22 @@ def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
             name = raw_name.strip()
             if name not in names:
                 names.append(name)
-    return tuple(names)
+    return AzdEvaluatorSelection(
+        names=tuple(names),
+        source=selection_source,
+        signals=tuple(signals),
+    )
+
+
+def _dataset_signal_lines(kind: str, shape: Any) -> tuple[str, ...]:
+    signals = [f"Target kind: {kind}."]
+    if shape.looks_rag:
+        signals.append("Dataset context column detected; adding RAG evaluators.")
+    if shape.looks_tool_use:
+        signals.append("Dataset tool trace columns detected; adding tool-use evaluators.")
+    if not shape.looks_rag and not shape.looks_tool_use:
+        signals.append("Free-form answer dataset detected; adding answer-quality evaluators.")
+    return tuple(signals)
 
 
 def _azd_dataset_from_agentops_dataset(dataset: Path, *, workspace: Path) -> Path:
@@ -525,6 +592,7 @@ def _persist_recipe(
     command_ran: bool,
     stdout: str = "",
     stderr: str = "",
+    evaluator_selection: AzdEvaluatorSelection | None = None,
 ) -> AzdEvalInitResult:
     data = load_yaml(config_path)
     recipe_value = _relative_config_path(recipe_path, config_path.parent)
@@ -543,6 +611,9 @@ def _persist_recipe(
         command_ran=command_ran,
         stdout=stdout,
         stderr=stderr,
+        evaluator_source=(evaluator_selection.source if evaluator_selection else "existing recipe"),
+        evaluator_signals=(evaluator_selection.signals if evaluator_selection else ()),
+        evaluators=(evaluator_selection.names if evaluator_selection else ()),
     )
 
 

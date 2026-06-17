@@ -40,7 +40,7 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     _write_config(config_path)
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text("You are a travel planner.", encoding="utf-8")
@@ -80,6 +80,10 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
             "builtin.coherence",
             "--evaluator",
             "builtin.fluency",
+            "--evaluator",
+            "builtin.text_similarity",
+            "--evaluator",
+            "builtin.response_completeness",
         ]
         recipe = Path(kwargs["cwd"]) / "src" / "travel-agent" / "eval.yaml"
         recipe.parent.mkdir(parents=True, exist_ok=True)
@@ -94,6 +98,8 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     )
 
     assert result.command_ran is True
+    assert result.evaluator_source == "AgentOps recommendation"
+    assert "builtin.response_completeness" in result.evaluators
     assert result.config_updated is True
     converted = tmp_path / ".agentops" / "azd" / "smoke.azd.jsonl"
     assert '"query": "hello"' in converted.read_text(encoding="utf-8")
@@ -117,7 +123,7 @@ def test_run_azd_eval_init_explicit_dataset_wins(
     _write_config(config_path)
     (tmp_path / "azure.yaml").write_text("name: travel-agent\n", encoding="utf-8")
     dataset = tmp_path / "golden.jsonl"
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text("You are a travel planner.", encoding="utf-8")
@@ -146,6 +152,10 @@ def test_run_azd_eval_init_explicit_dataset_wins(
             "builtin.coherence",
             "--evaluator",
             "builtin.fluency",
+            "--evaluator",
+            "builtin.text_similarity",
+            "--evaluator",
+            "builtin.response_completeness",
         ]
         recipe = Path(kwargs["cwd"]) / "eval.yaml"
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
@@ -184,7 +194,7 @@ thresholds:
     )
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text("You are a travel planner.", encoding="utf-8")
@@ -195,7 +205,7 @@ thresholds:
         if command[:3] == ["az", "resource", "list"]:
             return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
         assert command[-2:] == ["--evaluator", "travel-quality-rubric"]
-        assert command.count("--evaluator") == 3
+        assert command.count("--evaluator") == 5
         recipe = Path(kwargs["cwd"]) / "eval.yaml"
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
@@ -218,7 +228,7 @@ def test_run_azd_eval_init_bootstraps_before_azd_availability_check(
     _write_config(config_path)
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: False)
 
     with mock.patch.object(subprocess, "run") as run_mock:
@@ -254,7 +264,7 @@ prompt_agent_bootstrap:
     )
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
     def fake_run(command, **kwargs):

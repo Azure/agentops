@@ -126,6 +126,215 @@ def test_stage_prompt_agent_candidate_reuses_unchanged_prompt(
     assert record["candidate_agent"] == "support-agent:3"
 
 
+def test_pull_prompt_agent_instructions_writes_default_prompt_and_updates_config(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "agentops.yaml"
+    dataset = tmp_path / "data.jsonl"
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: travel-agent:2",
+                "dataset: data.jsonl",
+                "project_endpoint: https://example.services.ai.azure.com/api/projects/p",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    current = SimpleNamespace(
+        id="agent-version-2",
+        version="2",
+        definition={
+            "kind": "prompt",
+            "model": "gpt-4o-mini",
+            "instructions": "You are a travel planner.\n",
+        },
+    )
+    seen: dict[str, str] = {}
+
+    monkeypatch.setattr(
+        prompt_deploy,
+        "_get_agent_version",
+        lambda endpoint, name, version: current,
+    )
+
+    result = prompt_deploy.pull_prompt_agent_instructions(
+        config_path=config,
+        before_write=lambda details: seen.update(details),
+    )
+
+    prompt_file = tmp_path / ".agentops" / "prompts" / "travel-agent.prompt.md"
+    assert result.action == "created"
+    assert result.config_updated is True
+    assert prompt_file.read_text(encoding="utf-8") == "You are a travel planner.\n"
+    assert "prompt_file: .agentops/prompts/travel-agent.prompt.md" in config.read_text(
+        encoding="utf-8"
+    )
+    assert seen["agent"] == "travel-agent:2"
+    assert seen["endpoint_source"] == "agentops.yaml"
+    assert seen["prompt_file"] == str(prompt_file.resolve())
+
+
+def test_pull_prompt_agent_instructions_resolves_active_azd_env(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "agentops.yaml"
+    dataset = tmp_path / "data.jsonl"
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: travel-agent:2",
+                "dataset: data.jsonl",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    azure_dir = tmp_path / ".azure"
+    env_dir = azure_dir / "sandbox"
+    env_dir.mkdir(parents=True)
+    (azure_dir / "config.json").write_text(
+        '{"defaultEnvironment":"sandbox"}',
+        encoding="utf-8",
+    )
+    (env_dir / ".env").write_text(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://sandbox.example/api/projects/p\n",
+        encoding="utf-8",
+    )
+    current = SimpleNamespace(
+        definition={"kind": "prompt", "instructions": "from sandbox\n"},
+    )
+    seen: dict[str, str] = {}
+
+    def fake_get_version(endpoint: str, name: str, version: str):
+        seen["endpoint"] = endpoint
+        return current
+
+    monkeypatch.setattr(prompt_deploy, "_get_agent_version", fake_get_version)
+
+    result = prompt_deploy.pull_prompt_agent_instructions(config_path=config)
+
+    assert result.endpoint_source == ".azure/sandbox/.env"
+    assert seen["endpoint"] == "https://sandbox.example/api/projects/p"
+
+
+def test_pull_prompt_agent_instructions_refuses_changed_file_without_force(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "agentops.yaml"
+    dataset = tmp_path / "data.jsonl"
+    prompt_file = tmp_path / ".agentops" / "prompts" / "travel-agent.prompt.md"
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    prompt_file.parent.mkdir(parents=True)
+    prompt_file.write_text("reviewed local prompt\n", encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: travel-agent:2",
+                "dataset: data.jsonl",
+                "prompt_file: .agentops/prompts/travel-agent.prompt.md",
+                "project_endpoint: https://example.services.ai.azure.com/api/projects/p",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    current = SimpleNamespace(
+        definition={"kind": "prompt", "instructions": "portal prompt\n"},
+    )
+    monkeypatch.setattr(
+        prompt_deploy,
+        "_get_agent_version",
+        lambda endpoint, name, version: current,
+    )
+
+    import pytest
+
+    with pytest.raises(FileExistsError) as excinfo:
+        prompt_deploy.pull_prompt_agent_instructions(config_path=config)
+
+    assert "--force" in str(excinfo.value)
+    assert prompt_file.read_text(encoding="utf-8") == "reviewed local prompt\n"
+
+
+def test_pull_prompt_agent_instructions_force_overwrites_changed_file(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "agentops.yaml"
+    dataset = tmp_path / "data.jsonl"
+    prompt_file = tmp_path / "prompt.md"
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    prompt_file.write_text("old\n", encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: travel-agent:2",
+                "dataset: data.jsonl",
+                "prompt_file: prompt.md",
+                "project_endpoint: https://example.services.ai.azure.com/api/projects/p",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    current = SimpleNamespace(
+        definition={"kind": "prompt", "instructions": "new\n"},
+    )
+    monkeypatch.setattr(
+        prompt_deploy,
+        "_get_agent_version",
+        lambda endpoint, name, version: current,
+    )
+
+    result = prompt_deploy.pull_prompt_agent_instructions(
+        config_path=config,
+        force=True,
+    )
+
+    assert result.action == "overwritten"
+    assert prompt_file.read_text(encoding="utf-8") == "new\n"
+
+
+def test_pull_prompt_agent_instructions_rejects_non_prompt_definition(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "agentops.yaml"
+    dataset = tmp_path / "data.jsonl"
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: travel-agent:2",
+                "dataset: data.jsonl",
+                "project_endpoint: https://example.services.ai.azure.com/api/projects/p",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    current = SimpleNamespace(definition={"kind": "hosted", "instructions": "hi"})
+    monkeypatch.setattr(
+        prompt_deploy,
+        "_get_agent_version",
+        lambda endpoint, name, version: current,
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError) as excinfo:
+        prompt_deploy.pull_prompt_agent_instructions(config_path=config)
+
+    assert "only supports Foundry prompt agents" in str(excinfo.value)
+
+
 def _make_not_found(status: int = 404) -> Exception:
     """Build an exception that ``_is_not_found_error`` will treat as 404."""
 
@@ -658,4 +867,3 @@ def test_stage_prompt_agent_candidate_does_not_tag_deployed_of_record(
     assert "agentops:created_at" not in metadata
     # Deployment-identity metadata is still present.
     assert metadata["agentops.env"] == "dev"
-

@@ -5,6 +5,36 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-06-17
+
+### Added
+- **Prompt-agent tutorials no longer require manual portal copy/paste.**
+  `agentops prompt pull` reads the configured Foundry prompt agent
+  (`agent: name:version`), validates that the Foundry definition is actually a
+  prompt agent, and writes the reviewed Sandbox instructions to
+  `.agentops/prompts/<agent-name>.prompt.md` by default. Before writing, the CLI
+  prints the resolved agent, endpoint, endpoint source, and destination file so
+  operators can catch the wrong environment early. Changed prompt files are
+  protected by default and require `--force` to overwrite reviewed local edits.
+  The command updates `prompt_file` in `agentops.yaml` unless
+  `--no-update-config` is passed, and it can resolve the endpoint from
+  `--project-endpoint`, `agentops.yaml`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, or
+  the active `.azure/<env>/.env`. The prompt-agent tutorial and packaged
+  `agentops-eval` skill now use this command instead of a manual here-string.
+  ([#322](https://github.com/Azure/agentops/issues/322))
+
+### Changed
+- **`agentops eval init` now recommends evaluators from the agent and dataset
+  shape.** The azd bootstrap path now reuses the same AgentOps evaluator
+  catalog as `agentops eval run`: free-form answer datasets get answer-quality
+  checks, RAG-shaped datasets get groundedness / relevance / retrieval checks,
+  and tool-use datasets get tool-call / intent / task-adherence checks while
+  avoiding literal-answer similarity metrics. Explicit `evaluators:` entries in
+  `agentops.yaml` still win. The CLI prints the recommendation source, detected
+  signals, and selected azd built-ins before reporting the generated
+  `eval.yaml`, so users can see why those evaluators were chosen.
+  ([#323](https://github.com/Azure/agentops/issues/323))
+
 ## [0.4.1] - 2026-06-15
 
 ### Changed

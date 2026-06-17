@@ -40,6 +40,7 @@ Public CLI contract:
 - `agentops init [--force] [--dir PATH] [--no-prompt] [--no-appinsights] [--azd-env NAME] [--project-endpoint URL] [--agent REF] [--dataset PATH] [--appinsights-connection-string STR]`
 - `agentops init show [--dir PATH] [--reveal-secrets]`
 - `agentops init explain [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
+- `agentops prompt pull [--config PATH] [--out PATH] [--project-endpoint URL] [--force] [--update-config|--no-update-config]`
 - `agentops eval analyze [--dir PATH] [--format text|markdown|json] [--out PATH]`
 - `agentops eval init [--dir PATH] [--force]`
 - `agentops eval run [--config PATH] [--baseline PATH] [--output DIR]`
@@ -222,9 +223,9 @@ Coverage highlights:
 docs/
 ├── concepts.md                                # Core concepts and evaluation scenarios
 ├── how-it-works.md                            # Architecture and request flow
-├── tutorial-prompt-agent-quickstart.md        # Tutorial for Foundry Prompt Agents
-├── tutorial-hosted-agent-quickstart.md        # Tutorial for Foundry hosted / HTTP agents
-├── tutorial-end-to-end.md                     # End-to-end release-readiness tutorial (Foundry + AgentOps)
+├── tutorial-prompt-agent.md                   # Tutorial for Foundry Prompt Agents
+├── tutorial-hosted-agent.md                   # Tutorial for Foundry hosted / HTTP agents
+├── tutorial-end-to-end.md                     # Full end-to-end release-readiness tutorial (Foundry + AgentOps)
 ├── doctor-explained.md                        # Doctor checks, history, and operations model
 ├── ci-github-actions.md                       # CI/CD setup
 ├── release-process.md                         # Release and versioning
