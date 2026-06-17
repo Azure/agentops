@@ -1083,15 +1083,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#migration-from-the-older-3-template-layout" class="md-nav__link">
-    <span class="md-ellipsis">
-      Migration from the older 3-template layout
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1390,15 +1381,6 @@
   <a href="#customisation-tips" class="md-nav__link">
     <span class="md-ellipsis">
       Customisation tips
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#migration-from-the-older-3-template-layout" class="md-nav__link">
-    <span class="md-ellipsis">
-      Migration from the older 3-template layout
     </span>
   </a>
   
@@ -2029,16 +2011,6 @@ keep their generated <code>--severity-fail</code> value until you re-generate wi
   previous run's <code>results.json</code> artifact and call
   <code>agentops eval run --baseline &lt;results.json&gt;</code>.</li>
 </ul>
-<h2 id="migration-from-the-older-3-template-layout">Migration from the older 3-template layout<a class="headerlink" href="#migration-from-the-older-3-template-layout" title="Permanent link">&para;</a></h2>
-<p>If your repository still has <code>agentops-eval.yml</code>, <code>agentops-eval-ci.yml</code>,
-or <code>agentops-eval-cd.yml</code> from a prior version of AgentOps:</p>
-<ol>
-<li>Delete the three old files.</li>
-<li>Run <code>agentops workflow generate</code>.</li>
-<li>Re-add Build / Deploy commands you had customised.</li>
-<li>Update branch-protection status checks to point at the new
-   <code>AgentOps PR</code> job.</li>
-</ol>
 
 
 
