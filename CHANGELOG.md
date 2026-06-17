@@ -21,6 +21,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   tutorial are updated to describe the new contract.
   ([#214](https://github.com/Azure/agentops/issues/214))
 
+### Fixed
+- **`agentops eval init` now works with both old and new `azure.ai.agents` azd
+  extensions.** Version 0.1.40 of the extension renamed the eval subcommand from
+  `azd ai agent eval init` to `azd ai agent eval generate`, which made
+  `agentops eval init` hard-fail with `Command "init" is deprecated, use 'azd ai
+  agent eval generate' instead`. AgentOps now invokes `generate` first and
+  transparently falls back to the legacy `init` subcommand when an older
+  extension does not recognise `generate`. The fallback only triggers on
+  subcommand-name/deprecation errors; genuine failures (authentication, project
+  endpoint, timeouts) are still surfaced immediately and unchanged. All
+  previously passed flags (`--project-endpoint`, `--agent`,
+  `--gen-instruction-file`, `--eval-model`, `--dataset`, `--evaluator`) and the
+  recipe discovery/persistence behaviour are preserved.
+
 ## [0.4.0] - 2026-06-14
 
 ### Added
