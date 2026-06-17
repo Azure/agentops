@@ -82,9 +82,6 @@ nav:
   - CI/CD:
       - GitHub Actions: ci-github-actions.md
       - Release Process: release-process.md
-  - Live End-to-End:
-      - Architecture: e2e-live-architecture.md
-      - Setup: e2e-live-setup.md
 extra:
   generator: false
   social:
