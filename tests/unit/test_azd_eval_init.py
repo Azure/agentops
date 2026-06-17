@@ -67,7 +67,7 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
             "ai",
             "agent",
             "eval",
-            "init",
+            "generate",
             "--project-endpoint",
             "https://contoso.services.ai.azure.com/api/projects/travel",
             "--agent",
@@ -133,7 +133,7 @@ def test_run_azd_eval_init_explicit_dataset_wins(
             "ai",
             "agent",
             "eval",
-            "init",
+            "generate",
             "--project-endpoint",
             "https://contoso.services.ai.azure.com/api/projects/travel",
             "--agent",
@@ -349,3 +349,176 @@ def test_cli_eval_init_uses_ascii_updated_marker_when_unicode_disabled(
     assert result.exit_code == 0
     assert " * updated" in result.output
     assert "✓" not in result.output
+
+
+def _setup_eval_workspace(tmp_path: Path) -> Path:
+    """Create a minimal workspace and return the config path."""
+    config_path = tmp_path / "agentops.yaml"
+    _write_config(config_path)
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True)
+    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
+    prompt_file.parent.mkdir(parents=True)
+    prompt_file.write_text("You are a travel planner.", encoding="utf-8")
+    return config_path
+
+
+def _eval_subcommand(command: list[str]) -> str:
+    # command is ["azd", "--no-prompt", "ai", "agent", "eval", <subcommand>, ...]
+    return command[5]
+
+
+def test_run_azd_eval_init_prefers_generate_on_new_extension(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = _setup_eval_workspace(tmp_path)
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    subcommands: list[str] = []
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        subcommands.append(_eval_subcommand(command))
+        recipe = Path(kwargs["cwd"]) / "eval.yaml"
+        recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+    )
+
+    assert result.command_ran is True
+    # generate succeeds on the first try; the legacy init is never invoked.
+    assert subcommands == ["generate"]
+
+
+def test_run_azd_eval_init_falls_back_to_init_on_old_extension(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = _setup_eval_workspace(tmp_path)
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    seen: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        seen.append(command)
+        subcommand = _eval_subcommand(command)
+        if subcommand == "generate":
+            # Older azure.ai.agents extensions do not know `generate`.
+            return subprocess.CompletedProcess(
+                command,
+                1,
+                stdout="",
+                stderr='Error: unknown command "generate" for "azd ai agent eval"',
+            )
+        recipe = Path(kwargs["cwd"]) / "eval.yaml"
+        recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+    )
+
+    assert result.command_ran is True
+    eval_calls = [
+        cmd for cmd in seen if cmd[:5] == ["azd", "--no-prompt", "ai", "agent", "eval"]
+    ]
+    assert [_eval_subcommand(cmd) for cmd in eval_calls] == ["generate", "init"]
+    # The preserved flags are identical for both attempts (only the subcommand
+    # token differs).
+    assert eval_calls[0][6:] == eval_calls[1][6:]
+    updated = config_path.read_text(encoding="utf-8")
+    assert "eval_recipe:" in updated
+
+
+def test_run_azd_eval_init_init_deprecation_does_not_hard_fail(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    # On a new extension, init is deprecated but generate works. The wrapper
+    # must succeed via generate and never surface the deprecation as an error.
+    config_path = _setup_eval_workspace(tmp_path)
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        if _eval_subcommand(command) == "init":
+            raise AssertionError("init must not be invoked when generate works")
+        recipe = Path(kwargs["cwd"]) / "eval.yaml"
+        recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+    )
+
+    assert result.command_ran is True
+
+
+def test_run_azd_eval_init_surfaces_real_errors_without_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = _setup_eval_workspace(tmp_path)
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    subcommands: list[str] = []
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        subcommands.append(_eval_subcommand(command))
+        return subprocess.CompletedProcess(
+            command,
+            1,
+            stdout="",
+            stderr="ERROR: failed to authenticate to the Azure AI project",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    try:
+        azd_eval_init.run_azd_eval_init(
+            workspace=tmp_path,
+            config_path=config_path,
+        )
+    except azd_eval_init.AzdBackendError as exc:
+        assert "failed to authenticate" in str(exc)
+        assert "azd ai agent eval generate failed" in str(exc)
+    else:  # pragma: no cover - assertion helper
+        raise AssertionError("expected AzdBackendError")
+
+    # A genuine error must not trigger the init fallback.
+    assert subcommands == ["generate"]
+
+
+def test_eval_subcommand_unsupported_matches_known_messages() -> None:
+    assert azd_eval_init._eval_subcommand_unsupported(
+        'Error: unknown command "generate" for "azd ai agent eval"'
+    )
+    assert azd_eval_init._eval_subcommand_unsupported(
+        "Command \"init\" is deprecated, use 'azd ai agent eval generate' instead"
+    )
+    assert azd_eval_init._eval_subcommand_unsupported("Unrecognized flag")
+    assert azd_eval_init._eval_subcommand_unsupported('"generate" is not a valid command')
+    # Real runtime errors must not be treated as a subcommand-name problem.
+    assert not azd_eval_init._eval_subcommand_unsupported(
+        "ERROR: failed to authenticate to the Azure AI project"
+    )
+    assert not azd_eval_init._eval_subcommand_unsupported("", "")
