@@ -180,22 +180,48 @@ origin  https://github.com/azure/gpt-rag-orchestrator.git (push)
     deploy. Removing `origin` detaches it from the GPT-RAG open source project
     so your commits and CI never target upstream. Do this only in your own copy.
 
-Remove the upstream remote and start your own history:
+Remove the upstream remote, name your own branch, and optionally drop the
+inherited eval pipeline and CI before your first commit so your history starts
+clean:
 
 ```powershell
 git remote remove origin
 git checkout -b main
+
+# optional: remove the inherited eval pipeline and CI so only AgentOps runs
+Remove-Item -Recurse -Force evaluations
+Remove-Item -Force .github/workflows/*
+
 git add -A
 git commit -m "Initial commit: my GPT-RAG orchestrator copy"
 ```
 
-Then create your repository and push it with the GitHub CLI. Pick a name that
-does not collide with a fork you may already have, for example
+!!! note "What you just removed"
+    The vendored orchestrator ships its own `evaluations/` and `dataset/`
+    folders and its own CI under `.github/workflows/` (`pr_pipeline.yaml`,
+    `cicd_pipeline.yaml`, `block-pr-to-main.yml`). Those belong to the upstream
+    project. AgentOps gives you your own eval dataset (Section 6) and generates
+    your own workflows (Section 9), so nothing here depends on the orchestrator's.
+    Removing them before the commit keeps them out of your history; skip the two
+    `Remove-Item` lines if you would rather keep them.
+
+Then create your repository and push the `main` branch with the GitHub CLI. Pick
+a name that does not collide with a fork you may already have, for example
 `gpt-rag-orchestrator-agentops`:
 
 ```powershell
-gh repo create <owner>/gpt-rag-orchestrator-agentops --private --source . --push
+gh repo create <owner>/gpt-rag-orchestrator-agentops --private --source . --remote origin
+git push -u origin main
 ```
+
+!!! warning "Push fails with 'not a full refname' or 'HEAD:refs/heads/HEAD'?"
+    The clone arrives in a detached HEAD on the pinned tag, so pushing `HEAD`
+    has no branch name to land on. Naming the branch with `git checkout -b main`
+    and pushing it by name with `git push -u origin main` avoids the error. If
+    you hit it, you skipped the checkout: run `git checkout -b main` (or
+    `git checkout main` if it already exists), then `git push -u origin main`.
+    The repo and remote from `gh repo create` are already in place, so you do
+    not need to recreate them.
 
 !!! tip "Use a distinct repo name"
     `gh repo create` names a brand-new repo from the current folder, regardless
@@ -207,20 +233,6 @@ gh repo create <owner>/gpt-rag-orchestrator-agentops --private --source . --push
     The predeploy hook clones with `--depth 1`, so you only have the pinned
     commit. `git checkout -b main` simply names a branch at that commit, which
     is all you need to make it your own repo.
-
-!!! tip "Ignore the upstream evaluations and pipelines"
-    The vendored orchestrator ships its own `evaluations/` and `dataset/`
-    folders and its own CI under `.github/workflows/` (`pr_pipeline.yaml`,
-    `cicd_pipeline.yaml`, `block-pr-to-main.yml`). Those belong to the upstream
-    project. Since you are building your own copy, you can ignore or delete them.
-    AgentOps gives you your own eval dataset (Section 6) and generates your own
-    workflows (Section 9), so nothing here depends on the orchestrator's.
-
-    ```powershell
-    # optional: remove the inherited eval pipeline and CI so only AgentOps runs
-    Remove-Item -Recurse -Force evaluations
-    Remove-Item -Force .github/workflows/*
-    ```
 
 ## 5. Initialize AgentOps against the maf_lite endpoint
 
