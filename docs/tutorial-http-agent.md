@@ -253,7 +253,8 @@ Answer the prompts with the sandbox orchestrator values:
 | Dataset path | `.agentops/data/vw-smoke.jsonl` |
 
 Then edit `agentops.yaml` so AgentOps matches the orchestrator request and
-response shape:
+response shape. Do not set thresholds yet; first create the dataset so
+`agentops eval init` can inspect it and recommend the right evaluators.
 
 ```
 edit agentops.yaml
@@ -268,9 +269,6 @@ request_field: ask
 response_mode: text
 stream:
   strip_leading_token: true
-evaluators:
-  relevance: ">=3"
-  coherence: ">=3"
 ```
 
 | Field | What it does |
@@ -281,7 +279,6 @@ evaluators:
 | `response_mode: text` | Read the `text/event-stream` body and aggregate it into one answer instead of parsing a single JSON body. |
 | `stream.strip_leading_token: true` | Drop the leading conversation id the orchestrator emits as its first chunk. |
 | Non-streaming JSON endpoint | Use the default `response_mode: json` and set `response_field`, for example `response_field: text`. |
-| `evaluators.relevance` / `evaluators.coherence` | Score each answer for on-topic relevance and readable coherence, requiring at least 3 out of 5. This smoke-core checks the agent answers sensibly, not that it is grounded. |
 
 !!! note "How AgentOps calls the endpoint"
     AgentOps posts `{"ask": "<input>"}` with `Content-Type: application/json` and
@@ -320,16 +317,45 @@ edit .agentops/data/vw-smoke.jsonl
     `expected` values are acceptance criteria for judge-based scoring, not exact
     answer strings, so write them as reviewable behavior.
 
-!!! warning "Smoke-core is relevance and coherence, not groundedness"
+!!! warning "Smoke-core is answer quality, not groundedness"
     The endpoint returns only the final text, not the retrieved context, so the
-    judge cannot measure true groundedness here. This smoke-core scores relevance
-    and coherence: the answer is on topic and reads sensibly. The first three rows
-    should pass once the document is indexed; the last row checks that the agent
-    refuses to invent facts the source does not contain. To measure real
-    groundedness, evaluate a target that also returns its retrieved context. See
-    [Evaluation](evaluation.md).
+    judge cannot measure true groundedness here. This smoke-core scores
+    coherence, similarity to the expected behavior, and response completeness.
+    The first three rows should pass once the document is indexed; the last row
+    checks that the agent refuses to invent facts the source does not contain. To
+    measure real groundedness, evaluate a target that also returns its retrieved
+    context. See [Evaluation](evaluation.md).
 
-## 8. Run the local eval gate against the sandbox
+## 8. Review evaluator recommendations and set thresholds
+
+Ask AgentOps to inspect the HTTP target and dataset:
+
+```powershell
+agentops eval init
+```
+
+For this HTTP target, `agentops eval init` only inspects `agentops.yaml` and the
+dataset, then prints the recommended evaluators. It does not call `azd` or create
+a Foundry `eval.yaml`, because the target is not a Foundry prompt agent.
+
+Because this dataset includes `expected` ground truth and does not include
+retrieved `context`, the smoke recommendation should include answer-quality
+evaluators such as `coherence`, `similarity`, and `response_completeness`.
+
+Now add thresholds for the recommended smoke evaluators:
+
+```yaml
+thresholds:
+  coherence: ">=3"
+  similarity: ">=3"
+  response_completeness: ">=3"
+```
+
+`similarity` is useful here because the dataset has `expected` ground truth. The
+gate checks that the agent answers sensibly and stays close to the expected
+behavior, not that it is grounded.
+
+## 9. Run the local eval gate against the sandbox
 
 AgentOps evals run wherever you execute the command. In this step, you run the
 same gate locally from the orchestrator repo:
@@ -355,7 +381,7 @@ stores the evidence as workflow artifacts. There is no separate setting in
 `agentops.yaml` that says "local" or "cloud"; the runner location comes from
 where the command is executed.
 
-## 9. See results and traces
+## 10. See results and traces
 
 Two views show what actually happened, and you want both.
 
@@ -406,7 +432,7 @@ readiness view.
     agent's own request traces are separate runtime telemetry the Doctor reads
     for latency and errors. See [Observe](observe.md).
 
-## 10. Add ASSERT and Red Team safety gates
+## 11. Add ASSERT and Red Team safety gates
 
 Quality is not enough to ship. Before you generate the workflows, add the two
 safety gates so CI blocks unsafe behavior the same way it blocks quality
@@ -485,7 +511,7 @@ strategies, see
     and keep the objective count small while you wire them up. Red Team's matrix
     is `risk_categories x attack_strategies x num_objectives` and grows quickly.
 
-## 11. Generate the PR + dev deploy workflows
+## 12. Generate the PR + dev deploy workflows
 
 You build your own CI here. `agentops workflow generate` writes fresh,
 AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
@@ -579,7 +605,7 @@ shared sandbox at the same time.
     workflow remains separate and updates dev after merge or manual dispatch.
     See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment wiring.
 
-## 12. Ship, observe, and own
+## 13. Ship, observe, and own
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.
@@ -610,8 +636,8 @@ agentops doctor --evidence-pack
 - You pointed AgentOps directly at the orchestrator endpoint and mapped `ask`
   and `text` to the real request and response shape.
 - You indexed a sample document, built a smoke dataset from its content, and
-  scored answers on relevance and coherence, knowing why that is smoke and not
-  groundedness.
+  scored answers on coherence, similarity, and response completeness, knowing why
+  that is smoke and not groundedness.
 - You inspected both the per-row eval evidence and the runtime traces, and you
   know which spans AgentOps emits (`agentops.eval.*`) versus which come from the
   orchestrator's own runtime telemetry.

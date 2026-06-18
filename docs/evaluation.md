@@ -196,6 +196,12 @@ three-line config still scores the right things. Prompt and hosted agents get
 answer-quality judges, `context` rows add the RAG set, and tool rows add the
 tool-use set.
 
+Run `agentops eval init` after you create the dataset to see the recommendation.
+For HTTP, model, and other local targets, this is recommendation-only: AgentOps
+does not call `azd` or create `eval.yaml`. For Foundry prompt agents, the same
+command can also delegate to `azd ai agent eval init` to create Foundry-native
+eval assets.
+
 !!! note "Override only when you must"
     Set the `evaluators:` list in `agentops.yaml` only when you need to replace
     the auto-selection. It is an escape hatch, not the normal path. For the full
