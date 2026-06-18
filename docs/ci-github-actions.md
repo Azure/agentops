@@ -55,8 +55,10 @@ flowchart LR
     class sandbox,devEnv,qaEnv,prodEnv env;
 ```
 
-Legend: blue boxes are Git branches, purple boxes are PR or workflow gates, and
-teal boxes are deployed environments.
+Legend:
+<span style="display:inline-block;width:0.9em;height:0.9em;background:#e7f0fd;border:1px solid #1f4e79;vertical-align:-0.1em;"></span> Git branch
+<span style="display:inline-block;width:0.9em;height:0.9em;background:#ede7f6;border:1px solid #4527a0;vertical-align:-0.1em;"></span> PR or workflow gate
+<span style="display:inline-block;width:0.9em;height:0.9em;background:#d1ecf1;border:1px solid #0c5460;vertical-align:-0.1em;"></span> deployed environment
 
 If you are on trunk-based development, generate only the templates you
 need: `agentops workflow generate --kinds pr,dev,prod`.
