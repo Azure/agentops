@@ -580,31 +580,40 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-run-the-local-eval-gate-against-the-sandbox" class="md-nav__link">
+  <a href="#8-review-evaluator-recommendations-and-set-thresholds" class="md-nav__link">
     <span class="md-ellipsis">
-      8. Run the local eval gate against the sandbox
+      8. Review evaluator recommendations and set thresholds
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-see-results-and-traces" class="md-nav__link">
+  <a href="#9-run-the-local-eval-gate-against-the-sandbox" class="md-nav__link">
     <span class="md-ellipsis">
-      9. See results and traces
+      9. Run the local eval gate against the sandbox
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#10-add-assert-and-red-team-safety-gates" class="md-nav__link">
+  <a href="#10-see-results-and-traces" class="md-nav__link">
     <span class="md-ellipsis">
-      10. Add ASSERT and Red Team safety gates
+      10. See results and traces
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="10. Add ASSERT and Red Team safety gates">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-add-assert-and-red-team-safety-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Add ASSERT and Red Team safety gates
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Add ASSERT and Red Team safety gates">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -631,18 +640,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#11-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
+  <a href="#12-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
     <span class="md-ellipsis">
-      11. Generate the PR + dev deploy workflows
+      12. Generate the PR + dev deploy workflows
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#12-ship-observe-and-own" class="md-nav__link">
+  <a href="#13-ship-observe-and-own" class="md-nav__link">
     <span class="md-ellipsis">
-      12. Ship, observe, and own
+      13. Ship, observe, and own
     </span>
   </a>
   
@@ -1080,31 +1089,40 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-run-the-local-eval-gate-against-the-sandbox" class="md-nav__link">
+  <a href="#8-review-evaluator-recommendations-and-set-thresholds" class="md-nav__link">
     <span class="md-ellipsis">
-      8. Run the local eval gate against the sandbox
+      8. Review evaluator recommendations and set thresholds
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-see-results-and-traces" class="md-nav__link">
+  <a href="#9-run-the-local-eval-gate-against-the-sandbox" class="md-nav__link">
     <span class="md-ellipsis">
-      9. See results and traces
+      9. Run the local eval gate against the sandbox
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#10-add-assert-and-red-team-safety-gates" class="md-nav__link">
+  <a href="#10-see-results-and-traces" class="md-nav__link">
     <span class="md-ellipsis">
-      10. Add ASSERT and Red Team safety gates
+      10. See results and traces
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="10. Add ASSERT and Red Team safety gates">
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-add-assert-and-red-team-safety-gates" class="md-nav__link">
+    <span class="md-ellipsis">
+      11. Add ASSERT and Red Team safety gates
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. Add ASSERT and Red Team safety gates">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1131,18 +1149,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#11-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
+  <a href="#12-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
     <span class="md-ellipsis">
-      11. Generate the PR + dev deploy workflows
+      12. Generate the PR + dev deploy workflows
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#12-ship-observe-and-own" class="md-nav__link">
+  <a href="#13-ship-observe-and-own" class="md-nav__link">
     <span class="md-ellipsis">
-      12. Ship, observe, and own
+      13. Ship, observe, and own
     </span>
   </a>
   
@@ -1413,7 +1431,8 @@ keeps that local setup simple.</p>
 </tbody>
 </table>
 <p>Then edit <code>agentops.yaml</code> so AgentOps matches the orchestrator request and
-response shape:</p>
+response shape. Do not set thresholds yet; first create the dataset so
+<code>agentops eval init</code> can inspect it and recommend the right evaluators.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>edit agentops.yaml
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
@@ -1424,9 +1443,6 @@ response shape:</p>
 <a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
 <a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="nt">stream</span><span class="p">:</span>
 <a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">  </span><span class="nt">strip_leading_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="nt">evaluators</span><span class="p">:</span>
-<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">  </span><span class="nt">relevance</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1459,10 +1475,6 @@ response shape:</p>
 <tr>
 <td>Non-streaming JSON endpoint</td>
 <td>Use the default <code>response_mode: json</code> and set <code>response_field</code>, for example <code>response_field: text</code>.</td>
-</tr>
-<tr>
-<td><code>evaluators.relevance</code> / <code>evaluators.coherence</code></td>
-<td>Score each answer for on-topic relevance and readable coherence, requiring at least 3 out of 5. This smoke-core checks the agent answers sensibly, not that it is grounded.</td>
 </tr>
 </tbody>
 </table>
@@ -1501,19 +1513,38 @@ want.</p>
 answer strings, so write them as reviewable behavior.</p>
 </div>
 <div class="admonition warning">
-<p class="admonition-title">Smoke-core is relevance and coherence, not groundedness</p>
+<p class="admonition-title">Smoke-core is answer quality, not groundedness</p>
 <p>The endpoint returns only the final text, not the retrieved context, so the
-judge cannot measure true groundedness here. This smoke-core scores relevance
-and coherence: the answer is on topic and reads sensibly. The first three rows
-should pass once the document is indexed; the last row checks that the agent
-refuses to invent facts the source does not contain. To measure real
-groundedness, evaluate a target that also returns its retrieved context. See
-<a href="../evaluation/">Evaluation</a>.</p>
+judge cannot measure true groundedness here. This smoke-core scores
+coherence, similarity to the expected behavior, and response completeness.
+The first three rows should pass once the document is indexed; the last row
+checks that the agent refuses to invent facts the source does not contain. To
+measure real groundedness, evaluate a target that also returns its retrieved
+context. See <a href="../evaluation/">Evaluation</a>.</p>
 </div>
-<h2 id="8-run-the-local-eval-gate-against-the-sandbox">8. Run the local eval gate against the sandbox<a class="headerlink" href="#8-run-the-local-eval-gate-against-the-sandbox" title="Permanent link">&para;</a></h2>
+<h2 id="8-review-evaluator-recommendations-and-set-thresholds">8. Review evaluator recommendations and set thresholds<a class="headerlink" href="#8-review-evaluator-recommendations-and-set-thresholds" title="Permanent link">&para;</a></h2>
+<p>Ask AgentOps to inspect the HTTP target and dataset:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">init</span>
+</code></pre></div>
+<p>For this HTTP target, <code>agentops eval init</code> only inspects <code>agentops.yaml</code> and the
+dataset, then prints the recommended evaluators. It does not call <code>azd</code> or create
+a Foundry <code>eval.yaml</code>, because the target is not a Foundry prompt agent.</p>
+<p>Because this dataset includes <code>expected</code> ground truth and does not include
+retrieved <code>context</code>, the smoke recommendation should include answer-quality
+evaluators such as <code>coherence</code>, <code>similarity</code>, and <code>response_completeness</code>.</p>
+<p>Now add thresholds for the recommended smoke evaluators:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+</code></pre></div>
+<p><code>similarity</code> is useful here because the dataset has <code>expected</code> ground truth. The
+gate checks that the agent answers sensibly and stays close to the expected
+behavior, not that it is grounded.</p>
+<h2 id="9-run-the-local-eval-gate-against-the-sandbox">9. Run the local eval gate against the sandbox<a class="headerlink" href="#9-run-the-local-eval-gate-against-the-sandbox" title="Permanent link">&para;</a></h2>
 <p>AgentOps evals run wherever you execute the command. In this step, you run the
 same gate locally from the orchestrator repo:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>You should see a <code>Threshold status</code> line and normalized output written under
 <code>.agentops/results/latest/</code>.</p>
@@ -1531,19 +1562,19 @@ the PR workflow, CI runs <code>agentops eval run</code> in the GitHub-hosted run
 stores the evidence as workflow artifacts. There is no separate setting in
 <code>agentops.yaml</code> that says "local" or "cloud"; the runner location comes from
 where the command is executed.</p>
-<h2 id="9-see-results-and-traces">9. See results and traces<a class="headerlink" href="#9-see-results-and-traces" title="Permanent link">&para;</a></h2>
+<h2 id="10-see-results-and-traces">10. See results and traces<a class="headerlink" href="#10-see-results-and-traces" title="Permanent link">&para;</a></h2>
 <p>Two views show what actually happened, and you want both.</p>
 <p><strong>Eval results (local or CI artifact).</strong> Every run writes normalized output under
 <code>.agentops/results/latest/</code> in the machine that ran the command. Locally, open
 <code>report.md</code> to read each input, the aggregated answer, the judge scores, and pass
 or fail against your thresholds:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
 <p>In GitHub Actions, the same files are kept as workflow artifacts.</p>
 <p><strong>Runtime traces (Azure Monitor / Foundry).</strong> Set an Application Insights
 connection string before the run so the spans land somewhere you can read them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="s2">&quot;&lt;app-insights-connection-string&gt;&quot;</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="s2">&quot;&lt;app-insights-connection-string&gt;&quot;</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>Two different kinds of trace show up, from two different producers:</p>
 <ul>
@@ -1574,7 +1605,7 @@ The <code>agentops.eval.*</code> spans are how the same runs show up in Foundry.
 agent's own request traces are separate runtime telemetry the Doctor reads
 for latency and errors. See <a href="../observe/">Observe</a>.</p>
 </div>
-<h2 id="10-add-assert-and-red-team-safety-gates">10. Add ASSERT and Red Team safety gates<a class="headerlink" href="#10-add-assert-and-red-team-safety-gates" title="Permanent link">&para;</a></h2>
+<h2 id="11-add-assert-and-red-team-safety-gates">11. Add ASSERT and Red Team safety gates<a class="headerlink" href="#11-add-assert-and-red-team-safety-gates" title="Permanent link">&para;</a></h2>
 <p>Quality is not enough to ship. Before you generate the workflows, add the two
 safety gates so CI blocks unsafe behavior the same way it blocks quality
 regressions. Both write normalized JSON the evidence pack ingests, and both can
@@ -1592,36 +1623,36 @@ fail the PR.</p>
 <h3 id="scaffold-both-recommended">Scaffold both (recommended)<a class="headerlink" href="#scaffold-both-recommended" title="Permanent link">&para;</a></h3>
 <p>Let the governance skill write the config and the <code>agentops.yaml</code> blocks for your
 target:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>/skills agentops-governance
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>/skills agentops-governance
 </code></pre></div>
 <p>Ask it to scaffold ASSERT and the Red Team runner for this workspace, target your
 orchestrator's chat model deployment, judge with safety-core and alignment, and
 fail Red Team when the attack success rate exceeds 20 percent.</p>
 <h3 id="or-add-the-blocks-yourself">Or add the blocks yourself<a class="headerlink" href="#or-add-the-blocks-yourself" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
 </code></pre></div>
 <p>Append to <code>agentops.yaml</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nt">assert</span><span class="p">:</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span>
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>
-<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="nt">redteam</span><span class="p">:</span>
-<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span>
-<a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">    </span><span class="nt">model_deployment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;your-chat-model-deployment&gt;</span>
-<a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-21-9" name="__codelineno-21-9" href="#__codelineno-21-9"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-21-10" name="__codelineno-21-10" href="#__codelineno-21-10"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<a id="__codelineno-21-11" name="__codelineno-21-11" href="#__codelineno-21-11"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nt">assert</span><span class="p">:</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="nt">redteam</span><span class="p">:</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">    </span><span class="nt">model_deployment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;your-chat-model-deployment&gt;</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
 </code></pre></div>
 <p>ASSERT calls models through LiteLLM, which for Azure OpenAI expects three vars in
 your shell or <code>.agentops/.env</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nv">$env:AZURE_API_KEY</span> <span class="p">=</span> <span class="s2">&quot;&lt;your Azure OpenAI account key&gt;&quot;</span>
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="nv">$env:AZURE_API_BASE</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="nv">$env:AZURE_API_VERSION</span> <span class="p">=</span> <span class="s2">&quot;2024-10-21&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nv">$env:AZURE_API_KEY</span> <span class="p">=</span> <span class="s2">&quot;&lt;your Azure OpenAI account key&gt;&quot;</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="nv">$env:AZURE_API_BASE</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="nv">$env:AZURE_API_VERSION</span> <span class="p">=</span> <span class="s2">&quot;2024-10-21&quot;</span>
 </code></pre></div>
 <p>Run both gates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
 </code></pre></div>
 <p>ASSERT writes <code>.agentops/assert/latest.json</code> and Red Team writes
 <code>.agentops/redteam/latest.json</code>. Each exits non-zero on a policy violation or
@@ -1635,7 +1666,7 @@ strategies, see
 and keep the objective count small while you wire them up. Red Team's matrix
 is <code>risk_categories x attack_strategies x num_objectives</code> and grows quickly.</p>
 </div>
-<h2 id="11-generate-the-pr-dev-deploy-workflows">11. Generate the PR + dev deploy workflows<a class="headerlink" href="#11-generate-the-pr-dev-deploy-workflows" title="Permanent link">&para;</a></h2>
+<h2 id="12-generate-the-pr-dev-deploy-workflows">12. Generate the PR + dev deploy workflows<a class="headerlink" href="#12-generate-the-pr-dev-deploy-workflows" title="Permanent link">&para;</a></h2>
 <p>You build your own CI here. <code>agentops workflow generate</code> writes fresh,
 AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
 upstream orchestrator shipped. The orchestrator's <code>azure.yaml</code> is used only as
@@ -1644,7 +1675,7 @@ the deploy project, so the deploy mode is <code>azd</code>.</p>
 the candidate code, the PR workflow must deploy that candidate to sandbox before
 it runs <code>agentops eval run</code>. Evaluating dev without deploying the PR first would
 only test the old dev deployment.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">-</span><span class="n">-force</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">-</span><span class="n">-force</span>
 </code></pre></div>
 <p>This writes two files, both prefixed <code>agentops-</code> so they never collide with the
 orchestrator's existing workflows:</p>
@@ -1680,44 +1711,44 @@ orchestrator's existing workflows:</p>
 </table>
 <p>Update <code>.github/workflows/agentops-pr.yml</code> so the PR gate uses the <code>sandbox</code>
 GitHub environment and deploys the PR candidate before the eval step:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nt">jobs</span><span class="p">:</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="w">  </span><span class="nt">eval</span><span class="p">:</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AgentOps eval (PR gate)</span>
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
-<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox</span>
-<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a><span class="w">    </span><span class="nt">concurrency</span><span class="p">:</span>
-<a id="__codelineno-25-7" name="__codelineno-25-7" href="#__codelineno-25-7"></a><span class="w">      </span><span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agentops-sandbox</span>
-<a id="__codelineno-25-8" name="__codelineno-25-8" href="#__codelineno-25-8"></a><span class="w">      </span><span class="nt">cancel-in-progress</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-25-9" name="__codelineno-25-9" href="#__codelineno-25-9"></a><span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
-<a id="__codelineno-25-10" name="__codelineno-25-10" href="#__codelineno-25-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Checkout</span>
-<a id="__codelineno-25-11" name="__codelineno-25-11" href="#__codelineno-25-11"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
-<a id="__codelineno-25-12" name="__codelineno-25-12" href="#__codelineno-25-12"></a>
-<a id="__codelineno-25-13" name="__codelineno-25-13" href="#__codelineno-25-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Set up azd</span>
-<a id="__codelineno-25-14" name="__codelineno-25-14" href="#__codelineno-25-14"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure/setup-azd@v2</span>
-<a id="__codelineno-25-15" name="__codelineno-25-15" href="#__codelineno-25-15"></a>
-<a id="__codelineno-25-16" name="__codelineno-25-16" href="#__codelineno-25-16"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure login (OIDC)</span>
-<a id="__codelineno-25-17" name="__codelineno-25-17" href="#__codelineno-25-17"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/login@v3</span>
-<a id="__codelineno-25-18" name="__codelineno-25-18" href="#__codelineno-25-18"></a><span class="w">        </span><span class="nt">with</span><span class="p">:</span>
-<a id="__codelineno-25-19" name="__codelineno-25-19" href="#__codelineno-25-19"></a><span class="w">          </span><span class="nt">client-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_CLIENT_ID }}</span>
-<a id="__codelineno-25-20" name="__codelineno-25-20" href="#__codelineno-25-20"></a><span class="w">          </span><span class="nt">tenant-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_TENANT_ID }}</span>
-<a id="__codelineno-25-21" name="__codelineno-25-21" href="#__codelineno-25-21"></a><span class="w">          </span><span class="nt">subscription-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
-<a id="__codelineno-25-22" name="__codelineno-25-22" href="#__codelineno-25-22"></a>
-<a id="__codelineno-25-23" name="__codelineno-25-23" href="#__codelineno-25-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy PR candidate to sandbox</span>
-<a id="__codelineno-25-24" name="__codelineno-25-24" href="#__codelineno-25-24"></a><span class="w">        </span><span class="nt">env</span><span class="p">:</span>
-<a id="__codelineno-25-25" name="__codelineno-25-25" href="#__codelineno-25-25"></a><span class="w">          </span><span class="nt">AZURE_ENV_NAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_ENV_NAME }}</span>
-<a id="__codelineno-25-26" name="__codelineno-25-26" href="#__codelineno-25-26"></a><span class="w">          </span><span class="nt">AZURE_LOCATION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_LOCATION }}</span>
-<a id="__codelineno-25-27" name="__codelineno-25-27" href="#__codelineno-25-27"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<a id="__codelineno-25-28" name="__codelineno-25-28" href="#__codelineno-25-28"></a><span class="w">          </span><span class="no">azd env new &quot;$AZURE_ENV_NAME&quot; --no-prompt --subscription &quot;${{ vars.AZURE_SUBSCRIPTION_ID }}&quot; ${AZURE_LOCATION:+--location &quot;$AZURE_LOCATION&quot;} \</span>
-<a id="__codelineno-25-29" name="__codelineno-25-29" href="#__codelineno-25-29"></a><span class="w">            </span><span class="no">|| azd env select &quot;$AZURE_ENV_NAME&quot;</span>
-<a id="__codelineno-25-30" name="__codelineno-25-30" href="#__codelineno-25-30"></a><span class="w">          </span><span class="no">azd env set AZURE_SUBSCRIPTION_ID &quot;${{ vars.AZURE_SUBSCRIPTION_ID }}&quot;</span>
-<a id="__codelineno-25-31" name="__codelineno-25-31" href="#__codelineno-25-31"></a><span class="w">          </span><span class="no">if [ -n &quot;$AZURE_LOCATION&quot; ]; then</span>
-<a id="__codelineno-25-32" name="__codelineno-25-32" href="#__codelineno-25-32"></a><span class="w">            </span><span class="no">azd env set AZURE_LOCATION &quot;$AZURE_LOCATION&quot;</span>
-<a id="__codelineno-25-33" name="__codelineno-25-33" href="#__codelineno-25-33"></a><span class="w">          </span><span class="no">fi</span>
-<a id="__codelineno-25-34" name="__codelineno-25-34" href="#__codelineno-25-34"></a><span class="w">          </span><span class="no">azd provision --no-prompt</span>
-<a id="__codelineno-25-35" name="__codelineno-25-35" href="#__codelineno-25-35"></a><span class="w">          </span><span class="no">azd deploy --no-prompt</span>
-<a id="__codelineno-25-36" name="__codelineno-25-36" href="#__codelineno-25-36"></a>
-<a id="__codelineno-25-37" name="__codelineno-25-37" href="#__codelineno-25-37"></a><span class="w">      </span><span class="c1"># keep the generated Python setup, AgentOps install, eval, Doctor,</span>
-<a id="__codelineno-25-38" name="__codelineno-25-38" href="#__codelineno-25-38"></a><span class="w">      </span><span class="c1"># artifact upload, summary, and PR comment steps below this point</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="nt">jobs</span><span class="p">:</span>
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a><span class="w">  </span><span class="nt">eval</span><span class="p">:</span>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AgentOps eval (PR gate)</span>
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a><span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox</span>
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="w">    </span><span class="nt">concurrency</span><span class="p">:</span>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="w">      </span><span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agentops-sandbox</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="w">      </span><span class="nt">cancel-in-progress</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a><span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Checkout</span>
+<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
+<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>
+<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Set up azd</span>
+<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure/setup-azd@v2</span>
+<a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a>
+<a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure login (OIDC)</span>
+<a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/login@v3</span>
+<a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a><span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a><span class="w">          </span><span class="nt">client-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_CLIENT_ID }}</span>
+<a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a><span class="w">          </span><span class="nt">tenant-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_TENANT_ID }}</span>
+<a id="__codelineno-27-21" name="__codelineno-27-21" href="#__codelineno-27-21"></a><span class="w">          </span><span class="nt">subscription-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
+<a id="__codelineno-27-22" name="__codelineno-27-22" href="#__codelineno-27-22"></a>
+<a id="__codelineno-27-23" name="__codelineno-27-23" href="#__codelineno-27-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy PR candidate to sandbox</span>
+<a id="__codelineno-27-24" name="__codelineno-27-24" href="#__codelineno-27-24"></a><span class="w">        </span><span class="nt">env</span><span class="p">:</span>
+<a id="__codelineno-27-25" name="__codelineno-27-25" href="#__codelineno-27-25"></a><span class="w">          </span><span class="nt">AZURE_ENV_NAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_ENV_NAME }}</span>
+<a id="__codelineno-27-26" name="__codelineno-27-26" href="#__codelineno-27-26"></a><span class="w">          </span><span class="nt">AZURE_LOCATION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_LOCATION }}</span>
+<a id="__codelineno-27-27" name="__codelineno-27-27" href="#__codelineno-27-27"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-27-28" name="__codelineno-27-28" href="#__codelineno-27-28"></a><span class="w">          </span><span class="no">azd env new &quot;$AZURE_ENV_NAME&quot; --no-prompt --subscription &quot;${{ vars.AZURE_SUBSCRIPTION_ID }}&quot; ${AZURE_LOCATION:+--location &quot;$AZURE_LOCATION&quot;} \</span>
+<a id="__codelineno-27-29" name="__codelineno-27-29" href="#__codelineno-27-29"></a><span class="w">            </span><span class="no">|| azd env select &quot;$AZURE_ENV_NAME&quot;</span>
+<a id="__codelineno-27-30" name="__codelineno-27-30" href="#__codelineno-27-30"></a><span class="w">          </span><span class="no">azd env set AZURE_SUBSCRIPTION_ID &quot;${{ vars.AZURE_SUBSCRIPTION_ID }}&quot;</span>
+<a id="__codelineno-27-31" name="__codelineno-27-31" href="#__codelineno-27-31"></a><span class="w">          </span><span class="no">if [ -n &quot;$AZURE_LOCATION&quot; ]; then</span>
+<a id="__codelineno-27-32" name="__codelineno-27-32" href="#__codelineno-27-32"></a><span class="w">            </span><span class="no">azd env set AZURE_LOCATION &quot;$AZURE_LOCATION&quot;</span>
+<a id="__codelineno-27-33" name="__codelineno-27-33" href="#__codelineno-27-33"></a><span class="w">          </span><span class="no">fi</span>
+<a id="__codelineno-27-34" name="__codelineno-27-34" href="#__codelineno-27-34"></a><span class="w">          </span><span class="no">azd provision --no-prompt</span>
+<a id="__codelineno-27-35" name="__codelineno-27-35" href="#__codelineno-27-35"></a><span class="w">          </span><span class="no">azd deploy --no-prompt</span>
+<a id="__codelineno-27-36" name="__codelineno-27-36" href="#__codelineno-27-36"></a>
+<a id="__codelineno-27-37" name="__codelineno-27-37" href="#__codelineno-27-37"></a><span class="w">      </span><span class="c1"># keep the generated Python setup, AgentOps install, eval, Doctor,</span>
+<a id="__codelineno-27-38" name="__codelineno-27-38" href="#__codelineno-27-38"></a><span class="w">      </span><span class="c1"># artifact upload, summary, and PR comment steps below this point</span>
 </code></pre></div>
 <p>Configure a GitHub environment named <code>sandbox</code> with the same Azure OIDC vars you
 use for dev, plus <code>AZURE_ENV_NAME=&lt;sandbox-env-name&gt;</code> and <code>AZURE_LOCATION=&lt;region&gt;</code>.
@@ -1739,10 +1770,10 @@ threshold, failed deployment, or critical finding blocks the merge. The dev
 workflow remains separate and updates dev after merge or manual dispatch.
 See <a href="../ship/">Ship</a> for the OIDC, RBAC, and GitHub environment wiring.</p>
 </div>
-<h2 id="12-ship-observe-and-own">12. Ship, observe, and own<a class="headerlink" href="#12-ship-observe-and-own" title="Permanent link">&para;</a></h2>
+<h2 id="13-ship-observe-and-own">13. Ship, observe, and own<a class="headerlink" href="#13-ship-observe-and-own" title="Permanent link">&para;</a></h2>
 <p>The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
 </code></pre></div>
 <ul>
 <li><strong>Ship.</strong> Push the repo, configure the <code>sandbox</code> and <code>dev</code> GitHub environments
@@ -1767,8 +1798,8 @@ section pages the other tutorials use.</p>
 <li>You pointed AgentOps directly at the orchestrator endpoint and mapped <code>ask</code>
   and <code>text</code> to the real request and response shape.</li>
 <li>You indexed a sample document, built a smoke dataset from its content, and
-  scored answers on relevance and coherence, knowing why that is smoke and not
-  groundedness.</li>
+  scored answers on coherence, similarity, and response completeness, knowing why
+  that is smoke and not groundedness.</li>
 <li>You inspected both the per-row eval evidence and the runtime traces, and you
   know which spans AgentOps emits (<code>agentops.eval.*</code>) versus which come from the
   orchestrator's own runtime telemetry.</li>

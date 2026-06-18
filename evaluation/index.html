@@ -1295,6 +1295,11 @@ for exact-reference checks.</p>
 three-line config still scores the right things. Prompt and hosted agents get
 answer-quality judges, <code>context</code> rows add the RAG set, and tool rows add the
 tool-use set.</p>
+<p>Run <code>agentops eval init</code> after you create the dataset to see the recommendation.
+For HTTP, model, and other local targets, this is recommendation-only: AgentOps
+does not call <code>azd</code> or create <code>eval.yaml</code>. For Foundry prompt agents, the same
+command can also delegate to <code>azd ai agent eval init</code> to create Foundry-native
+eval assets.</p>
 <div class="admonition note">
 <p class="admonition-title">Override only when you must</p>
 <p>Set the <code>evaluators:</code> list in <code>agentops.yaml</code> only when you need to replace
