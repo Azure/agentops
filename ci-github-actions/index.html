@@ -1413,6 +1413,7 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 <h2 id="gitflow-assumed">GitFlow assumed<a class="headerlink" href="#gitflow-assumed" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart LR
     feature["feature/*"] --&gt; prDev["PR eval&lt;br/&gt;candidate"]
+    prDev --&gt; sandbox["sandbox"]
     prDev --&gt; develop["develop"]
     develop --&gt; devDeploy["Eval + deploy&lt;br/&gt;agentops-deploy-dev"]
     devDeploy --&gt; devEnv["dev"]
@@ -1422,6 +1423,7 @@ workflow is available separately when you explicitly generate <code>--kinds doct
     qaDeploy --&gt; qaEnv["qa"]
 
     release --&gt; prProd["PR eval&lt;br/&gt;candidate"]
+    prProd --&gt; sandbox
     prProd --&gt; main["main"]
     main --&gt; prodDeploy["Safety eval + deploy&lt;br/&gt;agentops-deploy-prod"]
     prodDeploy --&gt; prodEnv["production&lt;br/&gt;required reviewers"]
@@ -1431,7 +1433,7 @@ workflow is available separately when you explicitly generate <code>--kinds doct
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
     class feature,develop,release,main branch;
     class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
-    class devEnv,qaEnv,prodEnv env;</code></pre>
+    class sandbox,devEnv,qaEnv,prodEnv env;</code></pre>
 <p>If you are on trunk-based development, generate only the templates you
 need: <code>agentops workflow generate --kinds pr,dev,prod</code>.</p>
 <p>The PR gate validates the candidate before merge. It is not a dev deployment.

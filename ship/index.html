@@ -998,6 +998,7 @@ candidate agent before merge. Deploy workflows run after merge and promote the
 reviewed branch to its environment:</p>
 <pre class="mermaid"><code>flowchart LR
     feature["feature/*"] --&gt; prDev["PR eval&lt;br/&gt;candidate"]
+    prDev --&gt; sandbox["sandbox"]
     prDev --&gt; develop["develop"]
     develop --&gt; devDeploy["Eval + deploy&lt;br/&gt;agentops-deploy-dev"]
     devDeploy --&gt; devEnv["dev"]
@@ -1007,6 +1008,7 @@ reviewed branch to its environment:</p>
     qaDeploy --&gt; qaEnv["qa"]
 
     release --&gt; prProd["PR eval&lt;br/&gt;candidate"]
+    prProd --&gt; sandbox
     prProd --&gt; main["main"]
     main --&gt; prodDeploy["Safety eval + deploy&lt;br/&gt;agentops-deploy-prod"]
     prodDeploy --&gt; prodEnv["production&lt;br/&gt;required reviewers"]
@@ -1016,13 +1018,14 @@ reviewed branch to its environment:</p>
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
     class feature,develop,release,main branch;
     class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
-    class devEnv,qaEnv,prodEnv env;</code></pre>
+    class sandbox,devEnv,qaEnv,prodEnv env;</code></pre>
 <p>The PR gate (<code>agentops-pr.yml</code>) guards every merge. It does not validate the
 already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
-endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in sandbox. A
-per-environment deploy workflow promotes <code>develop</code> to dev, <code>release/**</code> to QA,
-and <code>main</code> to prod. The two you start with are covered next; the full set, with
-the workflow YAML and the GitHub Environment and OIDC setup, is in
+endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in
+sandbox. A per-environment deploy workflow promotes <code>develop</code> to dev,
+<code>release/**</code> to QA, and <code>main</code> to prod. The two you start with are covered next;
+the full set, with the workflow YAML and the GitHub Environment and OIDC setup,
+is in
 <a href="../ci-github-actions/">AgentOps on GitHub Actions</a>.</p>
 <h2 id="the-two-core-workflows">The two core workflows<a class="headerlink" href="#the-two-core-workflows" title="Permanent link">&para;</a></h2>
 <p>A generated AgentOps scaffold ships a PR gate and per-environment deploy
