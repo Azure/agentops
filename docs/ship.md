@@ -10,6 +10,49 @@ and the OIDC and RBAC setup steps, see
 [AgentOps on GitHub Actions](ci-github-actions.md). This page is the overview
 that explains why the pieces fit together.
 
+## How branches map to environments
+
+AgentOps assumes a GitFlow-style branch model. Each long-lived branch maps to a
+GitHub Environment, and a generated pipeline carries changes from the branch to
+that environment through an eval gate. This is the shape the generated workflows
+wire up:
+
+```mermaid
+flowchart LR
+    feat("feature/*") -->|PR| prGate1{{"agentops-pr.yml<br/>(gate)"}}
+    prGate1 -->|merge| dev("develop")
+    dev --> deployDev[/"agentops-deploy-dev.yml"/]
+    deployDev --> DEV(["DEV"])
+
+    rel("release/*") -->|push| deployQa[/"agentops-deploy-qa.yml"/]
+    deployQa --> QA(["QA"])
+
+    rel -->|PR| prGate2{{"agentops-pr.yml<br/>(gate)"}}
+    prGate2 -->|merge| main("main")
+    main --> deployProd[/"agentops-deploy-prod.yml"/]
+    deployProd --> PROD(["PROD<br/>(required reviewers)"])
+
+    subgraph Legend [" "]
+        direction LR
+        lBranch("branch") ~~~ lGate{{"gate"}} ~~~ lPipe[/"pipeline"/] ~~~ lEnv(["environment"])
+    end
+
+    classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
+    classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
+    class feat,dev,rel,main,lBranch branch;
+    class prGate1,prGate2,lGate gate;
+    class deployDev,deployQa,deployProd,lPipe pipeline;
+    class DEV,QA,PROD,lEnv env;
+```
+
+The PR gate (`agentops-pr.yml`) guards every merge, and a per-environment deploy
+workflow promotes `develop` to dev, `release/**` to QA, and `main` to prod. The
+two you start with are covered next; the full set, with the workflow YAML and the
+GitHub Environment and OIDC setup, is in
+[AgentOps on GitHub Actions](ci-github-actions.md).
+
 ## The two core workflows
 
 A generated AgentOps scaffold ships a PR gate and per-environment deploy
