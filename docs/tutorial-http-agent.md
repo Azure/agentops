@@ -202,7 +202,7 @@ gh repo create <owner>/gpt-rag-orchestrator-agentops --private --source . --push
     ```powershell
     # optional: remove the inherited eval pipeline and CI so only AgentOps runs
     Remove-Item -Recurse -Force evaluations
-    Remove-Item -Force .github/workflows/pr_pipeline.yaml, .github/workflows/cicd_pipeline.yaml, .github/workflows/block-pr-to-main.yml
+    Remove-Item -Force .github/workflows/*
     ```
 
 ## 5. Initialize AgentOps against the maf_lite endpoint
