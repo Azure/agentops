@@ -1360,20 +1360,22 @@ the deployment's App Configuration as <code>ORCHESTRATOR_APP_NAME</code> and
 <code>ORCHESTRATOR_APP_ENDPOINT</code>; you can also read the ingress host directly:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">az</span> <span class="n">containerapp</span> <span class="n">show</span> <span class="n">-n</span> <span class="p">&lt;</span><span class="n">ORCHESTRATOR_APP_NAME</span><span class="p">&gt;</span> <span class="n">-g</span> <span class="p">&lt;</span><span class="n">resource-group</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-query</span> <span class="n">properties</span><span class="p">.</span><span class="n">configuration</span><span class="p">.</span><span class="n">ingress</span><span class="p">.</span><span class="n">fqdn</span> <span class="n">-o</span> <span class="n">tsv</span>
 </code></pre></div>
-<p>The <code>POST /orchestrator</code> route authenticates with a shared secret sent as the
-<code>X-API-KEY</code> header (or skips auth when <code>DISABLE_AUTH=true</code> on dev). If your dev
-deployment has auth enabled, AgentOps needs that key. Don't paste the secret as a
-literal: read it straight from Key Vault into this shell session, where it lives
-only until you close the window and is never written to a file or your shell
-history.</p>
-<p>The deployment stores the key in Key Vault as the secret <code>ORCHESTRATOR-APP-APIKEY</code>
-(App Configuration only holds a reference to it, not the value):</p>
+<p>The <code>POST /orchestrator</code> route can authenticate with a shared secret sent as the
+<code>X-API-KEY</code> header, but a standard GPT-RAG dev deploy turns that check off: the
+orchestrator runs with <code>DISABLE_AUTH=true</code> and answers without a key, so AgentOps
+needs no credential. If that is your case, skip to the wizard below. The <code>auth_*</code>
+lines in <code>agentops.yaml</code> are harmless when auth is disabled.</p>
+<p>You only need a key if you deployed with the "use container app API keys" feature
+enabled (<code>useCAppAPIKey=true</code>), which makes the orchestrator require <code>X-API-KEY</code>.
+That same flag is what provisions the secret in Key Vault, named
+<code>ORCHESTRATOR-APP-APIKEY</code> (App Configuration only holds a reference to it, not the
+value). A default deploy does not create it. When you do have it, read it straight
+into this shell session so it is never typed as a literal or written to a file:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">$kv</span> <span class="p">=</span> <span class="n">az</span> <span class="n">keyvault</span> <span class="n">list</span> <span class="n">-g</span> <span class="p">&lt;</span><span class="n">resource-group</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[0].name&quot;</span> <span class="n">-o</span> <span class="n">tsv</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">$env:ORCHESTRATOR_APP_APIKEY</span> <span class="p">=</span> <span class="n">az</span> <span class="n">keyvault</span> <span class="n">secret</span> <span class="n">show</span> <span class="p">-</span><span class="n">-vault-name</span> <span class="nv">$kv</span> <span class="p">-</span><span class="n">-name</span> <span class="n">ORCHESTRATOR-APP-APIKEY</span> <span class="p">-</span><span class="n">-query</span> <span class="n">value</span> <span class="n">-o</span> <span class="n">tsv</span>
 </code></pre></div>
 <p>AgentOps reads the key from the <code>ORCHESTRATOR_APP_APIKEY</code> env var via
-<code>auth_header_env</code> (Section 5), so nothing is ever written to <code>agentops.yaml</code>. If
-your dev deployment runs with <code>DISABLE_AUTH=true</code>, skip this step.</p>
+<code>auth_header_env</code> (Section 5), so nothing is ever written to <code>agentops.yaml</code>.</p>
 <p>Sign in and run the wizard inside the orchestrator repo:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">az</span> <span class="n">login</span>
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">agentops</span> <span class="n">init</span>
