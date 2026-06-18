@@ -116,10 +116,8 @@ work with. This tutorial uses a short sample manual.
 section of a Volkswagen service manual, 28 pages covering the carbureted 1968
 through 1974 models. Save it locally.
 
-For the local walkthrough, index it into the sandbox knowledge base. With the
-GPT-RAG template that is the `documents` blob container in the sandbox storage
-account; dropping a file there triggers ingestion, which chunks, embeds, and
-indexes it into Azure AI Search:
+Upload it to the sandbox `documents` blob container. GPT-RAG ingests it in the
+background and indexes it into Azure AI Search:
 
 ```powershell
 az storage blob upload `
@@ -130,8 +128,7 @@ az storage blob upload `
   --auth-mode login
 ```
 
-Ingestion runs in the background, so give it a couple of minutes before you
-expect grounded answers.
+Give ingestion a couple of minutes before testing grounded answers.
 
 !!! warning "Getting a 'not authorized' / 'do not have permissions to list the data' error?"
     `--auth-mode login` (and the portal's default) authenticates to blobs with
@@ -149,14 +146,6 @@ expect grounded answers.
     In the portal you can instead just use the **Upload** button, which falls back
     to the account access key (the banner is only about the Entra ID attempt), but
     the CLI command above needs the role.
-
-!!! note "This document is a scanned PDF"
-    The sample is image-only, with no text layer. GPT-RAG ingestion runs OCR, so
-    it still indexes cleanly. Any knowledge base works the same way: the only
-    thing that matters is that your agent has indexed content to ground on. If
-    your agent reads a different store, index the document there instead. The rest
-    of the tutorial just assumes the agent can answer questions about this
-    document.
 
 ## 4. Take ownership of the cloned orchestrator
 
