@@ -1204,8 +1204,8 @@ sandbox.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">azd</span> <span class="n">init</span> <span class="n">-t</span> <span class="n">Azure</span><span class="p">/</span><span class="n">gpt-rag</span>
 </code></pre></div>
 <p>Name the environment with a unique suffix so it does not collide with anyone
-else's resource names, for example <code>sandbox-202606181230</code> (the pattern is
-<code>sandbox-yyyymmddhhmm</code>). Then set the required values:</p>
+else's resource names, for example <code>gptrag-sandbox-2606182303</code> (the pattern is
+<code>gptrag-sandbox-yymmddhhmm</code>). Then set the required values:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_LOCATION</span> <span class="p">&lt;</span><span class="n">region</span><span class="p">&gt;</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_SUBSCRIPTION_ID</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
 </code></pre></div>
@@ -1228,9 +1228,9 @@ answers over HTTP at <code>POST /orchestrator</code>.</p>
 </div>
 <h2 id="2-stand-up-a-dev-environment">2. Stand up a dev environment<a class="headerlink" href="#2-stand-up-a-dev-environment" title="Permanent link">&para;</a></h2>
 <p>Create a second environment in the same checkout, set its values, and deploy it.
-Give it its own unique suffix, for example <code>dev-202606181230</code> (pattern
-<code>dev-yyyymmddhhmm</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="n">new</span> <span class="n">dev</span><span class="p">-</span><span class="n">202606181230</span>
+Give it its own unique suffix, for example <code>gptrag-dev-2606182303</code> (pattern
+<code>gptrag-dev-yymmddhhmm</code>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="n">new</span> <span class="n">gptrag-dev</span><span class="p">-</span><span class="n">2606182303</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_LOCATION</span> <span class="p">&lt;</span><span class="n">region</span><span class="p">&gt;</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_SUBSCRIPTION_ID</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">azd</span> <span class="n">up</span>
