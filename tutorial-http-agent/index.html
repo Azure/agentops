@@ -1359,13 +1359,20 @@ reads the stream when you set <code>response_mode: text</code>, drops the leadin
 conversation id, and scores the final answer. This needs AgentOps 0.4.4 or
 newer.</p>
 </div>
-<p>Get the dev orchestrator URL. The Container App name and endpoint are stored in
-the deployment's App Configuration as <code>ORCHESTRATOR_APP_NAME</code> and
+<p>Use the sandbox orchestrator for local AgentOps setup and local eval runs. Dev is
+for the PR workflow later. If your last <code>azd up</code> was the dev deployment, select
+the sandbox again from the GPT-RAG checkout before you read resource names:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd </span><span class="p">../</span><span class="n">gpt-rag</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">select </span><span class="p">&lt;</span><span class="n">sandbox-env-name</span><span class="p">&gt;</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">get-values</span>
+</code></pre></div>
+<p>Get the sandbox orchestrator URL. The Container App name and endpoint are stored
+in the deployment's App Configuration as <code>ORCHESTRATOR_APP_NAME</code> and
 <code>ORCHESTRATOR_APP_ENDPOINT</code>; you can also read the ingress host directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">az</span> <span class="n">containerapp</span> <span class="n">show</span> <span class="n">-n</span> <span class="p">&lt;</span><span class="n">ORCHESTRATOR_APP_NAME</span><span class="p">&gt;</span> <span class="n">-g</span> <span class="p">&lt;</span><span class="n">resource-group</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-query</span> <span class="n">properties</span><span class="p">.</span><span class="n">configuration</span><span class="p">.</span><span class="n">ingress</span><span class="p">.</span><span class="n">fqdn</span> <span class="n">-o</span> <span class="n">tsv</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">az</span> <span class="n">containerapp</span> <span class="n">show</span> <span class="n">-n</span> <span class="p">&lt;</span><span class="n">ORCHESTRATOR_APP_NAME</span><span class="p">&gt;</span> <span class="n">-g</span> <span class="p">&lt;</span><span class="n">resource-group</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-query</span> <span class="n">properties</span><span class="p">.</span><span class="n">configuration</span><span class="p">.</span><span class="n">ingress</span><span class="p">.</span><span class="n">fqdn</span> <span class="n">-o</span> <span class="n">tsv</span>
 </code></pre></div>
 <p>The <code>POST /orchestrator</code> route can authenticate with a shared secret sent as the
-<code>X-API-KEY</code> header, but a standard GPT-RAG dev deploy turns that check off: the
+<code>X-API-KEY</code> header, but a standard GPT-RAG deploy turns that check off: the
 orchestrator runs with <code>DISABLE_AUTH=true</code> and answers without a key, so AgentOps
 needs no credential. If that is your case, skip to the wizard below. The <code>auth_*</code>
 lines in <code>agentops.yaml</code> are harmless when auth is disabled.</p>
@@ -1375,16 +1382,16 @@ That same flag is what provisions the secret in Key Vault, named
 <code>ORCHESTRATOR-APP-APIKEY</code> (App Configuration only holds a reference to it, not the
 value). A default deploy does not create it. When you do have it, read it straight
 into this shell session so it is never typed as a literal or written to a file:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nv">$kv</span> <span class="p">=</span> <span class="n">az</span> <span class="n">keyvault</span> <span class="n">list</span> <span class="n">-g</span> <span class="p">&lt;</span><span class="n">resource-group</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[0].name&quot;</span> <span class="n">-o</span> <span class="n">tsv</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nv">$env:ORCHESTRATOR_APP_APIKEY</span> <span class="p">=</span> <span class="n">az</span> <span class="n">keyvault</span> <span class="n">secret</span> <span class="n">show</span> <span class="p">-</span><span class="n">-vault-name</span> <span class="nv">$kv</span> <span class="p">-</span><span class="n">-name</span> <span class="n">ORCHESTRATOR-APP-APIKEY</span> <span class="p">-</span><span class="n">-query</span> <span class="n">value</span> <span class="n">-o</span> <span class="n">tsv</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nv">$kv</span> <span class="p">=</span> <span class="n">az</span> <span class="n">keyvault</span> <span class="n">list</span> <span class="n">-g</span> <span class="p">&lt;</span><span class="n">resource-group</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[0].name&quot;</span> <span class="n">-o</span> <span class="n">tsv</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">$env:ORCHESTRATOR_APP_APIKEY</span> <span class="p">=</span> <span class="n">az</span> <span class="n">keyvault</span> <span class="n">secret</span> <span class="n">show</span> <span class="p">-</span><span class="n">-vault-name</span> <span class="nv">$kv</span> <span class="p">-</span><span class="n">-name</span> <span class="n">ORCHESTRATOR-APP-APIKEY</span> <span class="p">-</span><span class="n">-query</span> <span class="n">value</span> <span class="n">-o</span> <span class="n">tsv</span>
 </code></pre></div>
 <p>AgentOps reads the key from the <code>ORCHESTRATOR_APP_APIKEY</code> env var via
 <code>auth_header_env</code> (Section 5), so nothing is ever written to <code>agentops.yaml</code>.</p>
 <p>Sign in and run the wizard inside the orchestrator repo:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">az</span> <span class="n">login</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">agentops</span> <span class="n">init</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">az</span> <span class="n">login</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">agentops</span> <span class="n">init</span>
 </code></pre></div>
-<p>Answer the prompts with the dev orchestrator values:</p>
+<p>Answer the prompts with the sandbox orchestrator values:</p>
 <table>
 <thead>
 <tr>
@@ -1395,11 +1402,11 @@ into this shell session so it is never typed as a literal or written to a file:<
 <tbody>
 <tr>
 <td>Foundry project endpoint</td>
-<td>The dev Foundry project endpoint for the judge model, or press Enter to set it later.</td>
+<td>The sandbox Foundry project endpoint for the judge model, or press Enter to set it later.</td>
 </tr>
 <tr>
 <td>Agent</td>
-<td>The dev orchestrator URL, for example <code>https://&lt;orchestrator-fqdn&gt;/orchestrator</code>.</td>
+<td>The sandbox orchestrator URL, for example <code>https://&lt;orchestrator-fqdn&gt;/orchestrator</code>.</td>
 </tr>
 <tr>
 <td>Dataset path</td>
@@ -1408,22 +1415,22 @@ into this shell session so it is never typed as a literal or written to a file:<
 </tbody>
 </table>
 <p>Then edit <code>agentops.yaml</code> so AgentOps reads the streamed response correctly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>edit agentops.yaml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>edit agentops.yaml
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;orchestrator-fqdn&gt;/orchestrator</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/vw-smoke.jsonl</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ask</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="nt">stream</span><span class="p">:</span>
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a><span class="w">  </span><span class="nt">strip_leading_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a><span class="nt">auth_header_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-API-KEY</span>
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a><span class="nt">auth_value_template</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{token}&quot;</span>
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ORCHESTRATOR_APP_APIKEY</span>
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="nt">evaluators</span><span class="p">:</span>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="w">  </span><span class="nt">relevance</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;orchestrator-fqdn&gt;/orchestrator</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/vw-smoke.jsonl</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ask</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="nt">stream</span><span class="p">:</span>
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a><span class="w">  </span><span class="nt">strip_leading_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a><span class="nt">auth_header_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-API-KEY</span>
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a><span class="nt">auth_value_template</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;{token}&quot;</span>
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ORCHESTRATOR_APP_APIKEY</span>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="nt">evaluators</span><span class="p">:</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="w">  </span><span class="nt">relevance</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
 </code></pre></div>
 <table>
 <thead>
@@ -1435,7 +1442,7 @@ into this shell session so it is never typed as a literal or written to a file:<
 <tbody>
 <tr>
 <td><code>agent</code></td>
-<td>The dev orchestrator URL AgentOps calls with <code>POST</code>.</td>
+<td>The sandbox orchestrator URL AgentOps calls with <code>POST</code> for local eval runs.</td>
 </tr>
 <tr>
 <td><code>protocol: http-json</code></td>
@@ -1485,12 +1492,12 @@ emits structured <code>data:</code> JSON frames instead of raw text, set
 <p>Create a small JSONL dataset grounded in the document you indexed. Each row is
 one line of JSON: an <code>input</code> to ask and an <code>expected</code> describing the behavior you
 want.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>edit .agentops/data/vw-smoke.jsonl
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>edit .agentops/data/vw-smoke.jsonl
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;States the fuel tank holds 15.8 U.S. gallons (about 60 liters) and sits beneath the rear luggage area ahead of the engine. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;Which carburetor did the 1970 model use?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Identifies a single Solex 30 PICT-3 carburetor for the 1970 model. Concise and on topic.&quot;</span><span class="p">}</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What does the evaporative emission control system do?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Explains it keeps gasoline fumes from escaping to the atmosphere by venting the tank into a system that traps fuel vapors until the engine burns them, standard from the 1970 models. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the 0 to 100 km/h time of the latest electric Volkswagen ID.4?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Makes clear the indexed document does not cover modern electric models and does not invent a figure.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;States the fuel tank holds 15.8 U.S. gallons (about 60 liters) and sits beneath the rear luggage area ahead of the engine. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;Which carburetor did the 1970 model use?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Identifies a single Solex 30 PICT-3 carburetor for the 1970 model. Concise and on topic.&quot;</span><span class="p">}</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What does the evaporative emission control system do?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Explains it keeps gasoline fumes from escaping to the atmosphere by venting the tank into a system that traps fuel vapors until the engine burns them, standard from the 1970 models. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the 0 to 100 km/h time of the latest electric Volkswagen ID.4?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Makes clear the indexed document does not cover modern electric models and does not invent a figure.&quot;</span><span class="p">}</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">input maps to ask</p>
@@ -1510,7 +1517,7 @@ groundedness, evaluate a target that also returns its retrieved context. See
 </div>
 <h2 id="7-run-evals-locally-against-the-sandbox">7. Run evals locally against the sandbox<a class="headerlink" href="#7-run-evals-locally-against-the-sandbox" title="Permanent link">&para;</a></h2>
 <p>With the dataset and target set, run the gate from the orchestrator repo:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>You should see a <code>Threshold status</code> line and normalized output written under
 <code>.agentops/results/latest/</code>.</p>
@@ -1528,12 +1535,12 @@ metric concepts.</p>
 <p><strong>Per-row evidence (local).</strong> Every run writes normalized output under
 <code>.agentops/results/latest/</code>. Open <code>report.md</code> to read each input, the aggregated
 answer, the judge scores, and pass or fail against your thresholds:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
 <p><strong>Runtime traces (Azure Monitor / Foundry).</strong> Set an Application Insights
 connection string before the run so the spans land somewhere you can read them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="s2">&quot;&lt;app-insights-connection-string&gt;&quot;</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="s2">&quot;&lt;app-insights-connection-string&gt;&quot;</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>Two different kinds of trace show up, from two different producers:</p>
 <ul>
@@ -1574,36 +1581,36 @@ fail the PR.</p>
 <h3 id="scaffold-both-recommended">Scaffold both (recommended)<a class="headerlink" href="#scaffold-both-recommended" title="Permanent link">&para;</a></h3>
 <p>Let the governance skill write the config and the <code>agentops.yaml</code> blocks for your
 target:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>/skills agentops-governance
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>/skills agentops-governance
 </code></pre></div>
 <p>Ask it to scaffold ASSERT and the Red Team runner for this workspace, target your
 orchestrator's chat model deployment, judge with safety-core and alignment, and
 fail Red Team when the attack success rate exceeds 20 percent.</p>
 <h3 id="or-add-the-blocks-yourself">Or add the blocks yourself<a class="headerlink" href="#or-add-the-blocks-yourself" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
 </code></pre></div>
 <p>Append to <code>agentops.yaml</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nt">assert</span><span class="p">:</span>
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span>
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="nt">redteam</span><span class="p">:</span>
-<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span>
-<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">    </span><span class="nt">model_deployment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;your-chat-model-deployment&gt;</span>
-<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nt">assert</span><span class="p">:</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="nt">redteam</span><span class="p">:</span>
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span>
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="w">    </span><span class="nt">model_deployment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;your-chat-model-deployment&gt;</span>
+<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-23-10" name="__codelineno-23-10" href="#__codelineno-23-10"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<a id="__codelineno-23-11" name="__codelineno-23-11" href="#__codelineno-23-11"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
 </code></pre></div>
 <p>ASSERT calls models through LiteLLM, which for Azure OpenAI expects three vars in
 your shell or <code>.agentops/.env</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nv">$env:AZURE_API_KEY</span> <span class="p">=</span> <span class="s2">&quot;&lt;your Azure OpenAI account key&gt;&quot;</span>
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="nv">$env:AZURE_API_BASE</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="nv">$env:AZURE_API_VERSION</span> <span class="p">=</span> <span class="s2">&quot;2024-10-21&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nv">$env:AZURE_API_KEY</span> <span class="p">=</span> <span class="s2">&quot;&lt;your Azure OpenAI account key&gt;&quot;</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="nv">$env:AZURE_API_BASE</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="nv">$env:AZURE_API_VERSION</span> <span class="p">=</span> <span class="s2">&quot;2024-10-21&quot;</span>
 </code></pre></div>
 <p>Run both gates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
 </code></pre></div>
 <p>ASSERT writes <code>.agentops/assert/latest.json</code> and Red Team writes
 <code>.agentops/redteam/latest.json</code>. Each exits non-zero on a policy violation or
@@ -1622,7 +1629,10 @@ is <code>risk_categories x attack_strategies x num_objectives</code> and grows q
 AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
 upstream orchestrator shipped. The orchestrator's <code>azure.yaml</code> is used only as
 the deploy project, so the deploy mode is <code>azd</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">-</span><span class="n">-force</span>
+<p>The local evals above use your sandbox endpoint. The PR gate generated here uses
+the dev environment, so pull requests are checked against the same deployment the
+dev workflow updates.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">-</span><span class="n">-force</span>
 </code></pre></div>
 <p>This writes two files, both prefixed <code>agentops-</code> so they never collide with the
 orchestrator's existing workflows:</p>
@@ -1674,7 +1684,7 @@ wiring instead of reproducing it here.</p>
 <h2 id="11-ship-observe-and-own">11. Ship, observe, and own<a class="headerlink" href="#11-ship-observe-and-own" title="Permanent link">&para;</a></h2>
 <p>The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
 </code></pre></div>
 <ul>
 <li><strong>Ship.</strong> Push the repo, configure the <code>dev</code> GitHub environment and Azure
