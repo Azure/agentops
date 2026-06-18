@@ -1380,7 +1380,7 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 <tbody>
 <tr>
 <td><code>agentops-pr.yml</code></td>
-<td>PRs to <code>develop</code>, <code>release/**</code>, <code>main</code></td>
+<td>PRs to <code>develop</code>, <code>release/**</code></td>
 <td><code>sandbox</code> for prompt-agent PR candidates, <code>dev</code> for generic PR gates</td>
 <td>Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via <code>--doctor-gate</code>) + PR comment</td>
 </tr>
@@ -1400,7 +1400,7 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 <td><code>agentops-deploy-prod.yml</code></td>
 <td>push to <code>main</code></td>
 <td><code>production</code></td>
-<td>Safety eval → evidence → build → deploy PROD</td>
+<td>Deploy PROD → smoke test</td>
 </tr>
 <tr>
 <td><code>agentops-doctor.yml</code></td>
@@ -1422,11 +1422,10 @@ workflow is available separately when you explicitly generate <code>--kinds doct
     release --&gt; qaDeploy["Eval + deploy&lt;br/&gt;agentops-deploy-qa"]
     qaDeploy --&gt; qaEnv["qa"]
 
-    release --&gt; prProd["PR eval&lt;br/&gt;candidate"]
-    prProd --&gt; sandbox
+    release --&gt; prProd["PR static&lt;br/&gt;checks"]
     prProd --&gt; main["main"]
-    main --&gt; prodDeploy["Safety eval + deploy&lt;br/&gt;agentops-deploy-prod"]
-    prodDeploy --&gt; prodEnv["production&lt;br/&gt;required reviewers"]
+    main --&gt; prodDeploy["Deploy + smoke test&lt;br/&gt;agentops-deploy-prod"]
+    prodDeploy --&gt; prodEnv["production"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
@@ -1436,9 +1435,11 @@ workflow is available separately when you explicitly generate <code>--kinds doct
     class sandbox,devEnv,qaEnv,prodEnv env;</code></pre>
 <p>If you are on trunk-based development, generate only the templates you
 need: <code>agentops workflow generate --kinds pr,dev,prod</code>.</p>
-<p>The PR gate validates the candidate before merge. It is not a dev deployment.
-HTTP agent tutorials point that candidate at the sandbox endpoint; prompt-agent
-workflows stage and evaluate the candidate prompt version in sandbox.</p>
+<p>The PR gate validates candidates before they enter <code>develop</code> or <code>release/**</code>. It
+is not a dev deployment. HTTP agent tutorials point that candidate at the
+sandbox endpoint; prompt-agent workflows stage and evaluate the candidate prompt
+version in sandbox. The PR from <code>release/**</code> to <code>main</code> is static review only and
+does not call agents.</p>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 1. Analyze and fix eval setup before the first blocking run.</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze
@@ -1570,9 +1571,6 @@ Monitor Logs.</p>
 </ul>
 <h4 id="production"><code>production</code><a class="headerlink" href="#production" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>Required reviewers</strong>: at least one. Deploys to PROD pause until
-  approved.</li>
-<li>Optional: <strong>Wait timer</strong> for an extra cool-down.</li>
 <li>Optional: <strong>Deployment branches</strong>: restrict to <code>main</code>.</li>
 <li>Override env-specific variables for production infra.</li>
 </ul>
