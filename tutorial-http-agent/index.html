@@ -1205,9 +1205,12 @@ sandbox.</p>
 </code></pre></div>
 <p>Name the environment with a unique suffix so it does not collide with anyone
 else's resource names, for example <code>gptrag-sandbox-2606182303</code> (the pattern is
-<code>gptrag-sandbox-yymmddhhmm</code>). Then set the required values:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_LOCATION</span> <span class="p">&lt;</span><span class="n">region</span><span class="p">&gt;</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_SUBSCRIPTION_ID</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
+<code>gptrag-sandbox-yymmddhhmm</code>).</p>
+<p>azd downloads the template into a <code>gpt-rag</code> directory. Change into it, then set
+the required values:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">cd </span><span class="n">gpt-rag</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_LOCATION</span> <span class="p">&lt;</span><span class="n">region</span><span class="p">&gt;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_SUBSCRIPTION_ID</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
 </code></pre></div>
 <div class="admonition tip">
 <p class="admonition-title">Why a unique name</p>
