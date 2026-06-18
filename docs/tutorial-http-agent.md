@@ -132,6 +132,23 @@ az storage blob upload `
 Ingestion runs in the background, so give it a couple of minutes before you
 expect grounded answers.
 
+!!! warning "Getting a 'not authorized' / 'do not have permissions to list the data' error?"
+    `--auth-mode login` (and the portal's default) authenticates to blobs with
+    your Microsoft Entra ID, which needs a *data-plane* role. Being Owner or
+    Contributor on the subscription only grants *control-plane* access, so you can
+    see the storage account but not its blobs. Grant yourself the data role once,
+    wait a few minutes for it to propagate, then retry:
+
+    ```powershell
+    $me = az ad signed-in-user show --query id -o tsv
+    $scope = az storage account show -n <storage-account> -g <resource-group> --query id -o tsv
+    az role assignment create --assignee $me --role "Storage Blob Data Contributor" --scope $scope
+    ```
+
+    In the portal you can instead just use the **Upload** button, which falls back
+    to the account access key (the banner is only about the Entra ID attempt), but
+    the CLI command above needs the role.
+
 !!! note "This document is a scanned PDF"
     The sample is image-only, with no text layer. GPT-RAG ingestion runs OCR, so
     it still indexes cleanly. Any knowledge base works the same way: the only
