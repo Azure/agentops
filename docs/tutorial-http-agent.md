@@ -242,7 +242,7 @@ endpoint:
 azd env select <sandbox-env-name>
 $fqdn = azd env get-value CONTAINER_APP_INTERNAL_FQDN
 $agent = "https://$fqdn/orchestrator"
-az containerapp update -n ($fqdn -split '\.')[0] -g (azd env get-value AZURE_RESOURCE_GROUP) --set-env-vars DISABLE_AUTH=true
+az containerapp update -n ($fqdn -split '\.')[0] -g (azd env get-value AZURE_RESOURCE_GROUP) --set-env-vars DISABLE_AUTH=true --only-show-errors --output none
 $agent
 ```
 
