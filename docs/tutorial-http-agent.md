@@ -20,9 +20,14 @@ flowchart LR
     E --> S --> O --> W
 ```
 
-Sandbox is the environment you deploy first and experiment against. Dev is the
-shared environment CI deploys and evaluates on every PR. The PR gate proves the
-deployed HTTP endpoint still passes your thresholds before a merge ships it.
+Use the environments this way:
+
+| Environment | Used for | When AgentOps points at it |
+|---|---|---|
+| `sandbox` | Your local walkthrough: upload the sample PDF, initialize AgentOps, and run the first evals. | Sections 3 through 8. |
+| `dev` | The shared deployment that GitHub Actions uses for PR checks. | Section 10 and later, after you switch `agentops.yaml` from sandbox to dev. |
+
+The important rule is: **local evals use sandbox; PR evals use dev**.
 
 !!! info "HTTP agent vs Foundry prompt agent"
     A Foundry prompt agent is referenced as `name:version` and hosted by
@@ -100,11 +105,9 @@ azd up
 ```
 
 !!! info "Why a separate dev environment"
-    The PR gate must evaluate a deployed target that is not your sandbox
-    playground. Dev is the environment CI deploys and evaluates on every PR, so
-    a passing gate means the reviewed change is healthy in a real deployment.
-    See [Ship](ship.md) and [Evaluation](evaluation.md) for the release
-    contract and scoring depth.
+    Sandbox is your local playground. Dev is the shared deployment the PR gate
+    checks before merge. Keeping them separate means local experiments do not
+    accidentally change what CI is validating.
 
 ## 3. Index a document so the agent has something to answer
 
@@ -115,10 +118,10 @@ work with. This tutorial uses a short sample manual.
 section of a Volkswagen service manual, 28 pages covering the carbureted 1968
 through 1974 models. Save it locally.
 
-Index it into the knowledge base behind the environment you will evaluate. With
-the GPT-RAG template that is the `documents` blob container in that environment's
-storage account; dropping a file there triggers ingestion, which chunks, embeds,
-and indexes it into Azure AI Search:
+For the local walkthrough, index it into the sandbox knowledge base. With the
+GPT-RAG template that is the `documents` blob container in the sandbox storage
+account; dropping a file there triggers ingestion, which chunks, embeds, and
+indexes it into Azure AI Search:
 
 ```powershell
 az storage blob upload `
@@ -130,7 +133,9 @@ az storage blob upload `
 ```
 
 Ingestion runs in the background, so give it a couple of minutes before you
-expect grounded answers.
+expect grounded answers. Before you switch the PR gate to dev in Section 10,
+upload the same document to the dev storage account too, or the dev evals will
+not have the same knowledge.
 
 !!! warning "Getting a 'not authorized' / 'do not have permissions to list the data' error?"
     `--auth-mode login` (and the portal's default) authenticates to blobs with
@@ -279,6 +284,7 @@ AgentOps reads the key from the `ORCHESTRATOR_APP_APIKEY` env var via
 Sign in and run the wizard inside the orchestrator repo:
 
 ```powershell
+cd ../gpt-rag-orchestrator
 az login
 agentops init
 ```
@@ -512,9 +518,33 @@ AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
 upstream orchestrator shipped. The orchestrator's `azure.yaml` is used only as
 the deploy project, so the deploy mode is `azd`.
 
-The local evals above use your sandbox endpoint. The PR gate generated here uses
-the dev environment, so pull requests are checked against the same deployment the
-dev workflow updates.
+Before you generate workflows, switch `agentops.yaml` from sandbox to dev:
+
+1. Upload the same sample PDF to the dev environment's `documents` container, if
+   you have not done that yet.
+2. Get the dev orchestrator URL from the GPT-RAG checkout:
+
+    ```powershell
+    cd ../gpt-rag
+    azd env select <dev-env-name>
+    azd env get-values
+    ```
+
+3. Edit `agentops.yaml` in the orchestrator repo and set `agent` to the dev
+   endpoint:
+
+    ```powershell
+    cd ../gpt-rag-orchestrator
+    edit agentops.yaml
+    ```
+
+    ```yaml
+    agent: https://<dev-orchestrator-fqdn>/orchestrator
+    ```
+
+Local evals above used sandbox so you could iterate safely. The PR workflow
+generated below runs `agentops eval run` with `environment: dev`, so the checked
+in `agentops.yaml` must point at the dev endpoint before you commit the workflows.
 
 ```powershell
 agentops workflow generate --kinds pr,dev --deploy-mode azd --doctor-gate critical --force
@@ -540,11 +570,11 @@ orchestrator's existing workflows:
     re-run `agentops workflow generate` any time to regenerate yours.
 
 !!! info "What the PR gate does"
-    The generated PR workflow runs `agentops eval run` against the dev orchestrator endpoint
-    from `agentops.yaml`, applies your thresholds, then runs Doctor with
-    `--severity-fail critical`. A failing threshold or a critical finding blocks
-    the merge. See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment
-    wiring instead of reproducing it here.
+    The generated PR workflow runs `agentops eval run` with the dev GitHub
+    environment. It uses the dev endpoint checked into `agentops.yaml`, applies
+    your thresholds, then runs Doctor with `--severity-fail critical`. A failing
+    threshold or a critical finding blocks the merge. See [Ship](ship.md) for the
+    OIDC, RBAC, and GitHub environment wiring instead of reproducing it here.
 
 ## 11. Ship, observe, and own
 
@@ -570,8 +600,8 @@ agentops doctor --evidence-pack
   GPT-RAG orchestrator is the former.
 - You deployed the GPT-RAG template into a sandbox and a dev environment, and you
   know why the PR gate evaluates dev rather than sandbox.
-- You took ownership of the cloned orchestrator by removing the upstream remote
-  and starting your own repository.
+- You took ownership of the cloned orchestrator by re-initializing its git
+  history and starting your own repository.
 - You pointed AgentOps directly at the orchestrator's streaming endpoint with
   `response_mode: text`, and you can map `ask` and `text` to the real request and
   response shape.
