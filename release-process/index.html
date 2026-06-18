@@ -2154,7 +2154,7 @@
     build["_build&lt;br/&gt;tests + package&lt;br/&gt;Version: 0.2.0 (clean, from tag)"]
     publishTest["publish-testpypi&lt;br/&gt;Final TestPyPI upload (clean version)"]
     verifyTest["verify-testpypi&lt;br/&gt;Smoke test from TestPyPI"]
-    publishPypipublish-pypi (pauses)&lt;br/&gt;requires approval&lt;br/&gt;Uses PYPI_TOKEN&lt;br/&gt;environment: release
+    publishPypi["publish-pypi (pauses)&lt;br/&gt;requires approval&lt;br/&gt;Uses PYPI_TOKEN&lt;br/&gt;environment: release"]
     ghRelease["github-release&lt;br/&gt;Creates GitHub Release with artifacts&lt;br/&gt;Auto-generated release notes"]
 
     tag --&gt; build --&gt; publishTest --&gt; verifyTest --&gt; publishPypi --&gt; ghRelease
@@ -2534,7 +2534,7 @@
 <pre class="mermaid"><code>flowchart TD
     feat["feature/*"] --&gt;|PR| develop(["develop"])
     develop --&gt; ci["CI (ci.yml)&lt;br/&gt;lint + test + coverage&lt;br/&gt;publish-dev → TestPyPI (dev version)"]
-    develop --&gt; cutCut Release (cut-release.yml)&lt;br/&gt;manual dispatch - enter version
+    develop --&gt; cut["Cut Release (cut-release.yml)&lt;br/&gt;manual dispatch - enter version"]
     cut --&gt; rel(["release/v0.2.0"])
 
     rel --&gt; stagingBuild["_build&lt;br/&gt;test + build"]
@@ -2547,7 +2547,7 @@
     tag --&gt; relBuild["_build"]
     relBuild --&gt; relTest["TestPyPI"]
     relTest --&gt; relVerify["Verify"]
-    relVerify --&gt; relPypiPyPI&lt;br/&gt;(approval)
+    relVerify --&gt; relPypi["PyPI&lt;br/&gt;(approval)"]
     relPypi --&gt; relGh["GitHub Release"]
 
     main --&gt;|merge back| develop
@@ -2618,6 +2618,10 @@
     
     
       <script src="../assets/javascripts/bundle.56dfad97.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+        <script src="../javascripts/mermaid.js"></script>
       
     
   </body>

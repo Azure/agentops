@@ -1412,32 +1412,25 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 </table>
 <h2 id="gitflow-assumed">GitFlow assumed<a class="headerlink" href="#gitflow-assumed" title="Permanent link">&para;</a></h2>
 <pre class="mermaid"><code>flowchart LR
-    feat("feature/*") --&gt;|PR| prGate1{{"agentops-pr.yml&lt;br/&gt;(gate)"}}
+    feat["feature/*"] --&gt;|PR gate| prGate1["agentops-pr"]
     prGate1 --&gt;|merge| dev("develop")
-    dev --&gt; deployDev[/"agentops-deploy-dev.yml"/]
-    deployDev --&gt; DEV(["DEV"])
+    dev --&gt;|deploy| deployDev["agentops-deploy-dev"]
+    deployDev --&gt; DEV["DEV"]
 
-    rel("release/*") --&gt;|push| deployQa[/"agentops-deploy-qa.yml"/]
-    deployQa --&gt; QA(["QA"])
+    rel["release/*"] --&gt;|push| deployQa["agentops-deploy-qa"]
+    deployQa --&gt; QA["QA"]
 
-    rel --&gt;|PR| prGate2{{"agentops-pr.yml&lt;br/&gt;(gate)"}}
+    rel --&gt;|PR gate| prGate2["agentops-pr"]
     prGate2 --&gt;|merge| main("main")
-    main --&gt; deployProd[/"agentops-deploy-prod.yml"/]
-    deployProd --&gt; PROD(["PROD&lt;br/&gt;(required reviewers)"])
-
-    subgraph Legend [" "]
-        direction LR
-        lBranch("branch") ~~~ lGate{{"gate"}} ~~~ lPipe[/"pipeline"/] ~~~ lEnv(["environment"])
-    end
+    main --&gt;|deploy| deployProd["agentops-deploy-prod"]
+    deployProd --&gt; PROD["PROD required reviewers"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
-    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-    class feat,dev,rel,main,lBranch branch;
-    class prGate1,prGate2,lGate gate;
-    class deployDev,deployQa,deployProd,lPipe pipeline;
-    class DEV,QA,PROD,lEnv env;</code></pre>
+    class feat,dev,rel,main branch;
+    class prGate1,prGate2,deployDev,deployQa,deployProd pipeline;
+    class DEV,QA,PROD env;</code></pre>
 <p>If you are on trunk-based development, generate only the templates you
 need: <code>agentops workflow generate --kinds pr,dev,prod</code>.</p>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
@@ -2015,6 +2008,10 @@ keep their generated <code>--severity-fail</code> value until you re-generate wi
     
     
       <script src="../assets/javascripts/bundle.56dfad97.min.js"></script>
+      
+        <script src="https://unpkg.com/mermaid@10/dist/mermaid.min.js"></script>
+      
+        <script src="../javascripts/mermaid.js"></script>
       
     
   </body>
