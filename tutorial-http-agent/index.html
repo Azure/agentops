@@ -553,9 +553,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-initialize-agentops-against-the-maf_lite-endpoint" class="md-nav__link">
+  <a href="#5-initialize-agentops-against-the-orchestrator-endpoint" class="md-nav__link">
     <span class="md-ellipsis">
-      5. Initialize AgentOps against the maf_lite endpoint
+      5. Initialize AgentOps against the orchestrator endpoint
     </span>
   </a>
   
@@ -1044,9 +1044,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#5-initialize-agentops-against-the-maf_lite-endpoint" class="md-nav__link">
+  <a href="#5-initialize-agentops-against-the-orchestrator-endpoint" class="md-nav__link">
     <span class="md-ellipsis">
-      5. Initialize AgentOps against the maf_lite endpoint
+      5. Initialize AgentOps against the orchestrator endpoint
     </span>
   </a>
   
@@ -1160,10 +1160,10 @@
 <h1 id="http-agent-to-dev">HTTP agent to dev<a class="headerlink" href="#http-agent-to-dev" title="Permanent link">&para;</a></h1>
 <p>Use this tutorial when your agent runs as an HTTP service behind a URL, not as a
 Foundry-managed prompt agent. The worked example is the GPT-RAG orchestrator
-deployed by the <code>Azure/gpt-rag</code> template, which runs its <code>maf_lite</code> strategy as a
-FastAPI app inside an Azure Container App. You deploy it, take ownership of the
-cloned orchestrator, and add an AgentOps PR gate that evaluates the HTTP endpoint
-before merge.</p>
+deployed by the <code>Azure/gpt-rag</code> template. It is a FastAPI service inside an
+Azure Container App, exposed at <code>POST /orchestrator</code>. You deploy it, take
+ownership of the cloned orchestrator, and add an AgentOps PR gate that evaluates
+the HTTP endpoint before merge.</p>
 <p>The path is the same sandbox to dev story as the other tutorials, adapted for an
 endpoint-based agent:</p>
 <pre class="mermaid"><code>flowchart LR
@@ -1200,9 +1200,8 @@ endpoint-based agent:</p>
 <p class="admonition-title">HTTP agent vs Foundry prompt agent</p>
 <p>A Foundry prompt agent is referenced as <code>name:version</code> and hosted by
 Foundry. An HTTP agent is any service you call at a URL. The GPT-RAG
-orchestrator answers over HTTP because <code>maf_lite</code> is its default strategy,
-so you evaluate it by posting requests to its endpoint, not by staging a
-prompt version.</p>
+orchestrator answers over HTTP at <code>POST /orchestrator</code>, so you evaluate it
+by posting requests to that endpoint, not by staging a prompt version.</p>
 </div>
 <h2 id="before-you-run-the-tutorial">Before you run the tutorial<a class="headerlink" href="#before-you-run-the-tutorial" title="Permanent link">&para;</a></h2>
 <p>Have these ready once, so the walkthrough stays on the deploy and evaluate flow
@@ -1245,9 +1244,8 @@ a timestamp suffix keeps yours distinct.</p>
 <p class="admonition-title">What the deploy does</p>
 <p>A predeploy hook reads <code>manifest.json</code> and clones each component from
 upstream. The orchestrator is cloned into a sibling <code>gpt-rag-orchestrator</code>
-directory, pinned to tag <code>v2.8.6</code>, and built into a container image. Because
-<code>maf_lite</code> is the orchestrator's default strategy, the deployed orchestrator
-answers over HTTP at <code>POST /orchestrator</code>.</p>
+directory, pinned to tag <code>v2.8.6</code>, and built into a container image. The
+deployed orchestrator answers over HTTP at <code>POST /orchestrator</code>.</p>
 </div>
 <h2 id="2-stand-up-a-dev-environment">2. Stand up a dev environment<a class="headerlink" href="#2-stand-up-a-dev-environment" title="Permanent link">&para;</a></h2>
 <p>Create a second environment in the same checkout, set its values, and deploy it.
@@ -1365,7 +1363,7 @@ commit and its shallow boundary. Branching off it keeps that boundary, which
 breaks the push. Deleting <code>.git</code> and running <code>git init</code> gives you a clean,
 self-contained root commit with all the current files and nothing upstream.</p>
 </div>
-<h2 id="5-initialize-agentops-against-the-maf_lite-endpoint">5. Initialize AgentOps against the maf_lite endpoint<a class="headerlink" href="#5-initialize-agentops-against-the-maf_lite-endpoint" title="Permanent link">&para;</a></h2>
+<h2 id="5-initialize-agentops-against-the-orchestrator-endpoint">5. Initialize AgentOps against the orchestrator endpoint<a class="headerlink" href="#5-initialize-agentops-against-the-orchestrator-endpoint" title="Permanent link">&para;</a></h2>
 <p>The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
 streamed responses natively, so you point it straight at <code>POST /orchestrator</code>.
 No adapter route is needed.</p>
