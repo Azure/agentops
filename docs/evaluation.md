@@ -87,6 +87,58 @@ response_field: text              # dot-path; default is "text"
 auth_header_env: APP_API_TOKEN    # value is sent as a Bearer token
 ```
 
+## Fill `agentops.yaml` for HTTP endpoints
+
+For HTTP agents, fill `agentops.yaml` from the shape of the request and response.
+Start with the defaults, then add only the fields your endpoint needs.
+
+```yaml
+version: 1
+agent: https://api.example.com/chat
+dataset: .agentops/data/qa.jsonl
+protocol: http-json
+request_field: message
+response_field: text
+```
+
+| If the endpoint response is... | Use this config |
+|---|---|
+| JSON, for example `{"text": "answer"}` | `response_mode: json` or omit it. Set `response_field: text` if needed. |
+| Plain text, returned all at once | `response_mode: text`. Do not add `stream:`. |
+| Plain text, streamed in chunks | `response_mode: text`. Do not add `stream:` unless the first chunk is not part of the answer. |
+| Plain text stream with a leading id or token | `response_mode: text` plus `stream.strip_leading_token: true`. |
+| Server-Sent Events with `data:` lines | `response_mode: sse`. |
+| Server-Sent Events where each `data:` line is JSON | `response_mode: sse` plus `stream.text_field`, for example `stream.text_field: choices.0.delta.content`. |
+| Server-Sent Events with a final marker | `response_mode: sse` plus `stream.done_marker`, for example `stream.done_marker: "[DONE]"`. |
+
+Examples:
+
+```yaml
+# JSON response: {"answer": "..."}
+response_mode: json
+response_field: answer
+```
+
+```yaml
+# Plain text response, streamed or not.
+response_mode: text
+```
+
+```yaml
+# GPT-RAG orchestrator: text stream where the first token is a conversation id.
+response_mode: text
+stream:
+  strip_leading_token: true
+```
+
+```yaml
+# SSE response with JSON data frames.
+response_mode: sse
+stream:
+  text_field: choices.0.delta.content
+  done_marker: "[DONE]"
+```
+
 ## Datasets and scenarios
 
 A dataset is a plain JSONL file, one evaluation row per line. Each row has an
