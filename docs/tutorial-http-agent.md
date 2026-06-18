@@ -2,10 +2,10 @@
 
 Use this tutorial when your agent runs as an HTTP service behind a URL, not as a
 Foundry-managed prompt agent. The worked example is the GPT-RAG orchestrator
-deployed by the `Azure/gpt-rag` template, which runs its `maf_lite` strategy as a
-FastAPI app inside an Azure Container App. You deploy it, take ownership of the
-cloned orchestrator, and add an AgentOps PR gate that evaluates the HTTP endpoint
-before merge.
+deployed by the `Azure/gpt-rag` template. It is a FastAPI service inside an
+Azure Container App, exposed at `POST /orchestrator`. You deploy it, take
+ownership of the cloned orchestrator, and add an AgentOps PR gate that evaluates
+the HTTP endpoint before merge.
 
 The path is the same sandbox to dev story as the other tutorials, adapted for an
 endpoint-based agent:
@@ -32,9 +32,8 @@ The important rule is: **AgentOps evals use sandbox; dev is for deployment**.
 !!! info "HTTP agent vs Foundry prompt agent"
     A Foundry prompt agent is referenced as `name:version` and hosted by
     Foundry. An HTTP agent is any service you call at a URL. The GPT-RAG
-    orchestrator answers over HTTP because `maf_lite` is its default strategy,
-    so you evaluate it by posting requests to its endpoint, not by staging a
-    prompt version.
+    orchestrator answers over HTTP at `POST /orchestrator`, so you evaluate it
+    by posting requests to that endpoint, not by staging a prompt version.
 
 ## Before you run the tutorial
 
@@ -87,9 +86,8 @@ azd up
 !!! info "What the deploy does"
     A predeploy hook reads `manifest.json` and clones each component from
     upstream. The orchestrator is cloned into a sibling `gpt-rag-orchestrator`
-    directory, pinned to tag `v2.8.6`, and built into a container image. Because
-    `maf_lite` is the orchestrator's default strategy, the deployed orchestrator
-    answers over HTTP at `POST /orchestrator`.
+    directory, pinned to tag `v2.8.6`, and built into a container image. The
+    deployed orchestrator answers over HTTP at `POST /orchestrator`.
 
 ## 2. Stand up a dev environment
 
@@ -227,7 +225,7 @@ git push -u origin main
     breaks the push. Deleting `.git` and running `git init` gives you a clean,
     self-contained root commit with all the current files and nothing upstream.
 
-## 5. Initialize AgentOps against the maf_lite endpoint
+## 5. Initialize AgentOps against the orchestrator endpoint
 
 The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
 streamed responses natively, so you point it straight at `POST /orchestrator`.
