@@ -242,14 +242,10 @@ azd env select <sandbox-env-name>
 azd env get-values
 ```
 
-Get the sandbox orchestrator URL. The Container App name and endpoint are stored
-in the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
-`ORCHESTRATOR_APP_ENDPOINT`; you can also read the ingress host directly:
+Get the sandbox orchestrator host:
 
 ```powershell
-$rg = (azd env get-values | Select-String '^AZURE_RESOURCE_GROUP=').Line -replace '^AZURE_RESOURCE_GROUP="','' -replace '"$',''
-$app = az containerapp list -g $rg --query "[?contains(name, 'orchestrator')].name | [0]" -o tsv
-az containerapp show -n $app -g $rg --query properties.configuration.ingress.fqdn -o tsv
+azd env get-value CONTAINER_APP_INTERNAL_FQDN
 ```
 
 For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
@@ -263,6 +259,8 @@ two auth checks, so make both anonymous-friendly on the sandbox:
 Set both on the sandbox Container App before you initialize AgentOps:
 
 ```powershell
+$rg = azd env get-value AZURE_RESOURCE_GROUP
+$app = azd env get-value APP_NAME
 az containerapp update -n $app -g $rg --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
 ```
 
