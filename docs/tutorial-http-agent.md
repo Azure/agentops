@@ -55,12 +55,19 @@ sandbox.
 azd init -t Azure/gpt-rag
 ```
 
-Name the environment `sandbox` when prompted, then set the required values:
+Name the environment with a unique suffix so it does not collide with anyone
+else's resource names, for example `sandbox-202606181230` (the pattern is
+`sandbox-yyyymmddhhmm`). Then set the required values:
 
 ```powershell
 azd env set AZURE_LOCATION <region>
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 ```
+
+!!! tip "Why a unique name"
+    The azd environment name seeds globally unique Azure resource names like the
+    storage account. A plain `sandbox` often clashes with another deployment, so
+    a timestamp suffix keeps yours distinct.
 
 Provision and deploy everything:
 
@@ -78,9 +85,11 @@ azd up
 ## 2. Stand up a dev environment
 
 Create a second environment in the same checkout, set its values, and deploy it.
+Give it its own unique suffix, for example `dev-202606181230` (pattern
+`dev-yyyymmddhhmm`).
 
 ```powershell
-azd env new dev
+azd env new dev-202606181230
 azd env set AZURE_LOCATION <region>
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 azd up
@@ -332,27 +341,115 @@ answer, the judge scores, and pass or fail against your thresholds:
 code .agentops/results/latest/report.md
 ```
 
-**Runtime traces (Azure Monitor / Foundry).** When an Application Insights
-connection string is set, AgentOps emits `agentops.eval.*` spans for each run,
-and your agent emits its own request traces. Point AgentOps at telemetry before
-the run:
+**Runtime traces (Azure Monitor / Foundry).** Set an Application Insights
+connection string before the run so the spans land somewhere you can read them:
 
 ```powershell
 $env:APPLICATIONINSIGHTS_CONNECTION_STRING = "<app-insights-connection-string>"
 agentops eval run
 ```
 
-Then open the traces in the Foundry project's tracing view, or query them in
-Azure Monitor Logs. `agentops cockpit --workspace .` deep-links the same spans
-into one readiness view.
+Two different kinds of trace show up, from two different producers:
+
+- **Evaluation traces** come from AgentOps itself. Each `agentops eval run`
+  emits `agentops.eval.*` spans (one run, one span tree), and scheduled Doctor
+  runs emit `agentops.agent.finding.*` spans. These exist even if the agent has
+  no telemetry of its own.
+- **Application/agent traces** come from the orchestrator at runtime, not from
+  AgentOps. They appear only if the orchestrator app is instrumented to emit its
+  own OpenTelemetry to App Insights. AgentOps and the Doctor read those traces
+  (p95 latency, error rate) but do not generate them.
+
+Open the traces in the Foundry project's tracing view, or query them in Azure
+Monitor Logs. `agentops cockpit --workspace .` deep-links the same spans into one
+readiness view.
 
 !!! info "Eval evidence vs runtime traces"
     The local `report.md` is the fastest way to see why a row passed or failed.
-    The App Insights spans are how the same runs show up in Foundry and how the
-    Doctor later reads p95 latency and error rate from real traffic. See
-    [Observe](observe.md).
+    The `agentops.eval.*` spans are how the same runs show up in Foundry. The
+    agent's own request traces are separate runtime telemetry the Doctor reads
+    for latency and errors. See [Observe](observe.md).
 
-## 9. Generate the PR + dev deploy workflows
+## 9. Add ASSERT and Red Team safety gates
+
+Quality is not enough to ship. Before you generate the workflows, add the two
+safety gates so CI blocks unsafe behavior the same way it blocks quality
+regressions. Both write normalized JSON the evidence pack ingests, and both can
+fail the PR.
+
+- **ASSERT** turns natural-language safety policies into executable behavior
+  tests (refuse prompt injection, no fabricated facts, no stereotyping). It
+  drives a model deployment plus system prompt through LiteLLM, so you target the
+  same chat model your orchestrator uses and describe its intended behavior.
+- **Red Team** runs Foundry's PyRIT-backed adversarial scan across risk
+  categories and attack strategies. Its target resolves from the YAML as a model
+  deployment, agent, or endpoint, so it can scan your orchestrator endpoint or
+  its chat model.
+
+### Scaffold both (recommended)
+
+Let the governance skill write the config and the `agentops.yaml` blocks for your
+target:
+
+```text
+/skills agentops-governance
+```
+
+Ask it to scaffold ASSERT and the Red Team runner for this workspace, target your
+orchestrator's chat model deployment, judge with safety-core and alignment, and
+fail Red Team when the attack success rate exceeds 20 percent.
+
+### Or add the blocks yourself
+
+```powershell
+pip install assert-ai "azure-ai-evaluation[redteam]"
+```
+
+Append to `agentops.yaml`:
+
+```yaml
+assert:
+  config: ./assert/eval_config.yaml
+  fail_on_violations: true
+
+redteam:
+  target:
+    model_deployment: <your-chat-model-deployment>
+  risk_categories: [violence, hate_unfairness]
+  attack_strategies: [base64]
+  num_objectives: 3
+  fail_on_attack_success_rate: 0.2
+```
+
+ASSERT calls models through LiteLLM, which for Azure OpenAI expects three vars in
+your shell or `.agentops/.env`:
+
+```powershell
+$env:AZURE_API_KEY = "<your Azure OpenAI account key>"
+$env:AZURE_API_BASE = "https://<resource>.openai.azure.com"
+$env:AZURE_API_VERSION = "2024-10-21"
+```
+
+Run both gates:
+
+```powershell
+agentops assert run
+agentops redteam run
+```
+
+ASSERT writes `.agentops/assert/latest.json` and Red Team writes
+`.agentops/redteam/latest.json`. Each exits non-zero on a policy violation or
+when the attack success rate exceeds your threshold, which is exactly what blocks
+the PR. For the full config schema, behavior presets, risk categories, and attack
+strategies, see
+[Add ASSERT and Red Team to the release gate](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
+
+!!! warning "These hit live Azure services"
+    Both runners call live models. Run them against a non-production deployment
+    and keep the objective count small while you wire them up. Red Team's matrix
+    is `risk_categories x attack_strategies x num_objectives` and grows quickly.
+
+## 10. Generate the PR + dev deploy workflows
 
 You build your own CI here. `agentops workflow generate` writes fresh,
 AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
@@ -388,13 +485,8 @@ orchestrator's existing workflows:
     `--severity-fail critical`. A failing threshold or a critical finding blocks
     the merge. See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment
     wiring instead of reproducing it here.
-    The generated PR workflow runs `agentops eval run` against the dev orchestrator endpoint
-    from `agentops.yaml`, applies your thresholds, then runs Doctor with
-    `--severity-fail critical`. A failing threshold or a critical finding blocks
-    the merge. See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment
-    wiring instead of reproducing it here.
 
-## 10. Ship, observe, and own
+## 11. Ship, observe, and own
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.
@@ -412,35 +504,6 @@ agentops doctor --evidence-pack
   a single readiness view with `agentops cockpit --workspace .`. See
   [Own](own.md).
 
-## Optional: add ASSERT and Red Team safety gates
-
-The eval gate above checks answer quality. To also gate on safety behavior, add
-the same two governance runners the Prompt Agent tutorial uses. Both feed the
-same evidence pack and can fail the PR.
-
-- **ASSERT** (`agentops assert run`) turns natural-language safety policies into
-  executable behavior tests. It drives a model deployment and system prompt
-  through LiteLLM, so for an HTTP agent you point it at the same model your agent
-  uses and describe the agent's intended behavior.
-- **Red Team** (`agentops redteam run`) runs Foundry's adversarial scan. Its
-  target resolves from the YAML as a model deployment, agent, or endpoint, so it
-  can scan the orchestrator endpoint directly for safety regressions.
-
-Scaffold either one with the governance skill, which writes the correct config
-and `agentops.yaml` block for your target:
-
-```text
-/skills agentops-governance
-```
-
-The full walkthrough, including config schema, thresholds, and the LiteLLM and
-red-team SDK setup, is in
-[Add ASSERT and Red Team to the release gate](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
-
-!!! warning "These hit live Azure services"
-    Both runners call live models. Run them against a non-production deployment
-    and keep the objective count small while you wire them up.
-
 ## What you walk away knowing
 
 - You can tell an HTTP agent apart from a Foundry prompt agent, and why the
@@ -455,8 +518,10 @@ red-team SDK setup, is in
 - You indexed a sample document, built a smoke dataset from its content, and
   scored answers on relevance and coherence, knowing why that is smoke and not
   groundedness.
-- You inspected both the per-row eval evidence and the runtime traces, locally
-  and in Azure Monitor or Foundry.
+- You inspected both the per-row eval evidence and the runtime traces, and you
+  know which spans AgentOps emits (`agentops.eval.*`) versus which come from the
+  orchestrator's own runtime telemetry.
+- You added ASSERT and Red Team as required safety gates alongside the eval gate,
+  so CI blocks unsafe behavior, not just quality regressions.
 - You ran local evals against the deployed endpoint and generated a PR gate that
-  blocks regressions before they merge, and you know where ASSERT and Red Team
-  plug in when you want safety gates too.
+  blocks regressions before they merge.
