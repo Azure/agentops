@@ -219,7 +219,7 @@ flow.
 |---|---|---|---|
 | Foundry prompt agent (`name:version`) | Yes | Yes | Cloud for official Foundry runs; local for fast feedback |
 | Foundry hosted agent URL | No | Yes | Local runner; optionally `publish: true` |
-| Generic HTTP/JSON endpoint | No | Yes | Local runner |
+| Generic HTTP/JSON endpoint | No | Yes | Local runner; optionally `publish: true` |
 | Raw model deployment (`model:<name>`) | No | Yes | Local runner |
 
 For prompt-agent CI pipelines that need a merge or deploy gate, prefer cloud

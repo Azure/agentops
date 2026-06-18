@@ -360,6 +360,20 @@ behavior, not that it is grounded.
 AgentOps evals run wherever you execute the command. In this step, you run the
 same gate locally from the orchestrator repo:
 
+If you also want the local metrics and row results to show up in Foundry, add
+`publish: true` before the run:
+
+```yaml
+publish: true
+```
+
+!!! note "Foundry visibility for HTTP targets"
+    This still runs locally. AgentOps invokes the HTTP endpoint from your machine
+    or CI runner, then uploads the finished metrics and row results to Classic
+    Foundry Evaluations. It does not create a New Foundry server-side evaluation
+    run. The New Foundry path uses `execution: cloud` and currently applies to
+    Foundry prompt agents (`name:version`), not this HTTP endpoint tutorial.
+
 ```powershell
 agentops eval run
 ```
@@ -420,11 +434,11 @@ Monitor Logs. `agentops cockpit --workspace .` deep-links the same spans into on
 readiness view.
 
 !!! note "Foundry Evaluations is opt-in"
-    By default, this tutorial keeps eval evidence local or in CI artifacts. If
-    you set `publish: true`, AgentOps uploads the local metrics and row results
-    to Classic Foundry Evaluations after the local run. `execution: cloud` is the
-    New Foundry server-side evaluation path, but it currently applies to Foundry
-    prompt agents (`name:version`), not this HTTP endpoint tutorial.
+    By default, this tutorial keeps eval evidence local or in CI artifacts. With
+    `publish: true`, the same local run also appears in Classic Foundry
+    Evaluations. `execution: cloud` is the New Foundry server-side evaluation
+    path, but it currently applies to Foundry prompt agents (`name:version`), not
+    this HTTP endpoint tutorial.
 
 !!! info "Eval evidence vs runtime traces"
     The local `report.md` is the fastest way to see why a row passed or failed.
