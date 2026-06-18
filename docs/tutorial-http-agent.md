@@ -172,11 +172,19 @@ git add -A
 git commit -m "Vendor gpt-rag-orchestrator (maf_lite) for AgentOps"
 ```
 
-Then create your repository and push it with the GitHub CLI:
+Then create your repository and push it with the GitHub CLI. Pick a name that
+does not collide with a fork you may already have, for example
+`gpt-rag-orchestrator-agentops`:
 
 ```powershell
-gh repo create <owner>/gpt-rag-orchestrator --private --source . --push
+gh repo create <owner>/gpt-rag-orchestrator-agentops --private --source . --push
 ```
+
+!!! tip "Use a distinct repo name"
+    `gh repo create` names a brand-new repo from the current folder, regardless
+    of the local directory name. If you already keep a fork at
+    `<owner>/gpt-rag-orchestrator`, give this one a different name like
+    `gpt-rag-orchestrator-agentops` so your own copy stays easy to tell apart.
 
 !!! note "The clone is shallow"
     The predeploy hook clones with `--depth 1`, so you only have the pinned
