@@ -1358,9 +1358,11 @@ install AgentOps, and install the Copilot skills:</p>
 </code></pre></div>
 <h2 id="6-initialize-agentops-against-the-orchestrator-endpoint">6. Initialize AgentOps against the orchestrator endpoint<a class="headerlink" href="#6-initialize-agentops-against-the-orchestrator-endpoint" title="Permanent link">&para;</a></h2>
 <p>Point AgentOps straight at <code>POST /orchestrator</code>. No adapter route is needed.
-The only protocol detail is that this endpoint returns <code>text/event-stream</code>, so
-the config below reads the response as text and drops the leading conversation
-id.</p>
+This orchestrator returns <code>text/event-stream</code>, so the config below uses
+<code>response_mode: text</code> and drops the leading conversation id. If your endpoint
+returns normal JSON, keep the default <code>response_mode: json</code>, remove the
+<code>stream:</code> block, and set <code>response_field</code> to the JSON field that contains the
+answer.</p>
 <p>Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate uses sandbox too. Dev is updated after merge or manual dispatch.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c"># Select sandbox.</span>
@@ -1452,6 +1454,10 @@ response shape:</p>
 <tr>
 <td><code>stream.strip_leading_token: true</code></td>
 <td>Drop the leading conversation id the orchestrator emits as its first chunk.</td>
+</tr>
+<tr>
+<td>Non-streaming JSON endpoint</td>
+<td>Use the default <code>response_mode: json</code> and set <code>response_field</code>, for example <code>response_field: text</code>.</td>
 </tr>
 <tr>
 <td><code>evaluators.relevance</code> / <code>evaluators.coherence</code></td>
