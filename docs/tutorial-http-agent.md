@@ -240,9 +240,8 @@ No adapter route is needed.
 
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
-shared deployment you update after merge or manual dispatch. If your last
-`azd up` was the dev deployment, select the sandbox again from the GPT-RAG
-checkout before you read resource names:
+shared deployment you update after merge or manual dispatch. Switch back to the
+sandbox environment before you read resource names:
 
 ```powershell
 cd ../gpt-rag
