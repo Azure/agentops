@@ -240,9 +240,9 @@ endpoint:
 
 ```powershell
 azd env select <sandbox-env-name>
-$host = azd env get-value CONTAINER_APP_INTERNAL_FQDN
-$agent = "https://$host/orchestrator"
-az containerapp update -n ($host -split '\.')[0] -g (azd env get-value AZURE_RESOURCE_GROUP) --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
+$fqdn = azd env get-value CONTAINER_APP_INTERNAL_FQDN
+$agent = "https://$fqdn/orchestrator"
+az containerapp update -n ($fqdn -split '\.')[0] -g (azd env get-value AZURE_RESOURCE_GROUP) --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
 $agent
 ```
 
