@@ -234,11 +234,10 @@ No adapter route is needed.
 
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
-shared deployment you update after merge or manual dispatch. Switch back to the
-sandbox environment before you read resource names:
+shared deployment you update after merge or manual dispatch. In this
+orchestrator repo, select the sandbox environment and read its values:
 
 ```powershell
-cd ../gpt-rag
 azd env select <sandbox-env-name>
 azd env get-values
 ```
@@ -269,10 +268,9 @@ az containerapp update -n $app -g $rg --set-env-vars DISABLE_AUTH=true ALLOW_ANO
 
 Keep the AgentOps config simple: no `auth_*` fields.
 
-Sign in and run the wizard inside the orchestrator repo:
+Sign in if needed, then run the wizard:
 
 ```powershell
-cd ../gpt-rag-orchestrator
 az login
 agentops init
 ```
