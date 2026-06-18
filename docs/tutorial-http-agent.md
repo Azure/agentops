@@ -243,15 +243,18 @@ the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
 az containerapp show -n <ORCHESTRATOR_APP_NAME> -g <resource-group> --query properties.configuration.ingress.fqdn -o tsv
 ```
 
-The `POST /orchestrator` route authenticates with a shared secret sent as the
-`X-API-KEY` header (or skips auth when `DISABLE_AUTH=true` on dev). If your dev
-deployment has auth enabled, AgentOps needs that key. Don't paste the secret as a
-literal: read it straight from Key Vault into this shell session, where it lives
-only until you close the window and is never written to a file or your shell
-history.
+The `POST /orchestrator` route can authenticate with a shared secret sent as the
+`X-API-KEY` header, but a standard GPT-RAG dev deploy turns that check off: the
+orchestrator runs with `DISABLE_AUTH=true` and answers without a key, so AgentOps
+needs no credential. If that is your case, skip to the wizard below. The `auth_*`
+lines in `agentops.yaml` are harmless when auth is disabled.
 
-The deployment stores the key in Key Vault as the secret `ORCHESTRATOR-APP-APIKEY`
-(App Configuration only holds a reference to it, not the value):
+You only need a key if you deployed with the "use container app API keys" feature
+enabled (`useCAppAPIKey=true`), which makes the orchestrator require `X-API-KEY`.
+That same flag is what provisions the secret in Key Vault, named
+`ORCHESTRATOR-APP-APIKEY` (App Configuration only holds a reference to it, not the
+value). A default deploy does not create it. When you do have it, read it straight
+into this shell session so it is never typed as a literal or written to a file:
 
 ```powershell
 $kv = az keyvault list -g <resource-group> --query "[0].name" -o tsv
@@ -259,8 +262,7 @@ $env:ORCHESTRATOR_APP_APIKEY = az keyvault secret show --vault-name $kv --name O
 ```
 
 AgentOps reads the key from the `ORCHESTRATOR_APP_APIKEY` env var via
-`auth_header_env` (Section 5), so nothing is ever written to `agentops.yaml`. If
-your dev deployment runs with `DISABLE_AUTH=true`, skip this step.
+`auth_header_env` (Section 5), so nothing is ever written to `agentops.yaml`.
 
 Sign in and run the wizard inside the orchestrator repo:
 
