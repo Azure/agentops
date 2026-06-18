@@ -329,9 +329,10 @@ edit .agentops/data/vw-smoke.jsonl
     groundedness, evaluate a target that also returns its retrieved context. See
     [Evaluation](evaluation.md).
 
-## 8. Run evals locally against the sandbox
+## 8. Run the local eval gate against the sandbox
 
-With the dataset and target set, run the gate from the orchestrator repo:
+AgentOps evals run wherever you execute the command. In this step, you run the
+same gate locally from the orchestrator repo:
 
 ```powershell
 agentops eval run
@@ -348,17 +349,26 @@ You should see a `Threshold status` line and normalized output written under
     gate block a merge. See [Evaluation](evaluation.md) for thresholds and
     metric concepts.
 
-## 9. See your evals and traces
+The cloud version is the same command in GitHub Actions. Later, when you generate
+the PR workflow, CI runs `agentops eval run` in the GitHub-hosted runner and
+stores the evidence as workflow artifacts. There is no separate setting in
+`agentops.yaml` that says "local" or "cloud"; the runner location comes from
+where the command is executed.
+
+## 9. See results and traces
 
 Two views show what actually happened, and you want both.
 
-**Per-row evidence (local).** Every run writes normalized output under
-`.agentops/results/latest/`. Open `report.md` to read each input, the aggregated
-answer, the judge scores, and pass or fail against your thresholds:
+**Eval results (local or CI artifact).** Every run writes normalized output under
+`.agentops/results/latest/` in the machine that ran the command. Locally, open
+`report.md` to read each input, the aggregated answer, the judge scores, and pass
+or fail against your thresholds:
 
 ```powershell
 code .agentops/results/latest/report.md
 ```
+
+In GitHub Actions, the same files are kept as workflow artifacts.
 
 **Runtime traces (Azure Monitor / Foundry).** Set an Application Insights
 connection string before the run so the spans land somewhere you can read them:
@@ -382,6 +392,13 @@ Two different kinds of trace show up, from two different producers:
 Open the traces in the Foundry project's tracing view, or query them in Azure
 Monitor Logs. `agentops cockpit --workspace .` deep-links the same spans into one
 readiness view.
+
+!!! note "Foundry Evaluations is a different surface"
+    `agentops eval run` does not upload `results.json` or `report.md` into the
+    Foundry Evaluations page. It produces repo-side evidence and, when telemetry
+    is configured, trace spans. To see a run under Foundry Evaluations, use a
+    separate Foundry-managed evaluation flow with its dataset and evaluator
+    setup.
 
 !!! info "Eval evidence vs runtime traces"
     The local `report.md` is the fastest way to see why a row passed or failed.

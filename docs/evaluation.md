@@ -28,6 +28,21 @@ collects responses, scores them with evaluators, and checks the scores against
 your thresholds. It writes two outputs every run: `results.json` for automation
 and `report.md` for human review.
 
+## Where evaluations run
+
+`agentops eval run` is a local runner. It runs wherever you execute the command:
+your laptop, a dev container, GitHub Actions, or another CI host. The output is
+written to that workspace under `.agentops/results/latest/`.
+
+AgentOps does not upload `results.json` or `report.md` into the Foundry
+Evaluations page. If you configure Application Insights, AgentOps emits telemetry
+spans so the run can be inspected through Foundry tracing or Azure Monitor Logs.
+That is different from creating a Foundry Evaluation run.
+
+Use the Foundry Evaluations experience when you want a Foundry-managed batch
+evaluation job, dataset, and evaluator catalog. Use AgentOps when you want a
+repo-side gate that can run the same way locally and in CI.
+
 !!! info "Exit codes are the CI contract"
     The runner returns `0` when every threshold passes, `2` when the run
     succeeded but one or more thresholds failed, and `1` for a runtime or
