@@ -321,3 +321,29 @@
   font-size: 0.85rem;
   color: var(--md-default-fg-color--light);
 }
+
+/* Get-started call to action above the cards */
+.agentops-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.75rem;
+  max-width: 720px;
+  margin: 1.4rem auto 0.4rem auto;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 12px;
+  background: var(--md-default-bg-color);
+}
+
+.agentops-cta p {
+  margin: 0;
+}
+
+.agentops-cta p:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}

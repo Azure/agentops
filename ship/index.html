@@ -665,6 +665,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#how-branches-map-to-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      How branches map to environments
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-two-core-workflows" class="md-nav__link">
     <span class="md-ellipsis">
       The two core workflows
@@ -903,6 +912,15 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#how-branches-map-to-environments" class="md-nav__link">
+    <span class="md-ellipsis">
+      How branches map to environments
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-two-core-workflows" class="md-nav__link">
     <span class="md-ellipsis">
       The two core workflows
@@ -974,6 +992,43 @@ was evaluated.</p>
 and the OIDC and RBAC setup steps, see
 <a href="../ci-github-actions/">AgentOps on GitHub Actions</a>. This page is the overview
 that explains why the pieces fit together.</p>
+<h2 id="how-branches-map-to-environments">How branches map to environments<a class="headerlink" href="#how-branches-map-to-environments" title="Permanent link">&para;</a></h2>
+<p>AgentOps assumes a GitFlow-style branch model. Each long-lived branch maps to a
+GitHub Environment, and a generated pipeline carries changes from the branch to
+that environment through an eval gate. This is the shape the generated workflows
+wire up:</p>
+<pre class="mermaid"><code>flowchart LR
+    feat("feature/*") --&gt;|PR| prGate1agentops-pr.yml&lt;br/&gt;(gate)
+    prGate1 --&gt;|merge| dev("develop")
+    dev --&gt; deployDev[/"agentops-deploy-dev.yml"/]
+    deployDev --&gt; DEV(["DEV"])
+
+    rel("release/*") --&gt;|push| deployQa[/"agentops-deploy-qa.yml"/]
+    deployQa --&gt; QA(["QA"])
+
+    rel --&gt;|PR| prGate2agentops-pr.yml&lt;br/&gt;(gate)
+    prGate2 --&gt;|merge| main("main")
+    main --&gt; deployProd[/"agentops-deploy-prod.yml"/]
+    deployProd --&gt; PROD(["PROD&lt;br/&gt;(required reviewers)"])
+
+    subgraph Legend [" "]
+        direction LR
+        lBranch("branch") ~~~ lGategate ~~~ lPipe[/"pipeline"/] ~~~ lEnv(["environment"])
+    end
+
+    classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
+    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
+    classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
+    class feat,dev,rel,main,lBranch branch;
+    class prGate1,prGate2,lGate gate;
+    class deployDev,deployQa,deployProd,lPipe pipeline;
+    class DEV,QA,PROD,lEnv env;</code></pre>
+<p>The PR gate (<code>agentops-pr.yml</code>) guards every merge, and a per-environment deploy
+workflow promotes <code>develop</code> to dev, <code>release/**</code> to QA, and <code>main</code> to prod. The
+two you start with are covered next; the full set, with the workflow YAML and the
+GitHub Environment and OIDC setup, is in
+<a href="../ci-github-actions/">AgentOps on GitHub Actions</a>.</p>
 <h2 id="the-two-core-workflows">The two core workflows<a class="headerlink" href="#the-two-core-workflows" title="Permanent link">&para;</a></h2>
 <p>A generated AgentOps scaffold ships a PR gate and per-environment deploy
 workflows. The two that matter most early are the PR gate and the dev deploy.</p>

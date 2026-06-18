@@ -432,15 +432,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#get-started" class="md-nav__link">
-    <span class="md-ellipsis">
-      Get started
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#evaluate" class="md-nav__link">
     <span class="md-ellipsis">
       Evaluate
@@ -478,6 +469,15 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference architecture
+    </span>
+  </a>
   
 </li>
       
@@ -934,15 +934,6 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#get-started" class="md-nav__link">
-    <span class="md-ellipsis">
-      Get started
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#evaluate" class="md-nav__link">
     <span class="md-ellipsis">
       Evaluate
@@ -980,6 +971,15 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      Reference architecture
+    </span>
+  </a>
   
 </li>
       
@@ -1031,8 +1031,6 @@ repeatable ship/no-ship workflow. It connects Foundry Evaluations, the ASSERT
 safety framework, the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your
 CI/CD platform into one release loop, packaging every result into a stable
 evidence pack that proves a release is ready for production.</p>
-<p>Foundry runs the agent. AgentOps proves readiness with eval gates, Doctor checks,
-generated CI/CD, release evidence, and trace-driven regression loops.</p>
 <div class="agentops-video-embed">
   <iframe
     src="https://www.youtube-nocookie.com/embed/-uYMYzdKCZ4?vq=hd1080&hd=1"
@@ -1042,13 +1040,14 @@ generated CI/CD, release evidence, and trace-driven regression loops.</p>
   </iframe>
 </div>
 
-<div class="agentops-cards">
-<div class="agentops-card">
-<h3 id="get-started"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m13.13 22.19-1.63-3.83c1.57-.58 3.04-1.36 4.4-2.27zM5.64 12.5l-3.83-1.63 6.1-2.77C7 9.46 6.22 10.93 5.64 12.5M21.61 2.39S16.66.269 11 5.93c-2.19 2.19-3.5 4.6-4.35 6.71-.28.75-.09 1.57.46 2.13l2.13 2.12c.55.56 1.37.74 2.12.46A19.1 19.1 0 0 0 18.07 13c5.66-5.66 3.54-10.61 3.54-10.61m-7.07 7.07c-.78-.78-.78-2.05 0-2.83s2.05-.78 2.83 0c.77.78.78 2.05 0 2.83s-2.05.78-2.83 0m-5.66 7.07-1.41-1.41zM6.24 22l3.64-3.64c-.34-.09-.67-.24-.97-.45L4.83 22zM2 22h1.41l4.77-4.76-1.42-1.41L2 20.59zm0-2.83 4.09-4.08c-.21-.3-.36-.62-.45-.97L2 17.76z"/></svg></span> Get started<a class="headerlink" href="#get-started" title="Permanent link">&para;</a></h3>
-<p>Start with the <a href="tutorial-prompt-agent/">Prompt Agent tutorial</a> or the
-<a href="tutorial-http-agent/">HTTP Agent tutorial</a> to learn the sandbox to dev PR
+<div class="agentops-cta">
+<p><strong>New here?</strong> Start with the <a href="tutorial-prompt-agent/">Prompt Agent tutorial</a> or
+the <a href="tutorial-http-agent/">HTTP Agent tutorial</a> to learn the sandbox to dev PR
 gate flow end to end.</p>
+<p><a class="md-button--pill" href="tutorial-prompt-agent/">Prompt Agent tutorial <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m13.13 22.19-1.63-3.83c1.57-.58 3.04-1.36 4.4-2.27zM5.64 12.5l-3.83-1.63 6.1-2.77C7 9.46 6.22 10.93 5.64 12.5M21.61 2.39S16.66.269 11 5.93c-2.19 2.19-3.5 4.6-4.35 6.71-.28.75-.09 1.57.46 2.13l2.13 2.12c.55.56 1.37.74 2.12.46A19.1 19.1 0 0 0 18.07 13c5.66-5.66 3.54-10.61 3.54-10.61m-7.07 7.07c-.78-.78-.78-2.05 0-2.83s2.05-.78 2.83 0c.77.78.78 2.05 0 2.83s-2.05.78-2.83 0m-5.66 7.07-1.41-1.41zM6.24 22l3.64-3.64c-.34-.09-.67-.24-.97-.45L4.83 22zM2 22h1.41l4.77-4.76-1.42-1.41L2 20.59zm0-2.83 4.09-4.08c-.21-.3-.36-.62-.45-.97L2 17.76z"/></svg></span></a>
+<a class="md-button--pill" href="tutorial-http-agent/">HTTP Agent tutorial <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m13.13 22.19-1.63-3.83c1.57-.58 3.04-1.36 4.4-2.27zM5.64 12.5l-3.83-1.63 6.1-2.77C7 9.46 6.22 10.93 5.64 12.5M21.61 2.39S16.66.269 11 5.93c-2.19 2.19-3.5 4.6-4.35 6.71-.28.75-.09 1.57.46 2.13l2.13 2.12c.55.56 1.37.74 2.12.46A19.1 19.1 0 0 0 18.07 13c5.66-5.66 3.54-10.61 3.54-10.61m-7.07 7.07c-.78-.78-.78-2.05 0-2.83s2.05-.78 2.83 0c.77.78.78 2.05 0 2.83s-2.05.78-2.83 0m-5.66 7.07-1.41-1.41zM6.24 22l3.64-3.64c-.34-.09-.67-.24-.97-.45L4.83 22zM2 22h1.41l4.77-4.76-1.42-1.41L2 20.59zm0-2.83 4.09-4.08c-.21-.3-.36-.62-.45-.97L2 17.76z"/></svg></span></a></p>
 </div>
+<div class="agentops-cards">
 <div class="agentops-card">
 <h3 id="evaluate"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m10 17-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9m-6-6a1 1 0 0 1 1 1 1 1 0 0 1-1 1 1 1 0 0 1-1-1 1 1 0 0 1 1-1m7 0h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2"/></svg></span> Evaluate<a class="headerlink" href="#evaluate" title="Permanent link">&para;</a></h3>
 <p>Read <a href="evaluation/">Evaluation</a> to learn how datasets, evaluators, thresholds,
@@ -1070,6 +1069,41 @@ production signals feed continuous evaluation.</p>
 you can make the ship or no-ship call.</p>
 </div>
 </div>
+<h2 id="reference-architecture">Reference architecture<a class="headerlink" href="#reference-architecture" title="Permanent link">&para;</a></h2>
+<p>Use this as the mental model for the AgentOps loop: build and learn in a sandbox,
+commit the release contract to source control, promote through environments with
+evidence, then feed production learning back into the next evaluation set.</p>
+<p><img alt="AgentOps Accelerator reference architecture" class="agentops-reference-architecture" src="media/agentops-architecture.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What it owns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Sandbox inner loop</strong></td>
+<td>Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted.</td>
+</tr>
+<tr>
+<td><strong>AgentOps Accelerator</strong></td>
+<td>Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence.</td>
+</tr>
+<tr>
+<td><strong>Foundry</strong></td>
+<td>Own managed agent projects, Prompt Agent and HTTP agent runtime options, traces, operate views, guardrails, and evaluations where applicable.</td>
+</tr>
+<tr>
+<td><strong>Outer loop delivery</strong></td>
+<td>Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check.</td>
+</tr>
+<tr>
+<td><strong>Operate and improve</strong></td>
+<td>Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases.</td>
+</tr>
+</tbody>
+</table>
 <h2 id="contributing">Contributing<a class="headerlink" href="#contributing" title="Permanent link">&para;</a></h2>
 <p>Contributions are welcome. See the project
 <a href="https://github.com/Azure/agentops">repository</a> for guidelines, issues, and the
