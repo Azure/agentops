@@ -1246,8 +1246,9 @@ contract and scoring depth.</p>
 <h2 id="3-index-a-document-so-the-agent-has-something-to-answer">3. Index a document so the agent has something to answer<a class="headerlink" href="#3-index-a-document-so-the-agent-has-something-to-answer" title="Permanent link">&para;</a></h2>
 <p>Your agent grounds its answers on indexed content, so give it one document to
 work with. This tutorial uses a short sample manual.</p>
-<p><a href="../media/how-works-a-volkswagen.pdf">Download the sample document</a> is a 10-page
-"How Works a Volkswagen" manual. Save it locally.</p>
+<p><a href="../media/vw-fuel-system.pdf">Download the sample document</a> is the "Fuel System"
+section of a Volkswagen service manual, 28 pages covering the carbureted 1968
+through 1974 models. Save it locally.</p>
 <p>Index it into the knowledge base behind the environment you will evaluate. With
 the GPT-RAG template that is the <code>documents</code> blob container in that environment's
 storage account; dropping a file there triggers ingestion, which chunks, embeds,
@@ -1255,18 +1256,20 @@ and indexes it into Azure AI Search:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">az</span> <span class="n">storage</span> <span class="n">blob</span> <span class="n">upload</span> <span class="p">`</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="p">-</span><span class="n">-account-name</span> <span class="p">&lt;</span><span class="n">storage-account</span><span class="p">&gt;</span> <span class="p">`</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="p">-</span><span class="n">-container-name</span> <span class="n">documents</span> <span class="p">`</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="p">-</span><span class="o">-file</span> <span class="s2">&quot;how-works-a-volkswagen.pdf&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  <span class="p">-</span><span class="n">-name</span> <span class="s2">&quot;how-works-a-volkswagen.pdf&quot;</span> <span class="p">`</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="p">-</span><span class="o">-file</span> <span class="s2">&quot;vw-fuel-system.pdf&quot;</span> <span class="p">`</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  <span class="p">-</span><span class="n">-name</span> <span class="s2">&quot;vw-fuel-system.pdf&quot;</span> <span class="p">`</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  <span class="p">-</span><span class="n">-auth-mode</span> <span class="n">login</span>
 </code></pre></div>
 <p>Ingestion runs in the background, so give it a couple of minutes before you
 expect grounded answers.</p>
 <div class="admonition note">
-<p class="admonition-title">Any knowledge base works the same way</p>
-<p>The only thing that matters is that your agent has indexed content to ground
-on. If your agent reads a different store, index the document there instead.
-The rest of the tutorial just assumes the agent can answer questions about
-this document.</p>
+<p class="admonition-title">This document is a scanned PDF</p>
+<p>The sample is image-only, with no text layer. GPT-RAG ingestion runs OCR, so
+it still indexes cleanly. Any knowledge base works the same way: the only
+thing that matters is that your agent has indexed content to ground on. If
+your agent reads a different store, index the document there instead. The rest
+of the tutorial just assumes the agent can answer questions about this
+document.</p>
 </div>
 <h2 id="4-take-ownership-of-the-cloned-orchestrator">4. Take ownership of the cloned orchestrator<a class="headerlink" href="#4-take-ownership-of-the-cloned-orchestrator" title="Permanent link">&para;</a></h2>
 <p>The agent you evaluate lives in the cloned orchestrator, so work from that
@@ -1443,9 +1446,9 @@ one line of JSON: an <code>input</code> to ask and an <code>expected</code> desc
 want.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>edit .agentops/data/vw-smoke.jsonl
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;How does the Volkswagen&#39;s horn complete its electrical circuit?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Explains that the ground wire runs up through the hollow steering rod to the horn button to complete the circuit. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;Why does the car need a differential?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Explains that the differential lets the two driven wheels turn at different speeds when cornering, because the outer wheel travels a longer path than the inner one. Clear and on topic.&quot;</span><span class="p">}</span>
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;In the four-cycle engine, how often does each cylinder fire?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;States that each cylinder fires once every two revolutions of the crankshaft. Concise and on topic.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;States the fuel tank holds 15.8 U.S. gallons (about 60 liters) and sits beneath the rear luggage area ahead of the engine. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;Which carburetor did the 1970 model use?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Identifies a single Solex 30 PICT-3 carburetor for the 1970 model. Concise and on topic.&quot;</span><span class="p">}</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What does the evaporative emission control system do?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Explains it keeps gasoline fumes from escaping to the atmosphere by venting the tank into a system that traps fuel vapors until the engine burns them, standard from the 1970 models. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
 <a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the 0 to 100 km/h time of the latest electric Volkswagen ID.4?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Makes clear the indexed document does not cover modern electric models and does not invent a figure.&quot;</span><span class="p">}</span>
 </code></pre></div>
 <div class="admonition note">
