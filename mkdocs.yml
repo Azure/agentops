@@ -90,3 +90,6 @@ extra:
       link: https://pypi.org/project/agentops-accelerator/
 extra_css:
   - styles.css
+extra_javascript:
+  - https://unpkg.com/mermaid@10/dist/mermaid.min.js
+  - javascripts/mermaid.js

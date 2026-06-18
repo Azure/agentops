@@ -32,32 +32,25 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 ```mermaid
 flowchart LR
-    feat("feature/*") -->|PR| prGate1{{"agentops-pr.yml<br/>(gate)"}}
+    feat["feature/*"] -->|PR gate| prGate1["agentops-pr"]
     prGate1 -->|merge| dev("develop")
-    dev --> deployDev[/"agentops-deploy-dev.yml"/]
-    deployDev --> DEV(["DEV"])
+    dev -->|deploy| deployDev["agentops-deploy-dev"]
+    deployDev --> DEV["DEV"]
 
-    rel("release/*") -->|push| deployQa[/"agentops-deploy-qa.yml"/]
-    deployQa --> QA(["QA"])
+    rel["release/*"] -->|push| deployQa["agentops-deploy-qa"]
+    deployQa --> QA["QA"]
 
-    rel -->|PR| prGate2{{"agentops-pr.yml<br/>(gate)"}}
+    rel -->|PR gate| prGate2["agentops-pr"]
     prGate2 -->|merge| main("main")
-    main --> deployProd[/"agentops-deploy-prod.yml"/]
-    deployProd --> PROD(["PROD<br/>(required reviewers)"])
-
-    subgraph Legend [" "]
-        direction LR
-        lBranch("branch") ~~~ lGate{{"gate"}} ~~~ lPipe[/"pipeline"/] ~~~ lEnv(["environment"])
-    end
+    main -->|deploy| deployProd["agentops-deploy-prod"]
+    deployProd --> PROD["PROD required reviewers"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
-    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-    class feat,dev,rel,main,lBranch branch;
-    class prGate1,prGate2,lGate gate;
-    class deployDev,deployQa,deployProd,lPipe pipeline;
-    class DEV,QA,PROD,lEnv env;
+    class feat,dev,rel,main branch;
+    class prGate1,prGate2,deployDev,deployQa,deployProd pipeline;
+    class DEV,QA,PROD env;
 ```
 
 If you are on trunk-based development, generate only the templates you

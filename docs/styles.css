@@ -74,6 +74,15 @@
   color: #8cc8ff;
 }
 
+.mermaid {
+  font-size: 18px;
+}
+
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* Landing banner (hero) */
 .agentops-banner {
   position: relative;

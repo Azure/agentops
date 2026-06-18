@@ -516,7 +516,7 @@ flowchart TD
     build["_build<br/>tests + package<br/>Version: 0.2.0 (clean, from tag)"]
     publishTest["publish-testpypi<br/>Final TestPyPI upload (clean version)"]
     verifyTest["verify-testpypi<br/>Smoke test from TestPyPI"]
-    publishPypi{{"publish-pypi (pauses)<br/>requires approval<br/>Uses PYPI_TOKEN<br/>environment: release"}}
+    publishPypi["publish-pypi (pauses)<br/>requires approval<br/>Uses PYPI_TOKEN<br/>environment: release"]
     ghRelease["github-release<br/>Creates GitHub Release with artifacts<br/>Auto-generated release notes"]
 
     tag --> build --> publishTest --> verifyTest --> publishPypi --> ghRelease
@@ -824,7 +824,7 @@ Use this checklist when cutting a release:
 flowchart TD
     feat["feature/*"] -->|PR| develop(["develop"])
     develop --> ci["CI (ci.yml)<br/>lint + test + coverage<br/>publish-dev → TestPyPI (dev version)"]
-    develop --> cut{{"Cut Release (cut-release.yml)<br/>manual dispatch - enter version"}}
+    develop --> cut["Cut Release (cut-release.yml)<br/>manual dispatch - enter version"]
     cut --> rel(["release/v0.2.0"])
 
     rel --> stagingBuild["_build<br/>test + build"]
@@ -837,7 +837,7 @@ flowchart TD
     tag --> relBuild["_build"]
     relBuild --> relTest["TestPyPI"]
     relTest --> relVerify["Verify"]
-    relVerify --> relPypi{{"PyPI<br/>(approval)"}}
+    relVerify --> relPypi["PyPI<br/>(approval)"]
     relPypi --> relGh["GitHub Release"]
 
     main -->|merge back| develop
