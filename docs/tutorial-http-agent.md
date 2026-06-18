@@ -107,8 +107,9 @@ azd up
 Your agent grounds its answers on indexed content, so give it one document to
 work with. This tutorial uses a short sample manual.
 
-[Download the sample document](media/how-works-a-volkswagen.pdf) is a 10-page
-"How Works a Volkswagen" manual. Save it locally.
+[Download the sample document](media/vw-fuel-system.pdf) is the "Fuel System"
+section of a Volkswagen service manual, 28 pages covering the carbureted 1968
+through 1974 models. Save it locally.
 
 Index it into the knowledge base behind the environment you will evaluate. With
 the GPT-RAG template that is the `documents` blob container in that environment's
@@ -119,19 +120,21 @@ and indexes it into Azure AI Search:
 az storage blob upload `
   --account-name <storage-account> `
   --container-name documents `
-  --file "how-works-a-volkswagen.pdf" `
-  --name "how-works-a-volkswagen.pdf" `
+  --file "vw-fuel-system.pdf" `
+  --name "vw-fuel-system.pdf" `
   --auth-mode login
 ```
 
 Ingestion runs in the background, so give it a couple of minutes before you
 expect grounded answers.
 
-!!! note "Any knowledge base works the same way"
-    The only thing that matters is that your agent has indexed content to ground
-    on. If your agent reads a different store, index the document there instead.
-    The rest of the tutorial just assumes the agent can answer questions about
-    this document.
+!!! note "This document is a scanned PDF"
+    The sample is image-only, with no text layer. GPT-RAG ingestion runs OCR, so
+    it still indexes cleanly. Any knowledge base works the same way: the only
+    thing that matters is that your agent has indexed content to ground on. If
+    your agent reads a different store, index the document there instead. The rest
+    of the tutorial just assumes the agent can answer questions about this
+    document.
 
 ## 4. Take ownership of the cloned orchestrator
 
@@ -290,9 +293,9 @@ edit .agentops/data/vw-smoke.jsonl
 ```
 
 ```json
-{"input":"How does the Volkswagen's horn complete its electrical circuit?","expected":"Explains that the ground wire runs up through the hollow steering rod to the horn button to complete the circuit. On topic and consistent with the manual."}
-{"input":"Why does the car need a differential?","expected":"Explains that the differential lets the two driven wheels turn at different speeds when cornering, because the outer wheel travels a longer path than the inner one. Clear and on topic."}
-{"input":"In the four-cycle engine, how often does each cylinder fire?","expected":"States that each cylinder fires once every two revolutions of the crankshaft. Concise and on topic."}
+{"input":"What is the fuel tank capacity of the Volkswagen described in the manual?","expected":"States the fuel tank holds 15.8 U.S. gallons (about 60 liters) and sits beneath the rear luggage area ahead of the engine. On topic and consistent with the manual."}
+{"input":"Which carburetor did the 1970 model use?","expected":"Identifies a single Solex 30 PICT-3 carburetor for the 1970 model. Concise and on topic."}
+{"input":"What does the evaporative emission control system do?","expected":"Explains it keeps gasoline fumes from escaping to the atmosphere by venting the tank into a system that traps fuel vapors until the engine burns them, standard from the 1970 models. On topic and consistent with the manual."}
 {"input":"What is the 0 to 100 km/h time of the latest electric Volkswagen ID.4?","expected":"Makes clear the indexed document does not cover modern electric models and does not invent a figure."}
 ```
 
