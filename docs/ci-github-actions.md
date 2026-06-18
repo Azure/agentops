@@ -42,9 +42,9 @@ flowchart LR
     release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
     qaDeploy --> qaEnv["qa"]
 
-    release --> prProd["Manual approval<br/>gate"]
+    release --> prProd["PR: release to main<br/>manual approval"]
     prProd --> main["main"]
-    main --> prodDeploy["Deploy + smoke test<br/>agentops-deploy-prod"]
+    main --> prodDeploy["Prod release process<br/>deploy + smoke test<br/>agentops-deploy-prod"]
     prodDeploy --> prodEnv["production"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
@@ -55,6 +55,9 @@ flowchart LR
     class sandbox,devEnv,qaEnv,prodEnv env;
 ```
 
+Legend: blue boxes are Git branches, purple boxes are PR or workflow gates, and
+teal boxes are deployed environments.
+
 If you are on trunk-based development, generate only the templates you
 need: `agentops workflow generate --kinds pr,dev,prod`.
 
@@ -62,7 +65,9 @@ The PR gate validates candidates before they enter `develop` or `release/**`. It
 is not a dev deployment. HTTP agent tutorials point that candidate at the
 sandbox endpoint; prompt-agent workflows stage and evaluate the candidate prompt
 version in sandbox. The PR from `release/**` to `main` is a manual approval gate
-with static checks only. It does not call agents.
+with static checks only. It does not call agents. After it merges,
+`agentops-deploy-prod` runs the production release process: deploy and smoke
+test.
 
 ## Quick start
 

@@ -13,9 +13,10 @@ that explains why the pieces fit together.
 ## How branches map to environments
 
 AgentOps assumes a GitFlow-style branch model. Feature PRs run an eval against
-the candidate agent before merge. The PR to `main` is a manual approval gate for
-the already-tested release branch; it does not call agents. Deploy workflows run
-after merge and promote the reviewed branch to its environment:
+the candidate agent before merge. The PR from `release/**` to `main` is a manual
+approval gate for the already-tested release branch; it does not call agents.
+Deploy workflows run after merge and promote the reviewed branch to its
+environment:
 
 ```mermaid
 flowchart LR
@@ -29,9 +30,9 @@ flowchart LR
     release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
     qaDeploy --> qaEnv["qa"]
 
-    release --> prProd["Manual approval<br/>gate"]
+    release --> prProd["PR: release to main<br/>manual approval"]
     prProd --> main["main"]
-    main --> prodDeploy["Deploy + smoke test<br/>agentops-deploy-prod"]
+    main --> prodDeploy["Prod release process<br/>deploy + smoke test<br/>agentops-deploy-prod"]
     prodDeploy --> prodEnv["production"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
@@ -42,15 +43,19 @@ flowchart LR
     class sandbox,devEnv,qaEnv,prodEnv env;
 ```
 
+Legend: blue boxes are Git branches, purple boxes are PR or workflow gates, and
+teal boxes are deployed environments.
+
 The PR gate (`agentops-pr.yml`) protects feature and release-candidate changes
 before they enter `develop` or `release/**`. It does not validate the
 already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
 endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in
 sandbox. The PR from `release/**` to `main` is a manual approval gate with
-static checks only. A
-per-environment deploy workflow promotes `develop` to dev, `release/**` to QA,
-and `main` to prod. The two you start with are covered next; the full set, with
-the workflow YAML and the GitHub Environment and OIDC setup, is in
+static checks only. After it merges, `agentops-deploy-prod` runs the production
+release process: deploy and smoke test. A per-environment deploy workflow
+promotes `develop` to dev, `release/**` to QA, and `main` to prod. The two you
+start with are covered next; the full set, with the workflow YAML and the GitHub
+Environment and OIDC setup, is in
 [AgentOps on GitHub Actions](ci-github-actions.md).
 
 ## The two core workflows
