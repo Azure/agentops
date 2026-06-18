@@ -92,11 +92,10 @@ azd up
 ## 2. Stand up a dev environment
 
 Create a second environment in the same checkout, set its values, and deploy it.
-Give it its own unique suffix, for example `gptrag-dev-2606182303` (pattern
-`gptrag-dev-yymmddhhmm`).
+Give it its own unique suffix, using the pattern `gptrag-dev-yymmddhhmm`.
 
 ```powershell
-azd env new gptrag-dev-2606182303
+azd env new gptrag-dev-<yymmddhhmm>
 azd env set AZURE_LOCATION <region>
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 azd up
