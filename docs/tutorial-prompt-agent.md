@@ -1,4 +1,4 @@
-# Sandbox to dev
+# Ship a Foundry prompt agent
 
 Use this tutorial when you want a Foundry-managed prompt agent referenced as
 `name:version`. You build a small Travel Agent in Foundry, then use AgentOps to
