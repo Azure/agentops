@@ -32,7 +32,7 @@ stays on the Foundry plus AgentOps flow instead of permission prompts.
 
 **Foundry projects**
 
-- Two projects: a sandbox where you publish the prompt agent, and a shared dev for the PR gate. You publish only in sandbox; CI bootstraps dev (and later qa and prod).
+- Two projects: a sandbox where you publish the prompt agent and run PR candidates, and a shared dev for the post-merge deploy. You publish only in sandbox; CI bootstraps dev after merge (and later qa and prod).
 - The same model deployment name (for example `gpt-4o-mini`) in every project. A missing deployment in dev breaks the first bootstrap.
 
 **Azure**
@@ -44,7 +44,7 @@ stays on the Foundry plus AgentOps flow instead of permission prompts.
 **GitHub**
 
 - Push access to the tutorial repo and permission to run GitHub Actions.
-- A GitHub environment named `dev` for Azure auth and the dev endpoint.
+- GitHub environments named `sandbox` and `dev` for Azure auth and Foundry endpoints.
 - `gh auth login` authenticated for the PR commands.
 
 **Coding agent**
@@ -120,8 +120,8 @@ Copilot picks them up when you type `/skills` in chat.
 
 You need two Foundry projects in the same Azure subscription:
 
-- `travel-agent-sandbox`: where you author and experiment. Saves here never trigger CI.
-- `travel-agent-dev`: the first shared environment. The PR gate stages candidates here and the dev deploy lands here.
+- `travel-agent-sandbox`: where you author, experiment, and stage PR candidates. Saves here never deploy dev.
+- `travel-agent-dev`: the first shared environment. The dev deploy lands here after merge.
 
 !!! note "How many sandboxes"
     One sandbox is enough for a solo run or a small team. Split into per-stream or
@@ -846,7 +846,7 @@ This creates two files:
 
 The PR workflow has two jobs:
 
-1. `stage-candidate` stages an ephemeral Foundry prompt-agent candidate in the **dev** project. A candidate is a throwaway agent version CI creates just to evaluate a PR. On the first PR, dev is empty, so the step reads `prompt_agent_bootstrap` plus `prompt_file` and reports `action: bootstrapped`. Once dev catches up to the seed, it reports `reused` or `created`, and writes `.agentops/deployments/agentops.candidate.yaml`.
+1. `stage-candidate` stages an ephemeral Foundry prompt-agent candidate in the **sandbox** project. A candidate is a throwaway agent version CI creates just to evaluate a PR, not a dev deployment. The step writes `.agentops/deployments/agentops.candidate.yaml`.
 2. `eval` runs `agentops eval run` against the candidate, then Doctor with `--severity-fail critical`. Because the gate now uses the multi-turn dataset, this checks conversation behavior, not a single smoke response.
 
 !!! note "Candidate versions in Foundry"
@@ -870,7 +870,7 @@ Deploy templates always run `--severity-fail critical` regardless of
 `--doctor-gate`. The gate flag affects only the PR template; deploys are the
 last-mile gate and always block on critical findings.
 
-## 14. Wire CI: GitHub repo, Azure OIDC, dev environment
+## 14. Wire CI: GitHub repo, Azure OIDC, sandbox and dev environments
 
 The workflows are local until the folder is a GitHub repo connected to Azure with
 OIDC. OIDC (OpenID Connect) lets GitHub Actions get short-lived Azure tokens
@@ -887,22 +887,23 @@ workflows running on GitHub Actions for this Foundry prompt-agent project. This
 may be a new folder with no Git repo yet. Scope to the PR gate and dev deploy
 only: create or connect the GitHub repo, make local main track origin/main, wire
 Azure OIDC and the required Actions variables and secrets, and create only the
-dev environment. Verify the OIDC principal has both Foundry User on the dev
-project and Cognitive Services OpenAI User on the AI Services account. Do not set
-up qa, production, scheduled Doctor, or hosted deploys yet. Show me the plan
-before changing GitHub or Azure.
+sandbox and dev environments. The PR gate must use the sandbox Foundry endpoint;
+the dev deploy must use the dev Foundry endpoint. Verify the OIDC principal has
+Foundry User on both projects and Cognitive Services OpenAI User on the AI
+Services account. Do not set up qa, production, scheduled Doctor, or hosted
+deploys yet. Show me the plan before changing GitHub or Azure.
 ```
 
 The skill normally does the following. Call out anything it skips:
 
 - Create or connect the GitHub remote and make local `main` track `origin/main`. If it skips this, run `git branch --set-upstream-to=origin/main main`.
-- Create the `dev` GitHub environment.
+- Create the `sandbox` and `dev` GitHub environments.
 - Configure OIDC federated credentials between GitHub and Entra ID. Reference: [Configure OIDC in Azure](https://docs.github.com/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-azure).
-- Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (the dev endpoint), and `APPLICATIONINSIGHTS_CONNECTION_STRING` if available. Make sure `AZURE_TENANT_ID` is the tenant that owns the app registration, not a subscription `managedByTenants` value.
-- Assign the OIDC principal two roles. Both are required, and the eval step returns all-null metrics if either is missing: Foundry User on the dev project, and Cognitive Services OpenAI User on the AI Services account that hosts the evaluator model. See [Foundry RBAC](https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry).
+- Set `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_CLIENT_ID`, and `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` in each environment. Use the sandbox endpoint for `sandbox` and the dev endpoint for `dev`. Add `APPLICATIONINSIGHTS_CONNECTION_STRING` where available. Make sure `AZURE_TENANT_ID` is the tenant that owns the app registration, not a subscription `managedByTenants` value.
+- Assign the OIDC principal the required roles. The eval step returns all-null metrics if either is missing: Foundry User on the sandbox and dev projects, and Cognitive Services OpenAI User on the AI Services account that hosts the evaluator model. See [Foundry RBAC](https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry).
 
-The dev endpoint is in `.azure/dev/.env`; the sandbox endpoint stays local and
-must not go into CI.
+The PR workflow reads the sandbox endpoint from the `sandbox` GitHub environment.
+The deploy workflow reads the dev endpoint from the `dev` GitHub environment.
 
 ### Point the workflows at main
 
@@ -1080,8 +1081,8 @@ the dev deploy records the restored prompt with a new `foundry-agent.json`
 carrying the recovered prompt's SHA.
 
 The learning loop is the point: the prompt lives in git, the PR exercises it as a
-candidate in dev, Doctor catches regressions thresholds alone miss, and the merge
-promotes through deploy, none of it requiring anyone to watch a dashboard.
+sandbox candidate, Doctor catches regressions thresholds alone miss, and the
+merge promotes through deploy, none of it requiring anyone to watch a dashboard.
 
 ## 18. Observability: traces into continuous evaluation
 
@@ -1236,9 +1237,9 @@ Azure Monitor for live runtime data.
 
 You built a complete prompt-agent release loop and now understand:
 
-- How sandbox, Git, and dev divide the work: sandbox is for authoring, Git is the source of truth, and CI proves the reviewed prompt in dev.
+- How sandbox, Git, and dev divide the work: sandbox is for authoring and PR candidates, Git is the source of truth, and dev receives reviewed prompts after merge.
 - Why AgentOps identifies a release by its `prompt_sha256` and `git_sha`, not by per-project Foundry version numbers.
-- How the PR gate stages a candidate in dev, runs a conversation-aware eval, and blocks on eval thresholds or Doctor criticals.
+- How the PR gate stages a candidate in sandbox, runs a conversation-aware eval, and blocks on eval thresholds or Doctor criticals.
 - How a regression is caught at PR time by two independent gates, and how the fix flows straight back through deploy.
 - How traces become continuous-evaluation datasets, and how Doctor, the evidence pack, and Cockpit turn signals into a ship or no-ship call.
 

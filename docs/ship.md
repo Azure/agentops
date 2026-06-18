@@ -42,7 +42,7 @@ flowchart LR
 
 The PR gate (`agentops-pr.yml`) guards every merge. It does not validate the
 already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
-endpoint. In prompt-agent flows, it evaluates a staged candidate prompt. A
+endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in sandbox. A
 per-environment deploy workflow promotes `develop` to dev, `release/**` to QA,
 and `main` to prod. The two you start with are covered next; the full set, with
 the workflow YAML and the GitHub Environment and OIDC setup, is in
@@ -93,16 +93,16 @@ This is the invariant the whole flow protects: the evaluated agent version is
 the deployed agent version. Foundry manages the candidate versions; AgentOps
 supplies the gate, the deployment record, and Cockpit visibility.
 
-## Why the PR gate evaluates against dev, not sandbox
+## Why the PR gate uses a candidate
 
-The PR gate stages and evaluates its candidate in the **dev** project, the same
-target the dev deploy will use. Sandbox is the author's playground and never
-receives CI traffic, so evaluating there would gate a different environment than
-the one you ship to.
+The PR gate validates the proposed agent before merge. For HTTP agents, that
+usually means the sandbox endpoint you configured in the workflow. For Foundry
+prompt agents, the workflow stages a throwaway prompt version in sandbox and
+evaluates that candidate. The dev project is updated only by the deploy workflow
+after the PR merges.
 
-Evaluating against dev means the gate result reflects the real deploy target.
-A passing PR gate is evidence that the same candidate will behave the same way
-when the dev deploy promotes it.
+A passing PR gate is evidence that the proposed change is safe to merge. The dev
+deploy then promotes the reviewed branch and records the deployed prompt SHA.
 
 ## The Doctor gate in CI
 

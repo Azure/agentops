@@ -22,7 +22,7 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` for OIDC and variables | Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `sandbox` for prompt-agent PR candidates, `dev` for generic PR gates | Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
 | `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
@@ -58,8 +58,8 @@ If you are on trunk-based development, generate only the templates you
 need: `agentops workflow generate --kinds pr,dev,prod`.
 
 The PR gate validates the candidate before merge. It is not a dev deployment.
-HTTP agent tutorials usually point that candidate at the sandbox endpoint;
-prompt-agent workflows stage a candidate prompt version and evaluate that.
+HTTP agent tutorials point that candidate at the sandbox endpoint; prompt-agent
+workflows stage and evaluate the candidate prompt version in sandbox.
 
 ## Quick start
 
