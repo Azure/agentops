@@ -24,7 +24,7 @@ Use the environments this way:
 
 | Environment | Used for | When AgentOps points at it |
 |---|---|---|
-| `sandbox` | Your candidate validation target: upload the sample PDF, initialize AgentOps, run local evals, and let the PR gate deploy and evaluate candidate code there. | Sections 3 through 10. |
+| `sandbox` | Your candidate validation target: upload the sample PDF, initialize AgentOps, run local evals, and let the PR gate deploy and evaluate candidate code there. | Sections 3 through 11. |
 | `dev` | The shared deployment target for the generated deploy workflow. | After merge, or by manually dispatching the dev deploy workflow. |
 
 The important rule is: **AgentOps evals use sandbox; dev is for deployment**.
@@ -42,8 +42,8 @@ instead of permission prompts.
 
 - Azure Developer CLI (`azd`) and Azure CLI (`az`), both signed in to the
   subscription and tenant that will host the deployment.
-- The Copilot CLI with the `agentops` and `microsoft-foundry` skills installed,
-  so the agent can read the repo and propose the GitHub and Azure setup steps.
+- The Copilot CLI signed in, so AgentOps can install its skills later and the
+  agent can propose the GitHub and Azure setup steps.
 - Permission to create resources in the target subscription, and push access to
   a GitHub repository you control for the orchestrator.
 - A Foundry project with a chat-capable deployment for the judge model that
@@ -219,7 +219,24 @@ git push -u origin main
     `<owner>/gpt-rag-orchestrator`, give this one a different name like
     `gpt-rag-orchestrator-agentops` so your own copy stays easy to tell apart.
 
-## 5. Initialize AgentOps against the orchestrator endpoint
+## 5. Install AgentOps in the orchestrator repo
+
+From the `gpt-rag-orchestrator` directory, create a local Python environment,
+install AgentOps, and install the Copilot skills:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -U pip
+python -m pip install "agentops-accelerator[foundry,agent]"
+agentops --version
+agentops skills install
+```
+
+`foundry` adds the evaluator dependencies. `agent` adds Doctor, Cockpit, and
+workflow generation support.
+
+## 6. Initialize AgentOps against the orchestrator endpoint
 
 The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
 streamed responses natively, so you point it straight at `POST /orchestrator`.
@@ -314,7 +331,7 @@ evaluators:
     you deployed GPT-RAG with `useCAppAPIKey=true`. The default tutorial path does
     not use that option.
 
-## 6. Create the eval dataset
+## 7. Create the eval dataset
 
 Create a small JSONL dataset grounded in the document you indexed. Each row is
 one line of JSON: an `input` to ask and an `expected` describing the behavior you
@@ -345,7 +362,7 @@ edit .agentops/data/vw-smoke.jsonl
     groundedness, evaluate a target that also returns its retrieved context. See
     [Evaluation](evaluation.md).
 
-## 7. Run evals locally against the sandbox
+## 8. Run evals locally against the sandbox
 
 With the dataset and target set, run the gate from the orchestrator repo:
 
@@ -364,7 +381,7 @@ You should see a `Threshold status` line and normalized output written under
     gate block a merge. See [Evaluation](evaluation.md) for thresholds and
     metric concepts.
 
-## 8. See your evals and traces
+## 9. See your evals and traces
 
 Two views show what actually happened, and you want both.
 
@@ -405,7 +422,7 @@ readiness view.
     agent's own request traces are separate runtime telemetry the Doctor reads
     for latency and errors. See [Observe](observe.md).
 
-## 9. Add ASSERT and Red Team safety gates
+## 10. Add ASSERT and Red Team safety gates
 
 Quality is not enough to ship. Before you generate the workflows, add the two
 safety gates so CI blocks unsafe behavior the same way it blocks quality
@@ -484,7 +501,7 @@ strategies, see
     and keep the objective count small while you wire them up. Red Team's matrix
     is `risk_categories x attack_strategies x num_objectives` and grows quickly.
 
-## 10. Generate the PR + dev deploy workflows
+## 11. Generate the PR + dev deploy workflows
 
 You build your own CI here. `agentops workflow generate` writes fresh,
 AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
@@ -578,7 +595,7 @@ shared sandbox at the same time.
     workflow remains separate and updates dev after merge or manual dispatch.
     See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment wiring.
 
-## 11. Ship, observe, and own
+## 12. Ship, observe, and own
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.
