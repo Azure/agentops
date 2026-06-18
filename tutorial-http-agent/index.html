@@ -1323,13 +1323,9 @@ committing on top of the shallow commit) is what lets the push succeed later:</p
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">What you just removed</p>
-<p>The vendored orchestrator ships its own <code>evaluations/</code> and <code>dataset/</code>
-folders and its own CI under <code>.github/workflows/</code> (<code>pr_pipeline.yaml</code>,
-<code>cicd_pipeline.yaml</code>, <code>block-pr-to-main.yml</code>). Those belong to the upstream
-project. AgentOps gives you your own eval dataset (Section 6) and generates
-your own workflows (Section 9), so nothing here depends on the orchestrator's.
-Removing them before the commit keeps them out of your history; skip the two
-<code>Remove-Item</code> lines if you would rather keep them.</p>
+<p>Those upstream evals and workflows are not used here. AgentOps creates its
+own eval dataset and workflows later, so removing them keeps your first
+commit focused on your copy.</p>
 </div>
 <p>Then create your repository and push the <code>main</code> branch with the GitHub CLI. Pick
 a name that does not collide with a fork you may already have, for example
@@ -1337,18 +1333,6 @@ a name that does not collide with a fork you may already have, for example
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">gh</span> <span class="n">repo</span> <span class="n">create</span> <span class="p">&lt;</span><span class="n">owner</span><span class="p">&gt;/</span><span class="n">gpt-rag-orchestrator-agentops</span> <span class="p">-</span><span class="n">-private</span> <span class="p">-</span><span class="n">-source</span> <span class="p">.</span> <span class="p">-</span><span class="n">-remote</span> <span class="n">origin</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">git</span> <span class="n">push</span> <span class="n">-u</span> <span class="n">origin</span> <span class="n">main</span>
 </code></pre></div>
-<div class="admonition warning">
-<p class="admonition-title">Push rejected with 'did not receive expected object' or 'not a full refname'?</p>
-<p>Both come from the shallow clone. It arrives in a detached HEAD on the pinned
-tag, so committing on top of it and pushing tries to send objects the shallow
-clone never downloaded, and the remote rejects the pack with
-<code>remote unpack failed: index-pack failed</code>. The fix is to re-root the history
-as shown above:
-<code>Remove-Item -Recurse -Force .git; git init; git add -A; git commit -m "..."; git branch -M main</code>,
-then push again. The repo and remote from <code>gh repo create</code> stay in place, so
-you do not need to recreate them; if you already deleted <code>.git</code>, just re-add
-the remote with <code>git remote add origin &lt;url&gt;</code> before <code>git push -u origin main</code>.</p>
-</div>
 <div class="admonition tip">
 <p class="admonition-title">Use a distinct repo name</p>
 <p><code>gh repo create</code> names a brand-new repo from the current folder, regardless
