@@ -1371,22 +1371,18 @@ newer.</p>
 <p>Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
 shared deployment you update after merge or manual dispatch. From this
-orchestrator repo, select sandbox, allow anonymous eval calls, and print the
+orchestrator repo, select sandbox, disable the API-key guard, and print the
 endpoint:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">select </span><span class="p">&lt;</span><span class="n">sandbox-env-name</span><span class="p">&gt;</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nv">$fqdn</span> <span class="p">=</span> <span class="n">azd</span> <span class="n">env</span> <span class="nb">get-value</span> <span class="n">CONTAINER_APP_INTERNAL_FQDN</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nv">$agent</span> <span class="p">=</span> <span class="s2">&quot;https://$fqdn/orchestrator&quot;</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">az</span> <span class="n">containerapp</span> <span class="n">update</span> <span class="n">-n</span> <span class="p">(</span><span class="nv">$fqdn</span> <span class="n">-split</span> <span class="s1">&#39;\.&#39;</span><span class="p">)[</span><span class="n">0</span><span class="p">]</span> <span class="n">-g</span> <span class="p">(</span><span class="n">azd</span> <span class="n">env</span> <span class="nb">get-value</span> <span class="n">AZURE_RESOURCE_GROUP</span><span class="p">)</span> <span class="p">-</span><span class="n">-set-env-vars</span> <span class="n">DISABLE_AUTH</span><span class="p">=</span><span class="n">true</span> <span class="n">ALLOW_ANONYMOUS</span><span class="p">=</span><span class="n">true</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">az</span> <span class="n">containerapp</span> <span class="n">update</span> <span class="n">-n</span> <span class="p">(</span><span class="nv">$fqdn</span> <span class="n">-split</span> <span class="s1">&#39;\.&#39;</span><span class="p">)[</span><span class="n">0</span><span class="p">]</span> <span class="n">-g</span> <span class="p">(</span><span class="n">azd</span> <span class="n">env</span> <span class="nb">get-value</span> <span class="n">AZURE_RESOURCE_GROUP</span><span class="p">)</span> <span class="p">-</span><span class="n">-set-env-vars</span> <span class="n">DISABLE_AUTH</span><span class="p">=</span><span class="n">true</span>
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nv">$agent</span>
 </code></pre></div>
 <p>For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
-user <code>Authorization</code> bearer token and no <code>X-API-KEY</code> header. The orchestrator has
-two auth checks, so make both anonymous-friendly on the sandbox:</p>
-<ul>
-<li><code>DISABLE_AUTH=true</code> skips the orchestrator API-key dependency.</li>
-<li><code>ALLOW_ANONYMOUS=true</code> lets requests without a user bearer token proceed as
-  anonymous.</li>
-</ul>
+user <code>Authorization</code> bearer token and no <code>X-API-KEY</code> header. <code>DISABLE_AUTH=true</code>
+skips the API-key dependency. Requests without a user bearer token proceed as
+anonymous with the orchestrator default used by this template.</p>
 <p>Keep the AgentOps config simple: no <code>auth_*</code> fields.</p>
 <p>Sign in if needed, then run the wizard:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">az</span> <span class="n">login</span>
