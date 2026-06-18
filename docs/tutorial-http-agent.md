@@ -199,13 +199,9 @@ git branch -M main
 ```
 
 !!! note "What you just removed"
-    The vendored orchestrator ships its own `evaluations/` and `dataset/`
-    folders and its own CI under `.github/workflows/` (`pr_pipeline.yaml`,
-    `cicd_pipeline.yaml`, `block-pr-to-main.yml`). Those belong to the upstream
-    project. AgentOps gives you your own eval dataset (Section 6) and generates
-    your own workflows (Section 9), so nothing here depends on the orchestrator's.
-    Removing them before the commit keeps them out of your history; skip the two
-    `Remove-Item` lines if you would rather keep them.
+    Those upstream evals and workflows are not used here. AgentOps creates its
+    own eval dataset and workflows later, so removing them keeps your first
+    commit focused on your copy.
 
 Then create your repository and push the `main` branch with the GitHub CLI. Pick
 a name that does not collide with a fork you may already have, for example
