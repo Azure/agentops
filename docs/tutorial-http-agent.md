@@ -169,7 +169,7 @@ Remove the upstream remote and start your own history:
 git remote remove origin
 git checkout -b main
 git add -A
-git commit -m "Vendor gpt-rag-orchestrator (maf_lite) for AgentOps"
+git commit -m "Initial commit: my GPT-RAG orchestrator copy"
 ```
 
 Then create your repository and push it with the GitHub CLI. Pick a name that
