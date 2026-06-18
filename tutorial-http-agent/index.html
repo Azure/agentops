@@ -1286,10 +1286,8 @@ work with. This tutorial uses a short sample manual.</p>
 <p><a href="../media/vw-fuel-system.pdf">Download the sample document</a> is the "Fuel System"
 section of a Volkswagen service manual, 28 pages covering the carbureted 1968
 through 1974 models. Save it locally.</p>
-<p>For the local walkthrough, index it into the sandbox knowledge base. With the
-GPT-RAG template that is the <code>documents</code> blob container in the sandbox storage
-account; dropping a file there triggers ingestion, which chunks, embeds, and
-indexes it into Azure AI Search:</p>
+<p>Upload it to the sandbox <code>documents</code> blob container. GPT-RAG ingests it in the
+background and indexes it into Azure AI Search:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">az</span> <span class="n">storage</span> <span class="n">blob</span> <span class="n">upload</span> <span class="p">`</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="p">-</span><span class="n">-account-name</span> <span class="p">&lt;</span><span class="n">storage-account</span><span class="p">&gt;</span> <span class="p">`</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="p">-</span><span class="n">-container-name</span> <span class="n">documents</span> <span class="p">`</span>
@@ -1297,8 +1295,7 @@ indexes it into Azure AI Search:</p>
 <a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  <span class="p">-</span><span class="n">-name</span> <span class="s2">&quot;vw-fuel-system.pdf&quot;</span> <span class="p">`</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  <span class="p">-</span><span class="n">-auth-mode</span> <span class="n">login</span>
 </code></pre></div>
-<p>Ingestion runs in the background, so give it a couple of minutes before you
-expect grounded answers.</p>
+<p>Give ingestion a couple of minutes before testing grounded answers.</p>
 <div class="admonition warning">
 <p class="admonition-title">Getting a 'not authorized' / 'do not have permissions to list the data' error?</p>
 <p><code>--auth-mode login</code> (and the portal's default) authenticates to blobs with
@@ -1313,15 +1310,6 @@ wait a few minutes for it to propagate, then retry:</p>
 <p>In the portal you can instead just use the <strong>Upload</strong> button, which falls back
 to the account access key (the banner is only about the Entra ID attempt), but
 the CLI command above needs the role.</p>
-</div>
-<div class="admonition note">
-<p class="admonition-title">This document is a scanned PDF</p>
-<p>The sample is image-only, with no text layer. GPT-RAG ingestion runs OCR, so
-it still indexes cleanly. Any knowledge base works the same way: the only
-thing that matters is that your agent has indexed content to ground on. If
-your agent reads a different store, index the document there instead. The rest
-of the tutorial just assumes the agent can answer questions about this
-document.</p>
 </div>
 <h2 id="4-take-ownership-of-the-cloned-orchestrator">4. Take ownership of the cloned orchestrator<a class="headerlink" href="#4-take-ownership-of-the-cloned-orchestrator" title="Permanent link">&para;</a></h2>
 <p>The agent you evaluate lives in the cloned orchestrator, so work from that
