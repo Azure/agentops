@@ -1370,11 +1370,10 @@ newer.</p>
 </div>
 <p>Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
-shared deployment you update after merge or manual dispatch. Switch back to the
-sandbox environment before you read resource names:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd </span><span class="p">../</span><span class="n">gpt-rag</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">select </span><span class="p">&lt;</span><span class="n">sandbox-env-name</span><span class="p">&gt;</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">get-values</span>
+shared deployment you update after merge or manual dispatch. In this
+orchestrator repo, select the sandbox environment and read its values:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">select </span><span class="p">&lt;</span><span class="n">sandbox-env-name</span><span class="p">&gt;</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">get-values</span>
 </code></pre></div>
 <p>Get the sandbox orchestrator URL. The Container App name and endpoint are stored
 in the deployment's App Configuration as <code>ORCHESTRATOR_APP_NAME</code> and
@@ -1395,10 +1394,9 @@ two auth checks, so make both anonymous-friendly on the sandbox:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">az</span> <span class="n">containerapp</span> <span class="n">update</span> <span class="n">-n</span> <span class="nv">$app</span> <span class="n">-g</span> <span class="nv">$rg</span> <span class="p">-</span><span class="n">-set-env-vars</span> <span class="n">DISABLE_AUTH</span><span class="p">=</span><span class="n">true</span> <span class="n">ALLOW_ANONYMOUS</span><span class="p">=</span><span class="n">true</span>
 </code></pre></div>
 <p>Keep the AgentOps config simple: no <code>auth_*</code> fields.</p>
-<p>Sign in and run the wizard inside the orchestrator repo:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">cd </span><span class="p">../</span><span class="n">gpt-rag-orchestrator</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">az</span> <span class="n">login</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">agentops</span> <span class="n">init</span>
+<p>Sign in if needed, then run the wizard:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">az</span> <span class="n">login</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="n">agentops</span> <span class="n">init</span>
 </code></pre></div>
 <p>Answer the prompts with the sandbox orchestrator values:</p>
 <table>
