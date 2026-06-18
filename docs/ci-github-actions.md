@@ -22,7 +22,7 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` for OIDC and variables | Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
 | `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
@@ -32,29 +32,34 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 ```mermaid
 flowchart LR
-    feat["feature/*"] -->|PR gate| prGate1["agentops-pr"]
-    prGate1 -->|merge| dev("develop")
-    dev -->|deploy| deployDev["agentops-deploy-dev"]
-    deployDev --> DEV["DEV"]
+    feature["feature/*"] --> prDev["PR eval<br/>candidate"]
+    prDev --> develop["develop"]
+    develop --> devDeploy["Eval + deploy<br/>agentops-deploy-dev"]
+    devDeploy --> devEnv["dev"]
 
-    rel["release/*"] -->|push| deployQa["agentops-deploy-qa"]
-    deployQa --> QA["QA"]
+    develop --> release["release/*"]
+    release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
+    qaDeploy --> qaEnv["qa"]
 
-    rel -->|PR gate| prGate2["agentops-pr"]
-    prGate2 -->|merge| main("main")
-    main -->|deploy| deployProd["agentops-deploy-prod"]
-    deployProd --> PROD["PROD required reviewers"]
+    release --> prProd["PR eval<br/>candidate"]
+    prProd --> main["main"]
+    main --> prodDeploy["Safety eval + deploy<br/>agentops-deploy-prod"]
+    prodDeploy --> prodEnv["production<br/>required reviewers"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-    class feat,dev,rel,main branch;
-    class prGate1,prGate2,deployDev,deployQa,deployProd pipeline;
-    class DEV,QA,PROD env;
+    class feature,develop,release,main branch;
+    class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
+    class devEnv,qaEnv,prodEnv env;
 ```
 
 If you are on trunk-based development, generate only the templates you
 need: `agentops workflow generate --kinds pr,dev,prod`.
+
+The PR gate validates the candidate before merge. It is not a dev deployment.
+HTTP agent tutorials usually point that candidate at the sandbox endpoint;
+prompt-agent workflows stage a candidate prompt version and evaluate that.
 
 ## Quick start
 

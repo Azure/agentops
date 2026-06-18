@@ -12,38 +12,40 @@ that explains why the pieces fit together.
 
 ## How branches map to environments
 
-AgentOps assumes a GitFlow-style branch model. Each long-lived branch maps to a
-GitHub Environment, and a generated pipeline carries changes from the branch to
-that environment through an eval gate. This is the shape the generated workflows
-wire up:
+AgentOps assumes a GitFlow-style branch model. PRs run an eval against the
+candidate agent before merge. Deploy workflows run after merge and promote the
+reviewed branch to its environment:
 
 ```mermaid
 flowchart LR
-    feat["feature/*"] -->|PR gate| prGate1["agentops-pr"]
-    prGate1 -->|merge| dev("develop")
-    dev -->|deploy| deployDev["agentops-deploy-dev"]
-    deployDev --> DEV["DEV"]
+    feature["feature/*"] --> prDev["PR eval<br/>candidate"]
+    prDev --> develop["develop"]
+    develop --> devDeploy["Eval + deploy<br/>agentops-deploy-dev"]
+    devDeploy --> devEnv["dev"]
 
-    rel["release/*"] -->|push| deployQa["agentops-deploy-qa"]
-    deployQa --> QA["QA"]
+    develop --> release["release/*"]
+    release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
+    qaDeploy --> qaEnv["qa"]
 
-    rel -->|PR gate| prGate2["agentops-pr"]
-    prGate2 -->|merge| main("main")
-    main -->|deploy| deployProd["agentops-deploy-prod"]
-    deployProd --> PROD["PROD required reviewers"]
+    release --> prProd["PR eval<br/>candidate"]
+    prProd --> main["main"]
+    main --> prodDeploy["Safety eval + deploy<br/>agentops-deploy-prod"]
+    prodDeploy --> prodEnv["production<br/>required reviewers"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-    class feat,dev,rel,main branch;
-    class prGate1,prGate2,deployDev,deployQa,deployProd pipeline;
-    class DEV,QA,PROD env;
+    class feature,develop,release,main branch;
+    class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
+    class devEnv,qaEnv,prodEnv env;
 ```
 
-The PR gate (`agentops-pr.yml`) guards every merge, and a per-environment deploy
-workflow promotes `develop` to dev, `release/**` to QA, and `main` to prod. The
-two you start with are covered next; the full set, with the workflow YAML and the
-GitHub Environment and OIDC setup, is in
+The PR gate (`agentops-pr.yml`) guards every merge. It does not validate the
+already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
+endpoint. In prompt-agent flows, it evaluates a staged candidate prompt. A
+per-environment deploy workflow promotes `develop` to dev, `release/**` to QA,
+and `main` to prod. The two you start with are covered next; the full set, with
+the workflow YAML and the GitHub Environment and OIDC setup, is in
 [AgentOps on GitHub Actions](ci-github-actions.md).
 
 ## The two core workflows
@@ -53,7 +55,7 @@ workflows. The two that matter most early are the PR gate and the dev deploy.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | Stages a candidate, evaluates it, runs the Doctor gate, and comments on the PR. |
+| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | Evaluates the PR candidate, runs the Doctor gate, and comments on the PR. |
 | `agentops-deploy-dev.yml` | push to `develop` | Evaluates, then builds and deploys to the dev environment. |
 
 You do not write these by hand. `agentops workflow analyze` reads the repo and

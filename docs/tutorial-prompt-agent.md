@@ -22,8 +22,8 @@ flowchart LR
 ```
 
 The idea is simple: sandbox is for trying things, Git is the source of truth,
-and dev is where CI proves the reviewed prompt is safe to merge. If Doctor finds
-a critical regression, the PR should not ship.
+and CI evaluates the PR candidate before anything is promoted to dev. If Doctor
+finds a critical regression, the PR should not ship.
 
 ## Before you run the tutorial
 
@@ -60,7 +60,7 @@ One prompt moves through four stages. Use this as a checklist:
 | **Test prompt** | Try the prompt in sandbox and publish a version when it looks ready. |
 | **Move prompt** | Copy the tested instructions into a prompt file in Git, which becomes the source of truth. |
 | **Create dev environment** | Leave dev empty. CI reads the AgentOps config and creates or updates the dev agent. |
-| **Block regressions** | CI evaluates dev, applies thresholds, and runs Doctor. Serious regressions stop the PR. |
+| **Block regressions** | CI evaluates the PR candidate, applies thresholds, and runs Doctor. Serious regressions stop the PR. |
 
 ### Why the SHA matters
 
