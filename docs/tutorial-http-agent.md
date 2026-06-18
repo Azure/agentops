@@ -258,9 +258,24 @@ in the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
 az containerapp show -n <ORCHESTRATOR_APP_NAME> -g <resource-group> --query properties.configuration.ingress.fqdn -o tsv
 ```
 
-The standard GPT-RAG deploy disables the orchestrator API-key check
-(`DISABLE_AUTH=true`), so local and PR evals do not need a credential. Keep the
-AgentOps config simple: no `auth_*` fields.
+For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
+user `Authorization` bearer token and no `X-API-KEY` header. The orchestrator has
+two auth checks, so make both anonymous-friendly on the sandbox:
+
+- `DISABLE_AUTH=true` skips the orchestrator API-key dependency.
+- `ALLOW_ANONYMOUS=true` lets requests without a user bearer token proceed as
+  anonymous.
+
+Set both on the sandbox Container App before you initialize AgentOps:
+
+```powershell
+az containerapp update `
+  -n <ORCHESTRATOR_APP_NAME> `
+  -g <resource-group> `
+  --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
+```
+
+Keep the AgentOps config simple: no `auth_*` fields.
 
 Sign in and run the wizard inside the orchestrator repo:
 
@@ -309,8 +324,9 @@ evaluators:
 
 !!! note "How AgentOps calls the endpoint"
     AgentOps posts `{"ask": "<input>"}` with `Content-Type: application/json` and
-    no auth header, reads the streamed `text/event-stream` response, drops the
-    leading conversation id, and scores the aggregated answer. The default
+    no `Authorization` or `X-API-KEY` header. The orchestrator treats the request
+    as anonymous, streams a `text/event-stream` response, and AgentOps drops the
+    leading conversation id before scoring the aggregated answer. The default
     `request_field` is `message`; you set it to `ask` because that is the
     orchestrator's vocabulary. If your endpoint emits structured `data:` JSON
     frames instead of raw text, set `response_mode: sse` and add
