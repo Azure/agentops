@@ -245,7 +245,8 @@ azd env get-values
 Get the sandbox orchestrator host:
 
 ```powershell
-azd env get-value CONTAINER_APP_INTERNAL_FQDN
+$host = azd env get-value CONTAINER_APP_INTERNAL_FQDN
+$host
 ```
 
 For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
@@ -260,7 +261,7 @@ Set both on the sandbox Container App before you initialize AgentOps:
 
 ```powershell
 $rg = azd env get-value AZURE_RESOURCE_GROUP
-$app = azd env get-value APP_NAME
+$app = ($host -split '\.')[0]
 az containerapp update -n $app -g $rg --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
 ```
 
