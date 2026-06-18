@@ -56,8 +56,8 @@ azd init -t Azure/gpt-rag
 ```
 
 Name the environment with a unique suffix so it does not collide with anyone
-else's resource names, for example `sandbox-202606181230` (the pattern is
-`sandbox-yyyymmddhhmm`). Then set the required values:
+else's resource names, for example `gptrag-sandbox-2606182303` (the pattern is
+`gptrag-sandbox-yymmddhhmm`). Then set the required values:
 
 ```powershell
 azd env set AZURE_LOCATION <region>
@@ -85,11 +85,11 @@ azd up
 ## 2. Stand up a dev environment
 
 Create a second environment in the same checkout, set its values, and deploy it.
-Give it its own unique suffix, for example `dev-202606181230` (pattern
-`dev-yyyymmddhhmm`).
+Give it its own unique suffix, for example `gptrag-dev-2606182303` (pattern
+`gptrag-dev-yymmddhhmm`).
 
 ```powershell
-azd env new dev-202606181230
+azd env new gptrag-dev-2606182303
 azd env set AZURE_LOCATION <region>
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 azd up
