@@ -1267,9 +1267,8 @@ deployed orchestrator answers over HTTP at <code>POST /orchestrator</code>.</p>
 </div>
 <h2 id="2-stand-up-a-dev-environment">2. Stand up a dev environment<a class="headerlink" href="#2-stand-up-a-dev-environment" title="Permanent link">&para;</a></h2>
 <p>Create a second environment in the same checkout, set its values, and deploy it.
-Give it its own unique suffix, for example <code>gptrag-dev-2606182303</code> (pattern
-<code>gptrag-dev-yymmddhhmm</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="n">new</span> <span class="n">gptrag-dev</span><span class="p">-</span><span class="n">2606182303</span>
+Give it its own unique suffix, using the pattern <code>gptrag-dev-yymmddhhmm</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="n">new</span> <span class="n">gptrag-dev</span><span class="p">-&lt;</span><span class="n">yymmddhhmm</span><span class="p">&gt;</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_LOCATION</span> <span class="p">&lt;</span><span class="n">region</span><span class="p">&gt;</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_SUBSCRIPTION_ID</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">azd</span> <span class="n">up</span>
