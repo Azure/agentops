@@ -240,9 +240,11 @@ No adapter route is needed.
     conversation id, and scores the final answer. This needs AgentOps 0.4.4 or
     newer.
 
-Use the sandbox orchestrator for local AgentOps setup and local eval runs. Dev is
-for the PR workflow later. If your last `azd up` was the dev deployment, select
-the sandbox again from the GPT-RAG checkout before you read resource names:
+Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
+PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
+shared deployment you update after merge or manual dispatch. If your last
+`azd up` was the dev deployment, select the sandbox again from the GPT-RAG
+checkout before you read resource names:
 
 ```powershell
 cd ../gpt-rag
@@ -255,7 +257,9 @@ in the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
 `ORCHESTRATOR_APP_ENDPOINT`; you can also read the ingress host directly:
 
 ```powershell
-az containerapp show -n <ORCHESTRATOR_APP_NAME> -g <resource-group> --query properties.configuration.ingress.fqdn -o tsv
+$rg = (azd env get-values | Select-String '^AZURE_RESOURCE_GROUP=').Line -replace '^AZURE_RESOURCE_GROUP="','' -replace '"$',''
+$app = az containerapp list -g $rg --query "[?contains(name, 'orchestrator')].name | [0]" -o tsv
+az containerapp show -n $app -g $rg --query properties.configuration.ingress.fqdn -o tsv
 ```
 
 For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
@@ -269,10 +273,7 @@ two auth checks, so make both anonymous-friendly on the sandbox:
 Set both on the sandbox Container App before you initialize AgentOps:
 
 ```powershell
-az containerapp update `
-  -n <ORCHESTRATOR_APP_NAME> `
-  -g <resource-group> `
-  --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
+az containerapp update -n $app -g $rg --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
 ```
 
 Keep the AgentOps config simple: no `auth_*` fields.
@@ -539,6 +540,7 @@ orchestrator's existing workflows:
 Update `.github/workflows/agentops-pr.yml` so the PR gate uses the `sandbox`
 GitHub environment and deploys the PR candidate before the eval step:
 
+{% raw %}
 ```yaml
 jobs:
   eval:
@@ -579,6 +581,7 @@ jobs:
       # keep the generated Python setup, AgentOps install, eval, Doctor,
       # artifact upload, summary, and PR comment steps below this point
 ```
+{% endraw %}
 
 Configure a GitHub environment named `sandbox` with the same Azure OIDC vars you
 use for dev, plus `AZURE_ENV_NAME=<sandbox-env-name>` and `AZURE_LOCATION=<region>`.
