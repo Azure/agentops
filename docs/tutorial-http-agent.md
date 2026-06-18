@@ -360,12 +360,27 @@ behavior, not that it is grounded.
 AgentOps evals run wherever you execute the command. In this step, you run the
 same gate locally from the orchestrator repo:
 
-If you also want the local metrics and row results to show up in Foundry, add
-`publish: true` before the run:
+If you also want the local metrics and row results to show up in Foundry, open
+`agentops.yaml` and add `publish: true` at the top level, next to `dataset`,
+`protocol`, and `thresholds`:
 
 ```yaml
+version: 1
+agent: https://<orchestrator-fqdn>/orchestrator
+dataset: .agentops/data/vw-smoke.jsonl
 publish: true
+protocol: http-json
+request_field: ask
+response_mode: text
+stream:
+  strip_leading_token: true
+thresholds:
+  coherence: ">=3"
+  similarity: ">=3"
+  response_completeness: ">=3"
 ```
+
+If you do not want to publish to Foundry, leave the `publish` field out.
 
 !!! note "Foundry visibility for HTTP targets"
     This still runs locally. AgentOps invokes the HTTP endpoint from your machine
