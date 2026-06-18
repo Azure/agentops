@@ -1567,8 +1567,10 @@ same gate locally from the orchestrator repo:</p>
 <p>This still runs locally. AgentOps invokes the HTTP endpoint from your machine
 or CI runner, then uploads the finished metrics and row results to Classic
 Foundry Evaluations. It does not create a New Foundry server-side evaluation
-run. The New Foundry path uses <code>execution: cloud</code> and currently applies to
-Foundry prompt agents (<code>name:version</code>), not this HTTP endpoint tutorial.</p>
+run. In AgentOps, <code>execution: cloud</code> currently applies to Foundry prompt
+agents (<code>name:version</code>) only. Foundry hosted agent endpoints can still use the
+local runner with <code>publish: true</code>, and hosted/prompt agents can use
+<code>execution: azd</code> when you have an <code>azd ai agent eval</code> recipe.</p>
 </div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
@@ -1621,8 +1623,9 @@ readiness view.</p>
 <p>By default, this tutorial keeps eval evidence local or in CI artifacts. With
 <code>publish: true</code>, the same local run also appears in Classic Foundry
 Evaluations. <code>execution: cloud</code> is the New Foundry server-side evaluation
-path, but it currently applies to Foundry prompt agents (<code>name:version</code>), not
-this HTTP endpoint tutorial.</p>
+path, but in AgentOps it currently applies to Foundry prompt agents
+(<code>name:version</code>) only. Hosted agent endpoints use the local runner plus
+optional Classic publish, or <code>execution: azd</code> when an azd eval recipe exists.</p>
 </div>
 <div class="admonition info">
 <p class="admonition-title">Eval evidence vs runtime traces</p>
