@@ -1356,13 +1356,6 @@ of the local directory name. If you already keep a fork at
 <code>&lt;owner&gt;/gpt-rag-orchestrator</code>, give this one a different name like
 <code>gpt-rag-orchestrator-agentops</code> so your own copy stays easy to tell apart.</p>
 </div>
-<div class="admonition note">
-<p class="admonition-title">Why re-init instead of branch off the clone</p>
-<p>The predeploy hook clones with <code>--depth 1</code>, so you only have the pinned
-commit and its shallow boundary. Branching off it keeps that boundary, which
-breaks the push. Deleting <code>.git</code> and running <code>git init</code> gives you a clean,
-self-contained root commit with all the current files and nothing upstream.</p>
-</div>
 <h2 id="5-initialize-agentops-against-the-orchestrator-endpoint">5. Initialize AgentOps against the orchestrator endpoint<a class="headerlink" href="#5-initialize-agentops-against-the-orchestrator-endpoint" title="Permanent link">&para;</a></h2>
 <p>The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
 streamed responses natively, so you point it straight at <code>POST /orchestrator</code>.
@@ -1377,9 +1370,8 @@ newer.</p>
 </div>
 <p>Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
-shared deployment you update after merge or manual dispatch. If your last
-<code>azd up</code> was the dev deployment, select the sandbox again from the GPT-RAG
-checkout before you read resource names:</p>
+shared deployment you update after merge or manual dispatch. Switch back to the
+sandbox environment before you read resource names:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd </span><span class="p">../</span><span class="n">gpt-rag</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">select </span><span class="p">&lt;</span><span class="n">sandbox-env-name</span><span class="p">&gt;</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">get-values</span>
