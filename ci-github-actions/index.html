@@ -1381,7 +1381,7 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 <tr>
 <td><code>agentops-pr.yml</code></td>
 <td>PRs to <code>develop</code>, <code>release/**</code>, <code>main</code></td>
-<td><code>dev</code> for OIDC and variables</td>
+<td><code>sandbox</code> for prompt-agent PR candidates, <code>dev</code> for generic PR gates</td>
 <td>Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via <code>--doctor-gate</code>) + PR comment</td>
 </tr>
 <tr>
@@ -1435,8 +1435,8 @@ workflow is available separately when you explicitly generate <code>--kinds doct
 <p>If you are on trunk-based development, generate only the templates you
 need: <code>agentops workflow generate --kinds pr,dev,prod</code>.</p>
 <p>The PR gate validates the candidate before merge. It is not a dev deployment.
-HTTP agent tutorials usually point that candidate at the sandbox endpoint;
-prompt-agent workflows stage a candidate prompt version and evaluate that.</p>
+HTTP agent tutorials point that candidate at the sandbox endpoint; prompt-agent
+workflows stage and evaluate the candidate prompt version in sandbox.</p>
 <h2 id="quick-start">Quick start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># 1. Analyze and fix eval setup before the first blocking run.</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze

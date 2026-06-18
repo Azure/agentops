@@ -817,13 +817,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14-wire-ci-github-repo-azure-oidc-dev-environment" class="md-nav__link">
+  <a href="#14-wire-ci-github-repo-azure-oidc-sandbox-and-dev-environments" class="md-nav__link">
     <span class="md-ellipsis">
-      14. Wire CI: GitHub repo, Azure OIDC, dev environment
+      14. Wire CI: GitHub repo, Azure OIDC, sandbox and dev environments
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="14. Wire CI: GitHub repo, Azure OIDC, dev environment">
+    <nav class="md-nav" aria-label="14. Wire CI: GitHub repo, Azure OIDC, sandbox and dev environments">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1629,13 +1629,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14-wire-ci-github-repo-azure-oidc-dev-environment" class="md-nav__link">
+  <a href="#14-wire-ci-github-repo-azure-oidc-sandbox-and-dev-environments" class="md-nav__link">
     <span class="md-ellipsis">
-      14. Wire CI: GitHub repo, Azure OIDC, dev environment
+      14. Wire CI: GitHub repo, Azure OIDC, sandbox and dev environments
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="14. Wire CI: GitHub repo, Azure OIDC, dev environment">
+    <nav class="md-nav" aria-label="14. Wire CI: GitHub repo, Azure OIDC, sandbox and dev environments">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -1783,7 +1783,7 @@ finds a critical regression, the PR should not ship.</p>
 stays on the Foundry plus AgentOps flow instead of permission prompts.</p>
 <p><strong>Foundry projects</strong></p>
 <ul>
-<li>Two projects: a sandbox where you publish the prompt agent, and a shared dev for the PR gate. You publish only in sandbox; CI bootstraps dev (and later qa and prod).</li>
+<li>Two projects: a sandbox where you publish the prompt agent and run PR candidates, and a shared dev for the post-merge deploy. You publish only in sandbox; CI bootstraps dev after merge (and later qa and prod).</li>
 <li>The same model deployment name (for example <code>gpt-4o-mini</code>) in every project. A missing deployment in dev breaks the first bootstrap.</li>
 </ul>
 <p><strong>Azure</strong></p>
@@ -1795,7 +1795,7 @@ stays on the Foundry plus AgentOps flow instead of permission prompts.</p>
 <p><strong>GitHub</strong></p>
 <ul>
 <li>Push access to the tutorial repo and permission to run GitHub Actions.</li>
-<li>A GitHub environment named <code>dev</code> for Azure auth and the dev endpoint.</li>
+<li>GitHub environments named <code>sandbox</code> and <code>dev</code> for Azure auth and Foundry endpoints.</li>
 <li><code>gh auth login</code> authenticated for the PR commands.</li>
 </ul>
 <p><strong>Coding agent</strong></p>
@@ -1876,8 +1876,8 @@ portal path instead. Both paths reach the same result.</p>
 <h2 id="3-create-the-two-foundry-projects">3. Create the two Foundry projects<a class="headerlink" href="#3-create-the-two-foundry-projects" title="Permanent link">&para;</a></h2>
 <p>You need two Foundry projects in the same Azure subscription:</p>
 <ul>
-<li><code>travel-agent-sandbox</code>: where you author and experiment. Saves here never trigger CI.</li>
-<li><code>travel-agent-dev</code>: the first shared environment. The PR gate stages candidates here and the dev deploy lands here.</li>
+<li><code>travel-agent-sandbox</code>: where you author, experiment, and stage PR candidates. Saves here never deploy dev.</li>
+<li><code>travel-agent-dev</code>: the first shared environment. The dev deploy lands here after merge.</li>
 </ul>
 <div class="admonition note">
 <p class="admonition-title">How many sandboxes</p>
@@ -2532,7 +2532,7 @@ and gating.</p>
 </code></pre></div>
 <p>The PR workflow has two jobs:</p>
 <ol>
-<li><code>stage-candidate</code> stages an ephemeral Foundry prompt-agent candidate in the <strong>dev</strong> project. A candidate is a throwaway agent version CI creates just to evaluate a PR. On the first PR, dev is empty, so the step reads <code>prompt_agent_bootstrap</code> plus <code>prompt_file</code> and reports <code>action: bootstrapped</code>. Once dev catches up to the seed, it reports <code>reused</code> or <code>created</code>, and writes <code>.agentops/deployments/agentops.candidate.yaml</code>.</li>
+<li><code>stage-candidate</code> stages an ephemeral Foundry prompt-agent candidate in the <strong>sandbox</strong> project. A candidate is a throwaway agent version CI creates just to evaluate a PR, not a dev deployment. The step writes <code>.agentops/deployments/agentops.candidate.yaml</code>.</li>
 <li><code>eval</code> runs <code>agentops eval run</code> against the candidate, then Doctor with <code>--severity-fail critical</code>. Because the gate now uses the multi-turn dataset, this checks conversation behavior, not a single smoke response.</li>
 </ol>
 <div class="admonition note">
@@ -2571,7 +2571,7 @@ uploads <code>.agentops/deployments/foundry-agent.json</code> as an artifact.</p
 <p>Deploy templates always run <code>--severity-fail critical</code> regardless of
 <code>--doctor-gate</code>. The gate flag affects only the PR template; deploys are the
 last-mile gate and always block on critical findings.</p>
-<h2 id="14-wire-ci-github-repo-azure-oidc-dev-environment">14. Wire CI: GitHub repo, Azure OIDC, dev environment<a class="headerlink" href="#14-wire-ci-github-repo-azure-oidc-dev-environment" title="Permanent link">&para;</a></h2>
+<h2 id="14-wire-ci-github-repo-azure-oidc-sandbox-and-dev-environments">14. Wire CI: GitHub repo, Azure OIDC, sandbox and dev environments<a class="headerlink" href="#14-wire-ci-github-repo-azure-oidc-sandbox-and-dev-environments" title="Permanent link">&para;</a></h2>
 <p>The workflows are local until the folder is a GitHub repo connected to Azure with
 OIDC. OIDC (OpenID Connect) lets GitHub Actions get short-lived Azure tokens
 through a federated credential, so you store no long-lived secret. Use the
@@ -2584,21 +2584,22 @@ through a federated credential, so you store no long-lived secret. Use the
 <a id="__codelineno-44-3" name="__codelineno-44-3" href="#__codelineno-44-3"></a>may be a new folder with no Git repo yet. Scope to the PR gate and dev deploy
 <a id="__codelineno-44-4" name="__codelineno-44-4" href="#__codelineno-44-4"></a>only: create or connect the GitHub repo, make local main track origin/main, wire
 <a id="__codelineno-44-5" name="__codelineno-44-5" href="#__codelineno-44-5"></a>Azure OIDC and the required Actions variables and secrets, and create only the
-<a id="__codelineno-44-6" name="__codelineno-44-6" href="#__codelineno-44-6"></a>dev environment. Verify the OIDC principal has both Foundry User on the dev
-<a id="__codelineno-44-7" name="__codelineno-44-7" href="#__codelineno-44-7"></a>project and Cognitive Services OpenAI User on the AI Services account. Do not set
-<a id="__codelineno-44-8" name="__codelineno-44-8" href="#__codelineno-44-8"></a>up qa, production, scheduled Doctor, or hosted deploys yet. Show me the plan
-<a id="__codelineno-44-9" name="__codelineno-44-9" href="#__codelineno-44-9"></a>before changing GitHub or Azure.
+<a id="__codelineno-44-6" name="__codelineno-44-6" href="#__codelineno-44-6"></a>sandbox and dev environments. The PR gate must use the sandbox Foundry endpoint;
+<a id="__codelineno-44-7" name="__codelineno-44-7" href="#__codelineno-44-7"></a>the dev deploy must use the dev Foundry endpoint. Verify the OIDC principal has
+<a id="__codelineno-44-8" name="__codelineno-44-8" href="#__codelineno-44-8"></a>Foundry User on both projects and Cognitive Services OpenAI User on the AI
+<a id="__codelineno-44-9" name="__codelineno-44-9" href="#__codelineno-44-9"></a>Services account. Do not set up qa, production, scheduled Doctor, or hosted
+<a id="__codelineno-44-10" name="__codelineno-44-10" href="#__codelineno-44-10"></a>deploys yet. Show me the plan before changing GitHub or Azure.
 </code></pre></div>
 <p>The skill normally does the following. Call out anything it skips:</p>
 <ul>
 <li>Create or connect the GitHub remote and make local <code>main</code> track <code>origin/main</code>. If it skips this, run <code>git branch --set-upstream-to=origin/main main</code>.</li>
-<li>Create the <code>dev</code> GitHub environment.</li>
+<li>Create the <code>sandbox</code> and <code>dev</code> GitHub environments.</li>
 <li>Configure OIDC federated credentials between GitHub and Entra ID. Reference: <a href="https://docs.github.com/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-azure">Configure OIDC in Azure</a>.</li>
-<li>Set Actions variables <code>AZURE_TENANT_ID</code>, <code>AZURE_SUBSCRIPTION_ID</code>, <code>AZURE_CLIENT_ID</code>, <code>AZURE_AI_FOUNDRY_PROJECT_ENDPOINT</code> (the dev endpoint), and <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code> if available. Make sure <code>AZURE_TENANT_ID</code> is the tenant that owns the app registration, not a subscription <code>managedByTenants</code> value.</li>
-<li>Assign the OIDC principal two roles. Both are required, and the eval step returns all-null metrics if either is missing: Foundry User on the dev project, and Cognitive Services OpenAI User on the AI Services account that hosts the evaluator model. See <a href="https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry">Foundry RBAC</a>.</li>
+<li>Set <code>AZURE_TENANT_ID</code>, <code>AZURE_SUBSCRIPTION_ID</code>, <code>AZURE_CLIENT_ID</code>, and <code>AZURE_AI_FOUNDRY_PROJECT_ENDPOINT</code> in each environment. Use the sandbox endpoint for <code>sandbox</code> and the dev endpoint for <code>dev</code>. Add <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code> where available. Make sure <code>AZURE_TENANT_ID</code> is the tenant that owns the app registration, not a subscription <code>managedByTenants</code> value.</li>
+<li>Assign the OIDC principal the required roles. The eval step returns all-null metrics if either is missing: Foundry User on the sandbox and dev projects, and Cognitive Services OpenAI User on the AI Services account that hosts the evaluator model. See <a href="https://learn.microsoft.com/azure/ai-foundry/concepts/rbac-azure-ai-foundry">Foundry RBAC</a>.</li>
 </ul>
-<p>The dev endpoint is in <code>.azure/dev/.env</code>; the sandbox endpoint stays local and
-must not go into CI.</p>
+<p>The PR workflow reads the sandbox endpoint from the <code>sandbox</code> GitHub environment.
+The deploy workflow reads the dev endpoint from the <code>dev</code> GitHub environment.</p>
 <h3 id="point-the-workflows-at-main">Point the workflows at main<a class="headerlink" href="#point-the-workflows-at-main" title="Permanent link">&para;</a></h3>
 <p>This tutorial uses trunk-based development with <code>main</code> as the trunk. The
 generator emits GitFlow defaults that fire on <code>develop</code>, so retarget both files.
@@ -2741,8 +2742,8 @@ regression findings clear as metrics return to the rolling baseline. Merge, and
 the dev deploy records the restored prompt with a new <code>foundry-agent.json</code>
 carrying the recovered prompt's SHA.</p>
 <p>The learning loop is the point: the prompt lives in git, the PR exercises it as a
-candidate in dev, Doctor catches regressions thresholds alone miss, and the merge
-promotes through deploy, none of it requiring anyone to watch a dashboard.</p>
+sandbox candidate, Doctor catches regressions thresholds alone miss, and the
+merge promotes through deploy, none of it requiring anyone to watch a dashboard.</p>
 <h2 id="18-observability-traces-into-continuous-evaluation">18. Observability: traces into continuous evaluation<a class="headerlink" href="#18-observability-traces-into-continuous-evaluation" title="Permanent link">&para;</a></h2>
 <p>Tour the Foundry runtime view, then turn the same production signal into
 evaluation coverage. This is the bridge from "what happened in real traces" to
@@ -2962,9 +2963,9 @@ Azure Monitor for live runtime data.</p>
 <h2 id="what-you-walk-away-knowing">What you walk away knowing<a class="headerlink" href="#what-you-walk-away-knowing" title="Permanent link">&para;</a></h2>
 <p>You built a complete prompt-agent release loop and now understand:</p>
 <ul>
-<li>How sandbox, Git, and dev divide the work: sandbox is for authoring, Git is the source of truth, and CI proves the reviewed prompt in dev.</li>
+<li>How sandbox, Git, and dev divide the work: sandbox is for authoring and PR candidates, Git is the source of truth, and dev receives reviewed prompts after merge.</li>
 <li>Why AgentOps identifies a release by its <code>prompt_sha256</code> and <code>git_sha</code>, not by per-project Foundry version numbers.</li>
-<li>How the PR gate stages a candidate in dev, runs a conversation-aware eval, and blocks on eval thresholds or Doctor criticals.</li>
+<li>How the PR gate stages a candidate in sandbox, runs a conversation-aware eval, and blocks on eval thresholds or Doctor criticals.</li>
 <li>How a regression is caught at PR time by two independent gates, and how the fix flows straight back through deploy.</li>
 <li>How traces become continuous-evaluation datasets, and how Doctor, the evidence pack, and Cockpit turn signals into a ship or no-ship call.</li>
 </ul>
