@@ -57,9 +57,13 @@ azd init -t Azure/gpt-rag
 
 Name the environment with a unique suffix so it does not collide with anyone
 else's resource names, for example `gptrag-sandbox-2606182303` (the pattern is
-`gptrag-sandbox-yymmddhhmm`). Then set the required values:
+`gptrag-sandbox-yymmddhhmm`).
+
+azd downloads the template into a `gpt-rag` directory. Change into it, then set
+the required values:
 
 ```powershell
+cd gpt-rag
 azd env set AZURE_LOCATION <region>
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 ```
