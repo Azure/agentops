@@ -1357,17 +1357,10 @@ install AgentOps, and install the Copilot skills:</p>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">agentops</span> <span class="n">skills</span> <span class="n">install</span>
 </code></pre></div>
 <h2 id="6-initialize-agentops-against-the-orchestrator-endpoint">6. Initialize AgentOps against the orchestrator endpoint<a class="headerlink" href="#6-initialize-agentops-against-the-orchestrator-endpoint" title="Permanent link">&para;</a></h2>
-<p>The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
-streamed responses natively, so you point it straight at <code>POST /orchestrator</code>.
-No adapter route is needed.</p>
-<div class="admonition info">
-<p class="admonition-title">The orchestrator streams, AgentOps reads it natively</p>
-<p><code>POST /orchestrator</code> returns Server-Sent Events (<code>text/event-stream</code>): a
-conversation id followed by streamed answer chunks. AgentOps <code>http-json</code>
-reads the stream when you set <code>response_mode: text</code>, drops the leading
-conversation id, and scores the final answer. This needs AgentOps 0.4.4 or
-newer.</p>
-</div>
+<p>Point AgentOps straight at <code>POST /orchestrator</code>. No adapter route is needed.
+The only protocol detail is that this endpoint returns <code>text/event-stream</code>, so
+the config below reads the response as text and drops the leading conversation
+id.</p>
 <p>Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate uses sandbox too. Dev is updated after merge or manual dispatch.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c"># Select sandbox.</span>
@@ -1416,7 +1409,8 @@ keeps that local setup simple.</p>
 </tr>
 </tbody>
 </table>
-<p>Then edit <code>agentops.yaml</code> so AgentOps reads the streamed response correctly:</p>
+<p>Then edit <code>agentops.yaml</code> so AgentOps matches the orchestrator request and
+response shape:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>edit agentops.yaml
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
@@ -1445,7 +1439,7 @@ keeps that local setup simple.</p>
 </tr>
 <tr>
 <td><code>protocol: http-json</code></td>
-<td>Send one JSON request; here AgentOps reads a streamed response.</td>
+<td>Send one JSON request to the orchestrator.</td>
 </tr>
 <tr>
 <td><code>request_field: ask</code></td>
@@ -1747,9 +1741,8 @@ section pages the other tutorials use.</p>
   anything updates dev.</li>
 <li>You took ownership of the cloned orchestrator by re-initializing its git
   history and starting your own repository.</li>
-<li>You pointed AgentOps directly at the orchestrator's streaming endpoint with
-  <code>response_mode: text</code>, and you can map <code>ask</code> and <code>text</code> to the real request and
-  response shape.</li>
+<li>You pointed AgentOps directly at the orchestrator endpoint and mapped <code>ask</code>
+  and <code>text</code> to the real request and response shape.</li>
 <li>You indexed a sample document, built a smoke dataset from its content, and
   scored answers on relevance and coherence, knowing why that is smoke and not
   groundedness.</li>
