@@ -237,8 +237,18 @@ No adapter route is needed.
     conversation id, and scores the final answer. This needs AgentOps 0.4.4 or
     newer.
 
-Get the dev orchestrator URL. The Container App name and endpoint are stored in
-the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
+Use the sandbox orchestrator for local AgentOps setup and local eval runs. Dev is
+for the PR workflow later. If your last `azd up` was the dev deployment, select
+the sandbox again from the GPT-RAG checkout before you read resource names:
+
+```powershell
+cd ../gpt-rag
+azd env select <sandbox-env-name>
+azd env get-values
+```
+
+Get the sandbox orchestrator URL. The Container App name and endpoint are stored
+in the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
 `ORCHESTRATOR_APP_ENDPOINT`; you can also read the ingress host directly:
 
 ```powershell
@@ -246,7 +256,7 @@ az containerapp show -n <ORCHESTRATOR_APP_NAME> -g <resource-group> --query prop
 ```
 
 The `POST /orchestrator` route can authenticate with a shared secret sent as the
-`X-API-KEY` header, but a standard GPT-RAG dev deploy turns that check off: the
+`X-API-KEY` header, but a standard GPT-RAG deploy turns that check off: the
 orchestrator runs with `DISABLE_AUTH=true` and answers without a key, so AgentOps
 needs no credential. If that is your case, skip to the wizard below. The `auth_*`
 lines in `agentops.yaml` are harmless when auth is disabled.
@@ -273,12 +283,12 @@ az login
 agentops init
 ```
 
-Answer the prompts with the dev orchestrator values:
+Answer the prompts with the sandbox orchestrator values:
 
 | Prompt | Answer |
 |---|---|
-| Foundry project endpoint | The dev Foundry project endpoint for the judge model, or press Enter to set it later. |
-| Agent | The dev orchestrator URL, for example `https://<orchestrator-fqdn>/orchestrator`. |
+| Foundry project endpoint | The sandbox Foundry project endpoint for the judge model, or press Enter to set it later. |
+| Agent | The sandbox orchestrator URL, for example `https://<orchestrator-fqdn>/orchestrator`. |
 | Dataset path | `.agentops/data/vw-smoke.jsonl` |
 
 Then edit `agentops.yaml` so AgentOps reads the streamed response correctly:
@@ -306,7 +316,7 @@ evaluators:
 
 | Field | What it does |
 |---|---|
-| `agent` | The dev orchestrator URL AgentOps calls with `POST`. |
+| `agent` | The sandbox orchestrator URL AgentOps calls with `POST` for local eval runs. |
 | `protocol: http-json` | Send one JSON request; here AgentOps reads a streamed response. |
 | `request_field: ask` | Put each dataset input under the `ask` key, matching the orchestrator's own field name. |
 | `response_mode: text` | Read the `text/event-stream` body and aggregate it into one answer instead of parsing a single JSON body. |
@@ -501,6 +511,10 @@ You build your own CI here. `agentops workflow generate` writes fresh,
 AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
 upstream orchestrator shipped. The orchestrator's `azure.yaml` is used only as
 the deploy project, so the deploy mode is `azd`.
+
+The local evals above use your sandbox endpoint. The PR gate generated here uses
+the dev environment, so pull requests are checked against the same deployment the
+dev workflow updates.
 
 ```powershell
 agentops workflow generate --kinds pr,dev --deploy-mode azd --doctor-gate critical --force
