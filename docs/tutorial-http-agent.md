@@ -258,26 +258,9 @@ in the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
 az containerapp show -n <ORCHESTRATOR_APP_NAME> -g <resource-group> --query properties.configuration.ingress.fqdn -o tsv
 ```
 
-The `POST /orchestrator` route can authenticate with a shared secret sent as the
-`X-API-KEY` header, but a standard GPT-RAG deploy turns that check off: the
-orchestrator runs with `DISABLE_AUTH=true` and answers without a key, so AgentOps
-needs no credential. If that is your case, skip to the wizard below. The `auth_*`
-lines in `agentops.yaml` are harmless when auth is disabled.
-
-You only need a key if you deployed with the "use container app API keys" feature
-enabled (`useCAppAPIKey=true`), which makes the orchestrator require `X-API-KEY`.
-That same flag is what provisions the secret in Key Vault, named
-`ORCHESTRATOR-APP-APIKEY` (App Configuration only holds a reference to it, not the
-value). A default deploy does not create it. When you do have it, read it straight
-into this shell session so it is never typed as a literal or written to a file:
-
-```powershell
-$kv = az keyvault list -g <resource-group> --query "[0].name" -o tsv
-$env:ORCHESTRATOR_APP_APIKEY = az keyvault secret show --vault-name $kv --name ORCHESTRATOR-APP-APIKEY --query value -o tsv
-```
-
-AgentOps reads the key from the `ORCHESTRATOR_APP_APIKEY` env var via
-`auth_header_env` (Section 5), so nothing is ever written to `agentops.yaml`.
+The standard GPT-RAG deploy disables the orchestrator API-key check
+(`DISABLE_AUTH=true`), so local and PR evals do not need a credential. Keep the
+AgentOps config simple: no `auth_*` fields.
 
 Sign in and run the wizard inside the orchestrator repo:
 
@@ -310,9 +293,6 @@ request_field: ask
 response_mode: text
 stream:
   strip_leading_token: true
-auth_header_name: X-API-KEY
-auth_value_template: "{token}"
-auth_header_env: ORCHESTRATOR_APP_APIKEY
 evaluators:
   relevance: ">=3"
   coherence: ">=3"
@@ -325,19 +305,21 @@ evaluators:
 | `request_field: ask` | Put each dataset input under the `ask` key, matching the orchestrator's own field name. |
 | `response_mode: text` | Read the `text/event-stream` body and aggregate it into one answer instead of parsing a single JSON body. |
 | `stream.strip_leading_token: true` | Drop the leading conversation id the orchestrator emits as its first chunk. |
-| `auth_header_name: X-API-KEY` | Send the shared secret in the `X-API-KEY` header instead of `Authorization`. |
-| `auth_value_template: "{token}"` | Send the raw token as the header value, with no `Bearer ` prefix. |
-| `auth_header_env: ORCHESTRATOR_APP_APIKEY` | Read the secret from this env var; nothing is written to `agentops.yaml`. |
 | `evaluators.relevance` / `evaluators.coherence` | Score each answer for on-topic relevance and readable coherence, requiring at least 3 out of 5. This smoke-core checks the agent answers sensibly, not that it is grounded. |
 
 !!! note "How AgentOps calls the endpoint"
     AgentOps posts `{"ask": "<input>"}` with `Content-Type: application/json` and
-    the `X-API-KEY` header from `ORCHESTRATOR_APP_APIKEY`, reads the streamed
-    `text/event-stream` response, drops the leading conversation id, and scores
-    the aggregated answer. The default `request_field` is `message`; you set it
-    to `ask` because that is the orchestrator's vocabulary. If your endpoint
-    emits structured `data:` JSON frames instead of raw text, set
-    `response_mode: sse` and add `stream.text_field` to point at the token text.
+    no auth header, reads the streamed `text/event-stream` response, drops the
+    leading conversation id, and scores the aggregated answer. The default
+    `request_field` is `message`; you set it to `ask` because that is the
+    orchestrator's vocabulary. If your endpoint emits structured `data:` JSON
+    frames instead of raw text, set `response_mode: sse` and add
+    `stream.text_field` to point at the token text.
+
+!!! tip "If you enabled API keys on purpose"
+    Only add `auth_header_name`, `auth_value_template`, and `auth_header_env` if
+    you deployed GPT-RAG with `useCAppAPIKey=true`. The default tutorial path does
+    not use that option.
 
 ## 6. Create the eval dataset
 
