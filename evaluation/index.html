@@ -1059,16 +1059,43 @@ collects responses, scores them with evaluators, and checks the scores against
 your thresholds. It writes two outputs every run: <code>results.json</code> for automation
 and <code>report.md</code> for human review.</p>
 <h2 id="where-evaluations-run">Where evaluations run<a class="headerlink" href="#where-evaluations-run" title="Permanent link">&para;</a></h2>
-<p><code>agentops eval run</code> is a local runner. It runs wherever you execute the command:
-your laptop, a dev container, GitHub Actions, or another CI host. The output is
-written to that workspace under <code>.agentops/results/latest/</code>.</p>
-<p>AgentOps does not upload <code>results.json</code> or <code>report.md</code> into the Foundry
-Evaluations page. If you configure Application Insights, AgentOps emits telemetry
-spans so the run can be inspected through Foundry tracing or Azure Monitor Logs.
-That is different from creating a Foundry Evaluation run.</p>
-<p>Use the Foundry Evaluations experience when you want a Foundry-managed batch
-evaluation job, dataset, and evaluator catalog. Use AgentOps when you want a
-repo-side gate that can run the same way locally and in CI.</p>
+<p>By default, <code>agentops eval run</code> is a local runner. It runs wherever you execute
+the command: your laptop, a dev container, GitHub Actions, or another CI host.
+The output is written to that workspace under <code>.agentops/results/latest/</code>.</p>
+<p>Foundry visibility is opt-in:</p>
+<table>
+<thead>
+<tr>
+<th>Config</th>
+<th>What happens</th>
+<th>Foundry surface</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>execution: local</code> or omitted</td>
+<td>AgentOps invokes the target and scores rows locally.</td>
+<td>Local <code>results.json</code> and <code>report.md</code> only.</td>
+</tr>
+<tr>
+<td><code>execution: local</code> plus <code>publish: true</code></td>
+<td>AgentOps keeps the local run as source of truth, then uploads metrics and row results.</td>
+<td>Classic Foundry Evaluations.</td>
+</tr>
+<tr>
+<td><code>execution: cloud</code></td>
+<td>Foundry runs the agent and evaluators server-side.</td>
+<td>New Foundry Evaluations.</td>
+</tr>
+</tbody>
+</table>
+<p><code>execution: cloud</code> is currently for Foundry prompt agents declared as
+<code>name:version</code>. HTTP endpoints use the local runner; if you want those local
+results visible in Foundry, use <code>publish: true</code>, which targets the Classic
+Foundry Evaluations upload path.</p>
+<p>If you configure Application Insights, AgentOps also emits telemetry spans so
+the run can be inspected through Foundry tracing or Azure Monitor Logs. That is
+separate from the Evaluations page.</p>
 <div class="admonition info">
 <p class="admonition-title">Exit codes are the CI contract</p>
 <p>The runner returns <code>0</code> when every threshold passes, <code>2</code> when the run

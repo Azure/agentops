@@ -1560,12 +1560,12 @@ connection string before the run so the spans land somewhere you can read them:<
 Monitor Logs. <code>agentops cockpit --workspace .</code> deep-links the same spans into one
 readiness view.</p>
 <div class="admonition note">
-<p class="admonition-title">Foundry Evaluations is a different surface</p>
-<p><code>agentops eval run</code> does not upload <code>results.json</code> or <code>report.md</code> into the
-Foundry Evaluations page. It produces repo-side evidence and, when telemetry
-is configured, trace spans. To see a run under Foundry Evaluations, use a
-separate Foundry-managed evaluation flow with its dataset and evaluator
-setup.</p>
+<p class="admonition-title">Foundry Evaluations is opt-in</p>
+<p>By default, this tutorial keeps eval evidence local or in CI artifacts. If
+you set <code>publish: true</code>, AgentOps uploads the local metrics and row results
+to Classic Foundry Evaluations after the local run. <code>execution: cloud</code> is the
+New Foundry server-side evaluation path, but it currently applies to Foundry
+prompt agents (<code>name:version</code>), not this HTTP endpoint tutorial.</p>
 </div>
 <div class="admonition info">
 <p class="admonition-title">Eval evidence vs runtime traces</p>
