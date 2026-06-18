@@ -177,23 +177,25 @@ origin  https://github.com/azure/gpt-rag-orchestrator.git (push)
 
 !!! warning "This intentionally disconnects from upstream"
     This tutorial makes the orchestrator your own service to evaluate and
-    deploy. Removing `origin` detaches it from the GPT-RAG open source project
-    so your commits and CI never target upstream. Do this only in your own copy.
+    deploy. Re-initializing the git history detaches it from the GPT-RAG open
+    source project so your commits and CI never target upstream. Do this only in
+    your own copy.
 
-Remove the upstream remote, name your own branch, and optionally drop the
-inherited eval pipeline and CI before your first commit so your history starts
-clean:
+Optionally drop the inherited eval pipeline and CI, then start your own history.
+The clone is shallow on a pinned tag, so re-rooting with `git init` (instead of
+committing on top of the shallow commit) is what lets the push succeed later:
 
 ```powershell
-git remote remove origin
-git checkout -b main
-
 # optional: remove the inherited eval pipeline and CI so only AgentOps runs
 Remove-Item -Recurse -Force evaluations
 Remove-Item -Force .github/workflows/*
 
+# start a fresh, independent history at a real root commit
+Remove-Item -Recurse -Force .git
+git init
 git add -A
 git commit -m "Initial commit: my GPT-RAG orchestrator copy"
+git branch -M main
 ```
 
 !!! note "What you just removed"
@@ -214,14 +216,16 @@ gh repo create <owner>/gpt-rag-orchestrator-agentops --private --source . --remo
 git push -u origin main
 ```
 
-!!! warning "Push fails with 'not a full refname' or 'HEAD:refs/heads/HEAD'?"
-    The clone arrives in a detached HEAD on the pinned tag, so pushing `HEAD`
-    has no branch name to land on. Naming the branch with `git checkout -b main`
-    and pushing it by name with `git push -u origin main` avoids the error. If
-    you hit it, you skipped the checkout: run `git checkout -b main` (or
-    `git checkout main` if it already exists), then `git push -u origin main`.
-    The repo and remote from `gh repo create` are already in place, so you do
-    not need to recreate them.
+!!! warning "Push rejected with 'did not receive expected object' or 'not a full refname'?"
+    Both come from the shallow clone. It arrives in a detached HEAD on the pinned
+    tag, so committing on top of it and pushing tries to send objects the shallow
+    clone never downloaded, and the remote rejects the pack with
+    `remote unpack failed: index-pack failed`. The fix is to re-root the history
+    as shown above:
+    `Remove-Item -Recurse -Force .git; git init; git add -A; git commit -m "..."; git branch -M main`,
+    then push again. The repo and remote from `gh repo create` stay in place, so
+    you do not need to recreate them; if you already deleted `.git`, just re-add
+    the remote with `git remote add origin <url>` before `git push -u origin main`.
 
 !!! tip "Use a distinct repo name"
     `gh repo create` names a brand-new repo from the current folder, regardless
@@ -229,10 +233,11 @@ git push -u origin main
     `<owner>/gpt-rag-orchestrator`, give this one a different name like
     `gpt-rag-orchestrator-agentops` so your own copy stays easy to tell apart.
 
-!!! note "The clone is shallow"
+!!! note "Why re-init instead of branch off the clone"
     The predeploy hook clones with `--depth 1`, so you only have the pinned
-    commit. `git checkout -b main` simply names a branch at that commit, which
-    is all you need to make it your own repo.
+    commit and its shallow boundary. Branching off it keeps that boundary, which
+    breaks the push. Deleting `.git` and running `git init` gives you a clean,
+    self-contained root commit with all the current files and nothing upstream.
 
 ## 5. Initialize AgentOps against the maf_lite endpoint
 
