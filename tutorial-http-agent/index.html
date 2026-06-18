@@ -589,27 +589,51 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
+  <a href="#9-add-assert-and-red-team-safety-gates" class="md-nav__link">
     <span class="md-ellipsis">
-      9. Generate the PR + dev deploy workflows
+      9. Add ASSERT and Red Team safety gates
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Add ASSERT and Red Team safety gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scaffold-both-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      Scaffold both (recommended)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#or-add-the-blocks-yourself" class="md-nav__link">
+    <span class="md-ellipsis">
+      Or add the blocks yourself
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Generate the PR + dev deploy workflows
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#10-ship-observe-and-own" class="md-nav__link">
+  <a href="#11-ship-observe-and-own" class="md-nav__link">
     <span class="md-ellipsis">
-      10. Ship, observe, and own
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#optional-add-assert-and-red-team-safety-gates" class="md-nav__link">
-    <span class="md-ellipsis">
-      Optional: add ASSERT and Red Team safety gates
+      11. Ship, observe, and own
     </span>
   </a>
   
@@ -1056,27 +1080,51 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
+  <a href="#9-add-assert-and-red-team-safety-gates" class="md-nav__link">
     <span class="md-ellipsis">
-      9. Generate the PR + dev deploy workflows
+      9. Add ASSERT and Red Team safety gates
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. Add ASSERT and Red Team safety gates">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scaffold-both-recommended" class="md-nav__link">
+    <span class="md-ellipsis">
+      Scaffold both (recommended)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#or-add-the-blocks-yourself" class="md-nav__link">
+    <span class="md-ellipsis">
+      Or add the blocks yourself
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-generate-the-pr-dev-deploy-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      10. Generate the PR + dev deploy workflows
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#10-ship-observe-and-own" class="md-nav__link">
+  <a href="#11-ship-observe-and-own" class="md-nav__link">
     <span class="md-ellipsis">
-      10. Ship, observe, and own
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#optional-add-assert-and-red-team-safety-gates" class="md-nav__link">
-    <span class="md-ellipsis">
-      Optional: add ASSERT and Red Team safety gates
+      11. Ship, observe, and own
     </span>
   </a>
   
@@ -1155,10 +1203,18 @@ instead of permission prompts.</p>
 sandbox.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">azd</span> <span class="n">init</span> <span class="n">-t</span> <span class="n">Azure</span><span class="p">/</span><span class="n">gpt-rag</span>
 </code></pre></div>
-<p>Name the environment <code>sandbox</code> when prompted, then set the required values:</p>
+<p>Name the environment with a unique suffix so it does not collide with anyone
+else's resource names, for example <code>sandbox-202606181230</code> (the pattern is
+<code>sandbox-yyyymmddhhmm</code>). Then set the required values:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_LOCATION</span> <span class="p">&lt;</span><span class="n">region</span><span class="p">&gt;</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_SUBSCRIPTION_ID</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
 </code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Why a unique name</p>
+<p>The azd environment name seeds globally unique Azure resource names like the
+storage account. A plain <code>sandbox</code> often clashes with another deployment, so
+a timestamp suffix keeps yours distinct.</p>
+</div>
 <p>Provision and deploy everything:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">azd</span> <span class="n">up</span>
 </code></pre></div>
@@ -1171,8 +1227,10 @@ directory, pinned to tag <code>v2.8.6</code>, and built into a container image. 
 answers over HTTP at <code>POST /orchestrator</code>.</p>
 </div>
 <h2 id="2-stand-up-a-dev-environment">2. Stand up a dev environment<a class="headerlink" href="#2-stand-up-a-dev-environment" title="Permanent link">&para;</a></h2>
-<p>Create a second environment in the same checkout, set its values, and deploy it.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="n">new</span> <span class="n">dev</span>
+<p>Create a second environment in the same checkout, set its values, and deploy it.
+Give it its own unique suffix, for example <code>dev-202606181230</code> (pattern
+<code>dev-yyyymmddhhmm</code>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">azd</span> <span class="n">env</span> <span class="n">new</span> <span class="n">dev</span><span class="p">-</span><span class="n">202606181230</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_LOCATION</span> <span class="p">&lt;</span><span class="n">region</span><span class="p">&gt;</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_SUBSCRIPTION_ID</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">azd</span> <span class="n">up</span>
@@ -1428,29 +1486,99 @@ metric concepts.</p>
 answer, the judge scores, and pass or fail against your thresholds:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
-<p><strong>Runtime traces (Azure Monitor / Foundry).</strong> When an Application Insights
-connection string is set, AgentOps emits <code>agentops.eval.*</code> spans for each run,
-and your agent emits its own request traces. Point AgentOps at telemetry before
-the run:</p>
+<p><strong>Runtime traces (Azure Monitor / Foundry).</strong> Set an Application Insights
+connection string before the run so the spans land somewhere you can read them:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="s2">&quot;&lt;app-insights-connection-string&gt;&quot;</span>
 <a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
-<p>Then open the traces in the Foundry project's tracing view, or query them in
-Azure Monitor Logs. <code>agentops cockpit --workspace .</code> deep-links the same spans
-into one readiness view.</p>
+<p>Two different kinds of trace show up, from two different producers:</p>
+<ul>
+<li><strong>Evaluation traces</strong> come from AgentOps itself. Each <code>agentops eval run</code>
+  emits <code>agentops.eval.*</code> spans (one run, one span tree), and scheduled Doctor
+  runs emit <code>agentops.agent.finding.*</code> spans. These exist even if the agent has
+  no telemetry of its own.</li>
+<li><strong>Application/agent traces</strong> come from the orchestrator at runtime, not from
+  AgentOps. They appear only if the orchestrator app is instrumented to emit its
+  own OpenTelemetry to App Insights. AgentOps and the Doctor read those traces
+  (p95 latency, error rate) but do not generate them.</li>
+</ul>
+<p>Open the traces in the Foundry project's tracing view, or query them in Azure
+Monitor Logs. <code>agentops cockpit --workspace .</code> deep-links the same spans into one
+readiness view.</p>
 <div class="admonition info">
 <p class="admonition-title">Eval evidence vs runtime traces</p>
 <p>The local <code>report.md</code> is the fastest way to see why a row passed or failed.
-The App Insights spans are how the same runs show up in Foundry and how the
-Doctor later reads p95 latency and error rate from real traffic. See
-<a href="../observe/">Observe</a>.</p>
+The <code>agentops.eval.*</code> spans are how the same runs show up in Foundry. The
+agent's own request traces are separate runtime telemetry the Doctor reads
+for latency and errors. See <a href="../observe/">Observe</a>.</p>
 </div>
-<h2 id="9-generate-the-pr-dev-deploy-workflows">9. Generate the PR + dev deploy workflows<a class="headerlink" href="#9-generate-the-pr-dev-deploy-workflows" title="Permanent link">&para;</a></h2>
+<h2 id="9-add-assert-and-red-team-safety-gates">9. Add ASSERT and Red Team safety gates<a class="headerlink" href="#9-add-assert-and-red-team-safety-gates" title="Permanent link">&para;</a></h2>
+<p>Quality is not enough to ship. Before you generate the workflows, add the two
+safety gates so CI blocks unsafe behavior the same way it blocks quality
+regressions. Both write normalized JSON the evidence pack ingests, and both can
+fail the PR.</p>
+<ul>
+<li><strong>ASSERT</strong> turns natural-language safety policies into executable behavior
+  tests (refuse prompt injection, no fabricated facts, no stereotyping). It
+  drives a model deployment plus system prompt through LiteLLM, so you target the
+  same chat model your orchestrator uses and describe its intended behavior.</li>
+<li><strong>Red Team</strong> runs Foundry's PyRIT-backed adversarial scan across risk
+  categories and attack strategies. Its target resolves from the YAML as a model
+  deployment, agent, or endpoint, so it can scan your orchestrator endpoint or
+  its chat model.</li>
+</ul>
+<h3 id="scaffold-both-recommended">Scaffold both (recommended)<a class="headerlink" href="#scaffold-both-recommended" title="Permanent link">&para;</a></h3>
+<p>Let the governance skill write the config and the <code>agentops.yaml</code> blocks for your
+target:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>/skills agentops-governance
+</code></pre></div>
+<p>Ask it to scaffold ASSERT and the Red Team runner for this workspace, target your
+orchestrator's chat model deployment, judge with safety-core and alignment, and
+fail Red Team when the attack success rate exceeds 20 percent.</p>
+<h3 id="or-add-the-blocks-yourself">Or add the blocks yourself<a class="headerlink" href="#or-add-the-blocks-yourself" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
+</code></pre></div>
+<p>Append to <code>agentops.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nt">assert</span><span class="p">:</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="nt">redteam</span><span class="p">:</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">    </span><span class="nt">model_deployment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;your-chat-model-deployment&gt;</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
+</code></pre></div>
+<p>ASSERT calls models through LiteLLM, which for Azure OpenAI expects three vars in
+your shell or <code>.agentops/.env</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="nv">$env:AZURE_API_KEY</span> <span class="p">=</span> <span class="s2">&quot;&lt;your Azure OpenAI account key&gt;&quot;</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="nv">$env:AZURE_API_BASE</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="nv">$env:AZURE_API_VERSION</span> <span class="p">=</span> <span class="s2">&quot;2024-10-21&quot;</span>
+</code></pre></div>
+<p>Run both gates:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
+</code></pre></div>
+<p>ASSERT writes <code>.agentops/assert/latest.json</code> and Red Team writes
+<code>.agentops/redteam/latest.json</code>. Each exits non-zero on a policy violation or
+when the attack success rate exceeds your threshold, which is exactly what blocks
+the PR. For the full config schema, behavior presets, risk categories, and attack
+strategies, see
+<a href="../tutorial-prompt-agent/#12-add-assert-and-red-team-to-the-release-gate">Add ASSERT and Red Team to the release gate</a>.</p>
+<div class="admonition warning">
+<p class="admonition-title">These hit live Azure services</p>
+<p>Both runners call live models. Run them against a non-production deployment
+and keep the objective count small while you wire them up. Red Team's matrix
+is <code>risk_categories x attack_strategies x num_objectives</code> and grows quickly.</p>
+</div>
+<h2 id="10-generate-the-pr-dev-deploy-workflows">10. Generate the PR + dev deploy workflows<a class="headerlink" href="#10-generate-the-pr-dev-deploy-workflows" title="Permanent link">&para;</a></h2>
 <p>You build your own CI here. <code>agentops workflow generate</code> writes fresh,
 AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
 upstream orchestrator shipped. The orchestrator's <code>azure.yaml</code> is used only as
 the deploy project, so the deploy mode is <code>azd</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">-</span><span class="n">-force</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">-</span><span class="n">-force</span>
 </code></pre></div>
 <p>This writes two files, both prefixed <code>agentops-</code> so they never collide with the
 orchestrator's existing workflows:</p>
@@ -1497,17 +1625,12 @@ re-run <code>agentops workflow generate</code> any time to regenerate yours.</p>
 from <code>agentops.yaml</code>, applies your thresholds, then runs Doctor with
 <code>--severity-fail critical</code>. A failing threshold or a critical finding blocks
 the merge. See <a href="../ship/">Ship</a> for the OIDC, RBAC, and GitHub environment
-wiring instead of reproducing it here.
-The generated PR workflow runs <code>agentops eval run</code> against the dev orchestrator endpoint
-from <code>agentops.yaml</code>, applies your thresholds, then runs Doctor with
-<code>--severity-fail critical</code>. A failing threshold or a critical finding blocks
-the merge. See <a href="../ship/">Ship</a> for the OIDC, RBAC, and GitHub environment
 wiring instead of reproducing it here.</p>
 </div>
-<h2 id="10-ship-observe-and-own">10. Ship, observe, and own<a class="headerlink" href="#10-ship-observe-and-own" title="Permanent link">&para;</a></h2>
+<h2 id="11-ship-observe-and-own">11. Ship, observe, and own<a class="headerlink" href="#11-ship-observe-and-own" title="Permanent link">&para;</a></h2>
 <p>The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
 </code></pre></div>
 <ul>
 <li><strong>Ship.</strong> Push the repo, configure the <code>dev</code> GitHub environment and Azure
@@ -1519,31 +1642,6 @@ section pages the other tutorials use.</p>
   a single readiness view with <code>agentops cockpit --workspace .</code>. See
   <a href="../own/">Own</a>.</li>
 </ul>
-<h2 id="optional-add-assert-and-red-team-safety-gates">Optional: add ASSERT and Red Team safety gates<a class="headerlink" href="#optional-add-assert-and-red-team-safety-gates" title="Permanent link">&para;</a></h2>
-<p>The eval gate above checks answer quality. To also gate on safety behavior, add
-the same two governance runners the Prompt Agent tutorial uses. Both feed the
-same evidence pack and can fail the PR.</p>
-<ul>
-<li><strong>ASSERT</strong> (<code>agentops assert run</code>) turns natural-language safety policies into
-  executable behavior tests. It drives a model deployment and system prompt
-  through LiteLLM, so for an HTTP agent you point it at the same model your agent
-  uses and describe the agent's intended behavior.</li>
-<li><strong>Red Team</strong> (<code>agentops redteam run</code>) runs Foundry's adversarial scan. Its
-  target resolves from the YAML as a model deployment, agent, or endpoint, so it
-  can scan the orchestrator endpoint directly for safety regressions.</li>
-</ul>
-<p>Scaffold either one with the governance skill, which writes the correct config
-and <code>agentops.yaml</code> block for your target:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>/skills agentops-governance
-</code></pre></div>
-<p>The full walkthrough, including config schema, thresholds, and the LiteLLM and
-red-team SDK setup, is in
-<a href="../tutorial-prompt-agent/#12-add-assert-and-red-team-to-the-release-gate">Add ASSERT and Red Team to the release gate</a>.</p>
-<div class="admonition warning">
-<p class="admonition-title">These hit live Azure services</p>
-<p>Both runners call live models. Run them against a non-production deployment
-and keep the objective count small while you wire them up.</p>
-</div>
 <h2 id="what-you-walk-away-knowing">What you walk away knowing<a class="headerlink" href="#what-you-walk-away-knowing" title="Permanent link">&para;</a></h2>
 <ul>
 <li>You can tell an HTTP agent apart from a Foundry prompt agent, and why the
@@ -1558,11 +1656,13 @@ and keep the objective count small while you wire them up.</p>
 <li>You indexed a sample document, built a smoke dataset from its content, and
   scored answers on relevance and coherence, knowing why that is smoke and not
   groundedness.</li>
-<li>You inspected both the per-row eval evidence and the runtime traces, locally
-  and in Azure Monitor or Foundry.</li>
+<li>You inspected both the per-row eval evidence and the runtime traces, and you
+  know which spans AgentOps emits (<code>agentops.eval.*</code>) versus which come from the
+  orchestrator's own runtime telemetry.</li>
+<li>You added ASSERT and Red Team as required safety gates alongside the eval gate,
+  so CI blocks unsafe behavior, not just quality regressions.</li>
 <li>You ran local evals against the deployed endpoint and generated a PR gate that
-  blocks regressions before they merge, and you know where ASSERT and Red Team
-  plug in when you want safety gates too.</li>
+  blocks regressions before they merge.</li>
 </ul>
 
 
