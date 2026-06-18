@@ -386,8 +386,10 @@ If you do not want to publish to Foundry, leave the `publish` field out.
     This still runs locally. AgentOps invokes the HTTP endpoint from your machine
     or CI runner, then uploads the finished metrics and row results to Classic
     Foundry Evaluations. It does not create a New Foundry server-side evaluation
-    run. The New Foundry path uses `execution: cloud` and currently applies to
-    Foundry prompt agents (`name:version`), not this HTTP endpoint tutorial.
+    run. In AgentOps, `execution: cloud` currently applies to Foundry prompt
+    agents (`name:version`) only. Foundry hosted agent endpoints can still use the
+    local runner with `publish: true`, and hosted/prompt agents can use
+    `execution: azd` when you have an `azd ai agent eval` recipe.
 
 ```powershell
 agentops eval run
@@ -452,8 +454,9 @@ readiness view.
     By default, this tutorial keeps eval evidence local or in CI artifacts. With
     `publish: true`, the same local run also appears in Classic Foundry
     Evaluations. `execution: cloud` is the New Foundry server-side evaluation
-    path, but it currently applies to Foundry prompt agents (`name:version`), not
-    this HTTP endpoint tutorial.
+    path, but in AgentOps it currently applies to Foundry prompt agents
+    (`name:version`) only. Hosted agent endpoints use the local runner plus
+    optional Classic publish, or `execution: azd` when an azd eval recipe exists.
 
 !!! info "Eval evidence vs runtime traces"
     The local `report.md` is the fastest way to see why a row passed or failed.
