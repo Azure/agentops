@@ -200,13 +200,10 @@ install AgentOps, and install the Copilot skills:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[foundry,agent]"
+python -m pip install agentops-accelerator
 agentops --version
 agentops skills install
 ```
-
-`foundry` adds the evaluator dependencies. `agent` adds Doctor, Cockpit, and
-workflow generation support.
 
 ## 6. Initialize AgentOps against the orchestrator endpoint
 

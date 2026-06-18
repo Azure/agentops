@@ -87,19 +87,13 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Then install AgentOps with the Foundry and agent extras, and confirm the CLI:
+Then install AgentOps and confirm the CLI:
 
 ```powershell
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[foundry,agent]"
+python -m pip install agentops-accelerator
 agentops --version
 ```
-
-!!! note "Why the [foundry,agent] extras"
-    `foundry` adds the Azure AI Foundry libraries used to publish the prompt
-    agent, read traces, and run evals. `agent` adds bootstrap, regression checks,
-    and CI workflow generation. Without both, the publish, eval, and workflow
-    steps fail on import.
 
 ## 2. Install the AgentOps Copilot skills
 
