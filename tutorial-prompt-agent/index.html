@@ -1849,18 +1849,11 @@ fingerprints, not the Foundry version numbers. Step 15 walks through a real
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
 </code></pre></div>
-<p>Then install AgentOps with the Foundry and agent extras, and confirm the CLI:</p>
+<p>Then install AgentOps and confirm the CLI:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-U</span> <span class="n">pip</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;agentops-accelerator[foundry,agent]&quot;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">agentops-accelerator</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">agentops</span> <span class="p">-</span><span class="n">-version</span>
 </code></pre></div>
-<div class="admonition note">
-<p class="admonition-title">Why the [foundry,agent] extras</p>
-<p><code>foundry</code> adds the Azure AI Foundry libraries used to publish the prompt
-agent, read traces, and run evals. <code>agent</code> adds bootstrap, regression checks,
-and CI workflow generation. Without both, the publish, eval, and workflow
-steps fail on import.</p>
-</div>
 <h2 id="2-install-the-agentops-copilot-skills">2. Install the AgentOps Copilot skills<a class="headerlink" href="#2-install-the-agentops-copilot-skills" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">agentops</span> <span class="n">skills</span> <span class="n">install</span>
 </code></pre></div>
