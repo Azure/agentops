@@ -216,17 +216,6 @@ gh repo create <owner>/gpt-rag-orchestrator-agentops --private --source . --remo
 git push -u origin main
 ```
 
-!!! warning "Push rejected with 'did not receive expected object' or 'not a full refname'?"
-    Both come from the shallow clone. It arrives in a detached HEAD on the pinned
-    tag, so committing on top of it and pushing tries to send objects the shallow
-    clone never downloaded, and the remote rejects the pack with
-    `remote unpack failed: index-pack failed`. The fix is to re-root the history
-    as shown above:
-    `Remove-Item -Recurse -Force .git; git init; git add -A; git commit -m "..."; git branch -M main`,
-    then push again. The repo and remote from `gh repo create` stay in place, so
-    you do not need to recreate them; if you already deleted `.git`, just re-add
-    the remote with `git remote add origin <url>` before `git push -u origin main`.
-
 !!! tip "Use a distinct repo name"
     `gh repo create` names a brand-new repo from the current folder, regardless
     of the local directory name. If you already keep a fork at
