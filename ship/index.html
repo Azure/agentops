@@ -994,8 +994,8 @@ and the OIDC and RBAC setup steps, see
 that explains why the pieces fit together.</p>
 <h2 id="how-branches-map-to-environments">How branches map to environments<a class="headerlink" href="#how-branches-map-to-environments" title="Permanent link">&para;</a></h2>
 <p>AgentOps assumes a GitFlow-style branch model. Feature PRs run an eval against
-the candidate agent before merge. Release PRs to <code>main</code> stay static: they review
-the already-tested release branch and do not call agents. Deploy workflows run
+the candidate agent before merge. The PR to <code>main</code> is a manual approval gate for
+the already-tested release branch; it does not call agents. Deploy workflows run
 after merge and promote the reviewed branch to its environment:</p>
 <pre class="mermaid"><code>flowchart LR
     feature["feature/*"] --&gt; prDev["PR eval&lt;br/&gt;candidate"]
@@ -1008,7 +1008,7 @@ after merge and promote the reviewed branch to its environment:</p>
     release --&gt; qaDeploy["Eval + deploy&lt;br/&gt;agentops-deploy-qa"]
     qaDeploy --&gt; qaEnv["qa"]
 
-    release --&gt; prProd["PR static&lt;br/&gt;checks"]
+    release --&gt; prProd["Manual approval&lt;br/&gt;gate"]
     prProd --&gt; main["main"]
     main --&gt; prodDeploy["Deploy + smoke test&lt;br/&gt;agentops-deploy-prod"]
     prodDeploy --&gt; prodEnv["production"]
@@ -1023,7 +1023,8 @@ after merge and promote the reviewed branch to its environment:</p>
 before they enter <code>develop</code> or <code>release/**</code>. It does not validate the
 already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
 endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in
-sandbox. The PR from <code>release/**</code> to <code>main</code> is static review only. A
+sandbox. The PR from <code>release/**</code> to <code>main</code> is a manual approval gate with
+static checks only. A
 per-environment deploy workflow promotes <code>develop</code> to dev, <code>release/**</code> to QA,
 and <code>main</code> to prod. The two you start with are covered next; the full set, with
 the workflow YAML and the GitHub Environment and OIDC setup, is in
