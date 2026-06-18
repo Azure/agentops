@@ -580,18 +580,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-run-evals-locally-against-the-sandbox" class="md-nav__link">
+  <a href="#8-run-the-local-eval-gate-against-the-sandbox" class="md-nav__link">
     <span class="md-ellipsis">
-      8. Run evals locally against the sandbox
+      8. Run the local eval gate against the sandbox
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-see-your-evals-and-traces" class="md-nav__link">
+  <a href="#9-see-results-and-traces" class="md-nav__link">
     <span class="md-ellipsis">
-      9. See your evals and traces
+      9. See results and traces
     </span>
   </a>
   
@@ -1080,18 +1080,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#8-run-evals-locally-against-the-sandbox" class="md-nav__link">
+  <a href="#8-run-the-local-eval-gate-against-the-sandbox" class="md-nav__link">
     <span class="md-ellipsis">
-      8. Run evals locally against the sandbox
+      8. Run the local eval gate against the sandbox
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-see-your-evals-and-traces" class="md-nav__link">
+  <a href="#9-see-results-and-traces" class="md-nav__link">
     <span class="md-ellipsis">
-      9. See your evals and traces
+      9. See results and traces
     </span>
   </a>
   
@@ -1510,8 +1510,9 @@ refuses to invent facts the source does not contain. To measure real
 groundedness, evaluate a target that also returns its retrieved context. See
 <a href="../evaluation/">Evaluation</a>.</p>
 </div>
-<h2 id="8-run-evals-locally-against-the-sandbox">8. Run evals locally against the sandbox<a class="headerlink" href="#8-run-evals-locally-against-the-sandbox" title="Permanent link">&para;</a></h2>
-<p>With the dataset and target set, run the gate from the orchestrator repo:</p>
+<h2 id="8-run-the-local-eval-gate-against-the-sandbox">8. Run the local eval gate against the sandbox<a class="headerlink" href="#8-run-the-local-eval-gate-against-the-sandbox" title="Permanent link">&para;</a></h2>
+<p>AgentOps evals run wherever you execute the command. In this step, you run the
+same gate locally from the orchestrator repo:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>You should see a <code>Threshold status</code> line and normalized output written under
@@ -1525,13 +1526,20 @@ threshold fails or the endpoint errors, which is exactly what lets the PR
 gate block a merge. See <a href="../evaluation/">Evaluation</a> for thresholds and
 metric concepts.</p>
 </div>
-<h2 id="9-see-your-evals-and-traces">9. See your evals and traces<a class="headerlink" href="#9-see-your-evals-and-traces" title="Permanent link">&para;</a></h2>
+<p>The cloud version is the same command in GitHub Actions. Later, when you generate
+the PR workflow, CI runs <code>agentops eval run</code> in the GitHub-hosted runner and
+stores the evidence as workflow artifacts. There is no separate setting in
+<code>agentops.yaml</code> that says "local" or "cloud"; the runner location comes from
+where the command is executed.</p>
+<h2 id="9-see-results-and-traces">9. See results and traces<a class="headerlink" href="#9-see-results-and-traces" title="Permanent link">&para;</a></h2>
 <p>Two views show what actually happened, and you want both.</p>
-<p><strong>Per-row evidence (local).</strong> Every run writes normalized output under
-<code>.agentops/results/latest/</code>. Open <code>report.md</code> to read each input, the aggregated
-answer, the judge scores, and pass or fail against your thresholds:</p>
+<p><strong>Eval results (local or CI artifact).</strong> Every run writes normalized output under
+<code>.agentops/results/latest/</code> in the machine that ran the command. Locally, open
+<code>report.md</code> to read each input, the aggregated answer, the judge scores, and pass
+or fail against your thresholds:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
+<p>In GitHub Actions, the same files are kept as workflow artifacts.</p>
 <p><strong>Runtime traces (Azure Monitor / Foundry).</strong> Set an Application Insights
 connection string before the run so the spans land somewhere you can read them:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="s2">&quot;&lt;app-insights-connection-string&gt;&quot;</span>
@@ -1551,6 +1559,14 @@ connection string before the run so the spans land somewhere you can read them:<
 <p>Open the traces in the Foundry project's tracing view, or query them in Azure
 Monitor Logs. <code>agentops cockpit --workspace .</code> deep-links the same spans into one
 readiness view.</p>
+<div class="admonition note">
+<p class="admonition-title">Foundry Evaluations is a different surface</p>
+<p><code>agentops eval run</code> does not upload <code>results.json</code> or <code>report.md</code> into the
+Foundry Evaluations page. It produces repo-side evidence and, when telemetry
+is configured, trace spans. To see a run under Foundry Evaluations, use a
+separate Foundry-managed evaluation flow with its dataset and evaluator
+setup.</p>
+</div>
 <div class="admonition info">
 <p class="admonition-title">Eval evidence vs runtime traces</p>
 <p>The local <code>report.md</code> is the fastest way to see why a row passed or failed.

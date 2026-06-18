@@ -585,6 +585,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#where-evaluations-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where evaluations run
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#target-kinds" class="md-nav__link">
     <span class="md-ellipsis">
       Target kinds
@@ -939,6 +948,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#where-evaluations-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      Where evaluations run
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#target-kinds" class="md-nav__link">
     <span class="md-ellipsis">
       Target kinds
@@ -1040,6 +1058,17 @@ send), and the <strong>thresholds</strong> (the quality gates that decide pass o
 collects responses, scores them with evaluators, and checks the scores against
 your thresholds. It writes two outputs every run: <code>results.json</code> for automation
 and <code>report.md</code> for human review.</p>
+<h2 id="where-evaluations-run">Where evaluations run<a class="headerlink" href="#where-evaluations-run" title="Permanent link">&para;</a></h2>
+<p><code>agentops eval run</code> is a local runner. It runs wherever you execute the command:
+your laptop, a dev container, GitHub Actions, or another CI host. The output is
+written to that workspace under <code>.agentops/results/latest/</code>.</p>
+<p>AgentOps does not upload <code>results.json</code> or <code>report.md</code> into the Foundry
+Evaluations page. If you configure Application Insights, AgentOps emits telemetry
+spans so the run can be inspected through Foundry tracing or Azure Monitor Logs.
+That is different from creating a Foundry Evaluation run.</p>
+<p>Use the Foundry Evaluations experience when you want a Foundry-managed batch
+evaluation job, dataset, and evaluator catalog. Use AgentOps when you want a
+repo-side gate that can run the same way locally and in CI.</p>
 <div class="admonition info">
 <p class="admonition-title">Exit codes are the CI contract</p>
 <p>The runner returns <code>0</code> when every threshold passes, <code>2</code> when the run
