@@ -1362,7 +1362,8 @@ This orchestrator returns <code>text/event-stream</code>, so the config below us
 <code>response_mode: text</code> and drops the leading conversation id. If your endpoint
 returns normal JSON, keep the default <code>response_mode: json</code>, remove the
 <code>stream:</code> block, and set <code>response_field</code> to the JSON field that contains the
-answer.</p>
+answer. For the full matrix, see
+<a href="../evaluation/#fill-agentopsyaml-for-http-endpoints">Fill <code>agentops.yaml</code> for HTTP endpoints</a>.</p>
 <p>Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate uses sandbox too. Dev is updated after merge or manual dispatch.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c"># Select sandbox.</span>

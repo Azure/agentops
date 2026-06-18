@@ -594,6 +594,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#fill-agentopsyaml-for-http-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fill agentops.yaml for HTTP endpoints
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#datasets-and-scenarios" class="md-nav__link">
     <span class="md-ellipsis">
       Datasets and scenarios
@@ -939,6 +948,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#fill-agentopsyaml-for-http-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      Fill agentops.yaml for HTTP endpoints
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#datasets-and-scenarios" class="md-nav__link">
     <span class="md-ellipsis">
       Datasets and scenarios
@@ -1100,11 +1118,78 @@ holding a Bearer token, and <code>extra_fields</code> for any static body fields
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span><span class="w">              </span><span class="c1"># dot-path; default is &quot;text&quot;</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">APP_API_TOKEN</span><span class="w">    </span><span class="c1"># value is sent as a Bearer token</span>
 </code></pre></div>
+<h2 id="fill-agentopsyaml-for-http-endpoints">Fill <code>agentops.yaml</code> for HTTP endpoints<a class="headerlink" href="#fill-agentopsyaml-for-http-endpoints" title="Permanent link">&para;</a></h2>
+<p>For HTTP agents, fill <code>agentops.yaml</code> from the shape of the request and response.
+Start with the defaults, then add only the fields your endpoint needs.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://api.example.com/chat</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>If the endpoint response is...</th>
+<th>Use this config</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JSON, for example <code>{"text": "answer"}</code></td>
+<td><code>response_mode: json</code> or omit it. Set <code>response_field: text</code> if needed.</td>
+</tr>
+<tr>
+<td>Plain text, returned all at once</td>
+<td><code>response_mode: text</code>. Do not add <code>stream:</code>.</td>
+</tr>
+<tr>
+<td>Plain text, streamed in chunks</td>
+<td><code>response_mode: text</code>. Do not add <code>stream:</code> unless the first chunk is not part of the answer.</td>
+</tr>
+<tr>
+<td>Plain text stream with a leading id or token</td>
+<td><code>response_mode: text</code> plus <code>stream.strip_leading_token: true</code>.</td>
+</tr>
+<tr>
+<td>Server-Sent Events with <code>data:</code> lines</td>
+<td><code>response_mode: sse</code>.</td>
+</tr>
+<tr>
+<td>Server-Sent Events where each <code>data:</code> line is JSON</td>
+<td><code>response_mode: sse</code> plus <code>stream.text_field</code>, for example <code>stream.text_field: choices.0.delta.content</code>.</td>
+</tr>
+<tr>
+<td>Server-Sent Events with a final marker</td>
+<td><code>response_mode: sse</code> plus <code>stream.done_marker</code>, for example <code>stream.done_marker: "[DONE]"</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Examples:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># JSON response: {&quot;answer&quot;: &quot;...&quot;}</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">json</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">answer</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1"># Plain text response, streamed or not.</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># GPT-RAG orchestrator: text stream where the first token is a conversation id.</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">stream</span><span class="p">:</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">strip_leading_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># SSE response with JSON data frames.</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sse</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">stream</span><span class="p">:</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">text_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">choices.0.delta.content</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">done_marker</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;[DONE]&quot;</span>
+</code></pre></div>
 <h2 id="datasets-and-scenarios">Datasets and scenarios<a class="headerlink" href="#datasets-and-scenarios" title="Permanent link">&para;</a></h2>
 <p>A dataset is a plain JSONL file, one evaluation row per line. Each row has an
 <code>input</code> prompt and usually an <code>expected</code> reference answer. Optional fields drive
 which evaluators run.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span><span class="p">}</span>
 </code></pre></div>
 <p>The presence of optional fields tells AgentOps which evaluation scenario you are
 running. You do not declare the scenario; the row shape implies it.</p>
@@ -1242,16 +1327,16 @@ the few rows and one or two evaluators that must always pass.</p>
 fields your target needs. For the complete schema, every top-level field, and
 more examples, see <a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>
 for evaluator config and the tutorials for end-to-end setups.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
 </code></pre></div>
 
 
