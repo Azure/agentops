@@ -24,10 +24,10 @@ Use the environments this way:
 
 | Environment | Used for | When AgentOps points at it |
 |---|---|---|
-| `sandbox` | Your local walkthrough: upload the sample PDF, initialize AgentOps, and run the first evals. | Sections 3 through 8. |
-| `dev` | The shared deployment that GitHub Actions uses for PR checks. | Section 10 and later, after you switch `agentops.yaml` from sandbox to dev. |
+| `sandbox` | Your candidate validation target: upload the sample PDF, initialize AgentOps, run local evals, and let the PR gate deploy and evaluate candidate code there. | Sections 3 through 10. |
+| `dev` | The shared deployment target for the generated deploy workflow. | After merge, or by manually dispatching the dev deploy workflow. |
 
-The important rule is: **local evals use sandbox; PR evals use dev**.
+The important rule is: **AgentOps evals use sandbox; dev is for deployment**.
 
 !!! info "HTTP agent vs Foundry prompt agent"
     A Foundry prompt agent is referenced as `name:version` and hosted by
@@ -105,9 +105,9 @@ azd up
 ```
 
 !!! info "Why a separate dev environment"
-    Sandbox is your local playground. Dev is the shared deployment the PR gate
-    checks before merge. Keeping them separate means local experiments do not
-    accidentally change what CI is validating.
+    Sandbox is where the PR workflow deploys and evaluates candidate code. Dev is
+    the shared deployment target updated by the generated deploy workflow after
+    merge or manual dispatch.
 
 ## 3. Index a document so the agent has something to answer
 
@@ -133,9 +133,7 @@ az storage blob upload `
 ```
 
 Ingestion runs in the background, so give it a couple of minutes before you
-expect grounded answers. Before you switch the PR gate to dev in Section 10,
-upload the same document to the dev storage account too, or the dev evals will
-not have the same knowledge.
+expect grounded answers.
 
 !!! warning "Getting a 'not authorized' / 'do not have permissions to list the data' error?"
     `--auth-mode login` (and the portal's default) authenticates to blobs with
@@ -518,33 +516,10 @@ AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
 upstream orchestrator shipped. The orchestrator's `azure.yaml` is used only as
 the deploy project, so the deploy mode is `azd`.
 
-Before you generate workflows, switch `agentops.yaml` from sandbox to dev:
-
-1. Upload the same sample PDF to the dev environment's `documents` container, if
-   you have not done that yet.
-2. Get the dev orchestrator URL from the GPT-RAG checkout:
-
-    ```powershell
-    cd ../gpt-rag
-    azd env select <dev-env-name>
-    azd env get-values
-    ```
-
-3. Edit `agentops.yaml` in the orchestrator repo and set `agent` to the dev
-   endpoint:
-
-    ```powershell
-    cd ../gpt-rag-orchestrator
-    edit agentops.yaml
-    ```
-
-    ```yaml
-    agent: https://<dev-orchestrator-fqdn>/orchestrator
-    ```
-
-Local evals above used sandbox so you could iterate safely. The PR workflow
-generated below runs `agentops eval run` with `environment: dev`, so the checked
-in `agentops.yaml` must point at the dev endpoint before you commit the workflows.
+Keep `agentops.yaml` pointed at the sandbox endpoint. For a PR gate to validate
+the candidate code, the PR workflow must deploy that candidate to sandbox before
+it runs `agentops eval run`. Evaluating dev without deploying the PR first would
+only test the old dev deployment.
 
 ```powershell
 agentops workflow generate --kinds pr,dev --deploy-mode azd --doctor-gate critical --force
@@ -563,6 +538,55 @@ orchestrator's existing workflows:
 | `--doctor-gate critical` | Fail the PR only on critical Doctor findings. |
 | `--force` | Overwrite existing AgentOps workflow files. |
 
+Update `.github/workflows/agentops-pr.yml` so the PR gate uses the `sandbox`
+GitHub environment and deploys the PR candidate before the eval step:
+
+```yaml
+jobs:
+  eval:
+    name: AgentOps eval (PR gate)
+    runs-on: ubuntu-latest
+    environment: sandbox
+    concurrency:
+      group: agentops-sandbox
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up azd
+        uses: Azure/setup-azd@v2
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy PR candidate to sandbox
+        env:
+          AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+          AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+        run: |
+          azd env new "$AZURE_ENV_NAME" --no-prompt --subscription "${{ vars.AZURE_SUBSCRIPTION_ID }}" ${AZURE_LOCATION:+--location "$AZURE_LOCATION"} \
+            || azd env select "$AZURE_ENV_NAME"
+          azd env set AZURE_SUBSCRIPTION_ID "${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          if [ -n "$AZURE_LOCATION" ]; then
+            azd env set AZURE_LOCATION "$AZURE_LOCATION"
+          fi
+          azd provision --no-prompt
+          azd deploy --no-prompt
+
+      # keep the generated Python setup, AgentOps install, eval, Doctor,
+      # artifact upload, summary, and PR comment steps below this point
+```
+
+Configure a GitHub environment named `sandbox` with the same Azure OIDC vars you
+use for dev, plus `AZURE_ENV_NAME=<sandbox-env-name>` and `AZURE_LOCATION=<region>`.
+The `agentops-sandbox` concurrency group keeps two PRs from deploying to the
+shared sandbox at the same time.
+
 !!! note "These are your workflows, not the orchestrator's"
     The generated files are yours to edit and own. If the vendored orchestrator
     still carries upstream workflows under `.github/workflows/` that you do not
@@ -570,11 +594,12 @@ orchestrator's existing workflows:
     re-run `agentops workflow generate` any time to regenerate yours.
 
 !!! info "What the PR gate does"
-    The generated PR workflow runs `agentops eval run` with the dev GitHub
-    environment. It uses the dev endpoint checked into `agentops.yaml`, applies
-    your thresholds, then runs Doctor with `--severity-fail critical`. A failing
-    threshold or a critical finding blocks the merge. See [Ship](ship.md) for the
-    OIDC, RBAC, and GitHub environment wiring instead of reproducing it here.
+    The PR workflow deploys the pull request's code to sandbox, then runs
+    `agentops eval run` against the sandbox endpoint in `agentops.yaml`, applies
+    your thresholds, and runs Doctor with `--severity-fail critical`. A failing
+    threshold, failed deployment, or critical finding blocks the merge. The dev
+    workflow remains separate and updates dev after merge or manual dispatch.
+    See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment wiring.
 
 ## 11. Ship, observe, and own
 
@@ -585,8 +610,9 @@ section pages the other tutorials use.
 agentops doctor --evidence-pack
 ```
 
-- **Ship.** Push the repo, configure the `dev` GitHub environment and Azure
-  OIDC, and open a PR so the gate runs against the dev endpoint. See
+- **Ship.** Push the repo, configure the `sandbox` and `dev` GitHub environments
+  with Azure OIDC, and open a PR so the gate deploys and evaluates the candidate
+  in sandbox. See
   [Ship](ship.md).
 - **Observe.** Read traces, telemetry, and Doctor findings for the dev run. See
   [Observe](observe.md).
@@ -599,7 +625,8 @@ agentops doctor --evidence-pack
 - You can tell an HTTP agent apart from a Foundry prompt agent, and why the
   GPT-RAG orchestrator is the former.
 - You deployed the GPT-RAG template into a sandbox and a dev environment, and you
-  know why the PR gate evaluates dev rather than sandbox.
+  know why the PR gate deploys and evaluates candidate code in sandbox before
+  anything updates dev.
 - You took ownership of the cloned orchestrator by re-initializing its git
   history and starting your own repository.
 - You pointed AgentOps directly at the orchestrator's streaming endpoint with
