@@ -219,18 +219,20 @@ No adapter route is needed.
     newer.
 
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
-PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
-shared deployment you update after merge or manual dispatch. From this
-orchestrator repo, select sandbox, disable the API-key guard, and print the
-endpoint:
+PR gate uses sandbox too. Dev is updated after merge or manual dispatch.
 
 ```powershell
+# Select sandbox.
 azd env select <sandbox-env-name>
+
+# Disable the API-key guard.
 $fqdn = azd env get-value CONTAINER_APP_INTERNAL_FQDN
 $agent = "https://$fqdn/orchestrator"
 $app = $fqdn.Split('.')[0]
 $rg = azd env get-value AZURE_RESOURCE_GROUP
 az containerapp update -n $app -g $rg --set-env-vars DISABLE_AUTH=true --only-show-errors --output none
+
+# Print the endpoint.
 $agent
 ```
 
