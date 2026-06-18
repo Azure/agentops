@@ -30,18 +30,26 @@ and `report.md` for human review.
 
 ## Where evaluations run
 
-`agentops eval run` is a local runner. It runs wherever you execute the command:
-your laptop, a dev container, GitHub Actions, or another CI host. The output is
-written to that workspace under `.agentops/results/latest/`.
+By default, `agentops eval run` is a local runner. It runs wherever you execute
+the command: your laptop, a dev container, GitHub Actions, or another CI host.
+The output is written to that workspace under `.agentops/results/latest/`.
 
-AgentOps does not upload `results.json` or `report.md` into the Foundry
-Evaluations page. If you configure Application Insights, AgentOps emits telemetry
-spans so the run can be inspected through Foundry tracing or Azure Monitor Logs.
-That is different from creating a Foundry Evaluation run.
+Foundry visibility is opt-in:
 
-Use the Foundry Evaluations experience when you want a Foundry-managed batch
-evaluation job, dataset, and evaluator catalog. Use AgentOps when you want a
-repo-side gate that can run the same way locally and in CI.
+| Config | What happens | Foundry surface |
+|---|---|---|
+| `execution: local` or omitted | AgentOps invokes the target and scores rows locally. | Local `results.json` and `report.md` only. |
+| `execution: local` plus `publish: true` | AgentOps keeps the local run as source of truth, then uploads metrics and row results. | Classic Foundry Evaluations. |
+| `execution: cloud` | Foundry runs the agent and evaluators server-side. | New Foundry Evaluations. |
+
+`execution: cloud` is currently for Foundry prompt agents declared as
+`name:version`. HTTP endpoints use the local runner; if you want those local
+results visible in Foundry, use `publish: true`, which targets the Classic
+Foundry Evaluations upload path.
+
+If you configure Application Insights, AgentOps also emits telemetry spans so
+the run can be inspected through Foundry tracing or Azure Monitor Logs. That is
+separate from the Evaluations page.
 
 !!! info "Exit codes are the CI contract"
     The runner returns `0` when every threshold passes, `2` when the run

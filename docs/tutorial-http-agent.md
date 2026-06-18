@@ -393,12 +393,12 @@ Open the traces in the Foundry project's tracing view, or query them in Azure
 Monitor Logs. `agentops cockpit --workspace .` deep-links the same spans into one
 readiness view.
 
-!!! note "Foundry Evaluations is a different surface"
-    `agentops eval run` does not upload `results.json` or `report.md` into the
-    Foundry Evaluations page. It produces repo-side evidence and, when telemetry
-    is configured, trace spans. To see a run under Foundry Evaluations, use a
-    separate Foundry-managed evaluation flow with its dataset and evaluator
-    setup.
+!!! note "Foundry Evaluations is opt-in"
+    By default, this tutorial keeps eval evidence local or in CI artifacts. If
+    you set `publish: true`, AgentOps uploads the local metrics and row results
+    to Classic Foundry Evaluations after the local run. `execution: cloud` is the
+    New Foundry server-side evaluation path, but it currently applies to Foundry
+    prompt agents (`name:version`), not this HTTP endpoint tutorial.
 
 !!! info "Eval evidence vs runtime traces"
     The local `report.md` is the fastest way to see why a row passed or failed.
