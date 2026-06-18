@@ -993,34 +993,36 @@ and the OIDC and RBAC setup steps, see
 <a href="../ci-github-actions/">AgentOps on GitHub Actions</a>. This page is the overview
 that explains why the pieces fit together.</p>
 <h2 id="how-branches-map-to-environments">How branches map to environments<a class="headerlink" href="#how-branches-map-to-environments" title="Permanent link">&para;</a></h2>
-<p>AgentOps assumes a GitFlow-style branch model. Each long-lived branch maps to a
-GitHub Environment, and a generated pipeline carries changes from the branch to
-that environment through an eval gate. This is the shape the generated workflows
-wire up:</p>
+<p>AgentOps assumes a GitFlow-style branch model. PRs run an eval against the
+candidate agent before merge. Deploy workflows run after merge and promote the
+reviewed branch to its environment:</p>
 <pre class="mermaid"><code>flowchart LR
-    feat["feature/*"] --&gt;|PR gate| prGate1["agentops-pr"]
-    prGate1 --&gt;|merge| dev("develop")
-    dev --&gt;|deploy| deployDev["agentops-deploy-dev"]
-    deployDev --&gt; DEV["DEV"]
+    feature["feature/*"] --&gt; prDev["PR eval&lt;br/&gt;candidate"]
+    prDev --&gt; develop["develop"]
+    develop --&gt; devDeploy["Eval + deploy&lt;br/&gt;agentops-deploy-dev"]
+    devDeploy --&gt; devEnv["dev"]
 
-    rel["release/*"] --&gt;|push| deployQa["agentops-deploy-qa"]
-    deployQa --&gt; QA["QA"]
+    develop --&gt; release["release/*"]
+    release --&gt; qaDeploy["Eval + deploy&lt;br/&gt;agentops-deploy-qa"]
+    qaDeploy --&gt; qaEnv["qa"]
 
-    rel --&gt;|PR gate| prGate2["agentops-pr"]
-    prGate2 --&gt;|merge| main("main")
-    main --&gt;|deploy| deployProd["agentops-deploy-prod"]
-    deployProd --&gt; PROD["PROD required reviewers"]
+    release --&gt; prProd["PR eval&lt;br/&gt;candidate"]
+    prProd --&gt; main["main"]
+    main --&gt; prodDeploy["Safety eval + deploy&lt;br/&gt;agentops-deploy-prod"]
+    prodDeploy --&gt; prodEnv["production&lt;br/&gt;required reviewers"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-    class feat,dev,rel,main branch;
-    class prGate1,prGate2,deployDev,deployQa,deployProd pipeline;
-    class DEV,QA,PROD env;</code></pre>
-<p>The PR gate (<code>agentops-pr.yml</code>) guards every merge, and a per-environment deploy
-workflow promotes <code>develop</code> to dev, <code>release/**</code> to QA, and <code>main</code> to prod. The
-two you start with are covered next; the full set, with the workflow YAML and the
-GitHub Environment and OIDC setup, is in
+    class feature,develop,release,main branch;
+    class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
+    class devEnv,qaEnv,prodEnv env;</code></pre>
+<p>The PR gate (<code>agentops-pr.yml</code>) guards every merge. It does not validate the
+already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
+endpoint. In prompt-agent flows, it evaluates a staged candidate prompt. A
+per-environment deploy workflow promotes <code>develop</code> to dev, <code>release/**</code> to QA,
+and <code>main</code> to prod. The two you start with are covered next; the full set, with
+the workflow YAML and the GitHub Environment and OIDC setup, is in
 <a href="../ci-github-actions/">AgentOps on GitHub Actions</a>.</p>
 <h2 id="the-two-core-workflows">The two core workflows<a class="headerlink" href="#the-two-core-workflows" title="Permanent link">&para;</a></h2>
 <p>A generated AgentOps scaffold ships a PR gate and per-environment deploy
@@ -1037,7 +1039,7 @@ workflows. The two that matter most early are the PR gate and the dev deploy.</p
 <tr>
 <td><code>agentops-pr.yml</code></td>
 <td>PRs to <code>develop</code>, <code>release/**</code>, <code>main</code></td>
-<td>Stages a candidate, evaluates it, runs the Doctor gate, and comments on the PR.</td>
+<td>Evaluates the PR candidate, runs the Doctor gate, and comments on the PR.</td>
 </tr>
 <tr>
 <td><code>agentops-deploy-dev.yml</code></td>

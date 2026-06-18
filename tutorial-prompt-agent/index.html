@@ -1776,8 +1776,8 @@ evidence, and Cockpit.</p>
     W["&lt;b&gt;Own&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Make the ship call"]
     E --&gt; S --&gt; O --&gt; W</code></pre>
 <p>The idea is simple: sandbox is for trying things, Git is the source of truth,
-and dev is where CI proves the reviewed prompt is safe to merge. If Doctor finds
-a critical regression, the PR should not ship.</p>
+and CI evaluates the PR candidate before anything is promoted to dev. If Doctor
+finds a critical regression, the PR should not ship.</p>
 <h2 id="before-you-run-the-tutorial">Before you run the tutorial<a class="headerlink" href="#before-you-run-the-tutorial" title="Permanent link">&para;</a></h2>
 <p>Run through this once before a live walkthrough, grouped by area, so the demo
 stays on the Foundry plus AgentOps flow instead of permission prompts.</p>
@@ -1826,7 +1826,7 @@ stays on the Foundry plus AgentOps flow instead of permission prompts.</p>
 </tr>
 <tr>
 <td><strong>Block regressions</strong></td>
-<td>CI evaluates dev, applies thresholds, and runs Doctor. Serious regressions stop the PR.</td>
+<td>CI evaluates the PR candidate, applies thresholds, and runs Doctor. Serious regressions stop the PR.</td>
 </tr>
 </tbody>
 </table>
