@@ -93,7 +93,38 @@ azd up
     See [Ship](ship.md) and [Evaluation](evaluation.md) for the release
     contract and scoring depth.
 
-## 3. Take ownership of the cloned orchestrator
+## 3. Index a document so the agent has something to answer
+
+Your agent grounds its answers on indexed content, so give it one document to
+work with. This tutorial uses a short sample manual.
+
+[Download the sample document](media/how-works-a-volkswagen.pdf) is a 10-page
+"How Works a Volkswagen" manual. Save it locally.
+
+Index it into the knowledge base behind the environment you will evaluate. With
+the GPT-RAG template that is the `documents` blob container in that environment's
+storage account; dropping a file there triggers ingestion, which chunks, embeds,
+and indexes it into Azure AI Search:
+
+```powershell
+az storage blob upload `
+  --account-name <storage-account> `
+  --container-name documents `
+  --file "how-works-a-volkswagen.pdf" `
+  --name "how-works-a-volkswagen.pdf" `
+  --auth-mode login
+```
+
+Ingestion runs in the background, so give it a couple of minutes before you
+expect grounded answers.
+
+!!! note "Any knowledge base works the same way"
+    The only thing that matters is that your agent has indexed content to ground
+    on. If your agent reads a different store, index the document there instead.
+    The rest of the tutorial just assumes the agent can answer questions about
+    this document.
+
+## 4. Take ownership of the cloned orchestrator
 
 The agent you evaluate lives in the cloned orchestrator, so work from that
 directory.
@@ -136,78 +167,32 @@ gh repo create <owner>/gpt-rag-orchestrator --private --source . --push
     commit. `git checkout -b main` simply names a branch at that commit, which
     is all you need to make it your own repo.
 
-## 4. Initialize AgentOps against the maf_lite endpoint
+!!! tip "Ignore the upstream evaluations and pipelines"
+    The vendored orchestrator ships its own `evaluations/` and `dataset/`
+    folders and its own CI under `.github/workflows/` (`pr_pipeline.yaml`,
+    `cicd_pipeline.yaml`, `block-pr-to-main.yml`). Those belong to the upstream
+    project. Since you are building your own copy, you can ignore or delete them.
+    AgentOps gives you your own eval dataset (Section 6) and generates your own
+    workflows (Section 9), so nothing here depends on the orchestrator's.
 
-The orchestrator streams its answers, so first add a small evaluation route, then
-point AgentOps at it.
+    ```powershell
+    # optional: remove the inherited eval pipeline and CI so only AgentOps runs
+    Remove-Item -Recurse -Force evaluations
+    Remove-Item -Force .github/workflows/pr_pipeline.yaml, .github/workflows/cicd_pipeline.yaml, .github/workflows/block-pr-to-main.yml
+    ```
 
-!!! info "The orchestrator streams, AgentOps expects JSON"
+## 5. Initialize AgentOps against the maf_lite endpoint
+
+The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
+streamed responses natively, so you point it straight at `POST /orchestrator`.
+No adapter route is needed.
+
+!!! info "The orchestrator streams, AgentOps reads it natively"
     `POST /orchestrator` returns Server-Sent Events (`text/event-stream`): a
     conversation id followed by streamed answer chunks. AgentOps `http-json`
-    sends one JSON request and parses one JSON response, so it cannot read the
-    SSE stream directly. You add a tiny non-streaming route that returns the
-    final answer as JSON.
-
-Add the evaluation route. It reuses the real `Orchestrator`, collects the streamed
-chunks, drops the leading conversation id, and returns the answer as JSON:
-
-```
-edit src/eval_adapter.py
-```
-
-```python
-import os
-from typing import Optional
-
-from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel
-
-from orchestration.orchestrator import Orchestrator
-
-router = APIRouter()
-
-
-class EvalRequest(BaseModel):
-    ask: str
-
-
-@router.post("/orchestrator/eval")
-async def orchestrator_eval(
-    body: EvalRequest,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
-):
-    expected = os.getenv("AGENTOPS_EVAL_TOKEN", "")
-    token = (authorization or "").removeprefix("Bearer ").strip()
-    if not expected or token != expected:
-        raise HTTPException(status_code=401, detail="Invalid eval token")
-
-    orchestrator = await Orchestrator.create()
-    chunks = [chunk async for chunk in orchestrator.stream_response(body.ask)]
-    # stream_response yields "<conversation_id> " first, then the answer chunks.
-    answer = "".join(chunks[1:]).strip()
-    return {"text": answer}
-```
-
-Register the route on the FastAPI app. Add these lines next to the other app
-wiring in `main.py`:
-
-```
-edit src/main.py
-```
-
-```python
-from eval_adapter import router as eval_router
-
-app.include_router(eval_router)
-```
-
-!!! note "Why a separate token"
-    The production `POST /orchestrator` route authenticates with
-    `dapr-api-token` or `X-API-KEY`, or skips auth when `DISABLE_AUTH=true`. The
-    eval route uses its own `AGENTOPS_EVAL_TOKEN` so evaluation traffic is
-    scoped and you never commit the production key. Set `AGENTOPS_EVAL_TOKEN` as
-    an environment variable on the dev orchestrator Container App, then redeploy
-    the orchestrator so the route can validate it.
+    reads the stream when you set `response_mode: text`, drops the leading
+    conversation id, and scores the final answer. This needs AgentOps 0.4.4 or
+    newer.
 
 Get the dev orchestrator URL. The Container App name and endpoint are stored in
 the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
@@ -217,10 +202,13 @@ the deployment's App Configuration as `ORCHESTRATOR_APP_NAME` and
 az containerapp show -n <ORCHESTRATOR_APP_NAME> -g <resource-group> --query properties.configuration.ingress.fqdn -o tsv
 ```
 
-Export the same eval token locally so AgentOps can send it:
+The `POST /orchestrator` route authenticates with a shared secret sent as the
+`X-API-KEY` header (or skips auth when `DISABLE_AUTH=true` on dev). Export the
+dev orchestrator key locally so AgentOps can send it. The key is the
+deployment's `ORCHESTRATOR_APP_APIKEY`; never commit it:
 
 ```powershell
-$env:AGENTOPS_EVAL_TOKEN = "<a-strong-random-value>"
+$env:ORCHESTRATOR_APP_APIKEY = "<dev-orchestrator-api-key>"
 ```
 
 Sign in and run the wizard inside the orchestrator repo:
@@ -235,10 +223,10 @@ Answer the prompts with the dev orchestrator values:
 | Prompt | Answer |
 |---|---|
 | Foundry project endpoint | The dev Foundry project endpoint for the judge model, or press Enter to set it later. |
-| Agent | The dev eval URL, for example `https://<orchestrator-fqdn>/orchestrator/eval`. |
-| Dataset path | `.agentops/data/travel-smoke.jsonl` |
+| Agent | The dev orchestrator URL, for example `https://<orchestrator-fqdn>/orchestrator`. |
+| Dataset path | `.agentops/data/vw-smoke.jsonl` |
 
-Then edit `agentops.yaml` so AgentOps calls the eval route correctly:
+Then edit `agentops.yaml` so AgentOps reads the streamed response correctly:
 
 ```
 edit agentops.yaml
@@ -246,43 +234,57 @@ edit agentops.yaml
 
 ```yaml
 version: 1
-agent: https://<orchestrator-fqdn>/orchestrator/eval
-dataset: .agentops/data/travel-smoke.jsonl
+agent: https://<orchestrator-fqdn>/orchestrator
+dataset: .agentops/data/vw-smoke.jsonl
 protocol: http-json
 request_field: ask
-response_field: text
-auth_header_env: AGENTOPS_EVAL_TOKEN
+response_mode: text
+stream:
+  strip_leading_token: true
+auth_header_name: X-API-KEY
+auth_value_template: "{token}"
+auth_header_env: ORCHESTRATOR_APP_APIKEY
+evaluators:
+  relevance: ">=3"
+  coherence: ">=3"
 ```
 
 | Field | What it does |
 |---|---|
-| `agent` | The dev eval URL AgentOps calls with `POST`. |
-| `protocol: http-json` | Send one JSON request and parse one JSON response. |
+| `agent` | The dev orchestrator URL AgentOps calls with `POST`. |
+| `protocol: http-json` | Send one JSON request; here AgentOps reads a streamed response. |
 | `request_field: ask` | Put each dataset input under the `ask` key, matching the orchestrator's own field name. |
-| `response_field: text` | Read the answer from the `text` key the eval route returns. |
-| `auth_header_env: AGENTOPS_EVAL_TOKEN` | Read this env var and send `Authorization: Bearer <token>`. |
+| `response_mode: text` | Read the `text/event-stream` body and aggregate it into one answer instead of parsing a single JSON body. |
+| `stream.strip_leading_token: true` | Drop the leading conversation id the orchestrator emits as its first chunk. |
+| `auth_header_name: X-API-KEY` | Send the shared secret in the `X-API-KEY` header instead of `Authorization`. |
+| `auth_value_template: "{token}"` | Send the raw token as the header value, with no `Bearer ` prefix. |
+| `auth_header_env: ORCHESTRATOR_APP_APIKEY` | Read the secret from this env var; nothing is written to `agentops.yaml`. |
+| `evaluators.relevance` / `evaluators.coherence` | Score each answer for on-topic relevance and readable coherence, requiring at least 3 out of 5. This smoke-core checks the agent answers sensibly, not that it is grounded. |
 
 !!! note "How AgentOps calls the endpoint"
-    AgentOps posts `{"ask": "<input>"}` with `Content-Type: application/json`
-    and the bearer header from `AGENTOPS_EVAL_TOKEN`, then reads `text` from the
-    JSON body. If `text` is absent it falls back to `response`, `output`,
-    `content`, then `message`. The defaults are `request_field: message` and
-    `response_field: text`; you set `request_field` to `ask` because that is the
-    orchestrator's vocabulary.
+    AgentOps posts `{"ask": "<input>"}` with `Content-Type: application/json` and
+    the `X-API-KEY` header from `ORCHESTRATOR_APP_APIKEY`, reads the streamed
+    `text/event-stream` response, drops the leading conversation id, and scores
+    the aggregated answer. The default `request_field` is `message`; you set it
+    to `ask` because that is the orchestrator's vocabulary. If your endpoint
+    emits structured `data:` JSON frames instead of raw text, set
+    `response_mode: sse` and add `stream.text_field` to point at the token text.
 
-## 5. Create the eval dataset
+## 6. Create the eval dataset
 
-Create a small JSONL dataset that exercises grounded retrieval behavior. Each row
-is one line of JSON.
+Create a small JSONL dataset grounded in the document you indexed. Each row is
+one line of JSON: an `input` to ask and an `expected` describing the behavior you
+want.
 
 ```
-edit .agentops/data/travel-smoke.jsonl
+edit .agentops/data/vw-smoke.jsonl
 ```
 
 ```json
-{"input":"What is our standard refund window for online orders?","expected":"A grounded answer that states the refund window from the indexed policy documents and does not invent a number when the source is unclear."}
-{"input":"Summarize the onboarding steps for a new field technician.","expected":"A concise, ordered summary drawn from the indexed onboarding material, covering the main steps and citing or referring to the source content."}
-{"input":"Who won the 2031 world championship?","expected":"A clear statement that the indexed knowledge base does not contain this information, with no fabricated answer."}
+{"input":"How does the Volkswagen's horn complete its electrical circuit?","expected":"Explains that the ground wire runs up through the hollow steering rod to the horn button to complete the circuit. On topic and consistent with the manual."}
+{"input":"Why does the car need a differential?","expected":"Explains that the differential lets the two driven wheels turn at different speeds when cornering, because the outer wheel travels a longer path than the inner one. Clear and on topic."}
+{"input":"In the four-cycle engine, how often does each cylinder fire?","expected":"States that each cylinder fires once every two revolutions of the crankshaft. Concise and on topic."}
+{"input":"What is the 0 to 100 km/h time of the latest electric Volkswagen ID.4?","expected":"Makes clear the indexed document does not cover modern electric models and does not invent a figure."}
 ```
 
 !!! note "input maps to ask"
@@ -290,7 +292,16 @@ edit .agentops/data/travel-smoke.jsonl
     `expected` values are acceptance criteria for judge-based scoring, not exact
     answer strings, so write them as reviewable behavior.
 
-## 6. Run evals locally against the sandbox
+!!! warning "Smoke-core is relevance and coherence, not groundedness"
+    The endpoint returns only the final text, not the retrieved context, so the
+    judge cannot measure true groundedness here. This smoke-core scores relevance
+    and coherence: the answer is on topic and reads sensibly. The first three rows
+    should pass once the document is indexed; the last row checks that the agent
+    refuses to invent facts the source does not contain. To measure real
+    groundedness, evaluate a target that also returns its retrieved context. See
+    [Evaluation](evaluation.md).
+
+## 7. Run evals locally against the sandbox
 
 With the dataset and target set, run the gate from the orchestrator repo:
 
@@ -302,37 +313,88 @@ You should see a `Threshold status` line and normalized output written under
 `.agentops/results/latest/`.
 
 !!! info "What eval run checks"
-    It sends each dataset row to the eval URL, scores the responses with the
+    It sends each dataset row to the orchestrator endpoint, scores the responses with the
     judge model, applies your thresholds, and writes `results.json` and
     `report.md`. It exits zero when thresholds pass and non-zero when a
     threshold fails or the endpoint errors, which is exactly what lets the PR
     gate block a merge. See [Evaluation](evaluation.md) for thresholds and
     metric concepts.
 
-## 7. Generate the PR + dev deploy workflows
+## 8. See your evals and traces
 
-Generate the PR gate and the dev deploy workflow. The orchestrator has its own
-`azure.yaml`, so the deploy mode is `azd`.
+Two views show what actually happened, and you want both.
+
+**Per-row evidence (local).** Every run writes normalized output under
+`.agentops/results/latest/`. Open `report.md` to read each input, the aggregated
+answer, the judge scores, and pass or fail against your thresholds:
+
+```powershell
+code .agentops/results/latest/report.md
+```
+
+**Runtime traces (Azure Monitor / Foundry).** When an Application Insights
+connection string is set, AgentOps emits `agentops.eval.*` spans for each run,
+and your agent emits its own request traces. Point AgentOps at telemetry before
+the run:
+
+```powershell
+$env:APPLICATIONINSIGHTS_CONNECTION_STRING = "<app-insights-connection-string>"
+agentops eval run
+```
+
+Then open the traces in the Foundry project's tracing view, or query them in
+Azure Monitor Logs. `agentops cockpit --workspace .` deep-links the same spans
+into one readiness view.
+
+!!! info "Eval evidence vs runtime traces"
+    The local `report.md` is the fastest way to see why a row passed or failed.
+    The App Insights spans are how the same runs show up in Foundry and how the
+    Doctor later reads p95 latency and error rate from real traffic. See
+    [Observe](observe.md).
+
+## 9. Generate the PR + dev deploy workflows
+
+You build your own CI here. `agentops workflow generate` writes fresh,
+AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
+upstream orchestrator shipped. The orchestrator's `azure.yaml` is used only as
+the deploy project, so the deploy mode is `azd`.
 
 ```powershell
 agentops workflow generate --kinds pr,dev --deploy-mode azd --doctor-gate critical --force
 ```
+
+This writes two files, both prefixed `agentops-` so they never collide with the
+orchestrator's existing workflows:
+
+- `.github/workflows/agentops-pr.yml` - the PR gate (eval + Doctor).
+- `.github/workflows/agentops-deploy-dev.yml` - the dev deploy workflow.
 
 | Flag | What it does |
 |---|---|
 | `--kinds pr,dev` | Generate both the PR gate and the dev deploy workflow. |
 | `--deploy-mode azd` | Deploy through the orchestrator's azd project, running `azd provision` and `azd deploy`. |
 | `--doctor-gate critical` | Fail the PR only on critical Doctor findings. |
-| `--force` | Overwrite existing workflow files. |
+| `--force` | Overwrite existing AgentOps workflow files. |
+
+!!! note "These are your workflows, not the orchestrator's"
+    The generated files are yours to edit and own. If the vendored orchestrator
+    still carries upstream workflows under `.github/workflows/` that you do not
+    want running, delete them so only your `agentops-*` workflows fire. You can
+    re-run `agentops workflow generate` any time to regenerate yours.
 
 !!! info "What the PR gate does"
-    The generated PR workflow runs `agentops eval run` against the dev eval URL
+    The generated PR workflow runs `agentops eval run` against the dev orchestrator endpoint
+    from `agentops.yaml`, applies your thresholds, then runs Doctor with
+    `--severity-fail critical`. A failing threshold or a critical finding blocks
+    the merge. See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment
+    wiring instead of reproducing it here.
+    The generated PR workflow runs `agentops eval run` against the dev orchestrator endpoint
     from `agentops.yaml`, applies your thresholds, then runs Doctor with
     `--severity-fail critical`. A failing threshold or a critical finding blocks
     the merge. See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment
     wiring instead of reproducing it here.
 
-## 8. Ship, observe, and own
+## 10. Ship, observe, and own
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.
@@ -350,6 +412,35 @@ agentops doctor --evidence-pack
   a single readiness view with `agentops cockpit --workspace .`. See
   [Own](own.md).
 
+## Optional: add ASSERT and Red Team safety gates
+
+The eval gate above checks answer quality. To also gate on safety behavior, add
+the same two governance runners the Prompt Agent tutorial uses. Both feed the
+same evidence pack and can fail the PR.
+
+- **ASSERT** (`agentops assert run`) turns natural-language safety policies into
+  executable behavior tests. It drives a model deployment and system prompt
+  through LiteLLM, so for an HTTP agent you point it at the same model your agent
+  uses and describe the agent's intended behavior.
+- **Red Team** (`agentops redteam run`) runs Foundry's adversarial scan. Its
+  target resolves from the YAML as a model deployment, agent, or endpoint, so it
+  can scan the orchestrator endpoint directly for safety regressions.
+
+Scaffold either one with the governance skill, which writes the correct config
+and `agentops.yaml` block for your target:
+
+```text
+/skills agentops-governance
+```
+
+The full walkthrough, including config schema, thresholds, and the LiteLLM and
+red-team SDK setup, is in
+[Add ASSERT and Red Team to the release gate](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
+
+!!! warning "These hit live Azure services"
+    Both runners call live models. Run them against a non-production deployment
+    and keep the objective count small while you wire them up.
+
 ## What you walk away knowing
 
 - You can tell an HTTP agent apart from a Foundry prompt agent, and why the
@@ -358,8 +449,14 @@ agentops doctor --evidence-pack
   know why the PR gate evaluates dev rather than sandbox.
 - You took ownership of the cloned orchestrator by removing the upstream remote
   and starting your own repository.
-- You bridged the orchestrator's SSE stream to AgentOps `http-json` with a small
-  JSON eval route, and you can map `ask` and `text` to the real request and
+- You pointed AgentOps directly at the orchestrator's streaming endpoint with
+  `response_mode: text`, and you can map `ask` and `text` to the real request and
   response shape.
+- You indexed a sample document, built a smoke dataset from its content, and
+  scored answers on relevance and coherence, knowing why that is smoke and not
+  groundedness.
+- You inspected both the per-row eval evidence and the runtime traces, locally
+  and in Azure Monitor or Foundry.
 - You ran local evals against the deployed endpoint and generated a PR gate that
-  blocks regressions before they merge.
+  blocks regressions before they merge, and you know where ASSERT and Red Team
+  plug in when you want safety gates too.

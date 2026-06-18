@@ -329,9 +329,9 @@
   align-items: center;
   text-align: center;
   gap: 0.75rem;
-  max-width: 720px;
-  margin: 1.4rem auto 0.4rem auto;
-  padding: 1rem 1.2rem;
+  max-width: none;
+  margin: 1.4rem 0 0.4rem 0;
+  padding: 1.1rem 1.2rem;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 12px;
   background: var(--md-default-bg-color);
