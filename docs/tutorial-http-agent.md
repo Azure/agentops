@@ -206,16 +206,10 @@ agentops skills install
 
 ## 6. Initialize AgentOps against the orchestrator endpoint
 
-The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
-streamed responses natively, so you point it straight at `POST /orchestrator`.
-No adapter route is needed.
-
-!!! info "The orchestrator streams, AgentOps reads it natively"
-    `POST /orchestrator` returns Server-Sent Events (`text/event-stream`): a
-    conversation id followed by streamed answer chunks. AgentOps `http-json`
-    reads the stream when you set `response_mode: text`, drops the leading
-    conversation id, and scores the final answer. This needs AgentOps 0.4.4 or
-    newer.
+Point AgentOps straight at `POST /orchestrator`. No adapter route is needed.
+The only protocol detail is that this endpoint returns `text/event-stream`, so
+the config below reads the response as text and drops the leading conversation
+id.
 
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate uses sandbox too. Dev is updated after merge or manual dispatch.
@@ -255,7 +249,8 @@ Answer the prompts with the sandbox orchestrator values:
 | Agent | The `$agent` URL printed above. |
 | Dataset path | `.agentops/data/vw-smoke.jsonl` |
 
-Then edit `agentops.yaml` so AgentOps reads the streamed response correctly:
+Then edit `agentops.yaml` so AgentOps matches the orchestrator request and
+response shape:
 
 ```
 edit agentops.yaml
@@ -278,7 +273,7 @@ evaluators:
 | Field | What it does |
 |---|---|
 | `agent` | The sandbox orchestrator URL AgentOps calls with `POST` for local eval runs. |
-| `protocol: http-json` | Send one JSON request; here AgentOps reads a streamed response. |
+| `protocol: http-json` | Send one JSON request to the orchestrator. |
 | `request_field: ask` | Put each dataset input under the `ask` key, matching the orchestrator's own field name. |
 | `response_mode: text` | Read the `text/event-stream` body and aggregate it into one answer instead of parsing a single JSON body. |
 | `stream.strip_leading_token: true` | Drop the leading conversation id the orchestrator emits as its first chunk. |
@@ -591,9 +586,8 @@ agentops doctor --evidence-pack
   anything updates dev.
 - You took ownership of the cloned orchestrator by re-initializing its git
   history and starting your own repository.
-- You pointed AgentOps directly at the orchestrator's streaming endpoint with
-  `response_mode: text`, and you can map `ask` and `text` to the real request and
-  response shape.
+- You pointed AgentOps directly at the orchestrator endpoint and mapped `ask`
+  and `text` to the real request and response shape.
 - You indexed a sample document, built a smoke dataset from its content, and
   scored answers on relevance and coherence, knowing why that is smoke and not
   groundedness.
