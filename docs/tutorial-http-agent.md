@@ -227,13 +227,23 @@ az containerapp show -n <ORCHESTRATOR_APP_NAME> -g <resource-group> --query prop
 ```
 
 The `POST /orchestrator` route authenticates with a shared secret sent as the
-`X-API-KEY` header (or skips auth when `DISABLE_AUTH=true` on dev). Export the
-dev orchestrator key locally so AgentOps can send it. The key is the
-deployment's `ORCHESTRATOR_APP_APIKEY`; never commit it:
+`X-API-KEY` header (or skips auth when `DISABLE_AUTH=true` on dev). If your dev
+deployment has auth enabled, AgentOps needs that key. Don't paste the secret as a
+literal: read it straight from Key Vault into this shell session, where it lives
+only until you close the window and is never written to a file or your shell
+history.
+
+The deployment stores the key in Key Vault as the secret `ORCHESTRATOR-APP-APIKEY`
+(App Configuration only holds a reference to it, not the value):
 
 ```powershell
-$env:ORCHESTRATOR_APP_APIKEY = "<dev-orchestrator-api-key>"
+$kv = az keyvault list -g <resource-group> --query "[0].name" -o tsv
+$env:ORCHESTRATOR_APP_APIKEY = az keyvault secret show --vault-name $kv --name ORCHESTRATOR-APP-APIKEY --query value -o tsv
 ```
+
+AgentOps reads the key from the `ORCHESTRATOR_APP_APIKEY` env var via
+`auth_header_env` (Section 5), so nothing is ever written to `agentops.yaml`. If
+your dev deployment runs with `DISABLE_AUTH=true`, skip this step.
 
 Sign in and run the wizard inside the orchestrator repo:
 
