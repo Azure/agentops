@@ -207,9 +207,11 @@ agentops skills install
 ## 6. Initialize AgentOps against the orchestrator endpoint
 
 Point AgentOps straight at `POST /orchestrator`. No adapter route is needed.
-The only protocol detail is that this endpoint returns `text/event-stream`, so
-the config below reads the response as text and drops the leading conversation
-id.
+This orchestrator returns `text/event-stream`, so the config below uses
+`response_mode: text` and drops the leading conversation id. If your endpoint
+returns normal JSON, keep the default `response_mode: json`, remove the
+`stream:` block, and set `response_field` to the JSON field that contains the
+answer.
 
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate uses sandbox too. Dev is updated after merge or manual dispatch.
@@ -277,6 +279,7 @@ evaluators:
 | `request_field: ask` | Put each dataset input under the `ask` key, matching the orchestrator's own field name. |
 | `response_mode: text` | Read the `text/event-stream` body and aggregate it into one answer instead of parsing a single JSON body. |
 | `stream.strip_leading_token: true` | Drop the leading conversation id the orchestrator emits as its first chunk. |
+| Non-streaming JSON endpoint | Use the default `response_mode: json` and set `response_field`, for example `response_field: text`. |
 | `evaluators.relevance` / `evaluators.coherence` | Score each answer for on-topic relevance and readable coherence, requiring at least 3 out of 5. This smoke-core checks the agent answers sensibly, not that it is grounded. |
 
 !!! note "How AgentOps calls the endpoint"
