@@ -33,6 +33,7 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 ```mermaid
 flowchart LR
     feature["feature/*"] --> prDev["PR eval<br/>candidate"]
+    prDev --> sandbox["sandbox"]
     prDev --> develop["develop"]
     develop --> devDeploy["Eval + deploy<br/>agentops-deploy-dev"]
     devDeploy --> devEnv["dev"]
@@ -42,6 +43,7 @@ flowchart LR
     qaDeploy --> qaEnv["qa"]
 
     release --> prProd["PR eval<br/>candidate"]
+    prProd --> sandbox
     prProd --> main["main"]
     main --> prodDeploy["Safety eval + deploy<br/>agentops-deploy-prod"]
     prodDeploy --> prodEnv["production<br/>required reviewers"]
@@ -51,7 +53,7 @@ flowchart LR
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
     class feature,develop,release,main branch;
     class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
-    class devEnv,qaEnv,prodEnv env;
+    class sandbox,devEnv,qaEnv,prodEnv env;
 ```
 
 If you are on trunk-based development, generate only the templates you

@@ -19,6 +19,7 @@ reviewed branch to its environment:
 ```mermaid
 flowchart LR
     feature["feature/*"] --> prDev["PR eval<br/>candidate"]
+    prDev --> sandbox["sandbox"]
     prDev --> develop["develop"]
     develop --> devDeploy["Eval + deploy<br/>agentops-deploy-dev"]
     devDeploy --> devEnv["dev"]
@@ -28,6 +29,7 @@ flowchart LR
     qaDeploy --> qaEnv["qa"]
 
     release --> prProd["PR eval<br/>candidate"]
+    prProd --> sandbox
     prProd --> main["main"]
     main --> prodDeploy["Safety eval + deploy<br/>agentops-deploy-prod"]
     prodDeploy --> prodEnv["production<br/>required reviewers"]
@@ -37,15 +39,16 @@ flowchart LR
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
     class feature,develop,release,main branch;
     class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
-    class devEnv,qaEnv,prodEnv env;
+    class sandbox,devEnv,qaEnv,prodEnv env;
 ```
 
 The PR gate (`agentops-pr.yml`) guards every merge. It does not validate the
 already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
-endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in sandbox. A
-per-environment deploy workflow promotes `develop` to dev, `release/**` to QA,
-and `main` to prod. The two you start with are covered next; the full set, with
-the workflow YAML and the GitHub Environment and OIDC setup, is in
+endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in
+sandbox. A per-environment deploy workflow promotes `develop` to dev,
+`release/**` to QA, and `main` to prod. The two you start with are covered next;
+the full set, with the workflow YAML and the GitHub Environment and OIDC setup,
+is in
 [AgentOps on GitHub Actions](ci-github-actions.md).
 
 ## The two core workflows
