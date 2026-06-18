@@ -335,7 +335,11 @@ Full schema:
 | `response_field` | no | HTTP / invocations only. Dot-path to extract the response text (default: `text`). |
 | `tool_calls_field` | no | HTTP / invocations only. Dot-path to extract tool calls for agent-workflow evaluators. |
 | `headers` | no | HTTP / invocations only. Static extra HTTP headers. |
-| `auth_header_env` | no | HTTP / invocations only. Environment variable that holds a Bearer token. |
+| `auth_header_env` | no | HTTP / invocations only. Environment variable that holds the auth token. |
+| `auth_header_name` | no | HTTP / invocations only. Header name for the auth token (default: `Authorization`). |
+| `auth_value_template` | no | HTTP / invocations only. Template for the auth header value; `{token}` is replaced by the `auth_header_env` value (default: `Bearer {token}`). |
+| `response_mode` | no | HTTP / invocations only. `json` (default, single `json.loads` of the body), `sse` (parse `data:` lines), or `text` (concatenate raw streamed text). |
+| `stream` | no | HTTP / invocations only. Streaming aggregation block for `response_mode: sse|text`: `text_field` (dot-path to token text in JSON `data:` lines), `done_marker` (stop token, e.g. `[DONE]`), `strip_leading_token` (drop the first whitespace-delimited token, e.g. a `conversation_id` prefix). |
 | `assert_path` | no | Optional ASSERT policy/results file or directory referenced by Doctor/evidence. AgentOps does not execute ASSERT. |
 | `acs_path` | no | Optional Agent Control Specification contract file or directory referenced by Doctor/evidence. AgentOps does not apply ACS controls. |
 | `redteam_path` | no | Optional red-team plan/results evidence path. AgentOps records metadata and never exposes payload text. |

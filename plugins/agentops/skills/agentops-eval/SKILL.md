@@ -301,4 +301,11 @@ dataset reference.
   ```
 - For HTTP/JSON agents that need auth, set
   `auth_header_env: MY_TOKEN_VAR` and AgentOps adds
-  `Authorization: Bearer $MY_TOKEN_VAR`.
+  `Authorization: Bearer $MY_TOKEN_VAR`. For a shared-secret gate, override the
+  header with `auth_header_name: X-API-KEY` and `auth_value_template: "{token}"`.
+- For streaming HTTP agents (e.g. an SSE `text/event-stream` endpoint), set
+  `response_mode: sse` (each `data:` line) or `response_mode: text` (raw
+  streamed text). Use the optional `stream:` block to tune aggregation:
+  `text_field` (dot-path to the token text when `data:` lines are JSON),
+  `done_marker` (e.g. `[DONE]`), and `strip_leading_token: true` (drop a leading
+  `conversation_id` prefix). `response_mode: json` (default) is unchanged.

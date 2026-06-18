@@ -5,6 +5,27 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-06-18
+
+### Added
+- **Streaming HTTP targets.** The `http_json` target now understands streaming
+  responses so AgentOps can evaluate SSE/streaming agents (such as the
+  gpt-rag-orchestrator `/orchestrator` endpoint) directly, without a manual
+  adapter. A new `response_mode: json|sse|text` field selects the response
+  parser (`json` is the default and preserves the existing single-`json.loads`
+  behavior exactly). For `sse`/`text`, an optional `stream` block configures
+  aggregation: `text_field` (dotted path to the token text when each SSE
+  `data:` line is JSON), `done_marker` (stop token, e.g. `[DONE]`), and
+  `strip_leading_token` (drop the leading whitespace-delimited token, e.g. the
+  orchestrator's `conversation_id` prefix). The auth header is now configurable
+  via `auth_header_name` (default `Authorization`) and `auth_value_template`
+  (default `Bearer {token}`, where `{token}` is replaced by the
+  `auth_header_env` value), so targets gated by a shared secret such as
+  `X-API-KEY` are supported without hardcoding the secret in `agentops.yaml`.
+  Streaming uses the same stdlib (`urllib`) transport and 3-try backoff as the
+  JSON path. When a JSON parse fails on a `text/event-stream` response, the
+  error now suggests setting `response_mode: sse|text`.
+
 ## [0.4.3] - 2026-06-17
 
 ### Added
