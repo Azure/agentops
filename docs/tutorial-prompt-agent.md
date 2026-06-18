@@ -179,16 +179,17 @@ az resource list -g $resourceGroup --query "[?identity.principalId!=null].identi
 ### Path B: microsoft-foundry skill (if available)
 
 If your Copilot session has the external `microsoft-foundry` skill, drive the
-same setup from chat. Run `/skills` to confirm it is listed, then paste a short
-task prompt:
+same setup from chat. Run `/skills` to confirm it is listed, then paste the
+prompt below as-is (only change the project names if you want your own suffix):
 
 ```text
 Create two Azure AI Foundry projects in one subscription for an AgentOps tutorial.
-Names: travel-agent-sandbox (I publish the seed prompt here) and travel-agent-dev
-(leave empty, CI bootstraps it). Use the same gpt-4o-mini deployment in both,
-attach Application Insights to the dev project, and grant me Foundry User plus
-Cognitive Services OpenAI User on the AI Services account. Show the plan and the
-endpoints before applying.
+Names: travel-agent-sandbox and travel-agent-dev. The sandbox is the authoring
+project where I publish the agent prompt; leave dev empty because CI bootstraps it
+on the first deploy. Use the same gpt-4o-mini deployment in both, attach
+Application Insights to the dev project, and grant me Foundry User plus Cognitive
+Services OpenAI User on the AI Services account. Show the plan and the endpoints
+before applying.
 ```
 
 !!! note "Pick unique names"
@@ -304,18 +305,7 @@ Answer the prompts:
 | Dataset path | `.agentops/data/travel-smoke.jsonl` |
 
 Replace any starter defaults (like `my-agent:1` or `smoke.jsonl`) with the
-Travel Agent values. Then verify the saved dataset path:
-
-```powershell
-Select-String -Path agentops.yaml -Pattern '^dataset:'
-```
-
-It must read `dataset: .agentops/data/travel-smoke.jsonl`. If it still shows the
-starter `smoke.jsonl`, fix it:
-
-```powershell
-(Get-Content agentops.yaml) -replace '^dataset:.*$', 'dataset: .agentops/data/travel-smoke.jsonl' | Set-Content -Encoding utf8 agentops.yaml
-```
+Travel Agent values.
 
 `agentops.yaml` should stay small:
 
@@ -351,6 +341,14 @@ AZURE_AI_FOUNDRY_PROJECT_ENDPOINT=https://<resource>.services.ai.azure.com/api/p
 ```
 
 Use your real dev endpoint from step 3.
+
+!!! note "No new data-plane roles needed here"
+    You do not re-run the `Foundry User` / `Cognitive Services OpenAI User`
+    grant from step 3. That assignment is scoped to the AI Services **account**,
+    and in this topology sandbox and dev are two projects under the **same**
+    account, so dev is already covered. Re-run the grant only if you put dev on a
+    separate AI Services account. The one dev-specific grant is the Reader role
+    for traces, below.
 
 !!! note "App Insights is optional here"
     Step 3 already attached Application Insights to the dev project, and AgentOps
