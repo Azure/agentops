@@ -237,12 +237,10 @@ az containerapp update -n $app -g $rg --set-env-vars DISABLE_AUTH=true --only-sh
 $agent
 ```
 
-For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
-user `Authorization` bearer token and no `X-API-KEY` header. `DISABLE_AUTH=true`
-skips the API-key dependency. Requests without a user bearer token proceed as
-anonymous with the orchestrator default used by this template.
-
-Keep the AgentOps config simple: no `auth_*` fields.
+!!! info "Anonymous evals"
+    In this tutorial, evals call the orchestrator without a user
+    `Authorization` bearer token or `X-API-KEY` header. `DISABLE_AUTH=true`
+    keeps that local setup simple.
 
 Sign in if needed, then run the wizard:
 
