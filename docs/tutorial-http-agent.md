@@ -235,24 +235,21 @@ No adapter route is needed.
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
 shared deployment you update after merge or manual dispatch. From this
-orchestrator repo, select sandbox, allow anonymous eval calls, and print the
+orchestrator repo, select sandbox, disable the API-key guard, and print the
 endpoint:
 
 ```powershell
 azd env select <sandbox-env-name>
 $fqdn = azd env get-value CONTAINER_APP_INTERNAL_FQDN
 $agent = "https://$fqdn/orchestrator"
-az containerapp update -n ($fqdn -split '\.')[0] -g (azd env get-value AZURE_RESOURCE_GROUP) --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
+az containerapp update -n ($fqdn -split '\.')[0] -g (azd env get-value AZURE_RESOURCE_GROUP) --set-env-vars DISABLE_AUTH=true
 $agent
 ```
 
 For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
-user `Authorization` bearer token and no `X-API-KEY` header. The orchestrator has
-two auth checks, so make both anonymous-friendly on the sandbox:
-
-- `DISABLE_AUTH=true` skips the orchestrator API-key dependency.
-- `ALLOW_ANONYMOUS=true` lets requests without a user bearer token proceed as
-  anonymous.
+user `Authorization` bearer token and no `X-API-KEY` header. `DISABLE_AUTH=true`
+skips the API-key dependency. Requests without a user bearer token proceed as
+anonymous with the orchestrator default used by this template.
 
 Keep the AgentOps config simple: no `auth_*` fields.
 
