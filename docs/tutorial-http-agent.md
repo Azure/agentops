@@ -234,19 +234,16 @@ No adapter route is needed.
 
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate will also deploy and evaluate the candidate in sandbox later. Dev is the
-shared deployment you update after merge or manual dispatch. In this
-orchestrator repo, select the sandbox environment and read its values:
+shared deployment you update after merge or manual dispatch. From this
+orchestrator repo, select sandbox, allow anonymous eval calls, and print the
+endpoint:
 
 ```powershell
 azd env select <sandbox-env-name>
-azd env get-values
-```
-
-Get the sandbox orchestrator host:
-
-```powershell
 $host = azd env get-value CONTAINER_APP_INTERNAL_FQDN
-$host
+$agent = "https://$host/orchestrator"
+az containerapp update -n ($host -split '\.')[0] -g (azd env get-value AZURE_RESOURCE_GROUP) --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
+$agent
 ```
 
 For this tutorial, evals call the orchestrator anonymously. AgentOps sends no
@@ -256,14 +253,6 @@ two auth checks, so make both anonymous-friendly on the sandbox:
 - `DISABLE_AUTH=true` skips the orchestrator API-key dependency.
 - `ALLOW_ANONYMOUS=true` lets requests without a user bearer token proceed as
   anonymous.
-
-Set both on the sandbox Container App before you initialize AgentOps:
-
-```powershell
-$rg = azd env get-value AZURE_RESOURCE_GROUP
-$app = ($host -split '\.')[0]
-az containerapp update -n $app -g $rg --set-env-vars DISABLE_AUTH=true ALLOW_ANONYMOUS=true
-```
 
 Keep the AgentOps config simple: no `auth_*` fields.
 
@@ -279,7 +268,7 @@ Answer the prompts with the sandbox orchestrator values:
 | Prompt | Answer |
 |---|---|
 | Foundry project endpoint | The sandbox Foundry project endpoint for the judge model, or press Enter to set it later. |
-| Agent | The sandbox orchestrator URL, for example `https://<orchestrator-fqdn>/orchestrator`. |
+| Agent | The `$agent` URL printed above. |
 | Dataset path | `.agentops/data/vw-smoke.jsonl` |
 
 Then edit `agentops.yaml` so AgentOps reads the streamed response correctly:
