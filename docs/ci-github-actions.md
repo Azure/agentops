@@ -42,7 +42,7 @@ flowchart LR
     release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
     qaDeploy --> qaEnv["qa"]
 
-    release --> prProd["PR static<br/>checks"]
+    release --> prProd["Manual approval<br/>gate"]
     prProd --> main["main"]
     main --> prodDeploy["Deploy + smoke test<br/>agentops-deploy-prod"]
     prodDeploy --> prodEnv["production"]
@@ -61,8 +61,8 @@ need: `agentops workflow generate --kinds pr,dev,prod`.
 The PR gate validates candidates before they enter `develop` or `release/**`. It
 is not a dev deployment. HTTP agent tutorials point that candidate at the
 sandbox endpoint; prompt-agent workflows stage and evaluate the candidate prompt
-version in sandbox. The PR from `release/**` to `main` is static review only and
-does not call agents.
+version in sandbox. The PR from `release/**` to `main` is a manual approval gate
+with static checks only. It does not call agents.
 
 ## Quick start
 
