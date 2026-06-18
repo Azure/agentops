@@ -1072,8 +1072,9 @@ def test_prompt_agent_pr_template_stages_candidate_before_eval(tmp_path: Path) -
     assert "prompt_deploy record" not in content
     # Default doctor gate is critical
     assert "--severity-fail critical" in content
-    # PR candidates land in the dev Foundry project (not "pr", not sandbox)
-    assert "environment: dev" in content
+    # PR candidates stay in sandbox. Deploy workflows promote to dev after merge.
+    assert "environment: sandbox" in content
+    assert "--environment \"sandbox\"" in content
 
 
 def test_prompt_agent_pr_template_is_valid_yaml(tmp_path: Path) -> None:

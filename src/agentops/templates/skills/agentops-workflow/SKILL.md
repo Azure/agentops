@@ -62,11 +62,11 @@ by discovering the whole Azure subscription.
    - `azd env get-values` when `azure.yaml` exists and azd is available.
    - `.github/workflows/agentops-*.yml`.
 2. Read the generated workflows to determine exactly which GitHub environments
-   and variables are needed. For the prompt-agent tutorial, `pr` normally
-   means only `environment: dev`.
-3. Treat `dev` here as a GitHub Actions environment for OIDC and variables. It
-   normally points at the Foundry project already configured by `agentops init`;
-   it does not require creating a new Foundry project.
+   and variables are needed. For prompt-agent PR gates, `pr` uses
+   `environment: sandbox`; deploy workflows use `dev`, `qa`, or `production`.
+3. Treat these as GitHub Actions environments for OIDC and variables. `sandbox`
+   points at the Foundry authoring project. `dev` points at the first shared
+   post-merge project.
 4. Proceed only when these values are known or deliberately chosen:
    - GitHub `owner/repo`.
    - workflow environment names from `jobs.*.environment`.
@@ -271,7 +271,7 @@ The full scaffold writes:
 
 | Kind | GitHub Actions path | Azure DevOps path | Trigger | Environment |
 |---|---|---|---|---|
-| `pr` | `.github/workflows/agentops-pr.yml` | `.azuredevops/pipelines/agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` |
+| `pr` | `.github/workflows/agentops-pr.yml` | `.azuredevops/pipelines/agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `sandbox` for prompt-agent PR candidates, `dev` for generic PR gates |
 | `dev` | `.github/workflows/agentops-deploy-dev.yml` | `.azuredevops/pipelines/agentops-deploy-dev.yml` | push to `develop` | `dev` |
 | `qa` | `.github/workflows/agentops-deploy-qa.yml` | `.azuredevops/pipelines/agentops-deploy-qa.yml` | push to `release/**` | `qa` |
 | `prod` | `.github/workflows/agentops-deploy-prod.yml` | `.azuredevops/pipelines/agentops-deploy-prod.yml` | push to `main` | `production` |
@@ -303,9 +303,10 @@ Useful flags:
 ### GitHub Actions
 
 Read the generated workflow files and create only the GitHub Environments used
-by `jobs.*.environment`. For `pr`, that is usually only **`dev`**. For the full
-scaffold, create **`dev`**, **`qa`**, and **`production`**.
+by `jobs.*.environment`. For prompt-agent PR gates, create **`sandbox`**. For the
+full scaffold, create **`sandbox`**, **`dev`**, **`qa`**, and **`production`**.
 
+- **`sandbox`** - no extra protection. Store the PR candidate endpoint and OIDC variables here when generated jobs use `environment: sandbox`.
 - **`dev`** - no extra protection. Store the OIDC variables here when the
   generated jobs use `environment: dev`.
 - **`qa`** - usually no required reviewers, but isolated variables for QA.
