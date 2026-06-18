@@ -219,12 +219,6 @@ git push -u origin main
     `<owner>/gpt-rag-orchestrator`, give this one a different name like
     `gpt-rag-orchestrator-agentops` so your own copy stays easy to tell apart.
 
-!!! note "Why re-init instead of branch off the clone"
-    The predeploy hook clones with `--depth 1`, so you only have the pinned
-    commit and its shallow boundary. Branching off it keeps that boundary, which
-    breaks the push. Deleting `.git` and running `git init` gives you a clean,
-    self-contained root commit with all the current files and nothing upstream.
-
 ## 5. Initialize AgentOps against the orchestrator endpoint
 
 The orchestrator streams its answers as Server-Sent Events, and AgentOps reads
