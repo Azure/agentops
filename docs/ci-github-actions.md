@@ -22,10 +22,10 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `sandbox` for prompt-agent PR candidates, `dev` for generic PR gates | Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
+| `agentops-pr.yml` | PRs to `develop`, `release/**` | `sandbox` for prompt-agent PR candidates, `dev` for generic PR gates | Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
-| `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
+| `agentops-deploy-prod.yml` | push to `main` | `production` | Deploy PROD → smoke test |
 | `agentops-doctor.yml` | daily cron | `dev` | Optional scheduled Doctor + release evidence |
 
 ## GitFlow assumed
@@ -42,11 +42,10 @@ flowchart LR
     release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
     qaDeploy --> qaEnv["qa"]
 
-    release --> prProd["PR eval<br/>candidate"]
-    prProd --> sandbox
+    release --> prProd["PR static<br/>checks"]
     prProd --> main["main"]
-    main --> prodDeploy["Safety eval + deploy<br/>agentops-deploy-prod"]
-    prodDeploy --> prodEnv["production<br/>required reviewers"]
+    main --> prodDeploy["Deploy + smoke test<br/>agentops-deploy-prod"]
+    prodDeploy --> prodEnv["production"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
@@ -59,9 +58,11 @@ flowchart LR
 If you are on trunk-based development, generate only the templates you
 need: `agentops workflow generate --kinds pr,dev,prod`.
 
-The PR gate validates the candidate before merge. It is not a dev deployment.
-HTTP agent tutorials point that candidate at the sandbox endpoint; prompt-agent
-workflows stage and evaluate the candidate prompt version in sandbox.
+The PR gate validates candidates before they enter `develop` or `release/**`. It
+is not a dev deployment. HTTP agent tutorials point that candidate at the
+sandbox endpoint; prompt-agent workflows stage and evaluate the candidate prompt
+version in sandbox. The PR from `release/**` to `main` is static review only and
+does not call agents.
 
 ## Quick start
 
@@ -185,9 +186,6 @@ In Settings → Environments, create three:
 - Override env-specific variables for QA infra.
 
 #### `production`
-- **Required reviewers**: at least one. Deploys to PROD pause until
-  approved.
-- Optional: **Wait timer** for an extra cool-down.
 - Optional: **Deployment branches**: restrict to `main`.
 - Override env-specific variables for production infra.
 

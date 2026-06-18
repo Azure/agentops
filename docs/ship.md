@@ -12,9 +12,10 @@ that explains why the pieces fit together.
 
 ## How branches map to environments
 
-AgentOps assumes a GitFlow-style branch model. PRs run an eval against the
-candidate agent before merge. Deploy workflows run after merge and promote the
-reviewed branch to its environment:
+AgentOps assumes a GitFlow-style branch model. Feature PRs run an eval against
+the candidate agent before merge. Release PRs to `main` stay static: they review
+the already-tested release branch and do not call agents. Deploy workflows run
+after merge and promote the reviewed branch to its environment:
 
 ```mermaid
 flowchart LR
@@ -28,11 +29,10 @@ flowchart LR
     release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
     qaDeploy --> qaEnv["qa"]
 
-    release --> prProd["PR eval<br/>candidate"]
-    prProd --> sandbox
+    release --> prProd["PR static<br/>checks"]
     prProd --> main["main"]
-    main --> prodDeploy["Safety eval + deploy<br/>agentops-deploy-prod"]
-    prodDeploy --> prodEnv["production<br/>required reviewers"]
+    main --> prodDeploy["Deploy + smoke test<br/>agentops-deploy-prod"]
+    prodDeploy --> prodEnv["production"]
 
     classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
     classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
@@ -42,13 +42,14 @@ flowchart LR
     class sandbox,devEnv,qaEnv,prodEnv env;
 ```
 
-The PR gate (`agentops-pr.yml`) guards every merge. It does not validate the
+The PR gate (`agentops-pr.yml`) protects feature and release-candidate changes
+before they enter `develop` or `release/**`. It does not validate the
 already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
 endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in
-sandbox. A per-environment deploy workflow promotes `develop` to dev,
-`release/**` to QA, and `main` to prod. The two you start with are covered next;
-the full set, with the workflow YAML and the GitHub Environment and OIDC setup,
-is in
+sandbox. The PR from `release/**` to `main` is static review only. A
+per-environment deploy workflow promotes `develop` to dev, `release/**` to QA,
+and `main` to prod. The two you start with are covered next; the full set, with
+the workflow YAML and the GitHub Environment and OIDC setup, is in
 [AgentOps on GitHub Actions](ci-github-actions.md).
 
 ## The two core workflows
@@ -58,7 +59,7 @@ workflows. The two that matter most early are the PR gate and the dev deploy.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | Evaluates the PR candidate, runs the Doctor gate, and comments on the PR. |
+| `agentops-pr.yml` | PRs to `develop`, `release/**` | Evaluates the PR candidate, runs the Doctor gate, and comments on the PR. |
 | `agentops-deploy-dev.yml` | push to `develop` | Evaluates, then builds and deploys to the dev environment. |
 
 You do not write these by hand. `agentops workflow analyze` reads the repo and
@@ -98,11 +99,11 @@ supplies the gate, the deployment record, and Cockpit visibility.
 
 ## Why the PR gate uses a candidate
 
-The PR gate validates the proposed agent before merge. For HTTP agents, that
-usually means the sandbox endpoint you configured in the workflow. For Foundry
-prompt agents, the workflow stages a throwaway prompt version in sandbox and
-evaluates that candidate. The dev project is updated only by the deploy workflow
-after the PR merges.
+The PR gate validates the proposed agent before it enters `develop` or a
+`release/**` branch. For HTTP agents, that usually means the sandbox endpoint
+you configured in the workflow. For Foundry prompt agents, the workflow stages a
+throwaway prompt version in sandbox and evaluates that candidate. The dev
+project is updated only by the deploy workflow after the PR merges.
 
 A passing PR gate is evidence that the proposed change is safe to merge. The dev
 deploy then promotes the reviewed branch and records the deployed prompt SHA.
