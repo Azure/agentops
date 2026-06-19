@@ -763,13 +763,6 @@ and the [azure/login action](https://github.com/Azure/login).
       [Azure Container Apps networking](https://learn.microsoft.com/en-us/azure/container-apps/networking),
       and [Azure Private Endpoint overview](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview).
 
-!!! note "Temporary install pin"
-    While HTTP governance is on a feature branch, the generated workflows install
-    AgentOps from
-    `git+https://github.com/Azure/agentops.git@feat/http-streaming-target` via the
-    `AGENTOPS_REF` env value. Once HTTP governance ships on `main`, drop the pin
-    and the generator default (`@main`) works.
-
 !!! note "These are your workflows, not the orchestrator's"
     The generated files are yours to edit and own. If the vendored orchestrator
     still carries upstream workflows under `.github/workflows/` that you do not
