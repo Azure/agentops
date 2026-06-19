@@ -503,6 +503,14 @@ environment, not another dev or sandbox environment.
 Quality is not enough to ship. Add Red Team and a tiny ASSERT smoke so CI can
 exercise the live HTTP orchestrator, not just score happy-path answers.
 
+!!! tip "Learn more about these gates"
+    - Red Team uses the Azure AI Foundry red teaming agent. See
+      [AI Red Teaming Agent (concepts)](https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/ai-red-teaming-agent)
+      and [Run automated scans](https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/develop/run-scans-ai-red-teaming-agent)
+      for the full risk-category and attack-strategy list.
+    - ASSERT is the AgentOps contract smoke. The full config schema lives in the
+      [release gate reference](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
+
 ### Scaffold it (recommended)
 
 Let the governance skill create the small files and update `agentops.yaml`:
@@ -733,6 +741,27 @@ Set `AZURE_CLIENT_ID` to the app's client id in both environments, and grant the
 service principal the roles it needs on the sandbox and dev resource groups
 (Contributor for `azd deploy`, plus the data-plane roles your orchestrator uses).
 See [Ship](ship.md) for the full RBAC list.
+
+For the federated-credential subject format and login options, see
+[GitHub: configuring OpenID Connect in Azure](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-azure)
+and the [azure/login action](https://github.com/Azure/login).
+
+!!! warning "CI runners must reach your endpoint and Foundry"
+    The eval, ASSERT, and Red Team gates run on GitHub-hosted runners and call
+    your orchestrator's HTTP endpoint and the Azure AI Foundry project directly.
+    If those resources block public network access, the gates fail with
+    connection timeouts. You have two options:
+
+    - **Public-reachable sandbox/dev.** Keep the endpoint and Foundry reachable
+      from the runner (public access, or an IP allowlist that includes the
+      GitHub-hosted runner ranges). Simplest, fine for non-production.
+    - **Network-isolated environment.** If the orchestrator and Foundry sit
+      behind private endpoints, GitHub-hosted runners cannot reach them. Run the
+      workflows on self-hosted runners deployed inside the same VNet (or a peered
+      one) so they resolve the private endpoints. See
+      [GitHub self-hosted runners](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners),
+      [Azure Container Apps networking](https://learn.microsoft.com/en-us/azure/container-apps/networking),
+      and [Azure Private Endpoint overview](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview).
 
 !!! note "Temporary install pin"
     While HTTP governance is on a feature branch, the generated workflows install
