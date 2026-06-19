@@ -607,28 +607,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#11-add-assert-and-red-team-safety-gates" class="md-nav__link">
+  <a href="#11-add-governance-checks" class="md-nav__link">
     <span class="md-ellipsis">
-      11. Add ASSERT and Red Team safety gates
+      11. Add governance checks
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="11. Add ASSERT and Red Team safety gates">
+    <nav class="md-nav" aria-label="11. Add governance checks">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#scaffold-both-recommended" class="md-nav__link">
+  <a href="#scaffold-it-recommended" class="md-nav__link">
     <span class="md-ellipsis">
-      Scaffold both (recommended)
+      Scaffold it (recommended)
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#or-add-the-blocks-yourself" class="md-nav__link">
+  <a href="#what-the-scaffold-generated" class="md-nav__link">
     <span class="md-ellipsis">
-      Or add the blocks yourself
+      What the scaffold generated
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-the-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Run the checks
     </span>
   </a>
   
@@ -645,6 +654,39 @@
       12. Generate the PR + dev deploy workflows
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="12. Generate the PR + dev deploy workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adjust-for-an-already-provisioned-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      Adjust for an already-provisioned environment
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#required-github-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Required GitHub configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wire-oidc-one-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      Wire OIDC (one time)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1116,28 +1158,37 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#11-add-assert-and-red-team-safety-gates" class="md-nav__link">
+  <a href="#11-add-governance-checks" class="md-nav__link">
     <span class="md-ellipsis">
-      11. Add ASSERT and Red Team safety gates
+      11. Add governance checks
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="11. Add ASSERT and Red Team safety gates">
+    <nav class="md-nav" aria-label="11. Add governance checks">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#scaffold-both-recommended" class="md-nav__link">
+  <a href="#scaffold-it-recommended" class="md-nav__link">
     <span class="md-ellipsis">
-      Scaffold both (recommended)
+      Scaffold it (recommended)
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#or-add-the-blocks-yourself" class="md-nav__link">
+  <a href="#what-the-scaffold-generated" class="md-nav__link">
     <span class="md-ellipsis">
-      Or add the blocks yourself
+      What the scaffold generated
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#run-the-checks" class="md-nav__link">
+    <span class="md-ellipsis">
+      Run the checks
     </span>
   </a>
   
@@ -1154,6 +1205,39 @@
       12. Generate the PR + dev deploy workflows
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="12. Generate the PR + dev deploy workflows">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#adjust-for-an-already-provisioned-environment" class="md-nav__link">
+    <span class="md-ellipsis">
+      Adjust for an already-provisioned environment
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#required-github-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Required GitHub configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wire-oidc-one-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      Wire OIDC (one time)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1527,16 +1611,41 @@ context. See <a href="../evaluation/">Evaluation</a>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">init</span>
 </code></pre></div>
 <p>For this HTTP target, <code>agentops eval init</code> only inspects <code>agentops.yaml</code> and the
-dataset, then prints the recommended evaluators. It does not call <code>azd</code> or create
-a Foundry <code>eval.yaml</code>, because the target is not a Foundry prompt agent.</p>
+dataset, then prints the recommended evaluators. It also looks at the active azd
+environment and, when it finds one non-embedding Azure AI deployment, saves the
+judge model settings it needs for scoring.</p>
+<p>You should see output like this:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>Evaluator model: configured chat (gpt-5-nano)
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a> - saved AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_MODEL_NAME to .azure\&lt;env&gt;\.env
+</code></pre></div>
+<p><code>agent</code> is the HTTP target being tested. <code>AZURE_OPENAI_DEPLOYMENT</code> is the chat
+model deployment that scores the answers. AgentOps saves both the deployment name
+and the model name because Azure OpenAI calls use the deployment name, while the
+model name lets the evaluator SDK handle GPT-5 and o-series models correctly.</p>
+<p>If AgentOps cannot auto-discover a single judge deployment, it prints a warning.
+List the deployments and set the two values manually:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nv">$rg</span> <span class="p">=</span> <span class="n">azd</span> <span class="n">env</span> <span class="nb">get-value</span> <span class="n">AZURE_RESOURCE_GROUP</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nv">$account</span> <span class="p">=</span> <span class="n">az</span> <span class="n">cognitiveservices</span> <span class="n">account</span> <span class="n">list</span> <span class="n">-g</span> <span class="nv">$rg</span> <span class="p">`</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[?kind==&#39;AIServices&#39; || kind==&#39;OpenAI&#39;].name | [0]&quot;</span> <span class="n">-o</span> <span class="n">tsv</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="n">az</span> <span class="n">cognitiveservices</span> <span class="n">account</span> <span class="n">deployment</span> <span class="n">list</span> <span class="n">-g</span> <span class="nv">$rg</span> <span class="n">-n</span> <span class="nv">$account</span> <span class="p">`</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[].{deployment:name, model:properties.model.name}&quot;</span> <span class="n">-o</span> <span class="n">table</span>
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_OPENAI_DEPLOYMENT</span> <span class="p">&lt;</span><span class="n">chat-deployment-name</span><span class="p">&gt;</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_OPENAI_MODEL_NAME</span> <span class="p">&lt;</span><span class="n">model-name</span><span class="p">&gt;</span>
+</code></pre></div>
+<p>It does not call <code>azd ai agent eval generate</code> or create a Foundry <code>eval.yaml</code>,
+because the target is not a Foundry prompt agent.</p>
 <p>Because this dataset includes <code>expected</code> ground truth and does not include
 retrieved <code>context</code>, the smoke recommendation should include answer-quality
 evaluators such as <code>coherence</code>, <code>similarity</code>, and <code>response_completeness</code>.</p>
 <p>Now add thresholds for the recommended smoke evaluators:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">edit</span> <span class="n">agentops</span><span class="p">.</span><span class="n">yaml</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
 </code></pre></div>
 <p><code>similarity</code> is useful here because the dataset has <code>expected</code> ground truth. The
 gate checks that the agent answers sensibly and stays close to the expected
@@ -1547,19 +1656,21 @@ same gate locally from the orchestrator repo:</p>
 <p>If you also want the local metrics and row results to show up in Foundry, open
 <code>agentops.yaml</code> and add <code>publish: true</code> at the top level, next to <code>dataset</code>,
 <code>protocol</code>, and <code>thresholds</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;orchestrator-fqdn&gt;/orchestrator</span>
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/vw-smoke.jsonl</span>
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="nt">publish</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ask</span>
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="nt">stream</span><span class="p">:</span>
-<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="w">  </span><span class="nt">strip_leading_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">edit</span> <span class="n">agentops</span><span class="p">.</span><span class="n">yaml</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;orchestrator-fqdn&gt;/orchestrator</span>
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/vw-smoke.jsonl</span>
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="nt">publish</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ask</span>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="nt">stream</span><span class="p">:</span>
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">  </span><span class="nt">strip_leading_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
 </code></pre></div>
 <p>If you do not want to publish to Foundry, leave the <code>publish</code> field out.</p>
 <div class="admonition note">
@@ -1572,7 +1683,7 @@ agents (<code>name:version</code>) only. Foundry hosted agent endpoints can stil
 local runner with <code>publish: true</code>, and hosted/prompt agents can use
 <code>execution: azd</code> when you have an <code>azd ai agent eval</code> recipe.</p>
 </div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>You should see a <code>Threshold status</code> line and normalized output written under
 <code>.agentops/results/latest/</code>.</p>
@@ -1591,33 +1702,28 @@ stores the evidence as workflow artifacts. There is no separate setting in
 <code>agentops.yaml</code> that says "local" or "cloud"; the runner location comes from
 where the command is executed.</p>
 <h2 id="10-see-results-and-traces">10. See results and traces<a class="headerlink" href="#10-see-results-and-traces" title="Permanent link">&para;</a></h2>
-<p>Two views show what actually happened, and you want both.</p>
+<p>Use the local report for the evaluation evidence. Use Application Insights when
+you want the run traces.</p>
 <p><strong>Eval results (local or CI artifact).</strong> Every run writes normalized output under
 <code>.agentops/results/latest/</code> in the machine that ran the command. Locally, open
 <code>report.md</code> to read each input, the aggregated answer, the judge scores, and pass
 or fail against your thresholds:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="n">code</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/</span><span class="n">latest</span><span class="p">/</span><span class="n">report</span><span class="p">.</span><span class="nb">md</span>
 </code></pre></div>
 <p>In GitHub Actions, the same files are kept as workflow artifacts.</p>
-<p><strong>Runtime traces (Azure Monitor / Foundry).</strong> Set an Application Insights
-connection string before the run so the spans land somewhere you can read them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="nv">$env:APPLICATIONINSIGHTS_CONNECTION_STRING</span> <span class="p">=</span> <span class="s2">&quot;&lt;app-insights-connection-string&gt;&quot;</span>
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<p><strong>Runtime traces.</strong> <code>agentops eval run</code> auto-discovers the Application Insights
+resource connected to <code>AZURE_AI_FOUNDRY_PROJECT_ENDPOINT</code>. Open that Application
+Insights resource, go to <strong>Logs</strong>, and run:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">requests</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="n">ago</span><span class="p">(</span><span class="mi">24</span><span class="n">h</span><span class="p">)</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">cloud_RoleName</span><span class="w"> </span><span class="p">==</span><span class="w"> </span><span class="s">&#39;agentops&#39;</span>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="p">|</span><span class="w"> </span><span class="k">project</span><span class="w"> </span><span class="n">timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Id</span><span class="p">,</span><span class="w"> </span><span class="n">duration</span><span class="p">,</span><span class="w"> </span><span class="n">success</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="p">|</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="n">desc</span>
 </code></pre></div>
-<p>Two different kinds of trace show up, from two different producers:</p>
-<ul>
-<li><strong>Evaluation traces</strong> come from AgentOps itself. Each <code>agentops eval run</code>
-  emits <code>agentops.eval.*</code> spans (one run, one span tree), and scheduled Doctor
-  runs emit <code>agentops.agent.finding.*</code> spans. These exist even if the agent has
-  no telemetry of its own.</li>
-<li><strong>Application/agent traces</strong> come from the orchestrator at runtime, not from
-  AgentOps. They appear only if the orchestrator app is instrumented to emit its
-  own OpenTelemetry to App Insights. AgentOps and the Doctor read those traces
-  (p95 latency, error rate) but do not generate them.</li>
-</ul>
-<p>Open the traces in the Foundry project's tracing view, or query them in Azure
-Monitor Logs. <code>agentops cockpit --workspace .</code> deep-links the same spans into one
-readiness view.</p>
+<p>You should see one <code>RUN agentops</code> row plus one <code>eval_item ...</code> row for each
+dataset row. If you do not see them, confirm you opened the Application Insights
+resource connected to the same Foundry project endpoint used by your active azd
+environment, not another dev or sandbox environment.</p>
 <div class="admonition note">
 <p class="admonition-title">Foundry Evaluations is opt-in</p>
 <p>By default, this tutorial keeps eval evidence local or in CI artifacts. With
@@ -1634,84 +1740,111 @@ The <code>agentops.eval.*</code> spans are how the same runs show up in Foundry.
 agent's own request traces are separate runtime telemetry the Doctor reads
 for latency and errors. See <a href="../observe/">Observe</a>.</p>
 </div>
-<h2 id="11-add-assert-and-red-team-safety-gates">11. Add ASSERT and Red Team safety gates<a class="headerlink" href="#11-add-assert-and-red-team-safety-gates" title="Permanent link">&para;</a></h2>
-<p>Quality is not enough to ship. Before you generate the workflows, add the two
-safety gates so CI blocks unsafe behavior the same way it blocks quality
-regressions. Both write normalized JSON the evidence pack ingests, and both can
-fail the PR.</p>
+<h2 id="11-add-governance-checks">11. Add governance checks<a class="headerlink" href="#11-add-governance-checks" title="Permanent link">&para;</a></h2>
+<p>Quality is not enough to ship. Add Red Team and a tiny ASSERT smoke so CI can
+exercise the live HTTP orchestrator, not just score happy-path answers.</p>
+<h3 id="scaffold-it-recommended">Scaffold it (recommended)<a class="headerlink" href="#scaffold-it-recommended" title="Permanent link">&para;</a></h3>
+<p>Let the governance skill create the small files and update <code>agentops.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>/skills agentops-governance
+</code></pre></div>
+<p>Then paste this prompt:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Scaffold AgentOps governance for this HTTP orchestrator workspace.
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>This is an HTTP orchestrator target, not a model-deployment target.
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>Use the top-level agent endpoint from agentops.yaml.
+<a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a>Keep the existing HTTP mapping: request_field ask, response_mode text, and the stream settings.
+<a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a>
+<a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a>Add a small ASSERT smoke:
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a>- create .agentops/assert_http_adapter.py as a callable target that posts to the HTTP agent using the AgentOps HTTP mapping
+<a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>- create assert/eval_config.yaml, assert/test_set.jsonl, and assert/taxonomy.json
+<a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a>- use the question: &quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;
+<a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a>- judge that the answer states 15.8 U.S. gallons or about 60 liters
+<a id="__codelineno-27-12" name="__codelineno-27-12" href="#__codelineno-27-12"></a>- use default_model.name azure/chat
+<a id="__codelineno-27-13" name="__codelineno-27-13" href="#__codelineno-27-13"></a>- set assert.env with AZURE_API_BASE, AZURE_API_VERSION, PYTHONPATH .agentops, and AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS &quot;true&quot;
+<a id="__codelineno-27-14" name="__codelineno-27-14" href="#__codelineno-27-14"></a>- do not commit secrets
+<a id="__codelineno-27-15" name="__codelineno-27-15" href="#__codelineno-27-15"></a>
+<a id="__codelineno-27-16" name="__codelineno-27-16" href="#__codelineno-27-16"></a>Add a small Red Team smoke:
+<a id="__codelineno-27-17" name="__codelineno-27-17" href="#__codelineno-27-17"></a>- risk_categories: violence, hate_unfairness
+<a id="__codelineno-27-18" name="__codelineno-27-18" href="#__codelineno-27-18"></a>- attack_strategies: base64
+<a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a>- num_objectives: 1
+<a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a>- fail_on_attack_success_rate: 1.0
+<a id="__codelineno-27-21" name="__codelineno-27-21" href="#__codelineno-27-21"></a>
+<a id="__codelineno-27-22" name="__codelineno-27-22" href="#__codelineno-27-22"></a>Update only these files: agentops.yaml, .agentops/assert_http_adapter.py, assert/eval_config.yaml, assert/test_set.jsonl, assert/taxonomy.json.
+</code></pre></div>
+<p><code>fail_on_attack_success_rate: 1.0</code> keeps the first smoke run from randomly
+blocking CI while you are wiring the workflow. After you review
+<code>.agentops/redteam/latest.json</code>, lower it, for example to <code>0.2</code>, when you are
+ready to enforce the safety gate.</p>
+<h3 id="what-the-scaffold-generated">What the scaffold generated<a class="headerlink" href="#what-the-scaffold-generated" title="Permanent link">&para;</a></h3>
+<p>The skill adds two blocks to <code>agentops.yaml</code> and a small <code>assert/</code> suite. Nothing
+here targets a model deployment. Every check runs against the same live HTTP
+endpoint your eval already uses.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># added to agentops.yaml</span>
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="nt">assert</span><span class="p">:</span>
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span><span class="w">   </span><span class="c1"># the ASSERT suite to run</span>
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">            </span><span class="c1"># non-zero exit when the judge finds a violation</span>
+<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="w">  </span><span class="nt">env</span><span class="p">:</span>
+<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="w">    </span><span class="nt">AZURE_API_BASE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;your-aoai&gt;.cognitiveservices.azure.com/</span>
+<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="w">    </span><span class="nt">AZURE_API_VERSION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2024-12-01-preview</span>
+<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="w">    </span><span class="nt">AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span><span class="w">  </span><span class="c1"># GPT-5 judge token-arg shim</span>
+<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a><span class="w">    </span><span class="nt">PYTHONPATH</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops</span><span class="w">               </span><span class="c1"># so the adapter below is importable</span>
+<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a><span class="nt">redteam</span><span class="p">:</span>
+<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+</code></pre></div>
+<p>Files written:</p>
 <ul>
-<li><strong>ASSERT</strong> turns natural-language safety policies into executable behavior
-  tests (refuse prompt injection, no fabricated facts, no stereotyping). It
-  drives a model deployment plus system prompt through LiteLLM, so you target the
-  same chat model your orchestrator uses and describe its intended behavior.</li>
-<li><strong>Red Team</strong> runs Foundry's PyRIT-backed adversarial scan across risk
-  categories and attack strategies. Its target resolves from the YAML as a model
-  deployment, agent, or endpoint, so it can scan your orchestrator endpoint or
-  its chat model.</li>
+<li><code>.agentops/assert_http_adapter.py</code> - a callable <code>target(message)</code> that POSTs to
+  your <code>agent</code> URL using the same HTTP mapping from <code>agentops.yaml</code>
+  (<code>request_field</code>, <code>response_mode</code>, <code>stream</code>, headers). This is what makes ASSERT
+  hit the real orchestrator instead of a model deployment.</li>
+<li><code>assert/eval_config.yaml</code> - the ASSERT suite. Points <code>inference.target</code> at
+  <code>assert_http_adapter:target</code>, reads <code>test_set.jsonl</code>, and judges with
+  <code>azure/chat</code>.</li>
+<li><code>assert/test_set.jsonl</code> - the smoke case (the fuel-tank question).</li>
+<li><code>assert/taxonomy.json</code> - the answer contract the judge scores against (the
+  answer must state 15.8 U.S. gallons or about 60 liters).</li>
 </ul>
-<h3 id="scaffold-both-recommended">Scaffold both (recommended)<a class="headerlink" href="#scaffold-both-recommended" title="Permanent link">&para;</a></h3>
-<p>Let the governance skill write the config and the <code>agentops.yaml</code> blocks for your
-target:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>/skills agentops-governance
+<h3 id="run-the-checks">Run the checks<a class="headerlink" href="#run-the-checks" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span>
 </code></pre></div>
-<p>Ask it to scaffold ASSERT and the Red Team runner for this workspace, target your
-orchestrator's chat model deployment, judge with safety-core and alignment, and
-fail Red Team when the attack success rate exceeds 20 percent.</p>
-<h3 id="or-add-the-blocks-yourself">Or add the blocks yourself<a class="headerlink" href="#or-add-the-blocks-yourself" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
 </code></pre></div>
-<p>Append to <code>agentops.yaml</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="nt">assert</span><span class="p">:</span>
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span>
-<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a>
-<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="nt">redteam</span><span class="p">:</span>
-<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="w">  </span><span class="nt">target</span><span class="p">:</span>
-<a id="__codelineno-24-7" name="__codelineno-24-7" href="#__codelineno-24-7"></a><span class="w">    </span><span class="nt">model_deployment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;your-chat-model-deployment&gt;</span>
-<a id="__codelineno-24-8" name="__codelineno-24-8" href="#__codelineno-24-8"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-24-9" name="__codelineno-24-9" href="#__codelineno-24-9"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-24-10" name="__codelineno-24-10" href="#__codelineno-24-10"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
-<a id="__codelineno-24-11" name="__codelineno-24-11" href="#__codelineno-24-11"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.2</span>
-</code></pre></div>
-<p>ASSERT calls models through LiteLLM, which for Azure OpenAI expects three vars in
-your shell or <code>.agentops/.env</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nv">$env:AZURE_API_KEY</span> <span class="p">=</span> <span class="s2">&quot;&lt;your Azure OpenAI account key&gt;&quot;</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="nv">$env:AZURE_API_BASE</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.openai.azure.com&quot;</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="nv">$env:AZURE_API_VERSION</span> <span class="p">=</span> <span class="s2">&quot;2024-10-21&quot;</span>
-</code></pre></div>
-<p>Run both gates:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
-</code></pre></div>
-<p>ASSERT writes <code>.agentops/assert/latest.json</code> and Red Team writes
-<code>.agentops/redteam/latest.json</code>. Each exits non-zero on a policy violation or
-when the attack success rate exceeds your threshold, which is exactly what blocks
-the PR. For the full config schema, behavior presets, risk categories, and attack
-strategies, see
-<a href="../tutorial-prompt-agent/#12-add-assert-and-red-team-to-the-release-gate">Add ASSERT and Red Team to the release gate</a>.</p>
+<p>ASSERT writes <code>.agentops/assert/latest.json</code>. Red Team writes
+<code>.agentops/redteam/latest.json</code>. Both commands exit non-zero when their gate
+fails.</p>
+<p>If the SDK prints an Azure upload authorization warning but AgentOps still writes
+<code>.agentops/redteam/latest.json</code> and exits <code>0</code>, the local gate worked. The warning
+is only about publishing the SDK's optional scan artifact back to Foundry.
+For the full config schema, risk categories, and attack strategies, see the
+<a href="../tutorial-prompt-agent/#12-add-assert-and-red-team-to-the-release-gate">release gate reference</a>.</p>
 <div class="admonition warning">
 <p class="admonition-title">These hit live Azure services</p>
-<p>Both runners call live models. Run them against a non-production deployment
-and keep the objective count small while you wire them up. Red Team's matrix
-is <code>risk_categories x attack_strategies x num_objectives</code> and grows quickly.</p>
+<p>Red Team calls live Azure services. Run it against a non-production endpoint
+and keep the objective count small while you wire it up. The matrix is
+<code>risk_categories x attack_strategies x num_objectives</code> and grows quickly.</p>
 </div>
 <h2 id="12-generate-the-pr-dev-deploy-workflows">12. Generate the PR + dev deploy workflows<a class="headerlink" href="#12-generate-the-pr-dev-deploy-workflows" title="Permanent link">&para;</a></h2>
 <p>You build your own CI here. <code>agentops workflow generate</code> writes fresh,
-AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
-upstream orchestrator shipped. The orchestrator's <code>azure.yaml</code> is used only as
-the deploy project, so the deploy mode is <code>azd</code>.</p>
-<p>Keep <code>agentops.yaml</code> pointed at the sandbox endpoint. For a PR gate to validate
-the candidate code, the PR workflow must deploy that candidate to sandbox before
-it runs <code>agentops eval run</code>. Evaluating dev without deploying the PR first would
-only test the old dev deployment.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-doctor-gate</span> <span class="n">critical</span> <span class="p">-</span><span class="n">-force</span>
+AgentOps-owned GitHub Actions into your repo. The files are prefixed <code>agentops-</code>
+so they never collide with the orchestrator's existing workflows. The
+orchestrator's <code>azure.yaml</code> is used only as the deploy project, so the deploy
+mode is <code>azd</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-force</span>
 </code></pre></div>
-<p>This writes two files, both prefixed <code>agentops-</code> so they never collide with the
-orchestrator's existing workflows:</p>
+<p>This writes two files:</p>
 <ul>
-<li><code>.github/workflows/agentops-pr.yml</code> - the PR gate (eval + Doctor).</li>
+<li><code>.github/workflows/agentops-pr.yml</code> - the PR gate.</li>
 <li><code>.github/workflows/agentops-deploy-dev.yml</code> - the dev deploy workflow.</li>
 </ul>
+<p>Because <code>agentops.yaml</code> now has <code>assert:</code> and <code>redteam:</code> blocks, both workflows
+install the optional dependencies and run <strong>eval + ASSERT + Red Team</strong> against
+the live endpoint automatically. Doctor also runs, but only to collect evidence,
+it does not block the merge.</p>
 <table>
 <thead>
 <tr>
@@ -1722,15 +1855,11 @@ orchestrator's existing workflows:</p>
 <tbody>
 <tr>
 <td><code>--kinds pr,dev</code></td>
-<td>Generate both the PR gate and the dev deploy workflow.</td>
+<td>Generate the PR gate and the dev deploy workflow.</td>
 </tr>
 <tr>
 <td><code>--deploy-mode azd</code></td>
-<td>Deploy through the orchestrator's azd project, running <code>azd provision</code> and <code>azd deploy</code>.</td>
-</tr>
-<tr>
-<td><code>--doctor-gate critical</code></td>
-<td>Fail the PR only on critical Doctor findings.</td>
+<td>Deploy through the orchestrator's azd project.</td>
 </tr>
 <tr>
 <td><code>--force</code></td>
@@ -1738,51 +1867,124 @@ orchestrator's existing workflows:</p>
 </tr>
 </tbody>
 </table>
-<p>Update <code>.github/workflows/agentops-pr.yml</code> so the PR gate uses the <code>sandbox</code>
-GitHub environment and deploys the PR candidate before the eval step:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="nt">jobs</span><span class="p">:</span>
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="w">  </span><span class="nt">eval</span><span class="p">:</span>
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">AgentOps eval (PR gate)</span>
-<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a><span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
-<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox</span>
-<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="w">    </span><span class="nt">concurrency</span><span class="p">:</span>
-<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a><span class="w">      </span><span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agentops-sandbox</span>
-<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="w">      </span><span class="nt">cancel-in-progress</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a><span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
-<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Checkout</span>
-<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v6</span>
-<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>
-<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Set up azd</span>
-<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure/setup-azd@v2</span>
-<a id="__codelineno-28-15" name="__codelineno-28-15" href="#__codelineno-28-15"></a>
-<a id="__codelineno-28-16" name="__codelineno-28-16" href="#__codelineno-28-16"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure login (OIDC)</span>
-<a id="__codelineno-28-17" name="__codelineno-28-17" href="#__codelineno-28-17"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/login@v3</span>
-<a id="__codelineno-28-18" name="__codelineno-28-18" href="#__codelineno-28-18"></a><span class="w">        </span><span class="nt">with</span><span class="p">:</span>
-<a id="__codelineno-28-19" name="__codelineno-28-19" href="#__codelineno-28-19"></a><span class="w">          </span><span class="nt">client-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_CLIENT_ID }}</span>
-<a id="__codelineno-28-20" name="__codelineno-28-20" href="#__codelineno-28-20"></a><span class="w">          </span><span class="nt">tenant-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_TENANT_ID }}</span>
-<a id="__codelineno-28-21" name="__codelineno-28-21" href="#__codelineno-28-21"></a><span class="w">          </span><span class="nt">subscription-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
-<a id="__codelineno-28-22" name="__codelineno-28-22" href="#__codelineno-28-22"></a>
-<a id="__codelineno-28-23" name="__codelineno-28-23" href="#__codelineno-28-23"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy PR candidate to sandbox</span>
-<a id="__codelineno-28-24" name="__codelineno-28-24" href="#__codelineno-28-24"></a><span class="w">        </span><span class="nt">env</span><span class="p">:</span>
-<a id="__codelineno-28-25" name="__codelineno-28-25" href="#__codelineno-28-25"></a><span class="w">          </span><span class="nt">AZURE_ENV_NAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_ENV_NAME }}</span>
-<a id="__codelineno-28-26" name="__codelineno-28-26" href="#__codelineno-28-26"></a><span class="w">          </span><span class="nt">AZURE_LOCATION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_LOCATION }}</span>
-<a id="__codelineno-28-27" name="__codelineno-28-27" href="#__codelineno-28-27"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<a id="__codelineno-28-28" name="__codelineno-28-28" href="#__codelineno-28-28"></a><span class="w">          </span><span class="no">azd env new &quot;$AZURE_ENV_NAME&quot; --no-prompt --subscription &quot;${{ vars.AZURE_SUBSCRIPTION_ID }}&quot; ${AZURE_LOCATION:+--location &quot;$AZURE_LOCATION&quot;} \</span>
-<a id="__codelineno-28-29" name="__codelineno-28-29" href="#__codelineno-28-29"></a><span class="w">            </span><span class="no">|| azd env select &quot;$AZURE_ENV_NAME&quot;</span>
-<a id="__codelineno-28-30" name="__codelineno-28-30" href="#__codelineno-28-30"></a><span class="w">          </span><span class="no">azd env set AZURE_SUBSCRIPTION_ID &quot;${{ vars.AZURE_SUBSCRIPTION_ID }}&quot;</span>
-<a id="__codelineno-28-31" name="__codelineno-28-31" href="#__codelineno-28-31"></a><span class="w">          </span><span class="no">if [ -n &quot;$AZURE_LOCATION&quot; ]; then</span>
-<a id="__codelineno-28-32" name="__codelineno-28-32" href="#__codelineno-28-32"></a><span class="w">            </span><span class="no">azd env set AZURE_LOCATION &quot;$AZURE_LOCATION&quot;</span>
-<a id="__codelineno-28-33" name="__codelineno-28-33" href="#__codelineno-28-33"></a><span class="w">          </span><span class="no">fi</span>
-<a id="__codelineno-28-34" name="__codelineno-28-34" href="#__codelineno-28-34"></a><span class="w">          </span><span class="no">azd provision --no-prompt</span>
-<a id="__codelineno-28-35" name="__codelineno-28-35" href="#__codelineno-28-35"></a><span class="w">          </span><span class="no">azd deploy --no-prompt</span>
-<a id="__codelineno-28-36" name="__codelineno-28-36" href="#__codelineno-28-36"></a>
-<a id="__codelineno-28-37" name="__codelineno-28-37" href="#__codelineno-28-37"></a><span class="w">      </span><span class="c1"># keep the generated Python setup, AgentOps install, eval, Doctor,</span>
-<a id="__codelineno-28-38" name="__codelineno-28-38" href="#__codelineno-28-38"></a><span class="w">      </span><span class="c1"># artifact upload, summary, and PR comment steps below this point</span>
+<h3 id="adjust-for-an-already-provisioned-environment">Adjust for an already-provisioned environment<a class="headerlink" href="#adjust-for-an-already-provisioned-environment" title="Permanent link">&para;</a></h3>
+<p>This tutorial deploys into sandbox and dev environments that are <strong>already
+provisioned</strong>. So the deploy step is <code>azd deploy</code> only, never <code>azd provision</code>.
+Make two edits to the generated files:</p>
+<ol>
+<li><strong>PR gate</strong>: add a first job that deploys the PR candidate to sandbox with
+   <code>azd deploy</code>, then let the eval job run the gates against it with
+   <code>needs: deploy-sandbox</code>. Evaluating without deploying the PR first would only
+   test the old deployment.</li>
+<li><strong>Dev deploy</strong>: drop the provision job and keep <code>azd deploy</code> only.</li>
+</ol>
+<p>The sandbox deploy job looks like this:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="nt">jobs</span><span class="p">:</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="w">  </span><span class="nt">deploy-sandbox</span><span class="p">:</span>
+<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy candidate (sandbox)</span>
+<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox</span>
+<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure/setup-azd@v2</span>
+<a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure login (OIDC)</span>
+<a id="__codelineno-32-10" name="__codelineno-32-10" href="#__codelineno-32-10"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/login@v2</span>
+<a id="__codelineno-32-11" name="__codelineno-32-11" href="#__codelineno-32-11"></a><span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<a id="__codelineno-32-12" name="__codelineno-32-12" href="#__codelineno-32-12"></a><span class="w">          </span><span class="nt">client-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_CLIENT_ID }}</span>
+<a id="__codelineno-32-13" name="__codelineno-32-13" href="#__codelineno-32-13"></a><span class="w">          </span><span class="nt">tenant-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_TENANT_ID }}</span>
+<a id="__codelineno-32-14" name="__codelineno-32-14" href="#__codelineno-32-14"></a><span class="w">          </span><span class="nt">subscription-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
+<a id="__codelineno-32-15" name="__codelineno-32-15" href="#__codelineno-32-15"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azd deploy (sandbox)</span>
+<a id="__codelineno-32-16" name="__codelineno-32-16" href="#__codelineno-32-16"></a><span class="w">        </span><span class="nt">env</span><span class="p">:</span>
+<a id="__codelineno-32-17" name="__codelineno-32-17" href="#__codelineno-32-17"></a><span class="w">          </span><span class="nt">AZURE_ENV_NAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_ENV_NAME }}</span>
+<a id="__codelineno-32-18" name="__codelineno-32-18" href="#__codelineno-32-18"></a><span class="w">          </span><span class="nt">AZURE_LOCATION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_LOCATION }}</span>
+<a id="__codelineno-32-19" name="__codelineno-32-19" href="#__codelineno-32-19"></a><span class="w">          </span><span class="nt">AZURE_SUBSCRIPTION_ID</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
+<a id="__codelineno-32-20" name="__codelineno-32-20" href="#__codelineno-32-20"></a><span class="w">          </span><span class="nt">APP_CONFIG_ENDPOINT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.APP_CONFIG_ENDPOINT }}</span>
+<a id="__codelineno-32-21" name="__codelineno-32-21" href="#__codelineno-32-21"></a><span class="w">          </span><span class="nt">BUILD_MODE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acr-task</span>
+<a id="__codelineno-32-22" name="__codelineno-32-22" href="#__codelineno-32-22"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-32-23" name="__codelineno-32-23" href="#__codelineno-32-23"></a><span class="w">          </span><span class="no">azd config set auth.useAzCliAuth &quot;true&quot;</span>
+<a id="__codelineno-32-24" name="__codelineno-32-24" href="#__codelineno-32-24"></a><span class="w">          </span><span class="no">azd env new &quot;$AZURE_ENV_NAME&quot; --no-prompt \</span>
+<a id="__codelineno-32-25" name="__codelineno-32-25" href="#__codelineno-32-25"></a><span class="w">            </span><span class="no">--subscription &quot;$AZURE_SUBSCRIPTION_ID&quot; \</span>
+<a id="__codelineno-32-26" name="__codelineno-32-26" href="#__codelineno-32-26"></a><span class="w">            </span><span class="no">${AZURE_LOCATION:+--location &quot;$AZURE_LOCATION&quot;} \</span>
+<a id="__codelineno-32-27" name="__codelineno-32-27" href="#__codelineno-32-27"></a><span class="w">            </span><span class="no">|| azd env select &quot;$AZURE_ENV_NAME&quot;</span>
+<a id="__codelineno-32-28" name="__codelineno-32-28" href="#__codelineno-32-28"></a><span class="w">          </span><span class="no">azd env set APP_CONFIG_ENDPOINT &quot;$APP_CONFIG_ENDPOINT&quot;</span>
+<a id="__codelineno-32-29" name="__codelineno-32-29" href="#__codelineno-32-29"></a><span class="w">          </span><span class="no">azd deploy --no-prompt</span>
 </code></pre></div>
-<p>Configure a GitHub environment named <code>sandbox</code> with the same Azure OIDC vars you
-use for dev, plus <code>AZURE_ENV_NAME=&lt;sandbox-env-name&gt;</code> and <code>AZURE_LOCATION=&lt;region&gt;</code>.
-The <code>agentops-sandbox</code> concurrency group keeps two PRs from deploying to the
-shared sandbox at the same time.</p>
+<p>The dev workflow is the same shape: the <code>eval</code> job runs the gates, then a
+<code>deploy</code> job with <code>needs: eval</code> runs the same <code>azd deploy</code> step against the dev
+environment. The complete, proven files live in the reference repo
+<a href="https://github.com/placerda/gpt-rag-orchestrator-agentops/tree/develop/.github/workflows">placerda/gpt-rag-orchestrator-agentops</a>.</p>
+<h3 id="required-github-configuration">Required GitHub configuration<a class="headerlink" href="#required-github-configuration" title="Permanent link">&para;</a></h3>
+<p>Create two GitHub environments, <code>sandbox</code> and <code>dev</code>, and set these variables on
+each. There are no secrets: Azure login uses OIDC, and the Foundry and OpenAI
+resources use Entra auth.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_SUBSCRIPTION_ID</code></td>
+<td>OIDC login for the workflow's service principal.</td>
+</tr>
+<tr>
+<td><code>AZURE_ENV_NAME</code>, <code>AZURE_LOCATION</code>, <code>APP_CONFIG_ENDPOINT</code></td>
+<td>The azd environment that <code>azd deploy</code> targets. Different per environment.</td>
+</tr>
+<tr>
+<td><code>AZURE_AI_FOUNDRY_PROJECT_ENDPOINT</code></td>
+<td>Foundry project the judge and Red Team scan use.</td>
+</tr>
+<tr>
+<td><code>AZURE_OPENAI_ENDPOINT</code>, <code>AZURE_OPENAI_DEPLOYMENT</code></td>
+<td>The judge model endpoint and deployment name.</td>
+</tr>
+<tr>
+<td><code>AZURE_OPENAI_MODEL_NAME</code></td>
+<td>The model behind the deployment, for example <code>gpt-5-nano</code>. Required so the judge detects a reasoning model and sends <code>max_completion_tokens</code> instead of <code>max_tokens</code>.</td>
+</tr>
+<tr>
+<td><code>APPLICATIONINSIGHTS_CONNECTION_STRING</code></td>
+<td>Lets the runtime publish eval spans to Foundry.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">AZURE_OPENAI_MODEL_NAME is easy to miss</p>
+<p>If your judge deployment is named something generic like <code>chat</code>, AgentOps
+cannot tell it is a GPT-5 reasoning model from the deployment name alone.
+Without <code>AZURE_OPENAI_MODEL_NAME</code>, a GPT-5 judge returns HTTP 400 because it
+is sent the wrong token argument. Set it to the real model id.</p>
+</div>
+<h3 id="wire-oidc-one-time">Wire OIDC (one time)<a class="headerlink" href="#wire-oidc-one-time" title="Permanent link">&para;</a></h3>
+<p>OIDC lets the workflow log in to Azure with a short-lived federated token, so no
+client secret is ever stored. Give the workflow a service principal with one
+federated credential per environment.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="c"># create the app + service principal</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">create</span> <span class="p">-</span><span class="n">-display-name</span> <span class="s2">&quot;gpt-rag-orchestrator-agentops-ci&quot;</span>
+<a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>
+<a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="c"># add one federated credential per environment (repeat with ...:environment:dev)</span>
+<a id="__codelineno-33-5" name="__codelineno-33-5" href="#__codelineno-33-5"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">federated-credential</span> <span class="n">create</span> <span class="p">-</span><span class="n">-id</span> <span class="p">&lt;</span><span class="n">appId</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-parameters</span> <span class="s1">&#39;{</span>
+<a id="__codelineno-33-6" name="__codelineno-33-6" href="#__codelineno-33-6"></a><span class="s1">  &quot;name&quot;: &quot;github-sandbox&quot;,</span>
+<a id="__codelineno-33-7" name="__codelineno-33-7" href="#__codelineno-33-7"></a><span class="s1">  &quot;issuer&quot;: &quot;https://token.actions.githubusercontent.com&quot;,</span>
+<a id="__codelineno-33-8" name="__codelineno-33-8" href="#__codelineno-33-8"></a><span class="s1">  &quot;subject&quot;: &quot;repo:&lt;owner&gt;/&lt;repo&gt;:environment:sandbox&quot;,</span>
+<a id="__codelineno-33-9" name="__codelineno-33-9" href="#__codelineno-33-9"></a><span class="s1">  &quot;audiences&quot;: [&quot;api://AzureADTokenExchange&quot;]</span>
+<a id="__codelineno-33-10" name="__codelineno-33-10" href="#__codelineno-33-10"></a><span class="s1">}&#39;</span>
+</code></pre></div>
+<p>Set <code>AZURE_CLIENT_ID</code> to the app's client id in both environments, and grant the
+service principal the roles it needs on the sandbox and dev resource groups
+(Contributor for <code>azd deploy</code>, plus the data-plane roles your orchestrator uses).
+See <a href="../ship/">Ship</a> for the full RBAC list.</p>
+<div class="admonition note">
+<p class="admonition-title">Temporary install pin</p>
+<p>While HTTP governance is on a feature branch, the generated workflows install
+AgentOps from
+<code>git+https://github.com/Azure/agentops.git@feat/http-streaming-target</code> via the
+<code>AGENTOPS_REF</code> env value. Once HTTP governance ships on <code>main</code>, drop the pin
+and the generator default (<code>@main</code>) works.</p>
+</div>
 <div class="admonition note">
 <p class="admonition-title">These are your workflows, not the orchestrator's</p>
 <p>The generated files are yours to edit and own. If the vendored orchestrator
@@ -1790,19 +1992,10 @@ still carries upstream workflows under <code>.github/workflows/</code> that you 
 want running, delete them so only your <code>agentops-*</code> workflows fire. You can
 re-run <code>agentops workflow generate</code> any time to regenerate yours.</p>
 </div>
-<div class="admonition info">
-<p class="admonition-title">What the PR gate does</p>
-<p>The PR workflow deploys the pull request's code to sandbox, then runs
-<code>agentops eval run</code> against the sandbox endpoint in <code>agentops.yaml</code>, applies
-your thresholds, and runs Doctor with <code>--severity-fail critical</code>. A failing
-threshold, failed deployment, or critical finding blocks the merge. The dev
-workflow remains separate and updates dev after merge or manual dispatch.
-See <a href="../ship/">Ship</a> for the OIDC, RBAC, and GitHub environment wiring.</p>
-</div>
 <h2 id="13-ship-observe-and-own">13. Ship, observe, and own<a class="headerlink" href="#13-ship-observe-and-own" title="Permanent link">&para;</a></h2>
 <p>The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
 </code></pre></div>
 <ul>
 <li><strong>Ship.</strong> Push the repo, configure the <code>sandbox</code> and <code>dev</code> GitHub environments
@@ -1832,8 +2025,8 @@ section pages the other tutorials use.</p>
 <li>You inspected both the per-row eval evidence and the runtime traces, and you
   know which spans AgentOps emits (<code>agentops.eval.*</code>) versus which come from the
   orchestrator's own runtime telemetry.</li>
-<li>You added ASSERT and Red Team as required safety gates alongside the eval gate,
-  so CI blocks unsafe behavior, not just quality regressions.</li>
+<li>You added Red Team as a safety gate alongside the eval gate, so CI blocks
+  unsafe behavior, not just quality regressions.</li>
 <li>You ran local evals against the deployed endpoint and generated a PR gate that
   blocks regressions before they merge.</li>
 </ul>

@@ -2144,6 +2144,12 @@ git, not from manual portal edits. Now point <code>agentops.yaml</code> at the f
 <a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a><span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpt-4o-mini</span>
 <a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="w">  </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Helps</span><span class="nv"> </span><span class="s">plan</span><span class="nv"> </span><span class="s">short</span><span class="nv"> </span><span class="s">trips</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">explains</span><span class="nv"> </span><span class="s">tradeoffs.&quot;</span>
 </code></pre></div>
+<p>For prompt agents, <code>prompt_agent_bootstrap.model</code> is also the evaluator model
+deployment AgentOps passes to <code>azd ai agent eval generate</code> as <code>--eval-model</code>.
+Use a real chat deployment name that exists in the sandbox and dev projects.
+Unlike the HTTP tutorial, you do not set a separate
+<code>AZURE_OPENAI_DEPLOYMENT</code> here because the Foundry/azd eval recipe owns the
+server-side evaluator setup.</p>
 <div class="admonition info">
 <p class="admonition-title">agent: is a seed pointer, not a version pin</p>
 <p>CI looks up <code>travel-agent:2</code> in the current environment. If it exists, CI
