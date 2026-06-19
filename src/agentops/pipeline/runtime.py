@@ -298,12 +298,32 @@ def _resolve_kwargs(
     *,
     row: Dict[str, Any],
     response: str,
+    response_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     resolved: Dict[str, Any] = {}
     merged = {**row, "response": response, "input": row.get("input")}
+    captured = response_fields or {}
     for kwarg, placeholder in mapping.items():
         if not isinstance(placeholder, str) or not placeholder.startswith("$"):
             resolved[kwarg] = placeholder
+            continue
+        if placeholder.startswith("$response."):
+            # Live multi-field capture from an http-json target, e.g.
+            # '$response.context' resolves to the context the endpoint
+            # returned alongside the answer on the same call.
+            name = placeholder[len("$response."):]
+            value = captured.get(name)
+            if value is not None:
+                resolved[kwarg] = value
+            continue
+        if placeholder.startswith("$row."):
+            # Arbitrary dataset column, e.g. '$row.qrels' for Document
+            # Retrieval ground-truth labels that the fixed token set does
+            # not name explicitly.
+            name = placeholder[len("$row."):]
+            value = row.get(name)
+            if value is not None:
+                resolved[kwarg] = value
             continue
         source_key = _PLACEHOLDERS.get(placeholder)
         if source_key is None:
@@ -359,6 +379,7 @@ def run_evaluator(
     response: str,
     latency_seconds: float,
     actual_tool_calls: Optional[List[Any]] = None,
+    response_fields: Optional[Dict[str, Any]] = None,
 ) -> RowMetric:
     """Execute one evaluator on one row. Captures errors so the run continues."""
     preset = runtime.preset
@@ -389,7 +410,12 @@ def run_evaluator(
             )
 
     try:
-        kwargs = _resolve_kwargs(preset.input_mapping, row=row, response=response)
+        kwargs = _resolve_kwargs(
+            preset.input_mapping,
+            row=row,
+            response=response,
+            response_fields=response_fields,
+        )
         if preset.needs_conversation:
             # Prefer the actual calls made by the agent during invocation;
             # fall back to the dataset's expected calls if the runner did

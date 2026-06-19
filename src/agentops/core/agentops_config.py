@@ -758,6 +758,18 @@ class AgentOpsConfig(BaseModel):
     request_field: Optional[str] = None
     response_field: Optional[str] = None
     tool_calls_field: Optional[str] = None
+    response_fields: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Extra named fields to capture from an http-json response, mapping "
+            "a name to a dot-path into the JSON body (e.g. {context: context, "
+            "retrieved_documents: retrieved_documents}). Each captured value is "
+            "exposed to evaluator input_mapping via the '$response.<name>' "
+            "token, so RAG evaluators can score the live retrieved context "
+            "returned by the same call. Only used when response_mode is "
+            "'json'. The primary answer still comes from response_field."
+        ),
+    )
     headers: Dict[str, str] = Field(default_factory=dict)
     auth_header_env: Optional[str] = None
     response_mode: ResponseMode = Field(
@@ -943,6 +955,7 @@ class AgentOpsConfig(BaseModel):
             self.request_field
             or self.response_field
             or self.tool_calls_field
+            or self.response_fields
             or self.headers
             or self.auth_header_env
             or self.response_mode != "json"
