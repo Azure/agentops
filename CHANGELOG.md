@@ -5,6 +5,32 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-06-19
+
+### Added
+- **Governance gates for HTTP agents (ASSERT and Red Team).** `agentops assert
+  run` and `agentops redteam run` now work against a live HTTP orchestrator
+  endpoint, not only model/deployment targets. Red Team wraps the HTTP endpoint
+  as an SDK-compatible target and reuses the AgentOps HTTP mapping
+  (`request_field`, `response_mode`, `stream`, custom headers). ASSERT resolves
+  `assert-ai` inside the active virtual environment, accepts non-secret values
+  from `assert.env`, can request an AAD token from the Azure CLI for local
+  auth-disabled Azure AI resources, injects the GPT-5 `max_completion_tokens`
+  shim only when configured, and materializes a runtime ASSERT config so
+  committed configs no longer need absolute artifact paths.
+- **Generated workflows run the ASSERT and Red Team gates.** `agentops workflow
+  generate` now installs the optional ASSERT/Red Team dependencies, runs those
+  gates when `assert:` or `redteam:` is present in `agentops.yaml`, uploads
+  their artifacts, and emits the corrected Red Team command quoting.
+
+### Fixed
+- **Reasoning-model judges no longer fail the eval gate in CI.** The generated
+  GitHub Actions and Azure DevOps eval and Red Team steps now forward
+  `AZURE_OPENAI_MODEL_NAME`, so AgentOps detects reasoning models (such as
+  `gpt-5-nano`) and uses `max_completion_tokens` instead of `max_tokens`. This
+  removes the judge `400` error that could break the eval gate when the judge
+  deployment is a reasoning model.
+
 ## [0.4.4] - 2026-06-18
 
 ### Added
@@ -55,6 +81,22 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   signals, and selected azd built-ins before reporting the generated
   `eval.yaml`, so users can see why those evaluators were chosen.
   ([#323](https://github.com/Azure/agentops/issues/323))
+
+## [0.4.2] - 2026-06-17
+
+### Fixed
+- **`agentops eval init` now works with both old and new `azure.ai.agents` azd
+  extensions.** Version 0.1.40 of the extension renamed the eval subcommand from
+  `azd ai agent eval init` to `azd ai agent eval generate`, which made
+  `agentops eval init` hard-fail with `Command "init" is deprecated, use 'azd ai
+  agent eval generate' instead`. AgentOps now invokes `generate` first and
+  transparently falls back to the legacy `init` subcommand when an older
+  extension does not recognise `generate`. The fallback only triggers on
+  subcommand-name/deprecation errors; genuine failures (authentication, project
+  endpoint, timeouts) are still surfaced immediately and unchanged. All
+  previously passed flags (`--project-endpoint`, `--agent`,
+  `--gen-instruction-file`, `--eval-model`, `--dataset`, `--evaluator`) and the
+  recipe discovery/persistence behaviour are preserved.
 
 ## [0.4.1] - 2026-06-15
 
