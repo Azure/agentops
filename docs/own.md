@@ -85,5 +85,9 @@ You monitor production behavior, promote reviewed traces into regression rows,
 re-evaluate against the hardened dataset, and produce fresh evidence for the next
 decision. Each pass makes the gate reflect more of what the agent actually does.
 
+When re-evaluation shows weak grounding or off-topic answers, the cause is often
+retrieval. To measure and tune search quality directly, see
+[Retrieval optimization](retrieval-optimization.md).
+
 To see the monitoring half of this loop in depth, read [Observe](observe.md).
 To see how the gate runs in CI, read [Ship](ship.md).

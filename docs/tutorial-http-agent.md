@@ -604,73 +604,11 @@ Groundedness and Retrieval are LLM-judge metrics on a 1 to 5 scale, passing at
 `>=3`, the same shape as the smoke evaluators. They need no ground truth, so they
 drop straight into the gate.
 
-Document Retrieval is heavier and stays out of the smoke gate on purpose. It does
-not ask an LLM judge for a score. Instead it compares your ranked
-`retrieved_documents` against qrels, that is per-query relevance labels you author
-by hand, and returns ranking metrics (Fidelity, NDCG, XDCG, Max Relevance, Holes).
-Two things make it an advanced, offline step rather than a CI gate:
-
-- **It needs ground truth.** You label which documents are relevant for each query
-  (`{document_id, query_relevance_label}`). That labeling is manual and tied to
-  your index: the labels reference specific chunk ids, so rebuilding the index can
-  change the ids and invalidate the labels. That is fine for a one-off
-  search-tuning study, but brittle for a gate that must stay green on every PR.
-- **It returns composite metrics, not a 1 to 5 score.** It is built to compare
-  retrieval configurations (parameter sweeps), so you pick a target metric like
-  NDCG@3 and track it over time, rather than pass or fail a single row.
-
-AgentOps already captures `retrieved_documents` for you, so you can run Document
-Retrieval offline whenever you want to optimize search. The orchestrator returns
-each chunk as `{id, score, ...}`; the evaluator expects `{document_id,
-relevance_score}`, so map the two fields. Here is a self-contained example:
-
-```python
-# document_retrieval_offline.py
-import os, requests
-from azure.ai.evaluation import DocumentRetrievalEvaluator
-
-ENDPOINT = os.environ["ORCHESTRATOR_URL"]  # .../orchestrator
-QUERY = "What is the fuel pump rating?"
-
-# 1. Ask the agent for the live ranked retrieval (grey-box mode).
-resp = requests.post(
-    ENDPOINT,
-    headers={"Content-Type": "application/json", "X-Eval-Context": "true"},
-    json={"ask": QUERY},
-    timeout=120,
-).json()
-
-# 2. Map the orchestrator shape {id, score} to what Foundry expects.
-retrieved_documents = [
-    {"document_id": d["id"], "relevance_score": d["score"]}
-    for d in resp["retrieved_documents"]
-]
-
-# 3. Author qrels by hand: which chunks are actually relevant, 0 (irrelevant)
-#    to 4 (perfect). Use the ids you see in retrieved_documents.
-retrieval_ground_truth = [
-    {"document_id": "documents-vw-fuel-system-pdf-c00002", "query_relevance_label": 4},
-    {"document_id": "documents-vw-fuel-system-pdf-c00001", "query_relevance_label": 2},
-]
-
-evaluator = DocumentRetrievalEvaluator(
-    ground_truth_label_min=0,
-    ground_truth_label_max=4,
-)
-print(evaluator(
-    retrieval_ground_truth=retrieval_ground_truth,
-    retrieved_documents=retrieved_documents,
-))
-```
-
-Run it with `pip install azure-ai-evaluation` and `ORCHESTRATOR_URL` set to your
-sandbox endpoint. You get back `ndcg@3`, `fidelity`, `holes`, and the other
-ranking metrics for that query. When a metric trends down after a search config
-change, you know retrieval quality regressed, even if the final answer still reads
-well. Keep this as a tuning tool, and let Groundedness and Retrieval guard the PR
-gate. See the
-[RAG evaluators reference](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators#document-retrieval)
-for the full list of score keys.
+Document Retrieval is a different tool. It scores retrieval *ranking* against
+relevance labels you author by hand and returns composite metrics for search
+tuning, so it runs offline, not on the gate. It belongs to the Own phase, when you
+optimize the agent's search over time. For a full walkthrough, see
+[Retrieval optimization](retrieval-optimization.md).
 
 ### Run it
 
