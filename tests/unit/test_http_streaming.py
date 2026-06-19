@@ -232,3 +232,77 @@ def test_custom_auth_header_on_streaming_target(monkeypatch) -> None:
 
     assert result.response == "Hello"
     assert captured["headers"].get("X-api-key") == "s3cret"
+
+
+# ---------------------------------------------------------------------------
+# (e) response_fields: capture extra named fields from a json response
+# ---------------------------------------------------------------------------
+
+
+def test_response_fields_capture_dotted_paths(monkeypatch) -> None:
+    payload = json.dumps(
+        {
+            "answer": "Paris is the capital of France.",
+            "context": "France is a country in Europe. Its capital is Paris.",
+            "retrieval": {
+                "documents": [
+                    {"id": "doc-1", "score": 0.91},
+                    {"id": "doc-2", "score": 0.42},
+                ]
+            },
+        }
+    ).encode("utf-8")
+    _patch_urlopen(monkeypatch, _FakeJsonResponse(payload))
+
+    config = _config(
+        request_field="ask",
+        response_field="answer",
+        response_fields={
+            "context": "context",
+            "retrieved_documents": "retrieval.documents",
+        },
+    )
+    result = _invoke(config, {"input": "capital of France?"})
+
+    assert result.response == "Paris is the capital of France."
+    captured = result.metadata["response_fields"]
+    assert captured["context"].startswith("France is a country")
+    assert captured["retrieved_documents"] == [
+        {"id": "doc-1", "score": 0.91},
+        {"id": "doc-2", "score": 0.42},
+    ]
+
+
+def test_response_fields_missing_path_is_skipped(monkeypatch) -> None:
+    payload = json.dumps({"answer": "ok", "context": "ctx"}).encode("utf-8")
+    _patch_urlopen(monkeypatch, _FakeJsonResponse(payload))
+
+    config = _config(
+        response_field="answer",
+        response_fields={"context": "context", "missing": "not.there"},
+    )
+    result = _invoke(config, {"input": "x"})
+
+    captured = result.metadata["response_fields"]
+    assert captured == {"context": "ctx"}
+
+
+def test_no_response_fields_leaves_metadata_empty(monkeypatch) -> None:
+    payload = json.dumps({"text": "echo: hi"}).encode("utf-8")
+    _patch_urlopen(monkeypatch, _FakeJsonResponse(payload))
+
+    config = _config()  # no response_fields configured
+    result = _invoke(config, {"input": "hi"})
+
+    assert result.response == "echo: hi"
+    assert result.metadata == {}
+
+
+def test_response_fields_rejected_on_non_http_target() -> None:
+    with pytest.raises(ValueError, match="only valid for"):
+        AgentOpsConfig(
+            version=1,
+            agent="my-prompt-agent:3",
+            dataset="./qa.jsonl",
+            response_fields={"context": "context"},
+        )

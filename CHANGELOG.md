@@ -5,6 +5,18 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Grey-box retrieval capture for HTTP JSON targets.** An HTTP target can now
+  capture extra named fields from a JSON response via a `response_fields` map
+  (`name -> dot-path`). Captured values are exposed to evaluator `input_mapping`
+  as `$response.<name>` (for example `$response.context`,
+  `$response.retrieved_documents`), and dataset columns can be referenced with
+  `$row.<name>` (for example `$row.qrels`). This lets RAG evaluators such as
+  Groundedness, Retrieval, and Document Retrieval score the retrieval actually
+  used at eval time instead of static dataset context. The primary prediction
+  (`response_field`) and single-field behavior are unchanged when
+  `response_fields` is not set.
+
 ## [0.4.5] - 2026-06-19
 
 ### Added

@@ -760,6 +760,7 @@ def _evaluate_row(
         )
 
         metrics: List[RowMetric] = []
+        captured_fields = invocation.metadata.get("response_fields") or {}
         for evaluator in evaluators:
             metric = runtime.run_evaluator(
                 evaluator,
@@ -767,6 +768,7 @@ def _evaluate_row(
                 response=invocation.response,
                 latency_seconds=invocation.latency_seconds,
                 actual_tool_calls=invocation.tool_calls,
+                response_fields=captured_fields,
             )
             metrics.append(metric)
 
@@ -819,7 +821,7 @@ def _evaluate_row(
         input=str(row.get("input", "")),
         expected=row.get("expected"),
         response=invocation.response,
-        context=row.get("context"),
+        context=captured_fields.get("context", row.get("context")),
         latency_seconds=invocation.latency_seconds,
         tool_calls=invocation.tool_calls,
         metrics=metrics,
