@@ -1574,11 +1574,13 @@ def cmd_init(
     from agentops.services.setup_wizard import (
         AGENT_TITLE,
         DATASET_TITLE,
+        ENDPOINT_SOURCE_AZD_RESOURCE_DISCOVERY,
         PROJECT_ENDPOINT_TITLE,
         REQUIRED_CONFIGURATION_MESSAGE,
         WizardAnswers,
         apply_answers,
         discover_defaults,
+        is_placeholder_agent,
         run_wizard,
         validate_agent,
         validate_dataset,
@@ -1763,12 +1765,14 @@ def cmd_init(
         force_prompt_fields = {"agent", "dataset"} if config_seeded_this_run else set()
         prompt_values = [
             defaults.project_endpoint,
-            defaults.agent,
+            None if is_placeholder_agent(defaults.agent) else defaults.agent,
             defaults.dataset,
         ]
-        will_prompt = reconfigure or bool(force_prompt_fields) or any(
-            v is None or not str(v).strip()
-            for v in prompt_values
+        will_prompt = (
+            reconfigure
+            or bool(force_prompt_fields)
+            or any(v is None or not str(v).strip() for v in prompt_values)
+            or defaults.project_endpoint_source == ENDPOINT_SOURCE_AZD_RESOURCE_DISCOVERY
         )
         if will_prompt:
             typer.echo(style("Press Enter to accept the value in brackets.", "dim"))
@@ -1817,6 +1821,7 @@ def cmd_init(
             workspace,
             prompt=_prompt,
             echo=_wizard_echo,
+            defaults=defaults,
             on_answer=_on_answer,
             reconfigure=reconfigure,
             force_prompt_fields=force_prompt_fields,
@@ -2121,8 +2126,13 @@ def cmd_eval_init(
     if _maybe_explain_leaf(("eval", "init"), explain):
         return
 
+    from agentops.core.config_loader import load_agentops_config
     from agentops.pipeline.azd_runner import AzdBackendError
-    from agentops.services.azd_eval_init import run_azd_eval_init
+    from agentops.services.azd_eval_init import (
+        ensure_local_evaluator_model_env,
+        recommend_evaluators_for_config,
+        run_azd_eval_init,
+    )
 
     workspace = directory.resolve()
     config_path = _resolve_eval_config_path(config)
@@ -2130,8 +2140,48 @@ def cmd_eval_init(
         config_path = workspace / config_path
 
     try:
+        loaded_config = load_agentops_config(config_path)
+        target = loaded_config.resolved_target()
+        if target.kind not in {"foundry_prompt", "foundry_hosted"}:
+            selection = recommend_evaluators_for_config(
+                config_path=config_path,
+                dataset=dataset,
+            )
+            typer.echo(
+                f"{_cli_label('AgentOps eval init')}: local HTTP/model target detected; "
+                "azd eval assets are not required."
+            )
+            typer.echo(f"{_cli_label('Evaluator recommendation')}: {selection.source}")
+            for signal in selection.signals:
+                typer.echo(f" {style('-', 'dim')} {signal}")
+            if selection.names:
+                typer.echo(f"{_cli_label('Evaluators')}: {', '.join(selection.names)}")
+            model_env = ensure_local_evaluator_model_env(
+                workspace=workspace,
+                selection=selection,
+            )
+            if model_env.configured:
+                action = "configured" if model_env.changed_keys else "using"
+                typer.echo(
+                    f"{_cli_label('Evaluator model')}: {action} "
+                    f"{model_env.deployment} ({model_env.model})"
+                )
+                if model_env.changed_keys and model_env.env_path is not None:
+                    typer.echo(
+                        f" {style('-', 'dim')} saved "
+                        f"{', '.join(model_env.changed_keys)} to "
+                        f"{_cli_path(model_env.env_path)}"
+                    )
+            elif selection.names and model_env.source != "not needed":
+                typer.echo(
+                    f"{_cli_warn('Warning')}: could not auto-discover an evaluator "
+                    "model deployment. Set AZURE_OPENAI_DEPLOYMENT and "
+                    "AZURE_OPENAI_MODEL_NAME before `agentops eval run`."
+                )
+            typer.echo(f"{_cli_label('Next')}: {_cli_command('agentops eval run')}")
+            return
         typer.echo(
-            f"{_cli_label('azd eval init')}: checking/generating eval.yaml "
+            f"{_cli_label('azd eval generate')}: checking/generating eval.yaml "
             "(this can take a few minutes on the first run)"
         )
         result = run_azd_eval_init(
@@ -2148,9 +2198,9 @@ def cmd_eval_init(
         raise typer.Exit(code=1) from exc
 
     if result.command_ran:
-        typer.echo(f"{_cli_label('azd eval init')}: completed")
+        typer.echo(f"{_cli_label('azd eval generate')}: completed")
     else:
-        typer.echo(f"{_cli_label('azd eval init')}: existing recipe reused")
+        typer.echo(f"{_cli_label('azd eval generate')}: existing recipe reused")
     if result.evaluators:
         typer.echo(f"{_cli_label('Evaluator recommendation')}: {result.evaluator_source}")
         for signal in result.evaluator_signals:
@@ -2346,6 +2396,17 @@ def cmd_assert_run(
             ),
         ),
     ] = False,
+    cached: Annotated[
+        bool,
+        typer.Option(
+            "--cached",
+            help=(
+                "Reuse cached inference/judge rows from a previous run with the "
+                "same run id. By default ASSERT re-runs inference against the live "
+                "target each time so the gate always exercises the current agent."
+            ),
+        ),
+    ] = False,
     explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
 ) -> None:
     """Invoke the ASSERT (assert-ai) CLI and normalize its results."""
@@ -2403,6 +2464,7 @@ def cmd_assert_run(
     resolved_suite: str | None = suite
     resolved_run_id: str | None = run_id
     fail_on_violations = True
+    subprocess_env: dict[str, str] | None = None
 
     if cfg.assert_run is not None:
         if eval_config_path is None:
@@ -2414,6 +2476,7 @@ def cmd_assert_run(
         if resolved_run_id is None:
             resolved_run_id = cfg.assert_run.run_id
         fail_on_violations = cfg.assert_run.fail_on_violations
+        subprocess_env = dict(cfg.assert_run.env)
     if no_gate:
         fail_on_violations = False
 
@@ -2428,6 +2491,12 @@ def cmd_assert_run(
         typer.echo(
             f"  suite={resolved_suite or '<auto>'} run_id={resolved_run_id or '<auto>'}"
         )
+    if cached:
+        typer.echo("  cache: reusing prior inference/judge rows when available")
+    else:
+        typer.echo("  cache: forcing fresh inference against the live target")
+
+    assert_extra_args = None if cached else ["--force-stage", "inference"]
 
     try:
         result = run_assert(
@@ -2436,6 +2505,8 @@ def cmd_assert_run(
             results_dir=resolved_results_dir,
             suite=resolved_suite,
             run_id=resolved_run_id,
+            env=subprocess_env,
+            extra_args=assert_extra_args,
         )
     except AssertRunnerError as exc:
         typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
@@ -2471,9 +2542,15 @@ def cmd_assert_run(
             violations = bucket.get("violations", 0)
             total = bucket.get("total", 0)
             skipped = bucket.get("skipped", 0)
-            marker = _cli_ok("OK") if violations == 0 else _cli_error("VIOLATIONS")
             suffix = f" (skipped={skipped})" if skipped else ""
-            typer.echo(f"  {name}: {violations}/{total}{suffix} {marker}")
+            if violations == 0:
+                clean = max(total - skipped, 0)
+                typer.echo(f"  {name}: {clean}/{total} clean{suffix} {_cli_ok('OK')}")
+            else:
+                typer.echo(
+                    f"  {name}: {violations}/{total} violating{suffix} "
+                    f"{_cli_error('VIOLATIONS')}"
+                )
 
     typer.echo("")
     typer.echo(_cli_heading("Inspect details"))
@@ -2666,6 +2743,7 @@ def cmd_redteam_run(
                 err=True,
             )
             raise typer.Exit(code=1)
+    _apply_http_redteam_defaults(resolved_target, cfg)
 
     if output_path is not None and not output_path.is_absolute():
         output_path = (workspace / output_path).resolve()
@@ -2784,6 +2862,21 @@ def _derive_redteam_target_from_agent(agent: str | None) -> dict[str, Any]:
     if agent.startswith("http"):
         return {"endpoint": agent}
     return {"agent": agent}
+
+
+def _apply_http_redteam_defaults(target: dict[str, Any], cfg: AgentOpsConfig) -> None:
+    if "endpoint" not in target:
+        return
+    if cfg.request_field:
+        target.setdefault("request_field", cfg.request_field)
+    if cfg.response_field:
+        target.setdefault("response_field", cfg.response_field)
+    if cfg.response_mode:
+        target.setdefault("response_mode", cfg.response_mode)
+    if cfg.headers:
+        target.setdefault("headers", cfg.headers)
+    if cfg.stream:
+        target.setdefault("stream", cfg.stream.model_dump(exclude_none=True))
 
 
 def _run_flat_schema_eval(
