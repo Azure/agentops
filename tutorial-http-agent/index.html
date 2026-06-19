@@ -1743,6 +1743,17 @@ for latency and errors. See <a href="../observe/">Observe</a>.</p>
 <h2 id="11-add-governance-checks">11. Add governance checks<a class="headerlink" href="#11-add-governance-checks" title="Permanent link">&para;</a></h2>
 <p>Quality is not enough to ship. Add Red Team and a tiny ASSERT smoke so CI can
 exercise the live HTTP orchestrator, not just score happy-path answers.</p>
+<div class="admonition tip">
+<p class="admonition-title">Learn more about these gates</p>
+<ul>
+<li>Red Team uses the Azure AI Foundry red teaming agent. See
+  <a href="https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/ai-red-teaming-agent">AI Red Teaming Agent (concepts)</a>
+  and <a href="https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/develop/run-scans-ai-red-teaming-agent">Run automated scans</a>
+  for the full risk-category and attack-strategy list.</li>
+<li>ASSERT is the AgentOps contract smoke. The full config schema lives in the
+  <a href="../tutorial-prompt-agent/#12-add-assert-and-red-team-to-the-release-gate">release gate reference</a>.</li>
+</ul>
+</div>
 <h3 id="scaffold-it-recommended">Scaffold it (recommended)<a class="headerlink" href="#scaffold-it-recommended" title="Permanent link">&para;</a></h3>
 <p>Let the governance skill create the small files and update <code>agentops.yaml</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>/skills agentops-governance
@@ -1977,6 +1988,28 @@ federated credential per environment.</p>
 service principal the roles it needs on the sandbox and dev resource groups
 (Contributor for <code>azd deploy</code>, plus the data-plane roles your orchestrator uses).
 See <a href="../ship/">Ship</a> for the full RBAC list.</p>
+<p>For the federated-credential subject format and login options, see
+<a href="https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/configuring-openid-connect-in-azure">GitHub: configuring OpenID Connect in Azure</a>
+and the <a href="https://github.com/Azure/login">azure/login action</a>.</p>
+<div class="admonition warning">
+<p class="admonition-title">CI runners must reach your endpoint and Foundry</p>
+<p>The eval, ASSERT, and Red Team gates run on GitHub-hosted runners and call
+your orchestrator's HTTP endpoint and the Azure AI Foundry project directly.
+If those resources block public network access, the gates fail with
+connection timeouts. You have two options:</p>
+<ul>
+<li><strong>Public-reachable sandbox/dev.</strong> Keep the endpoint and Foundry reachable
+  from the runner (public access, or an IP allowlist that includes the
+  GitHub-hosted runner ranges). Simplest, fine for non-production.</li>
+<li><strong>Network-isolated environment.</strong> If the orchestrator and Foundry sit
+  behind private endpoints, GitHub-hosted runners cannot reach them. Run the
+  workflows on self-hosted runners deployed inside the same VNet (or a peered
+  one) so they resolve the private endpoints. See
+  <a href="https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners">GitHub self-hosted runners</a>,
+  <a href="https://learn.microsoft.com/en-us/azure/container-apps/networking">Azure Container Apps networking</a>,
+  and <a href="https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-overview">Azure Private Endpoint overview</a>.</li>
+</ul>
+</div>
 <div class="admonition note">
 <p class="admonition-title">Temporary install pin</p>
 <p>While HTTP governance is on a feature branch, the generated workflows install
