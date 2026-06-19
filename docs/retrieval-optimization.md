@@ -38,7 +38,7 @@ actually improved.
 
 You need grey-box mode enabled so the agent returns the documents it retrieved.
 This is the same `X-Eval-Context` contract set up in
-[step 11 of the HTTP agent tutorial](tutorial-http-agent.md#11-score-the-live-retrieval-grey-box).
+[step 11 of the HTTP agent tutorial](tutorial-http-agent.md#11-score-live-retrieval).
 With it on, a request returns the ranked retrieval alongside the answer:
 
 ```json
@@ -197,5 +197,5 @@ confirmed by the gate there.
 ## Related
 
 - [Own](own.md): the ownership loop this activity belongs to.
-- [HTTP agent tutorial, step 11](tutorial-http-agent.md#11-score-the-live-retrieval-grey-box): how grey-box capture is wired.
+- [HTTP agent tutorial, step 11](tutorial-http-agent.md#11-score-live-retrieval): how grey-box capture is wired.
 - [Foundry RAG evaluators](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators): the full evaluator reference, including every Document Retrieval score key.

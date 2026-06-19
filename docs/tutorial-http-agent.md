@@ -55,6 +55,12 @@ instead of permission prompts.
 Create the GPT-RAG workspace from the template. The first azd environment is your
 sandbox.
 
+!!! concept "What the sandbox is for"
+    The sandbox is your candidate-validation environment. You deploy real Azure
+    resources here, point AgentOps at them, and let the PR gate deploy and score
+    candidate code before it can reach dev. Treating it as disposable is the
+    point: you can break it, reset it, and keep dev clean.
+
 ```powershell
 azd init -t Azure/gpt-rag
 ```
@@ -89,7 +95,7 @@ azd up
     directory, pinned to tag `v2.8.6`, and built into a container image. The
     deployed orchestrator answers over HTTP at `POST /orchestrator`.
 
-## 2. Stand up a dev environment
+## 2. Add a dev environment
 
 Create a second environment in the same checkout, set its values, and deploy it.
 Give it its own unique suffix, using the pattern `gptrag-dev-yymmddhhmm`.
@@ -106,10 +112,17 @@ azd up
     the shared deployment target updated by the generated deploy workflow after
     merge or manual dispatch.
 
-## 3. Index a document so the agent has something to answer
+## 3. Index a document
 
 Your agent grounds its answers on indexed content, so give it one document to
 work with. This tutorial uses a short sample manual.
+
+!!! concept "Why grounding needs an index"
+    A RAG agent does not read your PDF at question time. An ingestion pipeline
+    splits the document into chunks, turns each chunk into an embedding vector,
+    and stores them in a search index. At query time the agent retrieves the
+    closest chunks and answers from them. No index, no grounded answer, which is
+    why this one upload is what gives the agent something true to say.
 
 [Download the sample document](media/vw-fuel-system.pdf) is the "Fuel System"
 section of a Volkswagen service manual, 28 pages covering the carbureted 1968
@@ -129,7 +142,7 @@ az storage blob upload `
 
 Give ingestion a couple of minutes before testing grounded answers.
 
-## 4. Take ownership of the cloned orchestrator
+## 4. Own the orchestrator
 
 The agent you evaluate lives in the cloned orchestrator, so work from that
 directory.
@@ -190,7 +203,7 @@ git push -u origin main
     `<owner>/gpt-rag-orchestrator`, give this one a different name like
     `gpt-rag-orchestrator-agentops` so your own copy stays easy to tell apart.
 
-## 5. Install AgentOps in the orchestrator repo
+## 5. Install AgentOps
 
 From the `gpt-rag-orchestrator` directory, create a local Python environment,
 install AgentOps, and install the Copilot skills:
@@ -204,7 +217,7 @@ agentops --version
 agentops skills install
 ```
 
-## 6. Initialize AgentOps against the orchestrator endpoint
+## 6. Initialize AgentOps
 
 Point AgentOps straight at `POST /orchestrator`. No adapter route is needed.
 This orchestrator returns `text/event-stream`, so the config below uses
@@ -213,6 +226,14 @@ returns normal JSON, keep the default `response_mode: json`, remove the
 `stream:` block, and set `response_field` to the JSON field that contains the
 answer. For the full matrix, see
 [Fill `agentops.yaml` for HTTP endpoints](evaluation.md#fill-agentopsyaml-for-http-endpoints).
+
+!!! concept "Black-box HTTP targets"
+    AgentOps treats your orchestrator as a black box: it sends an input over
+    HTTP and reads back one answer. It does not import your code or mock your
+    model, so the gate scores the same path your users hit in production,
+    including retrieval, the model, and your prompt. That realism is the whole
+    value, and it is also why step 11 has to do extra work to peek at the
+    retrieved context behind the answer.
 
 Use the sandbox orchestrator for local AgentOps setup and local eval runs. The
 PR gate uses sandbox too. Dev is updated after merge or manual dispatch.
@@ -295,11 +316,18 @@ stream:
     you deployed GPT-RAG with `useCAppAPIKey=true`. The default tutorial path does
     not use that option.
 
-## 7. Create the eval dataset
+## 7. Create the dataset
 
 Create a small JSONL dataset grounded in the document you indexed. Each row is
 one line of JSON: an `input` to ask and an `expected` describing the behavior you
 want.
+
+!!! concept "An eval dataset scores behavior, not exact text"
+    `expected` is not a string the answer must match. An LLM judge reads the
+    agent's answer and your `expected` description and rates how well they agree.
+    So you describe the behavior you want ("names the correct torque value and
+    cites the manual") and the judge tolerates wording differences. That is what
+    lets a non-deterministic agent be tested at all.
 
 ```
 edit .agentops/data/vw-smoke.jsonl
@@ -326,9 +354,16 @@ edit .agentops/data/vw-smoke.jsonl
     measure real groundedness, evaluate a target that also returns its retrieved
     context. See [Evaluation](evaluation.md).
 
-## 8. Review evaluator recommendations and set thresholds
+## 8. Set thresholds
 
 Ask AgentOps to inspect the HTTP target and dataset:
+
+!!! concept "What a threshold gate does"
+    Each evaluator returns a score from 1 to 5. A threshold turns that score into
+    a pass or fail: set a floor like `>= 3` and any row below it fails the run.
+    A failed run exits non-zero, and in CI a non-zero exit blocks the merge. That
+    is the mechanism that converts "the answer felt worse" into an automatic,
+    enforceable gate.
 
 ```powershell
 agentops eval init
@@ -390,7 +425,7 @@ thresholds:
 gate checks that the agent answers sensibly and stays close to the expected
 behavior, not that it is grounded.
 
-## 9. Run the local eval gate against the sandbox
+## 9. Run the eval gate
 
 AgentOps evals run wherever you execute the command. In this step, you run the
 same gate locally from the orchestrator repo:
@@ -451,7 +486,7 @@ stores the evidence as workflow artifacts. There is no separate setting in
 `agentops.yaml` that says "local" or "cloud"; the runner location comes from
 where the command is executed.
 
-## 10. See results and traces
+## 10. Results and traces
 
 Use the local report for the evaluation evidence. Use Application Insights when
 you want the run traces.
@@ -498,7 +533,7 @@ environment, not another dev or sandbox environment.
     agent's own request traces are separate runtime telemetry the Doctor reads
     for latency and errors. See [Observe](observe.md).
 
-## 11. Score the live retrieval (grey-box)
+## 11. Score live retrieval
 
 Steps 7 to 10 score the answer text only. The judge never sees the passages your
 agent actually retrieved, so it cannot tell you whether the agent pulled the
@@ -634,13 +669,20 @@ audience asked for them.
 Quality is not enough to ship. Add Red Team and a tiny ASSERT smoke so CI can
 exercise the live HTTP orchestrator, not just score happy-path answers.
 
+!!! concept "Quality is not safety"
+    The eval gate asks "is the answer good?" It does not ask "is the agent safe
+    when someone attacks it?" Those are different questions and need different
+    tools. Red Team probes for harmful or jailbroken responses, and ASSERT runs
+    fast behavioral smoke checks. Stacking all three is defense in depth: a
+    helpful agent can still be unsafe, and a safe agent can still be unhelpful.
+
 !!! tip "Learn more about these gates"
     - Red Team uses the Azure AI Foundry red teaming agent. See
       [AI Red Teaming Agent (concepts)](https://learn.microsoft.com/en-us/azure/ai-foundry/concepts/ai-red-teaming-agent)
       and [Run automated scans](https://learn.microsoft.com/en-us/azure/ai-foundry/how-to/develop/run-scans-ai-red-teaming-agent)
       for the full risk-category and attack-strategy list.
     - ASSERT is the AgentOps contract smoke. The full config schema lives in the
-      [release gate reference](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
+      [release gate reference](tutorial-prompt-agent.md#12-add-assert-and-red-team).
 
 ### Scaffold it (recommended)
 
@@ -740,20 +782,27 @@ If the SDK prints an Azure upload authorization warning but AgentOps still write
 `.agentops/redteam/latest.json` and exits `0`, the local gate worked. The warning
 is only about publishing the SDK's optional scan artifact back to Foundry.
 For the full config schema, risk categories, and attack strategies, see the
-[release gate reference](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
+[release gate reference](tutorial-prompt-agent.md#12-add-assert-and-red-team).
 
 !!! warning "These hit live Azure services"
     Red Team calls live Azure services. Run it against a non-production endpoint
     and keep the objective count small while you wire it up. The matrix is
     `risk_categories x attack_strategies x num_objectives` and grows quickly.
 
-## 13. Generate the PR + dev deploy workflows
+## 13. Generate the workflows
 
 You build your own CI here. `agentops workflow generate` writes fresh,
 AgentOps-owned GitHub Actions into your repo. The files are prefixed `agentops-`
 so they never collide with the orchestrator's existing workflows. The
 orchestrator's `azure.yaml` is used only as the deploy project, so the deploy
 mode is `azd`.
+
+!!! concept "Why AgentOps generates your CI"
+    The workflows are derived from `agentops.yaml`, not hand-written. That means
+    your gates and your CI cannot drift apart: change a threshold or add an
+    evaluator and you regenerate the workflows to match. The `agentops-` prefix
+    keeps them separate from the repo's own pipelines, and regenerating is safe
+    because it overwrites only AgentOps-owned files.
 
 ```powershell
 agentops workflow generate --kinds pr,dev --deploy-mode azd --force
@@ -900,7 +949,7 @@ and the [azure/login action](https://github.com/Azure/login).
     want running, delete them so only your `agentops-*` workflows fire. You can
     re-run `agentops workflow generate` any time to regenerate yours.
 
-## 14. Ship, observe, and own
+## 14. Ship, observe, own
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.

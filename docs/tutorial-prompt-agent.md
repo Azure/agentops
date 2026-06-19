@@ -76,7 +76,7 @@ environment. To check whether dev and prod run the same prompt, compare these
 fingerprints, not the Foundry version numbers. Step 15 walks through a real
 `foundry-agent.json`. More: [Own](own.md).
 
-## 1. Create a clean workspace and install AgentOps
+## 1. Create the workspace
 
 First, create and activate a workspace folder with its own virtual environment:
 
@@ -95,7 +95,7 @@ python -m pip install agentops-accelerator
 agentops --version
 ```
 
-## 2. Install the AgentOps Copilot skills
+## 2. Install the skills
 
 ```powershell
 agentops skills install
@@ -110,12 +110,19 @@ Copilot picks them up when you type `/skills` in chat.
     not installed by it. If your Copilot session does not have it, use the Foundry
     portal path instead. Both paths reach the same result.
 
-## 3. Create the two Foundry projects
+## 3. Create Foundry projects
 
 You need two Foundry projects in the same Azure subscription:
 
 - `travel-agent-sandbox`: where you author, experiment, and stage PR candidates. Saves here never deploy dev.
 - `travel-agent-dev`: the first shared environment. The dev deploy lands here after merge.
+
+!!! concept "Why two projects, not one"
+    Sandbox and dev are isolated on purpose. You author and break things freely
+    in sandbox, and dev only ever changes through a merged, gated PR. That
+    one-way promotion is what makes dev trustworthy: nothing reaches it that did
+    not pass the gate, so a shared environment cannot be quietly edited under
+    everyone's feet.
 
 !!! note "How many sandboxes"
     One sandbox is enough for a solo run or a small team. Split into per-stream or
@@ -194,10 +201,17 @@ before applying.
     plan lists `Foundry User` and `Cognitive Services OpenAI User`; if it only
     created projects, ask it to add those roles.
 
-## 4. Seed travel-agent in the sandbox project
+## 4. Seed the agent
 
 Author the agent in one place only: the sandbox project. Dev and later qa and
 prod start empty and get bootstrapped by CI on the first deploy.
+
+!!! concept "What a Foundry prompt agent is"
+    A prompt agent is hosted configuration, not your code. It is identified by
+    `name:version` and bundles its instructions, its model, and any tools it can
+    call, all living in Foundry. AgentOps versions the instructions as a file in
+    your repo, so the prompt becomes reviewable code while the runtime stays in
+    Foundry. That split is why you can gate a prompt change like any other diff.
 
 In the `travel-agent-sandbox` project:
 
@@ -240,7 +254,7 @@ In the `travel-agent-sandbox` project:
     deploy. Use the same model deployment name everywhere so one bootstrap value
     works for every environment.
 
-## 5. Try the agent in the sandbox playground
+## 5. Try the agent
 
 Open `travel-agent-sandbox`, open `travel-agent:2` (the version Foundry
 assigned), and run a sample in the playground:
@@ -258,11 +272,18 @@ it to git. Sandbox saves stay local and never trigger CI.
     step 18. For now, just confirm there is at least one trace to inspect later.
     Full tour: [Observe](observe.md).
 
-## 6. Create the travel eval dataset
+## 6. Create the dataset
 
 Create a small JSONL dataset that matches the Travel Agent behavior. The
 `expected` values are acceptance criteria, not exact answer strings. For prompt
 agents AgentOps uses judge-based quality and completeness on this shape.
+
+!!! concept "The dataset is your definition of good"
+    These few rows are the contract your agent has to keep passing. Because an
+    LLM judge reads `expected` as acceptance criteria, you are encoding the
+    behavior you care about, not memorizing one correct sentence. Start small and
+    honest: a handful of rows that capture real requirements is worth more than a
+    large set that nobody trusts.
 
 ```text
 edit .agentops/data/travel-smoke.jsonl
@@ -279,7 +300,7 @@ edit .agentops/data/travel-smoke.jsonl
     It can add edge cases and check that each row has `input` and `expected`,
     written as reviewable behavior instead of exact answer strings.
 
-## 7. Initialize AgentOps against the sandbox project
+## 7. Initialize AgentOps
 
 Sign in with the identity that can access both projects, then run the wizard
 against sandbox. AgentOps creates an azd-compatible environment so the same
@@ -320,7 +341,7 @@ Because you passed `--azd-env sandbox`, the wizard writes sandbox values to
 `.azure/sandbox/.env` and sets `defaultEnvironment: sandbox`. Local commands like
 `agentops eval run` use sandbox by default.
 
-## 8. Add the dev azd environment
+## 8. Add a dev environment
 
 Add the dev endpoint as a second azd environment. Do not re-run
 `agentops init --azd-env dev`, because that flips `defaultEnvironment` to dev.
@@ -372,12 +393,19 @@ Final topology:
 `defaultEnvironment: sandbox` means local commands use sandbox. CI workflows read
 `.azure/dev/.env` explicitly so they always target dev.
 
-## 9. Promote the prompt to a source-controlled file
+## 9. Source-control the prompt
 
 Turn the prompt into code. `agentops prompt pull` reads the published sandbox
 agent and writes its instructions to `.agentops/prompts/travel-agent.md`. It
 prints the resolved endpoint and agent version before writing, and needs
 `--force` to overwrite local edits.
+
+!!! concept "Why the prompt belongs in git"
+    Once the instructions live in a file, the prompt gets everything code gets:
+    diffs, review, history, and a commit SHA that pins exactly which wording
+    shipped. A prompt change becomes a reviewable pull request instead of an
+    invisible edit in a portal. That is the foundation for every gate that
+    follows, because you cannot gate what you cannot see change.
 
 ```powershell
 agentops prompt pull
@@ -420,9 +448,16 @@ server-side evaluator setup.
     endpoint to `.azure/<env>/.env`. If you copied it into `agentops.yaml`, delete
     it now.
 
-## 10. Initialize the azd eval recipe and run the smoke gate
+## 10. Run the smoke gate
 
 Confirm the eval runner the generator will use:
+
+!!! concept "What the smoke gate proves"
+    A smoke gate is the smallest honest test: a few rows, run end to end against
+    the real agent, scored by a judge. It will not catch every regression, and it
+    is not meant to. Its job is to fail fast and loud when something is obviously
+    broken, so you trust green to mean "safe to keep going." You harden it into a
+    real gate in the next step.
 
 ```powershell
 agentops workflow analyze --format text
@@ -466,10 +501,17 @@ aggregate pass rate per evaluator) and **Detailed metrics results** (one row per
 sample). Keep this tab open while you iterate; each `agentops eval run` adds a new
 run here.
 
-## 11. Harden the gate: conversation-aware dataset and rubric
+## 11. Harden the gate
 
 The smoke gate proves the workspace works. Now harden it with multi-turn rows
 and a product-specific rubric before generating CI.
+
+!!! concept "Why multi-turn and a rubric"
+    Real users do not ask one perfect question. They follow up, change their
+    mind, and rely on earlier context, so a single-turn test misses most of what
+    can go wrong. Multi-turn rows exercise memory and coherence across a
+    conversation, and a product-specific rubric tells the judge what good means
+    for your agent instead of a generic notion of helpfulness.
 
 ### Add a synthetic multi-turn dataset
 
@@ -615,9 +657,17 @@ agentops eval run
     still shows per-dimension scores under Detailed metrics results, then
     View rubric details.
 
-## 12. Add ASSERT and Red Team to the release gate
+## 12. Add ASSERT and Red Team
 
 The eval gate proves quality. Two safety signals belong in the same loop:
+
+!!! concept "Quality is not safety"
+    The eval gate asks whether the answer is good. It does not ask whether the
+    agent stays safe when someone attacks it, and a helpful agent can still be
+    jailbroken. ASSERT turns plain-language safety policies into executable
+    checks, and Red Team generates adversarial prompts to find regressions.
+    Running all three is defense in depth: each one catches a failure the others
+    miss.
 
 - **ASSERT** (open-source `assert-ai`) turns natural-language safety policies into executable behavior tests. For example, it can check the agent refuses a prompt-injection instruction hidden in tool output. Repo: <https://github.com/responsibleai/ASSERT>.
 - **AI Red Teaming** (a Foundry agent, PyRIT-backed) generates adversarial prompts across risk categories (violence, hate, self-harm, sexual) and applies attack strategies (base64, rot13, morse) to surface safety regressions. Docs: <https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent>.
@@ -825,7 +875,7 @@ violation counts, attack-success-rate, and SHA-256 hashes for both artifacts. Th
 verdicts come from ASSERT and PyRIT; AgentOps owns orchestration, normalization,
 and gating.
 
-## 13. Generate the PR + dev deploy workflows
+## 13. Generate the workflows
 
 ```powershell
 agentops workflow generate --kinds pr,dev --deploy-mode prompt-agent --doctor-gate critical --force
@@ -871,7 +921,7 @@ Deploy templates always run `--severity-fail critical` regardless of
 `--doctor-gate`. The gate flag affects only the PR template; deploys are the
 last-mile gate and always block on critical findings.
 
-## 14. Wire CI: GitHub repo, Azure OIDC, sandbox and dev environments
+## 14. Wire CI and OIDC
 
 The workflows are local until the folder is a GitHub repo connected to Azure with
 OIDC. OIDC (OpenID Connect) lets GitHub Actions get short-lived Azure tokens
@@ -916,7 +966,7 @@ Ask the skill to do it, or edit by hand:
 2. Open `.github/workflows/agentops-pr.yml`. Find the `pull_request:` trigger. If its `branches:` list includes `develop`, change it to `[main]`.
 3. Save both files. The PR gate now runs on PRs targeting `main`, and the dev deploy runs on every push to `main` after a merge.
 
-## 15. First green PR, merge, dev deploy
+## 15. First green PR
 
 You need a clean green baseline so the rolling-history Doctor checks (regression,
 drift) have something to compare against.
@@ -995,9 +1045,16 @@ has `travel-agent:2` matching the shipped prompt) it looks like this:
     version numbers but the same SHAs whenever they run the same release. Detail:
     [Own](own.md).
 
-## 16. Regression PR: eval gate and Doctor both block
+## 16. Catch a regression
 
 Now ship a worse prompt and watch two independent gates fail in the same PR:
+
+!!! concept "Two gates that fail independently"
+    Thresholds and Doctor catch different problems. Thresholds enforce an
+    absolute floor: a row scored below the line fails, full stop. Doctor watches
+    for drift, a meaningful drop from your rolling baseline, even when the score
+    is still above the floor. Keeping both means a slow erosion that never trips
+    the floor still gets caught before it reaches dev.
 
 - The eval thresholds may fail because `response_completeness` drops below the floor.
 - Doctor's `regression.<metric>` checks fire when a metric (often `coherence`, `response_completeness`, or `groundedness`) drops meaningfully from the rolling baseline. With `--severity-fail critical`, those findings fail the Doctor step on their own.
@@ -1085,11 +1142,18 @@ The learning loop is the point: the prompt lives in git, the PR exercises it as 
 sandbox candidate, Doctor catches regressions thresholds alone miss, and the
 merge promotes through deploy, none of it requiring anyone to watch a dashboard.
 
-## 18. Observability: traces into continuous evaluation
+## 18. Traces to evaluation
 
 Tour the Foundry runtime view, then turn the same production signal into
 evaluation coverage. This is the bridge from "what happened in real traces" to
 "what should keep getting evaluated."
+
+!!! concept "Closing the loop"
+    Pre-merge gates only test what you thought to ask. Production traces show what
+    users actually did, including cases your dataset never imagined. By turning
+    real traces into new eval rows, you feed live behavior back into the gate, so
+    the agent that ships keeps teaching the gate that guards it. That feedback
+    loop is what makes the system improve instead of just hold the line.
 
 1. Open `travel-agent-dev`, open the `travel-agent` agent, and switch to the Traces tab. Connect Application Insights if prompted.
 2. Open a recent run in Conversations or Responses, click the Trace ID, and inspect spans, latency, model calls, and the input/output panes.
@@ -1157,7 +1221,7 @@ AppEvents
     Widen the range (`ago(30d)` with Set in query, or Last 30 days) and confirm you
     are in the Log Analytics workspace where `AppEvents` resolves.
 
-## 19. Sync local evidence and build the release evidence pack
+## 19. Build the evidence pack
 
 ```powershell
 agentops eval run
