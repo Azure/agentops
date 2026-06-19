@@ -462,7 +462,7 @@ def test_run_wizard_reconfigure_forces_questions_even_when_defaults_present(
     monkeypatch.delenv(ENV_KEY_APPINSIGHTS, raising=False)
 
     (tmp_path / "agentops.yaml").write_text(
-        "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        "version: 1\nagent: configured-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
         encoding="utf-8",
     )
     smoke = tmp_path / ".agentops" / "data" / "smoke.jsonl"
@@ -495,6 +495,6 @@ def test_run_wizard_reconfigure_forces_questions_even_when_defaults_present(
 
     assert prompt_calls == [
         "Foundry project endpoint",
-        "Agent",
+        "Agent / orchestrator endpoint",
         "Dataset path",
     ]
