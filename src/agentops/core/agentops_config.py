@@ -152,17 +152,72 @@ class EvaluatorOverride(BaseModel):
         evaluators:
           - GroundednessEvaluator
           - CoherenceEvaluator
+
+    Each entry may instead be a mapping to remap the evaluator inputs. This is
+    how an HTTP/JSON target scores the *live* retrieved context (grey-box):
+    capture the extra fields on the target with ``response_fields`` and point
+    the evaluator at them via ``$response.<name>`` tokens::
+
+        response_fields:
+          context: context
+          retrieved_documents: retrieved_documents
+        evaluators:
+          - name: GroundednessEvaluator
+            input_mapping:
+              query: $prompt
+              response: $prediction
+              context: $response.context
+          - name: RetrievalEvaluator
+            input_mapping:
+              query: $prompt
+              context: $response.context
+
+    ``input_mapping`` is merged onto the preset's default mapping, so you only
+    list the keys you want to change.
     """
 
     name: str
+    input_mapping: Optional[Dict[str, str]] = Field(
+        None,
+        description=(
+            "Optional per-evaluator input remap merged onto the preset "
+            "defaults. Values use the resolver tokens $prompt, $prediction, "
+            "$expected, $context, $row.<col>, and $response.<name> (the last "
+            "reads a field captured by the target's response_fields)."
+        ),
+    )
 
     model_config = ConfigDict(frozen=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_bare_name(cls, data: Any) -> Any:
+        """Accept a bare evaluator name string as shorthand for ``{name: ...}``."""
+        if isinstance(data, str):
+            return {"name": data}
+        return data
 
     @field_validator("name")
     @classmethod
     def _name_non_empty(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("evaluator name must be non-empty")
+        return value
+
+    @field_validator("input_mapping")
+    @classmethod
+    def _mapping_non_empty(
+        cls, value: Optional[Dict[str, str]]
+    ) -> Optional[Dict[str, str]]:
+        if value is None:
+            return None
+        for key, token in value.items():
+            if not str(key).strip():
+                raise ValueError("input_mapping keys must be non-empty")
+            if not str(token).strip():
+                raise ValueError(
+                    f"input_mapping value for {key!r} must be non-empty"
+                )
         return value
 
 

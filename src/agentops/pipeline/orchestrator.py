@@ -132,10 +132,16 @@ def _run_evaluation_local(
     overrides = (
         [override.name for override in config.evaluators] if config.evaluators else None
     )
+    override_mappings = (
+        {o.name: dict(o.input_mapping) for o in config.evaluators if o.input_mapping}
+        if config.evaluators
+        else None
+    ) or None
     presets = select_evaluators(
         target,
         shape,
         overrides=overrides,
+        override_mappings=override_mappings,
         threshold_metrics=config.thresholds.keys(),
     )
     user_thresholds = [
@@ -277,10 +283,16 @@ def _run_evaluation_cloud(
     overrides = (
         [override.name for override in config.evaluators] if config.evaluators else None
     )
+    override_mappings = (
+        {o.name: dict(o.input_mapping) for o in config.evaluators if o.input_mapping}
+        if config.evaluators
+        else None
+    ) or None
     all_presets = select_evaluators(
         target,
         shape,
         overrides=overrides,
+        override_mappings=override_mappings,
         threshold_metrics=config.thresholds.keys(),
     )
 

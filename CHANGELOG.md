@@ -5,7 +5,21 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
-## [0.5.1] - 2026-06-20
+## [0.5.2] - 2026-06-20
+
+### Added
+- **Per-evaluator input remapping via `evaluators[].input_mapping`.** Evaluator
+  overrides in `agentops.yaml` now accept an optional `input_mapping` map that is
+  merged onto the preset's default inputs, so you only list the keys you want to
+  change. This is what lets a grey-box HTTP/JSON target point a RAG evaluator at
+  the live retrieved context captured by `response_fields`, for example
+  `context: $response.context` on `GroundednessEvaluator` and
+  `RetrievalEvaluator`. The mapping applies to both explicitly listed overrides
+  and auto-selected presets. A bare evaluator name string (`- GroundednessEvaluator`)
+  is still accepted as shorthand for `{ name: GroundednessEvaluator }`, so
+  existing configs are unchanged.
+
+
 
 ### Added
 - **Rendered gate results in GitHub Actions job summaries.** When AgentOps runs
