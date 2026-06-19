@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-06-20
+
 ### Added
 - **Rendered gate results in GitHub Actions job summaries.** When AgentOps runs
   inside GitHub Actions (`GITHUB_STEP_SUMMARY` set), `agentops eval run` now
