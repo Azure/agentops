@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-06-19
+
 ### Added
 - **Grey-box retrieval capture for HTTP JSON targets.** An HTTP target can now
   capture extra named fields from a JSON response via a `response_fields` map
