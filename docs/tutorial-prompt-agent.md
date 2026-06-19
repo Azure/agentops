@@ -397,6 +397,13 @@ prompt_agent_bootstrap:
   description: "Helps plan short trips and explains tradeoffs."
 ```
 
+For prompt agents, `prompt_agent_bootstrap.model` is also the evaluator model
+deployment AgentOps passes to `azd ai agent eval generate` as `--eval-model`.
+Use a real chat deployment name that exists in the sandbox and dev projects.
+Unlike the HTTP tutorial, you do not set a separate
+`AZURE_OPENAI_DEPLOYMENT` here because the Foundry/azd eval recipe owns the
+server-side evaluator setup.
+
 !!! info "agent: is a seed pointer, not a version pin"
     CI looks up `travel-agent:2` in the current environment. If it exists, CI
     copies that definition, swaps in `prompt_file`, and either reuses the same

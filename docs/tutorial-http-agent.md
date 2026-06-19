@@ -335,14 +335,49 @@ agentops eval init
 ```
 
 For this HTTP target, `agentops eval init` only inspects `agentops.yaml` and the
-dataset, then prints the recommended evaluators. It does not call `azd` or create
-a Foundry `eval.yaml`, because the target is not a Foundry prompt agent.
+dataset, then prints the recommended evaluators. It also looks at the active azd
+environment and, when it finds one non-embedding Azure AI deployment, saves the
+judge model settings it needs for scoring.
+
+You should see output like this:
+
+```text
+Evaluator model: configured chat (gpt-5-nano)
+ - saved AZURE_OPENAI_DEPLOYMENT, AZURE_OPENAI_MODEL_NAME to .azure\<env>\.env
+```
+
+`agent` is the HTTP target being tested. `AZURE_OPENAI_DEPLOYMENT` is the chat
+model deployment that scores the answers. AgentOps saves both the deployment name
+and the model name because Azure OpenAI calls use the deployment name, while the
+model name lets the evaluator SDK handle GPT-5 and o-series models correctly.
+
+If AgentOps cannot auto-discover a single judge deployment, it prints a warning.
+List the deployments and set the two values manually:
+
+```powershell
+$rg = azd env get-value AZURE_RESOURCE_GROUP
+$account = az cognitiveservices account list -g $rg `
+  --query "[?kind=='AIServices' || kind=='OpenAI'].name | [0]" -o tsv
+
+az cognitiveservices account deployment list -g $rg -n $account `
+  --query "[].{deployment:name, model:properties.model.name}" -o table
+
+azd env set AZURE_OPENAI_DEPLOYMENT <chat-deployment-name>
+azd env set AZURE_OPENAI_MODEL_NAME <model-name>
+```
+
+It does not call `azd ai agent eval generate` or create a Foundry `eval.yaml`,
+because the target is not a Foundry prompt agent.
 
 Because this dataset includes `expected` ground truth and does not include
 retrieved `context`, the smoke recommendation should include answer-quality
 evaluators such as `coherence`, `similarity`, and `response_completeness`.
 
 Now add thresholds for the recommended smoke evaluators:
+
+```powershell
+edit agentops.yaml
+```
 
 ```yaml
 thresholds:
@@ -363,6 +398,10 @@ same gate locally from the orchestrator repo:
 If you also want the local metrics and row results to show up in Foundry, open
 `agentops.yaml` and add `publish: true` at the top level, next to `dataset`,
 `protocol`, and `thresholds`:
+
+```powershell
+edit agentops.yaml
+```
 
 ```yaml
 version: 1
@@ -414,7 +453,8 @@ where the command is executed.
 
 ## 10. See results and traces
 
-Two views show what actually happened, and you want both.
+Use the local report for the evaluation evidence. Use Application Insights when
+you want the run traces.
 
 **Eval results (local or CI artifact).** Every run writes normalized output under
 `.agentops/results/latest/` in the machine that ran the command. Locally, open
@@ -427,28 +467,22 @@ code .agentops/results/latest/report.md
 
 In GitHub Actions, the same files are kept as workflow artifacts.
 
-**Runtime traces (Azure Monitor / Foundry).** Set an Application Insights
-connection string before the run so the spans land somewhere you can read them:
+**Runtime traces.** `agentops eval run` auto-discovers the Application Insights
+resource connected to `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. Open that Application
+Insights resource, go to **Logs**, and run:
 
-```powershell
-$env:APPLICATIONINSIGHTS_CONNECTION_STRING = "<app-insights-connection-string>"
-agentops eval run
+```kusto
+requests
+| where timestamp > ago(24h)
+| where cloud_RoleName == 'agentops'
+| project timestamp, name, operation_Id, duration, success
+| order by timestamp desc
 ```
 
-Two different kinds of trace show up, from two different producers:
-
-- **Evaluation traces** come from AgentOps itself. Each `agentops eval run`
-  emits `agentops.eval.*` spans (one run, one span tree), and scheduled Doctor
-  runs emit `agentops.agent.finding.*` spans. These exist even if the agent has
-  no telemetry of its own.
-- **Application/agent traces** come from the orchestrator at runtime, not from
-  AgentOps. They appear only if the orchestrator app is instrumented to emit its
-  own OpenTelemetry to App Insights. AgentOps and the Doctor read those traces
-  (p95 latency, error rate) but do not generate them.
-
-Open the traces in the Foundry project's tracing view, or query them in Azure
-Monitor Logs. `agentops cockpit --workspace .` deep-links the same spans into one
-readiness view.
+You should see one `RUN agentops` row plus one `eval_item ...` row for each
+dataset row. If you do not see them, confirm you opened the Application Insights
+resource connected to the same Foundry project endpoint used by your active azd
+environment, not another dev or sandbox environment.
 
 !!! note "Foundry Evaluations is opt-in"
     By default, this tutorial keeps eval evidence local or in CI artifacts. With
@@ -464,178 +498,254 @@ readiness view.
     agent's own request traces are separate runtime telemetry the Doctor reads
     for latency and errors. See [Observe](observe.md).
 
-## 11. Add ASSERT and Red Team safety gates
+## 11. Add governance checks
 
-Quality is not enough to ship. Before you generate the workflows, add the two
-safety gates so CI blocks unsafe behavior the same way it blocks quality
-regressions. Both write normalized JSON the evidence pack ingests, and both can
-fail the PR.
+Quality is not enough to ship. Add Red Team and a tiny ASSERT smoke so CI can
+exercise the live HTTP orchestrator, not just score happy-path answers.
 
-- **ASSERT** turns natural-language safety policies into executable behavior
-  tests (refuse prompt injection, no fabricated facts, no stereotyping). It
-  drives a model deployment plus system prompt through LiteLLM, so you target the
-  same chat model your orchestrator uses and describe its intended behavior.
-- **Red Team** runs Foundry's PyRIT-backed adversarial scan across risk
-  categories and attack strategies. Its target resolves from the YAML as a model
-  deployment, agent, or endpoint, so it can scan your orchestrator endpoint or
-  its chat model.
+### Scaffold it (recommended)
 
-### Scaffold both (recommended)
-
-Let the governance skill write the config and the `agentops.yaml` blocks for your
-target:
+Let the governance skill create the small files and update `agentops.yaml`:
 
 ```text
 /skills agentops-governance
 ```
 
-Ask it to scaffold ASSERT and the Red Team runner for this workspace, target your
-orchestrator's chat model deployment, judge with safety-core and alignment, and
-fail Red Team when the attack success rate exceeds 20 percent.
+Then paste this prompt:
 
-### Or add the blocks yourself
+```text
+Scaffold AgentOps governance for this HTTP orchestrator workspace.
 
-```powershell
-pip install assert-ai "azure-ai-evaluation[redteam]"
+This is an HTTP orchestrator target, not a model-deployment target.
+Use the top-level agent endpoint from agentops.yaml.
+Keep the existing HTTP mapping: request_field ask, response_mode text, and the stream settings.
+
+Add a small ASSERT smoke:
+- create .agentops/assert_http_adapter.py as a callable target that posts to the HTTP agent using the AgentOps HTTP mapping
+- create assert/eval_config.yaml, assert/test_set.jsonl, and assert/taxonomy.json
+- use the question: "What is the fuel tank capacity of the Volkswagen described in the manual?"
+- judge that the answer states 15.8 U.S. gallons or about 60 liters
+- use default_model.name azure/chat
+- set assert.env with AZURE_API_BASE, AZURE_API_VERSION, PYTHONPATH .agentops, and AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS "true"
+- do not commit secrets
+
+Add a small Red Team smoke:
+- risk_categories: violence, hate_unfairness
+- attack_strategies: base64
+- num_objectives: 1
+- fail_on_attack_success_rate: 1.0
+
+Update only these files: agentops.yaml, .agentops/assert_http_adapter.py, assert/eval_config.yaml, assert/test_set.jsonl, assert/taxonomy.json.
 ```
 
-Append to `agentops.yaml`:
+`fail_on_attack_success_rate: 1.0` keeps the first smoke run from randomly
+blocking CI while you are wiring the workflow. After you review
+`.agentops/redteam/latest.json`, lower it, for example to `0.2`, when you are
+ready to enforce the safety gate.
 
+### What the scaffold generated
+
+The skill adds two blocks to `agentops.yaml` and a small `assert/` suite. Nothing
+here targets a model deployment. Every check runs against the same live HTTP
+endpoint your eval already uses.
+
+{% raw %}
 ```yaml
+# added to agentops.yaml
 assert:
-  config: ./assert/eval_config.yaml
-  fail_on_violations: true
-
+  config: ./assert/eval_config.yaml   # the ASSERT suite to run
+  fail_on_violations: true            # non-zero exit when the judge finds a violation
+  env:
+    AZURE_API_BASE: https://<your-aoai>.cognitiveservices.azure.com/
+    AZURE_API_VERSION: 2024-12-01-preview
+    AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS: "true"  # GPT-5 judge token-arg shim
+    PYTHONPATH: .agentops               # so the adapter below is importable
 redteam:
-  target:
-    model_deployment: <your-chat-model-deployment>
   risk_categories: [violence, hate_unfairness]
   attack_strategies: [base64]
-  num_objectives: 3
-  fail_on_attack_success_rate: 0.2
+  num_objectives: 1
+  fail_on_attack_success_rate: 1.0
 ```
+{% endraw %}
 
-ASSERT calls models through LiteLLM, which for Azure OpenAI expects three vars in
-your shell or `.agentops/.env`:
+Files written:
+
+- `.agentops/assert_http_adapter.py` - a callable `target(message)` that POSTs to
+  your `agent` URL using the same HTTP mapping from `agentops.yaml`
+  (`request_field`, `response_mode`, `stream`, headers). This is what makes ASSERT
+  hit the real orchestrator instead of a model deployment.
+- `assert/eval_config.yaml` - the ASSERT suite. Points `inference.target` at
+  `assert_http_adapter:target`, reads `test_set.jsonl`, and judges with
+  `azure/chat`.
+- `assert/test_set.jsonl` - the smoke case (the fuel-tank question).
+- `assert/taxonomy.json` - the answer contract the judge scores against (the
+  answer must state 15.8 U.S. gallons or about 60 liters).
+
+### Run the checks
 
 ```powershell
-$env:AZURE_API_KEY = "<your Azure OpenAI account key>"
-$env:AZURE_API_BASE = "https://<resource>.openai.azure.com"
-$env:AZURE_API_VERSION = "2024-10-21"
+pip install "azure-ai-evaluation[redteam]"
+pip install assert-ai
 ```
-
-Run both gates:
 
 ```powershell
 agentops assert run
 agentops redteam run
 ```
 
-ASSERT writes `.agentops/assert/latest.json` and Red Team writes
-`.agentops/redteam/latest.json`. Each exits non-zero on a policy violation or
-when the attack success rate exceeds your threshold, which is exactly what blocks
-the PR. For the full config schema, behavior presets, risk categories, and attack
-strategies, see
-[Add ASSERT and Red Team to the release gate](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
+ASSERT writes `.agentops/assert/latest.json`. Red Team writes
+`.agentops/redteam/latest.json`. Both commands exit non-zero when their gate
+fails.
+
+If the SDK prints an Azure upload authorization warning but AgentOps still writes
+`.agentops/redteam/latest.json` and exits `0`, the local gate worked. The warning
+is only about publishing the SDK's optional scan artifact back to Foundry.
+For the full config schema, risk categories, and attack strategies, see the
+[release gate reference](tutorial-prompt-agent.md#12-add-assert-and-red-team-to-the-release-gate).
 
 !!! warning "These hit live Azure services"
-    Both runners call live models. Run them against a non-production deployment
-    and keep the objective count small while you wire them up. Red Team's matrix
-    is `risk_categories x attack_strategies x num_objectives` and grows quickly.
+    Red Team calls live Azure services. Run it against a non-production endpoint
+    and keep the objective count small while you wire it up. The matrix is
+    `risk_categories x attack_strategies x num_objectives` and grows quickly.
 
 ## 12. Generate the PR + dev deploy workflows
 
 You build your own CI here. `agentops workflow generate` writes fresh,
-AgentOps-owned GitHub Actions into your repo, it does not reuse whatever CI the
-upstream orchestrator shipped. The orchestrator's `azure.yaml` is used only as
-the deploy project, so the deploy mode is `azd`.
-
-Keep `agentops.yaml` pointed at the sandbox endpoint. For a PR gate to validate
-the candidate code, the PR workflow must deploy that candidate to sandbox before
-it runs `agentops eval run`. Evaluating dev without deploying the PR first would
-only test the old dev deployment.
+AgentOps-owned GitHub Actions into your repo. The files are prefixed `agentops-`
+so they never collide with the orchestrator's existing workflows. The
+orchestrator's `azure.yaml` is used only as the deploy project, so the deploy
+mode is `azd`.
 
 ```powershell
-agentops workflow generate --kinds pr,dev --deploy-mode azd --doctor-gate critical --force
+agentops workflow generate --kinds pr,dev --deploy-mode azd --force
 ```
 
-This writes two files, both prefixed `agentops-` so they never collide with the
-orchestrator's existing workflows:
+This writes two files:
 
-- `.github/workflows/agentops-pr.yml` - the PR gate (eval + Doctor).
+- `.github/workflows/agentops-pr.yml` - the PR gate.
 - `.github/workflows/agentops-deploy-dev.yml` - the dev deploy workflow.
+
+Because `agentops.yaml` now has `assert:` and `redteam:` blocks, both workflows
+install the optional dependencies and run **eval + ASSERT + Red Team** against
+the live endpoint automatically. Doctor also runs, but only to collect evidence,
+it does not block the merge.
 
 | Flag | What it does |
 |---|---|
-| `--kinds pr,dev` | Generate both the PR gate and the dev deploy workflow. |
-| `--deploy-mode azd` | Deploy through the orchestrator's azd project, running `azd provision` and `azd deploy`. |
-| `--doctor-gate critical` | Fail the PR only on critical Doctor findings. |
+| `--kinds pr,dev` | Generate the PR gate and the dev deploy workflow. |
+| `--deploy-mode azd` | Deploy through the orchestrator's azd project. |
 | `--force` | Overwrite existing AgentOps workflow files. |
 
-Update `.github/workflows/agentops-pr.yml` so the PR gate uses the `sandbox`
-GitHub environment and deploys the PR candidate before the eval step:
+### Adjust for an already-provisioned environment
+
+This tutorial deploys into sandbox and dev environments that are **already
+provisioned**. So the deploy step is `azd deploy` only, never `azd provision`.
+Make two edits to the generated files:
+
+1. **PR gate**: add a first job that deploys the PR candidate to sandbox with
+   `azd deploy`, then let the eval job run the gates against it with
+   `needs: deploy-sandbox`. Evaluating without deploying the PR first would only
+   test the old deployment.
+2. **Dev deploy**: drop the provision job and keep `azd deploy` only.
+
+The sandbox deploy job looks like this:
 
 {% raw %}
 ```yaml
 jobs:
-  eval:
-    name: AgentOps eval (PR gate)
+  deploy-sandbox:
+    name: Deploy candidate (sandbox)
     runs-on: ubuntu-latest
     environment: sandbox
-    concurrency:
-      group: agentops-sandbox
-      cancel-in-progress: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up azd
-        uses: Azure/setup-azd@v2
-
+      - uses: actions/checkout@v4
+      - uses: Azure/setup-azd@v2
       - name: Azure login (OIDC)
-        uses: azure/login@v3
+        uses: azure/login@v2
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Deploy PR candidate to sandbox
+      - name: azd deploy (sandbox)
         env:
           AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          APP_CONFIG_ENDPOINT: ${{ vars.APP_CONFIG_ENDPOINT }}
+          BUILD_MODE: acr-task
         run: |
-          azd env new "$AZURE_ENV_NAME" --no-prompt --subscription "${{ vars.AZURE_SUBSCRIPTION_ID }}" ${AZURE_LOCATION:+--location "$AZURE_LOCATION"} \
+          azd config set auth.useAzCliAuth "true"
+          azd env new "$AZURE_ENV_NAME" --no-prompt \
+            --subscription "$AZURE_SUBSCRIPTION_ID" \
+            ${AZURE_LOCATION:+--location "$AZURE_LOCATION"} \
             || azd env select "$AZURE_ENV_NAME"
-          azd env set AZURE_SUBSCRIPTION_ID "${{ vars.AZURE_SUBSCRIPTION_ID }}"
-          if [ -n "$AZURE_LOCATION" ]; then
-            azd env set AZURE_LOCATION "$AZURE_LOCATION"
-          fi
-          azd provision --no-prompt
+          azd env set APP_CONFIG_ENDPOINT "$APP_CONFIG_ENDPOINT"
           azd deploy --no-prompt
-
-      # keep the generated Python setup, AgentOps install, eval, Doctor,
-      # artifact upload, summary, and PR comment steps below this point
 ```
 {% endraw %}
 
-Configure a GitHub environment named `sandbox` with the same Azure OIDC vars you
-use for dev, plus `AZURE_ENV_NAME=<sandbox-env-name>` and `AZURE_LOCATION=<region>`.
-The `agentops-sandbox` concurrency group keeps two PRs from deploying to the
-shared sandbox at the same time.
+The dev workflow is the same shape: the `eval` job runs the gates, then a
+`deploy` job with `needs: eval` runs the same `azd deploy` step against the dev
+environment. The complete, proven files live in the reference repo
+[placerda/gpt-rag-orchestrator-agentops](https://github.com/placerda/gpt-rag-orchestrator-agentops/tree/develop/.github/workflows).
+
+### Required GitHub configuration
+
+Create two GitHub environments, `sandbox` and `dev`, and set these variables on
+each. There are no secrets: Azure login uses OIDC, and the Foundry and OpenAI
+resources use Entra auth.
+
+| Variable | Purpose |
+|---|---|
+| `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | OIDC login for the workflow's service principal. |
+| `AZURE_ENV_NAME`, `AZURE_LOCATION`, `APP_CONFIG_ENDPOINT` | The azd environment that `azd deploy` targets. Different per environment. |
+| `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Foundry project the judge and Red Team scan use. |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` | The judge model endpoint and deployment name. |
+| `AZURE_OPENAI_MODEL_NAME` | The model behind the deployment, for example `gpt-5-nano`. Required so the judge detects a reasoning model and sends `max_completion_tokens` instead of `max_tokens`. |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Lets the runtime publish eval spans to Foundry. |
+
+!!! warning "AZURE_OPENAI_MODEL_NAME is easy to miss"
+    If your judge deployment is named something generic like `chat`, AgentOps
+    cannot tell it is a GPT-5 reasoning model from the deployment name alone.
+    Without `AZURE_OPENAI_MODEL_NAME`, a GPT-5 judge returns HTTP 400 because it
+    is sent the wrong token argument. Set it to the real model id.
+
+### Wire OIDC (one time)
+
+OIDC lets the workflow log in to Azure with a short-lived federated token, so no
+client secret is ever stored. Give the workflow a service principal with one
+federated credential per environment.
+
+```powershell
+# create the app + service principal
+az ad app create --display-name "gpt-rag-orchestrator-agentops-ci"
+
+# add one federated credential per environment (repeat with ...:environment:dev)
+az ad app federated-credential create --id <appId> --parameters '{
+  "name": "github-sandbox",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:<owner>/<repo>:environment:sandbox",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+```
+
+Set `AZURE_CLIENT_ID` to the app's client id in both environments, and grant the
+service principal the roles it needs on the sandbox and dev resource groups
+(Contributor for `azd deploy`, plus the data-plane roles your orchestrator uses).
+See [Ship](ship.md) for the full RBAC list.
+
+!!! note "Temporary install pin"
+    While HTTP governance is on a feature branch, the generated workflows install
+    AgentOps from
+    `git+https://github.com/Azure/agentops.git@feat/http-streaming-target` via the
+    `AGENTOPS_REF` env value. Once HTTP governance ships on `main`, drop the pin
+    and the generator default (`@main`) works.
 
 !!! note "These are your workflows, not the orchestrator's"
     The generated files are yours to edit and own. If the vendored orchestrator
     still carries upstream workflows under `.github/workflows/` that you do not
     want running, delete them so only your `agentops-*` workflows fire. You can
     re-run `agentops workflow generate` any time to regenerate yours.
-
-!!! info "What the PR gate does"
-    The PR workflow deploys the pull request's code to sandbox, then runs
-    `agentops eval run` against the sandbox endpoint in `agentops.yaml`, applies
-    your thresholds, and runs Doctor with `--severity-fail critical`. A failing
-    threshold, failed deployment, or critical finding blocks the merge. The dev
-    workflow remains separate and updates dev after merge or manual dispatch.
-    See [Ship](ship.md) for the OIDC, RBAC, and GitHub environment wiring.
 
 ## 13. Ship, observe, and own
 
@@ -673,7 +783,7 @@ agentops doctor --evidence-pack
 - You inspected both the per-row eval evidence and the runtime traces, and you
   know which spans AgentOps emits (`agentops.eval.*`) versus which come from the
   orchestrator's own runtime telemetry.
-- You added ASSERT and Red Team as required safety gates alongside the eval gate,
-  so CI blocks unsafe behavior, not just quality regressions.
+- You added Red Team as a safety gate alongside the eval gate, so CI blocks
+  unsafe behavior, not just quality regressions.
 - You ran local evals against the deployed endpoint and generated a PR gate that
   blocks regressions before they merge.
