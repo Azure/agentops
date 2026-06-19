@@ -498,7 +498,141 @@ environment, not another dev or sandbox environment.
     agent's own request traces are separate runtime telemetry the Doctor reads
     for latency and errors. See [Observe](observe.md).
 
-## 11. Add governance checks
+## 11. Score the live retrieval (grey-box)
+
+Steps 7 to 10 score the answer text only. The judge never sees the passages your
+agent actually retrieved, so it cannot tell you whether the agent pulled the
+right context or stayed grounded in it. That is black-box evaluation: one query
+in, one answer out.
+
+To evaluate retrieval you need grey-box evaluation. The target returns the answer
+**and** the context it used for that answer, so the Foundry RAG evaluators score
+the real retrieval behind each response instead of a static dataset field. This
+is what your audience means by "evaluate the retrieval", not just the final text.
+
+!!! note "This step is optional and needs an agent that can expose its context"
+    The smoke gate works without it. Grey-box retrieval scoring requires your
+    agent to return the retrieved context at eval time. The GPT-RAG orchestrator
+    in this tutorial can do that through the opt-in mode described below. If you
+    bring your own agent, add an equivalent opt-in path.
+
+### The orchestrator contract (opt-in, gated)
+
+Retrieved context is sensitive: it exposes the corpus passages behind an answer.
+So the orchestrator only returns it when the caller opts in **and** an operator
+has enabled it. Two switches:
+
+- Request header `X-Eval-Context: true` on the eval request.
+- Feature flag `EVAL_CONTEXT_ENABLED` in App Configuration, off by default.
+
+When both are set, the orchestrator replies with a single JSON document instead
+of the streamed answer:
+
+```json
+{
+  "answer": "The VW mechanical fuel pump draws gasoline from the tank ...",
+  "context": "### Vw Fuel System\n# 4. FUEL PUMP AND LINES ...",
+  "retrieved_documents": [ { "id": "vw-fuel-system.pdf#4", "score": 0.81 } ]
+}
+```
+
+Without the header, behavior is unchanged and you get the normal streamed answer.
+
+!!! danger "Never enable this on an unauthenticated public endpoint"
+    Eval-context mode returns retrieved corpus content. Keep
+    `EVAL_CONTEXT_ENABLED` off in production, and only turn it on for
+    access-controlled sandbox and dev endpoints used for evaluation.
+
+### Wire AgentOps to the live context
+
+Switch the eval target from `text` to `json` and capture the two extra fields.
+`response_field` stays the answer (the prediction); `response_fields` captures the
+grey-box fields so the RAG evaluators can read them. You can drop the `stream`
+block, it does not apply to JSON responses.
+
+```yaml
+# eval target: read the grey-box JSON response
+response_mode: json
+response_field: answer
+response_fields:
+  context: context
+  retrieved_documents: retrieved_documents
+headers:
+  X-Eval-Context: "true"
+
+evaluators:
+  - CoherenceEvaluator
+  - SimilarityEvaluator
+  - ResponseCompletenessEvaluator
+  - name: GroundednessEvaluator
+    input_mapping:
+      context: $response.context
+  - name: RetrievalEvaluator
+    input_mapping:
+      context: $response.context
+
+thresholds:
+  coherence: ">=3"
+  similarity: ">=3"
+  response_completeness: ">=3"
+  groundedness: ">=3"
+  retrieval: ">=3"
+```
+
+How the wiring works:
+
+- `response_fields` captures named fields from the JSON response. The
+  `$response.<name>` token then makes each one available to an evaluator's
+  `input_mapping`. Here only `context` is remapped to the live retrieval; `query`
+  and `response` keep their preset defaults (`$prompt` and `$prediction`).
+- Listing `evaluators:` explicitly replaces auto-selection, so keep the smoke
+  evaluators in the list too. Every `thresholds` key needs a matching evaluator.
+- The `X-Eval-Context` header is global, so ASSERT and Red Team also receive the
+  JSON response. They read the same `response_field` (`answer`), so those gates
+  keep working unchanged.
+- This needs AgentOps `>= 0.5.2` (the `input_mapping` and `$response.*` feature).
+
+### The Foundry RAG evaluators
+
+| Evaluator | Scores | Inputs |
+|---|---|---|
+| [Groundedness](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators#using-rag-evaluators) | whether the answer is supported by the retrieved context, with no fabrication (precision) | `response`, `context` |
+| [Retrieval](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators#using-rag-evaluators) | how relevant the retrieved chunks are to the query | `query`, `context` |
+| [Document Retrieval](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators#document-retrieval) (advanced) | ranked retrieval against human relevance labels (Fidelity, NDCG, XDCG, Max Relevance, Holes) | `retrieved_documents`, qrels ground truth |
+
+Groundedness and Retrieval are LLM-judge metrics on a 1 to 5 scale, passing at
+`>=3`, the same shape as the smoke evaluators. They need no ground truth, so they
+drop straight into the gate.
+
+Document Retrieval is heavier. It compares your ranked `retrieved_documents`
+against qrels, that is per-query relevance labels you author by hand
+(`{document_id, query_relevance_label}`). AgentOps already captures
+`retrieved_documents` above, so when you are ready to optimize search parameters
+you can add qrels to the dataset and wire this evaluator. Treat it as an advanced
+follow-up, not part of the first smoke gate. See the
+[RAG evaluators reference](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators)
+for the score keys and qrels format.
+
+### Run it
+
+```powershell
+agentops eval run
+```
+
+Each row is now scored on groundedness and retrieval against the context the
+agent actually used. A low retrieval score means the agent fetched off-topic
+passages; a low groundedness score means the answer drifted from what it
+retrieved. Both are invisible to the black-box smoke, which is exactly why the
+audience asked for them.
+
+!!! tip "Keep the smoke dataset on-corpus"
+    Retrieval and groundedness only score well when the question is answerable
+    from the indexed document. An out-of-corpus question correctly earns a low
+    retrieval score, which is useful as a negative test but makes the gate
+    flaky if it is in the smoke set. Keep smoke questions answerable from your
+    index, and use ASSERT and Red Team for the refusal and safety cases.
+
+## 12. Add governance checks
 
 Quality is not enough to ship. Add Red Team and a tiny ASSERT smoke so CI can
 exercise the live HTTP orchestrator, not just score happy-path answers.
@@ -616,7 +750,7 @@ For the full config schema, risk categories, and attack strategies, see the
     and keep the objective count small while you wire it up. The matrix is
     `risk_categories x attack_strategies x num_objectives` and grows quickly.
 
-## 12. Generate the PR + dev deploy workflows
+## 13. Generate the PR + dev deploy workflows
 
 You build your own CI here. `agentops workflow generate` writes fresh,
 AgentOps-owned GitHub Actions into your repo. The files are prefixed `agentops-`
@@ -769,7 +903,7 @@ and the [azure/login action](https://github.com/Azure/login).
     want running, delete them so only your `agentops-*` workflows fire. You can
     re-run `agentops workflow generate` any time to regenerate yours.
 
-## 13. Ship, observe, and own
+## 14. Ship, observe, and own
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.
@@ -802,6 +936,9 @@ agentops doctor --evidence-pack
 - You indexed a sample document, built a smoke dataset from its content, and
   scored answers on coherence, similarity, and response completeness, knowing why
   that is smoke and not groundedness.
+- You added grey-box retrieval scoring, returning the answer plus the retrieved
+  context behind an opt-in, gated flag, so the Foundry Groundedness and Retrieval
+  evaluators score the real retrieval and not a static dataset field.
 - You inspected both the per-row eval evidence and the runtime traces, and you
   know which spans AgentOps emits (`agentops.eval.*`) versus which come from the
   orchestrator's own runtime telemetry.
