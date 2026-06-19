@@ -22,9 +22,12 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+import tempfile
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Iterator, Optional
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
@@ -62,20 +65,35 @@ class AssertRunResult:
         return asdict(self)
 
 
+def _resolve_assert_executable(executable: str = "assert-ai") -> Optional[str]:
+    resolved = shutil.which(executable)
+    if resolved:
+        return resolved
+    scripts_dir = Path(sys.executable).resolve().parent
+    candidates = [scripts_dir / executable]
+    if os.name == "nt" and not executable.lower().endswith(".exe"):
+        candidates.append(scripts_dir / f"{executable}.exe")
+    for candidate in candidates:
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
 def is_assert_installed(executable: str = "assert-ai") -> bool:
     """Return ``True`` when the ``assert-ai`` CLI is on ``PATH``."""
 
-    return shutil.which(executable) is not None
+    return _resolve_assert_executable(executable) is not None
 
 
 def assert_version(executable: str = "assert-ai") -> Optional[str]:
     """Best-effort lookup of the installed ASSERT CLI version string."""
 
-    if not is_assert_installed(executable):
+    resolved_executable = _resolve_assert_executable(executable)
+    if resolved_executable is None:
         return None
     try:
         completed = subprocess.run(
-            [executable, "--version"],
+            [resolved_executable, "--version"],
             capture_output=True,
             text=True,
             timeout=15,
@@ -112,7 +130,8 @@ def run_assert(
         raise AssertRunnerError(
             f"ASSERT config file does not exist: {config_path}"
         )
-    if not is_assert_installed(executable):
+    resolved_executable = _resolve_assert_executable(executable)
+    if resolved_executable is None:
         raise AssertRunnerError(
             "The 'assert-ai' CLI is not installed. Install it with "
             "'pip install assert-ai' (see https://github.com/responsibleai/ASSERT)."
@@ -125,22 +144,24 @@ def run_assert(
     resolved_results_dir = (results_dir or DEFAULT_RESULTS_DIR).resolve()
     resolved_results_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd: list[str] = [executable, "run", "--config", str(config_path)]
-    if extra_args:
-        cmd.extend(extra_args)
-
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
+    _populate_azure_openai_ad_token(run_env)
 
-    completed = subprocess.run(
-        cmd,
-        cwd=str(workspace),
-        env=run_env,
-        text=True,
-        capture_output=not stream_output,
-        check=False,
-    )
+    with _assert_runtime_env(run_env) as subprocess_env:
+        with _runtime_config(config_path, resolved_results_dir) as runtime_config:
+            cmd: list[str] = [resolved_executable, "run", "--config", str(runtime_config)]
+            if extra_args:
+                cmd.extend(extra_args)
+            completed = subprocess.run(
+                cmd,
+                cwd=str(workspace),
+                env=subprocess_env,
+                text=True,
+                capture_output=not stream_output,
+                check=False,
+            )
 
     run_output_dir = _locate_run_output(
         results_dir=resolved_results_dir,
@@ -188,6 +209,116 @@ def run_assert(
         encoding="utf-8",
     )
     return result
+
+
+def _populate_azure_openai_ad_token(run_env: dict[str, str]) -> None:
+    if (
+        run_env.get("AZURE_OPENAI_AD_TOKEN")
+        or run_env.get("AZURE_AD_TOKEN")
+        or run_env.get("AZURE_OPENAI_API_KEY")
+        or run_env.get("AZURE_API_KEY")
+        or not run_env.get("AZURE_API_BASE")
+    ):
+        return
+    az = shutil.which("az")
+    if not az:
+        return
+    try:
+        completed = subprocess.run(
+            [
+                az,
+                "account",
+                "get-access-token",
+                "--resource",
+                "https://cognitiveservices.azure.com/",
+                "--query",
+                "accessToken",
+                "-o",
+                "tsv",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    token = completed.stdout.strip()
+    if completed.returncode == 0 and token:
+        run_env["AZURE_OPENAI_AD_TOKEN"] = token
+
+
+@contextmanager
+def _assert_runtime_env(run_env: dict[str, str]) -> Iterator[dict[str, str]]:
+    if not _truthy(run_env.get("AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS")):
+        yield run_env
+        return
+    with tempfile.TemporaryDirectory(prefix="agentops-assert-") as temp_dir:
+        shim_dir = Path(temp_dir)
+        (shim_dir / "sitecustomize.py").write_text(_LITELLM_AZURE_GPT5_SHIM, encoding="utf-8")
+        patched_env = dict(run_env)
+        existing = patched_env.get("PYTHONPATH")
+        patched_env["PYTHONPATH"] = (
+            str(shim_dir) if not existing else str(shim_dir) + os.pathsep + existing
+        )
+        yield patched_env
+
+
+def _truthy(value: Optional[str]) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+_LITELLM_AZURE_GPT5_SHIM = """
+from __future__ import annotations
+
+import assert_ai.core.model_client as model_client
+
+_build_chat_payload = model_client._build_chat_payload
+
+
+def _build_azure_max_completion_payload(model, messages, options):
+    payload = _build_chat_payload(model, messages, options)
+    if str(payload.get("model", "")).startswith("azure/"):
+        max_tokens = payload.pop("max_tokens", None)
+        if max_tokens is not None and "max_completion_tokens" not in payload:
+            payload["max_completion_tokens"] = max_tokens
+    return payload
+
+
+model_client._build_chat_payload = _build_azure_max_completion_payload
+"""
+
+
+@contextmanager
+def _runtime_config(config_path: Path, results_dir: Path) -> Iterator[Path]:
+    config = _load_yaml_mapping(config_path)
+    if config is None:
+        yield config_path
+        return
+
+    config = dict(config)
+    config["artifacts_root"] = str(results_dir.parent)
+
+    runtime_path = config_path.with_name(f".{config_path.stem}.agentops-runtime{config_path.suffix}")
+    yaml = YAML()
+    with runtime_path.open("w", encoding="utf-8") as handle:
+        yaml.dump(config, handle)
+    try:
+        yield runtime_path
+    finally:
+        runtime_path.unlink(missing_ok=True)
+
+
+def _load_yaml_mapping(config_path: Path) -> Optional[dict[str, Any]]:
+    yaml = YAML(typ="safe")
+    try:
+        with config_path.open("r", encoding="utf-8") as handle:
+            data = yaml.load(handle) or {}
+    except YAMLError as exc:
+        raise AssertRunnerError(f"Invalid ASSERT config YAML: {exc}") from exc
+    if not isinstance(data, dict):
+        return None
+    return data
 
 
 def _read_suite_and_run_from_config(config_path: Path) -> tuple[Optional[str], Optional[str]]:

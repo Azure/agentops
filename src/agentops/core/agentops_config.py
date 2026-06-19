@@ -462,6 +462,14 @@ class AssertRunConfig(BaseModel):
             "results without gating the pipeline."
         ),
     )
+    env: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional non-secret environment variables passed only to the "
+            "assert-ai subprocess, for example AZURE_API_BASE or "
+            "AZURE_API_VERSION."
+        ),
+    )
 
     model_config = ConfigDict(extra="forbid")
 

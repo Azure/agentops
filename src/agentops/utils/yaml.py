@@ -30,6 +30,7 @@ def load_yaml(path: Path) -> Dict[str, Any]:
 def save_yaml(path: Path, data: Dict[str, Any]) -> None:
     yaml = YAML()
     yaml.default_flow_style = False
+    yaml.width = 4096
 
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:

@@ -67,6 +67,10 @@ def _credential() -> Any:
 _REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
 
 
+def _evaluator_model_name() -> Optional[str]:
+    return os.getenv("AZURE_OPENAI_MODEL_NAME") or os.getenv("AZURE_AI_MODEL_NAME")
+
+
 def _model_config() -> Dict[str, Any]:
     from agentops.utils.azure_endpoints import (
         derive_openai_endpoint_from_project,
@@ -166,7 +170,9 @@ def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
     if preset.class_name in _AI_ASSISTED:
         model_config = _model_config()
         init_kwargs["model_config"] = model_config
-        if _is_reasoning_model_deployment(model_config.get("azure_deployment")):
+        if _is_reasoning_model_deployment(
+            _evaluator_model_name() or model_config.get("azure_deployment")
+        ):
             init_kwargs["is_reasoning_model"] = True
     if preset.class_name in _SAFETY:
         init_kwargs["azure_ai_project"] = _project_endpoint()

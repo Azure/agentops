@@ -406,7 +406,7 @@ def test_run_wizard_skips_questions_when_defaults_present(
     # values resolve. App Insights may exist, but the wizard no longer manages
     # it interactively.
     (tmp_path / "agentops.yaml").write_text(
-        "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        "version: 1\nagent: configured-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
         encoding="utf-8",
     )
     smoke = tmp_path / ".agentops" / "data" / "smoke.jsonl"

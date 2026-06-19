@@ -30,13 +30,17 @@ def test_assert_run_config_alias_in_yaml():
             "version": 1,
             "agent": "my-agent:1",
             "dataset": "data.jsonl",
-            "assert": {"config": "assert/eval_config.yaml"},
+            "assert": {
+                "config": "assert/eval_config.yaml",
+                "env": {"AZURE_API_VERSION": "2024-12-01-preview"},
+            },
         }
     )
     assert cfg.assert_run is not None
     assert isinstance(cfg.assert_run, AssertRunConfig)
     assert str(cfg.assert_run.config).endswith("eval_config.yaml")
     assert cfg.assert_run.fail_on_violations is True
+    assert cfg.assert_run.env == {"AZURE_API_VERSION": "2024-12-01-preview"}
 
 
 def test_redteam_run_config_alias_in_yaml_with_defaults():
@@ -216,7 +220,11 @@ def test_run_assert_invokes_cli_and_writes_normalized(tmp_path: Path, monkeypatc
         scores=[{"dimension": "x", "verdict": "pass"}],
     )
 
-    monkeypatch.setattr(assert_runner, "is_assert_installed", lambda executable="assert-ai": True)
+    monkeypatch.setattr(
+        assert_runner,
+        "_resolve_assert_executable",
+        lambda executable="assert-ai": "assert-ai",
+    )
     fake_completed = mock.Mock(returncode=0, stdout="", stderr="")
     monkeypatch.setattr(assert_runner.subprocess, "run", mock.Mock(return_value=fake_completed))
 
@@ -224,6 +232,7 @@ def test_run_assert_invokes_cli_and_writes_normalized(tmp_path: Path, monkeypatc
         workspace=tmp_path,
         config_path=eval_cfg,
         results_dir=tmp_path / "artifacts" / "results",
+        env={"AZURE_API_VERSION": "2024-12-01-preview"},
     )
     assert result.suite == "demo"
     assert result.run_id == "r1"
@@ -232,12 +241,17 @@ def test_run_assert_invokes_cli_and_writes_normalized(tmp_path: Path, monkeypatc
     assert result.normalized_path is not None
     payload = json.loads(Path(result.normalized_path).read_text(encoding="utf-8"))
     assert payload["suite"] == "demo"
+    assert assert_runner.subprocess.run.call_args.kwargs["env"]["AZURE_API_VERSION"] == "2024-12-01-preview"
 
 
 def test_run_assert_raises_when_cli_missing(tmp_path: Path, monkeypatch):
     eval_cfg = tmp_path / "ec.yaml"
     eval_cfg.write_text("suite: x\n", encoding="utf-8")
-    monkeypatch.setattr(assert_runner, "is_assert_installed", lambda executable="assert-ai": False)
+    monkeypatch.setattr(
+        assert_runner,
+        "_resolve_assert_executable",
+        lambda executable="assert-ai": None,
+    )
     with pytest.raises(assert_runner.AssertRunnerError):
         assert_runner.run_assert(
             workspace=tmp_path,
@@ -461,6 +475,33 @@ def test_redteam_build_target_callback_with_endpoint(monkeypatch):
     callback = redteam_runner._build_target_callback({"model_deployment": "gpt-4o-mini"})
     assert callback["azure_deployment"] == "gpt-4o-mini"
     assert callback["azure_endpoint"].startswith("https://")
+
+
+def test_redteam_build_target_callback_for_http_endpoint_uses_agentops_mapping(
+    monkeypatch,
+):
+    from agentops.pipeline import invocations
+
+    seen: dict[str, Any] = {}
+
+    def fake_stream(**kwargs: Any) -> str:
+        seen.update(kwargs)
+        return "conv-123 answer"
+
+    monkeypatch.setattr(invocations, "_http_request_stream", fake_stream)
+    callback = redteam_runner._build_target_callback(
+        {
+            "endpoint": "https://example.test/orchestrator",
+            "request_field": "ask",
+            "response_mode": "text",
+            "stream": {"strip_leading_token": True},
+        }
+    )
+
+    assert callable(callback)
+    assert callback(query="Can you help?") == "answer"
+    assert seen["url"] == "https://example.test/orchestrator"
+    assert seen["body"] == {"ask": "Can you help?"}
 
 
 def test_redteam_build_target_callback_unsupported():
