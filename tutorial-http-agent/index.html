@@ -1041,6 +1041,27 @@
   
   
     <li class="md-nav__item">
+      <a href="../retrieval-optimization/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Retrieval Optimization
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../doctor-checks/" class="md-nav__link">
         
   
@@ -1956,72 +1977,13 @@ block, it does not apply to JSON responses.</p>
 <p>Groundedness and Retrieval are LLM-judge metrics on a 1 to 5 scale, passing at
 <code>&gt;=3</code>, the same shape as the smoke evaluators. They need no ground truth, so they
 drop straight into the gate.</p>
-<p>Document Retrieval is heavier and stays out of the smoke gate on purpose. It does
-not ask an LLM judge for a score. Instead it compares your ranked
-<code>retrieved_documents</code> against qrels, that is per-query relevance labels you author
-by hand, and returns ranking metrics (Fidelity, NDCG, XDCG, Max Relevance, Holes).
-Two things make it an advanced, offline step rather than a CI gate:</p>
-<ul>
-<li><strong>It needs ground truth.</strong> You label which documents are relevant for each query
-  (<code>{document_id, query_relevance_label}</code>). That labeling is manual and tied to
-  your index: the labels reference specific chunk ids, so rebuilding the index can
-  change the ids and invalidate the labels. That is fine for a one-off
-  search-tuning study, but brittle for a gate that must stay green on every PR.</li>
-<li><strong>It returns composite metrics, not a 1 to 5 score.</strong> It is built to compare
-  retrieval configurations (parameter sweeps), so you pick a target metric like
-  NDCG@3 and track it over time, rather than pass or fail a single row.</li>
-</ul>
-<p>AgentOps already captures <code>retrieved_documents</code> for you, so you can run Document
-Retrieval offline whenever you want to optimize search. The orchestrator returns
-each chunk as <code>{id, score, ...}</code>; the evaluator expects <code>{document_id,
-relevance_score}</code>, so map the two fields. Here is a self-contained example:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="c1"># document_retrieval_offline.py</span>
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span><span class="o">,</span><span class="w"> </span><span class="nn">requests</span>
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">azure.ai.evaluation</span><span class="w"> </span><span class="kn">import</span> <span class="n">DocumentRetrievalEvaluator</span>
-<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>
-<a id="__codelineno-28-5" name="__codelineno-28-5" href="#__codelineno-28-5"></a><span class="n">ENDPOINT</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;ORCHESTRATOR_URL&quot;</span><span class="p">]</span>  <span class="c1"># .../orchestrator</span>
-<a id="__codelineno-28-6" name="__codelineno-28-6" href="#__codelineno-28-6"></a><span class="n">QUERY</span> <span class="o">=</span> <span class="s2">&quot;What is the fuel pump rating?&quot;</span>
-<a id="__codelineno-28-7" name="__codelineno-28-7" href="#__codelineno-28-7"></a>
-<a id="__codelineno-28-8" name="__codelineno-28-8" href="#__codelineno-28-8"></a><span class="c1"># 1. Ask the agent for the live ranked retrieval (grey-box mode).</span>
-<a id="__codelineno-28-9" name="__codelineno-28-9" href="#__codelineno-28-9"></a><span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span>
-<a id="__codelineno-28-10" name="__codelineno-28-10" href="#__codelineno-28-10"></a>    <span class="n">ENDPOINT</span><span class="p">,</span>
-<a id="__codelineno-28-11" name="__codelineno-28-11" href="#__codelineno-28-11"></a>    <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span><span class="p">,</span> <span class="s2">&quot;X-Eval-Context&quot;</span><span class="p">:</span> <span class="s2">&quot;true&quot;</span><span class="p">},</span>
-<a id="__codelineno-28-12" name="__codelineno-28-12" href="#__codelineno-28-12"></a>    <span class="n">json</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;ask&quot;</span><span class="p">:</span> <span class="n">QUERY</span><span class="p">},</span>
-<a id="__codelineno-28-13" name="__codelineno-28-13" href="#__codelineno-28-13"></a>    <span class="n">timeout</span><span class="o">=</span><span class="mi">120</span><span class="p">,</span>
-<a id="__codelineno-28-14" name="__codelineno-28-14" href="#__codelineno-28-14"></a><span class="p">)</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
-<a id="__codelineno-28-15" name="__codelineno-28-15" href="#__codelineno-28-15"></a>
-<a id="__codelineno-28-16" name="__codelineno-28-16" href="#__codelineno-28-16"></a><span class="c1"># 2. Map the orchestrator shape {id, score} to what Foundry expects.</span>
-<a id="__codelineno-28-17" name="__codelineno-28-17" href="#__codelineno-28-17"></a><span class="n">retrieved_documents</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-28-18" name="__codelineno-28-18" href="#__codelineno-28-18"></a>    <span class="p">{</span><span class="s2">&quot;document_id&quot;</span><span class="p">:</span> <span class="n">d</span><span class="p">[</span><span class="s2">&quot;id&quot;</span><span class="p">],</span> <span class="s2">&quot;relevance_score&quot;</span><span class="p">:</span> <span class="n">d</span><span class="p">[</span><span class="s2">&quot;score&quot;</span><span class="p">]}</span>
-<a id="__codelineno-28-19" name="__codelineno-28-19" href="#__codelineno-28-19"></a>    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">resp</span><span class="p">[</span><span class="s2">&quot;retrieved_documents&quot;</span><span class="p">]</span>
-<a id="__codelineno-28-20" name="__codelineno-28-20" href="#__codelineno-28-20"></a><span class="p">]</span>
-<a id="__codelineno-28-21" name="__codelineno-28-21" href="#__codelineno-28-21"></a>
-<a id="__codelineno-28-22" name="__codelineno-28-22" href="#__codelineno-28-22"></a><span class="c1"># 3. Author qrels by hand: which chunks are actually relevant, 0 (irrelevant)</span>
-<a id="__codelineno-28-23" name="__codelineno-28-23" href="#__codelineno-28-23"></a><span class="c1">#    to 4 (perfect). Use the ids you see in retrieved_documents.</span>
-<a id="__codelineno-28-24" name="__codelineno-28-24" href="#__codelineno-28-24"></a><span class="n">retrieval_ground_truth</span> <span class="o">=</span> <span class="p">[</span>
-<a id="__codelineno-28-25" name="__codelineno-28-25" href="#__codelineno-28-25"></a>    <span class="p">{</span><span class="s2">&quot;document_id&quot;</span><span class="p">:</span> <span class="s2">&quot;documents-vw-fuel-system-pdf-c00002&quot;</span><span class="p">,</span> <span class="s2">&quot;query_relevance_label&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">},</span>
-<a id="__codelineno-28-26" name="__codelineno-28-26" href="#__codelineno-28-26"></a>    <span class="p">{</span><span class="s2">&quot;document_id&quot;</span><span class="p">:</span> <span class="s2">&quot;documents-vw-fuel-system-pdf-c00001&quot;</span><span class="p">,</span> <span class="s2">&quot;query_relevance_label&quot;</span><span class="p">:</span> <span class="mi">2</span><span class="p">},</span>
-<a id="__codelineno-28-27" name="__codelineno-28-27" href="#__codelineno-28-27"></a><span class="p">]</span>
-<a id="__codelineno-28-28" name="__codelineno-28-28" href="#__codelineno-28-28"></a>
-<a id="__codelineno-28-29" name="__codelineno-28-29" href="#__codelineno-28-29"></a><span class="n">evaluator</span> <span class="o">=</span> <span class="n">DocumentRetrievalEvaluator</span><span class="p">(</span>
-<a id="__codelineno-28-30" name="__codelineno-28-30" href="#__codelineno-28-30"></a>    <span class="n">ground_truth_label_min</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
-<a id="__codelineno-28-31" name="__codelineno-28-31" href="#__codelineno-28-31"></a>    <span class="n">ground_truth_label_max</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span>
-<a id="__codelineno-28-32" name="__codelineno-28-32" href="#__codelineno-28-32"></a><span class="p">)</span>
-<a id="__codelineno-28-33" name="__codelineno-28-33" href="#__codelineno-28-33"></a><span class="nb">print</span><span class="p">(</span><span class="n">evaluator</span><span class="p">(</span>
-<a id="__codelineno-28-34" name="__codelineno-28-34" href="#__codelineno-28-34"></a>    <span class="n">retrieval_ground_truth</span><span class="o">=</span><span class="n">retrieval_ground_truth</span><span class="p">,</span>
-<a id="__codelineno-28-35" name="__codelineno-28-35" href="#__codelineno-28-35"></a>    <span class="n">retrieved_documents</span><span class="o">=</span><span class="n">retrieved_documents</span><span class="p">,</span>
-<a id="__codelineno-28-36" name="__codelineno-28-36" href="#__codelineno-28-36"></a><span class="p">))</span>
-</code></pre></div>
-<p>Run it with <code>pip install azure-ai-evaluation</code> and <code>ORCHESTRATOR_URL</code> set to your
-sandbox endpoint. You get back <code>ndcg@3</code>, <code>fidelity</code>, <code>holes</code>, and the other
-ranking metrics for that query. When a metric trends down after a search config
-change, you know retrieval quality regressed, even if the final answer still reads
-well. Keep this as a tuning tool, and let Groundedness and Retrieval guard the PR
-gate. See the
-<a href="https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators#document-retrieval">RAG evaluators reference</a>
-for the full list of score keys.</p>
+<p>Document Retrieval is a different tool. It scores retrieval <em>ranking</em> against
+relevance labels you author by hand and returns composite metrics for search
+tuning, so it runs offline, not on the gate. It belongs to the Own phase, when you
+optimize the agent's search over time. For a full walkthrough, see
+<a href="../retrieval-optimization/">Retrieval optimization</a>.</p>
 <h3 id="run-it">Run it<a class="headerlink" href="#run-it" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>Each row is now scored on groundedness and retrieval against the context the
 agent actually used. A low retrieval score means the agent fetched off-topic
@@ -2052,31 +2014,31 @@ exercise the live HTTP orchestrator, not just score happy-path answers.</p>
 </div>
 <h3 id="scaffold-it-recommended">Scaffold it (recommended)<a class="headerlink" href="#scaffold-it-recommended" title="Permanent link">&para;</a></h3>
 <p>Let the governance skill create the small files and update <code>agentops.yaml</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>/skills agentops-governance
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>/skills agentops-governance
 </code></pre></div>
 <p>Then paste this prompt:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>Scaffold AgentOps governance for this HTTP orchestrator workspace.
-<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>
-<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>This is an HTTP orchestrator target, not a model-deployment target.
-<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>Use the top-level agent endpoint from agentops.yaml.
-<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a>Keep the existing HTTP mapping: request_field ask, response_mode text, and the stream settings.
-<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a>
-<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a>Add a small ASSERT smoke:
-<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a>- create .agentops/assert_http_adapter.py as a callable target that posts to the HTTP agent using the AgentOps HTTP mapping
-<a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a>- create assert/eval_config.yaml, assert/test_set.jsonl, and assert/taxonomy.json
-<a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a>- use the question: &quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;
-<a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a>- judge that the answer states 15.8 U.S. gallons or about 60 liters
-<a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a>- use default_model.name azure/chat
-<a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a>- set assert.env with AZURE_API_BASE, AZURE_API_VERSION, PYTHONPATH .agentops, and AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS &quot;true&quot;
-<a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a>- do not commit secrets
-<a id="__codelineno-31-15" name="__codelineno-31-15" href="#__codelineno-31-15"></a>
-<a id="__codelineno-31-16" name="__codelineno-31-16" href="#__codelineno-31-16"></a>Add a small Red Team smoke:
-<a id="__codelineno-31-17" name="__codelineno-31-17" href="#__codelineno-31-17"></a>- risk_categories: violence, hate_unfairness
-<a id="__codelineno-31-18" name="__codelineno-31-18" href="#__codelineno-31-18"></a>- attack_strategies: base64
-<a id="__codelineno-31-19" name="__codelineno-31-19" href="#__codelineno-31-19"></a>- num_objectives: 1
-<a id="__codelineno-31-20" name="__codelineno-31-20" href="#__codelineno-31-20"></a>- fail_on_attack_success_rate: 1.0
-<a id="__codelineno-31-21" name="__codelineno-31-21" href="#__codelineno-31-21"></a>
-<a id="__codelineno-31-22" name="__codelineno-31-22" href="#__codelineno-31-22"></a>Update only these files: agentops.yaml, .agentops/assert_http_adapter.py, assert/eval_config.yaml, assert/test_set.jsonl, assert/taxonomy.json.
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>Scaffold AgentOps governance for this HTTP orchestrator workspace.
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>This is an HTTP orchestrator target, not a model-deployment target.
+<a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a>Use the top-level agent endpoint from agentops.yaml.
+<a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a>Keep the existing HTTP mapping: request_field ask, response_mode text, and the stream settings.
+<a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a>
+<a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a>Add a small ASSERT smoke:
+<a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>- create .agentops/assert_http_adapter.py as a callable target that posts to the HTTP agent using the AgentOps HTTP mapping
+<a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a>- create assert/eval_config.yaml, assert/test_set.jsonl, and assert/taxonomy.json
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a>- use the question: &quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;
+<a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a>- judge that the answer states 15.8 U.S. gallons or about 60 liters
+<a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a>- use default_model.name azure/chat
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a>- set assert.env with AZURE_API_BASE, AZURE_API_VERSION, PYTHONPATH .agentops, and AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS &quot;true&quot;
+<a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a>- do not commit secrets
+<a id="__codelineno-30-15" name="__codelineno-30-15" href="#__codelineno-30-15"></a>
+<a id="__codelineno-30-16" name="__codelineno-30-16" href="#__codelineno-30-16"></a>Add a small Red Team smoke:
+<a id="__codelineno-30-17" name="__codelineno-30-17" href="#__codelineno-30-17"></a>- risk_categories: violence, hate_unfairness
+<a id="__codelineno-30-18" name="__codelineno-30-18" href="#__codelineno-30-18"></a>- attack_strategies: base64
+<a id="__codelineno-30-19" name="__codelineno-30-19" href="#__codelineno-30-19"></a>- num_objectives: 1
+<a id="__codelineno-30-20" name="__codelineno-30-20" href="#__codelineno-30-20"></a>- fail_on_attack_success_rate: 1.0
+<a id="__codelineno-30-21" name="__codelineno-30-21" href="#__codelineno-30-21"></a>
+<a id="__codelineno-30-22" name="__codelineno-30-22" href="#__codelineno-30-22"></a>Update only these files: agentops.yaml, .agentops/assert_http_adapter.py, assert/eval_config.yaml, assert/test_set.jsonl, assert/taxonomy.json.
 </code></pre></div>
 <p><code>fail_on_attack_success_rate: 1.0</code> keeps the first smoke run from randomly
 blocking CI while you are wiring the workflow. After you review
@@ -2086,20 +2048,20 @@ ready to enforce the safety gate.</p>
 <p>The skill adds two blocks to <code>agentops.yaml</code> and a small <code>assert/</code> suite. Nothing
 here targets a model deployment. Every check runs against the same live HTTP
 endpoint your eval already uses.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="c1"># added to agentops.yaml</span>
-<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="nt">assert</span><span class="p">:</span>
-<a id="__codelineno-32-3" name="__codelineno-32-3" href="#__codelineno-32-3"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span><span class="w">   </span><span class="c1"># the ASSERT suite to run</span>
-<a id="__codelineno-32-4" name="__codelineno-32-4" href="#__codelineno-32-4"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">            </span><span class="c1"># non-zero exit when the judge finds a violation</span>
-<a id="__codelineno-32-5" name="__codelineno-32-5" href="#__codelineno-32-5"></a><span class="w">  </span><span class="nt">env</span><span class="p">:</span>
-<a id="__codelineno-32-6" name="__codelineno-32-6" href="#__codelineno-32-6"></a><span class="w">    </span><span class="nt">AZURE_API_BASE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;your-aoai&gt;.cognitiveservices.azure.com/</span>
-<a id="__codelineno-32-7" name="__codelineno-32-7" href="#__codelineno-32-7"></a><span class="w">    </span><span class="nt">AZURE_API_VERSION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2024-12-01-preview</span>
-<a id="__codelineno-32-8" name="__codelineno-32-8" href="#__codelineno-32-8"></a><span class="w">    </span><span class="nt">AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span><span class="w">  </span><span class="c1"># GPT-5 judge token-arg shim</span>
-<a id="__codelineno-32-9" name="__codelineno-32-9" href="#__codelineno-32-9"></a><span class="w">    </span><span class="nt">PYTHONPATH</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops</span><span class="w">               </span><span class="c1"># so the adapter below is importable</span>
-<a id="__codelineno-32-10" name="__codelineno-32-10" href="#__codelineno-32-10"></a><span class="nt">redteam</span><span class="p">:</span>
-<a id="__codelineno-32-11" name="__codelineno-32-11" href="#__codelineno-32-11"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-32-12" name="__codelineno-32-12" href="#__codelineno-32-12"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-32-13" name="__codelineno-32-13" href="#__codelineno-32-13"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-32-14" name="__codelineno-32-14" href="#__codelineno-32-14"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="c1"># added to agentops.yaml</span>
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="nt">assert</span><span class="p">:</span>
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a><span class="w">  </span><span class="nt">config</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./assert/eval_config.yaml</span><span class="w">   </span><span class="c1"># the ASSERT suite to run</span>
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a><span class="w">  </span><span class="nt">fail_on_violations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">            </span><span class="c1"># non-zero exit when the judge finds a violation</span>
+<a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="w">  </span><span class="nt">env</span><span class="p">:</span>
+<a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="w">    </span><span class="nt">AZURE_API_BASE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;your-aoai&gt;.cognitiveservices.azure.com/</span>
+<a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a><span class="w">    </span><span class="nt">AZURE_API_VERSION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2024-12-01-preview</span>
+<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a><span class="w">    </span><span class="nt">AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span><span class="w">  </span><span class="c1"># GPT-5 judge token-arg shim</span>
+<a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a><span class="w">    </span><span class="nt">PYTHONPATH</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops</span><span class="w">               </span><span class="c1"># so the adapter below is importable</span>
+<a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a><span class="nt">redteam</span><span class="p">:</span>
+<a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-31-12" name="__codelineno-31-12" href="#__codelineno-31-12"></a><span class="w">  </span><span class="nt">attack_strategies</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">base64</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-31-13" name="__codelineno-31-13" href="#__codelineno-31-13"></a><span class="w">  </span><span class="nt">num_objectives</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-31-14" name="__codelineno-31-14" href="#__codelineno-31-14"></a><span class="w">  </span><span class="nt">fail_on_attack_success_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
 </code></pre></div>
 <p>Files written:</p>
 <ul>
@@ -2115,11 +2077,11 @@ endpoint your eval already uses.</p>
   answer must state 15.8 U.S. gallons or about 60 liters).</li>
 </ul>
 <h3 id="run-the-checks">Run the checks<a class="headerlink" href="#run-the-checks" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
-<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
+<a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
-<a id="__codelineno-34-2" name="__codelineno-34-2" href="#__codelineno-34-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
+<a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="n">agentops</span> <span class="n">redteam</span> <span class="n">run</span>
 </code></pre></div>
 <p>ASSERT writes <code>.agentops/assert/latest.json</code>. Red Team writes
 <code>.agentops/redteam/latest.json</code>. Both commands exit non-zero when their gate
@@ -2141,7 +2103,7 @@ AgentOps-owned GitHub Actions into your repo. The files are prefixed <code>agent
 so they never collide with the orchestrator's existing workflows. The
 orchestrator's <code>azure.yaml</code> is used only as the deploy project, so the deploy
 mode is <code>azd</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-force</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-34-1" name="__codelineno-34-1" href="#__codelineno-34-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span> <span class="p">-</span><span class="n">-kinds</span> <span class="n">pr</span><span class="p">,</span><span class="n">dev</span> <span class="p">-</span><span class="n">-deploy-mode</span> <span class="n">azd</span> <span class="p">-</span><span class="n">-force</span>
 </code></pre></div>
 <p>This writes two files:</p>
 <ul>
@@ -2186,35 +2148,35 @@ Make two edits to the generated files:</p>
 <li><strong>Dev deploy</strong>: drop the provision job and keep <code>azd deploy</code> only.</li>
 </ol>
 <p>The sandbox deploy job looks like this:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="nt">jobs</span><span class="p">:</span>
-<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="w">  </span><span class="nt">deploy-sandbox</span><span class="p">:</span>
-<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy candidate (sandbox)</span>
-<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
-<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox</span>
-<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
-<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
-<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure/setup-azd@v2</span>
-<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure login (OIDC)</span>
-<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/login@v2</span>
-<a id="__codelineno-36-11" name="__codelineno-36-11" href="#__codelineno-36-11"></a><span class="w">        </span><span class="nt">with</span><span class="p">:</span>
-<a id="__codelineno-36-12" name="__codelineno-36-12" href="#__codelineno-36-12"></a><span class="w">          </span><span class="nt">client-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_CLIENT_ID }}</span>
-<a id="__codelineno-36-13" name="__codelineno-36-13" href="#__codelineno-36-13"></a><span class="w">          </span><span class="nt">tenant-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_TENANT_ID }}</span>
-<a id="__codelineno-36-14" name="__codelineno-36-14" href="#__codelineno-36-14"></a><span class="w">          </span><span class="nt">subscription-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
-<a id="__codelineno-36-15" name="__codelineno-36-15" href="#__codelineno-36-15"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azd deploy (sandbox)</span>
-<a id="__codelineno-36-16" name="__codelineno-36-16" href="#__codelineno-36-16"></a><span class="w">        </span><span class="nt">env</span><span class="p">:</span>
-<a id="__codelineno-36-17" name="__codelineno-36-17" href="#__codelineno-36-17"></a><span class="w">          </span><span class="nt">AZURE_ENV_NAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_ENV_NAME }}</span>
-<a id="__codelineno-36-18" name="__codelineno-36-18" href="#__codelineno-36-18"></a><span class="w">          </span><span class="nt">AZURE_LOCATION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_LOCATION }}</span>
-<a id="__codelineno-36-19" name="__codelineno-36-19" href="#__codelineno-36-19"></a><span class="w">          </span><span class="nt">AZURE_SUBSCRIPTION_ID</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
-<a id="__codelineno-36-20" name="__codelineno-36-20" href="#__codelineno-36-20"></a><span class="w">          </span><span class="nt">APP_CONFIG_ENDPOINT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.APP_CONFIG_ENDPOINT }}</span>
-<a id="__codelineno-36-21" name="__codelineno-36-21" href="#__codelineno-36-21"></a><span class="w">          </span><span class="nt">BUILD_MODE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acr-task</span>
-<a id="__codelineno-36-22" name="__codelineno-36-22" href="#__codelineno-36-22"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<a id="__codelineno-36-23" name="__codelineno-36-23" href="#__codelineno-36-23"></a><span class="w">          </span><span class="no">azd config set auth.useAzCliAuth &quot;true&quot;</span>
-<a id="__codelineno-36-24" name="__codelineno-36-24" href="#__codelineno-36-24"></a><span class="w">          </span><span class="no">azd env new &quot;$AZURE_ENV_NAME&quot; --no-prompt \</span>
-<a id="__codelineno-36-25" name="__codelineno-36-25" href="#__codelineno-36-25"></a><span class="w">            </span><span class="no">--subscription &quot;$AZURE_SUBSCRIPTION_ID&quot; \</span>
-<a id="__codelineno-36-26" name="__codelineno-36-26" href="#__codelineno-36-26"></a><span class="w">            </span><span class="no">${AZURE_LOCATION:+--location &quot;$AZURE_LOCATION&quot;} \</span>
-<a id="__codelineno-36-27" name="__codelineno-36-27" href="#__codelineno-36-27"></a><span class="w">            </span><span class="no">|| azd env select &quot;$AZURE_ENV_NAME&quot;</span>
-<a id="__codelineno-36-28" name="__codelineno-36-28" href="#__codelineno-36-28"></a><span class="w">          </span><span class="no">azd env set APP_CONFIG_ENDPOINT &quot;$APP_CONFIG_ENDPOINT&quot;</span>
-<a id="__codelineno-36-29" name="__codelineno-36-29" href="#__codelineno-36-29"></a><span class="w">          </span><span class="no">azd deploy --no-prompt</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-35-1" name="__codelineno-35-1" href="#__codelineno-35-1"></a><span class="nt">jobs</span><span class="p">:</span>
+<a id="__codelineno-35-2" name="__codelineno-35-2" href="#__codelineno-35-2"></a><span class="w">  </span><span class="nt">deploy-sandbox</span><span class="p">:</span>
+<a id="__codelineno-35-3" name="__codelineno-35-3" href="#__codelineno-35-3"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy candidate (sandbox)</span>
+<a id="__codelineno-35-4" name="__codelineno-35-4" href="#__codelineno-35-4"></a><span class="w">    </span><span class="nt">runs-on</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ubuntu-latest</span>
+<a id="__codelineno-35-5" name="__codelineno-35-5" href="#__codelineno-35-5"></a><span class="w">    </span><span class="nt">environment</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sandbox</span>
+<a id="__codelineno-35-6" name="__codelineno-35-6" href="#__codelineno-35-6"></a><span class="w">    </span><span class="nt">steps</span><span class="p">:</span>
+<a id="__codelineno-35-7" name="__codelineno-35-7" href="#__codelineno-35-7"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/checkout@v4</span>
+<a id="__codelineno-35-8" name="__codelineno-35-8" href="#__codelineno-35-8"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure/setup-azd@v2</span>
+<a id="__codelineno-35-9" name="__codelineno-35-9" href="#__codelineno-35-9"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Azure login (OIDC)</span>
+<a id="__codelineno-35-10" name="__codelineno-35-10" href="#__codelineno-35-10"></a><span class="w">        </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure/login@v2</span>
+<a id="__codelineno-35-11" name="__codelineno-35-11" href="#__codelineno-35-11"></a><span class="w">        </span><span class="nt">with</span><span class="p">:</span>
+<a id="__codelineno-35-12" name="__codelineno-35-12" href="#__codelineno-35-12"></a><span class="w">          </span><span class="nt">client-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_CLIENT_ID }}</span>
+<a id="__codelineno-35-13" name="__codelineno-35-13" href="#__codelineno-35-13"></a><span class="w">          </span><span class="nt">tenant-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_TENANT_ID }}</span>
+<a id="__codelineno-35-14" name="__codelineno-35-14" href="#__codelineno-35-14"></a><span class="w">          </span><span class="nt">subscription-id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
+<a id="__codelineno-35-15" name="__codelineno-35-15" href="#__codelineno-35-15"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azd deploy (sandbox)</span>
+<a id="__codelineno-35-16" name="__codelineno-35-16" href="#__codelineno-35-16"></a><span class="w">        </span><span class="nt">env</span><span class="p">:</span>
+<a id="__codelineno-35-17" name="__codelineno-35-17" href="#__codelineno-35-17"></a><span class="w">          </span><span class="nt">AZURE_ENV_NAME</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_ENV_NAME }}</span>
+<a id="__codelineno-35-18" name="__codelineno-35-18" href="#__codelineno-35-18"></a><span class="w">          </span><span class="nt">AZURE_LOCATION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_LOCATION }}</span>
+<a id="__codelineno-35-19" name="__codelineno-35-19" href="#__codelineno-35-19"></a><span class="w">          </span><span class="nt">AZURE_SUBSCRIPTION_ID</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.AZURE_SUBSCRIPTION_ID }}</span>
+<a id="__codelineno-35-20" name="__codelineno-35-20" href="#__codelineno-35-20"></a><span class="w">          </span><span class="nt">APP_CONFIG_ENDPOINT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.APP_CONFIG_ENDPOINT }}</span>
+<a id="__codelineno-35-21" name="__codelineno-35-21" href="#__codelineno-35-21"></a><span class="w">          </span><span class="nt">BUILD_MODE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acr-task</span>
+<a id="__codelineno-35-22" name="__codelineno-35-22" href="#__codelineno-35-22"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-35-23" name="__codelineno-35-23" href="#__codelineno-35-23"></a><span class="w">          </span><span class="no">azd config set auth.useAzCliAuth &quot;true&quot;</span>
+<a id="__codelineno-35-24" name="__codelineno-35-24" href="#__codelineno-35-24"></a><span class="w">          </span><span class="no">azd env new &quot;$AZURE_ENV_NAME&quot; --no-prompt \</span>
+<a id="__codelineno-35-25" name="__codelineno-35-25" href="#__codelineno-35-25"></a><span class="w">            </span><span class="no">--subscription &quot;$AZURE_SUBSCRIPTION_ID&quot; \</span>
+<a id="__codelineno-35-26" name="__codelineno-35-26" href="#__codelineno-35-26"></a><span class="w">            </span><span class="no">${AZURE_LOCATION:+--location &quot;$AZURE_LOCATION&quot;} \</span>
+<a id="__codelineno-35-27" name="__codelineno-35-27" href="#__codelineno-35-27"></a><span class="w">            </span><span class="no">|| azd env select &quot;$AZURE_ENV_NAME&quot;</span>
+<a id="__codelineno-35-28" name="__codelineno-35-28" href="#__codelineno-35-28"></a><span class="w">          </span><span class="no">azd env set APP_CONFIG_ENDPOINT &quot;$APP_CONFIG_ENDPOINT&quot;</span>
+<a id="__codelineno-35-29" name="__codelineno-35-29" href="#__codelineno-35-29"></a><span class="w">          </span><span class="no">azd deploy --no-prompt</span>
 </code></pre></div>
 <p>The dev workflow is the same shape: the <code>eval</code> job runs the gates, then a
 <code>deploy</code> job with <code>needs: eval</code> runs the same <code>azd deploy</code> step against the dev
@@ -2269,16 +2231,16 @@ is sent the wrong token argument. Set it to the real model id.</p>
 <p>OIDC lets the workflow log in to Azure with a short-lived federated token, so no
 client secret is ever stored. Give the workflow a service principal with one
 federated credential per environment.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="c"># create the app + service principal</span>
-<a id="__codelineno-37-2" name="__codelineno-37-2" href="#__codelineno-37-2"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">create</span> <span class="p">-</span><span class="n">-display-name</span> <span class="s2">&quot;gpt-rag-orchestrator-agentops-ci&quot;</span>
-<a id="__codelineno-37-3" name="__codelineno-37-3" href="#__codelineno-37-3"></a>
-<a id="__codelineno-37-4" name="__codelineno-37-4" href="#__codelineno-37-4"></a><span class="c"># add one federated credential per environment (repeat with ...:environment:dev)</span>
-<a id="__codelineno-37-5" name="__codelineno-37-5" href="#__codelineno-37-5"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">federated-credential</span> <span class="n">create</span> <span class="p">-</span><span class="n">-id</span> <span class="p">&lt;</span><span class="n">appId</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-parameters</span> <span class="s1">&#39;{</span>
-<a id="__codelineno-37-6" name="__codelineno-37-6" href="#__codelineno-37-6"></a><span class="s1">  &quot;name&quot;: &quot;github-sandbox&quot;,</span>
-<a id="__codelineno-37-7" name="__codelineno-37-7" href="#__codelineno-37-7"></a><span class="s1">  &quot;issuer&quot;: &quot;https://token.actions.githubusercontent.com&quot;,</span>
-<a id="__codelineno-37-8" name="__codelineno-37-8" href="#__codelineno-37-8"></a><span class="s1">  &quot;subject&quot;: &quot;repo:&lt;owner&gt;/&lt;repo&gt;:environment:sandbox&quot;,</span>
-<a id="__codelineno-37-9" name="__codelineno-37-9" href="#__codelineno-37-9"></a><span class="s1">  &quot;audiences&quot;: [&quot;api://AzureADTokenExchange&quot;]</span>
-<a id="__codelineno-37-10" name="__codelineno-37-10" href="#__codelineno-37-10"></a><span class="s1">}&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="c"># create the app + service principal</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">create</span> <span class="p">-</span><span class="n">-display-name</span> <span class="s2">&quot;gpt-rag-orchestrator-agentops-ci&quot;</span>
+<a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>
+<a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="c"># add one federated credential per environment (repeat with ...:environment:dev)</span>
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">federated-credential</span> <span class="n">create</span> <span class="p">-</span><span class="n">-id</span> <span class="p">&lt;</span><span class="n">appId</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-parameters</span> <span class="s1">&#39;{</span>
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="s1">  &quot;name&quot;: &quot;github-sandbox&quot;,</span>
+<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a><span class="s1">  &quot;issuer&quot;: &quot;https://token.actions.githubusercontent.com&quot;,</span>
+<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a><span class="s1">  &quot;subject&quot;: &quot;repo:&lt;owner&gt;/&lt;repo&gt;:environment:sandbox&quot;,</span>
+<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a><span class="s1">  &quot;audiences&quot;: [&quot;api://AzureADTokenExchange&quot;]</span>
+<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a><span class="s1">}&#39;</span>
 </code></pre></div>
 <p>Set <code>AZURE_CLIENT_ID</code> to the app's client id in both environments, and grant the
 service principal the roles it needs on the sandbox and dev resource groups
@@ -2316,7 +2278,7 @@ re-run <code>agentops workflow generate</code> any time to regenerate yours.</p>
 <h2 id="14-ship-observe-and-own">14. Ship, observe, and own<a class="headerlink" href="#14-ship-observe-and-own" title="Permanent link">&para;</a></h2>
 <p>The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
 </code></pre></div>
 <ul>
 <li><strong>Ship.</strong> Push the repo, configure the <code>sandbox</code> and <code>dev</code> GitHub environments
