@@ -31,8 +31,14 @@ _DEPRECATED_NODE20_ACTION_REFS = (
     "actions/checkout@v4",
     "actions/setup-python@v5",
     "actions/upload-artifact@v4",
+    "actions/upload-artifact@v5",
+    "actions/download-artifact@v4",
+    "actions/download-artifact@v5",
+    "actions/download-artifact@v6",
     "actions/github-script@v7",
     "astral-sh/setup-uv@v3",
+    "astral-sh/setup-uv@v5",
+    "astral-sh/setup-uv@v6",
     "azure/login@v2",
 )
 

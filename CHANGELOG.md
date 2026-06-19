@@ -5,6 +5,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Rendered gate results in GitHub Actions job summaries.** When AgentOps runs
+  inside GitHub Actions (`GITHUB_STEP_SUMMARY` set), `agentops eval run` now
+  appends the full rendered `report.md` to the workflow run summary, and
+  `agentops assert run` / `agentops redteam run` append a concise pass/fail
+  summary (suite, cases, pass rate, per-dimension and per-risk-category
+  breakdowns). Reviewers can read the report directly on the run page without
+  downloading the uploaded artifacts. Writes are best-effort and a no-op outside
+  GitHub Actions, so local runs are unaffected.
+
+### Changed
+- **Generated workflows use Node24-ready action versions.** The prompt-agent and
+  watchdog workflow templates now pin `actions/download-artifact@v7` (instead of
+  the Node20 `@v4`), so generated pipelines no longer emit the "Node.js 20
+  actions are deprecated" warning. A regression guard checks every workflow
+  template against the known Node20 action majors.
+
 ## [0.5.0] - 2026-06-19
 
 ### Added
