@@ -32,7 +32,7 @@ final word - no auto-detection runs.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 
@@ -348,6 +348,7 @@ def select_evaluators(
     shape: DatasetShape,
     *,
     overrides: Optional[List[str]] = None,
+    override_mappings: Optional[Dict[str, Dict[str, str]]] = None,
     threshold_metrics: Optional[Iterable[str]] = None,
 ) -> List[EvaluatorPreset]:
     """Return the ordered list of evaluators to run.
@@ -355,6 +356,12 @@ def select_evaluators(
     When ``overrides`` is provided it wins outright - the inference rules are
     bypassed. Each name must exist in :data:`CATALOG` or a ``ValueError`` is
     raised.
+
+    ``override_mappings`` maps an evaluator name to an ``input_mapping`` patch
+    that is merged onto that preset's default mapping. This lets a grey-box
+    HTTP/JSON target point an evaluator at a live response field captured via
+    ``response_fields`` (e.g. ``context: $response.context``). It applies to
+    both the explicit-override path and the auto-selected presets.
 
     Otherwise the rules are:
 
@@ -369,6 +376,16 @@ def select_evaluators(
       evaluators.
     * Always append the runtime ``avg_latency_seconds`` evaluator.
     """
+
+    def _apply_mappings(preset: EvaluatorPreset) -> EvaluatorPreset:
+        if not override_mappings:
+            return preset
+        patch = override_mappings.get(preset.name)
+        if not patch:
+            return preset
+        merged = {**preset.input_mapping, **patch}
+        return replace(preset, input_mapping=merged)
+
     if overrides:
         resolved: List[EvaluatorPreset] = []
         for name in overrides:
@@ -379,7 +396,7 @@ def select_evaluators(
                     f"unknown evaluator override {name!r}. "
                     f"Known evaluators: {known}"
                 )
-            resolved.append(preset)
+            resolved.append(_apply_mappings(preset))
         return resolved
 
     selected: List[EvaluatorPreset] = list(_QUALITY_BASELINE)
@@ -411,7 +428,7 @@ def select_evaluators(
         )
 
     selected.append(_LATENCY)
-    return selected
+    return [_apply_mappings(preset) for preset in selected]
 
 
 def _is_agent_target(kind: TargetKind) -> bool:

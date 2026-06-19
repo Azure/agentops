@@ -201,6 +201,56 @@ class TestSelectEvaluators:
         with pytest.raises(ValueError, match="unknown evaluator"):
             select_evaluators(_PROMPT_AGENT, _shape(), overrides=["NotAnEvaluator"])
 
+    def test_override_mapping_patches_explicit_override(self) -> None:
+        # Grey-box: point GroundednessEvaluator at the live captured context.
+        result = select_evaluators(
+            _HTTP_AGENT,
+            _shape(),
+            overrides=["GroundednessEvaluator"],
+            override_mappings={
+                "GroundednessEvaluator": {"context": "$response.context"}
+            },
+        )
+        preset = [p for p in result if p.name == "GroundednessEvaluator"][0]
+        assert preset.input_mapping["context"] == "$response.context"
+        # Unpatched keys keep their preset defaults.
+        assert preset.input_mapping["response"] == "$prediction"
+
+    def test_override_mapping_patches_auto_selected_rag_preset(self) -> None:
+        # No explicit overrides: RAG presets are auto-selected from the
+        # context-bearing dataset, and the mapping still applies.
+        result = select_evaluators(
+            _HTTP_AGENT,
+            _shape(context=True),
+            override_mappings={
+                "RetrievalEvaluator": {"context": "$response.context"}
+            },
+        )
+        preset = [p for p in result if p.name == "RetrievalEvaluator"][0]
+        assert preset.input_mapping["context"] == "$response.context"
+
+    def test_override_mapping_does_not_mutate_catalog_preset(self) -> None:
+        select_evaluators(
+            _HTTP_AGENT,
+            _shape(),
+            overrides=["GroundednessEvaluator"],
+            override_mappings={
+                "GroundednessEvaluator": {"context": "$response.context"}
+            },
+        )
+        # The shared CATALOG preset must be untouched (dataclasses.replace
+        # returns a copy).
+        assert CATALOG["GroundednessEvaluator"].input_mapping["context"] == "$context"
+
+    def test_override_mapping_none_is_noop(self) -> None:
+        result = select_evaluators(
+            _HTTP_AGENT,
+            _shape(context=True),
+            override_mappings=None,
+        )
+        preset = [p for p in result if p.name == "GroundednessEvaluator"][0]
+        assert preset.input_mapping["context"] == "$context"
+
 
 # ---------------------------------------------------------------------------
 # merge_thresholds
