@@ -27,6 +27,8 @@ def _clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AZURE_OPENAI_ENDPOINT",
         "AZURE_OPENAI_DEPLOYMENT",
         "AZURE_AI_MODEL_DEPLOYMENT_NAME",
+        "AZURE_OPENAI_MODEL_NAME",
+        "AZURE_AI_MODEL_NAME",
         "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
         "AZURE_OPENAI_API_VERSION",
     ):
@@ -140,6 +142,36 @@ def test_ai_assisted_evaluator_marks_reasoning_deployments(
     runtime.load_evaluator(preset)
 
     assert captured["model_config"]["azure_deployment"] == "gpt-5.4-mini"
+    assert captured["is_reasoning_model"] is True
+
+
+def test_ai_assisted_evaluator_marks_reasoning_model_name_when_deployment_is_generic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://x.openai.azure.com")
+    monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "chat")
+    monkeypatch.setenv("AZURE_OPENAI_MODEL_NAME", "gpt-5-nano")
+    captured: dict[str, object] = {}
+
+    class FakeCoherenceEvaluator:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        runtime.importlib,
+        "import_module",
+        lambda _name: SimpleNamespace(CoherenceEvaluator=FakeCoherenceEvaluator),
+    )
+
+    preset = EvaluatorPreset(
+        name="coherence",
+        class_name="CoherenceEvaluator",
+        score_key="coherence",
+        input_mapping={},
+    )
+    runtime.load_evaluator(preset)
+
+    assert captured["model_config"]["azure_deployment"] == "chat"
     assert captured["is_reasoning_model"] is True
 
 

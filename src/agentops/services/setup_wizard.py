@@ -29,8 +29,11 @@ falls back to a clear error so the wizard never hangs in pipelines.
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Collection, List, Optional
@@ -47,12 +50,16 @@ PROJECT_ENDPOINT_HELP = (
     "Example: https://acct.services.ai.azure.com/api/projects/proj-default"
 )
 
-AGENT_TITLE = "Agent (name:version, model:deployment, or URL)"
+AGENT_PLACEHOLDER_VALUE = "my-agent:1"
+AZ_CLI_DISCOVERY_TIMEOUT_SECONDS = 5
+
+AGENT_TITLE = "Agent or orchestrator endpoint"
 AGENT_HELP = (
     "What you are evaluating. One of:\n"
     "  * <name>:<version> — Foundry prompt agent (e.g. quickstart-agent:2)\n"
     "  * model:<deployment> — Foundry model deployment\n"
-    "  * https://... — a Foundry hosted endpoint or any HTTP/JSON agent"
+    "  * http://... or https://... — an orchestrator, hosted endpoint, "
+    "or any HTTP/JSON agent (e.g. http://127.0.0.1:8000/chat)"
 )
 
 DATASET_TITLE = "Dataset path (JSONL file with `input` / `expected` rows)"
@@ -86,6 +93,7 @@ ENDPOINT_SOURCE_AZD_ENV_FILE = "azd-env-file"
 ENDPOINT_SOURCE_AGENTOPS_ENV_FILE = "agentops-env-file"
 ENDPOINT_SOURCE_PROCESS_ENV = "process-env"
 ENDPOINT_SOURCE_YAML_LEGACY = "yaml-legacy"
+ENDPOINT_SOURCE_AZD_RESOURCE_DISCOVERY = "azd-resource-discovery"
 ENDPOINT_SOURCE_NONE = "none"
 
 
@@ -167,6 +175,15 @@ def discover_defaults(workspace: Path) -> WizardAnswers:
             if yaml_value:
                 project_endpoint = yaml_value
                 endpoint_source = ENDPOINT_SOURCE_YAML_LEGACY
+            else:
+                discovered_value = _discover_foundry_project_endpoint_from_azd_env(
+                    workspace,
+                    env_values,
+                )
+                if discovered_value:
+                    project_endpoint = discovered_value
+                    endpoint_source = ENDPOINT_SOURCE_AZD_RESOURCE_DISCOVERY
+                    endpoint_source_path = env_source_path
 
     agent = _as_str(yaml_data.get("agent"))
     dataset = _as_str(yaml_data.get("dataset"))
@@ -183,6 +200,10 @@ def discover_defaults(workspace: Path) -> WizardAnswers:
         project_endpoint_source=endpoint_source,
         project_endpoint_source_path=endpoint_source_path,
     )
+
+
+def is_placeholder_agent(value: Optional[str]) -> bool:
+    return (value or "").strip().lower() == AGENT_PLACEHOLDER_VALUE
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +244,120 @@ def validate_dataset(value: str, workspace: Path) -> Optional[str]:
     if not candidate.exists():
         return f"Dataset file does not exist: {candidate}"
     return None
+
+
+def _discover_foundry_project_endpoint_from_azd_env(
+    workspace: Path,
+    env_values: dict[str, str],
+) -> Optional[str]:
+    """Best-effort Foundry project endpoint discovery from the active azd env."""
+    resource_group = _as_str(env_values.get("AZURE_RESOURCE_GROUP"))
+    if not resource_group:
+        return None
+    az_cli = _az_cli_executable()
+    if not az_cli:
+        return None
+
+    command = [
+        az_cli,
+        "resource",
+        "list",
+        "-g",
+        resource_group,
+        "--resource-type",
+        "Microsoft.CognitiveServices/accounts/projects",
+        "-o",
+        "json",
+    ]
+    subscription_id = _as_str(env_values.get("AZURE_SUBSCRIPTION_ID"))
+    if subscription_id:
+        command.extend(["--subscription", subscription_id])
+
+    try:
+        result = subprocess.run(  # noqa: S603,S607
+            command,
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=AZ_CLI_DISCOVERY_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+
+    try:
+        resources = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(resources, list):
+        return None
+
+    candidates: list[tuple[bool, str]] = []
+    for item in resources:
+        if not isinstance(item, dict):
+            continue
+        properties = item.get("properties") or _read_azure_resource_properties(
+            workspace,
+            item,
+        )
+        if not isinstance(properties, dict):
+            continue
+        endpoints = properties.get("endpoints")
+        if not isinstance(endpoints, dict):
+            continue
+        endpoint = _as_str(endpoints.get("AI Foundry API"))
+        if endpoint:
+            candidates.append((bool(properties.get("isDefault")), endpoint))
+
+    if not candidates:
+        return None
+    default_candidates = [
+        endpoint for is_default, endpoint in candidates if is_default
+    ]
+    if len(default_candidates) == 1:
+        return default_candidates[0]
+    if len(candidates) == 1:
+        return candidates[0][1]
+    return None
+
+
+def _read_azure_resource_properties(
+    workspace: Path,
+    resource: dict,
+) -> Optional[dict]:
+    resource_id = _as_str(resource.get("id"))
+    if not resource_id:
+        return None
+    az_cli = _az_cli_executable()
+    if not az_cli:
+        return None
+    try:
+        result = subprocess.run(  # noqa: S603,S607
+            [az_cli, "resource", "show", "--ids", resource_id, "-o", "json"],
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            timeout=AZ_CLI_DISCOVERY_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    properties = data.get("properties")
+    return properties if isinstance(properties, dict) else None
+
+
+def _az_cli_executable() -> Optional[str]:
+    return shutil.which("az") or shutil.which("az.cmd")
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +639,7 @@ def run_wizard(
     prompt: PromptFn,
     echo: Callable[[str], None],
     *,
+    defaults: Optional[WizardAnswers] = None,
     on_answer: Optional[OnAnswerFn] = None,
     reconfigure: bool = False,
     force_prompt_fields: Optional[Collection[str]] = None,
@@ -543,7 +679,7 @@ def run_wizard(
     ``target_env_name`` (the bare ``agentops init`` case), behavior is
     unchanged.
     """
-    defaults = discover_defaults(workspace)
+    defaults = defaults or discover_defaults(workspace)
     answers = WizardAnswers()
     skipped: list[str] = []
     forced_fields = set(force_prompt_fields or ())
@@ -552,6 +688,9 @@ def run_wizard(
 
     def _should_prompt(field_name: str, value: Optional[str]) -> bool:
         return reconfigure or field_name in forced_fields or not value
+
+    def _agent_default(value: Optional[str]) -> Optional[str]:
+        return None if is_placeholder_agent(value) else value
 
     def _persist(field_name: str, value: str) -> None:
         if on_answer is not None:
@@ -585,10 +724,20 @@ def run_wizard(
     effective_endpoint_default = (
         None if suppress_endpoint_default else defaults.project_endpoint
     )
+    endpoint_default_needs_persist = (
+        defaults.project_endpoint_source == ENDPOINT_SOURCE_AZD_RESOURCE_DISCOVERY
+    )
+    agent_default = _agent_default(defaults.agent)
+    agent_needs_prompt = _should_prompt("agent", agent_default)
+    endpoint_default_needs_review = (
+        endpoint_default_needs_persist
+        or agent_needs_prompt
+        or bool(forced_fields)
+    )
 
     if not suppress_endpoint_default and not _should_prompt(
         "project_endpoint", defaults.project_endpoint
-    ):
+    ) and not endpoint_default_needs_review:
         _confirm_existing(PROJECT_ENDPOINT_TITLE, defaults.project_endpoint or "")
         skipped.append("project_endpoint")
     else:
@@ -603,6 +752,9 @@ def run_wizard(
             value = raw.strip()
             if not value:
                 if effective_endpoint_default:
+                    if endpoint_default_needs_persist:
+                        answers.project_endpoint = effective_endpoint_default
+                        _persist("project_endpoint", effective_endpoint_default)
                     break  # keep current
                 echo("  ! Foundry project endpoint is required.")
                 echo("  ! " + REQUIRED_CONFIGURATION_MESSAGE)
@@ -611,24 +763,26 @@ def run_wizard(
             if err:
                 echo("  ! " + err)
                 continue
-            if value != (defaults.project_endpoint or ""):
+            if endpoint_default_needs_persist or value != (
+                defaults.project_endpoint or ""
+            ):
                 answers.project_endpoint = value
                 _persist("project_endpoint", value)
             break
 
     # 2) Agent
-    if not _should_prompt("agent", defaults.agent):
-        _confirm_existing(AGENT_TITLE, defaults.agent or "")
+    if not agent_needs_prompt:
+        _confirm_existing(AGENT_TITLE, agent_default or "")
         skipped.append("agent")
     else:
         echo("")
         echo(AGENT_TITLE)
         echo(_indent(AGENT_HELP))
         while True:
-            raw = prompt("Agent", defaults.agent)
+            raw = prompt("Agent / orchestrator endpoint", agent_default)
             value = raw.strip()
             if not value:
-                if defaults.agent:
+                if agent_default:
                     break  # keep current
                 echo("  ! Agent is required.")
                 echo("  ! " + REQUIRED_CONFIGURATION_MESSAGE)

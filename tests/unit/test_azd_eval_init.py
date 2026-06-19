@@ -32,6 +32,154 @@ prompt_agent_bootstrap:
     )
 
 
+def _write_azd_env(workspace: Path, env_text: str = 'AZURE_RESOURCE_GROUP="rg-test"\n') -> Path:
+    env_path = workspace / ".azure" / "sandbox" / ".env"
+    env_path.parent.mkdir(parents=True)
+    env_path.write_text(env_text, encoding="utf-8")
+    (workspace / ".azure" / "config.json").write_text(
+        '{"defaultEnvironment":"sandbox"}',
+        encoding="utf-8",
+    )
+    return env_path
+
+
+def test_ensure_local_evaluator_model_env_discovers_single_chat_deployment(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    env_path = _write_azd_env(tmp_path)
+    selection = azd_eval_init.AzdEvaluatorSelection(
+        names=("builtin.coherence",),
+        source="test",
+        signals=(),
+    )
+
+    def fake_run(command, **kwargs):
+        az_args = command[1:]
+        if az_args[:3] == ["cognitiveservices", "account", "list"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='[{"name":"aif-test","kind":"AIServices"}]',
+                stderr="",
+            )
+        if az_args[:4] == ["cognitiveservices", "account", "deployment", "list"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=(
+                    "["
+                    '{"name":"chat","properties":{"model":{"name":"gpt-5-nano"}}},'
+                    '{"name":"text-embedding","properties":{"model":{"name":"text-embedding-3-large"}}}'
+                    "]"
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.ensure_local_evaluator_model_env(
+        workspace=tmp_path,
+        selection=selection,
+    )
+
+    assert result.configured is True
+    assert result.deployment == "chat"
+    assert result.model == "gpt-5-nano"
+    assert result.env_path == env_path
+    assert set(result.changed_keys) == {
+        "AZURE_OPENAI_DEPLOYMENT",
+        "AZURE_OPENAI_MODEL_NAME",
+    }
+    text = env_path.read_text(encoding="utf-8")
+    assert "AZURE_OPENAI_DEPLOYMENT=chat" in text
+    assert "AZURE_OPENAI_MODEL_NAME=gpt-5-nano" in text
+
+
+def test_ensure_local_evaluator_model_env_does_not_guess_multiple_chat_deployments(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    env_path = _write_azd_env(tmp_path)
+    selection = azd_eval_init.AzdEvaluatorSelection(
+        names=("builtin.coherence",),
+        source="test",
+        signals=(),
+    )
+
+    def fake_run(command, **kwargs):
+        az_args = command[1:]
+        if az_args[:3] == ["cognitiveservices", "account", "list"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout='[{"name":"aif-test","kind":"AIServices"}]',
+                stderr="",
+            )
+        if az_args[:4] == ["cognitiveservices", "account", "deployment", "list"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=(
+                    "["
+                    '{"name":"chat","properties":{"model":{"name":"gpt-5-nano"}}},'
+                    '{"name":"judge","properties":{"model":{"name":"gpt-4o-mini"}}}'
+                    "]"
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.ensure_local_evaluator_model_env(
+        workspace=tmp_path,
+        selection=selection,
+    )
+
+    assert result.configured is False
+    assert result.changed_keys == ()
+    assert "AZURE_OPENAI_DEPLOYMENT" not in env_path.read_text(encoding="utf-8")
+
+
+def test_ensure_local_evaluator_model_env_reuses_existing_values(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _write_azd_env(
+        tmp_path,
+        "\n".join(
+            [
+                'AZURE_RESOURCE_GROUP="rg-test"',
+                'AZURE_OPENAI_DEPLOYMENT="judge"',
+                'AZURE_OPENAI_MODEL_NAME="gpt-4o-mini"',
+                "",
+            ]
+        ),
+    )
+    selection = azd_eval_init.AzdEvaluatorSelection(
+        names=("builtin.coherence",),
+        source="test",
+        signals=(),
+    )
+
+    with mock.patch.object(subprocess, "run") as run_mock:
+        result = azd_eval_init.ensure_local_evaluator_model_env(
+            workspace=tmp_path,
+            selection=selection,
+        )
+
+    assert result.configured is True
+    assert result.deployment == "judge"
+    assert result.model == "gpt-4o-mini"
+    assert result.changed_keys == ()
+    run_mock.assert_not_called()
+
+
 def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     tmp_path: Path,
     monkeypatch,
@@ -40,7 +188,7 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     _write_config(config_path)
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text("You are a travel planner.", encoding="utf-8")
@@ -80,6 +228,10 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
             "builtin.coherence",
             "--evaluator",
             "builtin.fluency",
+            "--evaluator",
+            "builtin.text_similarity",
+            "--evaluator",
+            "builtin.response_completeness",
         ]
         recipe = Path(kwargs["cwd"]) / "src" / "travel-agent" / "eval.yaml"
         recipe.parent.mkdir(parents=True, exist_ok=True)
@@ -94,6 +246,8 @@ def test_run_azd_eval_init_delegates_to_azd_and_persists_recipe(
     )
 
     assert result.command_ran is True
+    assert result.evaluator_source == "AgentOps recommendation"
+    assert "builtin.response_completeness" in result.evaluators
     assert result.config_updated is True
     converted = tmp_path / ".agentops" / "azd" / "smoke.azd.jsonl"
     assert '"query": "hello"' in converted.read_text(encoding="utf-8")
@@ -117,7 +271,7 @@ def test_run_azd_eval_init_explicit_dataset_wins(
     _write_config(config_path)
     (tmp_path / "azure.yaml").write_text("name: travel-agent\n", encoding="utf-8")
     dataset = tmp_path / "golden.jsonl"
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text("You are a travel planner.", encoding="utf-8")
@@ -146,6 +300,10 @@ def test_run_azd_eval_init_explicit_dataset_wins(
             "builtin.coherence",
             "--evaluator",
             "builtin.fluency",
+            "--evaluator",
+            "builtin.text_similarity",
+            "--evaluator",
+            "builtin.response_completeness",
         ]
         recipe = Path(kwargs["cwd"]) / "eval.yaml"
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
@@ -184,7 +342,7 @@ thresholds:
     )
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     prompt_file = tmp_path / ".agentops" / "prompts" / "travel.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text("You are a travel planner.", encoding="utf-8")
@@ -195,7 +353,7 @@ thresholds:
         if command[:3] == ["az", "resource", "list"]:
             return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
         assert command[-2:] == ["--evaluator", "travel-quality-rubric"]
-        assert command.count("--evaluator") == 3
+        assert command.count("--evaluator") == 5
         recipe = Path(kwargs["cwd"]) / "eval.yaml"
         recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
         return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
@@ -218,7 +376,7 @@ def test_run_azd_eval_init_bootstraps_before_azd_availability_check(
     _write_config(config_path)
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: False)
 
     with mock.patch.object(subprocess, "run") as run_mock:
@@ -254,7 +412,7 @@ prompt_agent_bootstrap:
     )
     dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
     dataset.parent.mkdir(parents=True)
-    dataset.write_text('{"input":"hello"}\n', encoding="utf-8")
+    dataset.write_text('{"input":"hello","expected":"hi"}\n', encoding="utf-8")
     monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
 
     def fake_run(command, **kwargs):
@@ -317,8 +475,43 @@ def test_cli_eval_init_prints_result(tmp_path: Path, monkeypatch) -> None:
     )
 
     assert result.exit_code == 0
-    assert "azd eval init" in result.output
+    assert "azd eval generate" in result.output
     assert "agentops eval run" in result.output
+
+
+def test_cli_eval_init_http_target_skips_azd(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "agentops.yaml"
+    config_path.write_text(
+        """
+version: 1
+agent: https://orchestrator.example.com/orchestrator
+protocol: http-json
+dataset: .agentops/data/vw-smoke.jsonl
+request_field: question
+response_field: answer
+""".lstrip(),
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "vw-smoke.jsonl"
+    dataset.parent.mkdir(parents=True)
+    dataset.write_text(
+        '{"input":"hello","expected":"hi"}\n',
+        encoding="utf-8",
+    )
+    run_mock = mock.Mock()
+    monkeypatch.setattr(azd_eval_init, "run_azd_eval_init", run_mock)
+
+    result = runner.invoke(
+        app,
+        ["eval", "init", "--dir", str(tmp_path), "--config", str(config_path)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "local HTTP/model target detected" in result.output
+    assert "azd eval assets are not required" in result.output
+    assert "Evaluator recommendation" in result.output
+    assert "agentops eval run" in result.output
+    run_mock.assert_not_called()
 
 
 def test_cli_eval_init_uses_ascii_updated_marker_when_unicode_disabled(

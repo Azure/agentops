@@ -223,17 +223,32 @@ def _invoke_redteam_scan(
 
     callback = _build_target_callback(target)
 
+    # ``skip_upload=True`` keeps Red Team fully local: the SDK still scores the
+    # attack objectives and writes results to ``output_dir``, but does not try to
+    # push them to the Foundry-managed blob store. That upload requires Storage
+    # Blob Data Contributor on the project storage account, which local and CI
+    # identities usually lack, and its failure produces a noisy (but harmless)
+    # AuthorizationFailure traceback after an otherwise successful scan.
+    scan_kwargs: Dict[str, Any] = {
+        "target": callback,
+        "attack_strategies": strategy_enums,
+        "skip_upload": True,
+    }
     try:
         raw_payload = scanner.scan(
-            target=callback,
-            attack_strategies=strategy_enums,
             output_path=str(output_dir / "raw_redteam_output.json"),
+            **scan_kwargs,
         )
     except TypeError:
-        raw_payload = scanner.scan(
-            target=callback,
-            attack_strategies=strategy_enums,
-        )
+        # Older azure-ai-evaluation releases may not accept ``output_path``
+        # and/or ``skip_upload``. Degrade gracefully so the scan still runs.
+        try:
+            raw_payload = scanner.scan(**scan_kwargs)
+        except TypeError:
+            raw_payload = scanner.scan(
+                target=callback,
+                attack_strategies=strategy_enums,
+            )
 
     raw_payload = _resolve_if_awaitable(raw_payload)
     records = _records_from_payload(raw_payload)
@@ -438,12 +453,73 @@ def _build_target_callback(target: Dict[str, Any]) -> Any:
             "api_version": api_version,
         }
     if "endpoint" in target:
-        return {"endpoint": target["endpoint"], "headers": target.get("headers", {})}
+        return _build_http_endpoint_callback(target)
     if "agent" in target:
         return {"agent": target["agent"]}
     raise RedTeamRunnerError(
         "Unsupported Red Team target. Provide one of: model_deployment, agent, endpoint."
     )
+
+
+def _build_http_endpoint_callback(target: Dict[str, Any]) -> Any:
+    endpoint = target["endpoint"]
+    request_field = target.get("request_field") or "message"
+    response_field = target.get("response_field") or "text"
+    response_mode = target.get("response_mode") or "json"
+    headers = dict(target.get("headers") or {})
+    stream_cfg = _dict_to_stream_config(target.get("stream"))
+
+    def callback(query: str, context: Optional[Dict[str, Any]] = None) -> str:
+        del context
+        from agentops.pipeline.invocations import (
+            _aggregate_stream,
+            _dot_path,
+            _http_request_json,
+            _http_request_stream,
+        )
+
+        body = {request_field: query}
+        if response_mode in {"sse", "text"}:
+            raw_body = _http_request_stream(
+                method="POST",
+                url=endpoint,
+                headers=headers,
+                body=body,
+                timeout=120,
+            )
+            return _aggregate_stream(response_mode, raw_body, stream_cfg).strip()
+
+        payload = _http_request_json(
+            method="POST",
+            url=endpoint,
+            headers=headers,
+            body=body,
+            timeout=120,
+        )
+        response_text = _dot_path(payload, response_field)
+        if response_text is None and isinstance(payload, dict):
+            for fallback in ("response", "output", "content", "message", "text"):
+                response_text = payload.get(fallback)
+                if response_text:
+                    break
+        if response_text is None:
+            return ""
+        return response_text if isinstance(response_text, str) else json.dumps(response_text, ensure_ascii=False)
+
+    return callback
+
+
+def _dict_to_stream_config(value: Any) -> Any:
+    if not isinstance(value, dict):
+        return None
+
+    class _StreamConfig:
+        pass
+
+    cfg = _StreamConfig()
+    for key, item in value.items():
+        setattr(cfg, key, item)
+    return cfg
 
 
 def _project_from_env() -> Optional[Any]:

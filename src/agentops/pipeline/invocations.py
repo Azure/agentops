@@ -166,6 +166,130 @@ def _http_request_json(
     return json.loads(payload)
 
 
+def _http_request_stream(
+    *,
+    method: str,
+    url: str,
+    headers: Dict[str, str],
+    body: Optional[Dict[str, Any]] = None,
+    timeout: float,
+) -> str:
+    """POST and return the full streamed response body as decoded text.
+
+    Uses the same 3-try backoff policy and tenant-mismatch guidance as
+    :func:`_http_request_json`. The response is read to completion (streamed
+    endpoints used for evaluation emit a bounded answer) and returned verbatim
+    so :func:`_aggregate_stream` can reassemble it. stdlib ``urllib`` only.
+    """
+    encoded = json.dumps(body or {}).encode("utf-8") if method != "GET" else None
+    request = urllib.request.Request(
+        url=url, data=encoded, method=method, headers=headers
+    )
+    last_exc: Optional[BaseException] = None
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                # HTTPResponse is iterable line-by-line; joining restores the
+                # full body (including newlines) for both sse and text modes.
+                chunks = [line.decode("utf-8", errors="replace") for line in response]
+            return "".join(chunks)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+            transient = exc.code >= 500 or exc.code == 429
+            if transient and attempt < 3:
+                time.sleep(2 ** attempt)
+                last_exc = exc
+                continue
+            message = f"HTTP {exc.code} from {url}: {detail or exc.reason}"
+            raise RuntimeError(with_tenant_mismatch_guidance(message)) from exc
+        except urllib.error.URLError as exc:
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+                last_exc = exc
+                continue
+            raise
+    else:  # pragma: no cover - loop exits via break/raise
+        raise RuntimeError(f"HTTP request to {url} failed: {last_exc!r}")
+
+
+def _strip_leading_token(text: str) -> str:
+    """Drop the first whitespace-delimited token from ``text``.
+
+    Used to remove the conversation-id prefix the gpt-rag orchestrator emits
+    as its first streamed chunk (``"<conversation_id> <answer...>"``).
+    """
+    stripped = text.strip()
+    parts = stripped.split(None, 1)
+    return parts[1] if len(parts) == 2 else ""
+
+
+def _aggregate_stream(
+    response_mode: str,
+    body: str,
+    stream_cfg: Optional[Any],
+) -> str:
+    """Reassemble a streamed response body into a single answer string.
+
+    ``text`` mode concatenates the whole body. ``sse`` mode parses ``data:``
+    lines, optionally JSON-decoding each line and extracting ``text_field``,
+    stopping at ``done_marker``, and raising on an ``event: error`` frame.
+    """
+    strip_leading = bool(getattr(stream_cfg, "strip_leading_token", False))
+
+    if response_mode == "text":
+        text = body or ""
+        return _strip_leading_token(text) if strip_leading else text
+
+    # SSE mode.
+    text_field = getattr(stream_cfg, "text_field", None)
+    done_marker = getattr(stream_cfg, "done_marker", None)
+
+    pieces: List[str] = []
+    saw_error = False
+    for raw_line in (body or "").splitlines():
+        line = raw_line.rstrip("\r")
+        stripped = line.strip()
+        if not stripped:
+            # Blank line closes the current SSE frame.
+            saw_error = False
+            continue
+        if stripped.startswith("event:"):
+            if stripped[len("event:"):].strip() == "error":
+                saw_error = True
+            continue
+        if not stripped.startswith("data:"):
+            # Ignore id:/retry:/comment lines.
+            continue
+        data = line.split("data:", 1)[1]
+        if data.startswith(" "):
+            # SSE strips a single leading space after the field colon.
+            data = data[1:]
+        if done_marker is not None and data == done_marker:
+            break
+        if saw_error:
+            raise RuntimeError(
+                f"streaming endpoint returned an error event: {data}"
+            )
+        if text_field:
+            try:
+                parsed = json.loads(data)
+            except json.JSONDecodeError:
+                pieces.append(data)
+                continue
+            token = _dot_path(parsed, text_field)
+            if token is None:
+                continue
+            pieces.append(
+                token if isinstance(token, str)
+                else json.dumps(token, ensure_ascii=False)
+            )
+        else:
+            pieces.append(data)
+
+    text = "".join(pieces)
+    return _strip_leading_token(text) if strip_leading else text
+
+
 def _dot_path(payload: Any, path: str) -> Any:
     """Resolve ``a.b.c`` or ``a.0.b`` against a JSON-like object."""
     current = payload
@@ -468,19 +592,49 @@ def _invoke_http_json(
                 f"auth_header_env {config.auth_header_env!r} is set in config but "
                 "the environment variable is empty"
             )
-        headers["Authorization"] = f"Bearer {token}"
+        # Default to today's behavior (Authorization: Bearer <token>) so
+        # existing configs are byte-for-byte unchanged; allow an arbitrary
+        # header name/value template for shared-secret gates (e.g. X-API-KEY).
+        header_name = config.auth_header_name or "Authorization"
+        value_template = config.auth_value_template or "Bearer {token}"
+        headers[header_name] = value_template.replace("{token}", token)
 
     request_field = config.request_field or "message"
     body: Dict[str, Any] = {request_field: _row_input(row)}
 
+    if config.response_mode in ("sse", "text"):
+        started = time.perf_counter()
+        raw_body = _http_request_stream(
+            method="POST",
+            url=target.url,
+            headers=headers,
+            body=body,
+            timeout=timeout,
+        )
+        elapsed = time.perf_counter() - started
+        aggregated = _aggregate_stream(config.response_mode, raw_body, config.stream)
+        return InvocationResult(
+            response=aggregated.strip(),
+            latency_seconds=elapsed,
+            tool_calls=None,
+        )
+
     started = time.perf_counter()
-    payload = _http_request_json(
-        method="POST",
-        url=target.url,
-        headers=headers,
-        body=body,
-        timeout=timeout,
-    )
+    try:
+        payload = _http_request_json(
+            method="POST",
+            url=target.url,
+            headers=headers,
+            body=body,
+            timeout=timeout,
+        )
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"HTTP/JSON response from {target.url} was not valid JSON. If this "
+            "endpoint streams Server-Sent Events or raw text (for example "
+            "Content-Type: text/event-stream), set response_mode: sse or "
+            "response_mode: text in agentops.yaml."
+        ) from exc
     elapsed = time.perf_counter() - started
 
     response_path = config.response_field or "text"

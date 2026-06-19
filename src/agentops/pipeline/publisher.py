@@ -110,12 +110,18 @@ def _build_instance_rows(result: RunResult) -> List[Dict[str, Any]]:
     for row in result.rows:
         payload: Dict[str, Any] = {
             "line_number": row.row_index,
-            "input": row.input,
-            "response": row.response,
-            "ground_truth": row.expected or "",
+            "inputs.input": row.input,
+            "inputs.response": row.response,
+            "inputs.ground_truth": row.expected or "",
         }
         for metric in row.metrics:
             if metric.value is not None:
-                payload[metric.name] = metric.value
+                payload[f"outputs.{metric.name}.score"] = metric.value
+                if not metric.name.endswith("_latency_seconds"):
+                    payload[f"metric.{metric.name}"] = metric.value
+            if metric.reason:
+                payload[f"outputs.{metric.name}.reason"] = metric.reason
+            if metric.error:
+                payload[f"outputs.{metric.name}.error"] = metric.error
         rows.append(payload)
     return rows

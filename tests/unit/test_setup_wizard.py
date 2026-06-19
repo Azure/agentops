@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import os
-import builtins
+import subprocess
 from pathlib import Path
 
 import pytest
 
+import agentops.services.setup_wizard as setup_wizard
 from agentops.services.setup_wizard import (
     WizardAnswers,
     apply_answers,
@@ -224,6 +226,153 @@ def test_discover_defaults_endpoint_source_none_when_unset(
 ):
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
     defaults = discover_defaults(tmp_path)
+    assert defaults.project_endpoint is None
+    assert defaults.project_endpoint_source == "none"
+
+
+def test_discover_defaults_suggests_foundry_project_from_azd_resource_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    env_path = _seed_azd_env(
+        tmp_path,
+        "dev",
+        {
+            "AZURE_RESOURCE_GROUP": "rg-dev",
+            "AZURE_SUBSCRIPTION_ID": "11111111-1111-1111-1111-111111111111",
+        },
+    )
+    endpoint = "https://acct.services.ai.azure.com/api/projects/proj"
+    monkeypatch.setattr(setup_wizard, "_az_cli_executable", lambda: "az")
+
+    def fake_run(args, **kwargs):  # noqa: ANN001
+        assert args[:5] == [
+            "az",
+            "resource",
+            "list",
+            "-g",
+            "rg-dev",
+        ]
+        assert "--subscription" in args
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "properties": {
+                            "isDefault": True,
+                            "endpoints": {"AI Foundry API": endpoint},
+                        }
+                    }
+                ]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", fake_run)
+
+    defaults = discover_defaults(tmp_path)
+
+    assert defaults.project_endpoint == endpoint
+    assert defaults.project_endpoint_source == "azd-resource-discovery"
+    assert defaults.project_endpoint_source_path == env_path
+
+
+def test_discover_defaults_reads_foundry_project_properties_by_resource_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(tmp_path, "dev", {"AZURE_RESOURCE_GROUP": "rg-dev"})
+    endpoint = "https://acct.services.ai.azure.com/api/projects/proj"
+    resource_id = (
+        "/subscriptions/000/resourceGroups/rg-dev/providers/"
+        "Microsoft.CognitiveServices/accounts/acct/projects/proj"
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(setup_wizard, "_az_cli_executable", lambda: "az")
+
+    def fake_run(args, **kwargs):  # noqa: ANN001
+        calls.append(args)
+        if args[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout=json.dumps([{"id": resource_id, "properties": None}]),
+                stderr="",
+            )
+        if args[:3] == ["az", "resource", "show"]:
+            assert resource_id in args
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                stdout=json.dumps(
+                    {
+                        "properties": {
+                            "isDefault": True,
+                            "endpoints": {"AI Foundry API": endpoint},
+                        }
+                    }
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"unexpected command: {args}")
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", fake_run)
+
+    defaults = discover_defaults(tmp_path)
+
+    assert defaults.project_endpoint == endpoint
+    assert [call[:3] for call in calls] == [
+        ["az", "resource", "list"],
+        ["az", "resource", "show"],
+    ]
+
+
+def test_discover_defaults_ignores_ambiguous_foundry_project_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(tmp_path, "dev", {"AZURE_RESOURCE_GROUP": "rg-dev"})
+
+    def fake_run(args, **kwargs):  # noqa: ANN001
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "properties": {
+                            "isDefault": False,
+                            "endpoints": {
+                                "AI Foundry API": (
+                                    "https://one.services.ai.azure.com/api/projects/p"
+                                )
+                            },
+                        }
+                    },
+                    {
+                        "properties": {
+                            "isDefault": False,
+                            "endpoints": {
+                                "AI Foundry API": (
+                                    "https://two.services.ai.azure.com/api/projects/p"
+                                )
+                            },
+                        }
+                    },
+                ]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", fake_run)
+
+    defaults = discover_defaults(tmp_path)
+
     assert defaults.project_endpoint is None
     assert defaults.project_endpoint_source == "none"
 
@@ -489,6 +638,57 @@ def test_run_wizard_does_not_prompt_for_appinsights(
     assert "Application Insights" not in "\n".join(messages)
 
 
+def test_run_wizard_prompts_with_discovered_foundry_endpoint_and_persists_enter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AZURE_ENV_NAME", raising=False)
+    _seed_azd_env(tmp_path, "dev", {"AZURE_RESOURCE_GROUP": "rg-dev"})
+    endpoint = "https://acct.services.ai.azure.com/api/projects/proj"
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: keep:1\ndataset: keep.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "keep.jsonl").write_text("{}\n", encoding="utf-8")
+
+    def fake_run(args, **kwargs):  # noqa: ANN001
+        return subprocess.CompletedProcess(
+            args,
+            0,
+            stdout=json.dumps(
+                [
+                    {
+                        "properties": {
+                            "isDefault": True,
+                            "endpoints": {"AI Foundry API": endpoint},
+                        }
+                    }
+                ]
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(setup_wizard.subprocess, "run", fake_run)
+    seen_defaults: list[str | None] = []
+    persisted: list[tuple[str, str]] = []
+
+    def prompt(_question: str, default):  # noqa: ANN001
+        seen_defaults.append(default)
+        return ""
+
+    answers = run_wizard(
+        tmp_path,
+        prompt=prompt,
+        echo=lambda _msg: None,
+        on_answer=lambda field, value: persisted.append((field, value)),
+    )
+
+    assert seen_defaults == [endpoint]
+    assert answers.project_endpoint == endpoint
+    assert persisted == [("project_endpoint", endpoint)]
+
+
 def test_run_wizard_empty_input_reprompts_required_missing_endpoint(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -569,7 +769,7 @@ def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
     (data_dir / "smoke.jsonl").write_text("{}\n", encoding="utf-8")
     (data_dir / "travel-smoke.jsonl").write_text("{}\n", encoding="utf-8")
 
-    replies = iter(["travel-agent:1", ".agentops/data/travel-smoke.jsonl"])
+    replies = iter(["", "travel-agent:1", ".agentops/data/travel-smoke.jsonl"])
     prompt_calls: list[tuple[str, object]] = []
 
     def prompt(question: str, default):  # noqa: ANN001
@@ -584,13 +784,51 @@ def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
     )
 
     assert prompt_calls == [
-        ("Agent", "my-agent:1"),
+        ("Foundry project endpoint", "https://acct.services.ai.azure.com/api/projects/p"),
+        ("Agent / orchestrator endpoint", None),
         ("Dataset path", ".agentops/data/smoke.jsonl"),
     ]
     assert answers.project_endpoint is None
     assert answers.agent == "travel-agent:1"
     assert answers.dataset == ".agentops/data/travel-smoke.jsonl"
     assert answers.appinsights_connection_string is None
+
+
+def test_run_wizard_reasks_placeholder_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    _seed_azd_env(
+        tmp_path,
+        "dev",
+        {
+            "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT": (
+                "https://acct.services.ai.azure.com/api/projects/p"
+            ),
+        },
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    data_dir = tmp_path / ".agentops" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "smoke.jsonl").write_text("{}\n", encoding="utf-8")
+
+    prompt_calls: list[tuple[str, object]] = []
+
+    def prompt(question: str, default):  # noqa: ANN001
+        prompt_calls.append((question, default))
+        return "" if question == "Foundry project endpoint" else "http://127.0.0.1:8000/chat"
+
+    answers = run_wizard(tmp_path, prompt=prompt, echo=lambda _msg: None)
+
+    assert prompt_calls == [
+        ("Foundry project endpoint", "https://acct.services.ai.azure.com/api/projects/p"),
+        ("Agent / orchestrator endpoint", None),
+    ]
+    assert answers.agent == "http://127.0.0.1:8000/chat"
 
 
 def test_run_wizard_appinsights_is_not_interactive_even_when_missing(

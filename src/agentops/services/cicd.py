@@ -366,9 +366,68 @@ def _eval_substitutions(
     return _github_eval_substitutions(eval_runner, config_path, kind=kind)
 
 
+def _github_governance_steps(config_path: str) -> str:
+    return f"""
+      - name: Detect AgentOps governance gates
+        id: governance
+        env:
+          AGENTOPS_CONFIG: "{config_path}"
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from agentops.utils.yaml import load_yaml
+
+          config = Path(os.environ["AGENTOPS_CONFIG"])
+          data = load_yaml(config) if config.exists() else {{}}
+          has_assert = isinstance(data, dict) and "assert" in data
+          has_redteam = isinstance(data, dict) and "redteam" in data
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as env_file:
+              env_file.write(f"AGENTOPS_HAS_ASSERT={{str(has_assert).lower()}}\\n")
+              env_file.write(f"AGENTOPS_HAS_REDTEAM={{str(has_redteam).lower()}}\\n")
+          print(f"ASSERT gate: {{has_assert}}")
+          print(f"Red Team gate: {{has_redteam}}")
+          PY
+
+      - name: Install AgentOps governance dependencies
+        if: env.AGENTOPS_HAS_ASSERT == 'true' || env.AGENTOPS_HAS_REDTEAM == 'true'
+        run: |
+          if [ "$AGENTOPS_HAS_ASSERT" = "true" ]; then
+            uv pip install --system assert-ai
+          fi
+          if [ "$AGENTOPS_HAS_REDTEAM" = "true" ]; then
+            uv pip install --system "azure-ai-evaluation[redteam]"
+          fi
+
+      - name: Run ASSERT gate
+        if: env.AGENTOPS_HAS_ASSERT == 'true'
+        run: |
+          agentops assert run --config "{config_path}"
+
+      - name: Run Red Team gate
+        if: env.AGENTOPS_HAS_REDTEAM == 'true'
+        env:
+          AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{{{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}}}
+          AZURE_OPENAI_ENDPOINT: ${{{{ vars.AZURE_OPENAI_ENDPOINT }}}}
+          AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
+          AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
+          APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
+        run: |
+          agentops redteam run --config "{config_path}"
+"""
+
+
+def _github_governance_artifacts() -> str:
+    return """.agentops/assert/latest.json
+            .agentops/redteam/latest.json
+            .agentops/redteam/raw_summary.json"""
+
+
 def _github_eval_substitutions(
     eval_runner: str, config_path: str, *, kind: str
 ) -> Mapping[str, str]:
+    governance_steps = _github_governance_steps(config_path)
+    governance_artifacts = _github_governance_artifacts()
     if eval_runner == AZD_EVAL_RUNNER:
         extension_version = azd_ai_agents_extension_version()
         return {
@@ -387,6 +446,7 @@ def _github_eval_substitutions(
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{{{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}}}
           AZURE_OPENAI_ENDPOINT: ${{{{ vars.AZURE_OPENAI_ENDPOINT }}}}
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
+          AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
         run: |
           set +e
@@ -400,12 +460,14 @@ def _github_eval_substitutions(
           else
             echo "result=error" >> "$GITHUB_OUTPUT"
           fi
-          exit $ec""",
+          exit $ec
+{governance_steps}""",
             "__EVAL_ARTIFACT_PATHS__": f"""{_CI_EVAL_OUTPUT}/results.json
             {_CI_EVAL_OUTPUT}/report.md
             {_CI_EVAL_OUTPUT}/azd_evaluation.json
             {_CI_EVAL_OUTPUT}/azd_stdout.log
-            {_CI_EVAL_OUTPUT}/azd_stderr.log""",
+            {_CI_EVAL_OUTPUT}/azd_stderr.log
+            {governance_artifacts}""",
         }
     if eval_runner == AGENTOPS_CLOUD_RUNNER:
         return {
@@ -435,6 +497,7 @@ def _github_eval_substitutions(
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{{{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}}}
           AZURE_OPENAI_ENDPOINT: ${{{{ vars.AZURE_OPENAI_ENDPOINT }}}}
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
+          AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
         run: |
           set +e
@@ -448,11 +511,13 @@ def _github_eval_substitutions(
           else
             echo "result=error" >> "$GITHUB_OUTPUT"
           fi
-          exit $ec""",
+          exit $ec
+{governance_steps}""",
             "__EVAL_ARTIFACT_PATHS__": f"""{_CI_EVAL_OUTPUT}/results.json
             {_CI_EVAL_OUTPUT}/report.md
             {_CI_EVAL_OUTPUT}/cloud_evaluation.json
-            {_CI_EVAL_OUTPUT}/cloud_output_items.json""",
+            {_CI_EVAL_OUTPUT}/cloud_output_items.json
+            {governance_artifacts}""",
         }
     if eval_runner == OFFICIAL_EVAL_RUNNER:
         official_action = official_eval_action_ref()
@@ -461,6 +526,7 @@ def _github_eval_substitutions(
         id: official_eval_input
         env:
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
+          AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           {OFFICIAL_EVAL_ACTION_ENV}: {official_action}
         run: |
           python -m agentops.pipeline.official_eval prepare \\
@@ -518,10 +584,14 @@ def _github_eval_substitutions(
               recorded_at=datetime.now(timezone.utc).isoformat(),
           )
           output.write_text(json.dumps(payload, indent=2) + '\\n', encoding='utf-8')
-          PY""",
+          PY
+{governance_steps}""",
             "__EVAL_ARTIFACT_PATHS__": """.agentops/official-eval/input.json
             .agentops/official-eval/metadata.json
-            .agentops/official-eval/result.json""",
+            .agentops/official-eval/result.json
+            .agentops/assert/latest.json
+            .agentops/redteam/latest.json
+            .agentops/redteam/raw_summary.json""",
         }
     return {
         "__EVAL_STEPS__": f"""      - name: Run AgentOps eval
@@ -530,6 +600,7 @@ def _github_eval_substitutions(
           AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: ${{{{ vars.AZURE_AI_FOUNDRY_PROJECT_ENDPOINT }}}}
           AZURE_OPENAI_ENDPOINT: ${{{{ vars.AZURE_OPENAI_ENDPOINT }}}}
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
+          AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
         run: |
           set +e
@@ -543,11 +614,13 @@ def _github_eval_substitutions(
           else
             echo \"result=error\" >> \"$GITHUB_OUTPUT\"
           fi
-          exit $ec""",
-        "__EVAL_ARTIFACT_PATHS__": """.agentops/results/latest/results.json
+          exit $ec
+{governance_steps}""",
+        "__EVAL_ARTIFACT_PATHS__": f""".agentops/results/latest/results.json
             .agentops/results/latest/report.md
             .agentops/results/latest/cloud_evaluation.json
-            .agentops/results/latest/cloud_output_items.json""",
+            .agentops/results/latest/cloud_output_items.json
+            {governance_artifacts}""",
     }
 
 
@@ -583,6 +656,7 @@ def _ado_eval_substitutions(
     AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
     APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
                 base_indent,
             ),
@@ -626,6 +700,7 @@ def _ado_eval_substitutions(
     AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
     APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
                 base_indent,
             ),
@@ -649,6 +724,7 @@ def _ado_eval_substitutions(
         --ado-output
   env:
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
     {OFFICIAL_EVAL_ADO_TASK_ENV}: {official_task}
 
 - task: {official_task}
@@ -711,6 +787,7 @@ def _ado_eval_substitutions(
     AZURE_AI_FOUNDRY_PROJECT_ENDPOINT: $(AZURE_AI_FOUNDRY_PROJECT_ENDPOINT)
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
+    AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
     APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
             base_indent,
         ),

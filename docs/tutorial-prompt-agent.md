@@ -130,7 +130,7 @@ cd agentops-prompt-quickstart
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[foundry,agent]"
+python -m pip install agentops-accelerator
 agentops --version
 ```
 
@@ -139,7 +139,7 @@ path, install the aligned reference branch so the CLI, generated
 workflows, and tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Install the AgentOps Copilot skills
@@ -426,7 +426,7 @@ In the **sandbox** project only:
 > next-version flow.
 
 > **Prompt-as-code captures only the instructions.** Later in the
-> tutorial you will commit `.agentops/prompts/travel-agent.md` to git
+> tutorial you will commit `.agentops/prompts/travel-agent.prompt.md` to git
 > and let CI use it as the prompt source. That file does not capture
 > the model deployment, parameters (temperature, top-p), tools, or
 > other agent settings — those come from `prompt_agent_bootstrap` on
@@ -709,31 +709,31 @@ evaluates and deploys comes from this file in git, not from manual edits
 in the Foundry portal.
 
 ```powershell
-New-Item -ItemType Directory -Force .agentops\prompts | Out-Null
-@'
-You are Travel Agent, a concise travel planning assistant.
-
-Help users plan short leisure trips. Always include:
-- a short summary;
-- a day-by-day plan when the user asks for an itinerary;
-- practical notes about budget, transit, weather, or booking constraints;
-- a reminder that you cannot make live reservations or purchases.
-
-Ask one clarifying question only when the destination, duration, or
-traveler preference is missing. Do not invent booking confirmations,
-prices, or availability.
-'@ | Set-Content -Encoding utf8 .agentops\prompts\travel-agent.md
+agentops prompt pull
 ```
 
-Then tell `agentops.yaml` where to find the file and add
-`prompt_agent_bootstrap` so CI can auto-create the agent in dev (and
-later qa / prod) on the first deploy:
+AgentOps reads `agent: travel-agent:2`, resolves the current Foundry
+endpoint, validates that the Foundry definition is a prompt agent, and
+writes the instructions to `.agentops/prompts/travel-agent.prompt.md`.
+Before writing, it prints the resolved agent, endpoint, endpoint source,
+and destination file so you can catch the wrong environment before the
+prompt is saved.
+
+By default, the command refuses to overwrite a changed prompt file. Use
+`--force` only when you intentionally want to replace reviewed local
+prompt edits with the current Sandbox version. Use `--out <path>` if you
+need a different file name, but keep prompt source under
+`.agentops/prompts/` unless your repository has a stronger convention.
+
+Then add `prompt_agent_bootstrap` so CI can auto-create the agent in dev
+(and later qa / prod) on the first deploy. `agentops prompt pull` writes
+`prompt_file` for you when it is missing:
 
 ```yaml
 version: 1
 agent: travel-agent:2
 dataset: .agentops/data/travel-smoke.jsonl
-prompt_file: .agentops/prompts/travel-agent.md
+prompt_file: .agentops/prompts/travel-agent.prompt.md
 prompt_agent_bootstrap:
   model: gpt-4o-mini
   description: "Helps plan short trips and explains tradeoffs."

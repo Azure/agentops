@@ -19,6 +19,7 @@ Read these first for detailed architecture and product context:
 - `agentops explain [COMMAND...] [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
 - `agentops init [--force] [--dir PATH] [--no-prompt] [--no-appinsights] [--azd-env NAME] [--project-endpoint URL] [--agent REF] [--dataset PATH] [--appinsights-connection-string STR]`
 - `agentops init show [--dir PATH] [--reveal-secrets]`
+- `agentops prompt pull [--config PATH] [--out PATH] [--project-endpoint URL] [--force] [--update-config|--no-update-config]`
 - `agentops eval analyze [--dir PATH] [--format text|markdown|json] [--out PATH]`
 - `agentops eval run [--config PATH] [--baseline PATH] [--output DIR]`
 - `agentops eval promote-traces --source PATH [--out PATH] [--max-rows N] [--label-mode self-similarity|pending] [--apply]`

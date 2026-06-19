@@ -34,7 +34,7 @@ def _build_run_result() -> RunResult:
                 input="hi",
                 expected="hello",
                 response="hello",
-                metrics=[RowMetric(name="f1_score", value=1.0)],
+                metrics=[RowMetric(name="f1_score", value=1.0, reason="exact match")],
             ),
             RowResult(
                 row_index=1,
@@ -62,17 +62,20 @@ def test_build_instance_rows_projects_metrics():
     assert rows == [
         {
             "line_number": 0,
-            "input": "hi",
-            "response": "hello",
-            "ground_truth": "hello",
-            "f1_score": 1.0,
+            "inputs.input": "hi",
+            "inputs.response": "hello",
+            "inputs.ground_truth": "hello",
+            "outputs.f1_score.score": 1.0,
+            "outputs.f1_score.reason": "exact match",
+            "metric.f1_score": 1.0,
         },
         {
             "line_number": 1,
-            "input": "bye",
-            "response": "goodbye",
-            "ground_truth": "goodbye",
-            "f1_score": 0.5,
+            "inputs.input": "bye",
+            "inputs.response": "goodbye",
+            "inputs.ground_truth": "goodbye",
+            "outputs.f1_score.score": 0.5,
+            "metric.f1_score": 0.5,
         },
     ]
 

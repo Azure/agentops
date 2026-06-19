@@ -206,6 +206,115 @@ assert-ai init
 It walks them through behavior description, target callable / model /
 endpoint, dimensions, and judge presets, and writes a validated YAML.
 
+### HTTP orchestrator ASSERT
+
+If `agentops.yaml` uses `protocol: http-json` or the user says the target is an
+HTTP orchestrator, do not use ASSERT native endpoint mode. `assert-ai 0.1.0`
+posts `message/history` and expects `response`; AgentOps HTTP targets may use
+custom fields like `ask` and streamed text. Scaffold a callable adapter instead.
+
+Create `.agentops/assert_http_adapter.py`:
+
+```python
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from agentops.core.config_loader import load_agentops_config
+from agentops.pipeline.invocations import (
+    _aggregate_stream,
+    _dot_path,
+    _http_request_json,
+    _http_request_stream,
+)
+
+
+def target(message: str, history: list[dict[str, Any]] | None = None) -> str:
+    del history
+    config = load_agentops_config(Path("agentops.yaml"))
+    if not config.agent:
+        raise RuntimeError("agentops.yaml must define a top-level HTTP agent endpoint")
+
+    request_field = config.request_field or "message"
+    headers = dict(config.headers)
+    headers.setdefault("Content-Type", "application/json")
+    body = {request_field: message}
+
+    if config.response_mode in ("sse", "text"):
+        raw_body = _http_request_stream(
+            method="POST",
+            url=config.agent,
+            headers=headers,
+            body=body,
+            timeout=120,
+        )
+        return _aggregate_stream(config.response_mode, raw_body, config.stream).strip()
+
+    payload = _http_request_json(
+        method="POST",
+        url=config.agent,
+        headers=headers,
+        body=body,
+        timeout=120,
+    )
+    response_path = config.response_field or "text"
+    response_text = _dot_path(payload, response_path)
+    if response_text is None and isinstance(payload, dict):
+        for fallback in ("response", "output", "content", "message", "text"):
+            response_text = payload.get(fallback)
+            if response_text:
+                break
+    return (
+        response_text
+        if isinstance(response_text, str)
+        else json.dumps(response_text or "", ensure_ascii=False)
+    )
+```
+
+Create an ASSERT smoke from a known-good eval dataset row, not a random general
+question. For the HTTP tutorial, use:
+
+```yaml
+suite: gpt-rag-http-smoke
+run: local-http-contract-smoke
+
+default_model:
+  name: azure/chat
+
+pipeline:
+  systematize:
+    enabled: false
+  test_set:
+    enabled: false
+  inference:
+    test_set_path: test_set.jsonl
+    target:
+      callable: assert_http_adapter:target
+    max_turns: 1
+  judge:
+    taxonomy_path: taxonomy.json
+    preset:
+      - grounding
+```
+
+Append this `assert:` block to `agentops.yaml`. Discover `AZURE_API_BASE` from
+the Azure AI/OpenAI resource and set `AZURE_API_VERSION` to the version used by
+the deployment. These are not secrets. If local auth is disabled, AgentOps will
+use the signed-in Azure CLI token for the ASSERT subprocess.
+
+```yaml
+assert:
+  config: ./assert/eval_config.yaml
+  fail_on_violations: true
+  env:
+    AZURE_API_BASE: https://<azure-ai-resource>.cognitiveservices.azure.com/
+    AZURE_API_VERSION: 2024-12-01-preview
+    AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS: "true"
+    PYTHONPATH: .agentops
+```
+
 **3. Append the `assert:` block to `agentops.yaml`** (preserve every existing
 key — read the file, append the block if missing, write back):
 

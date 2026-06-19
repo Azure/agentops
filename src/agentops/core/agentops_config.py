@@ -39,6 +39,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 #: Wire protocol for hosted / HTTP targets.
 Protocol = Literal["responses", "invocations", "http-json"]
 
+#: How AgentOps reads an ``http-json`` response body.
+#:
+#: - ``json`` (default): parse a single JSON document. Preserves the exact
+#:   behavior of every existing ``http_json`` config.
+#: - ``sse``: parse a Server-Sent Events body, concatenating ``data:`` lines.
+#: - ``text``: concatenate a raw streamed text body.
+ResponseMode = Literal["json", "sse", "text"]
+
 #: How thresholds compare against measured metric values.
 Criteria = Literal[">=", ">", "<=", "<", "==", "true", "false"]
 
@@ -454,6 +462,14 @@ class AssertRunConfig(BaseModel):
             "results without gating the pipeline."
         ),
     )
+    env: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional non-secret environment variables passed only to the "
+            "assert-ai subprocess, for example AZURE_API_BASE or "
+            "AZURE_API_VERSION."
+        ),
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -540,6 +556,41 @@ class RedTeamRunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class StreamConfig(BaseModel):
+    """Streaming aggregation options for ``http-json`` targets.
+
+    Only meaningful when ``response_mode`` is ``"sse"`` or ``"text"``. These
+    fields control how a streamed response body is parsed and reassembled into
+    a single answer string.
+    """
+
+    text_field: Optional[str] = Field(
+        None,
+        description=(
+            "For SSE where each 'data:' line is a JSON object, the dotted path "
+            "to the token text (e.g. 'delta.content'). Omit (None) when each "
+            "'data:' line is already raw text."
+        ),
+    )
+    done_marker: Optional[str] = Field(
+        None,
+        description=(
+            "Optional sentinel (e.g. '[DONE]'); aggregation stops when a "
+            "'data:' line equals this value."
+        ),
+    )
+    strip_leading_token: bool = Field(
+        False,
+        description=(
+            "Drop the first whitespace-delimited token from the aggregated "
+            "text. Use for endpoints that prefix the stream with an id (e.g. "
+            "the gpt-rag orchestrator emits '<conversation_id> ' first)."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 # ---------------------------------------------------------------------------
 # Top-level config
 # ---------------------------------------------------------------------------
@@ -600,7 +651,20 @@ class AgentOpsConfig(BaseModel):
 
     ``headers`` / ``auth_header_env``
         Optional HTTP request configuration for ``http-json`` and
-        ``invocations`` targets.
+        ``invocations`` targets. ``auth_header_env`` names the environment
+        variable that holds the secret.
+
+    ``response_mode`` / ``stream``
+        ``http-json`` only. ``response_mode`` selects how the response body is
+        read: ``"json"`` (default, single JSON document), ``"sse"`` (Server-Sent
+        Events), or ``"text"`` (raw streamed text). The ``stream`` block tunes
+        SSE/text aggregation (``text_field``, ``done_marker``,
+        ``strip_leading_token``).
+
+    ``auth_header_name`` / ``auth_value_template``
+        ``http-json`` only. Decouple the auth header from the default
+        ``Authorization: Bearer {token}``. For a shared-secret endpoint set
+        ``auth_header_name: X-API-KEY`` and ``auth_value_template: "{token}"``.
 
     ``evaluators``
         Optional escape hatch: explicit list of evaluator names that overrides
@@ -696,6 +760,37 @@ class AgentOpsConfig(BaseModel):
     tool_calls_field: Optional[str] = None
     headers: Dict[str, str] = Field(default_factory=dict)
     auth_header_env: Optional[str] = None
+    response_mode: ResponseMode = Field(
+        "json",
+        description=(
+            "How to read the HTTP/JSON response body. 'json' (default) parses "
+            "a single JSON document and preserves existing behavior. 'sse' "
+            "parses Server-Sent Events 'data:' lines; 'text' concatenates a "
+            "raw streamed text body. Only valid for http-json targets."
+        ),
+    )
+    stream: Optional[StreamConfig] = Field(
+        None,
+        description=(
+            "Streaming aggregation options, used only when response_mode is "
+            "'sse' or 'text'."
+        ),
+    )
+    auth_header_name: Optional[str] = Field(
+        None,
+        description=(
+            "HTTP header that carries the secret read from auth_header_env. "
+            "Defaults to 'Authorization' when unset."
+        ),
+    )
+    auth_value_template: Optional[str] = Field(
+        None,
+        description=(
+            "Template for the auth header value; '{token}' is replaced by the "
+            "auth_header_env value. Defaults to 'Bearer {token}' when unset. "
+            "Use '{token}' alone for a raw shared-secret header like X-API-KEY."
+        ),
+    )
 
     evaluators: Optional[List[EvaluatorOverride]] = None
     rubrics: List[RubricConfig] = Field(
@@ -850,6 +945,10 @@ class AgentOpsConfig(BaseModel):
             or self.tool_calls_field
             or self.headers
             or self.auth_header_env
+            or self.response_mode != "json"
+            or self.stream is not None
+            or self.auth_header_name
+            or self.auth_value_template
         ):
             # Foundry hosted (responses/invocations) defines its own wire
             # format. HTTP-only request/response shaping is invalid there.
@@ -859,8 +958,9 @@ class AgentOpsConfig(BaseModel):
             else:
                 raise ValueError(
                     "request_field / response_field / tool_calls_field / "
-                    "headers / auth_header_env are only valid for HTTP/JSON "
-                    "or Foundry hosted (invocations) targets"
+                    "headers / auth_header_env / response_mode / stream / "
+                    "auth_header_name / auth_value_template are only valid for "
+                    "HTTP/JSON or Foundry hosted (invocations) targets"
                 )
         return self
 
