@@ -14,12 +14,15 @@ from html import escape as html_escape
 from pathlib import Path
 from textwrap import wrap
 from collections.abc import Sequence
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Optional, TYPE_CHECKING
 
 import typer
 
 from agentops.utils.colors import style
 from agentops.utils.logging import get_logger, setup_logging
+
+if TYPE_CHECKING:
+    from agentops.core.agentops_config import AgentOpsConfig
 
 app = typer.Typer(
     name="agentops",
