@@ -2354,6 +2354,70 @@ def _resolve_eval_config_path(config: Path | None) -> Path:
     return Path("agentops.yaml")
 
 
+def _append_assert_step_summary(result, *, scored_cases, pass_rate) -> None:
+    """Append an ASSERT gate summary to the GitHub Actions step summary."""
+    from agentops.core.step_summary import append_step_summary, is_active
+
+    if not is_active():
+        return
+    status = "❌ VIOLATIONS" if result.has_violations else "✅ PASS"
+    lines = [
+        "## AgentOps ASSERT gate",
+        "",
+        f"**Result:** {status}",
+        "",
+        f"- **Suite:** `{result.suite}`",
+        f"- **Run:** `{result.run_id}`",
+        f"- **Cases:** {result.total_cases} "
+        f"(scored={scored_cases}, passed={result.passed_cases}, "
+        f"failed={result.failed_cases}, skipped={result.skipped_cases})",
+        f"- **Pass rate:** {pass_rate}",
+    ]
+    if result.dimension_summary:
+        lines += ["", "| Dimension | Result |", "| --- | --- |"]
+        for name, bucket in sorted(result.dimension_summary.items()):
+            violations = bucket.get("violations", 0)
+            total = bucket.get("total", 0)
+            skipped = bucket.get("skipped", 0)
+            if violations == 0:
+                clean = max(total - skipped, 0)
+                cell = f"{clean}/{total} clean ✅"
+            else:
+                cell = f"{violations}/{total} violating ❌"
+            if skipped:
+                cell += f" (skipped={skipped})"
+            lines.append(f"| {name} | {cell} |")
+    append_step_summary("\n".join(lines))
+
+
+def _append_redteam_step_summary(result, *, asr_pct) -> None:
+    """Append a Red Team gate summary to the GitHub Actions step summary."""
+    from agentops.core.step_summary import append_step_summary, is_active
+
+    if not is_active():
+        return
+    status = "❌ HIGH" if result.has_violations else "✅ PASS"
+    lines = [
+        "## AgentOps Red Team gate",
+        "",
+        f"**Result:** {status}",
+        "",
+        f"- **Attempts:** {result.total_attempts} "
+        f"(successful={result.successful_attacks})",
+        f"- **Attack success rate:** {asr_pct}",
+    ]
+    if result.fail_threshold is not None:
+        lines.append(f"- **Gate threshold:** {result.fail_threshold:.1%}")
+    if result.per_category:
+        lines += ["", "| Risk category | Successful | Rate |", "| --- | --- | --- |"]
+        for name, bucket in sorted(result.per_category.items()):
+            total = bucket.get("total", 0)
+            successful = bucket.get("successful", 0)
+            rate = bucket.get("attack_success_rate", 0.0)
+            lines.append(f"| {name} | {successful}/{total} | {rate:.1%} |")
+    append_step_summary("\n".join(lines))
+
+
 @assert_app.command("run")
 def cmd_assert_run(
     config: Annotated[
@@ -2563,6 +2627,8 @@ def cmd_assert_run(
             "  (skipped cases usually mean the tester model self-refused before "
             "reaching the target; try a less restrictive tester deployment.)"
         )
+
+    _append_assert_step_summary(result, scored_cases=scored_cases, pass_rate=pass_rate)
 
     if result.has_violations:
         msg = (
@@ -2805,6 +2871,8 @@ def cmd_redteam_run(
             rate = bucket.get("attack_success_rate", 0.0)
             typer.echo(f"  {name}: {successful}/{total} ({rate:.1%})")
 
+    _append_redteam_step_summary(result, asr_pct=asr_pct)
+
     if result.has_violations:
         msg = (
             f"{_cli_error('FAIL')}: Red Team attack success rate "
@@ -2946,6 +3014,9 @@ def _run_flat_schema_eval(
     report_url = azd_eval.get("report_url") if isinstance(azd_eval, dict) else None
     if isinstance(report_url, str) and report_url.strip():
         typer.echo(f"{_cli_label('Foundry run')}:  {report_url.strip()}")
+    from agentops.core.step_summary import append_report_file
+
+    append_report_file(output_dir / "report.md")
     if result.summary.overall_passed:
         typer.echo(f"{_cli_label('Threshold status')}: {style('PASSED', 'bold', 'green')}")
         return
