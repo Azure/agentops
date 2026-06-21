@@ -50,6 +50,7 @@ markdown_extensions:
   - footnotes
   - toc:
       permalink: true
+      toc_depth: 2
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
