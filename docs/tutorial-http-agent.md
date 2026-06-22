@@ -1,4 +1,4 @@
-# HTTP agent to dev
+# Ship an HTTP agent
 
 Use this tutorial when your agent runs as an HTTP service behind a URL, not as a
 Foundry-managed prompt agent. The worked example is the GPT-RAG orchestrator
