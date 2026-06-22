@@ -1,8 +1,8 @@
 # Ship an HTTP agent
 
 Use this tutorial when your agent runs as an HTTP service behind a URL, not as a
-Foundry-managed prompt agent. The worked example is the GPT-RAG orchestrator
-deployed by the `Azure/gpt-rag` template. It is a FastAPI service inside an
+Foundry-managed prompt agent. The worked example is a RAG agent, implemented in the
+[gpt-rag-orchestrator](https://github.com/Azure/gpt-rag-orchestrator). It is a FastAPI service inside an
 Azure Container App, exposed at `POST /orchestrator`. You deploy it, take
 ownership of the cloned orchestrator, and add an AgentOps PR gate that evaluates
 the HTTP endpoint before merge.
