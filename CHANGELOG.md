@@ -5,6 +5,16 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-06-22
+
+### Fixed
+- **VS Code extension is back on the Marketplace.** The 0.5.2 release published to
+  PyPI, but the Marketplace (VSIX) publish was blocked by an expired publisher
+  token, so the VS Code extension never updated to 0.5.2. Release 0.5.3 ships the
+  same toolkit as 0.5.2 with a refreshed Marketplace credential, so
+  `agentops-accelerator` on PyPI and the AgentOps extension on the Marketplace are
+  back in sync. No functional changes to the CLI or the extension.
+
 ## [0.5.2] - 2026-06-20
 
 ### Added
