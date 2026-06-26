@@ -15,7 +15,7 @@ flowchart LR
     E["<b>Evaluate</b><br/>Deploy the sandbox<br/>Run evals<br/>Catch weak answers"]
     S["<b>Ship</b><br/>Own the repo<br/>Open PR<br/>Deploy to dev"]
     O["<b>Observe</b><br/>Read traces<br/>Run Doctor<br/>Check telemetry"]
-    W["<b>Own</b><br/>Review evidence<br/>Block regressions<br/>Make the call"]
+    W["<b>Operate</b><br/>Review evidence<br/>Block regressions<br/>Make the call"]
 
     E --> S --> O --> W
 ```
@@ -641,7 +641,7 @@ drop straight into the gate.
 
 Document Retrieval is a different tool. It scores retrieval *ranking* against
 relevance labels you author by hand and returns composite metrics for search
-tuning, so it runs offline, not on the gate. It belongs to the Own phase, when you
+tuning, so it runs offline, not on the gate. It belongs to the Operate phase, when you
 optimize the agent's search over time. For a full walkthrough, see
 [Retrieval optimization](retrieval-optimization.md).
 
@@ -949,7 +949,7 @@ and the [azure/login action](https://github.com/Azure/login).
     want running, delete them so only your `agentops-*` workflows fire. You can
     re-run `agentops workflow generate` any time to regenerate yours.
 
-## 14. Ship, observe, own
+## 14. Ship, observe, operate
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.
@@ -964,9 +964,9 @@ agentops doctor --evidence-pack
   [Ship](ship.md).
 - **Observe.** Read traces, telemetry, and Doctor findings for the dev run. See
   [Observe](observe.md).
-- **Own.** Review the evidence pack, decide ship or no-ship, and open Cockpit for
+- **Operate.** Review the evidence pack, decide ship or no-ship, and open Cockpit for
   a single readiness view with `agentops cockpit --workspace .`. See
-  [Own](own.md).
+  [Operate](operate.md).
 
 ## What you walk away knowing
 

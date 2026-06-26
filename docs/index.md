@@ -14,7 +14,7 @@ hide:
 
 <p class="agentops-banner-tagline">The open-source AgentOps jumpstart for continuous evaluation, safety testing, observability, and release readiness of Microsoft Foundry agents.</p>
 
-<p class="agentops-banner-question">Evaluate. Ship. Observe. Own.</p>
+<p class="agentops-banner-question">Evaluate. Ship. Observe. Operate.</p>
 
 <div class="agentops-banner-actions" markdown>
 [Latest Release {{ latest_release("Azure/agentops") }} :material-tag:](https://github.com/Azure/agentops/releases/latest){ .md-button--pill }
@@ -75,8 +75,8 @@ production signals feed continuous evaluation.
 </div>
 
 <div class="agentops-card" markdown>
-### :material-stethoscope: Own
-[Own](own.md) shows how Doctor scores readiness and packages an evidence pack so
+### :material-stethoscope: Operate
+[Operate](operate.md) shows how Doctor scores readiness and packages an evidence pack so
 you can make the ship or no-ship call.
 </div>
 
@@ -94,7 +94,7 @@ evidence, then feed production learning back into the next evaluation set.
 |---|---|
 | **Sandbox inner loop** | Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted. |
 | **AgentOps Accelerator** | Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence. |
-| **Foundry** | Own managed agent projects, Prompt Agent and HTTP agent runtime options, traces, operate views, guardrails, and evaluations where applicable. |
+| **Foundry** | Hosts managed agent projects, Prompt Agent and HTTP agent runtime options, traces, operate views, guardrails, and evaluations where applicable. |
 | **Outer loop delivery** | Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check. |
 | **Operate and improve** | Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases. |
 

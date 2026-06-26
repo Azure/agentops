@@ -10,14 +10,14 @@ You will do four things:
 1. **Evaluate** a prompt agent while you experiment in sandbox.
 2. **Ship** the prompt through GitHub so the same reviewed file deploys to dev.
 3. **Observe** the dev run with traces, telemetry, and Doctor findings.
-4. **Own** the release decision with evidence, thresholds, and a Cockpit summary.
+4. **Operate** with release evidence, thresholds, and a Cockpit summary.
 
 ```mermaid
 flowchart LR
     E["<b>Evaluate</b><br/>Author in sandbox<br/>Run evals"]
     S["<b>Ship</b><br/>Move prompt to git<br/>Open PR, deploy to dev"]
     O["<b>Observe</b><br/>Read traces<br/>Run Doctor"]
-    W["<b>Own</b><br/>Review evidence<br/>Make the ship call"]
+    W["<b>Operate</b><br/>Review evidence<br/>Make the ship call"]
     E --> S --> O --> W
 ```
 
@@ -74,7 +74,7 @@ content instead. It fingerprints each version two ways:
 AgentOps writes both into a small deploy record, `foundry-agent.json`, one per
 environment. To check whether dev and prod run the same prompt, compare these
 fingerprints, not the Foundry version numbers. Step 15 walks through a real
-`foundry-agent.json`. More: [Own](own.md).
+`foundry-agent.json`. More: [Operate](operate.md).
 
 ## 1. Create the workspace
 
@@ -1043,7 +1043,7 @@ has `travel-agent:2` matching the shipped prompt) it looks like this:
     `prompt_sha256` plus `git_sha` pair is the cross-environment identity: when you
     add qa and prod, each gets its own `foundry-agent.json` with possibly different
     version numbers but the same SHAs whenever they run the same release. Detail:
-    [Own](own.md).
+    [Operate](operate.md).
 
 ## 16. Catch a regression
 

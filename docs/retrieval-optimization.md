@@ -1,8 +1,8 @@
 # Retrieval optimization
 
-This is an Own-phase activity. Once your agent is shipped and the gate is green,
-ownership means making it better over time, not just keeping it from regressing.
-When the [ownership loop](own.md#the-ownership-loop) shows weak grounding or
+This is an Operate-phase activity. Once your agent is shipped and the gate is green,
+operating means making it better over time, not just keeping it from regressing.
+When the [operating loop](operate.md#the-operating-loop) shows weak grounding or
 off-topic answers, the root cause is often retrieval: the agent answered from the
 wrong chunks. This page shows how to measure and tune retrieval quality directly,
 using the Foundry [Document Retrieval evaluator](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators#document-retrieval).
@@ -196,6 +196,6 @@ confirmed by the gate there.
 
 ## Related
 
-- [Own](own.md): the ownership loop this activity belongs to.
+- [Operate](operate.md): the operating loop this activity belongs to.
 - [HTTP agent tutorial, step 11](tutorial-http-agent.md#11-score-live-retrieval): how grey-box capture is wired.
 - [Foundry RAG evaluators](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rag-evaluators): the full evaluator reference, including every Document Retrieval score key.

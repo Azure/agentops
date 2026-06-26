@@ -78,8 +78,8 @@ nav:
       - Overview: ship.md
       - GitHub Actions: ci-github-actions.md
   - Observe: observe.md
-  - Own:
-      - Overview: own.md
+  - Operate:
+      - Overview: operate.md
       - Retrieval Optimization: retrieval-optimization.md
       - Doctor Checks: doctor-checks.md
       - Doctor Explained: doctor-explained.md

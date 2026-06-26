@@ -52,7 +52,7 @@ evaluation set.
 |---|---|
 | **Sandbox inner loop** | Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted. |
 | **AgentOps Accelerator** | Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence. |
-| **Foundry** | Own managed agent projects, Prompt Agent and Hosted Agent runtime options, traces, operate views, guardrails, and evaluations where applicable. |
+| **Foundry** | Hosts managed agent projects, Prompt Agent and Hosted Agent runtime options, traces, operate views, guardrails, and evaluations where applicable. |
 | **Outer loop delivery** | Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check. |
 | **Operate and improve** | Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases. |
 

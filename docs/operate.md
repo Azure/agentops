@@ -1,7 +1,7 @@
-# Own
+# Operate
 
-This page is about owning an agent over time, not just shipping it once.
-Ownership is the loop of scoring readiness, proving the ship decision with
+This page is about operating an agent over time, not just shipping it once.
+Operating is the loop of scoring readiness, proving the ship decision with
 evidence, and feeding production learning back into the next evaluation. The
 Doctor and the evidence pack are the two tools that make that loop concrete.
 
@@ -69,9 +69,9 @@ Generated production workflows append the evidence report to the run summary, so
 when a release blocks you can start from the critical and warning finding ids
 before opening the full artifact.
 
-## The ownership loop
+## The operating loop
 
-Owning an agent means running this loop, not a one-time checklist.
+Operating an agent means running this loop, not a one-time checklist.
 
 ```mermaid
 flowchart LR

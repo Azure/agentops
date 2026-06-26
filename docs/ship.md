@@ -130,7 +130,7 @@ regression detection against the rolling baseline.
 
 Production deploy templates always run Doctor with a critical finding gate. To
 understand the findings and severities behind these gates, see
-[Own](own.md) and the [Doctor checks reference](doctor-checks.md).
+[Operate](operate.md) and the [Doctor checks reference](doctor-checks.md).
 
 ## Identity and access
 
