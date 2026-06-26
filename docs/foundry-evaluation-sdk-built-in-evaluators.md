@@ -39,7 +39,7 @@ evaluators:
   - RelevanceEvaluator
 ```
 
-## Evaluator families
+## Requirements
 
 | Family | What it checks | Common inputs |
 |---|---|---|
@@ -49,7 +49,7 @@ evaluators:
 | Agent judges | Tool use and agent workflow behavior are correct. | prompt, response, tool calls, tool definitions |
 | Local metrics | Scores that do not need a judge model. | response, expected answer, latency |
 
-## Evaluator inputs
+## Parameters
 
 AgentOps uses a small set of logical inputs. The same logical input can come from
 a static dataset, a live HTTP response, or imported telemetry.
@@ -65,7 +65,7 @@ a static dataset, a live HTTP response, or imported telemetry.
 | `tool_definitions` | Tool schemas available to the agent. | dataset row |
 | `trace_id` | Trace lineage for review and troubleshooting. | `$telemetry.trace_id` |
 
-## Mapping rules
+## Rules
 
 The mapping rules are intentionally boring:
 
@@ -120,7 +120,18 @@ agentops telemetry preview prod-rag --rows 10
 agentops telemetry import prod-rag --apply
 ```
 
-## Quality judges
+When comparing this page with raw SDK examples, use these mappings:
+
+- Quality evaluators often show `model_config`. In AgentOps, set the judge model
+  with `AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME`.
+- Safety evaluators often show `azure_ai_project`. In AgentOps, set the Foundry
+  project with `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` or `project_endpoint:`.
+- Agent evaluators need the agent payload to include tool calls and tool
+  definitions when you want tools to be judged.
+- NLP metrics are non-LLM checks over values such as `response` and
+  `ground_truth`.
+
+## Quality
 
 | Evaluator | Typical inputs | Notes |
 |---|---|---|
@@ -134,7 +145,7 @@ Quality judges need a judge model deployment. Set
 `AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` when local or
 cloud evaluation needs one.
 
-## Safety judges
+## Safety
 
 | Evaluator | Typical inputs | Notes |
 |---|---|---|
@@ -148,7 +159,7 @@ cloud evaluation needs one.
 Safety judges require a Foundry project connection. Use
 `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` or `project_endpoint:` in `agentops.yaml`.
 
-## Agent judges
+## Agent
 
 | Evaluator | Typical inputs | Notes |
 |---|---|---|
@@ -163,7 +174,7 @@ Agent judges work best when the target returns tool telemetry or the dataset row
 contains expected tool calls. If the endpoint cannot expose tool calls, start
 with answer quality and RAG judges instead.
 
-## Local metrics
+## NLP
 
 | Evaluator | Typical inputs | Notes |
 |---|---|---|
@@ -197,3 +208,4 @@ AgentOps keeps cloud evaluation setup minimal:
 - Production trace imports need review before they become blocking release gates.
 
 **Last updated:** 2026-06-26 (UTC)
+
