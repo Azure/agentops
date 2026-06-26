@@ -5417,8 +5417,8 @@ def _colorize_block(
 # fallback keeps the same words on a single line.
 def _agentops_tagline() -> str:
     if _terminal_unicode_enabled():
-        return "Evaluate  ·  Ship  ·  Observe  ·  Own  —  every Foundry agent."
-    return "Evaluate :: Ship :: Observe :: Own -- every Foundry agent."
+        return "Evaluate  ·  Ship  ·  Observe  ·  Operate  —  every Foundry agent."
+    return "Evaluate :: Ship :: Observe :: Operate -- every Foundry agent."
 
 
 def _render_brand_block(
