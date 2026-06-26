@@ -308,10 +308,10 @@
     
     
       <li class="md-tabs__item">
-        <a href="../own/" class="md-tabs__link">
+        <a href="../operate/" class="md-tabs__link">
           
   
-  Own
+  Operate
 
         </a>
       </li>
@@ -963,7 +963,7 @@
             
   
   <span class="md-ellipsis">
-    Own
+    Operate
   </span>
   
 
@@ -973,7 +973,7 @@
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
-            Own
+            Operate
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -984,7 +984,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../own/" class="md-nav__link">
+      <a href="../operate/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1338,13 +1338,13 @@ evidence, and Cockpit.</p>
 <li><strong>Evaluate</strong> a prompt agent while you experiment in sandbox.</li>
 <li><strong>Ship</strong> the prompt through GitHub so the same reviewed file deploys to dev.</li>
 <li><strong>Observe</strong> the dev run with traces, telemetry, and Doctor findings.</li>
-<li><strong>Own</strong> the release decision with evidence, thresholds, and a Cockpit summary.</li>
+<li><strong>Operate</strong> with release evidence, thresholds, and a Cockpit summary.</li>
 </ol>
 <pre class="mermaid"><code>flowchart LR
     E["&lt;b&gt;Evaluate&lt;/b&gt;&lt;br/&gt;Author in sandbox&lt;br/&gt;Run evals"]
     S["&lt;b&gt;Ship&lt;/b&gt;&lt;br/&gt;Move prompt to git&lt;br/&gt;Open PR, deploy to dev"]
     O["&lt;b&gt;Observe&lt;/b&gt;&lt;br/&gt;Read traces&lt;br/&gt;Run Doctor"]
-    W["&lt;b&gt;Own&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Make the ship call"]
+    W["&lt;b&gt;Operate&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Make the ship call"]
     E --&gt; S --&gt; O --&gt; W</code></pre>
 <p>The idea is simple: sandbox is for trying things, Git is the source of truth,
 and CI evaluates the PR candidate before anything is promoted to dev. If Doctor
@@ -1412,7 +1412,7 @@ content instead. It fingerprints each version two ways:</p>
 <p>AgentOps writes both into a small deploy record, <code>foundry-agent.json</code>, one per
 environment. To check whether dev and prod run the same prompt, compare these
 fingerprints, not the Foundry version numbers. Step 15 walks through a real
-<code>foundry-agent.json</code>. More: <a href="../own/">Own</a>.</p>
+<code>foundry-agent.json</code>. More: <a href="../operate/">Operate</a>.</p>
 <h2 id="1-create-the-workspace">1. Create the workspace<a class="headerlink" href="#1-create-the-workspace" title="Permanent link">&para;</a></h2>
 <p>First, create and activate a workspace folder with its own virtual environment:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">mkdir</span> <span class="n">agentops-prompt-quickstart</span>
@@ -2303,7 +2303,7 @@ usually <code>:1</code>). <code>source_agent</code> and <code>candidate_agent</c
 <code>prompt_sha256</code> plus <code>git_sha</code> pair is the cross-environment identity: when you
 add qa and prod, each gets its own <code>foundry-agent.json</code> with possibly different
 version numbers but the same SHAs whenever they run the same release. Detail:
-<a href="../own/">Own</a>.</p>
+<a href="../operate/">Operate</a>.</p>
 </div>
 <h2 id="16-catch-a-regression">16. Catch a regression<a class="headerlink" href="#16-catch-a-regression" title="Permanent link">&para;</a></h2>
 <p>Now ship a worse prompt and watch two independent gates fail in the same PR:</p>

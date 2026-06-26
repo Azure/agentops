@@ -308,10 +308,10 @@
     
     
       <li class="md-tabs__item">
-        <a href="../own/" class="md-tabs__link">
+        <a href="../operate/" class="md-tabs__link">
           
   
-  Own
+  Operate
 
         </a>
       </li>
@@ -634,9 +634,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14-ship-observe-own" class="md-nav__link">
+  <a href="#14-ship-observe-operate" class="md-nav__link">
     <span class="md-ellipsis">
-      14. Ship, observe, own
+      14. Ship, observe, operate
     </span>
   </a>
   
@@ -891,7 +891,7 @@
             
   
   <span class="md-ellipsis">
-    Own
+    Operate
   </span>
   
 
@@ -901,7 +901,7 @@
         <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
-            Own
+            Operate
           </label>
           <ul class="md-nav__list" data-md-scrollfix>
             
@@ -912,7 +912,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../own/" class="md-nav__link">
+      <a href="../operate/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1149,9 +1149,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14-ship-observe-own" class="md-nav__link">
+  <a href="#14-ship-observe-operate" class="md-nav__link">
     <span class="md-ellipsis">
-      14. Ship, observe, own
+      14. Ship, observe, operate
     </span>
   </a>
   
@@ -1197,7 +1197,7 @@ endpoint-based agent:</p>
     E["&lt;b&gt;Evaluate&lt;/b&gt;&lt;br/&gt;Deploy the sandbox&lt;br/&gt;Run evals&lt;br/&gt;Catch weak answers"]
     S["&lt;b&gt;Ship&lt;/b&gt;&lt;br/&gt;Own the repo&lt;br/&gt;Open PR&lt;br/&gt;Deploy to dev"]
     O["&lt;b&gt;Observe&lt;/b&gt;&lt;br/&gt;Read traces&lt;br/&gt;Run Doctor&lt;br/&gt;Check telemetry"]
-    W["&lt;b&gt;Own&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Block regressions&lt;br/&gt;Make the call"]
+    W["&lt;b&gt;Operate&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Block regressions&lt;br/&gt;Make the call"]
 
     E --&gt; S --&gt; O --&gt; W</code></pre>
 <p>Use the environments this way:</p>
@@ -1803,7 +1803,7 @@ block, it does not apply to JSON responses.</p>
 drop straight into the gate.</p>
 <p>Document Retrieval is a different tool. It scores retrieval <em>ranking</em> against
 relevance labels you author by hand and returns composite metrics for search
-tuning, so it runs offline, not on the gate. It belongs to the Own phase, when you
+tuning, so it runs offline, not on the gate. It belongs to the Operate phase, when you
 optimize the agent's search over time. For a full walkthrough, see
 <a href="../retrieval-optimization/">Retrieval optimization</a>.</p>
 <h3 id="run-it">Run it<a class="headerlink" href="#run-it" title="Permanent link">&para;</a></h3>
@@ -2115,7 +2115,7 @@ still carries upstream workflows under <code>.github/workflows/</code> that you 
 want running, delete them so only your <code>agentops-*</code> workflows fire. You can
 re-run <code>agentops workflow generate</code> any time to regenerate yours.</p>
 </div>
-<h2 id="14-ship-observe-own">14. Ship, observe, own<a class="headerlink" href="#14-ship-observe-own" title="Permanent link">&para;</a></h2>
+<h2 id="14-ship-observe-operate">14. Ship, observe, operate<a class="headerlink" href="#14-ship-observe-operate" title="Permanent link">&para;</a></h2>
 <p>The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
@@ -2127,9 +2127,9 @@ section pages the other tutorials use.</p>
   <a href="../ship/">Ship</a>.</li>
 <li><strong>Observe.</strong> Read traces, telemetry, and Doctor findings for the dev run. See
   <a href="../observe/">Observe</a>.</li>
-<li><strong>Own.</strong> Review the evidence pack, decide ship or no-ship, and open Cockpit for
+<li><strong>Operate.</strong> Review the evidence pack, decide ship or no-ship, and open Cockpit for
   a single readiness view with <code>agentops cockpit --workspace .</code>. See
-  <a href="../own/">Own</a>.</li>
+  <a href="../operate/">Operate</a>.</li>
 </ul>
 <h2 id="what-you-walk-away-knowing">What you walk away knowing<a class="headerlink" href="#what-you-walk-away-knowing" title="Permanent link">&para;</a></h2>
 <ul>
