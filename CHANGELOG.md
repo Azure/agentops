@@ -5,6 +5,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Retrieval telemetry can now be imported as evaluation datasets.** The new
+  `telemetry_imports` config contract and `agentops telemetry validate`,
+  `agentops telemetry preview`, and `agentops telemetry import` commands let
+  teams turn reviewed retrieval telemetry into dataset-backed eval rows with
+  `response_source: dataset`. Grey-box HTTP agents can map `response_fields` from
+  `$response.context`, and the evaluation docs now cover the import workflow and
+  contract.
+
 ### Changed
 - **PR-stage Foundry prompt-agent versions are now tagged at the source.** When
   `agentops.pipeline.prompt_deploy stage` runs in a PR context (GitHub Actions

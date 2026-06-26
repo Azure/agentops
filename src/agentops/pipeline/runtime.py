@@ -195,8 +195,11 @@ _PLACEHOLDERS = {
     "$prediction": "response",
     "$expected": "expected",
     "$context": "context",
+    "$retrieved_context": "retrieved_context",
+    "$retrieved_context_items": "retrieved_context_items",
     "$tool_calls": "tool_calls",
     "$tool_definitions": "tool_definitions",
+    "$telemetry.trace_id": "telemetry.trace_id",
 }
 
 
@@ -294,19 +297,38 @@ def _resolve_kwargs(
     response: str,
 ) -> Dict[str, Any]:
     resolved: Dict[str, Any] = {}
+    row_response = row.get("response")
     merged = {**row, "response": response, "input": row.get("input")}
     for kwarg, placeholder in mapping.items():
         if not isinstance(placeholder, str) or not placeholder.startswith("$"):
             resolved[kwarg] = placeholder
             continue
-        source_key = _PLACEHOLDERS.get(placeholder)
-        if source_key is None:
+        source_path = _PLACEHOLDERS.get(placeholder)
+        if source_path is None and placeholder.startswith("$response."):
+            if isinstance(row_response, dict):
+                value = _lookup_placeholder(row_response, placeholder[len("$response."):])
+                if value is not None:
+                    resolved[kwarg] = value
+                    continue
+            source_path = placeholder[1:]
+        if source_path is None and placeholder.startswith("$telemetry."):
+            source_path = placeholder[1:]
+        if source_path is None:
             raise ValueError(f"unknown evaluator placeholder {placeholder!r}")
-        value = merged.get(source_key)
+        value = _lookup_placeholder(merged, source_path)
         if value is None:
             continue
         resolved[kwarg] = value
     return resolved
+
+
+def _lookup_placeholder(data: Dict[str, Any], path: str) -> Any:
+    current: Any = data
+    for part in path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
 
 
 def _extract_score(payload: Any, score_key: str) -> Optional[float]:
