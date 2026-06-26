@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-26
+
 ### Added
 - **Retrieval telemetry can now be imported as evaluation datasets.** The new
   `telemetry_imports` config contract and `agentops telemetry validate`,
