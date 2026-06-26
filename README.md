@@ -184,7 +184,10 @@ Doctor/Cockpit, and `[mcp]` for MCP.
 - `agentops eval analyze` - check eval readiness.
 - `agentops eval init` - bootstrap an azd `eval.yaml` recipe and wire `execution: azd`.
 - `agentops eval run [--baseline PATH]` - run an evaluation.
-- `agentops eval promote-traces --source FILE [--apply]` - promote traces.
+- `agentops eval promote-traces --source FILE [--apply]` - promote local trace export files.
+- `agentops telemetry validate NAME` - validate an Azure Monitor or Application Insights import.
+- `agentops telemetry preview NAME --rows N` - preview telemetry import rows.
+- `agentops telemetry import NAME --apply` - write the imported telemetry dataset.
 - `agentops report generate` - regenerate `report.md`.
 - `agentops workflow analyze` - recommend CI/CD shape.
 - `agentops workflow generate` - generate CI/CD workflows.
@@ -217,6 +220,7 @@ Cockpit sections, in display order:
 - [Foundry Prompt Agent tutorial](docs/tutorial-prompt-agent-quickstart.md) - use this when the Foundry target is `agent: name:version`. Walks the sandbox → dev journey with a PR gate.
 - [Hosted or HTTP Agent tutorial](docs/tutorial-hosted-agent-quickstart.md) - use this when the target is a Foundry hosted or HTTP endpoint URL. Same sandbox → dev journey for endpoint-based agents.
 - [End-to-end tutorial](docs/tutorial-end-to-end.md) - extends either of the above with the full sandbox → dev → qa → prod promotion, Foundry red-team scans, and trace-to-regression promotion.
+- [Evaluation paths](docs/evaluation.md) - choose static dataset, grey-box HTTP, or telemetry/trace import.
 - [Core concepts](docs/concepts.md)
 - [How it works](docs/how-it-works.md)
 - [Doctor explained](docs/doctor-explained.md)
