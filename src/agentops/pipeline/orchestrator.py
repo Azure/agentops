@@ -730,7 +730,8 @@ def _evaluate_row(
     preview = str(row.get("input", "")).strip().replace("\n", " ")
     if len(preview) > 80:
         preview = preview[:77] + "..."
-    progress(f"{label} invoking target: {preview!r}")
+    action = "using dataset response" if config.response_source == "dataset" else "invoking target"
+    progress(f"{label} {action}: {preview!r}")
     expected = row.get("expected")
     expected_text = str(expected) if expected is not None else None
 
@@ -740,18 +741,21 @@ def _evaluate_row(
         expected_text=expected_text,
     ) as item_span:
         try:
-            with telemetry.agent_invoke_span(
-                target="agent" if target.kind.startswith("foundry") else "model",
-                model=target.deployment,
-                agent_id=target.raw if target.kind.startswith("foundry") else None,
-                agent_name=target.name,
-                agent_version=target.version,
-            ) as invoke_span:
-                invocation = invocations.invoke(target, config, row, timeout=timeout)
-                telemetry.set_agent_invoke_result(
-                    invoke_span,
-                    response_model=target.deployment,
-                )
+            if config.response_source == "dataset":
+                invocation = _dataset_invocation(row)
+            else:
+                with telemetry.agent_invoke_span(
+                    target="agent" if target.kind.startswith("foundry") else "model",
+                    model=target.deployment,
+                    agent_id=target.raw if target.kind.startswith("foundry") else None,
+                    agent_name=target.name,
+                    agent_version=target.version,
+                ) as invoke_span:
+                    invocation = invocations.invoke(target, config, row, timeout=timeout)
+                    telemetry.set_agent_invoke_result(
+                        invoke_span,
+                        response_model=target.deployment,
+                    )
         except Exception as exc:  # noqa: BLE001
             telemetry.set_eval_item_result(item_span, passed=False)
             logger.debug("row %d invocation failed: %s", index, exc)
@@ -771,12 +775,17 @@ def _evaluate_row(
             f"({tool_count} tool call(s)); scoring..."
         )
 
+        response_fields = invocation.metadata.get("response_fields")
+        evaluator_row = row
+        if isinstance(response_fields, dict) and response_fields:
+            evaluator_row = {**row, "response": response_fields}
+
         metrics: List[RowMetric] = []
         captured_fields = invocation.metadata.get("response_fields") or {}
         for evaluator in evaluators:
             metric = runtime.run_evaluator(
                 evaluator,
-                row=row,
+                row=evaluator_row,
                 response=invocation.response,
                 latency_seconds=invocation.latency_seconds,
                 actual_tool_calls=invocation.tool_calls,
@@ -828,16 +837,55 @@ def _evaluate_row(
     scored = ", ".join(_format_metric(m) for m in metrics)
     progress(f"{label} scored: {scored}")
 
+    result_context = (
+        response_fields.get("context")
+        if isinstance(response_fields, dict) and response_fields.get("context") is not None
+        else row.get("context")
+    )
+
     return RowResult(
         row_index=index,
         input=str(row.get("input", "")),
         expected=row.get("expected"),
         response=invocation.response,
-        context=captured_fields.get("context", row.get("context")),
+        context=_context_as_text(result_context),
         latency_seconds=invocation.latency_seconds,
         tool_calls=invocation.tool_calls,
         metrics=metrics,
     )
+
+
+def _dataset_invocation(row: Dict[str, Any]) -> invocations.InvocationResult:
+    """Build an invocation result from dataset columns without calling a target."""
+
+    response = row.get("response")
+    if response is None:
+        response = row.get("prediction")
+    if response is None:
+        raise ValueError(
+            "response_source: dataset requires each dataset row to contain "
+            "a response or prediction field"
+        )
+
+    tool_calls = row.get("actual_tool_calls")
+    if tool_calls is None:
+        tool_calls = row.get("tool_calls")
+    if tool_calls is not None and not isinstance(tool_calls, list):
+        tool_calls = None
+    return invocations.InvocationResult(
+        response=str(response),
+        latency_seconds=0.0,
+        tool_calls=tool_calls,
+        metadata={"response_source": "dataset"},
+    )
+
+
+def _context_as_text(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------

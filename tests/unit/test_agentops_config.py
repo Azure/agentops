@@ -141,6 +141,111 @@ class TestAgentOpsConfig:
         assert cfg.version == 1
         assert cfg.agent == "my-rag:3"
         assert cfg.thresholds == {}
+        assert cfg.response_source == "agent"
+        assert cfg.telemetry_imports == []
+
+    def test_accepts_telemetry_import_config(self) -> None:
+        cfg = AgentOpsConfig.model_validate(
+            {
+                "version": 1,
+                "agent": "my-rag:3",
+                "dataset": "./qa.jsonl",
+                "response_source": "dataset",
+                "telemetry_imports": [
+                    {
+                        "name": "prod",
+                        "source": "azure-monitor",
+                        "target": "application-insights",
+                        "resource_id": "$APPINSIGHTS_RESOURCE_ID",
+                        "time_range": {"lookback_days": 14},
+                        "filters": {"customDimensions.agent": "support"},
+                        "fields": {
+                            "input": "customDimensions.question",
+                            "response": "customDimensions.answer",
+                        },
+                        "privacy": {"redact_fields": ["token"], "max_field_length": 500},
+                        "output": {
+                            "path": ".agentops/data/prod.jsonl",
+                            "label_mode": "pending",
+                        },
+                    }
+                ],
+            }
+        )
+
+        item = cfg.telemetry_imports[0]
+        assert cfg.response_source == "dataset"
+        assert item.name == "prod"
+        assert item.source == "azure-monitor"
+        assert item.target == "application-insights"
+        assert item.resource_id == "$APPINSIGHTS_RESOURCE_ID"
+        assert item.time_range.lookback_days == 14
+        assert item.output.label_mode == "pending"
+
+    def test_telemetry_import_rejects_unknown_fields(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "my-rag:3",
+                    "dataset": "./qa.jsonl",
+                    "telemetry_imports": [
+                        {
+                            "name": "prod",
+                            "target": "log-analytics",
+                            "workspace_id": "workspace",
+                            "surprise": True,
+                        }
+                    ],
+                }
+            )
+
+    def test_telemetry_import_time_range_requires_one_mode(self) -> None:
+        with pytest.raises(ValidationError, match="cannot mix"):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "my-rag:3",
+                    "dataset": "./qa.jsonl",
+                    "telemetry_imports": [
+                        {
+                            "name": "prod",
+                            "target": "log-analytics",
+                            "workspace_id": "workspace",
+                            "time_range": {
+                                "from": "2026-06-01T00:00:00Z",
+                                "to": "2026-06-02T00:00:00Z",
+                                "lookback_days": 7,
+                            },
+                        }
+                    ],
+                }
+            )
+
+    def test_telemetry_import_accepts_explicit_time_range(self) -> None:
+        cfg = AgentOpsConfig.model_validate(
+            {
+                "version": 1,
+                "agent": "my-rag:3",
+                "dataset": "./qa.jsonl",
+                "telemetry_imports": [
+                    {
+                        "name": "prod",
+                        "target": "log-analytics",
+                        "workspace_id": "workspace",
+                        "time_range": {
+                            "from": "2026-06-01T00:00:00Z",
+                            "to": "2026-06-02T00:00:00Z",
+                        },
+                    }
+                ],
+            }
+        )
+
+        time_range = cfg.telemetry_imports[0].time_range
+        assert time_range.from_ == "2026-06-01T00:00:00Z"
+        assert time_range.to == "2026-06-02T00:00:00Z"
+        assert time_range.lookback_days is None
 
     def test_resolved_target(self) -> None:
         cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")
@@ -472,8 +577,10 @@ class TestAgentOpsConfig:
             dataset="./qa.jsonl",
             request_field="message",
             response_field="text",
+            response_fields={"context": "retrieval.context"},
         )
         assert cfg.request_field == "message"
+        assert cfg.response_fields == {"context": "retrieval.context"}
 
     def test_http_fields_rejected_for_prompt_agent(self) -> None:
         with pytest.raises(ValidationError, match="HTTP/JSON"):
@@ -481,7 +588,7 @@ class TestAgentOpsConfig:
                 version=1,
                 agent="my-rag:3",
                 dataset="./qa.jsonl",
-                request_field="message",
+                response_fields={"context": "context"},
             )
 
     def test_streaming_fields_allowed_for_http_target(self) -> None:

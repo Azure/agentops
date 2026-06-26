@@ -637,7 +637,7 @@ def _invoke_http_json(
         ) from exc
     elapsed = time.perf_counter() - started
 
-    response_path = config.response_field or "text"
+    response_path = config.response_field or config.response_fields.get("response") or "text"
     response_text = _dot_path(payload, response_path)
     if response_text is None:
         for fallback in ("response", "output", "content", "message", "text"):
@@ -652,23 +652,23 @@ def _invoke_http_json(
     if not isinstance(response_text, str):
         response_text = json.dumps(response_text, ensure_ascii=False)
 
+    response_fields: Dict[str, Any] = {}
+    for name, path in config.response_fields.items():
+        value = _dot_path(payload, path)
+        if value is not None:
+            response_fields[name] = value
+
     tool_calls: Optional[List[Any]] = None
     if config.tool_calls_field:
         extracted = _dot_path(payload, config.tool_calls_field)
         if isinstance(extracted, list):
             tool_calls = extracted
 
-    captured: Dict[str, Any] = {}
-    for name, path in (config.response_fields or {}).items():
-        value = _dot_path(payload, path)
-        if value is not None:
-            captured[name] = value
-
     return InvocationResult(
         response=response_text.strip(),
         latency_seconds=elapsed,
         tool_calls=tool_calls,
-        metadata={"response_fields": captured} if captured else {},
+        metadata={"response_fields": response_fields} if response_fields else {},
     )
 
 

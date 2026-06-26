@@ -5,6 +5,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-26
+
+### Added
+- **Retrieval telemetry can now be imported as evaluation datasets.** The new
+  `telemetry_imports` config contract and `agentops telemetry validate`,
+  `agentops telemetry preview`, and `agentops telemetry import` commands let
+  teams turn reviewed retrieval telemetry into dataset-backed eval rows with
+  `response_source: dataset`. Grey-box HTTP agents can map `response_fields` from
+  `$response.context`, and the evaluation docs now cover the import workflow and
+  contract.
+
 ### Changed
 - **Prompt-agent PR validation now uses sandbox instead of dev.** Generated
   GitHub and Azure DevOps PR workflows stage prompt-agent candidates in the
@@ -177,6 +188,25 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   signal. The PR/deploy workflow templates and the prompt-agent quickstart
   tutorial are updated to describe the new contract.
   ([#214](https://github.com/Azure/agentops/issues/214))
+
+### Fixed
+- **Clean installs now include the pager dependency used by explain commands.**
+  `agentops explain`, `agentops init explain`, and `agentops doctor explain`
+  import Click directly to render long manual output, so `click>=8.1,<9` is now
+  declared as a runtime dependency instead of relying on transitive installs.
+
+- **`agentops eval init` now works with both old and new `azure.ai.agents` azd
+  extensions.** Version 0.1.40 of the extension renamed the eval subcommand from
+  `azd ai agent eval init` to `azd ai agent eval generate`, which made
+  `agentops eval init` hard-fail with `Command "init" is deprecated, use 'azd ai
+  agent eval generate' instead`. AgentOps now invokes `generate` first and
+  transparently falls back to the legacy `init` subcommand when an older
+  extension does not recognise `generate`. The fallback only triggers on
+  subcommand-name/deprecation errors; genuine failures (authentication, project
+  endpoint, timeouts) are still surfaced immediately and unchanged. All
+  previously passed flags (`--project-endpoint`, `--agent`,
+  `--gen-instruction-file`, `--eval-model`, `--dataset`, `--evaluator`) and the
+  recipe discovery/persistence behaviour are preserved.
 
 ## [0.4.0] - 2026-06-14
 

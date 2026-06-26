@@ -96,8 +96,10 @@ Common `agent:` values:
 | `"model:gpt-4o-mini"` | Direct model deployment |
 
 HTTP targets can add top-level mapping fields such as `request_field`,
-`response_field`, `tool_calls_field`, `auth_header_env`, and
-`extra_fields`.
+`response_fields`, `tool_calls_field`, `auth_header_env`, and `extra_fields`.
+Use `response_fields.response` for the final answer and
+`response_fields.context` for retrieved context. Use `response_source: dataset`
+when each dataset row already contains the response to evaluate.
 
 ### Dataset
 
@@ -198,6 +200,8 @@ AgentOps auto-selects common evaluation patterns from the dataset:
 
 Use one of the three hands-on tutorials for scenario coverage:
 
+- [Evaluation paths](evaluation.md) explains when to use a static dataset,
+  grey-box HTTP response mapping, or telemetry/trace import.
 - [Foundry Prompt Agent tutorial](tutorial-prompt-agent-quickstart.md) for Foundry
   prompt agents referenced as `name:version`.
 - [Hosted or HTTP Agent tutorial](tutorial-hosted-agent-quickstart.md) for Foundry
@@ -215,9 +219,13 @@ the fields your target needs:
 version: 1
 agent: "https://api.example.com/chat"
 dataset: .agentops/data/support.jsonl
+response_source: agent
 
+protocol: http-json
 request_field: message
-response_field: text
+response_fields:
+  response: text
+  context: retrieved_context
 
 thresholds:
   coherence: ">=3"

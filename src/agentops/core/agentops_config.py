@@ -78,6 +78,14 @@ DatasetSyncMode = Literal["auto", "inline", "foundry"]
 #: Dataset shape used by the evaluator runtime or Foundry / azd recipes.
 DatasetKind = Literal["auto", "single-turn", "multi-turn"]
 
+#: Where the local evaluator runtime gets the response text for each row.
+ResponseSource = Literal["agent", "dataset"]
+
+#: Production telemetry import providers and destinations.
+TelemetrySourceProvider = Literal["azure-monitor"]
+TelemetryTarget = Literal["application-insights", "log-analytics"]
+TelemetryLabelMode = Literal["self-similarity", "pending"]
+
 #: Internal-only literal kept for the publisher dispatch table. Derived from
 #: ``execution`` + ``publish`` via :meth:`AgentOpsConfig.publish_target`.
 PublishTarget = Literal["foundry", "foundry_cloud"]
@@ -377,6 +385,116 @@ class ObservabilityConfig(BaseModel):
         if not value.startswith(("https://", "http://")):
             raise ValueError("observability URLs must start with http:// or https://")
         return value
+
+
+# ---------------------------------------------------------------------------
+# Telemetry import configuration
+# ---------------------------------------------------------------------------
+
+
+class TelemetryTimeRangeConfig(BaseModel):
+    """Time window for a telemetry import query.
+
+    Users can either provide explicit ISO-ish ``from``/``to`` timestamps or a
+    relative ``lookback_days`` window. The service owns final KQL rendering so
+    users never pass arbitrary query text.
+    """
+
+    from_: Optional[str] = Field(None, alias="from")
+    to: Optional[str] = None
+    lookback_days: Optional[int] = Field(None, ge=1, le=90)
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    @model_validator(mode="after")
+    def _validate_window(self) -> "TelemetryTimeRangeConfig":
+        explicit = self.from_ is not None or self.to is not None
+        if explicit and not (self.from_ and self.to):
+            raise ValueError("telemetry_imports.time_range requires both from and to")
+        if explicit and self.lookback_days is not None:
+            raise ValueError("telemetry_imports.time_range cannot mix from/to with lookback_days")
+        if not explicit and self.lookback_days is None:
+            self.lookback_days = 7
+        return self
+
+
+class TelemetryPrivacyConfig(BaseModel):
+    """Privacy controls applied before JSONL rows are written."""
+
+    redact_fields: List[str] = Field(
+        default_factory=lambda: ["authorization", "api_key", "token", "password", "secret"],
+        description="Case-insensitive field-name fragments to redact.",
+    )
+    max_field_length: int = Field(4000, ge=100, le=20000)
+    include_raw: bool = False
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TelemetryOutputConfig(BaseModel):
+    """Output paths and labeling mode for generated dataset rows."""
+
+    path: Path = Field(Path(".agentops") / "data" / "telemetry-import.jsonl")
+    manifest_path: Optional[Path] = None
+    label_mode: TelemetryLabelMode = "self-similarity"
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TelemetryImportConfig(BaseModel):
+    """Named telemetry import declaration.
+
+    The MVP intentionally keeps this declarative: users choose a supported
+    source/destination pair, field mappings, filters, privacy settings, and an
+    output file. The service generates the KQL.
+    """
+
+    name: str
+    source: TelemetrySourceProvider = "azure-monitor"
+    target: TelemetryTarget
+    resource_id: Optional[str] = None
+    workspace_id: Optional[str] = None
+    application_id: Optional[str] = None
+    connection_string: Optional[str] = None
+    time_range: TelemetryTimeRangeConfig = Field(default_factory=TelemetryTimeRangeConfig)
+    filters: Dict[str, str | List[str]] = Field(default_factory=dict)
+    fields: Dict[str, str] = Field(default_factory=dict)
+    privacy: TelemetryPrivacyConfig = Field(default_factory=TelemetryPrivacyConfig)
+    output: TelemetryOutputConfig = Field(default_factory=TelemetryOutputConfig)
+    max_rows: int = Field(100, ge=1, le=5000)
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("name")
+    @classmethod
+    def _name_non_empty(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("telemetry_imports.name must be non-empty")
+        return value
+
+    @field_validator("resource_id", "workspace_id", "application_id", "connection_string")
+    @classmethod
+    def _optional_text_non_empty(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        value = value.strip()
+        if not value:
+            raise ValueError("telemetry_imports resource identifiers must be non-empty")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_target_ids(self) -> "TelemetryImportConfig":
+        if self.target == "log-analytics" and not self.workspace_id:
+            raise ValueError("telemetry_imports targeting log-analytics require workspace_id")
+        if self.target == "application-insights" and not (
+            self.resource_id or self.application_id or self.connection_string
+        ):
+            raise ValueError(
+                "telemetry_imports targeting application-insights require resource_id, "
+                "application_id, or connection_string"
+            )
+        return self
 
 
 class PromptAgentBootstrap(BaseModel):
@@ -750,6 +868,13 @@ class AgentOpsConfig(BaseModel):
     version: int = Field(..., description="Schema version. Must be 1.")
     agent: str = Field(..., description="Target identifier (name:version, URL, or model:deployment)")
     dataset: Path = Field(..., description="Path to a JSONL dataset file")
+    response_source: ResponseSource = Field(
+        "agent",
+        description=(
+            "Where local eval gets each response. 'agent' invokes the configured "
+            "target. 'dataset' uses each row's response or prediction value."
+        ),
+    )
     dataset_kind: DatasetKind = Field(
         "auto",
         description=(
@@ -812,6 +937,7 @@ class AgentOpsConfig(BaseModel):
     protocol: Optional[Protocol] = None
     request_field: Optional[str] = None
     response_field: Optional[str] = None
+    response_fields: Dict[str, str] = Field(default_factory=dict)
     tool_calls_field: Optional[str] = None
     response_fields: Dict[str, str] = Field(
         default_factory=dict,
@@ -860,6 +986,10 @@ class AgentOpsConfig(BaseModel):
     )
 
     evaluators: Optional[List[EvaluatorOverride]] = None
+    telemetry_imports: List[TelemetryImportConfig] = Field(
+        default_factory=list,
+        description="Named Azure Monitor imports that generate AgentOps JSONL datasets.",
+    )
     rubrics: List[RubricConfig] = Field(
         default_factory=list,
         description="Optional context-specific rubric evaluator definitions.",
@@ -1009,6 +1139,7 @@ class AgentOpsConfig(BaseModel):
         if kind != "http_json" and (
             self.request_field
             or self.response_field
+            or self.response_fields
             or self.tool_calls_field
             or self.response_fields
             or self.headers

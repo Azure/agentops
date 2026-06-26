@@ -1,6 +1,7 @@
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
+from agentops.services.telemetry_import import TelemetryImportPreview
 
 
 runner = CliRunner()
@@ -83,3 +84,102 @@ def test_agent_command_group_wired() -> None:
     stripped = _strip_ansi(result.stdout)
     assert "analyze" in stripped
     assert "serve" in stripped
+
+
+def test_telemetry_validate_uses_named_import(tmp_path, monkeypatch) -> None:
+    config = tmp_path / "agentops.yaml"
+    config.write_text(
+        "\n".join(
+            [
+                "version: 1",
+                "agent: support-agent:1",
+                "dataset: .agentops/data/smoke.jsonl",
+                "telemetry_imports:",
+                "  - name: prod",
+                "    target: log-analytics",
+                "    workspace_id: workspace",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "agentops.services.telemetry_import.validate_telemetry_import",
+        lambda _item: [],
+    )
+
+    result = runner.invoke(app, ["telemetry", "validate", "prod", "--config", str(config)])
+
+    assert result.exit_code == 0, result.output
+    assert "prod" in result.output
+    assert "valid" in result.output
+
+
+def test_telemetry_preview_prints_service_preview(tmp_path, monkeypatch) -> None:
+    config = tmp_path / "agentops.yaml"
+    config.write_text(
+        "version: 1\n"
+        "agent: support-agent:1\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "telemetry_imports:\n"
+        "  - name: prod\n"
+        "    target: log-analytics\n"
+        "    workspace_id: workspace\n",
+        encoding="utf-8",
+    )
+
+    def fake_preview(item, *, rows=None, apply=False):
+        return TelemetryImportPreview(
+            config=item,
+            output_path=tmp_path / "prod.jsonl",
+            manifest_path=tmp_path / "prod-manifest.json",
+            rows=[{"input": "hello", "response": "world"}],
+        )
+
+    monkeypatch.setattr(
+        "agentops.services.telemetry_import.preview_telemetry_import",
+        fake_preview,
+    )
+
+    result = runner.invoke(
+        app,
+        ["telemetry", "preview", "prod", "--rows", "1", "--config", str(config)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "AgentOps telemetry import" in result.output
+    assert "hello" in result.output
+
+
+def test_telemetry_import_requires_apply_to_write(tmp_path, monkeypatch) -> None:
+    config = tmp_path / "agentops.yaml"
+    config.write_text(
+        "version: 1\n"
+        "agent: support-agent:1\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "telemetry_imports:\n"
+        "  - name: prod\n"
+        "    target: log-analytics\n"
+        "    workspace_id: workspace\n",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_preview(item, *, rows=None, apply=False):
+        calls.append(apply)
+        return TelemetryImportPreview(
+            config=item,
+            output_path=tmp_path / "prod.jsonl",
+            manifest_path=tmp_path / "prod-manifest.json",
+            rows=[],
+        )
+
+    monkeypatch.setattr(
+        "agentops.services.telemetry_import.preview_telemetry_import",
+        fake_preview,
+    )
+
+    result = runner.invoke(app, ["telemetry", "import", "prod", "--config", str(config)])
+
+    assert result.exit_code == 0, result.output
+    assert calls == [False]
+    assert "Dry run only" in result.output

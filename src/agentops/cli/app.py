@@ -79,6 +79,9 @@ redteam_app = typer.Typer(
         "for the manual."
     )
 )
+telemetry_app = typer.Typer(
+    help="Import Azure Monitor telemetry into AgentOps datasets."
+)
 app.add_typer(eval_app, name="eval")
 app.add_typer(report_app, name="report")
 app.add_typer(workflow_app, name="workflow")
@@ -90,6 +93,7 @@ app.add_typer(doctor_app, name="doctor")
 app.add_typer(init_app, name="init")
 app.add_typer(assert_app, name="assert")
 app.add_typer(redteam_app, name="redteam")
+app.add_typer(telemetry_app, name="telemetry")
 
 log = get_logger(__name__)
 DEFAULT_REPORT_INPUT = Path(".agentops/results/latest/results.json")
@@ -2346,6 +2350,109 @@ def cmd_eval_promote_traces(
         typer.echo(
             f"{_cli_warn('Preview only')}: re-run with `{_cli_command('--apply')}` to write files."
         )
+
+
+@telemetry_app.command("validate")
+def cmd_telemetry_validate(
+    name: Annotated[str, typer.Argument(help="Name under telemetry_imports.")],
+    config: Annotated[
+        Optional[Path],
+        typer.Option("--config", "-c", help="Path to agentops.yaml."),
+    ] = None,
+) -> None:
+    """Validate a named telemetry import without querying Azure."""
+
+    from agentops.core.config_loader import load_agentops_config
+    from agentops.services.telemetry_import import (
+        TelemetryImportError,
+        find_telemetry_import,
+        validate_telemetry_import,
+    )
+
+    try:
+        cfg = load_agentops_config(_resolve_eval_config_path(config))
+        item = find_telemetry_import(cfg, name)
+        warnings = validate_telemetry_import(item)
+    except (TelemetryImportError, ValueError) as exc:
+        typer.echo(_cli_error(str(exc)), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(_cli_ok(f"telemetry import {name!r} is valid"))
+    for warning in warnings:
+        typer.echo(_cli_warn(f"warning: {warning}"))
+
+
+@telemetry_app.command("preview")
+def cmd_telemetry_preview(
+    name: Annotated[str, typer.Argument(help="Name under telemetry_imports.")],
+    rows: Annotated[int, typer.Option("--rows", min=1, help="Maximum rows to preview.")] = 10,
+    config: Annotated[
+        Optional[Path],
+        typer.Option("--config", "-c", help="Path to agentops.yaml."),
+    ] = None,
+) -> None:
+    """Query Azure Monitor and print a small dataset preview."""
+
+    from agentops.core.config_loader import load_agentops_config
+    from agentops.services.telemetry_import import (
+        TelemetryImportError,
+        find_telemetry_import,
+        preview_telemetry_import,
+        render_telemetry_import_preview,
+    )
+
+    try:
+        cfg = load_agentops_config(_resolve_eval_config_path(config))
+        item = find_telemetry_import(cfg, name)
+        preview = preview_telemetry_import(item, rows=rows, apply=False)
+    except (TelemetryImportError, ValueError) as exc:
+        typer.echo(_cli_error(str(exc)), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(render_telemetry_import_preview(preview))
+
+
+@telemetry_app.command("import")
+def cmd_telemetry_import(
+    name: Annotated[str, typer.Argument(help="Name under telemetry_imports.")],
+    apply: Annotated[
+        bool,
+        typer.Option("--apply", help="Write JSONL rows and manifest."),
+    ] = False,
+    rows: Annotated[
+        Optional[int],
+        typer.Option("--rows", min=1, help="Optional maximum rows to import."),
+    ] = None,
+    config: Annotated[
+        Optional[Path],
+        typer.Option("--config", "-c", help="Path to agentops.yaml."),
+    ] = None,
+) -> None:
+    """Import telemetry into the configured JSONL output path."""
+
+    from agentops.core.config_loader import load_agentops_config
+    from agentops.services.telemetry_import import (
+        TelemetryImportError,
+        find_telemetry_import,
+        preview_telemetry_import,
+        render_telemetry_import_preview,
+    )
+
+    if not apply:
+        typer.echo(
+            _cli_warn(
+                "Dry run only. Re-run with --apply to write the JSONL dataset and manifest."
+            )
+        )
+    try:
+        cfg = load_agentops_config(_resolve_eval_config_path(config))
+        item = find_telemetry_import(cfg, name)
+        preview = preview_telemetry_import(item, rows=rows, apply=apply)
+    except (TelemetryImportError, ValueError) as exc:
+        typer.echo(_cli_error(str(exc)), err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(render_telemetry_import_preview(preview))
+    if apply:
+        typer.echo(_cli_updated(preview.output_path))
+        typer.echo(_cli_updated(preview.manifest_path))
 
 
 def _resolve_eval_config_path(config: Path | None) -> Path:

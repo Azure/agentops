@@ -9,6 +9,7 @@ can see the agent's tool_call + tool_result trace and grade it accurately.
 from __future__ import annotations
 
 from agentops.pipeline.runtime import _build_conversation_messages
+from agentops.pipeline import runtime
 
 
 def test_builds_text_only_conversation_when_no_tool_calls() -> None:
@@ -130,3 +131,27 @@ def test_skips_calls_without_a_name() -> None:
     # Only the named call survives, plus the final assistant text.
     assert len(out["response"]) == 2
     assert out["response"][0]["content"][0]["name"] == "f"
+
+
+def test_resolves_retrieval_and_telemetry_placeholders() -> None:
+    resolved = runtime._resolve_kwargs(
+        {
+            "context": "$retrieved_context",
+            "items": "$retrieved_context_items",
+            "trace": "$telemetry.trace_id",
+            "json_text": "$response.raw",
+        },
+        row={
+            "input": "q",
+            "retrieved_context": "doc text",
+            "retrieved_context_items": [{"id": "doc1"}],
+            "telemetry": {"trace_id": "trace-123"},
+            "response": {"raw": "nested response"},
+        },
+        response="answer",
+    )
+
+    assert resolved["context"] == "doc text"
+    assert resolved["items"] == [{"id": "doc1"}]
+    assert resolved["trace"] == "trace-123"
+    assert resolved["json_text"] == "nested response"
