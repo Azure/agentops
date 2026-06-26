@@ -12,9 +12,11 @@ import copy
 import hashlib
 import json
 import os
+import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from agentops.core.agentops_config import (
     AgentOpsConfig,
@@ -22,11 +24,26 @@ from agentops.core.agentops_config import (
     classify_agent,
 )
 from agentops.core.config_loader import load_agentops_config
+from agentops.utils.azd_env import discover_azd_env, parse_env_file
 from agentops.utils.yaml import load_yaml, save_yaml
 
 DEFAULT_PROMPT_FILE = Path(".agentops/prompts/agent-instructions.md")
 DEFAULT_DEPLOYMENT_RECORD = Path(".agentops/deployments/foundry-agent.json")
 DEFAULT_CANDIDATE_CONFIG = Path(".agentops/deployments/agentops.candidate.yaml")
+DEFAULT_PROMPT_PULL_DIR = Path(".agentops/prompts")
+
+
+@dataclass(frozen=True)
+class PromptPullResult:
+    """Result of pulling a Foundry prompt-agent definition into source control."""
+
+    action: str
+    agent: str
+    endpoint: str
+    endpoint_source: str
+    prompt_file: Path
+    config_path: Path
+    config_updated: bool
 
 
 def stage_prompt_agent_candidate(
@@ -224,6 +241,104 @@ def summarize_deployment(record_path: Path, *, environment: str) -> Dict[str, An
     return record
 
 
+def pull_prompt_agent_instructions(
+    *,
+    config_path: Path,
+    output_path: Optional[Path] = None,
+    force: bool = False,
+    update_config: bool = True,
+    project_endpoint: Optional[str] = None,
+    before_write: Optional[Callable[[Dict[str, str]], None]] = None,
+) -> PromptPullResult:
+    """Pull a Foundry prompt-agent's instructions into a local prompt file."""
+
+    config_path = config_path.resolve()
+    config = load_agentops_config(config_path)
+    target = classify_agent(config.agent, config.protocol)
+    if target.kind != "foundry_prompt" or not target.name or not target.version:
+        raise ValueError(
+            "agentops prompt pull requires agentops.yaml agent to be a "
+            "Foundry prompt agent in 'name:version' form"
+        )
+
+    endpoint, endpoint_source = _resolve_project_endpoint(
+        config=config,
+        workspace=config_path.parent,
+        explicit=project_endpoint,
+        purpose="prompt pull",
+    )
+    current = _get_agent_version(endpoint, target.name, target.version)
+    definition = getattr(current, "definition", None) or _get_mapping_value(
+        current, "definition"
+    )
+    if definition is None:
+        raise ValueError(
+            f"Foundry agent {target.name}:{target.version} did not include a definition"
+        )
+
+    kind = str(_get_definition_value(definition, "kind") or "").lower()
+    if kind != "prompt":
+        raise ValueError(
+            f"Foundry agent {target.name}:{target.version} is kind {kind!r}; "
+            "agentops prompt pull only supports Foundry prompt agents."
+        )
+
+    instructions = _get_definition_value(definition, "instructions")
+    if not isinstance(instructions, str) or not instructions.strip():
+        raise ValueError(
+            f"Foundry agent {target.name}:{target.version} did not include prompt instructions"
+        )
+
+    destination = _resolve_prompt_pull_output(
+        config_path=config_path,
+        config=config,
+        agent_name=target.name,
+        explicit=output_path,
+    )
+    if before_write is not None:
+        before_write(
+            {
+                "agent": f"{target.name}:{target.version}",
+                "endpoint": endpoint,
+                "endpoint_source": endpoint_source,
+                "prompt_file": str(destination),
+            }
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    existing = destination.read_text(encoding="utf-8") if destination.exists() else None
+    if existing == instructions:
+        action = "unchanged"
+    elif existing is not None and not force:
+        raise FileExistsError(
+            f"prompt file already exists with different content: {destination}. "
+            "Re-run with --force to overwrite reviewed local changes."
+        )
+    else:
+        destination.write_text(instructions, encoding="utf-8")
+        action = "overwritten" if existing is not None else "created"
+
+    config_updated = False
+    prompt_file_value = _relative_posix_path(destination, config_path.parent)
+    if update_config:
+        data = load_yaml(config_path)
+        current_prompt_file = data.get("prompt_file")
+        if current_prompt_file != prompt_file_value:
+            data["prompt_file"] = prompt_file_value
+            save_yaml(config_path, data)
+            config_updated = True
+
+    return PromptPullResult(
+        action=action,
+        agent=f"{target.name}:{target.version}",
+        endpoint=endpoint,
+        endpoint_source=endpoint_source,
+        prompt_file=destination,
+        config_path=config_path,
+        config_updated=config_updated,
+    )
+
+
 def _resolve_prompt_file(
     *,
     config_path: Path,
@@ -244,6 +359,59 @@ def _resolve_prompt_file(
             "or AGENTOPS_AGENT_PROMPT_FILE in the workflow environment."
         )
     return path
+
+
+def _resolve_prompt_pull_output(
+    *,
+    config_path: Path,
+    config: AgentOpsConfig,
+    agent_name: str,
+    explicit: Optional[Path],
+) -> Path:
+    raw = explicit or config.prompt_file or (
+        DEFAULT_PROMPT_PULL_DIR / f"{_safe_prompt_file_stem(agent_name)}.prompt.md"
+    )
+    path = raw if raw.is_absolute() else (config_path.parent / raw)
+    return path.resolve()
+
+
+def _safe_prompt_file_stem(agent_name: str) -> str:
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", agent_name.strip()).strip(".-_")
+    return stem or "agent"
+
+
+def _relative_posix_path(path: Path, base: Path) -> str:
+    try:
+        return path.resolve().relative_to(base.resolve()).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
+def _resolve_project_endpoint(
+    *,
+    config: AgentOpsConfig,
+    workspace: Path,
+    explicit: Optional[str],
+    purpose: str,
+) -> tuple[str, str]:
+    if explicit is not None and explicit.strip():
+        return explicit.strip(), "--project-endpoint"
+    if config.project_endpoint:
+        return config.project_endpoint, "agentops.yaml"
+    env_value = os.environ.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    if env_value and env_value.strip():
+        return env_value.strip(), "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
+    azd_env = discover_azd_env(workspace)
+    if azd_env.found and azd_env.env_path is not None:
+        env_values = parse_env_file(azd_env.env_path)
+        endpoint = env_values.get("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+        if endpoint and endpoint.strip():
+            return endpoint.strip(), f".azure/{azd_env.name}/.env"
+    raise ValueError(
+        f"{purpose} requires project_endpoint in agentops.yaml, "
+        "--project-endpoint, AZURE_AI_FOUNDRY_PROJECT_ENDPOINT, "
+        "or an active .azure/<env>/.env"
+    )
 
 
 def _path_from_env(name: str) -> Optional[Path]:
@@ -338,7 +506,7 @@ def _project_client(endpoint: str) -> Any:
     except ImportError as exc:
         raise RuntimeError(
             "prompt-agent deployment requires azure-ai-projects and "
-            "azure-identity; install agentops-accelerator[foundry]"
+            "azure-identity; install agentops-accelerator"
         ) from exc
 
     credential = DefaultAzureCredential(

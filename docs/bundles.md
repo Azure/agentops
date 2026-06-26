@@ -96,6 +96,8 @@ metadata:
 | `$prediction` | Model or agent response |
 | `$expected` | Ground truth / expected answer from the dataset row |
 | `$context` | Retrieved context documents from the dataset row |
+| `$response.<name>` | A field captured from the live HTTP JSON response via the target's `response_fields` map (e.g. `$response.context`, `$response.retrieved_documents`). Missing captures are skipped. |
+| `$row.<name>` | An arbitrary column from the dataset row (e.g. `$row.qrels` for Document Retrieval ground truth). Missing columns are skipped. |
 | `$tool_calls` | Tool calls returned by the agent |
 | `$tool_definitions` | Tool definitions from the dataset row |
 

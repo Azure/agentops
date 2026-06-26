@@ -5,12 +5,12 @@
 # For Foundry prompt-agent flows, the PR gate must evaluate the prompt
 # the PR is proposing, not the seed agent version pinned in
 # `agentops.yaml`. So this PR workflow stages an ephemeral candidate
-# Foundry prompt-agent version in the dev project from the
+# Foundry prompt-agent version in the sandbox project from the
 # source-controlled `prompt_file`, evaluates that exact candidate, and
 # runs Doctor against it. The merge gate is the eval + Doctor result.
 #
 # Notes:
-#   - Each PR run creates or reuses a candidate version in the dev
+#   - Each PR run creates or reuses a candidate version in the sandbox
 #     Foundry project. AgentOps deduplicates only when the prompt is
 #     byte-identical to the current seed version's instructions.
 #     Candidate versions are tagged with `agentops:candidate=true` and
@@ -49,9 +49,8 @@ jobs:
   stage-candidate:
     name: Stage Foundry prompt candidate (PR)
     runs-on: ubuntu-latest
-    # Stage candidates in the dev Foundry project. Sandbox is the
-    # author's playground; dev is where CI proves a change is safe to
-    # merge.
+    # Stage candidates in sandbox. Dev is updated only by the deploy
+    # workflow after the PR merges.
     environment: __ENV_NAME__
     timeout-minutes: 20
     steps:
@@ -110,7 +109,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download candidate deployment record
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: foundry-agent-__ENV_KEY__-candidate
           path: .agentops/deployments

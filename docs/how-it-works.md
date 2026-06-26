@@ -325,6 +325,7 @@ That's a complete config. AgentOps:
 | `thresholds` | no | Metric gates such as `">=3"` or `"<=10"`. |
 | `protocol` | no | URL protocol: `responses`, `invocations`, or `http-json`. |
 | `request_field` / `response_field` / `tool_calls_field` | no | Request/response JSON keys or dot-paths. |
+| `response_fields` | no | Map of `name -> dot-path` capturing extra fields from a JSON response. Each captured value is exposed to evaluator `input_mapping` as `$response.<name>`. Only used when `response_mode` is `json`. |
 | `headers` | no | Static HTTP headers (dict). |
 | `auth_header_env` | no | Env var name holding a Bearer token. |
 | `evaluators` | no | Escape-hatch list of evaluator names that overrides auto-selection. |
@@ -377,6 +378,35 @@ dataset: .agentops/data/qa.jsonl
 request_field: message            # default is "message"
 response_field: text              # dot-path; default is "text"
 auth_header_env: APP_API_TOKEN    # value used as Bearer token
+```
+
+**HTTP-deployed agent with grey-box retrieval capture (RAG evaluators):**
+
+When the endpoint can return its retrieval alongside the answer (for example a
+JSON body `{"answer": ..., "context": ..., "retrieved_documents": [...]}`),
+capture the extra fields with `response_fields` and reference them in evaluator
+`input_mapping` via `$response.<name>`. This scores the retrieval actually used
+at eval time instead of static dataset context.
+
+```yaml
+version: 1
+agent: https://my-aca-app.eastus2.azurecontainerapps.io/orchestrator
+dataset: .agentops/data/qa.jsonl
+response_mode: json
+request_field: ask
+response_field: answer             # primary prediction (dot-path)
+response_fields:                   # extra fields captured per row
+  context: context
+  retrieved_documents: retrieved_documents
+bundle:
+  evaluators:
+    - name: groundedness
+      config:
+        kind: builtin
+        class_name: GroundednessEvaluator
+        input_mapping:
+          response: $response.answer
+          context: $response.context
 ```
 
 **Raw model deployment:**

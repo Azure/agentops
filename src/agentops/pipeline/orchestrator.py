@@ -132,10 +132,16 @@ def _run_evaluation_local(
     overrides = (
         [override.name for override in config.evaluators] if config.evaluators else None
     )
+    override_mappings = (
+        {o.name: dict(o.input_mapping) for o in config.evaluators if o.input_mapping}
+        if config.evaluators
+        else None
+    ) or None
     presets = select_evaluators(
         target,
         shape,
         overrides=overrides,
+        override_mappings=override_mappings,
         threshold_metrics=config.thresholds.keys(),
     )
     user_thresholds = [
@@ -277,10 +283,16 @@ def _run_evaluation_cloud(
     overrides = (
         [override.name for override in config.evaluators] if config.evaluators else None
     )
+    override_mappings = (
+        {o.name: dict(o.input_mapping) for o in config.evaluators if o.input_mapping}
+        if config.evaluators
+        else None
+    ) or None
     all_presets = select_evaluators(
         target,
         shape,
         overrides=overrides,
+        override_mappings=override_mappings,
         threshold_metrics=config.thresholds.keys(),
     )
 
@@ -769,6 +781,7 @@ def _evaluate_row(
             evaluator_row = {**row, "response": response_fields}
 
         metrics: List[RowMetric] = []
+        captured_fields = invocation.metadata.get("response_fields") or {}
         for evaluator in evaluators:
             metric = runtime.run_evaluator(
                 evaluator,
@@ -776,6 +789,7 @@ def _evaluate_row(
                 response=invocation.response,
                 latency_seconds=invocation.latency_seconds,
                 actual_tool_calls=invocation.tool_calls,
+                response_fields=captured_fields,
             )
             metrics.append(metric)
 

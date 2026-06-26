@@ -432,6 +432,13 @@ request_field: message
 response_field: text
 ```
 
+If your endpoint returns retrieval context or retrieved documents in the same
+JSON response as the answer, capture those fields with `response_fields` instead
+of relying only on static dataset `context`. In evaluator `input_mapping`,
+`$context` still refers to the dataset row, while `$response.context` refers to
+the context captured from the live endpoint response. See
+[`how-it-works.md`](how-it-works.md) for the full grey-box retrieval example.
+
 The `.agentops/.env` file is intentional: AgentOps keeps local Azure values out
 of source control while eval, Doctor, and Cockpit commands resolve the same
 workspace environment. The Foundry project endpoint lives there instead of in

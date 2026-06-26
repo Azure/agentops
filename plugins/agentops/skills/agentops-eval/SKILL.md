@@ -15,7 +15,7 @@ with a `name:version` or URL.
 
 ## Step 0 - Setup
 
-1. Install if missing: `pip install "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"`.
+1. Install if missing: `pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"`.
 2. If `agentops.yaml` does not exist at the project root, run `agentops init`.
    The init wizard prompts (azd-style) for the Foundry project endpoint,
    agent reference, and dataset path, persists each answer to
@@ -93,7 +93,7 @@ done
 ```
 
 PowerShell equivalent: replace `$(...)` with the PowerShell variable
-assignments shown in `docs/tutorial-prompt-agent-quickstart.md`.
+assignments shown in `docs/tutorial-prompt-agent.md`.
 
 If the user has not run `az login` yet, do that first. If
 `az cognitiveservices account list` returns an empty RG, the AI Services
@@ -142,6 +142,23 @@ for the `agent:` field of `agentops.yaml`:
 | Raw Foundry/Azure OpenAI model deployment | `"model:<deployment-name>"` |
 
 If nothing is found, ask the user once for the agent identifier.
+
+For Foundry Prompt Agents authored in the Sandbox portal, do not copy/paste the
+instructions into a file manually. After `agentops.yaml` contains `agent:
+name:version` and the correct project endpoint is available from
+`agentops.yaml`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, or the active
+`.azure/<env>/.env`, run:
+
+```bash
+agentops prompt pull
+```
+
+This writes `.agentops/prompts/<agent-name>.prompt.md` by default, updates
+`prompt_file` in `agentops.yaml` when needed, prints the resolved endpoint and
+agent version before writing, validates that the Foundry definition is a prompt
+agent, and refuses to overwrite changed prompt files unless `--force` is used.
+Use `--out` only when the repository already has a stronger prompt-file
+convention.
 
 ## Step 3 - Make sure the dataset exists
 
@@ -284,4 +301,11 @@ dataset reference.
   ```
 - For HTTP/JSON agents that need auth, set
   `auth_header_env: MY_TOKEN_VAR` and AgentOps adds
-  `Authorization: Bearer $MY_TOKEN_VAR`.
+  `Authorization: Bearer $MY_TOKEN_VAR`. For a shared-secret gate, override the
+  header with `auth_header_name: X-API-KEY` and `auth_value_template: "{token}"`.
+- For streaming HTTP agents (e.g. an SSE `text/event-stream` endpoint), set
+  `response_mode: sse` (each `data:` line) or `response_mode: text` (raw
+  streamed text). Use the optional `stream:` block to tune aggregation:
+  `text_field` (dot-path to the token text when `data:` lines are JSON),
+  `done_marker` (e.g. `[DONE]`), and `strip_leading_token: true` (drop a leading
+  `conversation_id` prefix). `response_mode: json` (default) is unchanged.

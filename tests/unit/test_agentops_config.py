@@ -591,6 +591,60 @@ class TestAgentOpsConfig:
                 response_fields={"context": "context"},
             )
 
+    def test_streaming_fields_allowed_for_http_target(self) -> None:
+        cfg = AgentOpsConfig(
+            version=1,
+            agent="https://app.example.com/orchestrator",
+            dataset="./qa.jsonl",
+            request_field="ask",
+            response_mode="text",
+            stream={"strip_leading_token": True},  # type: ignore[arg-type]
+            auth_header_env="ORCH_KEY",
+            auth_header_name="X-API-KEY",
+            auth_value_template="{token}",
+        )
+        assert cfg.response_mode == "text"
+        assert cfg.stream is not None
+        assert cfg.stream.strip_leading_token is True
+        assert cfg.auth_header_name == "X-API-KEY"
+        assert cfg.auth_value_template == "{token}"
+
+    def test_response_mode_defaults_to_json(self) -> None:
+        cfg = AgentOpsConfig(
+            version=1,
+            agent="https://app.example.com/chat",
+            dataset="./qa.jsonl",
+        )
+        assert cfg.response_mode == "json"
+        assert cfg.stream is None
+
+    def test_response_mode_rejected_for_prompt_agent(self) -> None:
+        with pytest.raises(ValidationError, match="HTTP/JSON"):
+            AgentOpsConfig(
+                version=1,
+                agent="my-rag:3",
+                dataset="./qa.jsonl",
+                response_mode="sse",
+            )
+
+    def test_stream_block_rejected_for_model_target(self) -> None:
+        with pytest.raises(ValidationError, match="HTTP/JSON"):
+            AgentOpsConfig(
+                version=1,
+                agent="model:gpt-4o",
+                dataset="./qa.jsonl",
+                stream={"done_marker": "[DONE]"},  # type: ignore[arg-type]
+            )
+
+    def test_auth_header_name_rejected_for_prompt_agent(self) -> None:
+        with pytest.raises(ValidationError, match="HTTP/JSON"):
+            AgentOpsConfig(
+                version=1,
+                agent="my-rag:3",
+                dataset="./qa.jsonl",
+                auth_header_name="X-API-KEY",
+            )
+
     def test_evaluators_override(self) -> None:
         cfg = AgentOpsConfig(
             version=1,

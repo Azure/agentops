@@ -40,6 +40,7 @@ Public CLI contract:
 - `agentops init [--force] [--dir PATH] [--no-prompt] [--no-appinsights] [--azd-env NAME] [--project-endpoint URL] [--agent REF] [--dataset PATH] [--appinsights-connection-string STR]`
 - `agentops init show [--dir PATH] [--reveal-secrets]`
 - `agentops init explain [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
+- `agentops prompt pull [--config PATH] [--out PATH] [--project-endpoint URL] [--force] [--update-config|--no-update-config]`
 - `agentops eval analyze [--dir PATH] [--format text|markdown|json] [--out PATH]`
 - `agentops eval init [--dir PATH] [--force]`
 - `agentops eval run [--config PATH] [--baseline PATH] [--output DIR]`
@@ -222,9 +223,9 @@ Coverage highlights:
 docs/
 ├── concepts.md                                # Core concepts and evaluation scenarios
 ├── how-it-works.md                            # Architecture and request flow
-├── tutorial-prompt-agent-quickstart.md        # Tutorial for Foundry Prompt Agents
-├── tutorial-hosted-agent-quickstart.md        # Tutorial for Foundry hosted / HTTP agents
-├── tutorial-end-to-end.md                     # End-to-end release-readiness tutorial (Foundry + AgentOps)
+├── tutorial-prompt-agent.md                   # Tutorial for Foundry Prompt Agents
+├── tutorial-hosted-agent.md                   # Tutorial for Foundry hosted / HTTP agents
+├── tutorial-end-to-end.md                     # Full end-to-end release-readiness tutorial (Foundry + AgentOps)
 ├── doctor-explained.md                        # Doctor checks, history, and operations model
 ├── ci-github-actions.md                       # CI/CD setup
 ├── release-process.md                         # Release and versioning
@@ -334,7 +335,11 @@ Full schema:
 | `response_field` | no | HTTP / invocations only. Dot-path to extract the response text (default: `text`). |
 | `tool_calls_field` | no | HTTP / invocations only. Dot-path to extract tool calls for agent-workflow evaluators. |
 | `headers` | no | HTTP / invocations only. Static extra HTTP headers. |
-| `auth_header_env` | no | HTTP / invocations only. Environment variable that holds a Bearer token. |
+| `auth_header_env` | no | HTTP / invocations only. Environment variable that holds the auth token. |
+| `auth_header_name` | no | HTTP / invocations only. Header name for the auth token (default: `Authorization`). |
+| `auth_value_template` | no | HTTP / invocations only. Template for the auth header value; `{token}` is replaced by the `auth_header_env` value (default: `Bearer {token}`). |
+| `response_mode` | no | HTTP / invocations only. `json` (default, single `json.loads` of the body), `sse` (parse `data:` lines), or `text` (concatenate raw streamed text). |
+| `stream` | no | HTTP / invocations only. Streaming aggregation block for `response_mode: sse|text`: `text_field` (dot-path to token text in JSON `data:` lines), `done_marker` (stop token, e.g. `[DONE]`), `strip_leading_token` (drop the first whitespace-delimited token, e.g. a `conversation_id` prefix). |
 | `assert_path` | no | Optional ASSERT policy/results file or directory referenced by Doctor/evidence. AgentOps does not execute ASSERT. |
 | `acs_path` | no | Optional Agent Control Specification contract file or directory referenced by Doctor/evidence. AgentOps does not apply ACS controls. |
 | `redteam_path` | no | Optional red-team plan/results evidence path. AgentOps records metadata and never exposes payload text. |
@@ -472,7 +477,7 @@ Authentication rule (Windows-friendly):
 
 Recommended default behavior:
 - Keep Foundry cloud mode as the default for `name:version` agents
-- Install Azure runtime dependencies via the `[foundry]` extra
+- Install AgentOps normally; Foundry runtime dependencies are part of the default package
 - Keep Azure SDK imports inside functions (lazy) in `pipeline/` and `agent/`
 - Do not hardcode `api_version` in `get_openai_client()` — the SDK picks it
 

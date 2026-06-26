@@ -9,7 +9,9 @@ AgentOps keeps working across extension versions.
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,6 +19,8 @@ from typing import Any, Optional
 
 from agentops.core.agentops_config import classify_agent
 from agentops.core.azd_eval import AzdEvalRecipeError, find_eval_yaml
+from agentops.core.config_loader import load_agentops_config
+from agentops.core.evaluators import detect_dataset_shape, select_evaluators
 from agentops.pipeline.azd_runner import (
     AZD_EVAL_TIMEOUT_SECONDS,
     AZD_EXTENSION_NAME,
@@ -29,6 +33,19 @@ _DEFAULT_AZD_EVALUATORS = (
     "builtin.coherence",
     "builtin.fluency",
 )
+
+_AI_ASSISTED_AZD_EVALUATORS = {
+    "builtin.coherence",
+    "builtin.fluency",
+    "builtin.text_similarity",
+    "builtin.groundedness",
+    "builtin.relevance",
+    "builtin.retrieval",
+    "builtin.response_completeness",
+    "builtin.tool_call_accuracy",
+    "builtin.intent_resolution",
+    "builtin.task_adherence",
+}
 
 _EVALUATOR_NAME_TO_AZD = {
     "CoherenceEvaluator": "builtin.coherence",
@@ -58,6 +75,244 @@ class AzdEvalInitResult:
     command_ran: bool
     stdout: str = ""
     stderr: str = ""
+    evaluator_source: str = "unknown"
+    evaluator_signals: tuple[str, ...] = ()
+    evaluators: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AzdEvaluatorSelection:
+    """Evaluators selected for azd eval init and the reason for them."""
+
+    names: tuple[str, ...]
+    source: str
+    signals: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class EvaluatorModelEnvResult:
+    """Evaluator model environment setup for local judge-based runs."""
+
+    deployment: Optional[str] = None
+    model: Optional[str] = None
+    env_path: Optional[Path] = None
+    changed_keys: tuple[str, ...] = ()
+    source: str = "not configured"
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.deployment and self.model)
+
+
+@dataclass(frozen=True)
+class _DiscoveredModelDeployment:
+    deployment: str
+    model: str
+
+
+def recommend_evaluators_for_config(
+    *,
+    config_path: Path,
+    dataset: Optional[Path] = None,
+) -> AzdEvaluatorSelection:
+    resolved_config = config_path.resolve()
+    effective_dataset = dataset or _dataset_from_config(resolved_config)
+    if effective_dataset is None:
+        return AzdEvaluatorSelection(
+            names=(),
+            source="no dataset",
+            signals=("No dataset was available for evaluator inference.",),
+        )
+    return _azd_evaluator_selection_from_config(resolved_config, effective_dataset)
+
+
+def ensure_local_evaluator_model_env(
+    *,
+    workspace: Path,
+    selection: AzdEvaluatorSelection,
+) -> EvaluatorModelEnvResult:
+    """Discover and persist judge model env for local AI-assisted evaluators."""
+
+    if not _selection_needs_ai_evaluator(selection):
+        return EvaluatorModelEnvResult(source="not needed")
+
+    env_path, env_values = _active_env_file_and_values(workspace)
+    deployment = env_values.get("AZURE_OPENAI_DEPLOYMENT") or env_values.get(
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME"
+    )
+    model = env_values.get("AZURE_OPENAI_MODEL_NAME") or env_values.get(
+        "AZURE_AI_MODEL_NAME"
+    )
+    if deployment and model:
+        return EvaluatorModelEnvResult(
+            deployment=deployment,
+            model=model,
+            env_path=env_path,
+            source="existing env",
+        )
+
+    discovered = _discover_single_chat_deployment(workspace, env_values)
+    if discovered is None:
+        return EvaluatorModelEnvResult(
+            deployment=deployment,
+            model=model,
+            env_path=env_path,
+            source="not found",
+        )
+
+    updates = {
+        "AZURE_OPENAI_DEPLOYMENT": discovered.deployment,
+        "AZURE_OPENAI_MODEL_NAME": discovered.model,
+    }
+    if env_path is None:
+        from agentops.services.setup_wizard import ensure_agentops_env  # noqa: PLC0415
+
+        env_path = ensure_agentops_env(workspace)
+    from agentops.utils.azd_env import set_env_values  # noqa: PLC0415
+
+    changed = tuple(set_env_values(env_path, updates))
+    return EvaluatorModelEnvResult(
+        deployment=discovered.deployment,
+        model=discovered.model,
+        env_path=env_path,
+        changed_keys=changed,
+        source="Azure resource discovery",
+    )
+
+
+def _selection_needs_ai_evaluator(selection: AzdEvaluatorSelection) -> bool:
+    return any(name in _AI_ASSISTED_AZD_EVALUATORS for name in selection.names)
+
+
+def _active_env_file_and_values(workspace: Path) -> tuple[Optional[Path], dict[str, str]]:
+    from agentops.utils.azd_env import discover_azd_env, parse_env_file  # noqa: PLC0415
+
+    location = discover_azd_env(workspace)
+    values: dict[str, str] = {}
+    env_path: Optional[Path] = None
+    if location.found and location.env_path is not None:
+        env_path = location.env_path
+        values.update(parse_env_file(location.env_path))
+    else:
+        agentops_env = workspace / ".agentops" / ".env"
+        if agentops_env.is_file():
+            env_path = agentops_env
+            values.update(parse_env_file(agentops_env))
+    for key in (
+        "AZURE_RESOURCE_GROUP",
+        "AZURE_SUBSCRIPTION_ID",
+        "AZURE_OPENAI_DEPLOYMENT",
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME",
+        "AZURE_OPENAI_MODEL_NAME",
+        "AZURE_AI_MODEL_NAME",
+    ):
+        if key not in values and os.environ.get(key):
+            values[key] = os.environ[key]
+    return env_path, values
+
+
+def _discover_single_chat_deployment(
+    workspace: Path,
+    env_values: dict[str, str],
+) -> Optional[_DiscoveredModelDeployment]:
+    resource_group = env_values.get("AZURE_RESOURCE_GROUP")
+    if not resource_group:
+        return None
+    subscription_id = env_values.get("AZURE_SUBSCRIPTION_ID")
+    accounts = _run_json(
+        [
+            _az_cli_command(),
+            "cognitiveservices",
+            "account",
+            "list",
+            "-g",
+            resource_group,
+            "-o",
+            "json",
+            *(["--subscription", subscription_id] if subscription_id else []),
+        ],
+        workspace=workspace,
+    )
+    if not isinstance(accounts, list):
+        return None
+
+    candidates: list[_DiscoveredModelDeployment] = []
+    for account in accounts:
+        if not isinstance(account, dict):
+            continue
+        kind = str(account.get("kind") or "").lower()
+        if kind not in {"aiservices", "openai"}:
+            continue
+        account_name = account.get("name")
+        if not isinstance(account_name, str) or not account_name.strip():
+            continue
+        deployments = _run_json(
+            [
+                _az_cli_command(),
+                "cognitiveservices",
+                "account",
+                "deployment",
+                "list",
+                "-g",
+                resource_group,
+                "-n",
+                account_name,
+                "-o",
+                "json",
+                *(["--subscription", subscription_id] if subscription_id else []),
+            ],
+            workspace=workspace,
+        )
+        if not isinstance(deployments, list):
+            continue
+        for deployment in deployments:
+            if not isinstance(deployment, dict):
+                continue
+            deployment_name = deployment.get("name")
+            properties = deployment.get("properties")
+            model_data = properties.get("model") if isinstance(properties, dict) else None
+            model_name = model_data.get("name") if isinstance(model_data, dict) else None
+            if not isinstance(deployment_name, str) or not isinstance(model_name, str):
+                continue
+            if not deployment_name.strip() or not model_name.strip():
+                continue
+            if "embedding" in model_name.lower():
+                continue
+            candidates.append(
+                _DiscoveredModelDeployment(
+                    deployment=deployment_name.strip(),
+                    model=model_name.strip(),
+                )
+            )
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def _run_json(command: list[str], *, workspace: Path) -> Any:
+    try:
+        completed = subprocess.run(  # noqa: S603,S607
+            command,
+            cwd=str(workspace),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return None
+    if completed.returncode != 0:
+        return None
+    try:
+        return json.loads(completed.stdout or "null")
+    except json.JSONDecodeError:
+        return None
+
+
+def _az_cli_command() -> str:
+    return shutil.which("az") or shutil.which("az.cmd") or shutil.which("az.exe") or "az"
 
 
 def run_azd_eval_init(
@@ -123,7 +378,16 @@ def run_azd_eval_init(
     eval_model = _eval_model_from_config(resolved_config)
     if eval_model:
         arguments.extend(["--eval-model", eval_model])
+    evaluator_selection = AzdEvaluatorSelection(
+        names=(),
+        source="no dataset",
+        signals=("No dataset was available for evaluator inference.",),
+    )
     if effective_dataset is not None:
+        evaluator_selection = _azd_evaluator_selection_from_config(
+            resolved_config,
+            effective_dataset,
+        )
         effective_dataset = _azd_dataset_from_agentops_dataset(
             effective_dataset,
             workspace=root,
@@ -131,7 +395,7 @@ def run_azd_eval_init(
         arguments.extend(
             ["--dataset", _command_path(effective_dataset, workspace=root)]
         )
-        for evaluator in _azd_evaluators_from_config(resolved_config):
+        for evaluator in evaluator_selection.names:
             arguments.extend(["--evaluator", evaluator])
 
     completed = _run_eval_subcommand(
@@ -155,6 +419,7 @@ def run_azd_eval_init(
         command_ran=True,
         stdout=completed.stdout,
         stderr=completed.stderr,
+        evaluator_selection=evaluator_selection,
     )
     return result
 
@@ -559,7 +824,10 @@ def _eval_model_from_config(config_path: Path) -> Optional[str]:
     return None
 
 
-def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
+def _azd_evaluator_selection_from_config(
+    config_path: Path,
+    dataset: Path,
+) -> AzdEvaluatorSelection:
     data = load_yaml(config_path)
     raw_evaluators = data.get("evaluators")
     names: list[str] = []
@@ -572,8 +840,33 @@ def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
             mapped = name if name.startswith("builtin.") else _EVALUATOR_NAME_TO_AZD.get(name)
             if mapped and mapped not in names:
                 names.append(mapped)
-    if not names:
-        names.extend(_DEFAULT_AZD_EVALUATORS)
+        selection_source = "explicit agentops.yaml evaluators"
+        signals = ("Using explicit evaluators from agentops.yaml.",)
+    else:
+        selection_source = "AgentOps recommendation"
+        signals = []
+        try:
+            config = load_agentops_config(config_path)
+            target = classify_agent(config.agent, config.protocol)
+            shape = detect_dataset_shape(dataset)
+            presets = select_evaluators(
+                target,
+                shape,
+                threshold_metrics=config.thresholds.keys(),
+            )
+            signals.extend(_dataset_signal_lines(target.kind, shape))
+            for preset in presets:
+                mapped = _EVALUATOR_NAME_TO_AZD.get(preset.name)
+                if mapped and mapped not in names:
+                    names.append(mapped)
+        except (FileNotFoundError, OSError, ValueError) as exc:
+            selection_source = "baseline fallback"
+            signals = (
+                f"Could not inspect dataset for evaluator inference: {exc}",
+                "Using baseline evaluators only.",
+            )
+        if not names:
+            names.extend(_DEFAULT_AZD_EVALUATORS)
     raw_rubrics = data.get("rubrics")
     if isinstance(raw_rubrics, list):
         for item in raw_rubrics:
@@ -585,7 +878,22 @@ def _azd_evaluators_from_config(config_path: Path) -> tuple[str, ...]:
             name = raw_name.strip()
             if name not in names:
                 names.append(name)
-    return tuple(names)
+    return AzdEvaluatorSelection(
+        names=tuple(names),
+        source=selection_source,
+        signals=tuple(signals),
+    )
+
+
+def _dataset_signal_lines(kind: str, shape: Any) -> tuple[str, ...]:
+    signals = [f"Target kind: {kind}."]
+    if shape.looks_rag:
+        signals.append("Dataset context column detected; adding RAG evaluators.")
+    if shape.looks_tool_use:
+        signals.append("Dataset tool trace columns detected; adding tool-use evaluators.")
+    if not shape.looks_rag and not shape.looks_tool_use:
+        signals.append("Free-form answer dataset detected; adding answer-quality evaluators.")
+    return tuple(signals)
 
 
 def _azd_dataset_from_agentops_dataset(dataset: Path, *, workspace: Path) -> Path:
@@ -617,6 +925,7 @@ def _persist_recipe(
     command_ran: bool,
     stdout: str = "",
     stderr: str = "",
+    evaluator_selection: AzdEvaluatorSelection | None = None,
 ) -> AzdEvalInitResult:
     data = load_yaml(config_path)
     recipe_value = _relative_config_path(recipe_path, config_path.parent)
@@ -635,6 +944,9 @@ def _persist_recipe(
         command_ran=command_ran,
         stdout=stdout,
         stderr=stderr,
+        evaluator_source=(evaluator_selection.source if evaluator_selection else "existing recipe"),
+        evaluator_signals=(evaluator_selection.signals if evaluator_selection else ()),
+        evaluators=(evaluator_selection.names if evaluator_selection else ()),
     )
 
 

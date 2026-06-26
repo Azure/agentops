@@ -46,7 +46,7 @@ skills from the extension/plugin.
 Run this from the repository where you want skills checked in:
 
 ```bash
-python -m pip install "agentops-accelerator[foundry] @ git+https://github.com/Azure/agentops.git@main"
+python -m pip install "agentops-accelerator @ git+https://github.com/Azure/agentops.git@main"
 agentops skills install --platform copilot --force
 ```
 

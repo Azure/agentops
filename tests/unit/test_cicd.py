@@ -31,8 +31,14 @@ _DEPRECATED_NODE20_ACTION_REFS = (
     "actions/checkout@v4",
     "actions/setup-python@v5",
     "actions/upload-artifact@v4",
+    "actions/upload-artifact@v5",
+    "actions/download-artifact@v4",
+    "actions/download-artifact@v5",
+    "actions/download-artifact@v6",
     "actions/github-script@v7",
     "astral-sh/setup-uv@v3",
+    "astral-sh/setup-uv@v5",
+    "astral-sh/setup-uv@v6",
     "azure/login@v2",
 )
 
@@ -86,7 +92,48 @@ def test_kinds_unknown_value_is_ignored(tmp_path: Path) -> None:
 
 def test_kinds_dedupes(tmp_path: Path) -> None:
     result = generate_cicd_workflows(directory=tmp_path, kinds=["pr", "pr", "dev"])
+
     assert len(result.created_files) == 2
+
+
+def test_github_templates_include_optional_governance_gates(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: demo\n", encoding="utf-8")
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: https://example.test/orchestrator\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "assert:\n"
+        "  config: ./assert/eval_config.yaml\n"
+        "redteam:\n"
+        "  risk_categories: [violence]\n",
+        encoding="utf-8",
+    )
+
+    generate_cicd_workflows(
+        directory=tmp_path,
+        kinds=["pr", "dev"],
+        deploy_mode="azd",
+    )
+
+    for rel in (_PR_PATH, _DEV_PATH):
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        assert "Detect AgentOps governance gates" in content
+        assert "agentops assert run --config" in content
+        redteam_lines = [
+            line.strip()
+            for line in content.splitlines()
+            if "agentops redteam run --config" in line
+        ]
+        if rel == _PR_PATH:
+            assert redteam_lines == [
+                "agentops redteam run --config \"${{ inputs.config || 'agentops.yaml' }}\""
+            ]
+        else:
+            assert redteam_lines == ['agentops redteam run --config "agentops.yaml"']
+        assert ".agentops/assert/latest.json" in content
+        assert ".agentops/redteam/latest.json" in content
+        data = _read_yaml(tmp_path / rel)
+        assert isinstance(data, dict)
 
 
 def test_skips_existing_without_force(tmp_path: Path) -> None:
@@ -1025,8 +1072,9 @@ def test_prompt_agent_pr_template_stages_candidate_before_eval(tmp_path: Path) -
     assert "prompt_deploy record" not in content
     # Default doctor gate is critical
     assert "--severity-fail critical" in content
-    # PR candidates land in the dev Foundry project (not "pr", not sandbox)
-    assert "environment: dev" in content
+    # PR candidates stay in sandbox. Deploy workflows promote to dev after merge.
+    assert "environment: sandbox" in content
+    assert "--environment \"sandbox\"" in content
 
 
 def test_prompt_agent_pr_template_is_valid_yaml(tmp_path: Path) -> None:

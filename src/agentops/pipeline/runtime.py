@@ -67,6 +67,10 @@ def _credential() -> Any:
 _REASONING_MODEL_PREFIXES = ("gpt-5", "o1", "o3", "o4")
 
 
+def _evaluator_model_name() -> Optional[str]:
+    return os.getenv("AZURE_OPENAI_MODEL_NAME") or os.getenv("AZURE_AI_MODEL_NAME")
+
+
 def _model_config() -> Dict[str, Any]:
     from agentops.utils.azure_endpoints import (
         derive_openai_endpoint_from_project,
@@ -153,7 +157,7 @@ def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
         raise RuntimeError(
             "Evaluators require the 'azure-ai-evaluation' package. "
             "Install the Foundry extra in this virtual environment. "
-            "Run: python -m pip install --upgrade 'agentops-accelerator[foundry]'"
+            "Run: python -m pip install agentops-accelerator"
         ) from exc
 
     cls = getattr(module, preset.class_name, None)
@@ -166,7 +170,9 @@ def load_evaluator(preset: EvaluatorPreset) -> EvaluatorRuntime:
     if preset.class_name in _AI_ASSISTED:
         model_config = _model_config()
         init_kwargs["model_config"] = model_config
-        if _is_reasoning_model_deployment(model_config.get("azure_deployment")):
+        if _is_reasoning_model_deployment(
+            _evaluator_model_name() or model_config.get("azure_deployment")
+        ):
             init_kwargs["is_reasoning_model"] = True
     if preset.class_name in _SAFETY:
         init_kwargs["azure_ai_project"] = _project_endpoint()
@@ -295,22 +301,37 @@ def _resolve_kwargs(
     *,
     row: Dict[str, Any],
     response: str,
+    response_fields: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     resolved: Dict[str, Any] = {}
     row_response = row.get("response")
     merged = {**row, "response": response, "input": row.get("input")}
+    captured = response_fields or {}
     for kwarg, placeholder in mapping.items():
         if not isinstance(placeholder, str) or not placeholder.startswith("$"):
             resolved[kwarg] = placeholder
             continue
+        if placeholder.startswith("$response."):
+            # Live multi-field capture from an http-json target, e.g.
+            # '$response.context' resolves to the context the endpoint
+            # returned alongside the answer on the same call.
+            name = placeholder[len("$response."):]
+            value = captured.get(name)
+            if value is None and isinstance(row_response, dict):
+                value = _lookup_placeholder(row_response, name)
+            if value is not None:
+                resolved[kwarg] = value
+            continue
+        if placeholder.startswith("$row."):
+            # Arbitrary dataset column, e.g. '$row.qrels' for Document
+            # Retrieval ground-truth labels that the fixed token set does
+            # not name explicitly.
+            name = placeholder[len("$row."):]
+            value = row.get(name)
+            if value is not None:
+                resolved[kwarg] = value
+            continue
         source_path = _PLACEHOLDERS.get(placeholder)
-        if source_path is None and placeholder.startswith("$response."):
-            if isinstance(row_response, dict):
-                value = _lookup_placeholder(row_response, placeholder[len("$response."):])
-                if value is not None:
-                    resolved[kwarg] = value
-                    continue
-            source_path = placeholder[1:]
         if source_path is None and placeholder.startswith("$telemetry."):
             source_path = placeholder[1:]
         if source_path is None:
@@ -375,6 +396,7 @@ def run_evaluator(
     response: str,
     latency_seconds: float,
     actual_tool_calls: Optional[List[Any]] = None,
+    response_fields: Optional[Dict[str, Any]] = None,
 ) -> RowMetric:
     """Execute one evaluator on one row. Captures errors so the run continues."""
     preset = runtime.preset
@@ -405,7 +427,12 @@ def run_evaluator(
             )
 
     try:
-        kwargs = _resolve_kwargs(preset.input_mapping, row=row, response=response)
+        kwargs = _resolve_kwargs(
+            preset.input_mapping,
+            row=row,
+            response=response,
+            response_fields=response_fields,
+        )
         if preset.needs_conversation:
             # Prefer the actual calls made by the agent during invocation;
             # fall back to the dataset's expected calls if the runner did

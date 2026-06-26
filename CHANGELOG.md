@@ -17,6 +17,163 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   contract.
 
 ### Changed
+- **Prompt-agent PR validation now uses sandbox instead of dev.** Generated
+  GitHub and Azure DevOps PR workflows stage prompt-agent candidates in the
+  sandbox Foundry environment, keeping dev for deployed-of-record versions.
+
+## [0.5.3] - 2026-06-22
+
+### Fixed
+- **VS Code extension is back on the Marketplace.** The 0.5.2 release published to
+  PyPI, but the Marketplace (VSIX) publish was blocked by an expired publisher
+  token, so the VS Code extension never updated to 0.5.2. Release 0.5.3 ships the
+  same toolkit as 0.5.2 with a refreshed Marketplace credential, so
+  `agentops-accelerator` on PyPI and the AgentOps extension on the Marketplace are
+  back in sync. No functional changes to the CLI or the extension.
+
+## [0.5.2] - 2026-06-20
+
+### Added
+- **Per-evaluator input remapping via `evaluators[].input_mapping`.** Evaluator
+  overrides in `agentops.yaml` now accept an optional `input_mapping` map that is
+  merged onto the preset's default inputs, so you only list the keys you want to
+  change. This is what lets a grey-box HTTP/JSON target point a RAG evaluator at
+  the live retrieved context captured by `response_fields`, for example
+  `context: $response.context` on `GroundednessEvaluator` and
+  `RetrievalEvaluator`. The mapping applies to both explicitly listed overrides
+  and auto-selected presets. A bare evaluator name string (`- GroundednessEvaluator`)
+  is still accepted as shorthand for `{ name: GroundednessEvaluator }`, so
+  existing configs are unchanged.
+
+
+
+### Added
+- **Rendered gate results in GitHub Actions job summaries.** When AgentOps runs
+  inside GitHub Actions (`GITHUB_STEP_SUMMARY` set), `agentops eval run` now
+  appends the full rendered `report.md` to the workflow run summary, and
+  `agentops assert run` / `agentops redteam run` append a concise pass/fail
+  summary (suite, cases, pass rate, per-dimension and per-risk-category
+  breakdowns). Reviewers can read the report directly on the run page without
+  downloading the uploaded artifacts. Writes are best-effort and a no-op outside
+  GitHub Actions, so local runs are unaffected.
+
+### Changed
+- **Generated workflows use Node24-ready action versions.** The prompt-agent and
+  watchdog workflow templates now pin `actions/download-artifact@v7` (instead of
+  the Node20 `@v4`), so generated pipelines no longer emit the "Node.js 20
+  actions are deprecated" warning. A regression guard checks every workflow
+  template against the known Node20 action majors.
+
+## [0.5.0] - 2026-06-19
+
+### Added
+- **Grey-box retrieval capture for HTTP JSON targets.** An HTTP target can now
+  capture extra named fields from a JSON response via a `response_fields` map
+  (`name -> dot-path`). Captured values are exposed to evaluator `input_mapping`
+  as `$response.<name>` (for example `$response.context`,
+  `$response.retrieved_documents`), and dataset columns can be referenced with
+  `$row.<name>` (for example `$row.qrels`). This lets RAG evaluators such as
+  Groundedness, Retrieval, and Document Retrieval score the retrieval actually
+  used at eval time instead of static dataset context. The primary prediction
+  (`response_field`) and single-field behavior are unchanged when
+  `response_fields` is not set.
+
+## [0.4.5] - 2026-06-19
+
+### Added
+- **Governance gates for HTTP agents (ASSERT and Red Team).** `agentops assert
+  run` and `agentops redteam run` now work against a live HTTP orchestrator
+  endpoint, not only model/deployment targets. Red Team wraps the HTTP endpoint
+  as an SDK-compatible target and reuses the AgentOps HTTP mapping
+  (`request_field`, `response_mode`, `stream`, custom headers). ASSERT resolves
+  `assert-ai` inside the active virtual environment, accepts non-secret values
+  from `assert.env`, can request an AAD token from the Azure CLI for local
+  auth-disabled Azure AI resources, injects the GPT-5 `max_completion_tokens`
+  shim only when configured, and materializes a runtime ASSERT config so
+  committed configs no longer need absolute artifact paths.
+- **Generated workflows run the ASSERT and Red Team gates.** `agentops workflow
+  generate` now installs the optional ASSERT/Red Team dependencies, runs those
+  gates when `assert:` or `redteam:` is present in `agentops.yaml`, uploads
+  their artifacts, and emits the corrected Red Team command quoting.
+
+### Fixed
+- **Reasoning-model judges no longer fail the eval gate in CI.** The generated
+  GitHub Actions and Azure DevOps eval and Red Team steps now forward
+  `AZURE_OPENAI_MODEL_NAME`, so AgentOps detects reasoning models (such as
+  `gpt-5-nano`) and uses `max_completion_tokens` instead of `max_tokens`. This
+  removes the judge `400` error that could break the eval gate when the judge
+  deployment is a reasoning model.
+
+## [0.4.4] - 2026-06-18
+
+### Added
+- **Streaming HTTP targets.** The `http_json` target now understands streaming
+  responses so AgentOps can evaluate SSE/streaming agents (such as the
+  gpt-rag-orchestrator `/orchestrator` endpoint) directly, without a manual
+  adapter. A new `response_mode: json|sse|text` field selects the response
+  parser (`json` is the default and preserves the existing single-`json.loads`
+  behavior exactly). For `sse`/`text`, an optional `stream` block configures
+  aggregation: `text_field` (dotted path to the token text when each SSE
+  `data:` line is JSON), `done_marker` (stop token, e.g. `[DONE]`), and
+  `strip_leading_token` (drop the leading whitespace-delimited token, e.g. the
+  orchestrator's `conversation_id` prefix). The auth header is now configurable
+  via `auth_header_name` (default `Authorization`) and `auth_value_template`
+  (default `Bearer {token}`, where `{token}` is replaced by the
+  `auth_header_env` value), so targets gated by a shared secret such as
+  `X-API-KEY` are supported without hardcoding the secret in `agentops.yaml`.
+  Streaming uses the same stdlib (`urllib`) transport and 3-try backoff as the
+  JSON path. When a JSON parse fails on a `text/event-stream` response, the
+  error now suggests setting `response_mode: sse|text`.
+
+## [0.4.3] - 2026-06-17
+
+### Added
+- **Prompt-agent tutorials no longer require manual portal copy/paste.**
+  `agentops prompt pull` reads the configured Foundry prompt agent
+  (`agent: name:version`), validates that the Foundry definition is actually a
+  prompt agent, and writes the reviewed Sandbox instructions to
+  `.agentops/prompts/<agent-name>.prompt.md` by default. Before writing, the CLI
+  prints the resolved agent, endpoint, endpoint source, and destination file so
+  operators can catch the wrong environment early. Changed prompt files are
+  protected by default and require `--force` to overwrite reviewed local edits.
+  The command updates `prompt_file` in `agentops.yaml` unless
+  `--no-update-config` is passed, and it can resolve the endpoint from
+  `--project-endpoint`, `agentops.yaml`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, or
+  the active `.azure/<env>/.env`. The prompt-agent tutorial and packaged
+  `agentops-eval` skill now use this command instead of a manual here-string.
+  ([#322](https://github.com/Azure/agentops/issues/322))
+
+### Changed
+- **`agentops eval init` now recommends evaluators from the agent and dataset
+  shape.** The azd bootstrap path now reuses the same AgentOps evaluator
+  catalog as `agentops eval run`: free-form answer datasets get answer-quality
+  checks, RAG-shaped datasets get groundedness / relevance / retrieval checks,
+  and tool-use datasets get tool-call / intent / task-adherence checks while
+  avoiding literal-answer similarity metrics. Explicit `evaluators:` entries in
+  `agentops.yaml` still win. The CLI prints the recommendation source, detected
+  signals, and selected azd built-ins before reporting the generated
+  `eval.yaml`, so users can see why those evaluators were chosen.
+  ([#323](https://github.com/Azure/agentops/issues/323))
+
+## [0.4.2] - 2026-06-17
+
+### Fixed
+- **`agentops eval init` now works with both old and new `azure.ai.agents` azd
+  extensions.** Version 0.1.40 of the extension renamed the eval subcommand from
+  `azd ai agent eval init` to `azd ai agent eval generate`, which made
+  `agentops eval init` hard-fail with `Command "init" is deprecated, use 'azd ai
+  agent eval generate' instead`. AgentOps now invokes `generate` first and
+  transparently falls back to the legacy `init` subcommand when an older
+  extension does not recognise `generate`. The fallback only triggers on
+  subcommand-name/deprecation errors; genuine failures (authentication, project
+  endpoint, timeouts) are still surfaced immediately and unchanged. All
+  previously passed flags (`--project-endpoint`, `--agent`,
+  `--gen-instruction-file`, `--eval-model`, `--dataset`, `--evaluator`) and the
+  recipe discovery/persistence behaviour are preserved.
+
+## [0.4.1] - 2026-06-15
+
+### Changed
 - **PR-stage Foundry prompt-agent versions are now tagged at the source.** When
   `agentops.pipeline.prompt_deploy stage` runs in a PR context (GitHub Actions
   `pull_request` event or Azure DevOps `BUILD_REASON=PullRequest`), the version
