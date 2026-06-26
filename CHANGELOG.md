@@ -5,6 +5,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **Prompt-agent PR validation now uses sandbox instead of dev.** Generated
+  GitHub and Azure DevOps PR workflows stage prompt-agent candidates in the
+  sandbox Foundry environment, keeping dev for deployed-of-record versions.
+
 ## [0.5.3] - 2026-06-22
 
 ### Fixed

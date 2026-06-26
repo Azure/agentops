@@ -211,10 +211,9 @@ _PROMPT_AGENT_VALUES: Dict[str, Dict[str, str]] = {
     "pr": {
         "__ENV_LABEL__": "PR",
         "__ENV_KEY__": "pr",
-        # PR candidates are staged in the dev Foundry project so the
-        # gate evaluates the same target the deploy workflow will use.
-        # Sandbox is the author's playground only.
-        "__ENV_NAME__": "dev",
+        # PR candidates are staged in sandbox. Deploy workflows are the
+        # only path that promotes reviewed prompts to dev, qa, and prod.
+        "__ENV_NAME__": "sandbox",
         "__BRANCHES__": "",
         "__EVAL_JOB_NAME__": "AgentOps eval (PR gate)",
     },
@@ -245,9 +244,9 @@ _PROMPT_AGENT_VALUES_ADO: Dict[str, Dict[str, str]] = {
     "pr": {
         "__ENV_LABEL__": "PR",
         "__ENV_KEY__": "pr",
-        # PR candidates are staged in the dev Foundry project so the
-        # gate evaluates the same target the deploy pipeline will use.
-        "__ENV_NAME__": "dev",
+        # PR candidates are staged in sandbox. Deploy pipelines are the
+        # only path that promotes reviewed prompts to dev, qa, and prod.
+        "__ENV_NAME__": "sandbox",
         "__BRANCHES__": "",
     },
     "dev": {

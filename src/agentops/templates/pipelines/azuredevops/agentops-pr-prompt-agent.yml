@@ -5,12 +5,12 @@
 # For Foundry prompt-agent flows, the PR gate must evaluate the prompt
 # the PR is proposing, not the seed agent version pinned in
 # `agentops.yaml`. So this PR pipeline stages an ephemeral candidate
-# Foundry prompt-agent version in the dev project from the
+# Foundry prompt-agent version in the sandbox project from the
 # source-controlled `prompt_file`, evaluates that exact candidate, and
 # runs Doctor against it. The merge gate is the eval + Doctor result.
 #
 # Notes:
-#   - Each PR run creates or reuses a candidate version in the dev
+#   - Each PR run creates or reuses a candidate version in the sandbox
 #     Foundry project. AgentOps deduplicates only when the prompt is
 #     byte-identical to the current seed version's instructions.
 #     Candidate versions are tagged with `agentops:candidate=true` and
