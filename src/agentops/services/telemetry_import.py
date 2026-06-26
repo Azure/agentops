@@ -424,10 +424,11 @@ def _flatten_logs_response(response: Any) -> list[dict[str, Any]]:
     if not tables:
         return []
     table = tables[0]
-    columns = [
-        getattr(column, "name", None) if not isinstance(column, dict) else column.get("name")
-        for column in (getattr(table, "columns", None) or [])
-    ]
+    columns: list[str] = []
+    for column in getattr(table, "columns", None) or []:
+        name = getattr(column, "name", None) if not isinstance(column, dict) else column.get("name")
+        if isinstance(name, str):
+            columns.append(name)
     rows: list[dict[str, Any]] = []
     for raw in getattr(table, "rows", None) or []:
         rows.append(dict(zip(columns, raw)))
