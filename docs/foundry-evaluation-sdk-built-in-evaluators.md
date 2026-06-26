@@ -1,219 +1,210 @@
-# Foundry Evaluation SDK Built-in Evaluators (AgentOps)
+# Foundry Evaluators
 
-This guide maps Microsoft Foundry built-in evaluators to the configuration model used by AgentOps Accelerator.
+This page explains how AgentOps maps Microsoft Foundry Evaluation SDK
+evaluators to the data in `agentops.yaml`, dataset rows, HTTP responses, and
+trace imports.
 
-## 1) AgentOps config shape (quick reference)
+Most users do not need to configure evaluator internals. AgentOps selects common
+evaluators from the target type and dataset shape. Use this page when you need
+to understand what each evaluator receives.
 
-In AgentOps, each evaluator is configured as an entry in the top-level
-`evaluators:` list of `agentops.yaml`:
+## Config shape
 
-```yaml
-evaluators:
-  - name: SimilarityEvaluator
-    source: foundry
-    enabled: true
-    config:
-      kind: builtin                # builtin | custom
-      class_name: SimilarityEvaluator
-      init:                        # constructor kwargs
-        model_config:
-          azure_endpoint: ${env:AZURE_OPENAI_ENDPOINT}
-          azure_deployment: ${env:AZURE_OPENAI_DEPLOYMENT}
-      input_mapping:               # evaluator call kwargs
-        query: $prompt
-        response: $prediction
-        ground_truth: $expected
-      score_keys:                  # ordered keys to read numeric score
-        - similarity
-        - score
-```
-
-## 2) Global requirements by evaluator family
-
-- AI-assisted quality evaluators use a judge model (`model_config`) in Azure OpenAI/OpenAI schema.
-- Risk/safety evaluators and `GroundednessProEvaluator` use `azure_ai_project` instead of GPT deployment in `model_config`.
-- Agent evaluators require agent-style payloads (`query/response` as messages, and often tool metadata).
-- NLP evaluators (`F1`, `BLEU`, `GLEU`, `ROUGE`, `METEOR`) are non-LLM evaluators and usually need `response` + `ground_truth`.
-
-## 3) Built-in evaluators and required AgentOps parameters
-
-| Evaluator | Category | Typical required inputs | Backend init requirements | AgentOps `config` minimum |
-|---|---|---|---|---|
-| `CoherenceEvaluator` | General purpose | `query`, `response` | `model_config` (AI-assisted) | `kind: builtin`, `class_name`, `input_mapping(query,response)`, `score_keys` |
-| `FluencyEvaluator` | General purpose | `query`, `response` | `model_config` (AI-assisted) | same as above |
-| `SimilarityEvaluator` | Textual similarity | `query`, `response`, `ground_truth` | `model_config` (AI-assisted) | `input_mapping(query,response,ground_truth)` |
-| `F1ScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | none beyond class init defaults | `input_mapping(response,ground_truth)` |
-| `BleuScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | none beyond class init defaults | `input_mapping(response,ground_truth)` |
-| `GleuScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | none beyond class init defaults | `input_mapping(response,ground_truth)` |
-| `RougeScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | optional `rouge_type` in `init` | `input_mapping(response,ground_truth)` |
-| `MeteorScoreEvaluator` | Textual similarity (NLP) | `response`, `ground_truth` | optional `alpha/beta/gamma/threshold` in `init` | `input_mapping(response,ground_truth)` |
-| `RetrievalEvaluator` | RAG | usually `query`, `response`, `context` | `model_config` (AI-assisted) | `input_mapping(query,response,context)` |
-| `DocumentRetrievalEvaluator` | RAG | retrieval outputs + `ground_truth` | check SDK class contract | explicit `input_mapping` recommended |
-| `GroundednessEvaluator` | RAG | `response`, `context` (optional `query`) | `model_config` (AI-assisted) | `input_mapping(response,context[,query])` |
-| `GroundednessProEvaluator` *(preview)* | RAG | `query/response/context` or conversation | `azure_ai_project` (not GPT model_config) | `init.azure_ai_project`, explicit `input_mapping` |
-| `RelevanceEvaluator` | RAG | `query`, `response` (optionally `context`) | `model_config` (AI-assisted) | `input_mapping(query,response[,context])` |
-| `ResponseCompletenessEvaluator` | RAG | `response`, `ground_truth` (often query optional) | AI-assisted quality path | explicit `input_mapping`, `score_keys` |
-| `HateUnfairnessEvaluator` | Safety | `query`, `response`/conversation | `azure_ai_project` | `init.azure_ai_project`, `input_mapping` |
-| `SexualEvaluator` | Safety | `query`, `response`/conversation | `azure_ai_project` | same |
-| `ViolenceEvaluator` | Safety | `query`, `response`/conversation | `azure_ai_project` | same |
-| `SelfHarmEvaluator` | Safety | `query`, `response`/conversation | `azure_ai_project` | same |
-| `ContentSafetyEvaluator` | Safety composite | query/response or conversation | `azure_ai_project` | `init.azure_ai_project`, `input_mapping` |
-| `ProtectedMaterialEvaluator` | Safety | query/response or multimodal | `azure_ai_project` | `init.azure_ai_project`, `input_mapping` |
-| `CodeVulnerabilityEvaluator` | Safety/risk | text/code response | `azure_ai_project` | `init.azure_ai_project`, `input_mapping(response[,query])` |
-| `UngroundedAttributesEvaluator` | Safety/risk | text response | `azure_ai_project` | `init.azure_ai_project`, `input_mapping(response[,query])` |
-| `IndirectAttackEvaluator` | Safety/risk | conversation-oriented input | `azure_ai_project` | `init.azure_ai_project`, `input_mapping(conversation/query,response)` |
-| `IntentResolutionEvaluator` *(preview)* | Agent | `query`, `response` (string or message list) | agent evaluator path | `input_mapping(query,response[,tool_definitions])` |
-| `TaskAdherenceEvaluator` *(preview)* | Agent | `query`, `response` (string or message list) | agent evaluator path | `input_mapping(query,response[,tool_calls])` |
-| `ToolCallAccuracyEvaluator` *(preview)* | Agent | `query`; plus `response` or `tool_calls`; `tool_definitions` required | agent evaluator path | `input_mapping(query,response,tool_calls,tool_definitions)` |
-| `TaskCompletionEvaluator` *(preview)* | Agent | agent run/conversation payload | preview; use latest SDK docs | explicit `input_mapping`, explicit `score_keys` |
-| `TaskNavigationEfficiencyEvaluator` *(preview)* | Agent | tool/call sequence + expected path context | preview; evolving | explicit `input_mapping`, explicit `score_keys` |
-| `ToolSelectionEvaluator` *(preview)* | Agent | query/response + selected tools + tool defs | preview; evolving | explicit `input_mapping`, explicit `score_keys` |
-| `ToolInputAccuracyEvaluator` *(preview)* | Agent | tool args + tool defs + context | preview; evolving | explicit `input_mapping`, explicit `score_keys` |
-| `ToolOutputUtilizationEvaluator` *(preview)* | Agent | tool outputs + final response | preview; evolving | explicit `input_mapping`, explicit `score_keys` |
-| `ToolCallSuccessEvaluator` *(preview)* | Agent | tool execution results/status | preview; evolving | explicit `input_mapping`, explicit `score_keys` |
-| `QAEvaluator` | Composite quality | `query`, `response`, `ground_truth`, `context` | `model_config` (AI-assisted composite) | `input_mapping(query,response,ground_truth,context)` |
-| `AzureOpenAILabelGrader` | Azure OpenAI grader | template-driven (often conversation/query/response) | grader init requires template/model config | explicit `init` + explicit `input_mapping` |
-| `AzureOpenAIStringCheckGrader` | Azure OpenAI grader | template-driven text fields | grader init requires template | explicit `init` + explicit `input_mapping` |
-| `AzureOpenAITextSimilarityGrader` | Azure OpenAI grader | text + `ground_truth` equivalent | grader init requires template/model config | explicit `init` + explicit `input_mapping` |
-| `AzureOpenAIGrader` | Azure OpenAI grader | template-defined | grader init requires rubric/template | explicit `init` + explicit `input_mapping` |
-
-## 4) Practical rules for AgentOps evaluators
-
-- Always set `source: foundry` for Foundry SDK evaluators.
-- For preview evaluators, always provide explicit:
-  - `config.class_name`
-  - `config.input_mapping`
-  - `config.score_keys`
-- Prefer explicit `input_mapping` even when defaults might work.
-- Keep `thresholds[].evaluator` exactly equal to `evaluators[].name`.
-- For agent evaluators, use structured fields in dataset rows (messages, tool calls, tool definitions) and map with `$row.<field>`.
-
-## 5) Examples by evaluator type
-
-The following examples show one practical config snippet for each evaluator family used in AgentOps:
-
-- `5.1` AI-assisted quality evaluators (`model_config`)
-- `5.2` Risk/safety evaluators (`azure_ai_project`)
-- `5.3` Agent evaluators (message/tool payloads)
-- `5.4` NLP evaluators (non-LLM)
-
-## 5.1) Example for AI-assisted quality evaluator (`model_config`)
+The normal config stays small:
 
 ```yaml
-evaluators:
-  - name: RelevanceEvaluator
-    source: foundry
-    enabled: true
-    config:
-      kind: builtin
-      class_name: RelevanceEvaluator
-      init:
-        model_config:
-          azure_endpoint: ${env:AZURE_OPENAI_ENDPOINT}
-          azure_deployment: ${env:AZURE_OPENAI_DEPLOYMENT}
-      input_mapping:
-        query: $prompt
-        response: $prediction
-      score_keys:
-        - relevance
-        - score
+version: 1
+agent: "https://support-dev.example.com/chat"
+dataset: .agentops/data/rag-smoke.jsonl
+response_source: agent
+
+protocol: http-json
+request_field: message
+response_fields:
+  response: answer
+  context: context
 
 thresholds:
-  - evaluator: RelevanceEvaluator
-    criteria: ">="
-    value: 3
+  groundedness: ">=3"
+  retrieval: ">=3"
+  coherence: ">=3"
 ```
 
-## 5.2) Example for risk/safety evaluator (`azure_ai_project`)
+Use `evaluators:` only when you want to override the automatic choice:
 
 ```yaml
 evaluators:
-  - name: ViolenceEvaluator
-    source: foundry
-    enabled: true
-    config:
-      kind: builtin
-      class_name: ViolenceEvaluator
-      init:
-        azure_ai_project: ${env:AZURE_AI_FOUNDRY_PROJECT_ENDPOINT}
-      input_mapping:
-        query: $prompt
-        response: $prediction
-      score_keys:
-        - violence
-        - score
-
-thresholds:
-  - evaluator: ViolenceEvaluator
-    criteria: "<="
-    value: 2
+  - GroundednessEvaluator
+  - RetrievalEvaluator
+  - RelevanceEvaluator
 ```
 
-`GroundednessProEvaluator` follows the same pattern (`azure_ai_project` in `init`).
+## Requirements
 
-## 5.3) Example for agent evaluator (agent payload + tools)
+| Family | What it checks | Common inputs |
+|---|---|---|
+| Quality judges | The answer is coherent, fluent, similar, complete, or relevant. | prompt, response, expected answer |
+| RAG judges | The answer uses retrieved context and the retrieval is useful. | prompt, response, context |
+| Safety judges | The answer avoids harmful or protected content. | prompt, response |
+| Agent judges | Tool use and agent workflow behavior are correct. | prompt, response, tool calls, tool definitions |
+| Local metrics | Scores that do not need a judge model. | response, expected answer, latency |
+
+## Parameters
+
+AgentOps uses a small set of logical inputs. The same logical input can come from
+a static dataset, a live HTTP response, or imported telemetry.
+
+| Logical input | Meaning | Common source |
+|---|---|---|
+| `query` | The user prompt. | `row.input` |
+| `response` | The target's final answer. | extracted response text |
+| `ground_truth` | The expected answer or acceptance criteria. | `row.expected` |
+| `response field` | Any value extracted through `response_fields`. | `$response.<field>` |
+| `context` | Retrieved chunks, citations, or grounding text. | `row.context`, `$response.context`, `$retrieved_context`, or `$retrieved_context_items` |
+| `tool_calls` | Tools called by the agent. | endpoint response or dataset row |
+| `tool_definitions` | Tool schemas available to the agent. | dataset row |
+| `trace_id` | Trace lineage for review and troubleshooting. | `$telemetry.trace_id` |
+
+## Rules
+
+The mapping rules are intentionally boring:
+
+1. `input` in the dataset becomes the evaluator `query`.
+2. The extracted target answer becomes `response`.
+3. `expected` in the dataset becomes `ground_truth`.
+4. `context` in the dataset becomes evaluator `context`.
+5. For grey-box HTTP, `response_fields.response` supplies the final answer.
+6. For grey-box HTTP, `response_fields.context` can supply `$response.context`.
+7. `$retrieved_context` and `$retrieved_context_items` expose retrieval context
+   in the evaluator placeholder format.
+8. `$telemetry.trace_id` exposes imported telemetry lineage when it exists.
+9. Tool fields are used only when the dataset or response includes tool data.
+
+For RAG, prefer a live context from the response when the endpoint can return it.
+That gives the judge the same evidence the agent used for the answer. Use static
+`row.context` when you want a fixed, hand-authored reference context.
+
+## Examples
+
+Static dataset row:
+
+```json
+{"input":"What is the refund window?","expected":"Customers can request a refund within 30 days.","context":"Refunds are available for 30 days after purchase."}
+```
+
+Static dataset config:
 
 ```yaml
-evaluators:
-  - name: ToolCallAccuracyEvaluator
-    source: foundry
-    enabled: true
-    config:
-      kind: builtin
-      class_name: ToolCallAccuracyEvaluator
-      input_mapping:
-        query: $row.query_messages
-        response: $row.response_messages
-        tool_calls: $row.tool_calls
-        tool_definitions: $row.tool_definitions
-      score_keys:
-        - tool_call_accuracy
-        - score
-
-thresholds:
-  - evaluator: ToolCallAccuracyEvaluator
-    criteria: ">="
-    value: 3
+response_source: dataset
 ```
 
-## 5.4) Example for NLP evaluator (non-LLM)
+Use `response_source: dataset` when each row already has a `response`,
+`prediction`, `output`, or `answer` value and AgentOps should evaluate that value
+instead of calling the target.
+
+Grey-box HTTP config:
 
 ```yaml
-evaluators:
-  - name: F1ScoreEvaluator
-    source: foundry
-    enabled: true
-    config:
-      kind: builtin
-      class_name: F1ScoreEvaluator
-      input_mapping:
-        response: $prediction
-        ground_truth: $expected
-      score_keys:
-        - f1_score
-        - score
-
-thresholds:
-  - evaluator: F1ScoreEvaluator
-    criteria: ">="
-    value: 0.7
+protocol: http-json
+request_field: message
+response_fields:
+  response: output.answer
+  context: output.retrieval.chunks
 ```
 
-## 6) Cloud Evaluation defaults
+Telemetry import:
 
-AgentOps provides sensible defaults so you don't need to configure extra environment variables:
+```powershell
+agentops telemetry validate prod-rag
+agentops telemetry preview prod-rag --rows 10
+agentops telemetry import prod-rag --apply
+```
+
+When comparing this page with raw SDK examples, use these mappings:
+
+- Quality evaluators often show `model_config`. In AgentOps, set the judge model
+  with `AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME`.
+- Safety evaluators often show `azure_ai_project`. In AgentOps, set the Foundry
+  project with `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` or `project_endpoint:`.
+- Agent evaluators need the agent payload to include tool calls and tool
+  definitions when you want tools to be judged.
+- NLP metrics are non-LLM checks over values such as `response` and
+  `ground_truth`.
+
+## Quality
+
+| Evaluator | Typical inputs | Notes |
+|---|---|---|
+| `CoherenceEvaluator` | `query`, `response` | Checks whether the answer is logically consistent. |
+| `FluencyEvaluator` | `response` | Checks language quality. |
+| `SimilarityEvaluator` | `query`, `response`, `ground_truth` | Compares the answer with the expected answer. |
+| `ResponseCompletenessEvaluator` | `query`, `response`, `ground_truth` | Checks whether the answer covers what was expected. |
+| `RelevanceEvaluator` | `query`, `response`, optional `context` | Useful for both chat and RAG quality. |
+
+Quality judges need a judge model deployment. Set
+`AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` when local or
+cloud evaluation needs one.
+
+## Safety
+
+| Evaluator | Typical inputs | Notes |
+|---|---|---|
+| `ViolenceEvaluator` | `query`, `response` | Scores violent content risk. |
+| `SexualEvaluator` | `query`, `response` | Scores sexual content risk. |
+| `SelfHarmEvaluator` | `query`, `response` | Scores self-harm content risk. |
+| `HateUnfairnessEvaluator` | `query`, `response` | Scores hate and unfairness risk. |
+| `ProtectedMaterialEvaluator` | `query`, `response` | Checks protected material risk when supported by the SDK. |
+| `ContentSafetyEvaluator` | `query`, `response` | Composite safety path when supported by the SDK. |
+
+Safety judges require a Foundry project connection. Use
+`AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` or `project_endpoint:` in `agentops.yaml`.
+
+## Agent
+
+| Evaluator | Typical inputs | Notes |
+|---|---|---|
+| `ToolCallAccuracyEvaluator` | `query`, `tool_calls`, `tool_definitions` | Checks whether the expected tools were called. |
+| `IntentResolutionEvaluator` | `query`, `response`, `tool_definitions` | Checks whether the agent resolved the user's intent. |
+| `TaskAdherenceEvaluator` | `query`, `response`, `tool_definitions` | Checks whether the agent stayed on task. |
+| `TaskCompletionEvaluator` | conversation payload | Preview in some SDK versions. |
+| `ToolSelectionEvaluator` | tool selection plus tool definitions | Preview in some SDK versions. |
+| `ToolInputAccuracyEvaluator` | tool arguments plus tool definitions | Preview in some SDK versions. |
+
+Agent judges work best when the target returns tool telemetry or the dataset row
+contains expected tool calls. If the endpoint cannot expose tool calls, start
+with answer quality and RAG judges instead.
+
+## NLP
+
+| Evaluator | Typical inputs | Notes |
+|---|---|---|
+| `F1ScoreEvaluator` | `response`, `ground_truth` | Good for exact reference checks. |
+| `BleuScoreEvaluator` | `response`, `ground_truth` | Optional text similarity metric. |
+| `GleuScoreEvaluator` | `response`, `ground_truth` | Optional text similarity metric. |
+| `RougeScoreEvaluator` | `response`, `ground_truth` | Optional summary similarity metric. |
+| `MeteorScoreEvaluator` | `response`, `ground_truth` | Optional text similarity metric. |
+| `avg_latency_seconds` | elapsed time | AgentOps computes this locally. |
+
+Local metrics are useful when you want a cheap deterministic signal. They are not
+a replacement for human review or RAG-specific judges.
+
+## Cloud defaults
+
+AgentOps keeps cloud evaluation setup minimal:
 
 | Setting | Default | Override |
 |---|---|---|
-| Judge model (AI-assisted evaluators) | A deployment you configure in your project | `AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME` env var |
-| Authentication | `DefaultAzureCredential` (passwordless) | `az login` locally, Managed Identity in Azure |
+| Authentication | `DefaultAzureCredential` | `az login` locally, managed identity in Azure, or federated identity in CI. |
+| Foundry project | `project_endpoint` or `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` | Set either value before running. |
+| Judge model | Project deployment selected by environment | `AZURE_OPENAI_DEPLOYMENT` or `AZURE_AI_MODEL_DEPLOYMENT_NAME`. |
+| Publishing | Implicit for `execution: cloud` | `publish: true` for local runs that should upload metrics. |
 
-## 7) Known caveats
+## Caveats
 
-- Some agent evaluators listed in the latest Foundry docs are preview and can change name/signature.
-- Not all preview evaluators have stable Python API docs with full constructor/call signatures at any given time.
-- When a signature changes, update the evaluator override list in `agentops.yaml` (no code change is needed in AgentOps core; the runtime is generic).
+- Foundry Evaluation SDK preview evaluators can change names or call signatures.
+- If the SDK changes an evaluator, keep the docs, catalog, and tests in sync.
+- `response_fields.response` is the final answer path for HTTP JSON responses.
+- `response_fields.context` is the retrieved context path for RAG evaluation.
+- Production trace imports need review before they become blocking release gates.
 
-**Last updated:** 2026-03-02 (UTC)
-
-Because Foundry Evaluation SDK and evaluator signatures evolve (especially preview features), review official docs before production rollout.
+**Last updated:** 2026-06-26 (UTC)
