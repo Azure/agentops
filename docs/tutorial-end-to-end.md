@@ -26,7 +26,7 @@ review.
 |---|---|---|---|---|
 | 1 | Define the agent goal and risks | Foundry docs, VS Code, Copilot | Helps define what must be proven before release. | Success criteria and risk list |
 | 2 | Choose Prompt Agent or Hosted Agent | Foundry portal, Foundry Toolkit, team architecture | Later references the target as `name:version` or URL. | Target type decision |
-| 3 | Provision the **sandbox** and **dev** environments (separate Foundry projects for prompt agents; separate endpoints for hosted agents) | Foundry portal, `microsoft-foundry` skill, your platform | No ownership of create/deploy. | Two environments scoped to author and shared dev work |
+| 3 | Provision the **sandbox** and **dev** environments (separate Foundry projects for prompt agents; separate endpoints for hosted agents) | Foundry portal, `microsoft-foundry` skill, your platform | No AgentOps create/deploy role. | Two environments scoped to author and shared dev work |
 | 4 | Author and iterate in **sandbox** | Foundry playground (prompt agents) or local app (hosted agents), `agentops eval run` | Local eval gate before opening a PR. | Working sandbox-validated agent |
 | 5 | Configure release checks | AgentOps CLI and skills | Creates `agentops.yaml` and repo-side release contract. | Release checklist in repo |
 | 6 | Open PR | Generated PR workflow with `--doctor-gate critical` | Routes to the right runner, normalizes proof, and blocks the PR on critical Doctor findings. | PR gate signal |
@@ -554,7 +554,7 @@ PR as evidence. Production deploy workflows always run Doctor with
 `--severity-fail critical` regardless of this flag.
 
 No tutorial-only Action replacement is needed. The generated workflow keeps the
-evaluation in Foundry while AgentOps owns the CI threshold decision and the
+evaluation in Foundry while AgentOps enforces the CI threshold decision and the
 `results.json` / `report.md` artifacts. The detailed managed-eval view stays in
 Foundry Evaluations through the link in the AgentOps report.
 

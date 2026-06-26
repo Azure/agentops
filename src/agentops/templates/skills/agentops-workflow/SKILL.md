@@ -39,7 +39,7 @@ AgentOps reuses **azd** for app/infrastructure deployment when the repo already
 has an azd project, and stays **Foundry-native** for prompt-agent candidate
 workflows. Do not invent a parallel deployment system. AgentOps should gate
 quality and record proof; `azd provision`, `azd deploy`, azd hooks, Foundry
-Toolkit, the `microsoft-foundry` skill, and project tooling own lifecycle
+Toolkit, the `microsoft-foundry` skill, and project tooling manage lifecycle
 actions.
 
 For Foundry prompt-agent configs (`agent: name:version`), the generated eval gate
@@ -453,11 +453,11 @@ needed, put it behind azd's native hook mechanism in `azure.yaml`.
 For Azure AI accelerators copied from templates, use AgentOps to make the
 landing-zone path actionable:
 
-1. AgentOps owns eval gates, Doctor, reports, Cockpit readiness, and the
+1. AgentOps handles eval gates, Doctor, reports, Cockpit readiness, and the
    workflow guardrails around deployment.
-2. Foundry owns hosted agents, prompt-agent versions, evaluations, traces,
+2. Foundry manages hosted agents, prompt-agent versions, evaluations, traces,
    monitoring, datasets, and operations.
-3. azd/Bicep/AILZ owns app and infrastructure deploy when `azure.yaml` or
+3. azd/Bicep/AILZ manages app and infrastructure deploy when `azure.yaml` or
    `infra/*.bicep` exists.
 4. Project-specific steps such as indexing, data seeding, model deployment,
    container build/push, App Config updates, or private-network post-provision
@@ -501,7 +501,7 @@ Prompt-agent workflows:
 
 This avoids the bad pattern of evaluating one agent version and deploying a
 different prompt. The invariant is: **evaluated version == deployed version**.
-Foundry manages agent versions; AgentOps owns the repo-side gate and
+Foundry manages agent versions; AgentOps enforces the repo-side gate and
 deployment record. For multi-environment prompt-agent workflows
 (sandbox → dev → qa → prod), strongly recommend adding the
 `prompt_agent_bootstrap` block so operators do not have to manually

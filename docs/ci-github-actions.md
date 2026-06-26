@@ -201,7 +201,7 @@ prompt.
 ### 4. Choose deployment mode
 
 AgentOps is azd-first for deployment: AgentOps runs the evaluation gate,
-while Azure Developer CLI owns infrastructure, packaging, deployment, and
+while Azure Developer CLI manages infrastructure, packaging, deployment, and
 hooks declared in `azure.yaml`.
 
 Before choosing manually, run:
@@ -371,11 +371,11 @@ agentops workflow analyze --format markdown --out agentops-workflow-plan.md
 
 Use the output as the plan for your coding agent:
 
-1. AgentOps owns repo-side eval gates, Doctor readiness checks, artifacts, and
+1. AgentOps handles repo-side eval gates, Doctor readiness checks, artifacts, and
    Cockpit visibility.
-2. `azd` owns `provision`, `deploy`, and hooks for app/infra lifecycle when
+2. `azd` manages `provision`, `deploy`, and hooks for app/infra lifecycle when
    `azure.yaml` is present or can be added.
-3. Foundry owns hosted agents, evaluations, traces, and operations.
+3. Foundry manages hosted agents, evaluations, traces, and operations.
 4. Project-specific steps such as indexing data, seeding search, building
    containers, updating app config, or running private-network post-provision
    work stay in the accelerator's azd hooks or existing deployment tooling.
@@ -425,8 +425,8 @@ contract to gate deploys:
 | `2` | Eval ran, one or more thresholds failed | ❌ fail (deploy never runs) |
 | `1` | Runtime / config error | ❌ fail |
 
-For prompt-agent cloud eval, Foundry owns the managed evaluation run and
-AgentOps owns the CI exit code. A threshold failure exits `2`, so the PR/deploy
+For prompt-agent cloud eval, Foundry runs the managed evaluation and
+AgentOps enforces the CI exit code. A threshold failure exits `2`, so the PR/deploy
 gate fails with the failing threshold rows in `report.md`.
 
 ## Artifacts

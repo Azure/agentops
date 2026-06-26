@@ -8,10 +8,10 @@ Cockpit.
 
 This path validates the Foundry-native multi-environment route:
 
-- Foundry owns the prompt agent runtime, cloud evaluation execution, traces,
+- Foundry manages the prompt agent runtime, cloud evaluation execution, traces,
   Rubric evaluator definitions, traces, Guardrails, red-team scans, and
   Operate dashboards in **each environment**.
-- AgentOps owns repo-side readiness: source-controlled prompts, CI gates,
+- AgentOps manages repo-side readiness: source-controlled prompts, CI gates,
   Doctor blocking, release evidence, threshold enforcement, ASSERT/ACS evidence
   references, and Cockpit.
 
@@ -111,10 +111,10 @@ have a real `foundry-agent.json` artifact to open.
 
 | Step | Main tool | What you do | AgentOps role |
 |---|---|---|---|
-| Create two Foundry projects | Foundry portal (or `microsoft-foundry` skill) | Create `travel-agent-sandbox` (where you author) and `travel-agent-dev` (left empty — CI seeds it). | No ownership; AgentOps consumes the published baseline from sandbox and bootstraps dev. |
+| Create two Foundry projects | Foundry portal (or `microsoft-foundry` skill) | Create `travel-agent-sandbox` (where you author) and `travel-agent-dev` (left empty — CI seeds it). | No AgentOps create/deploy role; AgentOps consumes the published baseline from sandbox and bootstraps dev. |
 | Author in sandbox | Foundry playground | Iterate on the prompt safely in sandbox Foundry. | Optional spot-check via local `agentops eval run`. |
 | Promote the prompt to git | Editor | Copy validated instructions into `.agentops/prompts/travel-agent.md`. | The CI gate reads this file. |
-| First green PR + dev deploy | GitHub Actions + Foundry dev project | Push prompt, open PR, watch CI auto-bootstrap the first version of `travel-agent` in dev from `prompt_agent_bootstrap` (the dev project is still empty at this point), evaluate it, run Doctor; merge; deploy lands in dev. | Owns the gate, the bootstrap-on-first-deploy, the threshold decision, the Doctor blocking step, the deploy artifact, and the release evidence. |
+| First green PR + dev deploy | GitHub Actions + Foundry dev project | Push prompt, open PR, watch CI auto-bootstrap the first version of `travel-agent` in dev from `prompt_agent_bootstrap` (the dev project is still empty at this point), evaluate it, run Doctor; merge; deploy lands in dev. | Runs the gate, bootstrap-on-first-deploy, threshold decision, Doctor blocking step, deploy artifact, and release evidence. |
 | Force a regression | Editor + GitHub Actions | Edit the prompt to a worse version, push, observe BOTH eval threshold failure AND Doctor regression CRITICAL. | Catches the regression at PR time, not after merge. |
 | Fix and redeploy | Editor + GitHub Actions | Restore prompt, push, PR green, merge, deploy. | Records the recovery. |
 | Review readiness | AgentOps Doctor + Cockpit | Check CI, eval, telemetry, evidence, and links. | Turns scattered signals into release blockers, warnings, evidence files, and next actions. |
@@ -1316,12 +1316,12 @@ agentops doctor --workspace . --evidence-pack
 `evidence.json` and `evidence.md` now include the suite/run id, total
 cases, violation counts, attack-success-rate, and SHA-256 hashes for both
 artifacts — without claiming AgentOps invented the verdicts. The verdicts
-come from ASSERT and PyRIT; AgentOps owns orchestration, normalization,
+come from ASSERT and PyRIT; AgentOps handles orchestration, normalization,
 and gating.
 
 ## 13. Generate the PR + dev deploy workflows
 
-> **Pipeline ownership.** This tutorial uses `agentops workflow generate`
+> **Pipeline responsibility.** This tutorial uses `agentops workflow generate`
 > because the workflow is the release-readiness contract: it stages the prompt
 > agent, runs eval thresholds, Doctor checks, and writes release evidence. For a
 > full `azd` / AI Landing Zone app, you can also use `azd pipeline config` to
@@ -1396,7 +1396,7 @@ the PR template. The table below summarizes the three values:
 |---|---|
 | `critical` (default) | The PR step fails if Doctor reports any critical findings. Use this to catch regressions that pass thresholds but still drift meaningfully (for example, `groundedness` 5.0 → 4.0). |
 | `warning` | The PR step fails on warnings or critical findings. Tighter; useful for late-stage hardening. |
-| `none` | Doctor runs advisory only. The PR step never fails because of Doctor. Use this only if you have a separate scheduled Doctor pipeline that owns the readiness call. |
+| `none` | Doctor runs advisory only. The PR step never fails because of Doctor. Use this only if you have a separate scheduled Doctor pipeline that makes the readiness call. |
 
 Deploy templates always run with `--severity-fail critical` regardless of
 `--doctor-gate`. The gate flag affects the PR template only; deploys are
