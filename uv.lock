@@ -13,6 +13,7 @@ name = "agentops-accelerator"
 source = { editable = "." }
 dependencies = [
     { name = "azure-ai-projects" },
+    { name = "click" },
     { name = "pydantic" },
     { name = "ruamel-yaml" },
     { name = "typer" },
@@ -66,6 +67,7 @@ requires-dist = [
     { name = "azure-monitor-opentelemetry", marker = "extra == 'agent'", specifier = ">=1.6,<2.0" },
     { name = "azure-monitor-opentelemetry", marker = "extra == 'foundry'", specifier = ">=1.6,<2.0" },
     { name = "azure-monitor-query", marker = "extra == 'agent'", specifier = ">=1.3,<3.0" },
+    { name = "click", specifier = ">=8.1,<9" },
     { name = "cryptography", marker = "extra == 'agent'", specifier = ">=42" },
     { name = "fastapi", marker = "extra == 'agent'", specifier = ">=0.110,<1.0" },
     { name = "httpx", marker = "extra == 'agent'", specifier = ">=0.27,<1.0" },

@@ -22,6 +22,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   ([#214](https://github.com/Azure/agentops/issues/214))
 
 ### Fixed
+- **Clean installs now include the pager dependency used by explain commands.**
+  `agentops explain`, `agentops init explain`, and `agentops doctor explain`
+  import Click directly to render long manual output, so `click>=8.1,<9` is now
+  declared as a runtime dependency instead of relying on transitive installs.
+
 - **`agentops eval init` now works with both old and new `azure.ai.agents` azd
   extensions.** Version 0.1.40 of the extension renamed the eval subcommand from
   `azd ai agent eval init` to `azd ai agent eval generate`, which made
