@@ -1,0 +1,74 @@
+// Latency: TTFT, TBT, TTLT, tokens/sec, and DurationMs percentiles
+// -----------------------------------------------------------------------------
+// Source: AzureMetrics for the normalized Azure OpenAI latency metrics, and
+// AzureDiagnostics (DurationMs) for per-request percentiles.
+// Derived metrics: P95LatencyMs, P99LatencyMs, AvgLatencyMs, MaxLatencyMs, plus
+//                  the platform latency metrics surfaced side by side.
+//
+// Workbook parameter bindings (edit the `let` lines to run standalone):
+//   {TimeRange}  -> workbook time-range picker (KQL timespan)
+//   {Deployment} -> modelDeploymentName filter, or "*" for all deployments
+//   {StreamType} -> "Streaming", "NonStreaming", or "*" for both
+// -----------------------------------------------------------------------------
+let _bin = 5m;
+let _deployment = "*";      // workbook: {Deployment}
+let _stream = "*";          // workbook: {StreamType}
+// Platform-normalized latency and throughput metrics.
+let platform =
+    AzureMetrics
+    | where TimeGenerated {TimeRange}
+    | where MetricName in (
+        "AzureOpenAINormalizedTTFTInMS",
+        "AzureOpenAINormalizedTBTInMS",
+        "AzureOpenAITTLTInMS",
+        "AzureOpenAITokenPerSecond",
+        "AzureOpenAITimeToResponse",
+        "Latency"
+      )
+    | extend Deployment = tostring(split(Resource, "/")[-1])
+    | where _deployment == "*" or Deployment == _deployment
+    | summarize
+        TTFT_Ms = avgif(Average, MetricName == "AzureOpenAINormalizedTTFTInMS"),
+        TBT_Ms = avgif(Average, MetricName == "AzureOpenAINormalizedTBTInMS"),
+        TTLT_Ms = avgif(Average, MetricName == "AzureOpenAITTLTInMS"),
+        TokensPerSecond = avgif(Average, MetricName == "AzureOpenAITokenPerSecond"),
+        TimeToResponse_Ms = avgif(Average, MetricName == "AzureOpenAITimeToResponse"),
+        Latency_Ms = avgif(Average, MetricName == "Latency")
+        by TimeGenerated = bin(TimeGenerated, _bin), Deployment;
+// Per-request duration percentiles from diagnostic records.
+let durations =
+    AzureDiagnostics
+    | where TimeGenerated {TimeRange}
+    | where OperationName in ("ChatCompletions_Create", "RequestResponse")
+    | extend props = parse_json(properties_s)
+    | extend
+        Deployment = tostring(props.modelDeploymentName),
+        StreamType = tostring(props.streamType)
+    | where _deployment == "*" or Deployment == _deployment
+    | where _stream == "*" or StreamType == _stream
+    | where isnotnull(DurationMs)
+    | summarize
+        P95LatencyMs = percentile(DurationMs, 95),
+        P99LatencyMs = percentile(DurationMs, 99),
+        AvgLatencyMs = avg(DurationMs),
+        MaxLatencyMs = max(DurationMs)
+        by TimeGenerated = bin(TimeGenerated, _bin), Deployment;
+platform
+| join kind=fullouter durations on TimeGenerated, Deployment
+| extend
+    TimeGenerated = coalesce(TimeGenerated, TimeGenerated1),
+    Deployment = coalesce(Deployment, Deployment1)
+| project
+    TimeGenerated,
+    Deployment,
+    TTFT_Ms,
+    TBT_Ms,
+    TTLT_Ms,
+    TokensPerSecond,
+    TimeToResponse_Ms,
+    Latency_Ms,
+    P95LatencyMs,
+    P99LatencyMs,
+    AvgLatencyMs,
+    MaxLatencyMs
+| order by TimeGenerated asc

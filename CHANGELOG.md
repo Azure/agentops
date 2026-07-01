@@ -5,6 +5,40 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Foundry operations dashboard.** A new Azure Monitor Workbook
+  (`agentops telemetry dashboard`) surfaces Azure OpenAI capacity (PTU
+  utilization, rate-limit, spillover), traffic and tokens, latency
+  percentiles (TTFT, TBT, TTLT, tokens/sec), and errors and throttling for a
+  given Azure OpenAI resource and Log Analytics workspace. The workbook JSON,
+  its per-metric KQL queries, and an authoring README ship as package data.
+  Three commands manage it: `deploy` (RBAC + diagnostic-settings preflight,
+  then deploy the `Microsoft.Insights/workbooks` ARM resource, with
+  `--dry-run` to emit the template), `open` (build the portal deep link and
+  open a browser, `--print-url` for non-interactive shells), and `export`
+  (copy the packaged workbook JSON to a local path). `agentops telemetry
+  dashboard deploy` is the first CLI command that creates an Azure resource;
+  it is scoped to a single workbook.
+- **Doctor check for Azure OpenAI usage telemetry.** A new WAF-AI Operational
+  Excellence posture rule (`waf.observability.aoai_diagnostic_categories`)
+  warns when the Azure OpenAI account is not emitting the `RequestResponse`
+  and `AzureOpenAIRequestUsage` diagnostic log categories to a Log Analytics
+  workspace, and prints the exact `az monitor diagnostic-settings create`
+  fix. Doctor stays read-only.
+
+### Changed
+- **Cockpit redesign answers "can I ship?" first.** The Cockpit now opens with
+  three consolidated status cards (Readiness, Doctor, Eval gate) that expand
+  their detail sections on click, promotes "Next actions" to second position,
+  and collapses the detailed sections by default. The former "Eval gate
+  summary" and "Quality gate summary" are merged into a single "Eval gates"
+  section with two subgroups. The Foundry launchpad footer adds a "Foundry
+  operations dashboard" tile (the same workbook portal URL used by
+  `agentops telemetry dashboard open`) next to "Operate overview", folds the
+  single-tile "Azure Monitor" group into the Foundry project group, and
+  removes the duplicated App Insights CTA from the Production signal section.
+  Cockpit remains read-only.
+
 ## [0.6.0] - 2026-06-26
 
 ### Added

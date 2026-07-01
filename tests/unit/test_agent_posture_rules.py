@@ -10,6 +10,9 @@ from agentops.agent.checks.posture_rules.content_filter import (
 from agentops.agent.checks.posture_rules.diagnostics import (
     evaluate as diagnostics_rule,
 )
+from agentops.agent.checks.posture_rules.aoai_diagnostic_categories import (
+    evaluate as aoai_diag_rule,
+)
 from agentops.agent.checks.posture_rules.local_auth import (
     evaluate as local_auth_rule,
 )
@@ -265,6 +268,19 @@ def test_run_posture_check_aggregates_rules() -> None:
         disable_local_auth=False,
         public_network_access="Enabled",
         identity_type=None,
+        # Keep the AOAI usage-telemetry rule quiet so this test stays
+        # focused on the security rules it asserts on.
+        diagnostic_settings=[
+            DiagnosticSettingSnapshot(
+                name="default",
+                workspace_id="/subscriptions/s/workspaces/log",
+                enabled_log_categories=[
+                    "Audit",
+                    "RequestResponse",
+                    "AzureOpenAIRequestUsage",
+                ],
+            )
+        ],
     )
     findings = run_posture_check(payload, PostureCheckConfig(enabled=True))
     ids = {f.id for f in findings}
@@ -297,4 +313,71 @@ def test_rule_registry_only_contains_complementary_rules() -> None:
         "waf.security.local_auth_disabled",
         "waf.security.managed_identity",
         "waf.security.diagnostic_settings",
+        "waf.observability.aoai_diagnostic_categories",
     }
+
+
+# ---------------------------------------------------------------------------
+# aoai_diagnostic_categories (WAF-AI Operational Excellence)
+# ---------------------------------------------------------------------------
+
+
+def test_aoai_diag_rule_passes_when_both_categories_enabled() -> None:
+    payload = _payload(
+        diagnostic_settings=[
+            DiagnosticSettingSnapshot(
+                name="default",
+                workspace_id="/subscriptions/s/workspaces/log",
+                enabled_log_categories=[
+                    "RequestResponse",
+                    "AzureOpenAIRequestUsage",
+                ],
+            )
+        ]
+    )
+    assert aoai_diag_rule(payload, "azure_resources") == []
+
+
+def test_aoai_diag_rule_fires_when_usage_category_missing() -> None:
+    payload = _payload(
+        diagnostic_settings=[
+            DiagnosticSettingSnapshot(
+                name="default",
+                workspace_id="/subscriptions/s/workspaces/log",
+                enabled_log_categories=["RequestResponse"],
+            )
+        ]
+    )
+    findings = aoai_diag_rule(payload, "azure_resources")
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.id == "waf.observability.aoai_diagnostic_categories"
+    assert finding.severity is Severity.WARNING
+    assert finding.category is Category.OPERATIONAL_EXCELLENCE
+    assert finding.evidence["missing_categories"] == ["AzureOpenAIRequestUsage"]
+    # The recommendation must carry the exact az fix command.
+    assert "az monitor diagnostic-settings create" in finding.recommendation
+    assert "AzureOpenAIRequestUsage" in finding.recommendation
+
+
+def test_aoai_diag_rule_fires_when_no_categories() -> None:
+    payload = _payload(
+        diagnostic_settings=[
+            DiagnosticSettingSnapshot(
+                name="default",
+                workspace_id="/subscriptions/s/workspaces/log",
+                enabled_log_categories=[],
+            )
+        ]
+    )
+    findings = aoai_diag_rule(payload, "azure_resources")
+    assert len(findings) == 1
+    assert findings[0].evidence["missing_categories"] == [
+        "RequestResponse",
+        "AzureOpenAIRequestUsage",
+    ]
+
+
+def test_aoai_diag_rule_noop_without_account() -> None:
+    payload = AzureResourcesPayload(account=None)
+    assert aoai_diag_rule(payload, "azure_resources") == []

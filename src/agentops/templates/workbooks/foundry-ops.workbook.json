@@ -1,0 +1,479 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Foundry operations dashboard\nPTU capacity, traffic and tokens, latency, and errors for Azure AI Foundry / Azure OpenAI deployments."
+      },
+      "name": "title"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "p-subscription",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscription",
+            "type": 6,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "includeAll": false
+            }
+          },
+          {
+            "id": "p-workspace",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": true,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": []
+            }
+          },
+          {
+            "id": "p-resource",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "label": "Azure OpenAI resource",
+            "type": 5,
+            "isRequired": true,
+            "resourceType": "microsoft.cognitiveservices/accounts",
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.cognitiveservices/accounts": true
+              },
+              "additionalResourceOptions": []
+            }
+          },
+          {
+            "id": "p-timerange",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ]
+            },
+            "value": {
+              "durationMs": 86400000
+            }
+          },
+          {
+            "id": "p-deployment",
+            "version": "KqlParameterItem/1.0",
+            "name": "Deployment",
+            "label": "Deployment",
+            "type": 2,
+            "isRequired": false,
+            "multiSelect": false,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "query": "AzureDiagnostics\n| where Category == 'AzureOpenAIRequestUsage'\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName)\n| where isnotempty(Deployment)\n| distinct Deployment\n| order by Deployment asc",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "value": "value::all"
+          },
+          {
+            "id": "p-model",
+            "version": "KqlParameterItem/1.0",
+            "name": "Model",
+            "label": "Model",
+            "type": 2,
+            "isRequired": false,
+            "multiSelect": false,
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "query": "AzureDiagnostics\n| where Category == 'AzureOpenAIRequestUsage'\n| extend props = parse_json(properties_s)\n| extend Model = tostring(props.modelName)\n| where isnotempty(Model)\n| distinct Model\n| order by Model asc",
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "value": "value::all"
+          },
+          {
+            "id": "p-streamtype",
+            "version": "KqlParameterItem/1.0",
+            "name": "StreamType",
+            "label": "Streaming",
+            "type": 2,
+            "isRequired": false,
+            "multiSelect": false,
+            "typeSettings": {
+              "additionalResourceOptions": []
+            },
+            "jsonData": "[{\"value\": \"*\", \"label\": \"All\"}, {\"value\": \"Streaming\", \"label\": \"Streaming\"}, {\"value\": \"NonStreaming\", \"label\": \"Non-streaming\"}]",
+            "value": "*"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters - top"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "tab-capacity",
+            "cellValue": "SelectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Capacity",
+            "subTarget": "capacity",
+            "style": "link"
+          },
+          {
+            "id": "tab-traffic",
+            "cellValue": "SelectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Traffic and tokens",
+            "subTarget": "traffic",
+            "style": "link"
+          },
+          {
+            "id": "tab-latency",
+            "cellValue": "SelectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Latency",
+            "subTarget": "latency",
+            "style": "link"
+          },
+          {
+            "id": "tab-errors",
+            "cellValue": "SelectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Errors and throttling",
+            "subTarget": "errors",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "tabs"
+    },
+    {
+      "type": 12,
+      "conditionalVisibility": {
+        "parameterName": "SelectedTab",
+        "comparison": "isEqualTo",
+        "value": "capacity"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Foundry / Azure OpenAI operations dashboard\nThis workbook is scoped **per Azure OpenAI resource** and **per Log Analytics workspace**. Pick the subscription, workspace, and Azure OpenAI resource above, then use the deployment, model, time-range, and streaming filters to narrow each tab.\n\n> **PTU_Normalizado** is a display-only scaling series (`PTU% * 100000`). It exists so the 0-100 PTU utilization percentage can share a Y axis with raw token counts in a single timechart. It is not a real token volume - read the true utilization from **PTU_Avg_Pct** / **PTU_Max_Pct**."
+            },
+            "name": "capacity-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureMetrics\n| where MetricName in ('AzureOpenAIProvisionedManagedUtilizationV2','Ratelimit','TokenTransaction','ProcessedPromptTokens')\n| extend Deployment = tostring(split(Resource, '/')[-1])\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| summarize PTU_Avg_Pct = avgif(Average, MetricName == 'AzureOpenAIProvisionedManagedUtilizationV2'),\n    PTU_Max_Pct = maxif(Maximum, MetricName == 'AzureOpenAIProvisionedManagedUtilizationV2'),\n    Ratelimit = avgif(Average, MetricName == 'Ratelimit'),\n    ProcessedTokens = sumif(Total, MetricName in ('TokenTransaction','ProcessedPromptTokens'))\n    by TimeGenerated = bin(TimeGenerated, 1m), Deployment\n| extend Spillover = max_of(0.0, ProcessedTokens - Ratelimit)\n| extend Aggregated_PTU_With_Spillover = ProcessedTokens\n| extend PTU_Normalizado = PTU_Avg_Pct * 100000\n| project TimeGenerated, PTU_Avg_Pct, PTU_Max_Pct, Ratelimit, Spillover, Aggregated_PTU_With_Spillover, PTU_Normalizado\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "PTU utilization and PAYG spillover",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "capacity-ptu"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureMetrics\n| where MetricName in ('AzureOpenAIProvisionedManagedUtilizationV2','Ratelimit','TokenTransaction','ProcessedPromptTokens')\n| extend Deployment = tostring(split(Resource, '/')[-1])\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| summarize PTU_Avg_Pct = avgif(Average, MetricName == 'AzureOpenAIProvisionedManagedUtilizationV2'),\n    PTU_Max_Pct = maxif(Maximum, MetricName == 'AzureOpenAIProvisionedManagedUtilizationV2'),\n    Ratelimit = avgif(Average, MetricName == 'Ratelimit'),\n    ProcessedTokens = sumif(Total, MetricName in ('TokenTransaction','ProcessedPromptTokens'))\n    by TimeGenerated = bin(TimeGenerated, 1m), Deployment\n| extend Spillover = max_of(0.0, ProcessedTokens - Ratelimit)\n| extend Aggregated_PTU_With_Spillover = ProcessedTokens\n| extend PTU_Normalizado = PTU_Avg_Pct * 100000\n| project TimeGenerated, PTU_Avg_Pct, PTU_Max_Pct, Ratelimit, Spillover, Aggregated_PTU_With_Spillover, PTU_Normalizado\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Capacity summary (per bin)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "capacity-ptu-table"
+          }
+        ]
+      },
+      "name": "group-capacity"
+    },
+    {
+      "type": 12,
+      "conditionalVisibility": {
+        "parameterName": "SelectedTab",
+        "comparison": "isEqualTo",
+        "value": "traffic"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Traffic and tokens\nCall volume and token consumption broken down by deployment and model. The PTU vs PAYG pivot splits token volume by capacity type (streaming traffic maps to PTU, non-streaming overflow to PAYG spillover)."
+            },
+            "name": "traffic-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where Category == 'AzureOpenAIRequestUsage'\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), Model = tostring(props.modelName), StreamType = tostring(props.streamType),\n    PromptTokens = toreal(props.promptTokens[0]), GeneratedTokens = toreal(props.generatedTokens[0])\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| where '{Model}' == 'value::all' or Model == '{Model}'\n| where '{StreamType}' == '*' or StreamType == '{StreamType}'\n| summarize AzureOpenAIRequests = count(), InputTokens = sum(PromptTokens), OutputTokens = sum(GeneratedTokens),\n    ProcessedPromptTokens = sum(PromptTokens) by TimeGenerated = bin(TimeGenerated, 5m), Deployment, Model\n| extend TotalTokens = InputTokens + OutputTokens, GeneratedTokens = OutputTokens, TotalCalls = AzureOpenAIRequests\n| extend TokensPorRequest = iff(AzureOpenAIRequests > 0, ProcessedPromptTokens / AzureOpenAIRequests, 0.0)\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Calls and tokens over time",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "traffic-tokens"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where Category == 'AzureOpenAIRequestUsage'\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), Model = tostring(props.modelName), StreamType = tostring(props.streamType),\n    PromptTokens = toreal(props.promptTokens[0]), GeneratedTokens = toreal(props.generatedTokens[0])\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| where '{Model}' == 'value::all' or Model == '{Model}'\n| where '{StreamType}' == '*' or StreamType == '{StreamType}'\n| summarize AzureOpenAIRequests = count(), InputTokens = sum(PromptTokens), OutputTokens = sum(GeneratedTokens),\n    ProcessedPromptTokens = sum(PromptTokens) by TimeGenerated = bin(TimeGenerated, 5m), Deployment, Model\n| extend TotalTokens = InputTokens + OutputTokens, GeneratedTokens = OutputTokens, TotalCalls = AzureOpenAIRequests\n| extend TokensPorRequest = iff(AzureOpenAIRequests > 0, ProcessedPromptTokens / AzureOpenAIRequests, 0.0)\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Tokens per request (by deployment and model)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "traffic-tokens-table"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where Category == 'AzureOpenAIRequestUsage'\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), StreamType = tostring(props.streamType),\n    PromptTokens = toreal(props.promptTokens[0]), GeneratedTokens = toreal(props.generatedTokens[0])\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| extend CapacityType = iff(StreamType == 'Streaming', 'PTU', 'PAYGO_SPILLOVER')\n| summarize Tokens = sum(PromptTokens + GeneratedTokens) by TimeGenerated = bin(TimeGenerated, 5m), CapacityType\n| evaluate pivot(CapacityType, sum(Tokens))\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "PTU vs PAYG spillover (token volume)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "traffic-pivot"
+          }
+        ]
+      },
+      "name": "group-traffic"
+    },
+    {
+      "type": 12,
+      "conditionalVisibility": {
+        "parameterName": "SelectedTab",
+        "comparison": "isEqualTo",
+        "value": "latency"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Latency\nNormalized Azure OpenAI latency metrics (TTFT, TBT, TTLT, tokens/sec, time-to-response) plus P95/P99/Avg/Max computed from per-request `DurationMs`."
+            },
+            "name": "latency-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureMetrics\n| where MetricName in ('AzureOpenAINormalizedTTFTInMS','AzureOpenAINormalizedTBTInMS','AzureOpenAITTLTInMS','AzureOpenAITokenPerSecond','AzureOpenAITimeToResponse','Latency')\n| extend Deployment = tostring(split(Resource, '/')[-1])\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| summarize TTFT_Ms = avgif(Average, MetricName == 'AzureOpenAINormalizedTTFTInMS'),\n    TBT_Ms = avgif(Average, MetricName == 'AzureOpenAINormalizedTBTInMS'),\n    TTLT_Ms = avgif(Average, MetricName == 'AzureOpenAITTLTInMS'),\n    TokensPerSecond = avgif(Average, MetricName == 'AzureOpenAITokenPerSecond'),\n    TimeToResponse_Ms = avgif(Average, MetricName == 'AzureOpenAITimeToResponse'),\n    Latency_Ms = avgif(Average, MetricName == 'Latency') by TimeGenerated = bin(TimeGenerated, 5m)\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Normalized latency and throughput",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "latency-platform"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where OperationName in ('ChatCompletions_Create','RequestResponse')\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), StreamType = tostring(props.streamType)\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| where '{StreamType}' == '*' or StreamType == '{StreamType}'\n| where isnotnull(DurationMs)\n| summarize P95LatencyMs = percentile(DurationMs, 95), P99LatencyMs = percentile(DurationMs, 99),\n    AvgLatencyMs = avg(DurationMs), MaxLatencyMs = max(DurationMs) by TimeGenerated = bin(TimeGenerated, 5m)\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "DurationMs percentiles (P95 / P99 / Avg / Max)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "latency-percentiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where OperationName in ('ChatCompletions_Create','RequestResponse')\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), StreamType = tostring(props.streamType)\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| where '{StreamType}' == '*' or StreamType == '{StreamType}'\n| where isnotnull(DurationMs)\n| summarize P95LatencyMs = percentile(DurationMs, 95), P99LatencyMs = percentile(DurationMs, 99),\n    AvgLatencyMs = avg(DurationMs), MaxLatencyMs = max(DurationMs) by TimeGenerated = bin(TimeGenerated, 5m)\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Latency percentiles (per bin)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "latency-percentiles-table"
+          }
+        ]
+      },
+      "name": "group-latency"
+    },
+    {
+      "type": 12,
+      "conditionalVisibility": {
+        "parameterName": "SelectedTab",
+        "comparison": "isEqualTo",
+        "value": "errors"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Errors and throttling\nHTTP status breakdown (429 / 400 / 500), blocked calls, and derived throttling / error rates."
+            },
+            "name": "errors-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where OperationName in ('ChatCompletions_Create','RequestResponse')\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), StreamType = tostring(props.streamType), Status = toint(ResultSignature)\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| where '{StreamType}' == '*' or StreamType == '{StreamType}'\n| summarize TotalRequests = count(), HTTP429 = countif(Status == 429), HTTP400 = countif(Status == 400),\n    HTTP500 = countif(Status >= 500 and Status < 600), Successful = countif(Status == 200)\n    by TimeGenerated = bin(TimeGenerated, 5m)\n| extend BlockedCalls = HTTP429\n| extend TasaThrottling_Pct = iff(TotalRequests > 0, todouble(HTTP429) / TotalRequests * 100, 0.0)\n| extend TasaError_Pct = iff(TotalRequests > 0, todouble(TotalRequests - Successful) / TotalRequests * 100, 0.0)\n| project TimeGenerated, BlockedCalls, HTTP429, HTTP400, HTTP500, TasaThrottling_Pct, TasaError_Pct\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "HTTP status counts over time",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "errors-counts"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where OperationName in ('ChatCompletions_Create','RequestResponse')\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), StreamType = tostring(props.streamType), Status = toint(ResultSignature)\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| where '{StreamType}' == '*' or StreamType == '{StreamType}'\n| summarize TotalRequests = count(), HTTP429 = countif(Status == 429), HTTP400 = countif(Status == 400),\n    HTTP500 = countif(Status >= 500 and Status < 600), Successful = countif(Status == 200)\n    by TimeGenerated = bin(TimeGenerated, 5m)\n| extend BlockedCalls = HTTP429\n| extend TasaThrottling_Pct = iff(TotalRequests > 0, todouble(HTTP429) / TotalRequests * 100, 0.0)\n| extend TasaError_Pct = iff(TotalRequests > 0, todouble(TotalRequests - Successful) / TotalRequests * 100, 0.0)\n| project TimeGenerated, BlockedCalls, HTTP429, HTTP400, HTTP500, TasaThrottling_Pct, TasaError_Pct\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Throttling rate and error rate (%)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "errors-rates"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where OperationName in ('ChatCompletions_Create','RequestResponse')\n| extend props = parse_json(properties_s)\n| extend Deployment = tostring(props.modelDeploymentName), StreamType = tostring(props.streamType), Status = toint(ResultSignature)\n| where '{Deployment}' == 'value::all' or Deployment == '{Deployment}'\n| where '{StreamType}' == '*' or StreamType == '{StreamType}'\n| summarize TotalRequests = count(), HTTP429 = countif(Status == 429), HTTP400 = countif(Status == 400),\n    HTTP500 = countif(Status >= 500 and Status < 600), Successful = countif(Status == 200)\n    by TimeGenerated = bin(TimeGenerated, 5m)\n| extend BlockedCalls = HTTP429\n| extend TasaThrottling_Pct = iff(TotalRequests > 0, todouble(HTTP429) / TotalRequests * 100, 0.0)\n| extend TasaError_Pct = iff(TotalRequests > 0, todouble(TotalRequests - Successful) / TotalRequests * 100, 0.0)\n| project TimeGenerated, BlockedCalls, HTTP429, HTTP400, HTTP500, TasaThrottling_Pct, TasaError_Pct\n| order by TimeGenerated asc",
+              "size": 0,
+              "title": "Errors and throttling (per bin)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "errors-table"
+          }
+        ]
+      },
+      "name": "group-errors"
+    }
+  ],
+  "isLocked": false,
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

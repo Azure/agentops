@@ -1,0 +1,61 @@
+// Traffic and tokens: call volume, token consumption, and PTU vs PAYG split
+// -----------------------------------------------------------------------------
+// Source: AzureDiagnostics (Category == "AzureOpenAIRequestUsage") for real
+// per-model token usage, joined with AzureMetrics for platform call volume.
+// Derived metrics: TokensPorRequest, InputTokens, OutputTokens, TotalTokens,
+//                  ProcessedPromptTokens, GeneratedTokens, and a PTU vs PAYG
+//                  spillover pivot.
+//
+// Workbook parameter bindings (edit the `let` lines to run standalone):
+//   {TimeRange}  -> workbook time-range picker (KQL timespan)
+//   {Deployment} -> modelDeploymentName filter, or "*" for all deployments
+//   {Model}      -> modelName filter, or "*" for all models
+//   {StreamType} -> "Streaming", "NonStreaming", or "*" for both
+// -----------------------------------------------------------------------------
+let _bin = 5m;
+let _deployment = "*";      // workbook: {Deployment}
+let _model = "*";           // workbook: {Model}
+let _stream = "*";          // workbook: {StreamType}
+AzureDiagnostics
+| where TimeGenerated {TimeRange}
+| where Category == "AzureOpenAIRequestUsage"
+| extend props = parse_json(properties_s)
+| extend
+    Deployment = tostring(props.modelDeploymentName),
+    Model = tostring(props.modelName),
+    ModelVersion = tostring(props.modelVersion),
+    StreamType = tostring(props.streamType),
+    PromptTokens = toreal(props.promptTokens[0]),
+    GeneratedTokens = toreal(props.generatedTokens[0])
+| where _deployment == "*" or Deployment == _deployment
+| where _model == "*" or Model == _model
+| where _stream == "*" or StreamType == _stream
+| summarize
+    AzureOpenAIRequests = count(),
+    InputTokens = sum(PromptTokens),
+    OutputTokens = sum(GeneratedTokens),
+    ProcessedPromptTokens = sum(PromptTokens)
+    by TimeGenerated = bin(TimeGenerated, _bin), Deployment, Model, StreamType
+| extend TotalTokens = InputTokens + OutputTokens
+| extend GeneratedTokens = OutputTokens
+| extend TotalCalls = AzureOpenAIRequests
+// Average tokens billed per request over the bin.
+| extend TokensPorRequest = iff(AzureOpenAIRequests > 0, ProcessedPromptTokens / AzureOpenAIRequests, 0.0)
+// PTU vs PAYG split: streaming and provisioned traffic run on PTU capacity;
+// non-streaming overflow is treated as the PAYG spillover pivot column.
+| extend CapacityType = iff(StreamType == "Streaming", "PTU", "PAYGO_SPILLOVER")
+| project
+    TimeGenerated,
+    Deployment,
+    Model,
+    StreamType,
+    CapacityType,
+    TotalCalls,
+    AzureOpenAIRequests,
+    InputTokens,
+    OutputTokens,
+    TotalTokens,
+    ProcessedPromptTokens,
+    GeneratedTokens,
+    TokensPorRequest
+| order by TimeGenerated asc

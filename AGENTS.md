@@ -53,6 +53,9 @@ Public CLI contract:
 - `agentops doctor [--workspace PATH] [--config PATH] [--out PATH] [--lookback-days N] [--severity-fail SEVERITY] [--evidence-pack] [--evidence-out PATH]`
 - `agentops doctor explain [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
 - `agentops cockpit [--host HOST] [--port PORT] [--workspace PATH] [--no-preflight]`
+- `agentops telemetry dashboard deploy [--dry-run] [--subscription ID] [--resource-group RG] [--workspace-id ID] [--name NAME] [--dir PATH]`
+- `agentops telemetry dashboard open [--print-url] [--subscription ID] [--resource-group RG] [--name NAME] [--dir PATH]`
+- `agentops telemetry dashboard export [--out PATH]`
 - `agentops agent serve [--host HOST] [--port PORT] [--config PATH] [--no-verify] [--workers N]`
 
 Exit code contract:

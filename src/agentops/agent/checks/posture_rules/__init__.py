@@ -36,6 +36,9 @@ def _build_registry() -> Dict[str, RuleFn]:
     from agentops.agent.checks.posture_rules.diagnostics import (
         evaluate as diagnostics_rule,
     )
+    from agentops.agent.checks.posture_rules.aoai_diagnostic_categories import (
+        evaluate as aoai_diagnostic_categories_rule,
+    )
     from agentops.agent.checks.posture_rules.local_auth import (
         evaluate as local_auth_rule,
     )
@@ -47,6 +50,7 @@ def _build_registry() -> Dict[str, RuleFn]:
         "waf.security.local_auth_disabled": local_auth_rule,
         "waf.security.managed_identity": managed_identity_rule,
         "waf.security.diagnostic_settings": diagnostics_rule,
+        "waf.observability.aoai_diagnostic_categories": aoai_diagnostic_categories_rule,
     }
 
 
