@@ -85,7 +85,7 @@ class DashboardTarget:
     aoai_resource_id: Optional[str] = None
     aoai_account_name: Optional[str] = None
     tenant_id: Optional[str] = None
-    location: str = "global"
+    location: Optional[str] = None
     discovery: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -401,7 +401,10 @@ def build_arm_template(
         "type": WORKBOOK_RESOURCE_TYPE,
         "apiVersion": "2022-04-01",
         "name": guid,
-        "location": target.location,
+        # Workbooks reject "global"; resolve to the target region at deploy
+        # time. The RG-scoped deployment always has a valid location, and an
+        # explicit target.location (a real Azure region) still wins when set.
+        "location": target.location or "[resourceGroup().location]",
         "kind": "shared",
         "properties": {
             "displayName": target.name,

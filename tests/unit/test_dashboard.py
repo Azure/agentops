@@ -136,6 +136,21 @@ def test_build_arm_template_shape() -> None:
     assert resource["properties"]["sourceId"] == "/subscriptions/sub/ws"
 
 
+def test_build_arm_template_location_defaults_to_resource_group_expression() -> None:
+    # Workbooks reject "global"; the template must resolve to the RG region.
+    target = dash.DashboardTarget(name="wb", subscription_id="sub", resource_group="rg")
+    template = dash.build_arm_template(target=target)
+    assert template["resources"][0]["location"] == "[resourceGroup().location]"
+
+
+def test_build_arm_template_location_honors_explicit_region() -> None:
+    target = dash.DashboardTarget(
+        name="wb", subscription_id="sub", resource_group="rg", location="eastus2"
+    )
+    template = dash.build_arm_template(target=target)
+    assert template["resources"][0]["location"] == "eastus2"
+
+
 def test_build_arm_template_name_matches_resource_id() -> None:
     target = dash.DashboardTarget(name="wb", subscription_id="sub", resource_group="rg")
     template = dash.build_arm_template(target=target)
