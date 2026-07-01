@@ -97,7 +97,8 @@ Confirm the signal is flowing, then turn real traces into regression coverage.
     ```
 
 To browse this signal interactively and deep-link into Foundry and Azure
-Monitor, open the [Cockpit](operate.md#cockpit), which lives on the Operate page.
+Monitor, run `agentops cockpit`. That local command center is covered on the
+[Operate](operate.md#cockpit) page.
 
 ## Use these from Copilot, Claude, or Cursor
 
