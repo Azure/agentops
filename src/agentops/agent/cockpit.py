@@ -334,6 +334,11 @@ def _build_eval_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
         "has_runs": True,
         "cards": cards,
         "latest_execution": latest_execution,
+        # Compact gate status consumed by the top status cards. ``latest_passed``
+        # reflects the most recent run's overall_passed; ``pass_rate`` is the
+        # share across all recorded runs (0.0-1.0).
+        "latest_passed": bool(latest["passed"]),
+        "pass_rate": pass_rate,
     }
 
 
@@ -1784,14 +1789,16 @@ def _build_open_in_foundry(
     """Build the deep-link panel that sends users from the cockpit
     straight into the equivalent Foundry / Azure Monitor surface.
 
-    Cockpit surfaces a curated panel of Foundry and Azure Monitor links so
-    users can drill down without manually navigating the portal. The Azure
-    Monitor tile is rendered as a separate subgroup to keep runtime views
-    and raw telemetry views easy to distinguish.
+    Cockpit surfaces a curated panel of Foundry links so users can drill
+    down without manually navigating the portal. Azure Monitor surfaces
+    (raw App Insights telemetry and the Foundry operations workbook) are
+    folded into the Foundry project subgroup so there is a single place to
+    look, rather than a duplicated one-tile group.
     """
     deeplinks = _foundry_deeplinks(workspace)
     portal_url = telemetry.get("portal_url") if isinstance(telemetry, dict) else None
     project_url = _resolve_foundry_project_url(workspace)
+    workbook_url = _resolve_workbook_portal_url(workspace)
 
     agent_targets: List[Dict[str, Any]] = [
         {
@@ -1838,11 +1845,22 @@ def _build_open_in_foundry(
         {
             "key": "operate",
             "title": "Operate overview",
-            "description": "Foundry operations overview: active alerts, agents, cost, and run health.",
+            "description": (
+                "Foundry's native Operate surface: active alerts, agent "
+                "inventory, cost, and run health at a glance."
+            ),
             "url": deeplinks.get("operate") or project_url,
         },
-    ]
-    azure_monitor_targets: List[Dict[str, Any]] = [
+        {
+            "key": "foundry_ops_dashboard",
+            "title": "Foundry operations dashboard",
+            "description": (
+                "Azure Monitor workbook with PTU capacity, token traffic, "
+                "latency percentiles, and throttling. Deploy or open it with "
+                "`agentops telemetry dashboard`."
+            ),
+            "url": workbook_url,
+        },
         {
             "key": "app_insights",
             "title": "App Insights",
@@ -1851,9 +1869,10 @@ def _build_open_in_foundry(
         },
     ]
     # Backwards-compat: callers and tests that still expect a flat
-    # ``targets`` list can keep working — Foundry tiles come first,
-    # then the Azure Monitor tile.
-    targets = agent_targets + project_targets + azure_monitor_targets
+    # ``targets`` list can keep working — Foundry agent tiles come first,
+    # then the Foundry project tiles (which now include the Azure Monitor
+    # surfaces).
+    targets = agent_targets + project_targets
     return {
         "targets": targets,
         "groups": [
@@ -1867,13 +1886,29 @@ def _build_open_in_foundry(
                 "label": "Foundry project",
                 "targets": project_targets,
             },
-            {
-                "key": "azure_monitor",
-                "label": "Azure Monitor",
-                "targets": azure_monitor_targets,
-            },
         ],
     }
+
+
+def _resolve_workbook_portal_url(workspace: Path) -> Optional[str]:
+    """Return the Foundry operations workbook portal URL (read-only).
+
+    Mirrors ``agentops telemetry dashboard open``: discovery reads the azd
+    ``.env`` (a file read, no Azure calls) so the deep link matches. Any
+    failure falls back to ``None`` so the cockpit never breaks.
+    """
+    try:
+        from agentops.services import dashboard as dash
+
+        target = dash.discover_target(workspace)
+        return dash.build_workbook_portal_url(
+            subscription_id=target.subscription_id,
+            resource_group=target.resource_group,
+            name=target.name,
+            tenant_id=target.tenant_id,
+        )
+    except Exception:  # noqa: BLE001 - deep link is best-effort, cockpit stays up
+        return None
 
 
 def _build_readiness_checklist(
@@ -3405,24 +3440,136 @@ def _collapsible_section(
     body_html: str,
     *,
     section_id: Optional[str] = None,
+    open_by_default: bool = True,
 ) -> str:
     """Wrap a cockpit section in a collapsible ``<details>`` block.
 
-    All sections are expanded by default so the cockpit reads the same
-    on first load; the chevron in the summary lets users hide noisy
-    sections (e.g. production telemetry on a stale workspace). The
-    optional ``section_id`` makes a section anchor-linkable from the
-    Next actions panel.
+    Top-level status is now surfaced by the consolidated status cards, so
+    the detailed sections below collapse by default (``open_by_default=
+    False``) to keep the cockpit focused on the "can I ship?" question.
+    A small template script auto-expands any section whose ``section_id``
+    is targeted via the URL hash (e.g. from a status card or the Next
+    actions panel), so anchor navigation still reveals the detail.
     """
     id_attr = f' id="{_html_escape(section_id)}"' if section_id else ""
+    open_attr = " open" if open_by_default else ""
     return (
-        f'<details class="section-block" open{id_attr}>'
+        f'<details class="section-block"{open_attr}{id_attr}>'
         '<summary class="section-summary">'
         '<span class="section-chevron" aria-hidden="true">&#x25BE;</span>'
         f'<span class="section-title-text">{title_inner_html}</span>'
         '</summary>'
         f'<div class="section-body">{body_html}</div>'
         '</details>'
+    )
+
+
+def _render_status_cards_section(
+    readiness: Dict[str, Any],
+    watchdog: Dict[str, Any],
+    eval_payload: Dict[str, Any],
+) -> str:
+    """Render the consolidated top status: three clickable cards that
+    answer "can I ship?" at a glance (Readiness, Doctor, Eval gate).
+
+    Each card is an anchor to the matching detail section below; the
+    template's hash-open script expands that (collapsed) section when the
+    card is clicked.
+    """
+
+    def _card(
+        *, title: str, value: str, tone: str, sub: str, anchor: str,
+    ) -> str:
+        dot = _status_dot(tone)
+        return (
+            f'<a class="card status-card status-card-{tone}" '
+            f'href="{anchor}">'
+            f'<div class="card-label">{dot}{_html_escape(title)}</div>'
+            f'<div class="card-value status-card-value">{_html_escape(value)}</div>'
+            f'<div class="status-card-sub">{_html_escape(sub)}</div>'
+            '</a>'
+        )
+
+    checks = readiness.get("checks", []) or []
+    green = sum(1 for c in checks if c.get("status") == "ok")
+    total = len(checks)
+    readiness_label = readiness.get("label") or f"{green}/{total} ready"
+    if total == 0:
+        readiness_tone = "muted"
+    elif green >= total:
+        readiness_tone = "ok"
+    else:
+        readiness_tone = "warn"
+    readiness_card = _card(
+        title="Readiness",
+        value=readiness_label,
+        tone=readiness_tone,
+        sub="Observability checks green",
+        anchor="#section-readiness",
+    )
+
+    headline = watchdog.get("headline_cards") or []
+
+    def _headline_value(key: str) -> int:
+        for card in headline:
+            if card.get("key") == key:
+                try:
+                    return int(card.get("value") or 0)
+                except (TypeError, ValueError):
+                    return 0
+        return 0
+
+    if not watchdog.get("has_history"):
+        doctor_tone = "muted"
+        doctor_value = "No runs"
+        doctor_sub = "Run agentops doctor"
+    else:
+        findings_total = _headline_value("findings_total")
+        critical = _headline_value("critical")
+        if critical > 0:
+            doctor_tone = "crit"
+        elif findings_total > 0:
+            doctor_tone = "warn"
+        else:
+            doctor_tone = "ok"
+        doctor_value = f"{findings_total} finding(s)"
+        doctor_sub = f"{critical} critical"
+    doctor_card = _card(
+        title="Doctor",
+        value=doctor_value,
+        tone=doctor_tone,
+        sub=doctor_sub,
+        anchor="#section-agentops-doctor",
+    )
+
+    if not eval_payload.get("has_runs"):
+        eval_tone = "muted"
+        eval_value = "No runs"
+        eval_sub = "Run agentops eval run"
+    else:
+        passed = bool(eval_payload.get("latest_passed"))
+        eval_tone = "ok" if passed else "crit"
+        eval_value = "Pass" if passed else "Fail"
+        pass_rate = eval_payload.get("pass_rate")
+        if isinstance(pass_rate, (int, float)):
+            eval_sub = f"{int(pass_rate * 100)}% pass rate"
+        else:
+            eval_sub = "Latest run"
+    eval_card = _card(
+        title="Eval gate",
+        value=eval_value,
+        tone=eval_tone,
+        sub=eval_sub,
+        anchor="#section-eval-gates",
+    )
+
+    cards = readiness_card + doctor_card + eval_card
+    return (
+        '<section class="status-cards-section" id="section-status-cards">'
+        '<div class="status-cards-caption">Can I ship? '
+        'Click a card for the full detail below.</div>'
+        f'<div class="grid status-cards-grid">{cards}</div>'
+        '</section>'
     )
 
 
@@ -3517,8 +3664,9 @@ def _render_open_in_foundry_section(open_panel: Dict[str, Any]) -> str:
 
     groups = open_panel.get("groups")
     if groups:
-        # Render each group with its own subheader so Foundry tiles stay
-        # visually distinct from the Azure Monitor tile.
+        # Render each group with its own subheader (Configured agent /
+        # Foundry project). The Azure Monitor surfaces (App Insights, the
+        # Foundry operations workbook) are folded into the project group.
         group_html: List[str] = []
         for group in groups:
             label = _html_escape(group.get("label", ""))
@@ -3569,7 +3717,8 @@ def _render_readiness_section(readiness: Dict[str, Any]) -> str:
         f'<span class="live-pill">{label}</span>'
     )
     return _collapsible_section(
-        title_html, body, section_id="section-readiness"
+        title_html, body, section_id="section-readiness",
+        open_by_default=False,
     )
 
 
@@ -3781,7 +3930,8 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             f'View CI evals in App Insights →</a>'
         )
 
-    eval_section = ""
+    eval_body = ""
+    eval_subtitle = "Eval gate summary"
     eval_caption = (
         '<div class="section-subcaption">'
         'AgentOps gate history from local artifacts and CI runs. For '
@@ -3795,10 +3945,7 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             payload["eval"].get("latest_execution"),
         )
         eval_body = f'{eval_caption}<div class="grid">{cards_html}{telemetry_card}</div>'
-        eval_section = _collapsible_section(
-            f"Eval gate summary{exec_tag}{eval_link}", eval_body,
-            section_id="section-eval-runs",
-        )
+        eval_subtitle = f"Eval gate summary{exec_tag}"
     else:
         official_eval = payload["eval"].get("official_eval") or {}
         if official_eval.get("present"):
@@ -3823,10 +3970,7 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             "</div>"
             + (f'<div class="grid">{telemetry_card}</div>' if telemetry_card else "")
         )
-        eval_section = _collapsible_section(
-            f"Eval gate summary{eval_link}", eval_body,
-            section_id="section-eval-runs",
-        )
+        eval_subtitle = "Eval gate summary"
 
     deployments = payload.get("deployments") or {}
     if deployments.get("has_data") and deployments.get("cards"):
@@ -3840,9 +3984,11 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         deployments_body = f'<div class="empty-state">{hint}</div>'
     deployments_section = _collapsible_section(
         "CI/CD Pipelines", deployments_body, section_id="section-cicd",
+        open_by_default=False,
     )
 
-    metrics_section = ""
+    metrics_subtitle = "Quality gate summary"
+    metrics_body = ""
     if payload["metrics"]:
         metrics_html = "".join(_render_card(c) for c in payload["metrics"])
         exec_tag = _render_exec_section_tag(
@@ -3856,10 +4002,32 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             '</div>'
         )
         metrics_body = f'{metrics_caption}<div class="grid">{metrics_html}</div>'
-        metrics_section = _collapsible_section(
-            f"Quality gate summary{exec_tag}", metrics_body,
-            section_id="section-quality-metrics",
+        metrics_subtitle = f"Quality gate summary{exec_tag}"
+
+    # Merge the eval gate + quality gate into a single "Eval gates" section
+    # with two subgroups. They share a source (AgentOps result artifacts)
+    # and CTA (View CI evals in App Insights), so folding them removes a
+    # redundant top-level section and keeps the gate story in one place.
+    eval_gate_subgroup = (
+        '<div class="deeplink-group">'
+        f'<div class="deeplink-group-label">{eval_subtitle}</div>'
+        f'{eval_body}'
+        '</div>'
+    )
+    quality_gate_subgroup = ""
+    if metrics_body:
+        quality_gate_subgroup = (
+            '<div class="deeplink-group">'
+            f'<div class="deeplink-group-label">{metrics_subtitle}</div>'
+            f'{metrics_body}'
+            '</div>'
         )
+    eval_gates_section = _collapsible_section(
+        f"Eval gates{eval_link}",
+        eval_gate_subgroup + quality_gate_subgroup,
+        section_id="section-eval-gates",
+        open_by_default=False,
+    )
 
     watchdog = payload["watchdog"]
     watchdog_title = "AgentOps Doctor"
@@ -3891,18 +4059,16 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         )
     watchdog_section = _collapsible_section(
         watchdog_title, watchdog_body, section_id="section-agentops-doctor",
+        open_by_default=False,
     )
 
     production = payload.get("production") or {}
     production_section = ""
-    portal_link = ""
-    portal_url = telemetry.get("portal_url") if isinstance(telemetry, dict) else None
-    if portal_url:
-        portal_link = (
-            f' <a class="section-link" href="{_html_escape(portal_url)}" '
-            f'target="_blank" rel="noopener noreferrer">'
-            f'Open App Insights KQL →</a>'
-        )
+    # The App Insights KQL portal URL is already surfaced by the launchpad
+    # "App Insights" tile and the Doctor / Eval gate "View in App Insights"
+    # links, so we no longer repeat it here. Production signal keeps a
+    # single primary CTA: the full Foundry Monitor view.
+    _portal_url_unused = telemetry.get("portal_url") if isinstance(telemetry, dict) else None
 
     # Cockpit surfaces a 2-card teaser (error rate + P95); this link is
     # the primary call-to-action for the full Foundry Monitor view.
@@ -3925,7 +4091,6 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         'Production signal'
         ' <span class="live-pill">live · App Insights</span>'
         f'{foundry_monitor_link}'
-        f'{portal_link}'
     )
     if production.get("has_data") and production.get("cards"):
         # Server-side render (rare - happens when /api/production/html is
@@ -3935,12 +4100,14 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             '<div class="section-subcaption">'
             'Fast health snapshot from App Insights. Use '
             '<strong>Foundry Monitor</strong> for the full production view '
-            '(invocations, tokens, per-model breakdown), or open '
-            '<strong>App Insights KQL</strong> for the exact raw telemetry query.'
+            '(invocations, tokens, per-model breakdown). Raw App Insights '
+            'KQL is available from the launchpad "App Insights" tile.'
             '</div>'
         )
         prod_body = f'{prod_caption}<div class="grid" id="production-grid">{prod_html}</div>'
-        production_section = _collapsible_section(prod_title, prod_body)
+        production_section = _collapsible_section(
+            prod_title, prod_body, open_by_default=False,
+        )
     elif production.get("deferred"):
         # Telemetry is wired up; the cards will arrive async from
         # /api/production/html so the page can render immediately.
@@ -3963,15 +4130,17 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
             '<div class="section-subcaption">'
             'Fast health snapshot from App Insights. Use '
             '<strong>Foundry Monitor</strong> for the full production view '
-            '(invocations, tokens, per-model breakdown), or open '
-            '<strong>App Insights KQL</strong> for the exact raw telemetry query.'
+            '(invocations, tokens, per-model breakdown). Raw App Insights '
+            'KQL is available from the launchpad "App Insights" tile.'
             '</div>'
         )
         prod_body = (
             f'{prod_caption}'
             f'<div class="grid" id="production-grid">{skeleton_cards}</div>'
         )
-        production_section = _collapsible_section(prod_title, prod_body)
+        production_section = _collapsible_section(
+            prod_title, prod_body, open_by_default=False,
+        )
 
     counts = payload["summary_counts"]
     workspace_display = _shorten_workspace(payload["workspace"])
@@ -4008,15 +4177,20 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
     next_actions_section = _render_next_actions_section(
         payload.get("next_actions") or {"actions": []}
     )
+    status_cards_section = _render_status_cards_section(
+        payload.get("readiness") or {"checks": [], "label": "0/0 ready"},
+        payload.get("watchdog") or {},
+        payload.get("eval") or {},
+    )
 
     return _COCKPIT_TEMPLATE.format(
         foundry_connection_section=foundry_connection_section,
         open_in_foundry_section=open_in_foundry_section,
+        status_cards_section=status_cards_section,
         readiness_section=readiness_section,
         next_actions_section=next_actions_section,
-        eval_section=eval_section,
+        eval_gates_section=eval_gates_section,
         deployments_section=deployments_section,
-        metrics_section=metrics_section,
         production_section=production_section,
         watchdog_section=watchdog_section,
         eval_runs=counts["eval_runs"],
@@ -4473,8 +4647,29 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     opacity: 0.55; cursor: not-allowed;
   }}
   .deeplink-card .deeplink-cta.muted {{ color: var(--text-dim); }}
+  /* Consolidated top status cards - the "can I ship?" answer. */
+  .status-cards-section {{ margin: 18px 0 8px; }}
+  .status-cards-caption {{
+    font-size: 12px; color: var(--text-dim); margin: 0 0 10px;
+  }}
+  .status-card {{
+    display: flex; flex-direction: column; gap: 6px;
+    text-decoration: none; color: inherit;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+  }}
+  .status-card:hover {{
+    border-color: rgba(56, 189, 248, 0.4);
+    transform: translateY(-1px);
+  }}
+  .status-card .status-card-value {{ font-size: 22px; font-weight: 700; }}
+  .status-card .status-card-sub {{
+    font-size: 12px; color: var(--text-dim);
+  }}
+  .status-card-ok {{ border-color: rgba(34, 197, 94, 0.4); }}
+  .status-card-warn {{ border-color: rgba(245, 158, 11, 0.4); }}
+  .status-card-crit {{ border-color: rgba(239, 68, 68, 0.45); }}
   /* Subgroups inside "Foundry launchpad". Each group
-     (configured agent / Foundry project / Azure Monitor) gets its own subheader. */
+     (configured agent / Foundry project) gets its own subheader. */
   .deeplink-group + .deeplink-group {{
     margin-top: 18px;
   }}
@@ -5026,14 +5221,14 @@ _COCKPIT_TEMPLATE = """<!doctype html>
 <div class="range-current">window: {range_label}</div>
 
 {foundry_connection_section}
-{open_in_foundry_section}
+{status_cards_section}
+{next_actions_section}
 {readiness_section}
 {watchdog_section}
-{eval_section}
-{metrics_section}
+{eval_gates_section}
 {production_section}
 {deployments_section}
-{next_actions_section}
+{open_in_foundry_section}
 
 <footer>Auto-refresh: <span id="refreshFooter">every 5 min</span> · <code>agentops cockpit</code></footer>
 
@@ -5089,7 +5284,22 @@ function wireSparklineHover(root) {{
 }}
 wireSparklineHover();
 
-// Copy full connection values (for example, the full Foundry project endpoint)
+// Auto-expand a collapsed <details> section when it is targeted via the
+// URL hash (status cards and Next-actions CTAs link to #section-... ids).
+// Details sections collapse by default now, so anchor navigation must open
+// the target for the deep link to reveal any content.
+function openHashSection() {{
+  var id = (window.location.hash || '').replace('#', '');
+  if (!id) return;
+  var el = document.getElementById(id);
+  if (el && el.tagName && el.tagName.toLowerCase() === 'details') {{
+    el.open = true;
+    el.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+  }}
+}}
+window.addEventListener('hashchange', openHashSection);
+openHashSection();
+
 // while keeping the visible card label compact.
 (function() {{
   document.querySelectorAll('.copy-btn[data-copy]').forEach(function(btn) {{

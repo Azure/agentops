@@ -722,6 +722,19 @@ CHECKS: Tuple[CheckSpec, ...] = (
         severities=(Severity.WARNING, Severity.CRITICAL),
         requires=("azure_resources",),
     ),
+    CheckSpec(
+        id="waf.observability.aoai_diagnostic_categories",
+        category=Category.OPERATIONAL_EXCELLENCE,
+        title="Azure OpenAI usage telemetry categories are not enabled",
+        summary=(
+            "The Azure OpenAI account is not emitting the RequestResponse "
+            "and AzureOpenAIRequestUsage diagnostic log categories to a Log "
+            "Analytics workspace, so the Foundry operations dashboard and "
+            "any token / latency / throttling analysis render empty."
+        ),
+        severities=(Severity.WARNING,),
+        requires=("azure_resources",),
+    ),
     # ------------------------------------------------------------------
     # Responsible AI
     # ------------------------------------------------------------------

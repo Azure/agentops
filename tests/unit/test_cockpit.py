@@ -316,7 +316,12 @@ def test_html_includes_all_sections_when_data_present(tmp_path: Path, monkeypatc
     assert "Azure Monitor" in html
     assert "Observability readiness" in html
     assert "Next actions" in html
-    # Gate summary sections.
+    # Consolidated top status cards ("can I ship?").
+    assert 'id="section-status-cards"' in html
+    assert "Can I ship?" in html
+    # Gate summary sections: eval + quality gate are merged into one
+    # "Eval gates" section with two subgroups.
+    assert "Eval gates" in html
     assert "Eval gate summary" in html
     assert "AgentOps Doctor" in html
     assert "CI/CD" in html
@@ -331,41 +336,57 @@ def test_html_includes_all_sections_when_data_present(tmp_path: Path, monkeypatc
     assert "AgentOps gate history from local artifacts and CI runs" in html
     assert "<svg" in html
 
-    # Sections render in the strategic order: Foundry connection →
-    # Foundry launchpad → Observability readiness →
-    # AgentOps Doctor → Eval gate summary → Quality gate summary →
-    # Production signal → CI/CD → Next actions.
+    # Sections render in the redesigned "can I ship?" order: Foundry
+    # connection → consolidated status cards → Next actions →
+    # Observability readiness → AgentOps Doctor → Eval gates →
+    # Production signal → CI/CD → Foundry launchpad (footer).
     connection_pos = html.find('<span class="section-title-text">Foundry connection')
-    open_pos = html.find('<span class="section-title-text">Foundry launchpad')
+    status_cards_pos = html.find('id="section-status-cards"')
+    actions_pos = html.find('<span class="section-title-text">Next actions')
     readiness_pos = html.find('<span class="section-title-text">Observability readiness')
     doctor_pos = html.find('<span class="section-title-text">AgentOps Doctor')
-    eval_pos = html.find('<span class="section-title-text">Eval gate summary')
-    metrics_pos = html.find('<span class="section-title-text">Quality gate summary')
+    eval_gates_pos = html.find('<span class="section-title-text">Eval gates')
     prod_pos = html.find('<span class="section-title-text">Production signal')
     deploy_pos = html.find('<span class="section-title-text">CI/CD')
-    actions_pos = html.find('<span class="section-title-text">Next actions')
+    launchpad_pos = html.find('<span class="section-title-text">Foundry launchpad')
     for pos in (
-        connection_pos, open_pos, readiness_pos, doctor_pos,
-        eval_pos, metrics_pos, prod_pos, deploy_pos, actions_pos,
+        connection_pos, status_cards_pos, actions_pos, readiness_pos,
+        doctor_pos, eval_gates_pos, prod_pos, deploy_pos, launchpad_pos,
     ):
         assert pos != -1, "missing strategic section in cockpit HTML"
     assert (
-        connection_pos < open_pos < readiness_pos < doctor_pos
-        < eval_pos < metrics_pos < prod_pos < deploy_pos < actions_pos
+        connection_pos < status_cards_pos < actions_pos < readiness_pos
+        < doctor_pos < eval_gates_pos < prod_pos < deploy_pos < launchpad_pos
     )
-    assert '<details class="section-block" open' in html
+    # Both subgroup labels live inside the merged Eval gates section, eval
+    # before quality.
+    assert (
+        eval_gates_pos
+        < html.find("Eval gate summary")
+        < html.find("Quality gate summary")
+    )
+    # Detail sections collapse by default; the top status/next-actions
+    # sections stay open. At least one collapsed <details> is present.
+    assert '<details class="section-block" id="section-readiness"' in html
 
 
 
 def test_open_in_foundry_panel_separates_foundry_from_azure_monitor(tmp_path: Path):
-    """The launchpad separates configured-agent, project, and raw telemetry links."""
+    """The launchpad separates configured-agent and Foundry project links.
+
+    The former single-tile "Azure Monitor" group is folded into the
+    Foundry project subgroup (App Insights + the new Foundry operations
+    dashboard tile), so there is one place to look instead of a duplicated
+    one-tile group.
+    """
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
 
     open_panel = payload["open_in_foundry"]
     groups = open_panel.get("groups") or []
     keys = [g.get("key") for g in groups]
-    assert keys == ["agent", "project", "azure_monitor"], (
-        "Agent links must precede project links, which must precede Azure Monitor"
+    assert keys == ["agent", "project"], (
+        "Agent links must precede project links; Azure Monitor is folded "
+        "into the project group"
     )
 
     agent_titles = {t["title"] for t in groups[0]["targets"]}
@@ -377,16 +398,23 @@ def test_open_in_foundry_panel_separates_foundry_from_azure_monitor(tmp_path: Pa
         "Datasets",
         "Red Teaming",
         "Operate overview",
+        "Foundry operations dashboard",
+        "App Insights",
     }.issubset(project_titles)
-    # The Azure Monitor subgroup carries only the App Insights tile.
-    azure_titles = {t["title"] for t in groups[2]["targets"]}
-    assert azure_titles == {"App Insights"}
+
+    # The new Foundry operations dashboard tile renders right after
+    # Operate overview, and the two descriptions must not read the same.
+    project_keys = [t["key"] for t in groups[1]["targets"]]
+    assert project_keys.index("foundry_ops_dashboard") == (
+        project_keys.index("operate") + 1
+    )
+    descriptions = {t["key"]: t.get("description", "") for t in groups[1]["targets"]}
+    assert descriptions["operate"] != descriptions["foundry_ops_dashboard"]
 
     html = render_cockpit_html(payload)
-    # Subheaders render.
+    # Subheaders render (only the two remaining groups).
     assert ">Configured agent<" in html
     assert ">Foundry project<" in html
-    assert ">Azure Monitor<" in html
     # The legacy flat ``targets`` key is kept for backwards-compat and
     # combines both groups in display order.
     flat_keys = [t["key"] for t in open_panel["targets"]]
@@ -893,7 +921,10 @@ def test_production_section_links_to_foundry_monitor_first(tmp_path: Path, monke
     html = render_cockpit_html(payload)
 
     assert "Full view in Foundry Monitor" in html
-    assert "Open App Insights KQL" in html
+    # The duplicated "Open App Insights KQL" CTA was removed from the
+    # Production signal section; the App Insights portal URL now lives only
+    # in the launchpad "App Insights" tile and the Doctor / Eval gate links.
+    assert "Open App Insights KQL" not in html
     # The Foundry Monitor link is styled as the primary section CTA.
     assert "section-link-primary" in html
 

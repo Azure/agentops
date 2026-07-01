@@ -1,0 +1,52 @@
+// Capacity: PTU utilization, rate limit, and PAYG spillover
+// -----------------------------------------------------------------------------
+// Source: AzureMetrics (platform metrics emitted by the Azure OpenAI resource).
+// Derived metrics: PTU_Avg_Pct, PTU_Max_Pct, Ratelimit, Spillover volume,
+//                  Aggregated_PTU_With_Spillover, PTU_Normalizado.
+//
+// The foundry-ops workbook binds the following parameters into this query at
+// runtime. When running the query standalone in Log Analytics, edit the `let`
+// bindings below to match your environment.
+//   {TimeRange}  -> replaced by the workbook time-range picker (KQL timespan)
+//   {Resource}   -> Azure OpenAI resource id (used as the workbook scope)
+//   {Deployment} -> modelDeploymentName filter, or "*" for all deployments
+//   {StreamType} -> "Streaming", "NonStreaming", or "*" for both
+//
+// Note on PTU_Normalizado: this is a DISPLAY-ONLY series (PTU% * 100000). It
+// lets the 0-100 PTU utilization percentage share a Y axis with raw token
+// counts in a single timechart. Do not treat it as a real token volume.
+// -----------------------------------------------------------------------------
+let _bin = 1m;
+let _deployment = "*";      // workbook: {Deployment}
+AzureMetrics
+| where TimeGenerated {TimeRange}
+| where MetricName in (
+    "AzureOpenAIProvisionedManagedUtilizationV2",
+    "Ratelimit",
+    "TokenTransaction",
+    "ProcessedPromptTokens"
+  )
+| extend Deployment = tostring(split(Resource, "/")[-1])
+| where _deployment == "*" or Deployment == _deployment
+| summarize
+    PTU_Avg_Pct = avgif(Average, MetricName == "AzureOpenAIProvisionedManagedUtilizationV2"),
+    PTU_Max_Pct = maxif(Maximum, MetricName == "AzureOpenAIProvisionedManagedUtilizationV2"),
+    Ratelimit = avgif(Average, MetricName == "Ratelimit"),
+    ProcessedTokens = sumif(Total, MetricName in ("TokenTransaction", "ProcessedPromptTokens"))
+    by TimeGenerated = bin(TimeGenerated, _bin), Deployment
+// Tokens above the deployment rate limit spill over to pay-as-you-go capacity.
+| extend Spillover = max_of(0.0, ProcessedTokens - Ratelimit)
+| extend PTU_Tokens = ProcessedTokens - Spillover
+| extend Aggregated_PTU_With_Spillover = PTU_Tokens + Spillover
+// Display-only scaling series so PTU % can share a Y axis with token counts.
+| extend PTU_Normalizado = PTU_Avg_Pct * 100000
+| project
+    TimeGenerated,
+    Deployment,
+    PTU_Avg_Pct,
+    PTU_Max_Pct,
+    Ratelimit,
+    Spillover,
+    Aggregated_PTU_With_Spillover,
+    PTU_Normalizado
+| order by TimeGenerated asc

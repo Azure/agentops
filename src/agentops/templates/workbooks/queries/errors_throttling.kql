@@ -1,0 +1,48 @@
+// Errors and throttling: HTTP status breakdown, throttling rate, error rate
+// -----------------------------------------------------------------------------
+// Source: AzureDiagnostics (ResultSignature holds the HTTP status) and
+// AzureMetrics (BlockedCalls / TotalCalls) for platform-side throttling counts.
+// Derived metrics: HTTP429, HTTP400, HTTP500, TasaThrottling_Pct, TasaError_Pct,
+//                  BlockedCalls.
+//
+// Workbook parameter bindings (edit the `let` lines to run standalone):
+//   {TimeRange}  -> workbook time-range picker (KQL timespan)
+//   {Deployment} -> modelDeploymentName filter, or "*" for all deployments
+//   {StreamType} -> "Streaming", "NonStreaming", or "*" for both
+// -----------------------------------------------------------------------------
+let _bin = 5m;
+let _deployment = "*";      // workbook: {Deployment}
+let _stream = "*";          // workbook: {StreamType}
+AzureDiagnostics
+| where TimeGenerated {TimeRange}
+| where OperationName in ("ChatCompletions_Create", "RequestResponse")
+| extend props = parse_json(properties_s)
+| extend
+    Deployment = tostring(props.modelDeploymentName),
+    StreamType = tostring(props.streamType),
+    Status = toint(ResultSignature)
+| where _deployment == "*" or Deployment == _deployment
+| where _stream == "*" or StreamType == _stream
+| summarize
+    TotalRequests = count(),
+    HTTP429 = countif(Status == 429),
+    HTTP400 = countif(Status == 400),
+    HTTP500 = countif(Status >= 500 and Status < 600),
+    Successful = countif(Status == 200)
+    by TimeGenerated = bin(TimeGenerated, _bin), Deployment
+| extend BlockedCalls = HTTP429
+// Throttling rate: share of requests rejected with HTTP 429.
+| extend TasaThrottling_Pct = iff(TotalRequests > 0, todouble(HTTP429) / TotalRequests * 100, 0.0)
+// Error rate: share of requests that did not return HTTP 200.
+| extend TasaError_Pct = iff(TotalRequests > 0, todouble(TotalRequests - Successful) / TotalRequests * 100, 0.0)
+| project
+    TimeGenerated,
+    Deployment,
+    TotalRequests,
+    BlockedCalls,
+    HTTP429,
+    HTTP400,
+    HTTP500,
+    TasaThrottling_Pct,
+    TasaError_Pct
+| order by TimeGenerated asc

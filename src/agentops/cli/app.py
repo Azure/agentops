@@ -82,6 +82,13 @@ redteam_app = typer.Typer(
 telemetry_app = typer.Typer(
     help="Import Azure Monitor telemetry into AgentOps datasets."
 )
+dashboard_app = typer.Typer(
+    help=(
+        "Deploy, open, and export the Foundry operations Azure Monitor "
+        "workbook (capacity, traffic and tokens, latency, errors)."
+    )
+)
+telemetry_app.add_typer(dashboard_app, name="dashboard")
 app.add_typer(eval_app, name="eval")
 app.add_typer(report_app, name="report")
 app.add_typer(workflow_app, name="workflow")
@@ -822,6 +829,84 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         outputs=("`.github/skills/agentops-*` for Copilot", "`.claude/commands/agentops-*` for Claude Code"),
         examples=("agentops skills install", "agentops skills install --platform copilot", "agentops skills install --from github:org/repo@v1"),
     ),
+    ("telemetry", "dashboard"): ExplainPage(
+        title="Foundry operations dashboard",
+        command="agentops telemetry dashboard",
+        synopsis=("agentops telemetry dashboard COMMAND [ARGS]...", "agentops telemetry dashboard explain"),
+        summary=(
+            "Deploys, opens, and exports the Foundry operations Azure Monitor "
+            "workbook: capacity (PTU), traffic and tokens, latency percentiles, "
+            "and errors and throttling for an Azure OpenAI resource.",
+            "The workbook is scoped per Azure OpenAI resource and per Log "
+            "Analytics workspace and reads from AzureMetrics and "
+            "AzureDiagnostics.",
+        ),
+        children=("deploy", "open", "export"),
+    ),
+    ("telemetry", "dashboard", "deploy"): ExplainPage(
+        title="Deploy the Foundry operations workbook",
+        command="agentops telemetry dashboard deploy",
+        synopsis=(
+            "agentops telemetry dashboard deploy [--dry-run] [--subscription ID] "
+            "[--resource-group RG] [--workspace-id ID] [--name NAME] [--dir PATH]",
+            "agentops telemetry dashboard deploy explain",
+        ),
+        summary=(
+            "Deploys the workbook as a Microsoft.Insights/workbooks ARM resource "
+            "into the discovered (or supplied) resource group.",
+            "This is the first AgentOps CLI command that creates an Azure "
+            "resource; it deploys a single workbook and nothing else.",
+        ),
+        how_it_works=(
+            "Discovers subscription, resource group, Log Analytics workspace, "
+            "and the Azure OpenAI resource from agentops.yaml and the azd env.",
+            "Runs an RBAC preflight: Workbook Contributor on the resource group "
+            "and Log Analytics Reader on the workspace. Missing roles fail with "
+            "the exact role and scope to request.",
+            "Warns (non-fatally) and prints the exact "
+            "`az monitor diagnostic-settings create` command when the Azure "
+            "OpenAI resource is missing the RequestResponse or "
+            "AzureOpenAIRequestUsage categories.",
+            "Deploys via `az deployment group create` and prints the portal URL.",
+        ),
+        outputs=("A deployed workbook and its Azure portal URL", "The ARM template when --dry-run is used"),
+        examples=(
+            "agentops telemetry dashboard deploy --dry-run",
+            "agentops telemetry dashboard deploy --resource-group my-rg",
+        ),
+    ),
+    ("telemetry", "dashboard", "open"): ExplainPage(
+        title="Open the Foundry operations workbook",
+        command="agentops telemetry dashboard open",
+        synopsis=(
+            "agentops telemetry dashboard open [--print-url] [--subscription ID] "
+            "[--resource-group RG] [--name NAME] [--dir PATH]",
+            "agentops telemetry dashboard open explain",
+        ),
+        summary=(
+            "Builds the Azure portal URL for the workbook and opens it in the "
+            "default browser.",
+            "In a non-interactive shell, or with --print-url, it prints the URL "
+            "instead of opening a browser.",
+        ),
+        examples=(
+            "agentops telemetry dashboard open",
+            "agentops telemetry dashboard open --print-url",
+        ),
+    ),
+    ("telemetry", "dashboard", "export"): ExplainPage(
+        title="Export the workbook JSON",
+        command="agentops telemetry dashboard export",
+        synopsis=(
+            "agentops telemetry dashboard export [--out PATH]",
+            "agentops telemetry dashboard export explain",
+        ),
+        summary=(
+            "Copies the packaged workbook JSON to a local path so you can import "
+            "it manually or customize it before deploying.",
+        ),
+        examples=("agentops telemetry dashboard export --out foundry-ops.workbook.json",),
+    ),
     ("mcp",): ExplainPage(
         title="MCP commands",
         command="agentops mcp",
@@ -1469,6 +1554,7 @@ skills_app.command("explain")(_make_group_explain(("skills",)))
 prompt_app.command("explain")(_make_group_explain(("prompt",)))
 mcp_app.command("explain")(_make_group_explain(("mcp",)))
 agent_app.command("explain")(_make_group_explain(("agent",)))
+dashboard_app.command("explain")(_make_group_explain(("telemetry", "dashboard")))
 
 
 # ---------------------------------------------------------------------------
@@ -2459,6 +2545,197 @@ def _resolve_eval_config_path(config: Path | None) -> Path:
     if config is not None:
         return config
     return Path("agentops.yaml")
+
+
+# ---------------------------------------------------------------------------
+# agentops telemetry dashboard {deploy, open, export}
+# ---------------------------------------------------------------------------
+@dashboard_app.command("deploy")
+def cmd_dashboard_deploy(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Emit the ARM template and make no changes."),
+    ] = False,
+    subscription: Annotated[
+        Optional[str],
+        typer.Option("--subscription", help="Azure subscription id override."),
+    ] = None,
+    resource_group: Annotated[
+        Optional[str],
+        typer.Option("--resource-group", help="Resource group for the workbook."),
+    ] = None,
+    workspace_id: Annotated[
+        Optional[str],
+        typer.Option("--workspace-id", help="Log Analytics workspace resource id."),
+    ] = None,
+    name: Annotated[
+        Optional[str],
+        typer.Option("--name", help="Workbook display name."),
+    ] = None,
+    workspace: Annotated[
+        Path,
+        typer.Option("--dir", help="AgentOps workspace root for discovery."),
+    ] = Path("."),
+    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
+) -> None:
+    """Deploy the Foundry operations workbook to Azure Monitor."""
+
+    if _maybe_explain_leaf(("telemetry", "dashboard", "deploy"), explain):
+        return
+
+    import json
+
+    from agentops.services import dashboard as dash
+
+    target = dash.discover_target(
+        workspace.resolve(),
+        subscription_id=subscription,
+        resource_group=resource_group,
+        workspace_id=workspace_id,
+        name=name,
+    )
+
+    if dry_run:
+        template = dash.build_arm_template(target=target)
+        typer.echo(json.dumps(template, indent=2))
+        typer.echo(
+            _cli_warn(
+                "Dry run only. No Azure changes were made. Re-run without "
+                "--dry-run to deploy."
+            ),
+            err=True,
+        )
+        return
+
+    # RBAC preflight — fail gracefully with the exact role and scope needed.
+    rbac = dash.check_rbac(
+        subscription_id=target.subscription_id,
+        resource_group=target.resource_group,
+        workspace_id=target.workspace_id,
+    )
+    for message in rbac.messages:
+        if rbac.level == "ok":
+            typer.echo(_cli_ok(message))
+        elif rbac.level == "warn":
+            typer.echo(_cli_warn(message), err=True)
+        else:
+            typer.echo(_cli_error(message), err=True)
+    if not rbac.ok:
+        raise typer.Exit(code=1)
+
+    # Diagnostic-settings advisory (non-fatal): print the exact fix command.
+    enabled = list(target.discovery.get("enabled_log_categories", []) or [])
+    missing = dash.missing_diagnostic_categories(enabled) if enabled else list(
+        dash.REQUIRED_DIAGNOSTIC_CATEGORIES
+    )
+    if missing:
+        typer.echo(
+            _cli_warn(
+                "The Azure OpenAI resource may not emit the categories the "
+                f"workbook needs ({', '.join(missing)}). If the tiles are "
+                "empty, enable them with:"
+            ),
+            err=True,
+        )
+        typer.echo(
+            _cli_command(
+                dash.build_diagnostic_settings_command(
+                    aoai_resource_id=target.aoai_resource_id,
+                    workspace_id=target.workspace_id,
+                )
+            ),
+            err=True,
+        )
+
+    try:
+        url = dash.deploy_workbook(target=target)
+    except dash.DashboardError as exc:
+        typer.echo(_cli_error(str(exc)), err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(_cli_ok("Workbook deployed."))
+    typer.echo(f"{_cli_label('Portal')}: {_cli_path(url)}")
+
+
+@dashboard_app.command("open")
+def cmd_dashboard_open(
+    print_url: Annotated[
+        bool,
+        typer.Option("--print-url", help="Print the URL instead of opening a browser."),
+    ] = False,
+    subscription: Annotated[
+        Optional[str],
+        typer.Option("--subscription", help="Azure subscription id override."),
+    ] = None,
+    resource_group: Annotated[
+        Optional[str],
+        typer.Option("--resource-group", help="Resource group for the workbook."),
+    ] = None,
+    name: Annotated[
+        Optional[str],
+        typer.Option("--name", help="Workbook display name."),
+    ] = None,
+    workspace: Annotated[
+        Path,
+        typer.Option("--dir", help="AgentOps workspace root for discovery."),
+    ] = Path("."),
+    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
+) -> None:
+    """Open the Foundry operations workbook in the Azure portal."""
+
+    if _maybe_explain_leaf(("telemetry", "dashboard", "open"), explain):
+        return
+
+    from agentops.services import dashboard as dash
+
+    target = dash.discover_target(
+        workspace.resolve(),
+        subscription_id=subscription,
+        resource_group=resource_group,
+        name=name,
+    )
+    url = dash.build_workbook_portal_url(
+        subscription_id=target.subscription_id,
+        resource_group=target.resource_group,
+        name=target.name,
+        tenant_id=target.tenant_id,
+    )
+
+    if print_url or not _stream_is_interactive(sys.stdout):
+        typer.echo(url)
+        return
+    typer.echo(f"{_cli_heading('Foundry operations dashboard')} → {_cli_path(url)}")
+    try:
+        webbrowser.open(url)
+    except Exception:  # noqa: BLE001 - best effort
+        typer.echo(url)
+
+
+@dashboard_app.command("export")
+def cmd_dashboard_export(
+    out: Annotated[
+        Path,
+        typer.Option("--out", help="Destination path for the workbook JSON."),
+    ] = Path("foundry-ops.workbook.json"),
+    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
+) -> None:
+    """Export the packaged workbook JSON to a local path."""
+
+    if _maybe_explain_leaf(("telemetry", "dashboard", "export"), explain):
+        return
+
+    from agentops.services import dashboard as dash
+
+    try:
+        content = dash.load_workbook_template()
+    except dash.DashboardError as exc:
+        typer.echo(_cli_error(str(exc)), err=True)
+        raise typer.Exit(code=1) from exc
+
+    destination = out.resolve()
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(content, encoding="utf-8")
+    typer.echo(_cli_updated(destination))
 
 
 def _append_assert_step_summary(result, *, scored_cases, pass_rate) -> None:

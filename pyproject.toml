@@ -61,6 +61,9 @@ where = ["src"]
   "pipelines/azuredevops/*.yml",
   "skills/*/SKILL.md",
   "agent-server/*",
+  "workbooks/*.json",
+  "workbooks/*.md",
+  "workbooks/queries/*.kql",
 ]
 "agentops.agent.knowledge" = ["*.csv"]
 
