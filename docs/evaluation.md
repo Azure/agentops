@@ -275,3 +275,60 @@ thresholds:
   coherence: ">=3"
   avg_latency_seconds: "<=2"
 ```
+
+## Recipe
+
+Run these five commands in order to go from an empty repo to a gated result.
+
+1. Bootstrap the workspace and a starter `agentops.yaml` with the init wizard.
+
+    ```bash
+    agentops init
+    ```
+
+2. Inspect the repo and get an evaluator recommendation for your target and dataset.
+
+    ```bash
+    agentops eval analyze
+    ```
+
+3. Write the recommended eval assets once the plan looks right.
+
+    ```bash
+    agentops eval init
+    ```
+
+4. Send the dataset to the target, score the responses, and gate them against thresholds.
+
+    ```bash
+    agentops eval run
+    ```
+
+5. Regenerate the human-readable report from the latest results.
+
+    ```bash
+    agentops report generate
+    ```
+
+## Use these from Copilot, Claude, or Cursor
+
+Install the AgentOps skills so your coding agent can run this recipe for you.
+
+```bash
+agentops skills install --platform copilot
+```
+
+The skills that map to evaluation are:
+
+| Skill | What it helps with |
+|---|---|
+| `agentops-config` | Generate and edit `agentops.yaml`. |
+| `agentops-dataset` | Create JSONL datasets and pick the right scenario. |
+| `agentops-eval` | Run evaluations, benchmark, and compare runs. |
+| `agentops-report` | Interpret results and regenerate the report. |
+
+## Next
+
+Continue with the [Built-in Evaluators](foundry-evaluation-sdk-built-in-evaluators.md)
+catalog, wire the gate into CI on the [Ship](ship.md) page, or follow the
+[Prompt Agent tutorial](tutorial-prompt-agent.md) end to end.

@@ -67,3 +67,56 @@ regression rows with `agentops eval promote-traces`.
 The loop is the point: traces become datasets, datasets gate the next release,
 and the agent keeps getting evaluated on the behavior that matters in
 production.
+
+## Recipe
+
+Confirm the signal is flowing, then turn real traces into regression coverage.
+
+1. Check that AgentOps can reach Application Insights before you rely on the signal.
+
+    ```bash
+    agentops telemetry validate
+    ```
+
+2. Preview the traces and evaluation events AgentOps can currently see.
+
+    ```bash
+    agentops telemetry preview
+    ```
+
+3. Import a trace export so it can become regression coverage.
+
+    ```bash
+    agentops telemetry import
+    ```
+
+4. Promote reviewed production traces into regression dataset rows.
+
+    ```bash
+    agentops eval promote-traces --source .agentops/traces/export.jsonl
+    ```
+
+To browse this signal interactively and deep-link into Foundry and Azure
+Monitor, open the [Cockpit](operate.md#cockpit), which lives on the Operate page.
+
+## Use these from Copilot, Claude, or Cursor
+
+Install the AgentOps skills so your coding agent can read telemetry and grow the
+regression set for you.
+
+```bash
+agentops skills install --platform copilot
+```
+
+The skills that map to observability are:
+
+| Skill | What it helps with |
+|---|---|
+| `agentops-agent` | Watchdog analysis of production health and latency spikes. |
+| `agentops-eval` | Promote traces and re-evaluate against the hardened dataset. |
+
+## Next
+
+Act on the signal over time on the [Operate](operate.md) page, feed passing
+evidence back into the gate on the [Ship](ship.md) page, or harden the dataset
+on the [Evaluation](evaluation.md) page.

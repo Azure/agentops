@@ -31,10 +31,20 @@ hide:
 ## What AgentOps does
 
 AgentOps turns Foundry evaluation, safety, and observability signals into a
-repeatable ship/no-ship workflow. It connects Foundry Evaluations, the ASSERT
+repeatable ship or no-ship workflow. It connects Foundry Evaluations, the ASSERT
 safety framework, the PyRIT-backed AI Red Teaming agent, Azure Monitor, and your
-CI/CD platform into one release loop, packaging every result into a stable
+CI/CD platform into one release loop. Every result is packaged into a stable
 evidence pack that proves a release is ready for production.
+
+!!! tip "Install in 60 seconds"
+    Install the package, bootstrap a workspace, and drop the skills into your
+    coding agent.
+
+    ```bash
+    pip install agentops-accelerator
+    agentops init
+    agentops skills install --platform copilot
+    ```
 
 <div class="agentops-video-embed">
   <iframe
@@ -45,61 +55,64 @@ evidence pack that proves a release is ready for production.
   </iframe>
 </div>
 
-<div class="agentops-cta" markdown>
-**New here?** Start with the [Prompt Agent tutorial](tutorial-prompt-agent.md) or
-the [HTTP Agent tutorial](tutorial-http-agent.md) to learn the sandbox to dev PR
-gate flow end to end.
-
-[Prompt Agent tutorial :material-rocket-launch:](tutorial-prompt-agent.md){ .md-button--pill }
-[HTTP Agent tutorial :material-rocket-launch:](tutorial-http-agent.md){ .md-button--pill }
-</div>
-
 <div class="agentops-cards" markdown>
 
 <div class="agentops-card" markdown>
 ### :material-clipboard-check: Evaluate
 Read [Evaluation](evaluation.md) to learn how datasets, evaluators, thresholds,
-and rubrics turn an agent into a pass or fail gate.
+and rubrics turn an agent into a pass or fail gate. Start with `agentops eval run`
+and the `agentops-eval` skill.
 </div>
 
 <div class="agentops-card" markdown>
 ### :material-source-branch: Ship
 [Ship](ship.md) explains the generated PR gate and dev deploy workflows, and how
-candidate versions become a release.
+candidate versions become a release. Start with
+`agentops workflow generate --kinds pr` and the `agentops-workflow` skill.
 </div>
 
 <div class="agentops-card" markdown>
 ### :material-radar: Observe
 [Observe](observe.md) covers Foundry traces and Azure Monitor, and how
-production signals feed continuous evaluation.
+production signals feed continuous evaluation. Start with
+`agentops telemetry validate` and the `agentops-agent` skill.
 </div>
 
 <div class="agentops-card" markdown>
 ### :material-stethoscope: Operate
-[Operate](operate.md) shows how Doctor scores readiness and packages an evidence pack so
-you can make the ship or no-ship call.
+[Operate](operate.md) shows how Doctor scores readiness and packages an evidence
+pack so you can make the ship or no-ship call. Start with `agentops doctor` and
+the `agentops-governance` skill.
 </div>
 
 </div>
 
 ## Reference architecture
 
-Use this as the mental model for the AgentOps loop: build and learn in a sandbox,
-commit the release contract to source control, promote through environments with
+Use this as the mental model for the AgentOps loop: build in a sandbox, commit
+the release contract to source control, promote through environments with
 evidence, then feed production learning back into the next evaluation set.
 
 ![AgentOps Accelerator reference architecture](media/agentops-architecture.png){ .agentops-reference-architecture }
 
 | Area | What it owns |
 |---|---|
-| **Sandbox inner loop** | Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted. |
-| **AgentOps Accelerator** | Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence. |
-| **Foundry** | Hosts managed agent projects, Prompt Agent and HTTP agent runtime options, traces, operate views, guardrails, and evaluations where applicable. |
-| **Outer loop delivery** | Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check. |
-| **Operate and improve** | Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases. |
+| **Sandbox inner loop** | Create, evaluate, and improve the candidate before promotion. |
+| **AgentOps Accelerator** | Config, datasets, gates, Doctor, Cockpit, CI workflows, and release evidence, kept next to the repo. |
+| **Foundry** | Hosts agent projects, runtime traces, guardrails, and evaluations. |
+| **Outer loop delivery** | Promote the same reviewed candidate through dev, QA, and production, gated by reviewable evidence. |
 
-## Contributing
+## Where to go next
 
-Contributions are welcome. See the project
+<div class="agentops-cta" markdown>
+Pick a tutorial to learn the sandbox to PR gate flow end to end, or jump straight
+to the evaluation reference.
+
+[Prompt Agent tutorial :material-rocket-launch:](tutorial-prompt-agent.md){ .md-button--pill }
+[HTTP Agent tutorial :material-rocket-launch:](tutorial-http-agent.md){ .md-button--pill }
+[Evaluation reference :material-book-open-variant:](evaluation.md){ .md-button--pill }
+</div>
+
+Contributions are welcome. See the
 [repository](https://github.com/Azure/agentops) for guidelines, issues, and the
 contribution process.

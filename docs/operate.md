@@ -69,6 +69,39 @@ Generated production workflows append the evidence report to the run summary, so
 when a release blocks you can start from the critical and warning finding ids
 before opening the full artifact.
 
+## Cockpit
+
+The Cockpit is a local web UI for operating an agent day to day. It browses the
+Doctor findings that AgentOps owns end to end, and it deep-links out to Foundry
+and Azure Monitor for the runtime views those surfaces own.
+
+```bash
+agentops cockpit
+```
+
+Start the Cockpit from a configured workspace to review findings, open the
+evidence pack, and jump into the traces behind a finding. It reads the same
+signals as the Doctor, so what you see matches the gate.
+
+## Assurance and governance
+
+Readiness is not only quality and latency. A production agent also needs safety
+and adversarial assurance, so AgentOps runs two checks you can gate on and attach
+to the evidence pack.
+
+| Command | What it does |
+|---|---|
+| `agentops assert run` | Runs the ASSERT safety framework against the agent. |
+| `agentops redteam run` | Runs the PyRIT-backed AI Red Teaming agent for adversarial probing. |
+
+```bash
+agentops assert run
+agentops redteam run
+```
+
+Use the `agentops-governance` skill when you want a coding agent to set up
+ASSERT, Azure Content Safety, guardrails, and red-team readiness for you.
+
 ## The operating loop
 
 Operating an agent means running this loop, not a one-time checklist.
@@ -91,3 +124,60 @@ retrieval. To measure and tune search quality directly, see
 
 To see the monitoring half of this loop in depth, read [Observe](observe.md).
 To see how the gate runs in CI, read [Ship](ship.md).
+
+## Recipe
+
+Score readiness, prove the decision, and add assurance before you promote.
+
+1. Score readiness across quality, performance, reliability, security, and OpEx.
+
+    ```bash
+    agentops doctor
+    ```
+
+2. Turn the run into a ship or no-ship evidence pack.
+
+    ```bash
+    agentops doctor --evidence-pack
+    ```
+
+3. Read what a finding means and how the Doctor reasons about it.
+
+    ```bash
+    agentops doctor explain
+    ```
+
+4. Open the local Cockpit to browse findings and deep-link into Foundry and Azure Monitor.
+
+    ```bash
+    agentops cockpit
+    ```
+
+5. Add safety and red-team assurance before you promote.
+
+    ```bash
+    agentops assert run
+    agentops redteam run
+    ```
+
+## Use these from Copilot, Claude, or Cursor
+
+Install the AgentOps skills so your coding agent can triage findings and set up
+governance for you.
+
+```bash
+agentops skills install --platform copilot
+```
+
+The skills that map to operating are:
+
+| Skill | What it helps with |
+|---|---|
+| `agentops-agent` | Watchdog analysis of production health and latency spikes. |
+| `agentops-governance` | ASSERT, Azure Content Safety, guardrails, and red-team readiness. |
+
+## Next
+
+Browse the full [Doctor checks reference](doctor-checks.md), watch usage and cost
+in the [Foundry operations workbook](foundry-ops-workbook.md), or return to
+[Observe](observe.md) for the signal side of the loop.

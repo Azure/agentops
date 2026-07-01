@@ -48,17 +48,24 @@ Legend:
 <span style="display:inline-block;width:0.9em;height:0.9em;background:#ede7f6;border:1px solid #4527a0;vertical-align:-0.1em;"></span> PR or workflow gate
 <span style="display:inline-block;width:0.9em;height:0.9em;background:#d1ecf1;border:1px solid #0c5460;vertical-align:-0.1em;"></span> deployed environment
 
-The PR gate (`agentops-pr.yml`) protects feature and release-candidate changes
-before they enter `develop` or `release/**`. It does not validate the
-already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
-endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in
-sandbox. The PR from `release/**` to `main` is a manual approval gate with
-static checks only. After it merges, `agentops-deploy-prod` runs the production
-release process: deploy and smoke test. A per-environment deploy workflow
-promotes `develop` to dev, `release/**` to QA, and `main` to prod. The two you
-start with are covered next; the full set, with the workflow YAML and the GitHub
-Environment and OIDC setup, is in
-[AgentOps on GitHub Actions](ci-github-actions.md).
+The PR gate and the deploy workflows each have one job, so it helps to read the
+flow as two tables: what runs on a pull request, and what runs after a merge.
+
+| Pull request | What runs | Notes |
+|---|---|---|
+| Feature PR into `develop` or `release/**` | `agentops-pr.yml` evaluates the PR candidate. | Protects the change before it enters the branch. It does not validate the already-deployed dev app. For HTTP agents it evaluates the sandbox endpoint; for prompt agents it stages and evaluates the candidate prompt in sandbox. |
+| PR from `release/**` into `main` | Manual approval gate with static checks only. | No agents are called; it approves the already-tested release branch. |
+
+| Merge into | Deploy workflow | Target environment |
+|---|---|---|
+| `develop` | per-environment deploy | dev |
+| `release/**` | per-environment deploy | QA |
+| `main` | `agentops-deploy-prod` production release process (deploy and smoke test) | production |
+
+!!! note "Where the full setup lives"
+    The two workflows you start with are covered next. The full set, including
+    the workflow YAML and the GitHub Environment and OIDC setup, is in
+    [AgentOps on GitHub Actions](ci-github-actions.md).
 
 ## The two core workflows
 
@@ -150,3 +157,53 @@ long steps here:
 
 - [GitHub OIDC with Azure (workload identity federation)](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp)
 - [Assign Azure roles (RBAC)](https://learn.microsoft.com/azure/role-based-access-control/role-assignments-portal)
+
+## Recipe
+
+Generate the CI/CD workflows from the same analysis AgentOps uses, smallest gate
+first.
+
+1. Read the repo and recommend the deploy wiring and eval runner.
+
+    ```bash
+    agentops workflow analyze
+    ```
+
+2. Generate just the PR gate first so your first green run stays small.
+
+    ```bash
+    agentops workflow generate --kinds pr
+    ```
+
+3. Add the per-environment deploy workflows once GitHub Environments and Azure OIDC are ready.
+
+    ```bash
+    agentops workflow generate --kinds pr,dev,qa,prod
+    ```
+
+4. Target Azure DevOps Pipelines instead of GitHub Actions when that is your platform.
+
+    ```bash
+    agentops workflow generate --kinds pr --platform azure-devops
+    ```
+
+## Use these from Copilot, Claude, or Cursor
+
+Install the AgentOps skills so your coding agent can wire and explain the
+pipeline for you.
+
+```bash
+agentops skills install --platform copilot
+```
+
+The skill that maps to shipping is:
+
+| Skill | What it helps with |
+|---|---|
+| `agentops-workflow` | Set up, generate, and explain CI/CD workflows. |
+
+## Next
+
+Read the full [GitHub Actions](ci-github-actions.md) reference, score readiness
+after each run on the [Operate](operate.md) page, or see where production signal
+comes from on the [Observe](observe.md) page.

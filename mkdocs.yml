@@ -80,6 +80,8 @@ nav:
   - Observe: observe.md
   - Operate:
       - Overview: operate.md
+      - Foundry Operations Workbook: foundry-ops-workbook.md
+      - Foundry Operations KQL Library: foundry-ops-workbook-kql.md
       - Retrieval Optimization: retrieval-optimization.md
       - Doctor Checks: doctor-checks.md
       - Doctor Explained: doctor-explained.md
