@@ -5,6 +5,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-07-01
+
+### Fixed
+- **`agentops telemetry dashboard deploy` now works.** The generated ARM
+  template set the workbook `location` to `global`, which
+  `Microsoft.Insights/workbooks` rejects
+  (`LocationNotAvailableForResourceType`), so the v0.7.0 deploy always failed.
+  The workbook now deploys to the target resource group's region
+  (`[resourceGroup().location]`) by default; an explicit region override is
+  still honored. Verified with a live deploy against Azure.
+
+### Security
+- Bumped `idna` to `3.18` and `pytest` to `9.1.1` in `uv.lock` to clear two
+  moderate Dependabot alerts. The high-severity `nltk` advisory
+  (GHSA-p4gq-832x-fm9v) has no upstream fix yet and remains open until a
+  patched release is available.
+
 ## [0.7.0] - 2026-07-01
 
 ### Added
