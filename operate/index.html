@@ -16,7 +16,7 @@
         <link rel="prev" href="../observe/">
       
       
-        <link rel="next" href="../retrieval-optimization/">
+        <link rel="next" href="../foundry-ops-workbook/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -801,9 +801,54 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cockpit" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cockpit
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assurance-and-governance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Assurance and governance
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-operating-loop" class="md-nav__link">
     <span class="md-ellipsis">
       The operating loop
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recipe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use these from Copilot, Claude, or Cursor
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next
     </span>
   </a>
   
@@ -813,6 +858,48 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundry-ops-workbook/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Foundry Operations Workbook
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundry-ops-workbook-kql/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Foundry Operations KQL Library
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -942,9 +1029,54 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#cockpit" class="md-nav__link">
+    <span class="md-ellipsis">
+      Cockpit
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#assurance-and-governance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Assurance and governance
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#the-operating-loop" class="md-nav__link">
     <span class="md-ellipsis">
       The operating loop
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recipe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use these from Copilot, Claude, or Cursor
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next
     </span>
   </a>
   
@@ -1038,6 +1170,42 @@ visible before a release review, not after.</p>
 <p>Generated production workflows append the evidence report to the run summary, so
 when a release blocks you can start from the critical and warning finding ids
 before opening the full artifact.</p>
+<h2 id="cockpit">Cockpit<a class="headerlink" href="#cockpit" title="Permanent link">&para;</a></h2>
+<p>The Cockpit is a local web UI for operating an agent day to day. It browses the
+Doctor findings that AgentOps owns end to end, and it deep-links out to Foundry
+and Azure Monitor for the runtime views those surfaces own.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>agentops<span class="w"> </span>cockpit
+</code></pre></div>
+<p>Start the Cockpit from a configured workspace to review findings, open the
+evidence pack, and jump into the traces behind a finding. It reads the same
+signals as the Doctor, so what you see matches the gate.</p>
+<h2 id="assurance-and-governance">Assurance and governance<a class="headerlink" href="#assurance-and-governance" title="Permanent link">&para;</a></h2>
+<p>Readiness is not only quality and latency. A production agent also needs safety
+and adversarial assurance, so AgentOps runs two checks you can gate on and attach
+to the evidence pack.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agentops assert run</code></td>
+<td>Runs the ASSERT safety framework against the agent.</td>
+</tr>
+<tr>
+<td><code>agentops redteam run</code></td>
+<td>Runs the PyRIT-backed AI Red Teaming agent for adversarial probing.</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>assert<span class="w"> </span>run
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>agentops<span class="w"> </span>redteam<span class="w"> </span>run
+</code></pre></div>
+<p>Use the <code>agentops-governance</code> skill when you want a coding agent to set up
+ASSERT, Azure Content Safety, guardrails, and red-team readiness for you.</p>
 <h2 id="the-operating-loop">The operating loop<a class="headerlink" href="#the-operating-loop" title="Permanent link">&para;</a></h2>
 <p>Operating an agent means running this loop, not a one-time checklist.</p>
 <pre class="mermaid"><code>flowchart LR
@@ -1053,6 +1221,64 @@ retrieval. To measure and tune search quality directly, see
 <a href="../retrieval-optimization/">Retrieval optimization</a>.</p>
 <p>To see the monitoring half of this loop in depth, read <a href="../observe/">Observe</a>.
 To see how the gate runs in CI, read <a href="../ship/">Ship</a>.</p>
+<h2 id="recipe">Recipe<a class="headerlink" href="#recipe" title="Permanent link">&para;</a></h2>
+<p>Score readiness, prove the decision, and add assurance before you promote.</p>
+<ol>
+<li>
+<p>Score readiness across quality, performance, reliability, security, and OpEx.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>doctor
+</code></pre></div>
+</li>
+<li>
+<p>Turn the run into a ship or no-ship evidence pack.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>--evidence-pack
+</code></pre></div>
+</li>
+<li>
+<p>Read what a finding means and how the Doctor reasons about it.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>explain
+</code></pre></div>
+</li>
+<li>
+<p>Open the local Cockpit to browse findings and deep-link into Foundry and Azure Monitor.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>agentops<span class="w"> </span>cockpit
+</code></pre></div>
+</li>
+<li>
+<p>Add safety and red-team assurance before you promote.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>agentops<span class="w"> </span>assert<span class="w"> </span>run
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>agentops<span class="w"> </span>redteam<span class="w"> </span>run
+</code></pre></div>
+</li>
+</ol>
+<h2 id="use-these-from-copilot-claude-or-cursor">Use these from Copilot, Claude, or Cursor<a class="headerlink" href="#use-these-from-copilot-claude-or-cursor" title="Permanent link">&para;</a></h2>
+<p>Install the AgentOps skills so your coding agent can triage findings and set up
+governance for you.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+</code></pre></div>
+<p>The skills that map to operating are:</p>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>What it helps with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agentops-agent</code></td>
+<td>Watchdog analysis of production health and latency spikes.</td>
+</tr>
+<tr>
+<td><code>agentops-governance</code></td>
+<td>ASSERT, Azure Content Safety, guardrails, and red-team readiness.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<p>Browse the full <a href="../doctor-checks/">Doctor checks reference</a>, watch usage and cost
+in the <a href="../foundry-ops-workbook/">Foundry operations workbook</a>, or return to
+<a href="../observe/">Observe</a> for the signal side of the loop.</p>
 
 
 

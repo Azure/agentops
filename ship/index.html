@@ -718,6 +718,33 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recipe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use these from Copilot, Claude, or Cursor
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -827,6 +854,48 @@
   
   <span class="md-ellipsis">
     Overview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundry-ops-workbook/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Foundry Operations Workbook
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundry-ops-workbook-kql/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Foundry Operations KQL Library
   </span>
   
 
@@ -986,6 +1055,33 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recipe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use these from Copilot, Claude, or Cursor
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1045,17 +1141,61 @@ environment:</p>
 <span style="display:inline-block;width:0.9em;height:0.9em;background:#e7f0fd;border:1px solid #1f4e79;vertical-align:-0.1em;"></span> Git branch
 <span style="display:inline-block;width:0.9em;height:0.9em;background:#ede7f6;border:1px solid #4527a0;vertical-align:-0.1em;"></span> PR or workflow gate
 <span style="display:inline-block;width:0.9em;height:0.9em;background:#d1ecf1;border:1px solid #0c5460;vertical-align:-0.1em;"></span> deployed environment</p>
-<p>The PR gate (<code>agentops-pr.yml</code>) protects feature and release-candidate changes
-before they enter <code>develop</code> or <code>release/**</code>. It does not validate the
-already-deployed dev app. In the HTTP tutorial, it evaluates the sandbox
-endpoint. In prompt-agent flows, it stages and evaluates the candidate prompt in
-sandbox. The PR from <code>release/**</code> to <code>main</code> is a manual approval gate with
-static checks only. After it merges, <code>agentops-deploy-prod</code> runs the production
-release process: deploy and smoke test. A per-environment deploy workflow
-promotes <code>develop</code> to dev, <code>release/**</code> to QA, and <code>main</code> to prod. The two you
-start with are covered next; the full set, with the workflow YAML and the GitHub
-Environment and OIDC setup, is in
+<p>The PR gate and the deploy workflows each have one job, so it helps to read the
+flow as two tables: what runs on a pull request, and what runs after a merge.</p>
+<table>
+<thead>
+<tr>
+<th>Pull request</th>
+<th>What runs</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Feature PR into <code>develop</code> or <code>release/**</code></td>
+<td><code>agentops-pr.yml</code> evaluates the PR candidate.</td>
+<td>Protects the change before it enters the branch. It does not validate the already-deployed dev app. For HTTP agents it evaluates the sandbox endpoint; for prompt agents it stages and evaluates the candidate prompt in sandbox.</td>
+</tr>
+<tr>
+<td>PR from <code>release/**</code> into <code>main</code></td>
+<td>Manual approval gate with static checks only.</td>
+<td>No agents are called; it approves the already-tested release branch.</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Merge into</th>
+<th>Deploy workflow</th>
+<th>Target environment</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>develop</code></td>
+<td>per-environment deploy</td>
+<td>dev</td>
+</tr>
+<tr>
+<td><code>release/**</code></td>
+<td>per-environment deploy</td>
+<td>QA</td>
+</tr>
+<tr>
+<td><code>main</code></td>
+<td><code>agentops-deploy-prod</code> production release process (deploy and smoke test)</td>
+<td>production</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Where the full setup lives</p>
+<p>The two workflows you start with are covered next. The full set, including
+the workflow YAML and the GitHub Environment and OIDC setup, is in
 <a href="../ci-github-actions/">AgentOps on GitHub Actions</a>.</p>
+</div>
 <h2 id="the-two-core-workflows">The two core workflows<a class="headerlink" href="#the-two-core-workflows" title="Permanent link">&para;</a></h2>
 <p>A generated AgentOps scaffold ships a PR gate and per-environment deploy
 workflows. The two that matter most early are the PR gate and the dev deploy.</p>
@@ -1167,6 +1307,55 @@ long steps here:</p>
 <li><a href="https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp">GitHub OIDC with Azure (workload identity federation)</a></li>
 <li><a href="https://learn.microsoft.com/azure/role-based-access-control/role-assignments-portal">Assign Azure roles (RBAC)</a></li>
 </ul>
+<h2 id="recipe">Recipe<a class="headerlink" href="#recipe" title="Permanent link">&para;</a></h2>
+<p>Generate the CI/CD workflows from the same analysis AgentOps uses, smallest gate
+first.</p>
+<ol>
+<li>
+<p>Read the repo and recommend the deploy wiring and eval runner.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze
+</code></pre></div>
+</li>
+<li>
+<p>Generate just the PR gate first so your first green run stays small.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr
+</code></pre></div>
+</li>
+<li>
+<p>Add the per-environment deploy workflows once GitHub Environments and Azure OIDC are ready.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod
+</code></pre></div>
+</li>
+<li>
+<p>Target Azure DevOps Pipelines instead of GitHub Actions when that is your platform.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr<span class="w"> </span>--platform<span class="w"> </span>azure-devops
+</code></pre></div>
+</li>
+</ol>
+<h2 id="use-these-from-copilot-claude-or-cursor">Use these from Copilot, Claude, or Cursor<a class="headerlink" href="#use-these-from-copilot-claude-or-cursor" title="Permanent link">&para;</a></h2>
+<p>Install the AgentOps skills so your coding agent can wire and explain the
+pipeline for you.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+</code></pre></div>
+<p>The skill that maps to shipping is:</p>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>What it helps with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agentops-workflow</code></td>
+<td>Set up, generate, and explain CI/CD workflows.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<p>Read the full <a href="../ci-github-actions/">GitHub Actions</a> reference, score readiness
+after each run on the <a href="../operate/">Operate</a> page, or see where production signal
+comes from on the <a href="../observe/">Observe</a> page.</p>
 
 
 

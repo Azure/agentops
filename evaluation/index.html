@@ -656,6 +656,33 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recipe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use these from Copilot, Claude, or Cursor
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -870,6 +897,48 @@
   
   
     <li class="md-nav__item">
+      <a href="../foundry-ops-workbook/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Foundry Operations Workbook
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../foundry-ops-workbook-kql/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Foundry Operations KQL Library
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../retrieval-optimization/" class="md-nav__link">
         
   
@@ -1035,6 +1104,33 @@
   <a href="#configuration-model" class="md-nav__link">
     <span class="md-ellipsis">
       Configuration model
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recipe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recipe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use these from Copilot, Claude, or Cursor
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next
     </span>
   </a>
   
@@ -1420,6 +1516,70 @@ for evaluator config and the tutorials for end-to-end setups.</p>
 <a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
 <a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
 </code></pre></div>
+<h2 id="recipe">Recipe<a class="headerlink" href="#recipe" title="Permanent link">&para;</a></h2>
+<p>Run these five commands in order to go from an empty repo to a gated result.</p>
+<ol>
+<li>
+<p>Bootstrap the workspace and a starter <code>agentops.yaml</code> with the init wizard.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>agentops<span class="w"> </span>init
+</code></pre></div>
+</li>
+<li>
+<p>Inspect the repo and get an evaluator recommendation for your target and dataset.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze
+</code></pre></div>
+</li>
+<li>
+<p>Write the recommended eval assets once the plan looks right.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>init
+</code></pre></div>
+</li>
+<li>
+<p>Send the dataset to the target, score the responses, and gate them against thresholds.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>run
+</code></pre></div>
+</li>
+<li>
+<p>Regenerate the human-readable report from the latest results.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>agentops<span class="w"> </span>report<span class="w"> </span>generate
+</code></pre></div>
+</li>
+</ol>
+<h2 id="use-these-from-copilot-claude-or-cursor">Use these from Copilot, Claude, or Cursor<a class="headerlink" href="#use-these-from-copilot-claude-or-cursor" title="Permanent link">&para;</a></h2>
+<p>Install the AgentOps skills so your coding agent can run this recipe for you.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+</code></pre></div>
+<p>The skills that map to evaluation are:</p>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>What it helps with</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agentops-config</code></td>
+<td>Generate and edit <code>agentops.yaml</code>.</td>
+</tr>
+<tr>
+<td><code>agentops-dataset</code></td>
+<td>Create JSONL datasets and pick the right scenario.</td>
+</tr>
+<tr>
+<td><code>agentops-eval</code></td>
+<td>Run evaluations, benchmark, and compare runs.</td>
+</tr>
+<tr>
+<td><code>agentops-report</code></td>
+<td>Interpret results and regenerate the report.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<p>Continue with the <a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>
+catalog, wire the gate into CI on the <a href="../ship/">Ship</a> page, or follow the
+<a href="../tutorial-prompt-agent/">Prompt Agent tutorial</a> end to end.</p>
 
 
 
