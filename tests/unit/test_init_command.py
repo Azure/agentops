@@ -303,7 +303,7 @@ def test_init_prints_brand_banner(tmp_path: Path, monkeypatch) -> None:
     # ASCII letterforms from _AGENTOPS_PLAIN_BANNER (figlet "Standard").
     assert "____ _____ _   _ _____" in text
     # The catchphrase, ASCII fallback variant.
-    assert "Evaluate :: Ship :: Observe :: Own -- every Foundry agent." in text
+    assert "Evaluate :: Ship :: Observe :: Operate -- every Foundry agent." in text
 
 
 def test_brand_tagline_is_used_by_explain_pages(monkeypatch) -> None:
@@ -315,7 +315,7 @@ def test_brand_tagline_is_used_by_explain_pages(monkeypatch) -> None:
     result = runner.invoke(app, ["init", "explain", "--no-pager"])
     assert result.exit_code == 0
     text = _strip_ansi(result.stdout)
-    assert "Evaluate :: Ship :: Observe :: Own -- every Foundry agent." in text
+    assert "Evaluate :: Ship :: Observe :: Operate -- every Foundry agent." in text
 
 
 # ---------------------------------------------------------------------------

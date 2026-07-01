@@ -17,6 +17,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   contract.
 
 ### Changed
+- Updated the AgentOps CLI tagline to use `Operate` instead of `Own` for clearer
+  operator-focused positioning.
 - **Prompt-agent PR validation now uses sandbox instead of dev.** Generated
   GitHub and Azure DevOps PR workflows stage prompt-agent candidates in the
   sandbox Foundry environment, keeping dev for deployed-of-record versions.
