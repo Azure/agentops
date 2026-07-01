@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-01
+
 ### Added
 - **Foundry operations dashboard.** A new Azure Monitor Workbook
   (`agentops telemetry dashboard`) surfaces Azure OpenAI capacity (PTU
