@@ -158,7 +158,7 @@ long steps here:
 - [GitHub OIDC with Azure (workload identity federation)](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp)
 - [Assign Azure roles (RBAC)](https://learn.microsoft.com/azure/role-based-access-control/role-assignments-portal)
 
-## Recipe
+## Try it
 
 Generate the CI/CD workflows from the same analysis AgentOps uses, smallest gate
 first.

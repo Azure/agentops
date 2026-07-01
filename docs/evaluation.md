@@ -276,7 +276,7 @@ thresholds:
   avg_latency_seconds: "<=2"
 ```
 
-## Recipe
+## Try it
 
 Run these five commands in order to go from an empty repo to a gated result.
 
@@ -312,7 +312,7 @@ Run these five commands in order to go from an empty repo to a gated result.
 
 ## Use these from Copilot, Claude, or Cursor
 
-Install the AgentOps skills so your coding agent can run this recipe for you.
+Install the AgentOps skills so your coding agent can run these steps for you.
 
 ```bash
 agentops skills install --platform copilot

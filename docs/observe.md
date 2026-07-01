@@ -68,7 +68,7 @@ The loop is the point: traces become datasets, datasets gate the next release,
 and the agent keeps getting evaluated on the behavior that matters in
 production.
 
-## Recipe
+## Try it
 
 Confirm the signal is flowing, then turn real traces into regression coverage.
 

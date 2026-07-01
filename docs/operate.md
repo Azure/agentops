@@ -125,7 +125,7 @@ retrieval. To measure and tune search quality directly, see
 To see the monitoring half of this loop in depth, read [Observe](observe.md).
 To see how the gate runs in CI, read [Ship](ship.md).
 
-## Recipe
+## Try it
 
 Score readiness, prove the decision, and add assurance before you promote.
 
