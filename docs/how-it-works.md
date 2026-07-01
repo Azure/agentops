@@ -14,7 +14,7 @@ is the proof?** It:
 4. Returns CI-friendly exit codes: `0` pass, `2` threshold failure, `1` error.
 5. Writes release evidence with `agentops doctor --evidence-pack`.
 
-Foundry owns agent creation, deployment, runtime, traces, monitoring,
+Foundry manages agent creation, deployment, runtime, traces, monitoring,
 red-teaming, datasets, and Microsoft-hosted evaluation drilldown. AgentOps
 references the candidate those tools produced and adds the repo-controlled
 release proof:

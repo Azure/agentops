@@ -8,7 +8,7 @@ or cloud-hosted URL (your **dev** environment) for CI.
 This path validates the AgentOps local route in a two-environment
 arrangement:
 
-- Foundry or your app platform owns hosting and runtime operations in
+- Foundry or your app platform manages hosting and runtime operations in
   each environment.
 - AgentOps invokes the endpoint from CI, applies repo thresholds, writes
   normalized `results.json`, runs Doctor with `--severity-fail critical`
@@ -124,7 +124,7 @@ green dev → ready for promotion to qa / prod
 | Open PR | GitHub or Azure DevOps + generated PR workflow | PR workflow runs eval against the **dev URL** and Doctor with `--severity-fail critical`. | PR gate (eval thresholds + critical Doctor findings block merge). |
 | Merge + deploy to dev | Your existing deploy pipeline (Foundry Toolkit, azd, ACA, AKS) + generated dev deploy workflow | Update the dev endpoint with the new commit and re-evaluate. | Deploy-time gate with the same `--severity-fail critical` (always strict on deploy). |
 | Observe runtime | Foundry Operate, Azure Monitor, Application Insights | Confirm traces, latency, errors, and metrics exist. | Checks whether telemetry is wired. |
-| Review readiness | AgentOps Doctor and Cockpit | Check CI, eval, telemetry, evidence, and links. | Primary owner of repo-side release proof. |
+| Review readiness | AgentOps Doctor and Cockpit | Check CI, eval, telemetry, evidence, and links. | Primary repo-side release proof surface. |
 
 > **Architectural note.** For hosted endpoints the natural regression
 > gate runs at **deploy time** (post-merge), not PR time. The PR

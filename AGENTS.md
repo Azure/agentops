@@ -14,7 +14,7 @@ The repository provides:
 - A normalized output contract (`results.json`, `report.md`) for CI and PRs
 - A release evidence contract (`evidence.json`, `evidence.md`) for production promotion reviews
 - A local Cockpit (`agentops cockpit`) that links out to Foundry for runtime
-  observability and surfaces Doctor findings AgentOps owns end-to-end
+  observability and surfaces Doctor findings AgentOps handles end-to-end
 - A Doctor (`agentops doctor`) for readiness, regression, and OpEx checks
 - AI Landing Zone deployment readiness checks that connect official preflight,
   azd/Bicep workflow deployment, AgentOps eval gates, and private-network runner

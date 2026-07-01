@@ -1,7 +1,7 @@
 <h1 align="center">AgentOps Accelerator</h1>
 
 <p align="center">
-<b>Evaluate. Ship. Observe. Own.</b>
+<b>Evaluate. Ship. Observe. Operate.</b>
 <br/>
 Continuous evaluation, safety testing, observability, and release readiness for Microsoft Foundry agents.
 </p>
@@ -21,7 +21,7 @@ Continuous evaluation, safety testing, observability, and release readiness for 
 <a href="https://github.com/Azure/agentops/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
 </p>
 
-AgentOps Accelerator helps Microsoft Foundry agent teams evaluate quality, prepare releases, monitor behavior, and stay accountable after launch. It gives you a practical starting point for agent operations, with Foundry integration as the default path and deeper setup guidance in the full docs.
+AgentOps Accelerator helps Microsoft Foundry agent teams evaluate quality, prepare releases, monitor behavior, and operate reliably after launch. It gives you a practical starting point for agent operations, with Foundry integration as the default path and deeper setup guidance in the full docs.
 
 ## Get started
 
@@ -46,7 +46,7 @@ Use AgentOps Accelerator when you need to:
 - Compare changes across versions
 - Capture release evidence
 - Monitor agent quality and regressions
-- Give teams a repeatable way to own agent behavior in production
+- Give teams a repeatable way to operate agents responsibly in production
 
 The accelerator keeps the local workflow simple, then points you to the full
 docs when you are ready to configure pipelines, dashboards, and release
