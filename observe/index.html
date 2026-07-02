@@ -727,6 +727,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operations-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      Operations dashboard
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#traces-as-evaluation-signal" class="md-nav__link">
     <span class="md-ellipsis">
       Traces as evaluation signal
@@ -997,6 +1006,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#operations-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      Operations dashboard
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#traces-as-evaluation-signal" class="md-nav__link">
     <span class="md-ellipsis">
       Traces as evaluation signal
@@ -1085,6 +1103,23 @@ Eval runs emit <code>agentops.eval.*</code> spans and scheduled Doctor runs emit
 <code>agentops.agent.finding.*</code> spans, both of which the Cockpit can deep-link
 into Azure Monitor Logs.</p>
 </div>
+<h2 id="operations-dashboard">Operations dashboard<a class="headerlink" href="#operations-dashboard" title="Permanent link">&para;</a></h2>
+<p>Traces answer "what did this run do." Operational metrics answer "is the
+deployment healthy." AgentOps ships an Azure Monitor workbook for the Foundry /
+Azure OpenAI deployments behind your agent, so operators read PTU utilization,
+PAYG spillover, throughput, latency percentiles, and error and throttling rates
+in one place.</p>
+<p>The workbook is scoped per Azure OpenAI resource and per Log Analytics
+workspace, with tabs for capacity, traffic and tokens, latency, and errors and
+throttling. You can deploy it, open it, or export the JSON with the CLI, or
+import it by hand into Azure Monitor.</p>
+<div class="admonition info">
+<p class="admonition-title">Doctor checks the diagnostic settings</p>
+<p>The dashboard needs the Azure OpenAI resource to send <code>RequestResponse</code> and
+<code>AzureOpenAIRequestUsage</code> logs to Log Analytics. <code>agentops doctor</code> flags
+when they are missing (rule <code>waf.observability.aoai_diagnostic_categories</code>)
+and prints the exact <code>az monitor diagnostic-settings</code> command to fix it.</p>
+</div>
 <h2 id="traces-as-evaluation-signal">Traces as evaluation signal<a class="headerlink" href="#traces-as-evaluation-signal" title="Permanent link">&para;</a></h2>
 <p>A single trace shows what one request did. The value for release readiness comes
 from reading many traces at once: latency percentiles, error rates, and the
@@ -1140,6 +1175,17 @@ production.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>promote-traces<span class="w"> </span>--source<span class="w"> </span>.agentops/traces/export.jsonl
 </code></pre></div>
 </li>
+<li>
+<p>Preview the operations dashboard as an ARM template, without touching Azure.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>dashboard<span class="w"> </span>deploy<span class="w"> </span>--dry-run
+</code></pre></div>
+</li>
+<li>
+<p>Deploy the workbook, then open it in the Azure portal.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>dashboard<span class="w"> </span>deploy
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>dashboard<span class="w"> </span>open
+</code></pre></div>
+</li>
 </ol>
 <p>To browse this signal interactively and deep-link into Foundry and Azure
 Monitor, run <code>agentops cockpit</code>. That local command center is covered on the
@@ -1147,7 +1193,7 @@ Monitor, run <code>agentops cockpit</code>. That local command center is covered
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can read telemetry and grow the
 regression set for you.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>
 <p>The skills that map to observability are:</p>
 <table>
