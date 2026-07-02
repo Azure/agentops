@@ -727,9 +727,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#traces-as-continuous-evaluation-signal" class="md-nav__link">
+  <a href="#traces-as-evaluation-signal" class="md-nav__link">
     <span class="md-ellipsis">
-      Traces as continuous-evaluation signal
+      Traces as evaluation signal
     </span>
   </a>
   
@@ -754,9 +754,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+  <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
-      Use these from Copilot, Claude, or Cursor
+      Run from your coding agent
     </span>
   </a>
   
@@ -997,9 +997,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#traces-as-continuous-evaluation-signal" class="md-nav__link">
+  <a href="#traces-as-evaluation-signal" class="md-nav__link">
     <span class="md-ellipsis">
-      Traces as continuous-evaluation signal
+      Traces as evaluation signal
     </span>
   </a>
   
@@ -1024,9 +1024,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+  <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
-      Use these from Copilot, Claude, or Cursor
+      Run from your coding agent
     </span>
   </a>
   
@@ -1085,7 +1085,7 @@ Eval runs emit <code>agentops.eval.*</code> spans and scheduled Doctor runs emit
 <code>agentops.agent.finding.*</code> spans, both of which the Cockpit can deep-link
 into Azure Monitor Logs.</p>
 </div>
-<h2 id="traces-as-continuous-evaluation-signal">Traces as continuous-evaluation signal<a class="headerlink" href="#traces-as-continuous-evaluation-signal" title="Permanent link">&para;</a></h2>
+<h2 id="traces-as-evaluation-signal">Traces as evaluation signal<a class="headerlink" href="#traces-as-evaluation-signal" title="Permanent link">&para;</a></h2>
 <p>A single trace shows what one request did. The value for release readiness comes
 from reading many traces at once: latency percentiles, error rates, and the
 evaluation results Foundry records as <code>gen_ai.evaluation.result</code> events.</p>
@@ -1144,7 +1144,7 @@ production.</p>
 <p>To browse this signal interactively and deep-link into Foundry and Azure
 Monitor, run <code>agentops cockpit</code>. That local command center is covered on the
 <a href="../operate/#cockpit">Operate</a> page.</p>
-<h2 id="use-these-from-copilot-claude-or-cursor">Use these from Copilot, Claude, or Cursor<a class="headerlink" href="#use-these-from-copilot-claude-or-cursor" title="Permanent link">&para;</a></h2>
+<h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can read telemetry and grow the
 regression set for you.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot

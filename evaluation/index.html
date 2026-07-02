@@ -603,9 +603,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fill-agentopsyaml-for-http-endpoints" class="md-nav__link">
+  <a href="#configure-an-http-target" class="md-nav__link">
     <span class="md-ellipsis">
-      Fill agentops.yaml for HTTP endpoints
+      Configure an HTTP target
     </span>
   </a>
   
@@ -630,9 +630,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#evaluation-path-where-the-run-executes" class="md-nav__link">
+  <a href="#where-the-run-executes" class="md-nav__link">
     <span class="md-ellipsis">
-      Evaluation path: where the run executes
+      Where the run executes
     </span>
   </a>
   
@@ -666,9 +666,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+  <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
-      Use these from Copilot, Claude, or Cursor
+      Run from your coding agent
     </span>
   </a>
   
@@ -1056,9 +1056,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#fill-agentopsyaml-for-http-endpoints" class="md-nav__link">
+  <a href="#configure-an-http-target" class="md-nav__link">
     <span class="md-ellipsis">
-      Fill agentops.yaml for HTTP endpoints
+      Configure an HTTP target
     </span>
   </a>
   
@@ -1083,9 +1083,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#evaluation-path-where-the-run-executes" class="md-nav__link">
+  <a href="#where-the-run-executes" class="md-nav__link">
     <span class="md-ellipsis">
-      Evaluation path: where the run executes
+      Where the run executes
     </span>
   </a>
   
@@ -1119,9 +1119,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+  <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
-      Use these from Copilot, Claude, or Cursor
+      Run from your coding agent
     </span>
   </a>
   
@@ -1291,7 +1291,7 @@ holding a Bearer token, and <code>extra_fields</code> for any static body fields
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span><span class="w">              </span><span class="c1"># dot-path; default is &quot;text&quot;</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">APP_API_TOKEN</span><span class="w">    </span><span class="c1"># value is sent as a Bearer token</span>
 </code></pre></div>
-<h2 id="fill-agentopsyaml-for-http-endpoints">Fill <code>agentops.yaml</code> for HTTP endpoints<a class="headerlink" href="#fill-agentopsyaml-for-http-endpoints" title="Permanent link">&para;</a></h2>
+<h2 id="configure-an-http-target">Configure an HTTP target<a class="headerlink" href="#configure-an-http-target" title="Permanent link">&para;</a></h2>
 <p>For HTTP agents, fill <code>agentops.yaml</code> from the shape of the request and response.
 Start with the defaults, then add only the fields your endpoint needs.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
@@ -1424,7 +1424,7 @@ the auto-selection. It is an escape hatch, not the normal path. For the full
 catalog of evaluator names and their required inputs, see
 <a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>.</p>
 </div>
-<h2 id="evaluation-path-where-the-run-executes">Evaluation path: where the run executes<a class="headerlink" href="#evaluation-path-where-the-run-executes" title="Permanent link">&para;</a></h2>
+<h2 id="where-the-run-executes">Where the run executes<a class="headerlink" href="#where-the-run-executes" title="Permanent link">&para;</a></h2>
 <p>The <code>execution:</code> field decides where the evaluation actually runs. Local is the
 default and works for every target. Cloud runs a Foundry prompt agent
 server-side. The azd recipe path delegates to an existing <code>azd ai agent eval</code>
@@ -1545,7 +1545,7 @@ for evaluator config and the tutorials for end-to-end setups.</p>
 </code></pre></div>
 </li>
 </ol>
-<h2 id="use-these-from-copilot-claude-or-cursor">Use these from Copilot, Claude, or Cursor<a class="headerlink" href="#use-these-from-copilot-claude-or-cursor" title="Permanent link">&para;</a></h2>
+<h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can run these steps for you.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>

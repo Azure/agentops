@@ -665,9 +665,9 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#how-branches-map-to-environments" class="md-nav__link">
+  <a href="#branches-and-environments" class="md-nav__link">
     <span class="md-ellipsis">
-      How branches map to environments
+      Branches and environments
     </span>
   </a>
   
@@ -683,18 +683,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#candidate-versioning-in-foundry" class="md-nav__link">
+  <a href="#candidate-versioning" class="md-nav__link">
     <span class="md-ellipsis">
-      Candidate versioning in Foundry
+      Candidate versioning
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-the-pr-gate-uses-a-candidate" class="md-nav__link">
+  <a href="#why-use-a-candidate" class="md-nav__link">
     <span class="md-ellipsis">
-      Why the PR gate uses a candidate
+      Why use a candidate
     </span>
   </a>
   
@@ -728,9 +728,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+  <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
-      Use these from Copilot, Claude, or Cursor
+      Run from your coding agent
     </span>
   </a>
   
@@ -1002,9 +1002,9 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#how-branches-map-to-environments" class="md-nav__link">
+  <a href="#branches-and-environments" class="md-nav__link">
     <span class="md-ellipsis">
-      How branches map to environments
+      Branches and environments
     </span>
   </a>
   
@@ -1020,18 +1020,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#candidate-versioning-in-foundry" class="md-nav__link">
+  <a href="#candidate-versioning" class="md-nav__link">
     <span class="md-ellipsis">
-      Candidate versioning in Foundry
+      Candidate versioning
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-the-pr-gate-uses-a-candidate" class="md-nav__link">
+  <a href="#why-use-a-candidate" class="md-nav__link">
     <span class="md-ellipsis">
-      Why the PR gate uses a candidate
+      Why use a candidate
     </span>
   </a>
   
@@ -1065,9 +1065,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#use-these-from-copilot-claude-or-cursor" class="md-nav__link">
+  <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
-      Use these from Copilot, Claude, or Cursor
+      Run from your coding agent
     </span>
   </a>
   
@@ -1109,7 +1109,7 @@ was evaluated.</p>
 and the OIDC and RBAC setup steps, see
 <a href="../ci-github-actions/">AgentOps on GitHub Actions</a>. This page is the overview
 that explains why the pieces fit together.</p>
-<h2 id="how-branches-map-to-environments">How branches map to environments<a class="headerlink" href="#how-branches-map-to-environments" title="Permanent link">&para;</a></h2>
+<h2 id="branches-and-environments">Branches and environments<a class="headerlink" href="#branches-and-environments" title="Permanent link">&para;</a></h2>
 <p>AgentOps assumes a GitFlow-style branch model. Feature PRs run an eval against
 the candidate agent before merge. The PR from <code>release/**</code> to <code>main</code> is a manual
 approval gate for the already-tested release branch; it does not call agents.
@@ -1231,7 +1231,7 @@ prod deploys only after GitHub Environments and Azure OIDC are ready. This
 keeps your first green run small and avoids wiring deploy steps before the
 gate works.</p>
 </div>
-<h2 id="candidate-versioning-in-foundry">Candidate versioning in Foundry<a class="headerlink" href="#candidate-versioning-in-foundry" title="Permanent link">&para;</a></h2>
+<h2 id="candidate-versioning">Candidate versioning<a class="headerlink" href="#candidate-versioning" title="Permanent link">&para;</a></h2>
 <p>For Foundry prompt agents, each deploy stages a <strong>candidate version</strong> from your
 source-controlled <code>prompt_file</code> before evaluating it. PR-run candidates are
 tagged in Foundry with <code>agentops:candidate=true</code> plus the PR number and a
@@ -1252,7 +1252,7 @@ numbers.</p>
 <p>This is the invariant the whole flow protects: the evaluated agent version is
 the deployed agent version. Foundry manages the candidate versions; AgentOps
 supplies the gate, the deployment record, and Cockpit visibility.</p>
-<h2 id="why-the-pr-gate-uses-a-candidate">Why the PR gate uses a candidate<a class="headerlink" href="#why-the-pr-gate-uses-a-candidate" title="Permanent link">&para;</a></h2>
+<h2 id="why-use-a-candidate">Why use a candidate<a class="headerlink" href="#why-use-a-candidate" title="Permanent link">&para;</a></h2>
 <p>The PR gate validates the proposed agent before it enters <code>develop</code> or a
 <code>release/**</code> branch. For HTTP agents, that usually means the sandbox endpoint
 you configured in the workflow. For Foundry prompt agents, the workflow stages a
@@ -1332,7 +1332,7 @@ first.</p>
 </code></pre></div>
 </li>
 </ol>
-<h2 id="use-these-from-copilot-claude-or-cursor">Use these from Copilot, Claude, or Cursor<a class="headerlink" href="#use-these-from-copilot-claude-or-cursor" title="Permanent link">&para;</a></h2>
+<h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can wire and explain the
 pipeline for you.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
