@@ -31,6 +31,25 @@ falls back to that connection string when discovery is not available.
     `agentops.agent.finding.*` spans, both of which the Cockpit can deep-link
     into Azure Monitor Logs.
 
+## Operations dashboard
+
+Traces answer "what did this run do." Operational metrics answer "is the
+deployment healthy." AgentOps ships an Azure Monitor workbook for the Foundry /
+Azure OpenAI deployments behind your agent, so operators read PTU utilization,
+PAYG spillover, throughput, latency percentiles, and error and throttling rates
+in one place.
+
+The workbook is scoped per Azure OpenAI resource and per Log Analytics
+workspace, with tabs for capacity, traffic and tokens, latency, and errors and
+throttling. You can deploy it, open it, or export the JSON with the CLI, or
+import it by hand into Azure Monitor.
+
+!!! info "Doctor checks the diagnostic settings"
+    The dashboard needs the Azure OpenAI resource to send `RequestResponse` and
+    `AzureOpenAIRequestUsage` logs to Log Analytics. `agentops doctor` flags
+    when they are missing (rule `waf.observability.aoai_diagnostic_categories`)
+    and prints the exact `az monitor diagnostic-settings` command to fix it.
+
 ## Traces as evaluation signal
 
 A single trace shows what one request did. The value for release readiness comes
@@ -94,6 +113,19 @@ Confirm the signal is flowing, then turn real traces into regression coverage.
 
     ```bash
     agentops eval promote-traces --source .agentops/traces/export.jsonl
+    ```
+
+5. Preview the operations dashboard as an ARM template, without touching Azure.
+
+    ```bash
+    agentops telemetry dashboard deploy --dry-run
+    ```
+
+6. Deploy the workbook, then open it in the Azure portal.
+
+    ```bash
+    agentops telemetry dashboard deploy
+    agentops telemetry dashboard open
     ```
 
 To browse this signal interactively and deep-link into Foundry and Azure
