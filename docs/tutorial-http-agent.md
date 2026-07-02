@@ -225,7 +225,7 @@ This orchestrator returns `text/event-stream`, so the config below uses
 returns normal JSON, keep the default `response_mode: json`, remove the
 `stream:` block, and set `response_field` to the JSON field that contains the
 answer. For the full matrix, see
-[Fill `agentops.yaml` for HTTP endpoints](evaluation.md#fill-agentopsyaml-for-http-endpoints).
+[Configure an HTTP target](evaluation.md#configure-an-http-target).
 
 !!! concept "Black-box HTTP targets"
     AgentOps treats your orchestrator as a black box: it sends an input over

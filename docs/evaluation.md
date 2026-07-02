@@ -110,7 +110,7 @@ response_field: text              # dot-path; default is "text"
 auth_header_env: APP_API_TOKEN    # value is sent as a Bearer token
 ```
 
-## Fill `agentops.yaml` for HTTP endpoints
+## Configure an HTTP target
 
 For HTTP agents, fill `agentops.yaml` from the shape of the request and response.
 Start with the defaults, then add only the fields your endpoint needs.
@@ -208,7 +208,7 @@ eval assets.
     catalog of evaluator names and their required inputs, see
     [Built-in Evaluators](foundry-evaluation-sdk-built-in-evaluators.md).
 
-## Evaluation path: where the run executes
+## Where the run executes
 
 The `execution:` field decides where the evaluation actually runs. Local is the
 default and works for every target. Cloud runs a Foundry prompt agent
@@ -310,7 +310,7 @@ Run these five commands in order to go from an empty repo to a gated result.
     agentops report generate
     ```
 
-## Use these from Copilot, Claude, or Cursor
+## Run from your coding agent
 
 Install the AgentOps skills so your coding agent can run these steps for you.
 

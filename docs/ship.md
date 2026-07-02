@@ -10,7 +10,7 @@ and the OIDC and RBAC setup steps, see
 [AgentOps on GitHub Actions](ci-github-actions.md). This page is the overview
 that explains why the pieces fit together.
 
-## How branches map to environments
+## Branches and environments
 
 AgentOps assumes a GitFlow-style branch model. Feature PRs run an eval against
 the candidate agent before merge. The PR from `release/**` to `main` is a manual
@@ -88,7 +88,7 @@ analysis, the plan and the generated files do not drift.
     keeps your first green run small and avoids wiring deploy steps before the
     gate works.
 
-## Candidate versioning in Foundry
+## Candidate versioning
 
 For Foundry prompt agents, each deploy stages a **candidate version** from your
 source-controlled `prompt_file` before evaluating it. PR-run candidates are
@@ -112,7 +112,7 @@ This is the invariant the whole flow protects: the evaluated agent version is
 the deployed agent version. Foundry manages the candidate versions; AgentOps
 supplies the gate, the deployment record, and Cockpit visibility.
 
-## Why the PR gate uses a candidate
+## Why use a candidate
 
 The PR gate validates the proposed agent before it enters `develop` or a
 `release/**` branch. For HTTP agents, that usually means the sandbox endpoint
@@ -187,7 +187,7 @@ first.
     agentops workflow generate --kinds pr --platform azure-devops
     ```
 
-## Use these from Copilot, Claude, or Cursor
+## Run from your coding agent
 
 Install the AgentOps skills so your coding agent can wire and explain the
 pipeline for you.

@@ -32,7 +32,7 @@ agentops doctor
     `--severity-fail` floor, `2` when something does, and `1` if the analyzer
     itself errored.
 
-## The evidence pack as ship/no-ship proof
+## Ship/no-ship evidence pack
 
 Adding `--evidence-pack` turns a Doctor run into a release decision artifact:
 
@@ -160,7 +160,7 @@ Score readiness, prove the decision, and add assurance before you promote.
     agentops redteam run
     ```
 
-## Use these from Copilot, Claude, or Cursor
+## Run from your coding agent
 
 Install the AgentOps skills so your coding agent can triage findings and set up
 governance for you.

@@ -31,7 +31,7 @@ falls back to that connection string when discovery is not available.
     `agentops.agent.finding.*` spans, both of which the Cockpit can deep-link
     into Azure Monitor Logs.
 
-## Traces as continuous-evaluation signal
+## Traces as evaluation signal
 
 A single trace shows what one request did. The value for release readiness comes
 from reading many traces at once: latency percentiles, error rates, and the
@@ -100,7 +100,7 @@ To browse this signal interactively and deep-link into Foundry and Azure
 Monitor, run `agentops cockpit`. That local command center is covered on the
 [Operate](operate.md#cockpit) page.
 
-## Use these from Copilot, Claude, or Cursor
+## Run from your coding agent
 
 Install the AgentOps skills so your coding agent can read telemetry and grow the
 regression set for you.
