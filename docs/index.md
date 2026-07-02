@@ -101,8 +101,7 @@ evidence, then feed production learning back into the next evaluation set.
 Pick a tutorial to learn the sandbox to PR gate flow end to end, or jump straight
 to the evaluation reference.
 
-[Prompt Agent tutorial :material-rocket-launch:](tutorial-prompt-agent.md){ .md-button--pill }
-[HTTP Agent tutorial :material-rocket-launch:](tutorial-http-agent.md){ .md-button--pill }
+[Tutorials :material-rocket-launch:](tutorials.md){ .md-button--pill }
 [Evaluation reference :material-book-open-variant:](evaluation.md){ .md-button--pill }
 </div>
 

@@ -69,6 +69,7 @@ markdown_extensions:
 nav:
   - Overview: index.md
   - Tutorials:
+      - Overview: tutorials.md
       - Prompt Agent Tutorial: tutorial-prompt-agent.md
       - HTTP Agent Tutorial: tutorial-http-agent.md
   - Evaluation:

@@ -5,9 +5,8 @@ runs a dataset against a target agent, scores the responses, and gates the
 result against thresholds. Foundry operates the agent at runtime; AgentOps turns
 that run into repo-side release proof.
 
-If you want a hands-on walkthrough instead of a reference, start with the
-[Prompt agent tutorial](tutorial-prompt-agent.md) or the
-[HTTP agent tutorial](tutorial-http-agent.md).
+If you want a hands-on walkthrough instead of a reference, pick a
+[tutorial](tutorials.md) and follow it end to end.
 
 ## What an evaluation is
 
@@ -330,5 +329,5 @@ The skills that map to evaluation are:
 ## Next
 
 Continue with the [Built-in Evaluators](foundry-evaluation-sdk-built-in-evaluators.md)
-catalog, wire the gate into CI on the [Ship](ship.md) page, or follow the
-[Prompt Agent tutorial](tutorial-prompt-agent.md) end to end.
+catalog, wire the gate into CI on the [Ship](ship.md) page, or pick a
+[tutorial](tutorials.md) and follow it end to end.
