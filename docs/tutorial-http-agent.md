@@ -1,4 +1,4 @@
-# Ship an HTTP agent
+# HTTP agent tutorial
 
 Use this tutorial when your agent runs as an HTTP service behind a URL, not as a
 Foundry-managed prompt agent. The worked example is a RAG agent, implemented in the

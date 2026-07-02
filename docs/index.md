@@ -95,13 +95,6 @@ evidence, then feed production learning back into the next evaluation set.
 
 ![AgentOps Accelerator reference architecture](media/agentops-architecture.png){ .agentops-reference-architecture }
 
-| Area | What it owns |
-|---|---|
-| **Sandbox inner loop** | Create, evaluate, and improve the candidate before promotion. |
-| **AgentOps Accelerator** | Config, datasets, gates, Doctor, Cockpit, CI workflows, and release evidence, kept next to the repo. |
-| **Foundry** | Hosts agent projects, runtime traces, guardrails, and evaluations. |
-| **Outer loop delivery** | Promote the same reviewed candidate through dev, QA, and production, gated by reviewable evidence. |
-
 ## Where to go next
 
 <div class="agentops-cta" markdown>
