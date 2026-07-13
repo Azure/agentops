@@ -16,8 +16,8 @@ Continuous evaluation, safety testing, observability, and release readiness for 
 <p align="center">
 <a href="https://pypi.org/project/agentops-accelerator/"><img alt="PyPI" src="https://img.shields.io/pypi/v/agentops-accelerator.svg?label=PyPI&color=blue"/></a>
 <a href="https://marketplace.visualstudio.com/items?itemName=AgentOpsAccelerator.agentops-accelerator"><img alt="VS Code Extension" src="https://img.shields.io/badge/VS%20Code-Extension-007ACC.svg?logo=visualstudiocode"/></a>
-<a href="https://github.com/Azure/agentops/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Azure/agentops/actions/workflows/ci.yml/badge.svg?branch=develop"/></a>
-<a href="https://github.com/Azure/agentops/actions/workflows/release.yml"><img alt="Release" src="https://github.com/Azure/agentops/actions/workflows/release.yml/badge.svg"/></a>
+<a href="https://github.com/Azure/agentops/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Azure/agentops/ci.yml?branch=develop&label=CI"/></a>
+<a href="https://github.com/Azure/agentops/actions/workflows/release.yml"><img alt="Release" src="https://img.shields.io/github/actions/workflow/status/Azure/agentops/release.yml?label=Release"/></a>
 <a href="https://github.com/Azure/agentops/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-green.svg"/></a>
 </p>
 
