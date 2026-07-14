@@ -20,6 +20,10 @@ references the candidate those tools produced and adds the repo-controlled
 release proof:
 config, gates, artifacts, PR reports, Doctor diagnostics, release evidence,
 trace-to-regression promotion, and Cockpit links back to Foundry/Azure Monitor.
+The additive **Agent behavior** tab in the Foundry operations Azure Monitor
+workbook reads platform-owned trace-evaluation events for cross-evaluator
+trends and trace correlation while leaving evaluation and trace drilldown in
+Foundry.
 
 ### Key Principles
 

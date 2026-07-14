@@ -34,6 +34,7 @@ def test_dashboard_help_lists_commands() -> None:
     assert "deploy" in stripped
     assert "open" in stripped
     assert "export" in stripped
+    assert "agent behavior" in stripped.lower()
 
 
 def test_dashboard_deploy_help() -> None:

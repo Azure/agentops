@@ -1,0 +1,112 @@
+[
+  {
+    "case": "workspace_app_events",
+    "source_table": "AppEvents",
+    "name_column": "Name",
+    "properties_column": "Properties",
+    "event_name": "gen_ai.evaluation.result",
+    "properties": {
+      "gen_ai.evaluation.name": "Relevance",
+      "gen_ai.evaluation.score.value": "4.0",
+      "gen_ai.evaluation.score.label": "pass",
+      "gen_ai.evaluation.explanation": "Relevant response.",
+      "gen_ai.agent.name": "support-agent",
+      "gen_ai.agent.version": "7",
+      "deployment.environment.name": "prod",
+      "gen_ai.response.id": "resp-1",
+      "gen_ai.conversation.id": "conv-1"
+    },
+    "expected": {
+      "recognized": true,
+      "numeric_score": 4.0,
+      "version": "7"
+    }
+  },
+  {
+    "case": "classic_custom_events",
+    "source_table": "customEvents",
+    "name_column": "name",
+    "properties_column": "customDimensions",
+    "event_name": "gen_ai.evaluation.result",
+    "properties": {
+      "gen_ai.evaluation.name": "Groundedness",
+      "gen_ai.evaluation.score.value": "0.84",
+      "gen_ai.evaluation.score.label": "pass",
+      "gen_ai.agent.id": "support-agent:8",
+      "trace_id": "trace-2"
+    },
+    "expected": {
+      "recognized": true,
+      "numeric_score": 0.84,
+      "version": "8"
+    }
+  },
+  {
+    "case": "missing_optional_fields",
+    "source_table": "customEvents",
+    "name_column": "name",
+    "properties_column": "customDimensions",
+    "event_name": "gen_ai.evaluation.result",
+    "properties": {
+      "gen_ai.evaluation.name": "IntentResolution",
+      "gen_ai.evaluation.score.label": "fail"
+    },
+    "expected": {
+      "recognized": true,
+      "numeric_score": null,
+      "version": "Version not reported"
+    }
+  },
+  {
+    "case": "nonnumeric_score",
+    "source_table": "AppEvents",
+    "name_column": "Name",
+    "properties_column": "Properties",
+    "event_name": "gen_ai.evaluation.result",
+    "properties": {
+      "gen_ai.evaluation.name": "CustomPolicy",
+      "gen_ai.evaluation.score.value": "not-a-number",
+      "gen_ai.evaluation.score.label": "review"
+    },
+    "expected": {
+      "recognized": true,
+      "numeric_score": null,
+      "version": "Version not reported"
+    }
+  },
+  {
+    "case": "second_evaluator_same_trace",
+    "source_table": "customEvents",
+    "name_column": "name",
+    "properties_column": "customDimensions",
+    "event_name": "gen_ai.evaluation.result",
+    "properties": {
+      "gen_ai.evaluation.name": "Fluency",
+      "gen_ai.evaluation.score.value": "5",
+      "gen_ai.evaluation.score.label": "pass",
+      "trace_id": "trace-2"
+    },
+    "expected": {
+      "recognized": true,
+      "numeric_score": 5.0,
+      "version": "Version not reported"
+    }
+  },
+  {
+    "case": "unrecognized_schema",
+    "source_table": "AppEvents",
+    "name_column": "Name",
+    "properties_column": "Properties",
+    "event_name": "gen_ai.evaluation.result",
+    "properties": {
+      "future.evaluation.metric": "Relevance",
+      "future.evaluation.value": "4.0",
+      "future.agent.release": "9"
+    },
+    "expected": {
+      "recognized": false,
+      "numeric_score": null,
+      "version": "Version not reported"
+    }
+  }
+]

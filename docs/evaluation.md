@@ -255,3 +255,22 @@ evaluators:
 - Use `self-similarity` only for drift detection.
 - Keep trace replay links in metadata so reviewers can investigate the original
   runtime behavior.
+
+## View Foundry trace-evaluation results in the workbook
+
+Deploy or open the Azure Monitor workbook with
+`agentops telemetry dashboard deploy` and `agentops telemetry dashboard open`,
+then select **Agent behavior**. The tab reads Microsoft Foundry-owned
+`gen_ai.evaluation.result` events and observed `invoke_agent` spans from the
+selected Log Analytics workspace. It shows data status and freshness first,
+then separate invocation, evaluated-trace, and evaluation-event counts,
+per-evaluator pass-rate / volume trends, raw scores grouped by evaluator, and
+recent trace IDs for investigation in Foundry Tracing.
+
+Foundry trace evaluation is a preview, platform-owned feature. The workbook is
+read-only: it does not schedule evaluations, change rules, add release gates, or
+replace the Foundry trace view. Filters work when environment, agent, version,
+and evaluator properties are present; missing versions are shown as **Version
+not reported**. For supported table shapes, state meanings, schema assumptions,
+and trace-correlation instructions, see the packaged
+[workbook authoring guide](../src/agentops/templates/workbooks/README.md#agent-behavior-tab).

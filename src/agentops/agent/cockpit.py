@@ -1856,7 +1856,8 @@ def _build_open_in_foundry(
             "title": "Foundry operations dashboard",
             "description": (
                 "Azure Monitor workbook with PTU capacity, token traffic, "
-                "latency percentiles, and throttling. Deploy or open it with "
+                "latency percentiles, throttling, and read-only Foundry "
+                "trace-evaluation behavior. Deploy or open it with "
                 "`agentops telemetry dashboard`."
             ),
             "url": workbook_url,

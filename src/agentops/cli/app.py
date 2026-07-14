@@ -85,7 +85,7 @@ telemetry_app = typer.Typer(
 dashboard_app = typer.Typer(
     help=(
         "Deploy, open, and export the Foundry operations Azure Monitor "
-        "workbook (capacity, traffic and tokens, latency, errors)."
+        "workbook (capacity, traffic and tokens, latency, errors, agent behavior)."
     )
 )
 telemetry_app.add_typer(dashboard_app, name="dashboard")
@@ -836,10 +836,11 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         summary=(
             "Deploys, opens, and exports the Foundry operations Azure Monitor "
             "workbook: capacity (PTU), traffic and tokens, latency percentiles, "
-            "and errors and throttling for an Azure OpenAI resource.",
+            "errors and throttling, and read-only Foundry trace-evaluation "
+            "behavior for an Azure OpenAI resource.",
             "The workbook is scoped per Azure OpenAI resource and per Log "
-            "Analytics workspace and reads from AzureMetrics and "
-            "AzureDiagnostics.",
+            "Analytics workspace and reads from AzureMetrics, AzureDiagnostics, "
+            "and Foundry-owned Application Insights events and spans.",
         ),
         children=("deploy", "open", "export"),
     ),

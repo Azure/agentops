@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Foundry operations dashboard\nPTU capacity, traffic and tokens, latency, and errors for Azure AI Foundry / Azure OpenAI deployments."
+        "json": "# Foundry operations dashboard\nPTU capacity, traffic and tokens, latency, errors, and read-only agent behavior for Azure AI Foundry / Azure OpenAI deployments."
       },
       "name": "title"
     },
@@ -189,6 +189,14 @@
             "linkTarget": "parameter",
             "linkLabel": "Errors and throttling",
             "subTarget": "errors",
+            "style": "link"
+          },
+          {
+            "id": "tab-agent-behavior",
+            "cellValue": "SelectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Agent behavior",
+            "subTarget": "agent-behavior",
             "style": "link"
           }
         ]
@@ -469,6 +477,202 @@
         ]
       },
       "name": "group-errors"
+    },
+    {
+      "type": 12,
+      "conditionalVisibility": {
+        "parameterName": "SelectedTab",
+        "comparison": "isEqualTo",
+        "value": "agent-behavior"
+      },
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## Agent behavior\n> **Preview - Foundry platform-owned trace evaluation.** Foundry creates and owns the `gen_ai.evaluation.result` events shown here. AgentOps reads them from Azure Monitor; it does not create, schedule, gate, or edit evaluations.\n\nThe status and freshness row appears before quality results. **Observed invoke_agent invocations**, **evaluated traces**, and **evaluation events** are separate counts because one trace can produce several evaluator events and this workspace may not contain a complete invocation denominator.\n\n**State guide:** `Schema unavailable` means matching events exist but the bounded `agent_behavior/v1` property mapping is not recognized. `No access` appears as the native workbook query permission error; request **Log Analytics Reader** on the workspace. `No data` means no matching events exist in the selected time range. `Filter empty` means events exist but none match these filters. `Possible ingestion delay` means the newest matching event is more than 15 minutes old; it can also mean no recent Foundry evaluation ran."
+            },
+            "name": "agent-behavior-note"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "p-agent-environment",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "AgentEnvironment",
+                  "label": "Environment (exact; * = all)",
+                  "type": 1,
+                  "isRequired": true,
+                  "value": "*"
+                },
+                {
+                  "id": "p-agent-name",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "AgentName",
+                  "label": "Agent (exact; * = all)",
+                  "type": 1,
+                  "isRequired": true,
+                  "value": "*"
+                },
+                {
+                  "id": "p-agent-version",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "AgentVersion",
+                  "label": "Version (exact; * = all)",
+                  "type": 1,
+                  "isRequired": true,
+                  "value": "*"
+                },
+                {
+                  "id": "p-evaluator",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Evaluator",
+                  "label": "Evaluator (exact; * = all)",
+                  "type": 1,
+                  "isRequired": true,
+                  "value": "*"
+                }
+              ],
+              "style": "pills",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces"
+            },
+            "name": "agent-behavior-filters"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "set best_effort=true;\nlet SchemaVersion = 'agent_behavior/v1';\nlet EvaluationEventsV1 = materialize(union isfuzzy=true\n    (AppEvents | where Name == 'gen_ai.evaluation.result' | project EventTime=TimeGenerated, SourceTable='AppEvents', MonitorTraceId=tostring(column_ifexists('OperationId','')), RawProperties=todynamic(Properties)),\n    (customEvents | where name == 'gen_ai.evaluation.result' | project EventTime=timestamp, SourceTable='customEvents', MonitorTraceId=tostring(column_ifexists('operation_Id','')), RawProperties=todynamic(customDimensions))\n| extend EvaluatorRaw=coalesce(tostring(RawProperties['gen_ai.evaluation.name']),tostring(RawProperties['evaluator'])), ScoreText=coalesce(tostring(RawProperties['gen_ai.evaluation.score.value']),tostring(RawProperties['gen_ai.evaluation.score']),tostring(RawProperties['score'])), LabelRaw=coalesce(tostring(RawProperties['gen_ai.evaluation.score.label']),tostring(RawProperties['gen_ai.evaluation.result']),tostring(RawProperties['label'])), AgentId=tostring(RawProperties['gen_ai.agent.id']), AgentRaw=tostring(RawProperties['gen_ai.agent.name']), VersionRaw=tostring(RawProperties['gen_ai.agent.version']), EnvironmentRaw=coalesce(tostring(RawProperties['deployment.environment.name']),tostring(RawProperties['gen_ai.environment']),tostring(RawProperties['environment'])), PropertyTraceId=coalesce(tostring(RawProperties['trace_id']),tostring(RawProperties['gen_ai.trace.id']))\n| extend Agent=coalesce(AgentRaw,iff(AgentId contains ':',tostring(split(AgentId,':')[0]),AgentId)), Version=coalesce(VersionRaw,iff(AgentId contains ':',tostring(split(AgentId,':')[1]),'')), Environment=EnvironmentRaw, TraceId=coalesce(PropertyTraceId,MonitorTraceId), SchemaRecognized=isnotempty(EvaluatorRaw) or isnotempty(ScoreText) or isnotempty(LabelRaw)\n| extend Evaluator=iff(isempty(EvaluatorRaw),'Evaluator not reported',EvaluatorRaw), Agent=iff(isempty(Agent),'Agent not reported',Agent), Version=iff(isempty(Version),'Version not reported',Version), Environment=iff(isempty(Environment),'Environment not reported',Environment), TraceId=iff(isempty(TraceId),'Trace ID not reported',TraceId)\n| project EventTime,SourceTable,TraceId,Agent,Version,Environment,Evaluator,SchemaRecognized);\nlet InvokeAgentV1 = materialize(union isfuzzy=true\n    (AppDependencies | project InvocationTime=TimeGenerated, SourceTable='AppDependencies', EventId=tostring(column_ifexists('Id','')), MonitorTraceId=tostring(column_ifexists('OperationId','')), RawProperties=todynamic(Properties)),\n    (dependencies | project InvocationTime=timestamp, SourceTable='dependencies', EventId=tostring(column_ifexists('id','')), MonitorTraceId=tostring(column_ifexists('operation_Id','')), RawProperties=todynamic(customDimensions))\n| where tostring(RawProperties['gen_ai.operation.name']) == 'invoke_agent'\n| extend AgentId=tostring(RawProperties['gen_ai.agent.id']), AgentRaw=tostring(RawProperties['gen_ai.agent.name']), VersionRaw=tostring(RawProperties['gen_ai.agent.version']), EnvironmentRaw=coalesce(tostring(RawProperties['deployment.environment.name']),tostring(RawProperties['gen_ai.environment']),tostring(RawProperties['environment'])), TraceId=coalesce(tostring(RawProperties['trace_id']),tostring(RawProperties['gen_ai.trace.id']),MonitorTraceId)\n| extend Agent=coalesce(AgentRaw,iff(AgentId contains ':',tostring(split(AgentId,':')[0]),AgentId)), Version=coalesce(VersionRaw,iff(AgentId contains ':',tostring(split(AgentId,':')[1]),'')), Environment=EnvironmentRaw\n| extend Agent=iff(isempty(Agent),'Agent not reported',Agent), Version=iff(isempty(Version),'Version not reported',Version), Environment=iff(isempty(Environment),'Environment not reported',Environment), InvocationKey=coalesce(TraceId,EventId,strcat(SourceTable,'|',format_datetime(InvocationTime,'o')))\n| project InvocationTime,InvocationKey,Agent,Version,Environment);\nlet FilteredEvents = EvaluationEventsV1 | where '{AgentEnvironment}' == '*' or Environment == '{AgentEnvironment}' | where '{AgentName}' == '*' or Agent == '{AgentName}' | where '{AgentVersion}' == '*' or Version == '{AgentVersion}' | where '{Evaluator}' == '*' or Evaluator == '{Evaluator}';\nlet FilteredInvocations = InvokeAgentV1 | where '{AgentEnvironment}' == '*' or Environment == '{AgentEnvironment}' | where '{AgentName}' == '*' or Agent == '{AgentName}' | where '{AgentVersion}' == '*' or Version == '{AgentVersion}';\nlet AllSummary = EvaluationEventsV1 | summarize RawEvaluationEvents=count(), RecognizedEvaluationEvents=countif(SchemaRecognized), LatestAvailableEvent=max(EventTime);\nlet FilteredSummary = FilteredEvents | summarize EvaluationEvents=count(), EvaluatedTraces=dcountif(TraceId,TraceId != 'Trace ID not reported'), LatestMatchingEvent=max(EventTime);\nlet InvocationSummary = FilteredInvocations | summarize ObservedInvokeAgentInvocations=dcount(InvocationKey);\nAllSummary | extend JoinKey=1 | join kind=inner (FilteredSummary | extend JoinKey=1) on JoinKey | join kind=inner (InvocationSummary | extend JoinKey=1) on JoinKey\n| extend FreshnessMinutes=datetime_diff('minute',now(),LatestMatchingEvent)\n| extend DataStatus=case(RawEvaluationEvents == 0,'No data',RecognizedEvaluationEvents == 0,'Schema unavailable',EvaluationEvents == 0,'Filter empty',FreshnessMinutes > 15,'Possible ingestion delay','Ready')\n| project NormalizationVersion=SchemaVersion,DataStatus,FreshnessMinutes,LatestMatchingEvent,ObservedInvokeAgentInvocations,EvaluatedTraces,EvaluationEvents,RawEvaluationEvents,RecognizedEvaluationEvents\n",
+              "size": 0,
+              "title": "Data status, freshness, and separate observed counts",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "agent-behavior-status"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "set best_effort=true;\nunion isfuzzy=true\n    (AppEvents | where Name == 'gen_ai.evaluation.result' | project EventTime=TimeGenerated, SourceTable='AppEvents', RawProperties=todynamic(Properties)),\n    (customEvents | where name == 'gen_ai.evaluation.result' | project EventTime=timestamp, SourceTable='customEvents', RawProperties=todynamic(customDimensions))\n| extend EvaluatorRaw=coalesce(tostring(RawProperties['gen_ai.evaluation.name']),tostring(RawProperties['evaluator'])), ScoreText=coalesce(tostring(RawProperties['gen_ai.evaluation.score.value']),tostring(RawProperties['gen_ai.evaluation.score']),tostring(RawProperties['score'])), LabelRaw=coalesce(tostring(RawProperties['gen_ai.evaluation.score.label']),tostring(RawProperties['gen_ai.evaluation.result']),tostring(RawProperties['label']))\n| extend SchemaRecognized=isnotempty(EvaluatorRaw) or isnotempty(ScoreText) or isnotempty(LabelRaw), MissingEvaluator=isempty(EvaluatorRaw), MissingScore=isempty(ScoreText), MissingLabel=isempty(LabelRaw)\n| where not(SchemaRecognized) or MissingEvaluator or MissingScore or MissingLabel\n| project EventTime,SourceTable,SchemaRecognized,MissingEvaluator,MissingScore,MissingLabel,RawProperties\n| order by EventTime desc\n| take 100",
+              "size": 0,
+              "title": "Schema diagnostics (raw properties retained)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "agent-behavior-schema-diagnostics"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "set best_effort=true;\nlet EvaluationEventsV1 = materialize(union isfuzzy=true\n    (AppEvents | where Name == 'gen_ai.evaluation.result' | project EventTime=TimeGenerated, RawProperties=todynamic(Properties)),\n    (customEvents | where name == 'gen_ai.evaluation.result' | project EventTime=timestamp, RawProperties=todynamic(customDimensions))\n| extend EvaluatorRaw=coalesce(tostring(RawProperties['gen_ai.evaluation.name']),tostring(RawProperties['evaluator'])), ScoreText=coalesce(tostring(RawProperties['gen_ai.evaluation.score.value']),tostring(RawProperties['gen_ai.evaluation.score']),tostring(RawProperties['score'])), Label=tolower(coalesce(tostring(RawProperties['gen_ai.evaluation.score.label']),tostring(RawProperties['gen_ai.evaluation.result']),tostring(RawProperties['label']))), AgentId=tostring(RawProperties['gen_ai.agent.id']), Agent=tostring(RawProperties['gen_ai.agent.name']), Version=tostring(RawProperties['gen_ai.agent.version']), Environment=coalesce(tostring(RawProperties['deployment.environment.name']),tostring(RawProperties['gen_ai.environment']),tostring(RawProperties['environment']))\n| extend Agent=coalesce(Agent,iff(AgentId contains ':',tostring(split(AgentId,':')[0]),AgentId)), Version=coalesce(Version,iff(AgentId contains ':',tostring(split(AgentId,':')[1]),'')), Evaluator=iff(isempty(EvaluatorRaw),'Evaluator not reported',EvaluatorRaw), Score=todouble(ScoreText)\n| extend Agent=iff(isempty(Agent),'Agent not reported',Agent), Version=iff(isempty(Version),'Version not reported',Version), Environment=iff(isempty(Environment),'Environment not reported',Environment), IsPass=Label in ('pass','passed','true','relevant','correct'), IsFail=Label in ('fail','failed','false','not_relevant','incorrect')\n| project EventTime,Agent,Version,Environment,Evaluator,Score,ScoreText,IsPass,IsFail);\nEvaluationEventsV1 | where '{AgentEnvironment}' == '*' or Environment == '{AgentEnvironment}' | where '{AgentName}' == '*' or Agent == '{AgentName}' | where '{AgentVersion}' == '*' or Version == '{AgentVersion}' | where '{Evaluator}' == '*' or Evaluator == '{Evaluator}'\n| summarize EvaluationEvents=count(), LabeledEvents=countif(IsPass or IsFail), PassingEvents=countif(IsPass), FailingEvents=countif(IsFail), NumericScores=countif(isnotnull(Score)), AverageScore=avg(Score) by Evaluator\n| extend PassRatePct=iff(LabeledEvents > 0,round(100.0 * PassingEvents / LabeledEvents,1),real(null))\n| project Evaluator,EvaluationEvents,LabeledEvents,PassRatePct,PassingEvents,FailingEvents,NumericScores,AverageScore\n| order by EvaluationEvents desc",
+              "size": 0,
+              "title": "Per-evaluator pass rate, volume, and raw-score summary",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "agent-behavior-evaluator-summary"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "set best_effort=true;\nunion isfuzzy=true\n    (AppEvents | where Name == 'gen_ai.evaluation.result' | project EventTime=TimeGenerated, RawProperties=todynamic(Properties)),\n    (customEvents | where name == 'gen_ai.evaluation.result' | project EventTime=timestamp, RawProperties=todynamic(customDimensions))\n| extend Evaluator=coalesce(tostring(RawProperties['gen_ai.evaluation.name']),tostring(RawProperties['evaluator'])), Label=tolower(coalesce(tostring(RawProperties['gen_ai.evaluation.score.label']),tostring(RawProperties['gen_ai.evaluation.result']),tostring(RawProperties['label']))), AgentId=tostring(RawProperties['gen_ai.agent.id']), Agent=tostring(RawProperties['gen_ai.agent.name']), Version=tostring(RawProperties['gen_ai.agent.version']), Environment=coalesce(tostring(RawProperties['deployment.environment.name']),tostring(RawProperties['gen_ai.environment']),tostring(RawProperties['environment']))\n| extend Agent=coalesce(Agent,iff(AgentId contains ':',tostring(split(AgentId,':')[0]),AgentId)), Version=coalesce(Version,iff(AgentId contains ':',tostring(split(AgentId,':')[1]),'')), Evaluator=iff(isempty(Evaluator),'Evaluator not reported',Evaluator)\n| extend Agent=iff(isempty(Agent),'Agent not reported',Agent), Version=iff(isempty(Version),'Version not reported',Version), Environment=iff(isempty(Environment),'Environment not reported',Environment), IsPass=Label in ('pass','passed','true','relevant','correct'), IsFail=Label in ('fail','failed','false','not_relevant','incorrect')\n| where '{AgentEnvironment}' == '*' or Environment == '{AgentEnvironment}' | where '{AgentName}' == '*' or Agent == '{AgentName}' | where '{AgentVersion}' == '*' or Version == '{AgentVersion}' | where '{Evaluator}' == '*' or Evaluator == '{Evaluator}'\n| summarize LabeledEvents=countif(IsPass or IsFail), PassingEvents=countif(IsPass) by EventTime=bin(EventTime,1h),Evaluator\n| where LabeledEvents > 0\n| extend PassRatePct=round(100.0 * PassingEvents / LabeledEvents,1)\n| project EventTime,Evaluator,PassRatePct\n| order by EventTime asc",
+              "size": 0,
+              "title": "Pass-rate trend by evaluator (%)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "agent-behavior-pass-trend"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "set best_effort=true;\nunion isfuzzy=true\n    (AppEvents | where Name == 'gen_ai.evaluation.result' | project EventTime=TimeGenerated, RawProperties=todynamic(Properties)),\n    (customEvents | where name == 'gen_ai.evaluation.result' | project EventTime=timestamp, RawProperties=todynamic(customDimensions))\n| extend Evaluator=coalesce(tostring(RawProperties['gen_ai.evaluation.name']),tostring(RawProperties['evaluator'])), AgentId=tostring(RawProperties['gen_ai.agent.id']), Agent=tostring(RawProperties['gen_ai.agent.name']), Version=tostring(RawProperties['gen_ai.agent.version']), Environment=coalesce(tostring(RawProperties['deployment.environment.name']),tostring(RawProperties['gen_ai.environment']),tostring(RawProperties['environment']))\n| extend Agent=coalesce(Agent,iff(AgentId contains ':',tostring(split(AgentId,':')[0]),AgentId)), Version=coalesce(Version,iff(AgentId contains ':',tostring(split(AgentId,':')[1]),'')), Evaluator=iff(isempty(Evaluator),'Evaluator not reported',Evaluator)\n| extend Agent=iff(isempty(Agent),'Agent not reported',Agent), Version=iff(isempty(Version),'Version not reported',Version), Environment=iff(isempty(Environment),'Environment not reported',Environment)\n| where '{AgentEnvironment}' == '*' or Environment == '{AgentEnvironment}' | where '{AgentName}' == '*' or Agent == '{AgentName}' | where '{AgentVersion}' == '*' or Version == '{AgentVersion}' | where '{Evaluator}' == '*' or Evaluator == '{Evaluator}'\n| summarize EvaluationEvents=count() by EventTime=bin(EventTime,1h),Evaluator\n| project EventTime,Evaluator,EvaluationEvents\n| order by EventTime asc",
+              "size": 0,
+              "title": "Evaluation-event volume trend by evaluator",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart"
+            },
+            "name": "agent-behavior-volume-trend"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "set best_effort=true;\nunion isfuzzy=true\n    (AppEvents | where Name == 'gen_ai.evaluation.result' | project EventTime=TimeGenerated, RawProperties=todynamic(Properties)),\n    (customEvents | where name == 'gen_ai.evaluation.result' | project EventTime=timestamp, RawProperties=todynamic(customDimensions))\n| extend Evaluator=coalesce(tostring(RawProperties['gen_ai.evaluation.name']),tostring(RawProperties['evaluator'])), ScoreText=coalesce(tostring(RawProperties['gen_ai.evaluation.score.value']),tostring(RawProperties['gen_ai.evaluation.score']),tostring(RawProperties['score'])), AgentId=tostring(RawProperties['gen_ai.agent.id']), Agent=tostring(RawProperties['gen_ai.agent.name']), Version=tostring(RawProperties['gen_ai.agent.version']), Environment=coalesce(tostring(RawProperties['deployment.environment.name']),tostring(RawProperties['gen_ai.environment']),tostring(RawProperties['environment']))\n| extend Agent=coalesce(Agent,iff(AgentId contains ':',tostring(split(AgentId,':')[0]),AgentId)), Version=coalesce(Version,iff(AgentId contains ':',tostring(split(AgentId,':')[1]),'')), Evaluator=iff(isempty(Evaluator),'Evaluator not reported',Evaluator), Score=todouble(ScoreText)\n| extend Agent=iff(isempty(Agent),'Agent not reported',Agent), Version=iff(isempty(Version),'Version not reported',Version), Environment=iff(isempty(Environment),'Environment not reported',Environment)\n| where '{AgentEnvironment}' == '*' or Environment == '{AgentEnvironment}' | where '{AgentName}' == '*' or Agent == '{AgentName}' | where '{AgentVersion}' == '*' or Version == '{AgentVersion}' | where '{Evaluator}' == '*' or Evaluator == '{Evaluator}'\n| where isnotnull(Score)\n| summarize AverageScore=avg(Score),MinimumScore=min(Score),MaximumScore=max(Score),NumericScoreEvents=count() by EventTime=bin(EventTime,1h),Evaluator\n| project EventTime,Evaluator,AverageScore,MinimumScore,MaximumScore,NumericScoreEvents\n| order by EventTime desc,Evaluator asc",
+              "size": 0,
+              "title": "Raw-score trend by evaluator (separate scales; do not compare evaluators)",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "agent-behavior-score-trend"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Recent failed or lowest-scored evaluation events\nRaw numeric scores are ordered only within the event list and are **not comparable across unlike evaluators**. Copy a trace ID, open the matching project in **Microsoft Foundry > Tracing**, and search for that trace ID. A reliable Foundry project deep link cannot be constructed from the workbook workspace context alone."
+            },
+            "name": "agent-behavior-trace-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "set best_effort=true;\nunion isfuzzy=true\n    (AppEvents | where Name == 'gen_ai.evaluation.result' | project EventTime=TimeGenerated, SourceTable='AppEvents', MonitorTraceId=tostring(column_ifexists('OperationId','')), RawProperties=todynamic(Properties)),\n    (customEvents | where name == 'gen_ai.evaluation.result' | project EventTime=timestamp, SourceTable='customEvents', MonitorTraceId=tostring(column_ifexists('operation_Id','')), RawProperties=todynamic(customDimensions))\n| extend Evaluator=coalesce(tostring(RawProperties['gen_ai.evaluation.name']),tostring(RawProperties['evaluator'])), ScoreText=coalesce(tostring(RawProperties['gen_ai.evaluation.score.value']),tostring(RawProperties['gen_ai.evaluation.score']),tostring(RawProperties['score'])), Label=tolower(coalesce(tostring(RawProperties['gen_ai.evaluation.score.label']),tostring(RawProperties['gen_ai.evaluation.result']),tostring(RawProperties['label']))), Explanation=coalesce(tostring(RawProperties['gen_ai.evaluation.explanation']),tostring(RawProperties['gen_ai.evaluation.reason'])), AgentId=tostring(RawProperties['gen_ai.agent.id']), Agent=tostring(RawProperties['gen_ai.agent.name']), Version=tostring(RawProperties['gen_ai.agent.version']), Environment=coalesce(tostring(RawProperties['deployment.environment.name']),tostring(RawProperties['gen_ai.environment']),tostring(RawProperties['environment'])), TraceId=coalesce(tostring(RawProperties['trace_id']),tostring(RawProperties['gen_ai.trace.id']),MonitorTraceId), ResponseId=tostring(RawProperties['gen_ai.response.id']), ConversationId=tostring(RawProperties['gen_ai.conversation.id'])\n| extend Agent=coalesce(Agent,iff(AgentId contains ':',tostring(split(AgentId,':')[0]),AgentId)), Version=coalesce(Version,iff(AgentId contains ':',tostring(split(AgentId,':')[1]),'')), Evaluator=iff(isempty(Evaluator),'Evaluator not reported',Evaluator), Score=todouble(ScoreText)\n| extend Agent=iff(isempty(Agent),'Agent not reported',Agent), Version=iff(isempty(Version),'Version not reported',Version), Environment=iff(isempty(Environment),'Environment not reported',Environment), TraceId=iff(isempty(TraceId),'Trace ID not reported',TraceId), IsFail=Label in ('fail','failed','false','not_relevant','incorrect')\n| where '{AgentEnvironment}' == '*' or Environment == '{AgentEnvironment}' | where '{AgentName}' == '*' or Agent == '{AgentName}' | where '{AgentVersion}' == '*' or Version == '{AgentVersion}' | where '{Evaluator}' == '*' or Evaluator == '{Evaluator}'\n| extend ReviewPriority=case(IsFail,0,isnotnull(Score),1,2)\n| top 100 by ReviewPriority asc,Score asc,EventTime desc\n| project EventTime,Evaluator,Score,ScoreText,Label,Agent,Version,Environment,TraceId,ResponseId,ConversationId,Explanation,SourceTable\n",
+              "size": 0,
+              "title": "Recent failed or lowest-scored events with correlation IDs",
+              "timeContextFromParameter": "TimeRange",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table"
+            },
+            "name": "agent-behavior-recent-traces"
+          }
+        ]
+      },
+      "name": "group-agent-behavior"
     }
   ],
   "isLocked": false,
