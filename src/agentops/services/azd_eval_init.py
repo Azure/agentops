@@ -831,6 +831,7 @@ def _azd_evaluator_selection_from_config(
     data = load_yaml(config_path)
     raw_evaluators = data.get("evaluators")
     names: list[str] = []
+    signals: list[str]
     if isinstance(raw_evaluators, list):
         for item in raw_evaluators:
             raw_name = item.get("name") if isinstance(item, dict) else item
@@ -841,7 +842,7 @@ def _azd_evaluator_selection_from_config(
             if mapped and mapped not in names:
                 names.append(mapped)
         selection_source = "explicit agentops.yaml evaluators"
-        signals = ("Using explicit evaluators from agentops.yaml.",)
+        signals = ["Using explicit evaluators from agentops.yaml."]
     else:
         selection_source = "AgentOps recommendation"
         signals = []
@@ -861,10 +862,10 @@ def _azd_evaluator_selection_from_config(
                     names.append(mapped)
         except (FileNotFoundError, OSError, ValueError) as exc:
             selection_source = "baseline fallback"
-            signals = (
+            signals = [
                 f"Could not inspect dataset for evaluator inference: {exc}",
                 "Using baseline evaluators only.",
-            )
+            ]
         if not names:
             names.extend(_DEFAULT_AZD_EVALUATORS)
     raw_rubrics = data.get("rubrics")

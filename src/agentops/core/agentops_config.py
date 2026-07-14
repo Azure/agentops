@@ -937,7 +937,6 @@ class AgentOpsConfig(BaseModel):
     protocol: Optional[Protocol] = None
     request_field: Optional[str] = None
     response_field: Optional[str] = None
-    response_fields: Dict[str, str] = Field(default_factory=dict)
     tool_calls_field: Optional[str] = None
     response_fields: Dict[str, str] = Field(
         default_factory=dict,
