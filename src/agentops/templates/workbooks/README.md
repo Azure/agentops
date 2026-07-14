@@ -42,10 +42,16 @@ at the top; the workbook substitutes the same values through its parameter bar.
 
 ## Agent behavior tab
 
-The **Agent behavior** tab is an additive, read-only view over
-`gen_ai.evaluation.result` events created by Microsoft Foundry trace evaluation.
-Trace evaluation is a **preview, platform-owned** feature. AgentOps does not
-create, schedule, gate, or edit the evaluations shown in the workbook.
+The **Agent behavior** tab is an additive, read-only adapter over compatible
+`gen_ai.evaluation.result` events. Current official Foundry documentation
+explicitly verifies this event for
+[human trace annotations](https://learn.microsoft.com/azure/foundry/observability/how-to/trace-annotations#log-end-user-feedback-as-trace-annotations).
+It does not clearly guarantee that every automated Foundry trace-evaluation
+result is exported through the same Application Insights event shape.
+Automated event support is therefore **validation-dependent** and must be
+proven in the target workspace. Trace evaluation and annotations are preview,
+platform-owned features. AgentOps does not create, schedule, gate, or edit
+them.
 
 The `agent_behavior/v1` KQL normalizer supports both recognized Application
 Insights shapes:
@@ -59,7 +65,8 @@ The mapping uses an explicit set of known `gen_ai.*` properties and keeps the
 raw property bag in the normalized row. Missing optional values do not remove
 events. Missing agent versions appear as **Version not reported**, and
 nonnumeric score values remain visible as raw score text rather than becoming
-zero.
+zero. Trace-ID evaluation and correlation do not require `gen_ai.agent.id`;
+agent and version filters simply use the metadata when a producer reports it.
 
 The status row appears before quality results and distinguishes these states:
 
@@ -67,7 +74,7 @@ The status row appears before quality results and distinguishes these states:
 | --- | --- |
 | `Schema unavailable` | Matching event names exist, but none of the v1 evaluator, score, or label properties are recognized. Inspect the retained raw properties before updating the versioned mapping. |
 | `No access` | The workbook query shows a native permission error. Request `Log Analytics Reader` on the selected workspace. |
-| `No data` | The recognized event tables contain no `gen_ai.evaluation.result` events in the selected time range. |
+| `No data` | The recognized event tables contain no compatible `gen_ai.evaluation.result` events in the selected time range. This can also mean automated trace evaluation does not export this event shape in the target environment. |
 | `Filter empty` | Events exist in the time range, but none match the environment, agent, version, and evaluator filters. |
 | `Possible ingestion delay` | The newest matching event is more than 15 minutes old. This may be ingestion delay or simply no recent Foundry trace evaluation. |
 
@@ -148,12 +155,15 @@ workbook schema **without a live Azure environment**. The Agent behavior
 normalizer is validated with repository fixtures for both recognized table
 shapes, missing optional fields, nonnumeric scores, multiple evaluators, absent
 versions, and an unrecognized future schema. No live Foundry evaluation results
-were invented or claimed.
+were invented or claimed. These synthetic fixtures validate the adapter; they
+are not evidence that an automated Foundry trace-evaluation producer emits the
+same event schema.
 
 Before relying on the workbook in production, smoke-validate it against a real
 Log Analytics workspace that receives `RequestResponse`,
 `AzureOpenAIRequestUsage`, Foundry `invoke_agent` spans, and
 `gen_ai.evaluation.result` events. Confirm the parameters resolve, each tab
 renders, data status is accurate, trace IDs correlate in Foundry Tracing, and
-the derived metrics match expectations. Update the versioned normalizer instead
+the derived metrics match expectations. Validate human-annotation and automated
+trace-evaluation producers separately. Update the versioned normalizer instead
 of silently accepting renamed properties.

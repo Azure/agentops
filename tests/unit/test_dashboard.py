@@ -118,6 +118,9 @@ def test_agent_behavior_tab_surfaces_states_filters_and_preview_boundary() -> No
     assert "Preview" in note_text
     assert "Foundry" in note_text
     assert "does not create, schedule, gate, or edit evaluations" in note_text
+    assert "human trace annotations" in note_text
+    assert "validation-dependent" in note_text
+    assert "does not require `gen_ai.agent.id`" in note_text
 
     filters = next(item for item in items if item["name"] == "agent-behavior-filters")
     assert [parameter["name"] for parameter in filters["content"]["parameters"]] == [
@@ -168,6 +171,7 @@ def test_agent_behavior_queries_use_bounded_versioned_normalization() -> None:
     assert "EvaluatedTraces" in status_query
     assert "EvaluationEvents" in status_query
     assert "Coverage" not in status_query
+    assert "automated trace-evaluation export validation-dependent" in status_query
     schema_diagnostics = next(
         item
         for item in query_items
@@ -205,6 +209,9 @@ def test_agent_behavior_authoring_query_is_packaged_and_bounded() -> None:
     assert "AppEvents" in resource and "customEvents" in resource
     assert "AppDependencies" in resource and "dependencies" in resource
     assert "RawProperties" in resource
+    assert "human trace" in resource and "annotations" in resource
+    assert "Automated trace-evaluation export" in resource
+    assert "validation-dependent" in resource
 
 
 def test_agent_behavior_schema_fixtures_cover_supported_shapes_and_edges() -> None:

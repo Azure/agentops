@@ -261,8 +261,13 @@ evaluators:
 Deploy or open the Azure Monitor workbook with
 `agentops telemetry dashboard deploy` and `agentops telemetry dashboard open`,
 then select **Agent behavior**. The tab reads Microsoft Foundry-owned
-`gen_ai.evaluation.result` events and observed `invoke_agent` spans from the
-selected Log Analytics workspace. It shows data status and freshness first,
+compatible `gen_ai.evaluation.result` events and observed `invoke_agent` spans
+from the selected Log Analytics workspace. Official Foundry documentation
+verifies this event for
+[human trace annotations](https://learn.microsoft.com/azure/foundry/observability/how-to/trace-annotations#log-end-user-feedback-as-trace-annotations);
+automated trace-evaluation export through the same schema is
+validation-dependent and must be proven in the target workspace. The tab shows
+data status and freshness first,
 then separate invocation, evaluated-trace, and evaluation-event counts,
 per-evaluator pass-rate / volume trends, raw scores grouped by evaluator, and
 recent trace IDs for investigation in Foundry Tracing.
@@ -271,6 +276,7 @@ Foundry trace evaluation is a preview, platform-owned feature. The workbook is
 read-only: it does not schedule evaluations, change rules, add release gates, or
 replace the Foundry trace view. Filters work when environment, agent, version,
 and evaluator properties are present; missing versions are shown as **Version
-not reported**. For supported table shapes, state meanings, schema assumptions,
-and trace-correlation instructions, see the packaged
+not reported**. Trace-ID evaluation and correlation do not require an emitted
+`gen_ai.agent.id`. For supported table shapes, verified producers, state
+meanings, schema assumptions, and trace-correlation instructions, see the packaged
 [workbook authoring guide](../src/agentops/templates/workbooks/README.md#agent-behavior-tab).

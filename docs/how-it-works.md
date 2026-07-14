@@ -21,9 +21,10 @@ release proof:
 config, gates, artifacts, PR reports, Doctor diagnostics, release evidence,
 trace-to-regression promotion, and Cockpit links back to Foundry/Azure Monitor.
 The additive **Agent behavior** tab in the Foundry operations Azure Monitor
-workbook reads platform-owned trace-evaluation events for cross-evaluator
+workbook reads compatible platform-owned evaluation events for cross-evaluator
 trends and trace correlation while leaving evaluation and trace drilldown in
-Foundry.
+Foundry. Human trace annotations are a documented event producer; automated
+trace-evaluation event export remains validation-dependent.
 
 ### Key Principles
 

@@ -1,7 +1,9 @@
 // Agent behavior normalization contract: agent_behavior/v1
 //
-// Foundry owns trace evaluation and emits gen_ai.evaluation.result events.
-// AgentOps reads those events and observed invoke_agent spans without creating,
+// Official Foundry docs verify gen_ai.evaluation.result events for human trace
+// annotations. Automated trace-evaluation export through this same event shape
+// is validation-dependent and must be proven in the target workspace. AgentOps
+// reads compatible events and observed invoke_agent spans without creating,
 // scheduling, or changing evaluations. The bounded query keeps an explicit
 // time window and projects a stable v1 shape while preserving each raw bag.
 let _startTime = ago(24h);
