@@ -1,0 +1,222 @@
+// Agent behavior normalization contract: agent_behavior/v1
+//
+// Official Foundry docs verify gen_ai.evaluation.result events for human trace
+// annotations. Automated trace-evaluation export through this same event shape
+// is validation-dependent and must be proven in the target workspace. AgentOps
+// reads compatible events and observed invoke_agent spans without creating,
+// scheduling, or changing evaluations. The bounded query keeps an explicit
+// time window and projects a stable v1 shape while preserving each raw bag.
+let _startTime = ago(24h);
+let _endTime = now();
+let _environment = "*";
+let _agent = "*";
+let _version = "*";
+let _evaluator = "*";
+let _normalizationVersion = "agent_behavior/v1";
+set best_effort=true;
+let EvaluationEventsV1 = materialize(
+    union isfuzzy=true
+        (
+            AppEvents
+            | where TimeGenerated between (_startTime .. _endTime)
+            | where Name == "gen_ai.evaluation.result"
+            | project
+                EventTime = TimeGenerated,
+                SourceTable = "AppEvents",
+                EventId = tostring(column_ifexists("Id", "")),
+                MonitorTraceId = tostring(column_ifexists("OperationId", "")),
+                RawProperties = todynamic(Properties)
+        ),
+        (
+            customEvents
+            | where timestamp between (_startTime .. _endTime)
+            | where name == "gen_ai.evaluation.result"
+            | project
+                EventTime = timestamp,
+                SourceTable = "customEvents",
+                EventId = tostring(column_ifexists("id", "")),
+                MonitorTraceId = tostring(column_ifexists("operation_Id", "")),
+                RawProperties = todynamic(customDimensions)
+        )
+    | extend
+        EvaluatorRaw = coalesce(
+            tostring(RawProperties["gen_ai.evaluation.name"]),
+            tostring(RawProperties["evaluator"])
+        ),
+        ScoreText = coalesce(
+            tostring(RawProperties["gen_ai.evaluation.score.value"]),
+            tostring(RawProperties["gen_ai.evaluation.score"]),
+            tostring(RawProperties["score"])
+        ),
+        LabelRaw = coalesce(
+            tostring(RawProperties["gen_ai.evaluation.score.label"]),
+            tostring(RawProperties["gen_ai.evaluation.result"]),
+            tostring(RawProperties["label"])
+        ),
+        Explanation = coalesce(
+            tostring(RawProperties["gen_ai.evaluation.explanation"]),
+            tostring(RawProperties["gen_ai.evaluation.reason"])
+        ),
+        AgentId = tostring(RawProperties["gen_ai.agent.id"]),
+        AgentRaw = tostring(RawProperties["gen_ai.agent.name"]),
+        VersionRaw = tostring(RawProperties["gen_ai.agent.version"]),
+        EnvironmentRaw = coalesce(
+            tostring(RawProperties["deployment.environment.name"]),
+            tostring(RawProperties["gen_ai.environment"]),
+            tostring(RawProperties["environment"])
+        ),
+        PropertyTraceId = coalesce(
+            tostring(RawProperties["trace_id"]),
+            tostring(RawProperties["gen_ai.trace.id"])
+        ),
+        ResponseId = tostring(RawProperties["gen_ai.response.id"]),
+        ConversationId = tostring(RawProperties["gen_ai.conversation.id"])
+    | extend
+        Score = todouble(ScoreText),
+        Label = tolower(LabelRaw),
+        Agent = coalesce(
+            AgentRaw,
+            iff(AgentId contains ":", tostring(split(AgentId, ":")[0]), AgentId)
+        ),
+        Version = coalesce(
+            VersionRaw,
+            iff(AgentId contains ":", tostring(split(AgentId, ":")[1]), "")
+        ),
+        Environment = EnvironmentRaw,
+        TraceId = coalesce(PropertyTraceId, MonitorTraceId),
+        SchemaRecognized = isnotempty(EvaluatorRaw)
+            or isnotempty(ScoreText)
+            or isnotempty(LabelRaw)
+    | extend
+        Evaluator = iff(isempty(EvaluatorRaw), "Evaluator not reported", EvaluatorRaw),
+        Agent = iff(isempty(Agent), "Agent not reported", Agent),
+        Version = iff(isempty(Version), "Version not reported", Version),
+        Environment = iff(
+            isempty(Environment),
+            "Environment not reported",
+            Environment
+        ),
+        TraceId = iff(isempty(TraceId), "Trace ID not reported", TraceId),
+        ScoreIsNumeric = isnotempty(ScoreText) and isnotnull(Score),
+        IsPass = Label in ("pass", "passed", "true", "relevant", "correct"),
+        IsFail = Label in (
+            "fail",
+            "failed",
+            "false",
+            "not_relevant",
+            "incorrect"
+        ),
+        NormalizationVersion = _normalizationVersion
+    | project
+        EventTime,
+        SourceTable,
+        EventId,
+        TraceId,
+        ResponseId,
+        ConversationId,
+        Agent,
+        Version,
+        Environment,
+        Evaluator,
+        Score,
+        ScoreText,
+        ScoreIsNumeric,
+        Label,
+        Explanation,
+        IsPass,
+        IsFail,
+        SchemaRecognized,
+        NormalizationVersion,
+        RawProperties
+);
+let InvokeAgentInvocationsV1 = materialize(
+    union isfuzzy=true
+        (
+            AppDependencies
+            | where TimeGenerated between (_startTime .. _endTime)
+            | project
+                InvocationTime = TimeGenerated,
+                SourceTable = "AppDependencies",
+                EventId = tostring(column_ifexists("Id", "")),
+                MonitorTraceId = tostring(column_ifexists("OperationId", "")),
+                RawProperties = todynamic(Properties)
+        ),
+        (
+            dependencies
+            | where timestamp between (_startTime .. _endTime)
+            | project
+                InvocationTime = timestamp,
+                SourceTable = "dependencies",
+                EventId = tostring(column_ifexists("id", "")),
+                MonitorTraceId = tostring(column_ifexists("operation_Id", "")),
+                RawProperties = todynamic(customDimensions)
+        )
+    | where tostring(RawProperties["gen_ai.operation.name"]) == "invoke_agent"
+    | extend
+        AgentId = tostring(RawProperties["gen_ai.agent.id"]),
+        AgentRaw = tostring(RawProperties["gen_ai.agent.name"]),
+        VersionRaw = tostring(RawProperties["gen_ai.agent.version"]),
+        EnvironmentRaw = coalesce(
+            tostring(RawProperties["deployment.environment.name"]),
+            tostring(RawProperties["gen_ai.environment"]),
+            tostring(RawProperties["environment"])
+        ),
+        PropertyTraceId = coalesce(
+            tostring(RawProperties["trace_id"]),
+            tostring(RawProperties["gen_ai.trace.id"])
+        )
+    | extend
+        Agent = coalesce(
+            AgentRaw,
+            iff(AgentId contains ":", tostring(split(AgentId, ":")[0]), AgentId)
+        ),
+        Version = coalesce(
+            VersionRaw,
+            iff(AgentId contains ":", tostring(split(AgentId, ":")[1]), "")
+        ),
+        Environment = EnvironmentRaw,
+        TraceId = coalesce(PropertyTraceId, MonitorTraceId)
+    | extend
+        Agent = iff(isempty(Agent), "Agent not reported", Agent),
+        Version = iff(isempty(Version), "Version not reported", Version),
+        Environment = iff(
+            isempty(Environment),
+            "Environment not reported",
+            Environment
+        ),
+        InvocationKey = coalesce(
+            TraceId,
+            EventId,
+            strcat(SourceTable, "|", format_datetime(InvocationTime, "o"))
+        ),
+        NormalizationVersion = _normalizationVersion
+    | project
+        InvocationTime,
+        InvocationKey,
+        TraceId,
+        Agent,
+        Version,
+        Environment,
+        SourceTable,
+        NormalizationVersion,
+        RawProperties
+);
+EvaluationEventsV1
+| where _environment == "*" or Environment == _environment
+| where _agent == "*" or Agent == _agent
+| where _version == "*" or Version == _version
+| where _evaluator == "*" or Evaluator == _evaluator
+| summarize
+    EvaluationEvents = count(),
+    EvaluatedTraces = dcountif(TraceId, TraceId != "Trace ID not reported"),
+    NumericScores = countif(ScoreIsNumeric),
+    PassLabels = countif(IsPass),
+    FailLabels = countif(IsFail),
+    PassRatePct = round(
+        100.0 * countif(IsPass) / max_of(1, countif(IsPass or IsFail)),
+        1
+    ),
+    AverageScore = avg(Score),
+    LatestEvent = max(EventTime)
+  by Evaluator, Version, NormalizationVersion
+| order by EvaluationEvents desc

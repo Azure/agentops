@@ -5,6 +5,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- Add a read-only **Agent behavior** tab to the Foundry operations Azure Monitor
+  workbook, with versioned `AppEvents` / `customEvents` normalization, explicit
+  data and freshness states, separate invocation / evaluated-trace /
+  evaluation-event counts, scale-safe per-evaluator trends, and trace IDs for
+  Foundry investigation. Human trace annotations are the documented
+  `gen_ai.evaluation.result` producer; automated trace-evaluation event export
+  remains validation-dependent.
+
 ## [0.7.1] - 2026-07-01
 
 ### Fixed

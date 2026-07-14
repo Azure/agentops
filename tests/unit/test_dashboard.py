@@ -10,10 +10,56 @@ helpers mocked.
 from __future__ import annotations
 
 import json
+from importlib.resources import files as package_files
+from pathlib import Path
 
 import pytest
 
 from agentops.services import dashboard as dash
+
+
+_FIXTURES = Path(__file__).parents[1] / "fixtures"
+_EVALUATOR_KEYS = ("gen_ai.evaluation.name", "evaluator")
+_SCORE_KEYS = (
+    "gen_ai.evaluation.score.value",
+    "gen_ai.evaluation.score",
+    "score",
+)
+_LABEL_KEYS = (
+    "gen_ai.evaluation.score.label",
+    "gen_ai.evaluation.result",
+    "label",
+)
+
+
+def _first_property(properties: dict[str, object], keys: tuple[str, ...]) -> str:
+    for key in keys:
+        value = properties.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return ""
+
+
+def _fixture_projection(event: dict[str, object]) -> dict[str, object]:
+    properties = event["properties"]
+    assert isinstance(properties, dict)
+    evaluator = _first_property(properties, _EVALUATOR_KEYS)
+    score_text = _first_property(properties, _SCORE_KEYS)
+    label = _first_property(properties, _LABEL_KEYS)
+    try:
+        numeric_score = float(score_text) if score_text else None
+    except ValueError:
+        numeric_score = None
+    agent_id = str(properties.get("gen_ai.agent.id", ""))
+    version = str(properties.get("gen_ai.agent.version", ""))
+    if not version and ":" in agent_id:
+        version = agent_id.split(":", 1)[1]
+    return {
+        "recognized": bool(evaluator or score_text or label),
+        "numeric_score": numeric_score,
+        "version": version or "Version not reported",
+        "raw_properties": properties,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -29,6 +75,185 @@ def test_load_workbook_template_returns_valid_json() -> None:
 
 def test_load_workbook_content_matches_template() -> None:
     assert dash.load_workbook_content() == json.loads(dash.load_workbook_template())
+
+
+def test_agent_behavior_tab_is_additive_and_preserves_existing_navigation() -> None:
+    content = dash.load_workbook_content()
+    tabs = next(item for item in content["items"] if item["name"] == "tabs")
+    labels = [link["linkLabel"] for link in tabs["content"]["links"]]
+    assert labels == [
+        "Capacity",
+        "Traffic and tokens",
+        "Latency",
+        "Errors and throttling",
+        "Agent behavior",
+    ]
+    groups = {item["name"]: item for item in content["items"] if item["type"] == 12}
+    assert {
+        "group-capacity",
+        "group-traffic",
+        "group-latency",
+        "group-errors",
+    }.issubset(groups)
+    behavior = groups["group-agent-behavior"]
+    assert behavior["conditionalVisibility"]["value"] == "agent-behavior"
+
+
+def test_agent_behavior_tab_surfaces_states_filters_and_preview_boundary() -> None:
+    content = dash.load_workbook_content()
+    behavior = next(
+        item for item in content["items"] if item["name"] == "group-agent-behavior"
+    )
+    items = behavior["content"]["items"]
+    note = next(item for item in items if item["name"] == "agent-behavior-note")
+    note_text = note["content"]["json"]
+    for state in (
+        "Schema unavailable",
+        "No access",
+        "No data",
+        "Filter empty",
+        "Possible ingestion delay",
+    ):
+        assert state in note_text
+    assert "Preview" in note_text
+    assert "Foundry" in note_text
+    assert "does not create, schedule, gate, or edit evaluations" in note_text
+    assert "human trace annotations" in note_text
+    assert "validation-dependent" in note_text
+    assert "does not require `gen_ai.agent.id`" in note_text
+
+    filters = next(item for item in items if item["name"] == "agent-behavior-filters")
+    assert [parameter["name"] for parameter in filters["content"]["parameters"]] == [
+        "AgentEnvironment",
+        "AgentName",
+        "AgentVersion",
+        "Evaluator",
+    ]
+
+
+def test_agent_behavior_queries_use_bounded_versioned_normalization() -> None:
+    content = dash.load_workbook_content()
+    behavior = next(
+        item for item in content["items"] if item["name"] == "group-agent-behavior"
+    )
+    query_items = [
+        item
+        for item in behavior["content"]["items"]
+        if item["type"] == 3 and "query" in item["content"]
+    ]
+    assert len(query_items) == 7
+    assert all(
+        item["content"]["timeContextFromParameter"] == "TimeRange"
+        for item in query_items
+    )
+    combined = "\n".join(item["content"]["query"] for item in query_items)
+    for fragment in (
+        "set best_effort=true",
+        "union isfuzzy=true",
+        "AppEvents",
+        "customEvents",
+        "Name == 'gen_ai.evaluation.result'",
+        "name == 'gen_ai.evaluation.result'",
+        "Properties",
+        "customDimensions",
+        "gen_ai.evaluation.score.value",
+        "gen_ai.evaluation.score.label",
+        "Version not reported",
+        "RawProperties",
+    ):
+        assert fragment in combined
+    status = next(
+        item for item in query_items if item["name"] == "agent-behavior-status"
+    )
+    status_query = status["content"]["query"]
+    assert "agent_behavior/v1" in status_query
+    assert "ObservedInvokeAgentInvocations" in status_query
+    assert "EvaluatedTraces" in status_query
+    assert "EvaluationEvents" in status_query
+    assert "Coverage" not in status_query
+    assert "automated trace-evaluation export validation-dependent" in status_query
+    schema_diagnostics = next(
+        item
+        for item in query_items
+        if item["name"] == "agent-behavior-schema-diagnostics"
+    )
+    assert "RawProperties" in schema_diagnostics["content"]["query"]
+    assert "| take 100" in schema_diagnostics["content"]["query"]
+
+
+def test_agent_behavior_does_not_combine_unlike_raw_score_scales() -> None:
+    content = dash.load_workbook_content()
+    behavior = next(
+        item for item in content["items"] if item["name"] == "group-agent-behavior"
+    )
+    items = {item["name"]: item for item in behavior["content"]["items"]}
+    assert items["agent-behavior-score-trend"]["content"]["visualization"] == "table"
+    assert items["agent-behavior-pass-trend"]["content"]["visualization"] == "timechart"
+    assert (
+        items["agent-behavior-volume-trend"]["content"]["visualization"] == "timechart"
+    )
+    assert (
+        "do not compare evaluators"
+        in items["agent-behavior-score-trend"]["content"]["title"]
+    )
+
+
+def test_agent_behavior_authoring_query_is_packaged_and_bounded() -> None:
+    resource = (
+        package_files("agentops.templates")
+        .joinpath("workbooks/queries/agent_behavior.kql")
+        .read_text(encoding="utf-8")
+    )
+    assert "agent_behavior/v1" in resource
+    assert "between (_startTime .. _endTime)" in resource
+    assert "AppEvents" in resource and "customEvents" in resource
+    assert "AppDependencies" in resource and "dependencies" in resource
+    assert "RawProperties" in resource
+    assert "human trace" in resource and "annotations" in resource
+    assert "Automated trace-evaluation export" in resource
+    assert "validation-dependent" in resource
+
+
+def test_agent_behavior_schema_fixtures_cover_supported_shapes_and_edges() -> None:
+    events = json.loads(
+        (_FIXTURES / "workbook_agent_behavior_events.json").read_text(encoding="utf-8")
+    )
+    assert {event["source_table"] for event in events} == {
+        "AppEvents",
+        "customEvents",
+    }
+    expected_columns = {
+        "AppEvents": ("Name", "Properties"),
+        "customEvents": ("name", "customDimensions"),
+    }
+    projections = {}
+    for event in events:
+        name_column, properties_column = expected_columns[event["source_table"]]
+        assert event["name_column"] == name_column
+        assert event["properties_column"] == properties_column
+        assert event["event_name"] == "gen_ai.evaluation.result"
+        projection = _fixture_projection(event)
+        projections[event["case"]] = projection
+        assert projection["recognized"] is event["expected"]["recognized"]
+        assert projection["numeric_score"] == event["expected"]["numeric_score"]
+        assert projection["version"] == event["expected"]["version"]
+        assert projection["raw_properties"] == event["properties"]
+
+    assert projections["missing_optional_fields"]["version"] == "Version not reported"
+    assert projections["nonnumeric_score"]["numeric_score"] is None
+    assert projections["unrecognized_schema"]["recognized"] is False
+    evaluators = {
+        _first_property(event["properties"], _EVALUATOR_KEYS)
+        for event in events
+        if event["expected"]["recognized"]
+    }
+    assert {"Relevance", "Groundedness", "IntentResolution", "Fluency"} <= evaluators
+    same_trace = [
+        event for event in events if event["properties"].get("trace_id") == "trace-2"
+    ]
+    assert {
+        _first_property(event["properties"], _EVALUATOR_KEYS) for event in same_trace
+    } == {"Groundedness", "Fluency"}
 
 
 # ---------------------------------------------------------------------------
