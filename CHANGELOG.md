@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-14
+
 ### Added
 - Add a read-only **Agent behavior** tab to the Foundry operations Azure Monitor
   workbook, with versioned `AppEvents` / `customEvents` normalization, explicit
