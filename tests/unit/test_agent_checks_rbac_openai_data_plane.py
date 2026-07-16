@@ -310,8 +310,12 @@ def test_list_role_definition_ids_extracts_guid_suffix() -> None:
     role_assignments.list_for_scope.assert_called_once()
     kwargs = role_assignments.list_for_scope.call_args.kwargs
     assert kwargs["scope"] == _ACCOUNT_TARGET
-    assert _PRINCIPAL_OID in kwargs["filter"]
-    assert "atScopeAndAbove" in kwargs["filter"]
+    # The ARM RBAC API rejects the combined
+    # ``atScopeAndAbove() and assignedTo(...)`` filter with UnsupportedQuery.
+    # ``assignedTo(...)`` alone is the supported equivalent and already
+    # returns assignments at scope and every ancestor scope.
+    assert kwargs["filter"] == f"assignedTo('{_PRINCIPAL_OID}')"
+    assert "atScopeAndAbove" not in kwargs["filter"]
 
 
 def test_list_role_definition_ids_raises_when_sdk_missing() -> None:

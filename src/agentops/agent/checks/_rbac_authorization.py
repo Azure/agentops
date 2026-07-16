@@ -60,8 +60,13 @@ def list_principal_role_definition_ids(
     """List role definition GUIDs assigned to the principal at/above scope.
 
     Uses ``RoleAssignmentsOperations.list_for_scope`` with the
-    ``atScopeAndAbove() and assignedTo('<oid>')`` filter so management-plane
-    inheritance (subscription, resource group, account) is honoured.
+    ``assignedTo('<oid>')`` filter. That filter already returns assignments at
+    the given scope and every ancestor scope (subscription, resource group,
+    account), including those inherited through group membership, so
+    management-plane inheritance is honoured. The ARM RBAC API rejects the
+    combined ``atScopeAndAbove() and assignedTo(...)`` form
+    (``UnsupportedQuery``); ``assignedTo(...)`` on its own is the supported
+    equivalent.
     """
     try:
         from azure.mgmt.authorization import AuthorizationManagementClient
@@ -95,9 +100,7 @@ def list_principal_role_definition_ids(
         assignments = list(
             client.role_assignments.list_for_scope(
                 scope=scope,
-                filter=(
-                    f"atScopeAndAbove() and assignedTo('{principal_object_id}')"
-                ),
+                filter=f"assignedTo('{principal_object_id}')",
             )
         )
     except Exception as exc:  # noqa: BLE001

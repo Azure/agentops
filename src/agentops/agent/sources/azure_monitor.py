@@ -13,7 +13,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-from urllib import error, request
+from urllib import request
 
 from agentops.agent.config import AzureMonitorSourceConfig
 
@@ -504,9 +504,13 @@ def _query_application_insights(
         method="POST",
     )
     try:
-        with request.urlopen(req, timeout=10) as resp:  # noqa: S310
+        with request.urlopen(req, timeout=30) as resp:  # noqa: S310
             parsed = json.loads(resp.read())
-    except (error.URLError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError) as exc:
+        # OSError covers urllib.error.URLError *and* socket.timeout /
+        # TimeoutError. A read timeout is not a URLError, so catching only
+        # URLError here would let it propagate to the caller and surface a
+        # noisy non-fatal INFO line on the console. Degrade quietly instead.
         log.debug("App Insights REST query failed: %s", exc)
         return None
 

@@ -39,6 +39,51 @@ class JudgementMeta:
     model_deployment: Optional[str] = None
 
 
+def _normalize_foundry_openai_client(client: Any) -> Any:
+    """Point a Foundry project OpenAI client at the ``/openai/v1/`` route.
+
+    ``AIProjectClient.get_openai_client()`` returns a client whose
+    ``base_url`` ends in ``/openai/`` and which injects an ``api-version``
+    query parameter. On that legacy route Foundry chat completions return
+    HTTP 404. The stable surface is the OpenAI v1 route (``/openai/v1/``)
+    served *without* an ``api-version`` parameter.
+
+    We rewrite the client in place with the public ``with_options`` API so
+    the reused credential and its token refresh keep working (no second
+    credential, no endpoint string-munging). The client is returned
+    unchanged when its ``base_url`` is not the recognised Foundry project
+    shape, so custom or already-normalised endpoints are left untouched.
+    """
+    try:
+        base_url = str(getattr(client, "base_url", "") or "")
+    except Exception:  # pragma: no cover - defensive
+        return client
+    if not base_url:
+        return client
+
+    normalized = base_url if base_url.endswith("/") else base_url + "/"
+    if normalized.endswith("/openai/v1/"):
+        # Already on the v1 surface; only ensure api-version is dropped.
+        pass
+    elif normalized.endswith("/openai/"):
+        normalized = normalized + "v1/"
+    else:
+        # Unknown shape (non-Foundry route). Leave routing untouched.
+        return client
+
+    with_options = getattr(client, "with_options", None)
+    if with_options is None:  # pragma: no cover - defensive
+        return client
+    try:
+        return with_options(
+            base_url=normalized,
+            default_query={"api-version": None},
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        log.info("llm_assist: could not normalize OpenAI route: %s", exc)
+        return client
+
+
 class LLMJudge:
     """Thin wrapper around the Foundry project's OpenAI client."""
 
@@ -230,6 +275,7 @@ class LLMJudge:
         if not endpoint:
             log.info("llm_assist: project endpoint not configured")
             return None
+
         try:
             from azure.ai.projects import AIProjectClient  # type: ignore
             from azure.identity import DefaultAzureCredential  # type: ignore
@@ -240,7 +286,9 @@ class LLMJudge:
         try:
             project_client = AIProjectClient(
                 endpoint=endpoint,
-                credential=DefaultAzureCredential(exclude_developer_cli_credential=True, process_timeout=30),
+                credential=DefaultAzureCredential(
+                    exclude_developer_cli_credential=True, process_timeout=30
+                ),
             )
             # Foundry exposes get_openai_client without an api_version arg;
             # never pass one (the SDK picks the right version).
@@ -251,7 +299,7 @@ class LLMJudge:
             if get_openai_client is None:
                 log.info("llm_assist: AIProjectClient has no OpenAI client helper")
                 return None
-            self._client = get_openai_client()
+            self._client = _normalize_foundry_openai_client(get_openai_client())
         except Exception as exc:  # pragma: no cover
             log.warning("llm_assist: openai client init failed: %s", exc)
             return None
