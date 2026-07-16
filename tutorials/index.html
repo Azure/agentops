@@ -959,23 +959,20 @@ a URL, use the HTTP agent tutorial.</p>
 <div class="agentops-cards">
 <div class="agentops-card">
 <h3 id="prompt-agent-tutorial"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 14h-1c0-3.87-3.13-7-7-7h-1V5.73A2 2 0 1 0 10 4c0 .74.4 1.39 1 1.73V7h-1c-3.87 0-7 3.13-7 7H2c-.55 0-1 .45-1 1v3c0 .55.45 1 1 1h1v1a2 2 0 0 0 2 2h14c1.11 0 2-.89 2-2v-1h1c.55 0 1-.45 1-1v-3c0-.55-.45-1-1-1M9.79 16.5C9.4 15.62 8.53 15 7.5 15s-1.9.62-2.29 1.5c-.13-.31-.21-.64-.21-1a2.5 2.5 0 0 1 5 0c0 .36-.08.69-.21 1m9 0c-.39-.88-1.29-1.5-2.29-1.5s-1.9.62-2.29 1.5c-.13-.31-.21-.64-.21-1a2.5 2.5 0 0 1 5 0c0 .36-.08.69-.21 1"/></svg></span> Prompt agent tutorial<a class="headerlink" href="#prompt-agent-tutorial" title="Permanent link">&para;</a></h3>
-<p>For a <strong>Foundry-managed prompt agent</strong> referenced as <code>name:version</code>. Build a
-small Travel Agent in Foundry, add a PR gate that catches regressions before
-merge, deploy to dev, collect Doctor evidence, and read it in the Cockpit.</p>
+<p>For a <strong>Foundry-managed prompt agent</strong> referenced as <code>name:version</code>. Build a small
+Travel Agent, add a PR gate, and read the evidence in the Cockpit.</p>
 <p><a class="md-button--pill" href="../tutorial-prompt-agent/">Start the prompt agent tutorial <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg></span></a></p>
 </div>
 <div class="agentops-card">
 <h3 id="hosted-agent-tutorial"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 19c0 .34.04.67.09 1H6.5c-1.5 0-2.81-.5-3.89-1.57C1.54 17.38 1 16.09 1 14.58q0-1.95 1.17-3.48C3.34 9.57 4 9.43 5.25 9.15c.42-1.53 1.25-2.77 2.5-3.72S10.42 4 12 4c1.95 0 3.6.68 4.96 2.04S19 9.05 19 11c1.15.13 2.1.63 2.86 1.5.51.57.84 1.21 1 1.92A5.9 5.9 0 0 0 19 13c-3.31 0-6 2.69-6 6m4.75.43-1.59-1.59L15 19l2.75 3 4.75-4.75-1.16-1.41z"/></svg></span> Hosted agent tutorial<a class="headerlink" href="#hosted-agent-tutorial" title="Permanent link">&para;</a></h3>
-<p>For a <strong>Foundry Hosted Agent</strong> that Foundry runs for you. Deploy a Travel Agent
-through the Foundry Toolkit, read the server-side <code>invoke_agent</code> traces you get
-for free, and add a PR gate that evaluates the deployed endpoint.</p>
+<p>For a <strong>Foundry Hosted Agent</strong> that Foundry runs for you. Deploy it, read the
+server-side <code>invoke_agent</code> traces, and gate the deployed endpoint.</p>
 <p><a class="md-button--pill" href="../tutorial-hosted-agent/">Start the hosted agent tutorial <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg></span></a></p>
 </div>
 <div class="agentops-card">
 <h3 id="http-agent-tutorial"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2m-5.15 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56M14.34 14H9.66c-.1-.66-.16-1.32-.16-2s.06-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2M12 19.96c-.83-1.2-1.5-2.53-1.91-3.96h3.82c-.41 1.43-1.08 2.76-1.91 3.96M8 8H5.08A7.92 7.92 0 0 1 9.4 4.44C8.8 5.55 8.35 6.75 8 8m-2.92 8H8c.35 1.25.8 2.45 1.4 3.56A8 8 0 0 1 5.08 16m-.82-2C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2M12 4.03c.83 1.2 1.5 2.54 1.91 3.97h-3.82c.41-1.43 1.08-2.77 1.91-3.97M18.92 8h-2.95a15.7 15.7 0 0 0-1.38-3.56c1.84.63 3.37 1.9 4.33 3.56M12 2C6.47 2 2 6.5 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2"/></svg></span> HTTP agent tutorial<a class="headerlink" href="#http-agent-tutorial" title="Permanent link">&para;</a></h3>
-<p>For an agent that runs as an <strong>HTTP service behind a URL</strong>. The worked example is
-a RAG orchestrator (a FastAPI service in an Azure Container App). Deploy it, make
-the repo yours, and add a PR gate that evaluates the live endpoint.</p>
+<p>For an agent that runs as an <strong>HTTP service behind a URL</strong>. The example is a RAG
+orchestrator (GPT-RAG). Deploy it, make the repo yours, and gate the live endpoint.</p>
 <p><a class="md-button--pill" href="../tutorial-http-agent/">Start the HTTP agent tutorial <span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg></span></a></p>
 </div>
 </div>
