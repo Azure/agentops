@@ -71,6 +71,7 @@ nav:
   - Tutorials:
       - Overview: tutorials.md
       - Prompt Agent Tutorial: tutorial-prompt-agent.md
+      - Hosted Agent Tutorial: tutorial-hosted-agent.md
       - HTTP Agent Tutorial: tutorial-http-agent.md
   - Evaluation:
       - Overview: evaluation.md

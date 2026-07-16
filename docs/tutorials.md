@@ -10,9 +10,11 @@ evaluate, ship, observe, and operate, on one kind of agent. Pick the one that
 matches how your agent runs. They all teach the same sandbox to PR gate story,
 so once you finish one, the others will feel familiar.
 
-Not sure which fits? If your agent is authored and hosted in Foundry, start with
-the prompt agent tutorial. If your agent runs as an HTTP service behind a URL,
-start with the HTTP agent tutorial.
+Not sure which fits? If your agent is authored and hosted in Foundry as a
+prompt referenced by `name:version`, start with the prompt agent tutorial. If
+Foundry runs your agent code as a hosted runtime behind an endpoint, use the
+hosted agent tutorial. If your agent runs as an HTTP service you operate behind
+a URL, use the HTTP agent tutorial.
 
 <div class="agentops-cards" markdown>
 
@@ -26,10 +28,19 @@ merge, deploy to dev, collect Doctor evidence, and read it in the Cockpit.
 </div>
 
 <div class="agentops-card" markdown>
+### :material-cloud-check: Hosted agent tutorial
+For a **Foundry Hosted Agent** that Foundry runs for you. Deploy a Travel Agent
+through the Foundry Toolkit, read the server-side `invoke_agent` traces you get
+for free, and add a PR gate that evaluates the deployed endpoint.
+
+[Start the hosted agent tutorial :material-arrow-right:](tutorial-hosted-agent.md){ .md-button--pill }
+</div>
+
+<div class="agentops-card" markdown>
 ### :material-web: HTTP agent tutorial
 For an agent that runs as an **HTTP service behind a URL**. The worked example is
-a RAG orchestrator (a FastAPI service in an Azure Container App). Deploy it, take
-ownership of the repo, and add a PR gate that evaluates the live endpoint.
+a RAG orchestrator (a FastAPI service in an Azure Container App). Deploy it, make
+the repo yours, and add a PR gate that evaluates the live endpoint.
 
 [Start the HTTP agent tutorial :material-arrow-right:](tutorial-http-agent.md){ .md-button--pill }
 </div>

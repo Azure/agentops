@@ -1318,6 +1318,7 @@ OIDC, and release evidence you can attach to any PR.
 - Add a scheduled Doctor workflow: `agentops workflow generate --kinds doctor --force`.
 - Grow the gate with vetted production traces: `agentops eval promote-traces`.
 - Add ASSERT, ACS, Guardrail review, and red-team evidence with `/skills agentops-governance` when your release process is ready for those controls.
+- Running a different kind of agent? See the [Hosted Agent Tutorial](tutorial-hosted-agent.md) for a Foundry Hosted Agent, or the [HTTP Agent Tutorial](tutorial-http-agent.md) for an agent you run behind a URL.
 
 ## Repos and skills used
 

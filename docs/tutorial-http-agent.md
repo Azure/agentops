@@ -3,8 +3,8 @@
 Use this tutorial when your agent runs as an HTTP service behind a URL, not as a
 Foundry-managed prompt agent. The worked example is a RAG agent, implemented in the
 [gpt-rag-orchestrator](https://github.com/Azure/gpt-rag-orchestrator). It is a FastAPI service inside an
-Azure Container App, exposed at `POST /orchestrator`. You deploy it, take
-ownership of the cloned orchestrator, and add an AgentOps PR gate that evaluates
+Azure Container App, exposed at `POST /orchestrator`. You deploy it, make the
+cloned orchestrator yours, and add an AgentOps PR gate that evaluates
 the HTTP endpoint before merge.
 
 The path is the same sandbox to dev story as the other tutorials, adapted for an
@@ -13,7 +13,7 @@ endpoint-based agent:
 ```mermaid
 flowchart LR
     E["<b>Evaluate</b><br/>Deploy the sandbox<br/>Run evals<br/>Catch weak answers"]
-    S["<b>Ship</b><br/>Own the repo<br/>Open PR<br/>Deploy to dev"]
+    S["<b>Ship</b><br/>Make the repo yours<br/>Open PR<br/>Deploy to dev"]
     O["<b>Observe</b><br/>Read traces<br/>Run Doctor<br/>Check telemetry"]
     W["<b>Operate</b><br/>Review evidence<br/>Block regressions<br/>Make the call"]
 
@@ -142,7 +142,7 @@ az storage blob upload `
 
 Give ingestion a couple of minutes before testing grounded answers.
 
-## 4. Own the orchestrator
+## 4. Make the orchestrator yours
 
 The agent you evaluate lives in the cloned orchestrator, so work from that
 directory.
@@ -975,8 +975,8 @@ agentops doctor --evidence-pack
 - You deployed the GPT-RAG template into a sandbox and a dev environment, and you
   know why the PR gate deploys and evaluates candidate code in sandbox before
   anything updates dev.
-- You took ownership of the cloned orchestrator by re-initializing its git
-  history and starting your own repository.
+- You made the cloned orchestrator yours by re-initializing its git
+  history and starting a fresh repository.
 - You pointed AgentOps directly at the orchestrator endpoint and mapped `ask`
   and `text` to the real request and response shape.
 - You indexed a sample document, built a smoke dataset from its content, and
@@ -992,3 +992,11 @@ agentops doctor --evidence-pack
   unsafe behavior, not just quality regressions.
 - You ran local evals against the deployed endpoint and generated a PR gate that
   blocks regressions before they merge.
+
+## Related tutorials
+
+- [Hosted Agent Tutorial](tutorial-hosted-agent.md): a Foundry Hosted Agent is
+  not an HTTP agent. Foundry runs the agent for you and emits the `invoke_agent`
+  traces server-side, so there is no endpoint to operate yourself.
+- [Prompt Agent Tutorial](tutorial-prompt-agent.md): for a Foundry-managed prompt
+  agent referenced as `name:version`.
