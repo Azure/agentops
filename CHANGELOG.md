@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-16
+
 ### Fixed
 - **`agentops doctor` no longer prints noisy non-fatal errors to the console.**
   Three low-level probes that already degrade gracefully were leaking their
