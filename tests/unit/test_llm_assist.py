@@ -481,3 +481,85 @@ def test_judge_falls_back_to_inference_get_openai_client(
     judge = LLMJudge(config=_enabled_config(), workspace=tmp_path)
 
     assert judge._get_client() == "legacy-openai-client"
+
+
+# ---------------------------------------------------------------------------
+# _normalize_foundry_openai_client -- Foundry /openai/v1/ route fix
+# ---------------------------------------------------------------------------
+
+
+class _FakeOpenAIClient:
+    """Minimal stand-in exposing ``base_url`` and ``with_options``."""
+
+    def __init__(self, base_url: str) -> None:
+        self.base_url = base_url
+        self.with_options_kwargs: Optional[Dict[str, Any]] = None
+
+    def with_options(self, **kwargs: Any) -> "_FakeOpenAIClient":
+        self.with_options_kwargs = kwargs
+        new = _FakeOpenAIClient(kwargs.get("base_url", self.base_url))
+        new.with_options_kwargs = kwargs
+        return new
+
+
+def test_normalize_rewrites_openai_route_to_v1_and_drops_api_version() -> None:
+    from agentops.agent.llm_assist._client import (
+        _normalize_foundry_openai_client,
+    )
+
+    client = _FakeOpenAIClient(
+        "https://acct.services.ai.azure.com/api/projects/p/openai/"
+    )
+    normalized = _normalize_foundry_openai_client(client)
+
+    assert normalized.with_options_kwargs is not None
+    assert (
+        normalized.with_options_kwargs["base_url"]
+        == "https://acct.services.ai.azure.com/api/projects/p/openai/v1/"
+    )
+    # The injected ``api-version`` query param must be cleared, otherwise the
+    # Foundry v1 route returns HTTP 404.
+    assert normalized.with_options_kwargs["default_query"] == {
+        "api-version": None
+    }
+
+
+def test_normalize_leaves_v1_route_but_still_drops_api_version() -> None:
+    from agentops.agent.llm_assist._client import (
+        _normalize_foundry_openai_client,
+    )
+
+    client = _FakeOpenAIClient(
+        "https://acct.services.ai.azure.com/api/projects/p/openai/v1/"
+    )
+    normalized = _normalize_foundry_openai_client(client)
+
+    assert (
+        normalized.with_options_kwargs["base_url"]
+        == "https://acct.services.ai.azure.com/api/projects/p/openai/v1/"
+    )
+    assert normalized.with_options_kwargs["default_query"] == {
+        "api-version": None
+    }
+
+
+def test_normalize_leaves_unknown_route_untouched() -> None:
+    from agentops.agent.llm_assist._client import (
+        _normalize_foundry_openai_client,
+    )
+
+    client = _FakeOpenAIClient("https://custom.example.com/v1/")
+    normalized = _normalize_foundry_openai_client(client)
+
+    # Non-Foundry routes are returned as-is; with_options is never called.
+    assert normalized is client
+    assert client.with_options_kwargs is None
+
+
+def test_normalize_ignores_client_without_base_url() -> None:
+    from agentops.agent.llm_assist._client import (
+        _normalize_foundry_openai_client,
+    )
+
+    sentinel = object()
+    assert _normalize_foundry_openai_client(sentinel) is sentinel

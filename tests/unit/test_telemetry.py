@@ -708,6 +708,46 @@ def test_azure_monitor_skipped_when_connection_string_lacks_application_id(
     assert payload.diagnostics["discovery_reason"]
 
 
+def test_query_application_insights_returns_none_on_read_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A read timeout must degrade quietly, not raise.
+
+    ``socket.timeout`` (aka ``TimeoutError``) is an ``OSError`` but NOT a
+    ``urllib.error.URLError``, so the previous narrow ``except URLError``
+    let it escape and surface a noisy non-fatal INFO line on the console.
+    The fix catches ``OSError`` and returns ``None``.
+    """
+    import socket
+
+    def _raise_timeout(*_args, **_kwargs):
+        raise socket.timeout("The read operation timed out")
+
+    monkeypatch.setattr(azure_monitor.request, "urlopen", _raise_timeout)
+
+    assert (
+        azure_monitor._query_application_insights("app-id", "bearer", "kql")
+        is None
+    )
+
+
+def test_query_application_insights_returns_none_on_urlerror(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Transport failures (URLError) also degrade quietly to None."""
+    from urllib.error import URLError
+
+    def _raise_urlerror(*_args, **_kwargs):
+        raise URLError("connection refused")
+
+    monkeypatch.setattr(azure_monitor.request, "urlopen", _raise_urlerror)
+
+    assert (
+        azure_monitor._query_application_insights("app-id", "bearer", "kql")
+        is None
+    )
+
+
 def _app_insights_result(row: dict[str, object]) -> dict[str, object]:
     return {
         "tables": [
