@@ -13,7 +13,7 @@
       
       
       
-        <link rel="prev" href="../tutorial-prompt-agent/">
+        <link rel="prev" href="../tutorial-hosted-agent/">
       
       
         <link rel="next" href="../evaluation/">
@@ -480,6 +480,27 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-hosted-agent/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Hosted Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -565,9 +586,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-own-the-orchestrator" class="md-nav__link">
+  <a href="#4-make-the-orchestrator-yours" class="md-nav__link">
     <span class="md-ellipsis">
-      4. Own the orchestrator
+      4. Make the orchestrator yours
     </span>
   </a>
   
@@ -667,6 +688,15 @@
   <a href="#what-you-walk-away-knowing" class="md-nav__link">
     <span class="md-ellipsis">
       What you walk away knowing
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-tutorials" class="md-nav__link">
+    <span class="md-ellipsis">
+      Related tutorials
     </span>
   </a>
   
@@ -1122,9 +1152,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-own-the-orchestrator" class="md-nav__link">
+  <a href="#4-make-the-orchestrator-yours" class="md-nav__link">
     <span class="md-ellipsis">
-      4. Own the orchestrator
+      4. Make the orchestrator yours
     </span>
   </a>
   
@@ -1229,6 +1259,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#related-tutorials" class="md-nav__link">
+    <span class="md-ellipsis">
+      Related tutorials
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1251,14 +1290,14 @@
 <p>Use this tutorial when your agent runs as an HTTP service behind a URL, not as a
 Foundry-managed prompt agent. The worked example is a RAG agent, implemented in the
 <a href="https://github.com/Azure/gpt-rag-orchestrator">gpt-rag-orchestrator</a>. It is a FastAPI service inside an
-Azure Container App, exposed at <code>POST /orchestrator</code>. You deploy it, take
-ownership of the cloned orchestrator, and add an AgentOps PR gate that evaluates
+Azure Container App, exposed at <code>POST /orchestrator</code>. You deploy it, make the
+cloned orchestrator yours, and add an AgentOps PR gate that evaluates
 the HTTP endpoint before merge.</p>
 <p>The path is the same sandbox to dev story as the other tutorials, adapted for an
 endpoint-based agent:</p>
 <pre class="mermaid"><code>flowchart LR
     E["&lt;b&gt;Evaluate&lt;/b&gt;&lt;br/&gt;Deploy the sandbox&lt;br/&gt;Run evals&lt;br/&gt;Catch weak answers"]
-    S["&lt;b&gt;Ship&lt;/b&gt;&lt;br/&gt;Own the repo&lt;br/&gt;Open PR&lt;br/&gt;Deploy to dev"]
+    S["&lt;b&gt;Ship&lt;/b&gt;&lt;br/&gt;Make the repo yours&lt;br/&gt;Open PR&lt;br/&gt;Deploy to dev"]
     O["&lt;b&gt;Observe&lt;/b&gt;&lt;br/&gt;Read traces&lt;br/&gt;Run Doctor&lt;br/&gt;Check telemetry"]
     W["&lt;b&gt;Operate&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Block regressions&lt;br/&gt;Make the call"]
 
@@ -1382,7 +1421,7 @@ background and indexes it into Azure AI Search:</p>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  <span class="p">-</span><span class="n">-auth-mode</span> <span class="n">login</span>
 </code></pre></div>
 <p>Give ingestion a couple of minutes before testing grounded answers.</p>
-<h2 id="4-own-the-orchestrator">4. Own the orchestrator<a class="headerlink" href="#4-own-the-orchestrator" title="Permanent link">&para;</a></h2>
+<h2 id="4-make-the-orchestrator-yours">4. Make the orchestrator yours<a class="headerlink" href="#4-make-the-orchestrator-yours" title="Permanent link">&para;</a></h2>
 <p>The agent you evaluate lives in the cloned orchestrator, so work from that
 directory.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd </span><span class="p">../</span><span class="n">gpt-rag-orchestrator</span>
@@ -2201,8 +2240,8 @@ section pages the other tutorials use.</p>
 <li>You deployed the GPT-RAG template into a sandbox and a dev environment, and you
   know why the PR gate deploys and evaluates candidate code in sandbox before
   anything updates dev.</li>
-<li>You took ownership of the cloned orchestrator by re-initializing its git
-  history and starting your own repository.</li>
+<li>You made the cloned orchestrator yours by re-initializing its git
+  history and starting a fresh repository.</li>
 <li>You pointed AgentOps directly at the orchestrator endpoint and mapped <code>ask</code>
   and <code>text</code> to the real request and response shape.</li>
 <li>You indexed a sample document, built a smoke dataset from its content, and
@@ -2218,6 +2257,14 @@ section pages the other tutorials use.</p>
   unsafe behavior, not just quality regressions.</li>
 <li>You ran local evals against the deployed endpoint and generated a PR gate that
   blocks regressions before they merge.</li>
+</ul>
+<h2 id="related-tutorials">Related tutorials<a class="headerlink" href="#related-tutorials" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../tutorial-hosted-agent/">Hosted Agent Tutorial</a>: a Foundry Hosted Agent is
+  not an HTTP agent. Foundry runs the agent for you and emits the <code>invoke_agent</code>
+  traces server-side, so there is no endpoint to operate yourself.</li>
+<li><a href="../tutorial-prompt-agent/">Prompt Agent Tutorial</a>: for a Foundry-managed prompt
+  agent referenced as <code>name:version</code>.</li>
 </ul>
 
 
