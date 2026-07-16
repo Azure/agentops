@@ -5,6 +5,31 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-07-16
+
+### Fixed
+- **`agentops doctor` no longer prints noisy non-fatal errors to the console.**
+  Three low-level probes that already degrade gracefully were leaking their
+  transport errors to the screen during readiness checks:
+  - The **LLM judge** called the Foundry project OpenAI client on the legacy
+    `/openai/` route, which returns HTTP 404 for chat completions, printing
+    `WARNING: llm_assist: judge call failed: Error code: 404`. The client is now
+    normalized to the stable `/openai/v1/` route (with the injected
+    `api-version` query parameter cleared) using the same reused credential and
+    token refresh, so the judge runs instead of 404ing. Non-Foundry endpoints
+    are left untouched.
+  - The **OpenAI data-plane RBAC check** built an ARM role-assignment filter
+    (`atScopeAndAbove() and assignedTo('<oid>')`) that ARM rejects with
+    `UnsupportedQuery`. It now sends the supported `assignedTo('<oid>')` filter,
+    which already returns assignments at the target scope and every ancestor
+    scope, so the check runs instead of skipping with a console error.
+  - The **Application Insights** REST probe caught only `urllib.error.URLError`,
+    so a read timeout (a `socket.timeout`, which is an `OSError` but not a
+    `URLError`) escaped and surfaced
+    `INFO: Rate-limit App Insights probe failed (non-fatal): The read operation
+    timed out`. It now catches `OSError` (covering both) and the request timeout
+    was raised from 10s to 30s, so a slow App Insights degrades quietly.
+
 ## [0.8.0] - 2026-07-14
 
 ### Added
