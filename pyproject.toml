@@ -22,7 +22,7 @@ dependencies = [
 license = { file = "LICENSE" }
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.0,<2"]
+mcp = ["mcp>=1.0,<3"]
 agent = [
   "fastapi>=0.110,<1.0",
   "uvicorn[standard]>=0.30,<1.0",
