@@ -70,7 +70,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'agent'", specifier = ">=0.110,<1.0" },
     { name = "httpx", marker = "extra == 'agent'", specifier = ">=0.27,<1.0" },
     { name = "markdown", marker = "extra == 'agent'", specifier = ">=3.6,<4.0" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
+    { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.28.1,<2" },
     { name = "pandas", specifier = ">=2.0,<4.0" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "ruamel-yaml", specifier = ">=0.18,<1.0" },
