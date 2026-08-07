@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from agentops.core.agentops_config import classify_agent
+from agentops.core.agentops_config import AGENT_OVERRIDE_ENV, classify_agent
 from agentops.core.azd_eval import find_eval_yaml, load_eval_recipe, recipe_metric_names
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
@@ -180,6 +180,28 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
                     "agentops.yaml",
                     confidence="medium",
                 )
+            )
+        pinned_version = agentops.get("pinned_agent_version")
+        if pinned_version:
+            signals.append(
+                WorkflowSignal(
+                    "agent_version_pin",
+                    "Pinned agent version",
+                    (
+                        f"agentops.yaml pins agent version {pinned_version}. Generated "
+                        "deploy pipelines publish a new Foundry version, so the eval gate "
+                        "scores the pinned version rather than the one the run produced. "
+                        f"Export {AGENT_OVERRIDE_ENV} (or pass `agentops eval run --agent`) "
+                        "with the version the deploy step resolved so the gate follows the "
+                        "deployed artifact."
+                    ),
+                    "agentops.yaml",
+                    confidence="medium",
+                )
+            )
+            warnings.append(
+                f"agentops.yaml pins agent version {pinned_version}; set "
+                f"{AGENT_OVERRIDE_ENV} in the eval job so the gate scores the deployed version."
             )
 
     bicep_files = _find_files(root, "*.bicep")
@@ -786,6 +808,7 @@ def _signal_type(key: str) -> str:
         "azd_project": "Deploy mode",
         "prompt_file": "Prompt source",
         "prompt_agent_bootstrap_missing": "Prompt-agent bootstrap",
+        "agent_version_pin": "Eval target",
         "bicep_infra": "Infrastructure",
         "ailz_manifest": "Landing zone",
         "ailz_preflight": "Preflight",
@@ -820,6 +843,9 @@ def _agentops_signal(root: Path) -> Dict[str, Any]:
         "prompt_agent": target.kind == "foundry_prompt",
         "prompt_file": prompt_file,
         "prompt_agent_bootstrap": bool(bootstrap),
+        "pinned_agent_version": (
+            target.version if target.kind == "foundry_hosted" else None
+        ),
         "signal": WorkflowSignal(
             "agentops_config",
             "AgentOps config",

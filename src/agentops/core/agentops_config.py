@@ -1271,6 +1271,55 @@ def _parse_hosted_agent_reference(url: str) -> tuple[Optional[str], Optional[str
     return (name or None), (version or None)
 
 
+#: Environment variable that overrides the ``agent:`` target for a single run.
+#: CI exports it so the eval gate scores the agent version the surrounding
+#: deploy/provision step just produced instead of the version pinned in
+#: ``agentops.yaml``.
+AGENT_OVERRIDE_ENV = "AGENTOPS_AGENT"
+
+#: A bare Foundry agent version. Versions are numeric, so anything else in an
+#: override is unambiguously a complete agent expression.
+_BARE_AGENT_VERSION_RE = re.compile(r"\d+")
+
+
+def apply_agent_version_override(agent: str, override: str) -> str:
+    """Resolve the effective ``agent`` expression for an overridden run.
+
+    *override* is either a complete agent expression (a hosted endpoint URL,
+    ``name:version``, or ``model:<deployment>``) or a bare numeric version such
+    as ``12``. A bare version is substituted into the version slot of *agent*,
+    so CI only has to carry the number Foundry just produced instead of
+    rebuilding the whole endpoint URL.
+
+    An empty *override* leaves *agent* untouched.
+    """
+
+    base = agent.strip()
+    candidate = override.strip()
+    if not candidate:
+        return base
+    if not _BARE_AGENT_VERSION_RE.fullmatch(candidate):
+        return candidate
+
+    match = _HOSTED_AGENT_REFERENCE_RE.search(base)
+    if match is not None:
+        start, end = match.span("version")
+        return base[:start] + candidate + base[end:]
+
+    lowered = base.lower()
+    if not lowered.startswith(("http://", "https://", "model:")):
+        name, separator, _version = base.partition(":")
+        if separator and name.strip():
+            return f"{name.strip()}:{candidate}"
+
+    raise ValueError(
+        f"cannot apply agent version {candidate!r}: {base!r} has no version "
+        "segment to replace. Override with a full agent reference such as a "
+        "hosted endpoint URL ending in '/agents/<name>/versions/<version>' or "
+        "'<name>:<version>'."
+    )
+
+
 def classify_agent(
     agent: str,
     protocol: Optional[Protocol] = None,

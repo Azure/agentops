@@ -1408,3 +1408,75 @@ def test_workflow_install_lines_fall_back_to_main_for_dev_installs(tmp_path: Pat
         content = path.read_text(encoding="utf-8")
         assert "__AGENTOPS_INSTALL_SPEC__" not in content
         assert " @ git+https://github.com/Azure/agentops.git@main" in content
+
+
+# ---------------------------------------------------------------------------
+# Agent version override (#388)
+# ---------------------------------------------------------------------------
+
+
+_HOSTED_AGENT_CONFIG = (
+    "version: 1\n"
+    "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
+    "dataset: data.jsonl\n"
+    "protocol: responses\n"
+)
+
+
+def _seed_hosted_project(root: Path, *, azure_yaml: bool = False) -> None:
+    (root / "agentops.yaml").write_text(_HOSTED_AGENT_CONFIG, encoding="utf-8")
+    (root / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n', encoding="utf-8"
+    )
+    if azure_yaml:
+        (root / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+
+
+def test_github_eval_steps_forward_agent_version_override(tmp_path: Path) -> None:
+    """Regression for #388: eval must be retargetable without editing agentops.yaml."""
+
+    _seed_hosted_project(tmp_path, azure_yaml=True)
+    generate_cicd_workflows(directory=tmp_path, kinds=["dev", "qa", "prod"], force=True)
+
+    for rel in (_DEV_PATH, _QA_PATH, _PROD_PATH):
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        assert (
+            "AGENTOPS_AGENT: ${{ env.AGENTOPS_AGENT || vars.AGENTOPS_AGENT }}" in content
+        ), f"{rel} does not forward the agent override to the eval step"
+        assert isinstance(_read_yaml(tmp_path / rel), dict)
+
+
+def test_azure_devops_eval_steps_forward_agent_version_override(tmp_path: Path) -> None:
+    _seed_hosted_project(tmp_path, azure_yaml=True)
+    generate_cicd_workflows(
+        directory=tmp_path,
+        kinds=["dev", "qa", "prod"],
+        platform="azure-devops",
+        force=True,
+    )
+
+    for rel in (_ADO_DEV, _ADO_QA, _ADO_PROD):
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        assert "AGENTOPS_AGENT: $(AGENTOPS_AGENT)" in content, (
+            f"{rel} does not forward the agent override to the eval step"
+        )
+        assert isinstance(_read_yaml(tmp_path / rel), dict)
+
+
+def test_placeholder_and_prompt_agent_modes_also_forward_the_override(
+    tmp_path: Path,
+) -> None:
+    """The override seam must not be azd-only."""
+
+    for mode, needle in (
+        ("placeholder", "AGENTOPS_AGENT: ${{ env.AGENTOPS_AGENT || vars.AGENTOPS_AGENT }}"),
+        ("prompt-agent", "AGENTOPS_AGENT: ${{ env.AGENTOPS_AGENT || vars.AGENTOPS_AGENT }}"),
+    ):
+        root = tmp_path / mode
+        root.mkdir()
+        _seed_hosted_project(root)
+        generate_cicd_workflows(
+            directory=root, kinds=["dev"], deploy_mode=mode, force=True
+        )
+        content = (root / _DEV_PATH).read_text(encoding="utf-8")
+        assert needle in content, f"{mode} deploy mode drops the agent override"

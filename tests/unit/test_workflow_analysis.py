@@ -462,3 +462,53 @@ def test_foundry_eval_rows_always_have_two_reasons_when_selected(tmp_path: Path)
         checked.add(analysis.recommended_eval_runner)
 
     assert checked == {AZD_EVAL_RUNNER, AGENTOPS_CLOUD_RUNNER}
+
+
+# ---------------------------------------------------------------------------
+# Pinned agent version drift (#388)
+# ---------------------------------------------------------------------------
+
+
+def test_analyze_flags_pinned_hosted_agent_version(tmp_path: Path) -> None:
+    """Regression for #388: the pin must be visible before it reaches CI."""
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
+        "dataset: data.jsonl\n"
+        "protocol: responses\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+    signal = next(
+        (s for s in analysis.signals if s.key == "agent_version_pin"),
+        None,
+    )
+
+    assert signal is not None, "analyze did not surface the pinned agent version"
+    assert "11" in signal.detail
+    assert "AGENTOPS_AGENT" in signal.detail
+    assert any("AGENTOPS_AGENT" in warning for warning in analysis.warnings)
+    assert "AGENTOPS_AGENT" in render_workflow_analysis(analysis, "text")
+
+
+def test_analyze_does_not_flag_prompt_agent_pin(tmp_path: Path) -> None:
+    """Prompt-agent deploys already retarget eval via the candidate config."""
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+
+    assert not any(s.key == "agent_version_pin" for s in analysis.signals)

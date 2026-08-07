@@ -5,6 +5,33 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **Generated workflows evaluated a stale agent version.** `agentops.yaml` pins
+  a fully-qualified Foundry agent that ends in a version segment
+  (`.../agents/helpdeskbot/versions/11`), and nothing in the generated dev, QA,
+  or prod pipelines ever retargeted it. `azd provision` published a new agent
+  version and the eval job that ran next still scored the previous one, so the
+  gate reported green on an artifact the pipeline had already replaced. A
+  regression introduced by the deploy could not fail its own quality gate, and
+  in `prod` that same shape gated a release.
+
+  `RunOptions.agent_override` already existed in the orchestrator and was
+  already consumed by all three execution backends, but nothing ever set it.
+  `agentops eval run` now accepts `--agent`, falling back to the
+  `AGENTOPS_AGENT` environment variable, and every generated eval step on
+  GitHub Actions and Azure DevOps forwards that variable. A bare number
+  (`--agent 12`) replaces just the version segment of the configured target;
+  a full agent reference replaces the target outright. Unset means unchanged,
+  so existing pipelines behave exactly as before. `agentops.yaml` stays
+  declarative and CI never writes to tracked config.
+
+  Azure DevOps leaves `$(NAME)` in the environment verbatim when a variable is
+  undefined, so an unexpanded token is treated as "no override" rather than as
+  an agent expression. `workflow analyze` now reports the pinned version as a
+  signal and a warning, so the drift is visible before it reaches CI.
+  Prompt-agent deploys were never affected: they already stage
+  `agentops.candidate.yaml` with a fresh `agent` value for the eval step.
+
 ## [0.8.5] - 2026-08-07
 
 ### Fixed
