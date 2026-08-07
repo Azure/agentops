@@ -127,6 +127,18 @@ Save the three values printed at the end - you'll add them as
 > If you ever rename the branch or merge to `main`, add another federated
 > credential entry with the new `subject:` value.
 
+> **Check your subject claim prefix first.** Some accounts send numeric
+> account and repository IDs in the OIDC `sub` claim
+> (`repo:<owner>@<accountId>/<repo>@<repoId>:ref:refs/heads/...`) instead of
+> the plain `repo:<owner>/<repo>:ref:...` used above. Entra matches `subject`
+> literally, so the wrong format fails with `AADSTS700213`. Read the real
+> prefix with `gh api repos/Azure/agentops/actions/oidc/customization/sub` and
+> use its `sub_claim_prefix` value, not the booleans beside it. Creating both
+> subjects as separate credentials on the same app works on either kind of
+> account. See
+> [`docs/ci-github-actions.md`](ci-github-actions.md#federated-credential-subject-check-sub_claim_prefix-first)
+> for the full walkthrough.
+
 ---
 
 ## Step 4 - Add Actions Variables
@@ -209,6 +221,7 @@ gh workflow run e2e.yml --ref feature/revamp-1.0 \
 | Symptom | Likely cause |
 |---|---|
 | `AADSTS70021: No matching federated identity record found` | Branch name in workflow run does not match the `subject:` of any federated credential. Add a credential for the new ref. |
+| `AADSTS700213: No matching federated identity record found for presented assertion subject` | The credential `subject` is not byte-identical to what GitHub sent. Copy the subject quoted in the error and compare it against `az ad app federated-credential list`. On accounts with an immutable-ID subject claim prefix the token carries numeric IDs; check `gh api repos/Azure/agentops/actions/oidc/customization/sub`. |
 | `AuthorizationFailed` on Bicep deployment | App registration is missing `Contributor` on the RG. |
 | `RoleAssignmentRequiresElevation` during bootstrap | App registration is missing `User Access Administrator`. |
 | `live-foundry-prompt` fails with 404 on agent | `AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT` does not match a real agent in the project. Re-publish in the portal and update the Variable. |

@@ -68,22 +68,31 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    - Opens a PR: `release/v0.2.0` → `main`
 4. Wait for staging pipeline to pass (build → TestPyPI → verify).
 5. Get the PR reviewed and merge into `main`.
-6. Tag the release on `main` - this triggers the production release pipeline:
+6. Tag the release on `main` **and sync `develop` in the same sitting**. Tagging
+   publishes to PyPI immediately; there is no approval prompt. Leaving `develop`
+   behind `main` corrupts the next release's CHANGELOG.
    ```bash
    git checkout main
    git pull origin main
    git tag v0.2.0
    git push origin v0.2.0
-   ```
-7. Approve the PyPI publish in the GitHub Actions UI when prompted.
-8. Sync `develop` after release:
-   ```bash
+
    git checkout develop
    git pull origin develop
    git merge main
    git push origin develop
+
+   # MUST print nothing:
+   git fetch origin && git log --oneline origin/develop..origin/main
    ```
-9. Delete the release branch:
+   After the merge, open `CHANGELOG.md` and confirm everything under
+   `## [Unreleased]` is genuinely unreleased. Git happily places the incoming
+   `## [0.2.0]` heading above develop's unreleased entries, nesting new work
+   inside a shipped version.
+7. Watch the Release workflow finish (build → TestPyPI → verify → publish-pypi →
+   github-release). The `release` environment has no protection rules, so nothing
+   pauses for review.
+8. Delete the release branch:
    ```bash
    git push origin --delete release/v0.2.0
    git branch -d release/v0.2.0
@@ -107,14 +116,17 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    This triggers the staging pipeline automatically.
 5. Open PR: `release/v0.2.0` → `main`.
 6. After staging passes and review is complete, merge to `main`.
-7. Tag and push (triggers production release pipeline):
+7. Tag and push, then immediately sync `develop` and verify with
+   `git log --oneline origin/develop..origin/main` (must be empty). Pushing the
+   tag publishes to PyPI with no approval prompt. Same commands and same
+   CHANGELOG check as step 6 above.
    ```bash
    git checkout main
    git pull origin main
    git tag v0.2.0
    git push origin v0.2.0
    ```
-8. Approve PyPI publish, sync develop, and delete release branch (same as above).
+8. Delete the release branch (same as above).
 
 ### Release PR contract
 - Source: `release/vx.y.z`
@@ -189,6 +201,10 @@ Use when applicable: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Secu
 - Never assign a release version on `develop` prematurely.
 - Never leave a release branch without a properly dated versioned entry.
 - Never mismatch version numbers across branch name, changelog, and tag.
+- Never leave `develop` behind `main` after a release. `cut-release.yml` branches
+  from `develop` and replaces the `## [Unreleased]` marker exactly once, so a
+  stale `develop` republishes shipped entries and drops the previous version's
+  section when the next release PR merges into `main`.
 
 ## Commit Guidelines
 
@@ -203,12 +219,17 @@ chore: prepare release 2.4.2
 
 ## Required Secrets
 
-Set in GitHub repo Settings → Secrets and variables → Actions:
+Both `staging.yml` and `release.yml` publish through
+[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) using
+`id-token: write`. There is no PyPI or TestPyPI API token stored in this repo.
 
-| Secret | Purpose |
-|---|---|
-| `PIPY_TOKEN` | PyPI API token scoped to `agentops-accelerator` - used on merge to `main` |
-| `TESTPYPI_API_TOKEN` | TestPyPI API token - used on tag push for pre-release validation |
+| Secret | Scope | Purpose |
+|---|---|---|
+| `VSCE_PAT` | environment: `release` | VS Code Marketplace PAT with **Marketplace: Manage**, used by the extension publish job |
+
+Trusted Publishing is configured on the index side (pypi.org and test.pypi.org →
+**Manage → Publishing**) and must match the repository, workflow filename, and
+environment name exactly. A mismatch fails with `403` at upload time.
 
 ## Default Decision Logic
 
@@ -224,4 +245,8 @@ Set in GitHub repo Settings → Secrets and variables → Actions:
 - Never mix new feature work into a release branch.
 - Never assign a release version on `develop`.
 - Never tag without a green CI run.
+- Never treat the tag push as reversible. It publishes to PyPI with no approval
+  prompt, and PyPI versions can only be yanked, never replaced.
+- Never end a release without running `git log --oneline origin/develop..origin/main`
+  and seeing empty output.
 - Never publish without running `python -m pytest tests/ -x -q` first.
