@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-07
+
 ### Fixed
 - **`protocol: responses` now works against a Foundry hosted agent.** Every
   invocation failed with
