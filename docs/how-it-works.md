@@ -711,9 +711,9 @@ Azure SDK dependencies are kept separate so the CLI stays lightweight and tests 
 
 ## Quick Reference for New Contributors
 
-1. **Install in dev mode**: `uv sync --group dev`. `dev` is a PEP 735 dependency group, not an extra, so `pip install -e ".[dev]"` fails. With pip, use `pip install -e ".[agent,mcp]"` and add test tools yourself.
-2. **Run tests**: `python -m pytest tests/ -x -q`
-3. **Try it out**: `agentops init` then explore `.agentops/`
+1. **Install in dev mode**: `uv sync --group dev`. `dev` is a PEP 735 dependency group, not an extra, so `pip install -e ".[dev]"` does not install it: pip warns about an unknown extra and installs the project without the dev tools. With pip, use `pip install -e ".[agent,mcp]"` and add test tools yourself. See the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+2. **Run tests**: `uv run python -m pytest tests/ -x -q`. `uv sync` populates `.venv` but does not activate it, so a bare `python` may be the system interpreter. `uv run` is what CI uses. If you prefer, activate `.venv` first and then call `python` directly.
+3. **Try it out**: `uv run agentops init` then explore `.agentops/`
 4. **Read the models**: `core/models.py` is the best single file to understand all data structures
 5. **Follow the flow**: `cli/app.py` → `services/runner.py` → `backends/` → `core/`
 6. **Keep CLI thin**: never put logic in `cli/app.py` - delegate to `services/`

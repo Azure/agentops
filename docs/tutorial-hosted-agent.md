@@ -230,6 +230,11 @@ auth_header_env: HOSTED_AGENT_TOKEN
     Foundry target from them. Without that `/agents/.../versions/...` segment
     pair AgentOps has no agent reference to hand Foundry, so the run is rejected
     and you either add the segments or set `agent: <name>:<version>` instead.
+    Only the name and version are taken from the URL. The run is submitted
+    against whatever `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` points at, so that
+    project must be the one holding this agent version. Pointing it at a
+    different project either fails to resolve the agent or silently resolves a
+    same-named agent there.
     Cloud runs publish implicitly and land in the New Foundry Evaluations panel.
 
 The wizard writes local Azure values to `.agentops/.env` so they stay out of
@@ -318,9 +323,19 @@ agentops eval run --baseline .agentops/results/<good-run>/results.json
 
 The report shows the delta between the good baseline and the regressed run, per
 metric, alongside the thresholds. Restore the itinerary behavior, redeploy, and
-run `agentops eval run` again to confirm the score recovers. This is the exact
-signal CI uses to stop a bad PR: the generated workflows pass the promoted
-baseline the same way.
+run `agentops eval run` again to confirm the score recovers.
+
+!!! warning "`--baseline` reports, thresholds gate"
+    The exit code comes from your thresholds alone. A run that regressed
+    against the baseline but still clears every threshold exits `0` and CI
+    passes. Treat the delta as a review signal, and set thresholds at the
+    level you actually want enforced.
+
+    The generated workflows read a baseline only when
+    `.agentops/baseline/results.json` exists in the repository, so promoting
+    a run means copying its `results.json` to that path and committing it.
+    Doing so adds the comparison to the CI report. It still does not change
+    what makes CI fail.
 
 ## 11. Add a dev environment
 
