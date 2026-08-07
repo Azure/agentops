@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-08-07
+
 ### Added
 - **CI now fails a pull request that changes shipped code without a CHANGELOG
   entry.** `cut-release.yml` never generates changelog content. It inserts a
