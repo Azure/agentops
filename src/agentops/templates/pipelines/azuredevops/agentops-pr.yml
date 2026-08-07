@@ -132,9 +132,9 @@ __EVAL_TASKS__
 
               EXISTING=$(curl -s -H "$AUTH" "$API" \
                 | python -c "import sys, json; data=json.load(sys.stdin); \
-print(next((t['id'] for t in data.get('value', []) \
-for c in t.get('comments', []) \
-if isinstance(c.get('content'), str) and c['content'].startswith('$MARKER')), ''))")
+                print(next((t['id'] for t in data.get('value', []) \
+                for c in t.get('comments', []) \
+                if isinstance(c.get('content'), str) and c['content'].startswith('$MARKER')), ''))")
 
               PAYLOAD=$(python -c "import json,sys; print(json.dumps({'content': sys.stdin.read(), 'commentType': 1}))" <<< "$BODY")
 

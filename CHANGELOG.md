@@ -35,6 +35,55 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   the repo also has a generated deploy pipeline, which is the only place a
   later deploy step could move the target underneath the gate. Eval-only repos
   see nothing.
+### Fixed
+- **The eval gate installed `azd` but never gave it credentials, on both GitHub
+  Actions and Azure DevOps.** When a project uses the azd evaluation backend,
+  the generated pipeline runs `agentops eval run`, which shells out to
+  `azd ai agent eval run`. Both platforms installed the pinned
+  `azure.ai.agents` extension and then invoked the binary with no credentials,
+  so the eval gate failed before reaching Foundry.
+
+  This is the issue #379 trap in a job nobody had exercised. The fix differs by
+  platform because the surrounding authentication differs. On Azure DevOps
+  every azd call runs inside `AzureCLI@2`, which completes the
+  service-connection handshake and leaves the Azure CLI authenticated, but
+  `azd` keeps a separate credential store and ignores that session unless
+  `auth.useAzCliAuth` is set; the eval stage now sets it, matching the provision
+  and deploy stages in the same pipeline. On GitHub Actions `azure/login@v3`
+  authenticates only the Azure CLI, so the eval job now runs
+  `azd auth login --federated-credential-provider github` with the same
+  `vars.AZURE_CLIENT_ID` and `vars.AZURE_TENANT_ID` the provision and deploy
+  jobs already use. Every generated job that installs the azd extension now
+  also authenticates it.
+
+- **The generated Azure DevOps PR pipeline was not valid YAML.** The
+  report-comment step embedded a multi-line `python -c` snippet whose
+  continuation lines started at column 0. A column-0 line terminates the
+  surrounding `bash: |` block scalar, so Azure DevOps rejected the file with a
+  parse error before running anything. The continuation lines are now indented
+  into the block; the trailing backslashes still join them into a single
+  logical line, so the Python behaviour is unchanged. A regression test parses
+  every generated ADO pipeline across all eval-runner variants and rejects any
+  stray column-0 line.
+
+- **Publishing a release never rebuilt the documentation site.** The site is
+  built from the `docs` branch, and the `Deploy Documentation` workflow that
+  builds it declares a `release: published` trigger. That trigger could never
+  fire, because the workflow file existed only on `docs`, and GitHub Actions
+  resolves workflows for non-`push` events from the default branch. Four
+  consecutive releases published while the home page kept advertising `v0.8.1`,
+  since the version string is baked into the HTML at build time. The workflow
+  now also lives on the default branch so release events can reach it. It still
+  checks out `docs` explicitly, so the published content is unchanged, and
+  `push` events continue to resolve from the pushed commit, so there is no
+  duplicate run.
+
+- **The contributor setup command in `how-it-works.md` installed nothing.** It
+  suggested `pip install -e ".[dev]"`, but `dev` is a PEP 735 dependency group
+  rather than an extra, so pip warned about an unknown extra and skipped every
+  development dependency. The next documented step, running pytest, then failed
+  on a missing module. The page now uses `uv sync --group dev`, which is what
+  all eleven CI invocations already use.
 
 ## [0.8.5] - 2026-08-07
 
