@@ -169,7 +169,7 @@ cd agentops-hosted-quickstart
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[foundry,agent]" fastapi "uvicorn[standard]"
+python -m pip install "agentops-accelerator[agent]" fastapi "uvicorn[standard]"
 agentops --version
 ```
 
@@ -178,7 +178,7 @@ install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[foundry,agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 ## 2. Create the Travel Agent endpoint
@@ -808,6 +808,14 @@ signals). Do not add scheduled Doctor, QA, or production workflows yet. Show me
 the plan before changing GitHub or Azure, and call out anything that needs
 owner/admin permission.
 ```
+
+> **Before the first run**, check the repository's OIDC subject claim prefix
+> with `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`. Accounts
+> with immutable IDs send `repo:<owner>@<accountId>/<repo>@<repoId>:...`, and
+> Entra matches the federated credential subject literally, so a credential
+> built from the plain `repo:<owner>/<repo>:...` format fails with
+> `AADSTS700213`. See
+> [`ci-github-actions.md`](ci-github-actions.md#federated-credential-subject-check-sub_claim_prefix-first).
 
 Open both Doctor outputs. The report explains the findings; the evidence pack
 summarizes what a reviewer needs to decide whether the endpoint is releasable.

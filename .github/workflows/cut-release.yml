@@ -144,21 +144,20 @@ jobs:
           - Staging pipeline triggered automatically (build → TestPyPI + VSIX pre-release → verify)
 
           ### Next steps
-          1. Wait for the **Staging** pipeline to pass
+          1. Wait for the **Staging** pipeline to pass. This is the only verification that runs before PyPI.
           2. Review and approve this PR
           3. Merge to \`main\`
-          4. Tag and push: \`git tag v${{ env.version }} && git push origin v${{ env.version }}\`
-          5. Approve the PyPI publish and VSIX stable publish in the **Release** workflow
-          6. Sync develop: \`git checkout develop && git merge main && git push origin develop\`
+          4. Tag and push. **This publishes to PyPI immediately, there is no approval step and no undo:** \`git tag v${{ env.version }} && git push origin v${{ env.version }}\`
+          5. Sync develop in the same sitting: \`git checkout develop && git merge main && git push origin develop\`
+          6. Verify the sync: \`git fetch origin && git log --oneline origin/develop..origin/main\` must print nothing
 
           ### Checklist
           - [ ] Staging pipeline passes (build + TestPyPI + VSIX pre-release + verify)
           - [ ] CHANGELOG entries reviewed
           - [ ] PR approved and merged to main
-          - [ ] Tag \`v${{ env.version }}\` pushed
-          - [ ] PyPI publish approved
-          - [ ] VSIX stable publish approved
-          - [ ] develop synced from main"
+          - [ ] Tag \`v${{ env.version }}\` pushed (publishes to PyPI, irreversible)
+          - [ ] Release workflow green (PyPI + VSIX stable + GitHub Release)
+          - [ ] develop synced from main: \`git log --oneline origin/develop..origin/main\` prints nothing"
 
       - name: Summary
         run: |
@@ -170,4 +169,4 @@ jobs:
           echo "- PR opened: \`release/v${{ env.version }}\` → \`main\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Staging pipeline triggered automatically" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "### Next: wait for staging, then tag \`v${{ env.version }}\` to publish" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Next: wait for staging, then tag \`v${{ env.version }}\` to publish (tagging publishes to PyPI immediately)" >> "$GITHUB_STEP_SUMMARY"

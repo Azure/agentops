@@ -128,7 +128,165 @@ token issuance before AgentOps starts.
 Then on the Azure side, configure Workload Identity Federation
 (federated credentials) on the app registration so it can be assumed
 from GitHub Actions runs. See
-[Microsoft's WIF docs](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp).
+[Microsoft's WIF docs](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp)
+and [Connect from Azure to GitHub with OIDC](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
+
+#### Federated credential subject: check `sub_claim_prefix` first
+
+The generated deploy workflows all set `environment:`, so the subject GitHub
+presents is normally:
+
+```text
+repo:<owner>/<repo>:environment:<env>
+```
+
+That is the default format. Some accounts and organizations carry a customized
+**subject claim prefix** that embeds numeric account and repository IDs:
+
+```text
+repo:<owner>@<accountId>/<repo>@<repoId>:environment:<env>
+```
+
+Microsoft Entra compares the federated credential `subject` **literally**. There
+are no wildcards and no normalization, so a credential built from the default
+format never matches on an account that sends IDs, and `azure/login` fails with:
+
+```text
+AADSTS700213: No matching federated identity record found for presented
+assertion subject 'repo:my-user@6265211/my-repo@1326633902:environment:dev'
+```
+
+Read the prefix your repository actually sends before creating the credential:
+
+```bash
+gh api repos/<owner>/<repo>/actions/oidc/customization/sub
+```
+
+```json
+{
+  "use_default": true,
+  "use_immutable_subject": false,
+  "sub_claim_prefix": "repo:my-user@6265211/my-repo@1326633902"
+}
+```
+
+Read `sub_claim_prefix` itself, not the booleans next to it. As the response
+above shows, `use_default` can be `true` and `use_immutable_subject` can be
+`false` while the prefix still carries numeric IDs, and the prefix is what ends
+up in the token. The account ID is stable per account, but the repository ID
+changes per repository, so re-read this for every repo you wire.
+
+The robust setup is **two federated credentials per environment** on the same
+app registration, one for each format. Extra credentials cost nothing, they work
+on both kinds of account, and the pair keeps working if the account's subject
+configuration changes later.
+
+```bash
+APP_ID=<AZURE_CLIENT_ID>
+OWNER_REPO=<owner>/<repo>
+ENV_NAME=dev
+
+PREFIX=$(gh api "repos/${OWNER_REPO}/actions/oidc/customization/sub" --jq .sub_claim_prefix)
+echo "sub_claim_prefix: $PREFIX"
+
+create_fic () {
+  cat > fic.json <<EOF
+{
+  "name": "$1",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "$2",
+  "audiences": ["api://AzureADTokenExchange"]
+}
+EOF
+  az ad app federated-credential create --id "$APP_ID" --parameters @fic.json
+  rm -f fic.json
+}
+
+# 1. Default subject.
+create_fic "gh-${ENV_NAME}" "repo:${OWNER_REPO}:environment:${ENV_NAME}"
+
+# 2. Immutable-ID subject, only when the prefix differs from the default.
+if [ "$PREFIX" != "repo:${OWNER_REPO}" ]; then
+  create_fic "gh-${ENV_NAME}-ids" "${PREFIX}:environment:${ENV_NAME}"
+fi
+```
+
+On Windows PowerShell, build the subject with `${...}` delimiters and let
+`ConvertTo-Json` write the payload. Writing `"repo:$repo:environment:$env"`
+silently breaks because `$repo:` parses as a scoped variable:
+
+```powershell
+$appId   = "<AZURE_CLIENT_ID>"
+$repo    = "<owner>/<repo>"
+$envName = "dev"
+
+$prefix = gh api "repos/$repo/actions/oidc/customization/sub" --jq .sub_claim_prefix
+
+$subjects = @{ "gh-$envName" = "repo:${repo}:environment:${envName}" }
+if ($prefix -ne "repo:${repo}") {
+    $subjects["gh-$envName-ids"] = "${prefix}:environment:${envName}"
+}
+
+foreach ($name in $subjects.Keys) {
+    [pscustomobject]@{
+        name      = $name
+        issuer    = "https://token.actions.githubusercontent.com"
+        subject   = $subjects[$name]
+        audiences = @("api://AzureADTokenExchange")
+    } | ConvertTo-Json | Set-Content fic.json -Encoding utf8
+    az ad app federated-credential create --id $appId --parameters "@fic.json"
+}
+Remove-Item fic.json -ErrorAction SilentlyContinue
+```
+
+Repeat for every environment your workflows reference (`dev`, `qa`,
+`production`, plus `sandbox` for prompt-agent PR candidates). Then read the
+credentials back before dispatching a workflow:
+
+```bash
+az ad app federated-credential list --id "$APP_ID" \
+  --query "[].{name:name, subject:subject, issuer:issuer, audiences:audiences}" -o table
+```
+
+#### Troubleshooting Azure login and provisioning
+
+| Error | Cause | Fix |
+|---|---|---|
+| `AADSTS700213: No matching federated identity record found for presented assertion subject` | The credential `subject` is not byte-identical to the subject GitHub sent. Usually the immutable-ID prefix above. Also caused by the wrong environment name, or a `ref:refs/heads/...` subject on a job that uses `environment:`. | Copy the subject quoted in the error, compare it against `az ad app federated-credential list`, and add the missing credential. |
+| `AADSTS53003: Access has been blocked by Conditional Access policies` | Usually `AZURE_TENANT_ID` points at a tenant that cannot see the app registration, not an actual CA policy. | Set `AZURE_TENANT_ID` to the tenant that owns the app registration and the federated credential, not a subscription `managedByTenants` entry. |
+| `AuthorizationFailed` on `azd provision` | The principal has no role at the scope the ARM deployment targets. | Check the template's target scope, then assign at that scope. See below. |
+
+`azd` templates commonly declare `targetScope = 'subscription'` in
+`infra/main.bicep`. When they do, `azd provision` creates the deployment at
+subscription scope rather than inside a resource group:
+
+```text
+/subscriptions/<subscriptionId>/providers/Microsoft.Resources/deployments/azd-<env>-<hash>
+```
+
+A principal holding Contributor only on a resource group fails that deployment
+with `AuthorizationFailed`, even when every resource the template creates lands
+inside that one resource group. Check what your own template targets before
+assigning roles:
+
+```bash
+head -1 infra/main.bicep    # targetScope = 'subscription' or 'resourceGroup'
+```
+
+When it is `subscription`, grant the OIDC principal Contributor at subscription
+scope:
+
+```bash
+SP_OBJECT_ID=$(az ad sp show --id "$APP_ID" --query id -o tsv)
+az role assignment create \
+  --assignee-object-id "$SP_OBJECT_ID" --assignee-principal-type ServicePrincipal \
+  --role Contributor --scope "/subscriptions/$AZURE_SUBSCRIPTION_ID"
+```
+
+Resource-group scope is enough only when the template is
+`targetScope = 'resourceGroup'` and the group already exists. This is separate
+from the Foundry roles below, which stay scoped to the Foundry project and the
+AI Services account.
 
 For Foundry prompt-agent gates, the same app registration / service principal
 needs **two** Azure RBAC roles before the first workflow run. Both are required

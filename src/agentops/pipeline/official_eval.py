@@ -12,6 +12,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from agentops.core.agentops_config import AgentOpsConfig, classify_agent
 from agentops.core.config_loader import load_agentops_config
 from agentops.core.evaluators import EvaluatorPreset, detect_dataset_shape, select_evaluators
+from agentops.utils.yaml import load_yaml
 
 
 OFFICIAL_EVAL_RUNNER = "official-ai-agent-evaluation"
@@ -153,13 +154,27 @@ def recommended_eval_runner(directory: Path) -> str:
     try:
         from agentops.core.azd_eval import find_eval_yaml
 
-        if find_eval_yaml(directory) is not None:
-            return AZD_EVAL_RUNNER
+        # `execution: cloud` evaluates server-side in Foundry, so azd is not
+        # part of the eval gate even when an azd eval recipe exists.
+        if not _is_cloud_execution(directory / "agentops.yaml"):
+            if find_eval_yaml(directory) is not None:
+                return AZD_EVAL_RUNNER
     except Exception:
         pass
 
     support = analyze_official_eval_support(directory / "agentops.yaml")
     return AGENTOPS_CLOUD_RUNNER if support.eligible else AGENTOPS_LOCAL_RUNNER
+
+
+def _is_cloud_execution(config_path: Path) -> bool:
+    try:
+        data = load_yaml(config_path)
+    except Exception:
+        return False
+    if not isinstance(data, dict):
+        return False
+    execution = data.get("execution")
+    return isinstance(execution, str) and execution.strip().lower() == "cloud"
 
 
 def prepare_official_eval(

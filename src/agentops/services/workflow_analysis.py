@@ -614,8 +614,6 @@ def _wrapped_numbered_step(index: int, text: str) -> List[str]:
 
 
 def _friendly_foundry_eval_text(check: str, text: str) -> str:
-    if check == "Agent target":
-        return "Foundry prompt agent (`name:version`)."
     if check == "Evaluators":
         return _friendly_evaluator_list(text.split(", "))
     return _soften_text(text)
@@ -629,8 +627,26 @@ def _friendly_evaluator_list(evaluators: Iterable[str]) -> str:
     )
 
 
+#: Raw target kinds emitted by :func:`classify_agent` mapped to display names.
+#: Ordered longest-key-first so no key is a prefix of another when substituted.
+_TARGET_KIND_LABELS = (
+    ("foundry_prompt", "Foundry prompt agent"),
+    ("foundry_hosted", "Foundry hosted agent"),
+    ("model_deployment", "model deployment"),
+    ("model_direct", "direct model"),
+    ("http_json", "HTTP/JSON agent"),
+)
+
+
 def _soften_text(text: str) -> str:
-    return text.replace("foundry_prompt", "Foundry prompt agent")
+    for kind, label in _TARGET_KIND_LABELS:
+        text = text.replace(kind, label)
+    return text
+
+
+#: Row labels for the Foundry eval checklist, paired positionally with the two
+#: reasons that :func:`analyze_official_eval_support` and the azd branch emit.
+_FOUNDRY_EVAL_ROW_LABELS = ("Agent target", "Dataset")
 
 
 def _wrap_text(text: str, *, indent: str) -> List[str]:
@@ -739,21 +755,17 @@ def _foundry_eval_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]
         OFFICIAL_EVAL_RUNNER,
     }
     if selected:
+        # Every path that selects one of these runners populates exactly two
+        # reasons: the azd branch builds a two-item list, and the cloud branch
+        # requires ``official_support.eligible``, which always carries the
+        # two-reason tuple. Pair them with their labels instead of indexing so
+        # the rows always describe the real analysis rather than a hardcoded
+        # guess about the target kind.
         rows = [
-            (
-                "[x]",
-                "Agent target",
-                analysis.official_eval_reasons[0]
-                if analysis.official_eval_reasons
-                else "Foundry prompt agent.",
-            ),
-            (
-                "[x]",
-                "Dataset",
-                analysis.official_eval_reasons[1]
-                if len(analysis.official_eval_reasons) > 1
-                else "Compatible with Foundry cloud eval.",
-            ),
+            ("[x]", label, reason)
+            for label, reason in zip(
+                _FOUNDRY_EVAL_ROW_LABELS, analysis.official_eval_reasons
+            )
         ]
         if analysis.official_evaluators:
             rows.append(("[x]", "Evaluators", ", ".join(analysis.official_evaluators)))
@@ -1185,10 +1197,28 @@ def _next_steps(
 
 
 def _azd_eval_recipe(root: Path) -> Optional[Path]:
+    if _configured_execution_mode(root / "agentops.yaml") == "cloud":
+        # `execution: cloud` runs the agent and evaluators server-side in
+        # Foundry, so the eval gate never shells out to azd even when an azd
+        # eval recipe is present.
+        return None
     try:
         return find_eval_yaml(root)
     except Exception:
         return None
+
+
+def _configured_execution_mode(config_path: Path) -> Optional[str]:
+    try:
+        data = load_yaml(config_path)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    execution = data.get("execution")
+    if isinstance(execution, str):
+        return execution.strip().lower()
+    return None
 
 
 def _relative_path(path: Path, root: Path) -> str:

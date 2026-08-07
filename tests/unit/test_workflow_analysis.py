@@ -6,7 +6,13 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
+from agentops.pipeline.official_eval import (
+    AGENTOPS_CLOUD_RUNNER,
+    AZD_EVAL_RUNNER,
+    OFFICIAL_EVAL_RUNNER,
+)
 from agentops.services.workflow_analysis import (
+    _foundry_eval_rows,
     analyze_workflow_project,
     recommended_deploy_mode,
     recommended_eval_runner,
@@ -157,6 +163,107 @@ evaluators:
     assert "generated evaluator/rubric assets" in analysis.next_steps[0]
 
 
+def _agent_target_text_row(rendered: str) -> str:
+    """Return the ``Agent target`` row from the text renderer, unwrapped."""
+    lines = rendered.splitlines()
+    for index, line in enumerate(lines):
+        if "Agent target" not in line:
+            continue
+        _, _, detail = line.partition("Agent target")
+        parts = [detail.strip()]
+        for continuation in lines[index + 1 :]:
+            # Wrapped continuations are indented past the label column and carry
+            # no status marker of their own.
+            if not continuation.startswith(" " * 20) or continuation.strip() == "":
+                break
+            parts.append(continuation.strip())
+        return " ".join(parts)
+    raise AssertionError(f"no 'Agent target' row in:\n{rendered}")
+
+
+def _agent_target_markdown_row(markdown: str) -> str:
+    for line in markdown.splitlines():
+        if line.startswith("|") and "Agent target" in line:
+            return line.split("|")[3].strip()
+    raise AssertionError(f"no 'Agent target' row in:\n{markdown}")
+
+
+def test_agent_target_text_matches_markdown_for_hosted_agent(tmp_path: Path) -> None:
+    """Regression for #370: text must not hardcode the prompt-agent label."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
+        "dataset: data.jsonl\n"
+        "protocol: responses\n"
+        "execution: azd\n"
+        "eval_recipe: eval.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "eval.yaml").write_text(
+        "name: helpdeskbot-eval\n"
+        "agent:\n"
+        "  name: helpdeskbot\n"
+        "  kind: hosted\n"
+        "evaluators:\n"
+        "  - name: builtin.intent_resolution\n"
+        "  - name: builtin.task_adherence\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+    rendered = render_workflow_analysis(analysis, "text")
+    markdown = render_workflow_analysis(analysis, "markdown")
+
+    assert analysis.recommended_eval_runner == "azd-ai-agent-eval"
+    assert _agent_target_text_row(rendered) == _agent_target_markdown_row(markdown)
+    assert "Found azd eval recipe" in _agent_target_text_row(rendered)
+    assert "Foundry prompt agent (`name:version`)." not in rendered
+
+
+def test_agent_target_text_matches_markdown_for_prompt_agent(tmp_path: Path) -> None:
+    """A real prompt agent still reports the prompt-agent target in both formats."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+    rendered = render_workflow_analysis(analysis, "text")
+    markdown = render_workflow_analysis(analysis, "markdown")
+
+    assert analysis.recommended_eval_runner == "agentops-cloud"
+    assert _agent_target_text_row(rendered) == _agent_target_markdown_row(markdown)
+    assert "Foundry prompt agent" in _agent_target_text_row(rendered)
+
+
+def test_hosted_agent_kind_is_softened_in_text_signals(tmp_path: Path) -> None:
+    """Raw ``classify_agent`` kinds must not leak into the text renderer."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
+        "dataset: data.jsonl\n"
+        "protocol: responses\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+
+    rendered = render_workflow_analysis(analyze_workflow_project(tmp_path), "text")
+
+    assert "agentops.yaml targets Foundry hosted agent." in rendered
+    assert "foundry_hosted" not in rendered
+
+
 def test_analysis_uses_placeholder_for_generic_repo(tmp_path: Path) -> None:
     analysis = analyze_workflow_project(tmp_path)
 
@@ -295,3 +402,63 @@ def test_cli_workflow_analyze_invalid_format_fails(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "--format must be text, markdown, or json" in result.output
+
+
+def _selecting_projects(root: Path) -> list[Path]:
+    """Build one project per code path that selects a Foundry eval runner."""
+
+    azd = root / "azd"
+    azd.mkdir()
+    (azd / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (azd / "eval.yaml").write_text(
+        "name: sample-eval\nevaluators:\n  - name: similarity\n",
+        encoding="utf-8",
+    )
+    (azd / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+    cloud = root / "cloud"
+    cloud.mkdir()
+    (cloud / "data.jsonl").write_text(
+        '{"input": "hi", "expected": "hello"}\n', encoding="utf-8"
+    )
+    (cloud / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+    return [azd, cloud]
+
+
+def test_foundry_eval_rows_always_have_two_reasons_when_selected(tmp_path: Path) -> None:
+    """Guards the invariant that let the hardcoded row fallbacks be removed.
+
+    Both branches that select a Foundry eval runner populate exactly two
+    reasons: the azd branch builds a two-item list inline, and the cloud branch
+    is gated on ``official_support.eligible``, which always carries the
+    two-reason tuple. The old renderer carried `else "Foundry prompt agent."`
+    fallbacks for the empty case, which were unreachable and mislabeled hosted
+    agents (the #370 class of bug).
+    """
+
+    selecting = {AZD_EVAL_RUNNER, AGENTOPS_CLOUD_RUNNER, OFFICIAL_EVAL_RUNNER}
+    checked = set()
+
+    for project in _selecting_projects(tmp_path):
+        analysis = analyze_workflow_project(project)
+        assert analysis.recommended_eval_runner in selecting, project.name
+
+        # The invariant that makes the old `else "Foundry prompt agent."` and
+        # `else "Compatible with Foundry cloud eval."` fallbacks unreachable.
+        assert len(analysis.official_eval_reasons) == 2, project.name
+
+        rows = _foundry_eval_rows(analysis)
+        assert [(label, value) for _, label, value in rows][:2] == [
+            ("Agent target", analysis.official_eval_reasons[0]),
+            ("Dataset", analysis.official_eval_reasons[1]),
+        ], project.name
+        checked.add(analysis.recommended_eval_runner)
+
+    assert checked == {AZD_EVAL_RUNNER, AGENTOPS_CLOUD_RUNNER}

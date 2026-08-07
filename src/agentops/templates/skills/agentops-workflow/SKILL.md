@@ -131,10 +131,28 @@ by discovering the whole Azure subscription.
    `AZURE_OPENAI_DEPLOYMENT` is absent from AgentOps/azd/local env, ask the user
    to choose or provide it. Only run a scoped Azure query after the user confirms
    the subscription and the exact missing value.
-11. For GitHub OIDC, derive the federated credential subject from the generated
-   workflow. If the job has `environment: dev`, the subject is normally
-   `repo:<owner>/<repo>:environment:dev`. Do not assume branch or
-   `pull_request` subjects without reading the workflow.
+11. For GitHub OIDC, derive the federated credential subject from **both** the
+   generated workflow and the repository's actual subject claim prefix. If the
+   job has `environment: dev`, the default subject is
+   `repo:<owner>/<repo>:environment:dev`, but accounts with an immutable-ID
+   subject claim prefix send numeric account and repository IDs instead:
+   `repo:<owner>@<accountId>/<repo>@<repoId>:environment:dev`. Entra compares
+   `subject` literally, with no wildcards and no normalization, so the wrong
+   format fails with `AADSTS700213`. Always read the prefix first:
+   - `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`
+   Use the `sub_claim_prefix` field, not the booleans beside it. `use_default`
+   can be `true` and `use_immutable_subject` can be `false` while the prefix
+   still carries IDs, and the prefix is what lands in the token. The account ID
+   is stable per account, but the repository ID changes per repository, so
+   re-read it for every repo.
+   Create **two** federated credentials per environment on the same app
+   registration, one per format. They cost nothing, work on both kinds of
+   account, and survive a later change to the account's subject configuration:
+   - `<prefix>:environment:<env>` where `<prefix>` is the value read above.
+   - `repo:<owner>/<repo>:environment:<env>` (the default format).
+   Skip the second credential only when `sub_claim_prefix` already equals
+   `repo:<owner>/<repo>`. Do not assume branch or `pull_request` subjects
+   without reading the workflow.
 12. Before triggering a Foundry prompt-agent workflow, make sure the OIDC app /
    service principal has **two** RBAC assignments. Both are required; the eval
    step fails silently (every metric returns `null`) if only one is in place.
@@ -181,15 +199,24 @@ by discovering the whole Azure subscription.
    PowerShell object with `ConvertTo-Json`.
 16. After creating or updating a federated credential, read it back and verify
     before triggering a workflow:
-    - `subject` exactly matches the generated workflow subject.
+    - `az ad app federated-credential list --id <AZURE_CLIENT_ID> --query "[].{name:name, subject:subject, issuer:issuer, audiences:audiences}" -o table`
+    - `subject` exactly matches a subject the workflow can present. Both the
+      default and the `sub_claim_prefix` form must be present unless the prefix
+      already equals `repo:<owner>/<repo>`.
     - `issuer` is `https://token.actions.githubusercontent.com`.
     - `audiences` includes `api://AzureADTokenExchange`.
     If any value differs, fix the credential before running GitHub Actions.
 17. After setting GitHub environment variables, read them back and verify
     `AZURE_TENANT_ID` still matches the app/federated-credential tenant before
-    triggering a run. If `azure/login` fails with `AADSTS53003`, first re-check
-    this tenant/app alignment before assuming Conditional Access is the root
-    cause.
+    triggering a run. Map `azure/login` failures to the right cause instead of
+    guessing:
+    - `AADSTS700213: No matching federated identity record found for presented
+      assertion subject` means the subject is not byte-identical to what GitHub
+      sent. Copy the subject quoted in the error, diff it against the credential
+      list, and add the missing credential. On an immutable-ID account this is
+      the missing `sub_claim_prefix` credential from rule 11.
+    - `AADSTS53003` is usually tenant/app misalignment, not Conditional Access.
+      Re-check that `AZURE_TENANT_ID` is the tenant owning the app registration.
 18. Do not dispatch `gh workflow run` as a surprise validation step. First show
     that the GitHub environment, variables/secrets, federated credential, and
     Foundry RBAC are ready, then ask the user before triggering workflows.

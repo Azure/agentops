@@ -10,9 +10,17 @@
 # Triggered by v* tag pushes (e.g. v0.2.0), or via workflow_dispatch for re-triggering
 # a failed release (select the v* tag ref, or supply the 'tag' input).
 # Calls the reusable _build.yml, then publishes to TestPyPI for final
-# verification, then to PyPI (requires 'release' environment approval),
-# publishes the VS Code extension as stable to the Marketplace,
-# and finally creates a GitHub Release (with both dist and VSIX attached).
+# verification, then to PyPI, publishes the VS Code extension as stable to
+# the Marketplace, and finally creates a GitHub Release (with both dist and
+# VSIX attached).
+#
+# WARNING: pushing a v* tag publishes to PyPI immediately.
+#   The 'release' environment has no protection rules, so nothing pauses for a
+#   human. PyPI does not allow re-uploading a version, so the tag push is the
+#   point of no return; the only recovery is to yank and ship a new patch.
+#   Verify on TestPyPI through staging.yml (release/* branch) BEFORE tagging.
+#   To make this a real gate, see the "Enabling a real approval gate" section
+#   in docs/release-process.md.
 #
 # Versioning:
 #   Uses setuptools-scm — version is derived from the git tag automatically.
@@ -27,12 +35,16 @@
 #   and PyPI/TestPyPI.
 #
 # Required GitHub secrets:
-#   VSCE_PAT — VS Code Marketplace PAT (environment: release). MUST have "Marketplace: Manage"
-#              scope on the AgentOpsAccelerator publisher.
+#   VSCE_PAT — VS Code Marketplace PAT (repository secret, not an environment secret).
+#              MUST have "Marketplace: Manage" scope on the AgentOpsAccelerator publisher.
 #
 # Required GitHub environments:
-#   staging  — for TestPyPI publish (optional approval)
-#   release  — for PyPI + VSIX publish (requires approval from designated reviewers)
+#   staging  — TestPyPI publish
+#   release  — PyPI + VSIX stable publish
+#   Both exist only to scope Trusted Publishing. Neither has protection rules
+#   today, so neither gates anything. Check with:
+#     gh api repos/Azure/agentops/environments \
+#       --jq '.environments[] | {name, protection_rules}'
 #
 # Setup (Trusted Publishing + VSCE):
 #   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
@@ -42,7 +54,9 @@
 #   3. https://dev.azure.com/ → PAT with Marketplace scope on the AzDO account that
 #      owns the AgentOpsAccelerator publisher → Create VSCE_PAT.
 #      Verify scope with: vsce ls-publishers -p $VSCE_PAT (must list AgentOpsAccelerator).
-#   4. GitHub repo → Settings → Environments → Create "release" with required reviewers
+#   4. GitHub repo → Settings → Environments → Create "release" (the name must match
+#      the publisher config in step 2). Required reviewers are NOT configured today,
+#      so the PyPI publish runs unattended.
 #
 # Re-triggering a failed release:
 #   Option A (recommended): Delete and re-push the tag (triggers this workflow automatically).
@@ -103,7 +117,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -159,7 +173,9 @@ jobs:
           test -f .azure/config.json
           echo "✅ agentops init succeeded"
 
-  # Publish to PyPI — requires 'release' environment approval
+  # Publish to PyPI. The 'release' environment has no protection rules, so this
+  # runs unattended as soon as verify-testpypi passes. The upload is irreversible:
+  # PyPI refuses to re-upload a version, and yanking does not free the number.
   publish-pypi:
     needs: verify-testpypi
     runs-on: ubuntu-latest
@@ -185,7 +201,7 @@ jobs:
   publish-vsix:
     needs: [build, publish-pypi] # gate on successful lint + test (build) and on PyPI publish
     runs-on: ubuntu-latest
-    environment: release # same approval gate as PyPI
+    environment: release # same environment as the PyPI publish; no protection rules, does not gate
     env:
       VSIX_FILE: agentops-skills.vsix
     steps:
@@ -206,7 +222,7 @@ jobs:
           echo "VSIX version set to $VERSION (from tag $TAG)"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "22"
 
