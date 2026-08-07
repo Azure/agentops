@@ -69,6 +69,7 @@ markdown_extensions:
       emoji_generator: !!python/name:material.extensions.emoji.to_svg
 nav:
   - Overview: index.md
+  - Concepts: concepts.md
   - Tutorials:
       - Overview: tutorials.md
       - Prompt Agent Tutorial: tutorial-prompt-agent.md
@@ -88,6 +89,11 @@ nav:
       - Retrieval Optimization: retrieval-optimization.md
       - Doctor Checks: doctor-checks.md
       - Doctor Explained: doctor-explained.md
+  - Contributing:
+      - How It Works: how-it-works.md
+      - Release Process: release-process.md
+      - End-to-End Test Setup: e2e-live-setup.md
+      - End-to-End Test Architecture: e2e-live-architecture.md
 extra:
   generator: false
   social:

@@ -291,7 +291,7 @@ continue to use `.azure/<env>/.env`.
 
 The legacy layered layout (`.agentops/config.yaml` + `bundles/` +
 `datasets/*.yaml` + `run.yaml`) **no longer exists**. The new schema is
-declared by [src/agentops/core/agentops_config.py](../src/agentops/core/agentops_config.py)
+declared by [src/agentops/core/agentops_config.py](https://github.com/Azure/agentops/blob/main/src/agentops/core/agentops_config.py)
 and rejects any of the legacy top-level keys (`target`, `bundle`,
 `execution`, `output`, `scenario`, `backend`, `run`) at parse time with
 an actionable error.
@@ -479,7 +479,7 @@ have permission to create Foundry datasets.
 
 ## Evaluator auto-selection
 
-The catalog is defined in [src/agentops/core/evaluators.py](../src/agentops/core/evaluators.py).
+The catalog is defined in [src/agentops/core/evaluators.py](https://github.com/Azure/agentops/blob/main/src/agentops/core/evaluators.py).
 Selection rules (in order):
 
 1. If `evaluators:` is set in `agentops.yaml`, use it verbatim (escape hatch).
@@ -560,14 +560,14 @@ pack. The standalone Microsoft Foundry AI Agent Evaluation GitHub Action or
 Azure DevOps extension remains useful for platform-native validation outside the
 AgentOps release-readiness flow.
 
-Implementation lives in [src/agentops/pipeline/publisher.py](../src/agentops/pipeline/publisher.py)
-(Classic) and [src/agentops/pipeline/cloud_runner.py](../src/agentops/pipeline/cloud_runner.py)
+Implementation lives in [src/agentops/pipeline/publisher.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/publisher.py)
+(Classic) and [src/agentops/pipeline/cloud_runner.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/cloud_runner.py)
 (New Foundry). Dispatch happens in
-[src/agentops/pipeline/orchestrator.py](../src/agentops/pipeline/orchestrator.py).
+[src/agentops/pipeline/orchestrator.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/orchestrator.py).
 
 ## Pre-flight checks
 
-Before any agent invocation, [pipeline/runtime.py](../src/agentops/pipeline/runtime.py)
+Before any agent invocation, [pipeline/runtime.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/runtime.py)
 runs a short series of checks and reports **all** failures at once:
 
 * Required Python packages installed (`azure-identity`,
