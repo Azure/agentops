@@ -185,7 +185,49 @@ def test_build_item_schema_empty_file_falls_back(tmp_path: Path):
 
 def test_publish_rejects_non_foundry_targets(dataset_file: Path):
     result = _make_result(kind="http_json")
-    with pytest.raises(ValueError, match="foundry_cloud only supports"):
+    with pytest.raises(ValueError, match="only supports Foundry agents"):
+        cloud_runner.run_on_foundry_cloud(
+            result,
+            dataset_path=dataset_file,
+            project_endpoint="https://x.example/api/projects/p",
+        )
+
+
+def test_publish_accepts_hosted_agent_with_resolved_reference(dataset_file: Path):
+    """A hosted agent endpoint carries the same name/version a prompt agent
+    spells as 'name:version', so cloud execution must accept it."""
+    result = _make_result(kind="foundry_hosted")
+    result.target = TargetInfo(
+        kind="foundry_hosted",
+        raw=(
+            "https://acct.services.ai.azure.com/api/projects/p"
+            "/agents/support-bot/versions/1"
+        ),
+        name="support-bot",
+        version="1",
+    )
+    # Guard passes; failure comes later from the absent azure SDK/network,
+    # never from the target-kind check itself.
+    with pytest.raises(Exception) as excinfo:  # noqa: PT011
+        cloud_runner.run_on_foundry_cloud(
+            result,
+            dataset_path=dataset_file,
+            project_endpoint="https://x.example/api/projects/p",
+        )
+    assert "only supports Foundry agents" not in str(excinfo.value)
+
+
+def test_publish_rejects_hosted_agent_without_version(dataset_file: Path):
+    """A hosted URL with no /versions/ segment cannot be resolved to an
+    azure_ai_agent target; the error must say how to fix it."""
+    result = _make_result(kind="foundry_hosted")
+    result.target = TargetInfo(
+        kind="foundry_hosted",
+        raw="https://acct.services.ai.azure.com/api/projects/p/agents/bot",
+        name=None,
+        version=None,
+    )
+    with pytest.raises(ValueError, match="could not derive an agent name"):
         cloud_runner.run_on_foundry_cloud(
             result,
             dataset_path=dataset_file,

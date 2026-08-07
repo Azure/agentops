@@ -335,7 +335,7 @@ That's a complete config. AgentOps:
 | `auth_header_env` | no | Env var name holding a Bearer token. |
 | `evaluators` | no | Escape-hatch list of evaluator names that overrides auto-selection. |
 | `publish` | no | Boolean. With `execution: local`, `true` uploads local metrics to Classic Foundry. With `execution: cloud`, publishing is implicit. |
-| `execution` | no | `local` (default) runs through AgentOps locally. `cloud` runs a Foundry prompt agent server-side through the OpenAI Evals API. |
+| `execution` | no | `local` (default) runs through AgentOps locally. `cloud` runs a Foundry agent server-side through the OpenAI Evals API — either a prompt agent (`name:version`) or a hosted agent URL containing `/agents/<name>/versions/<version>`. |
 | `project_endpoint` | no | Foundry project URL used by Foundry invocation and publishing. Falls back to `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. |
 | `dataset_sync` | no | Cloud-evaluation dataset policy: `auto`, `foundry`, or `inline`. |
 
@@ -429,11 +429,26 @@ thresholds:
 
 ```yaml
 version: 1
-agent: my-rag:3                   # name:version is required for cloud mode
+agent: my-rag:3                   # prompt agent
 dataset: .agentops/data/qa.jsonl
 execution: cloud
 # project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<p>"
 ```
+
+A hosted agent works the same way, as long as the URL carries the agent
+name and version. That is the pair Foundry needs to resolve the target:
+
+```yaml
+version: 1
+agent: https://<resource>.services.ai.azure.com/api/projects/<p>/agents/helpdeskbot/versions/11
+dataset: .agentops/data/qa.jsonl
+protocol: responses
+execution: cloud
+```
+
+A hosted URL without a `/versions/<version>` segment cannot be cloud-executed,
+because there is no version to pin the run to. Add the version to the URL, or
+keep `execution: local` for that target.
 
 ## Datasets
 
@@ -567,7 +582,7 @@ link.
 |---|---|---|---|
 | `execution: local`, `publish: false` | AgentOps invokes target and evaluators locally | None; local artifacts only | Any target |
 | `execution: local`, `publish: true` | AgentOps local run, then metric upload | Classic Foundry Evaluations panel | Any target |
-| `execution: cloud` | Foundry runs agent + evaluators server-side through the OpenAI Evals API | New Foundry Evaluations panel; publish is implicit | Foundry Prompt Agent (`name:version`) |
+| `execution: cloud` | Foundry runs agent + evaluators server-side through the OpenAI Evals API | New Foundry Evaluations panel; publish is implicit | Foundry Prompt Agent (`name:version`) or Foundry Hosted Agent URL with `/agents/<name>/versions/<version>` |
 
 Foundry-visible modes:
 

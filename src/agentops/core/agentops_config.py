@@ -26,6 +26,7 @@ kinds - ``foundry_prompt``, ``foundry_hosted``, ``http_json``, or
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
@@ -64,7 +65,9 @@ TargetKind = Literal[
 #:   evaluators locally. Results are the canonical record.
 #: - ``cloud``: Foundry runs the agent and evaluators server-side via the
 #:   OpenAI Evals API. Use this when you want the run to appear in the
-#:   New Foundry Evaluations panel as the primary record.
+#:   New Foundry Evaluations panel as the primary record. Requires a Foundry
+#:   agent target: either ``name:version`` (prompt agent) or a hosted agent
+#:   endpoint URL containing ``/agents/<name>/versions/<version>``.
 #: - ``azd``: Azure Developer CLI runs ``azd ai agent eval``. This is a hard
 #:   dependency: if azd cannot run, AgentOps fails gracefully rather than
 #:   switching engines.
@@ -1017,7 +1020,9 @@ class AgentOpsConfig(BaseModel):
             "- local (default): AgentOps invokes the agent row-by-row locally.\n"
             "- cloud: Foundry runs the agent and evaluators server-side, and "
             "the run is implicitly published to the New Foundry Evaluations "
-            "panel (publish defaults to true).\n"
+            "panel (publish defaults to true). Requires a Foundry agent "
+            "target: 'name:version', or a hosted agent endpoint URL "
+            "containing '/agents/<name>/versions/<version>'.\n"
             "- azd: azd ai agent eval runs the Foundry-native evaluation. If "
             "azd cannot run, AgentOps fails gracefully and never switches "
             "engines implicitly.\n"
@@ -1202,8 +1207,12 @@ class TargetResolution:
     protocol: Optional[Protocol]
     raw: str
     #: For ``foundry_prompt``: the agent name (left of the colon).
+    #: For ``foundry_hosted``: parsed from the ``/agents/<name>/`` URL
+    #: segment when present (``None`` when the URL does not carry one).
     name: Optional[str] = None
     #: For ``foundry_prompt``: the version (right of the colon).
+    #: For ``foundry_hosted``: parsed from the ``/versions/<version>/``
+    #: URL segment when present.
     version: Optional[str] = None
     #: For ``foundry_hosted`` / ``http_json``: the target URL.
     url: Optional[str] = None
@@ -1228,6 +1237,38 @@ def _looks_like_foundry_url(url: str) -> bool:
         ".azurewebsites.net",  # rare; users can override
     )
     return any(domain in lowered for domain in foundry_domains)
+
+
+#: Matches the ``/agents/<name>/versions/<version>`` segment pair that Foundry
+#: hosted agent endpoints carry. Tolerates trailing path segments (e.g.
+#: ``/responses``), query strings, and fragments.
+_HOSTED_AGENT_REFERENCE_RE = re.compile(
+    r"/agents/(?P<name>[^/?#]+)/versions/(?P<version>[^/?#]+)",
+    re.IGNORECASE,
+)
+
+
+def _parse_hosted_agent_reference(url: str) -> tuple[Optional[str], Optional[str]]:
+    """Extract ``(name, version)`` from a Foundry hosted agent URL.
+
+    A hosted endpoint such as::
+
+        https://acct.services.ai.azure.com/api/projects/p/agents/bot/versions/11
+
+    references the very same Foundry agent that a ``foundry_prompt`` target
+    spells as ``bot:11``. Server-side evaluation (``execution: cloud``) needs
+    that ``name`` / ``version`` pair to build the ``azure_ai_agent`` target,
+    so parse it out instead of forcing users to duplicate the reference.
+
+    Returns ``(None, None)`` when the URL carries no such segment pair; the
+    caller decides whether that is fatal.
+    """
+    match = _HOSTED_AGENT_REFERENCE_RE.search(url)
+    if match is None:
+        return None, None
+    name = match.group("name").strip()
+    version = match.group("version").strip()
+    return (name or None), (version or None)
 
 
 def classify_agent(
@@ -1276,11 +1317,14 @@ def classify_agent(
                     "Foundry hosted endpoints accept only protocol "
                     "'responses' or 'invocations'"
                 )
+            hosted_name, hosted_version = _parse_hosted_agent_reference(raw)
             return TargetResolution(
                 kind="foundry_hosted",
                 protocol=resolved_protocol,
                 raw=raw,
                 url=raw,
+                name=hosted_name,
+                version=hosted_version,
             )
 
         resolved_protocol = protocol or "http-json"

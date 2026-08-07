@@ -55,6 +55,46 @@ class TestClassifyAgent:
         assert result.protocol == "responses"
         assert result.url == url
 
+    def test_foundry_hosted_parses_agent_name_and_version(self) -> None:
+        """A hosted endpoint references the same agent a prompt target
+        spells as 'name:version'; cloud execution needs that pair."""
+        url = (
+            "https://acct.services.ai.azure.com/api/projects/p"
+            "/agents/helpdeskbot/versions/11"
+        )
+        result = classify_agent(url)
+        assert result.kind == "foundry_hosted"
+        assert result.name == "helpdeskbot"
+        assert result.version == "11"
+        assert result.url == url
+
+    def test_foundry_hosted_parses_reference_with_trailing_segment(self) -> None:
+        url = (
+            "https://acct.services.ai.azure.com/api/projects/p"
+            "/agents/helpdeskbot/versions/11/responses"
+        )
+        result = classify_agent(url)
+        assert result.name == "helpdeskbot"
+        assert result.version == "11"
+
+    def test_foundry_hosted_parses_reference_with_query_string(self) -> None:
+        url = (
+            "https://acct.services.ai.azure.com/api/projects/p"
+            "/agents/helpdeskbot/versions/11?api-version=2025-05-01"
+        )
+        result = classify_agent(url)
+        assert result.name == "helpdeskbot"
+        assert result.version == "11"
+
+    def test_foundry_hosted_without_version_has_no_reference(self) -> None:
+        """No /versions/ segment means no resolvable agent reference. The
+        target still classifies (local execution works); only cloud cares."""
+        url = "https://my-project.services.ai.azure.com/agents/foo"
+        result = classify_agent(url)
+        assert result.kind == "foundry_hosted"
+        assert result.name is None
+        assert result.version is None
+
     def test_foundry_hosted_invocations(self) -> None:
         url = "https://my-project.services.ai.azure.com/agents/foo"
         result = classify_agent(url, protocol="invocations")
