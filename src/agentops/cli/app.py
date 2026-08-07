@@ -2332,6 +2332,17 @@ def cmd_eval_run(
     report_format: Annotated[
         str, typer.Option("--format", "-f", help="Report format: md, html, or all.")
     ] = "md",
+    agent: Annotated[
+        str | None,
+        typer.Option(
+            "--agent",
+            help=(
+                "Override the agent target for this run. Accepts a full agent "
+                "reference or a bare Foundry version (e.g. 12) to replace the "
+                "version pinned in agentops.yaml. Falls back to $AGENTOPS_AGENT."
+            ),
+        ),
+    ] = None,
     explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
 ) -> None:
     """Run an evaluation defined in agentops.yaml."""
@@ -2366,6 +2377,7 @@ def cmd_eval_run(
         config_path=config_path,
         output=output,
         baseline=baseline,
+        agent=agent,
     )
 
 
@@ -3335,12 +3347,25 @@ def _apply_http_redteam_defaults(target: dict[str, Any], cfg: AgentOpsConfig) ->
         target.setdefault("stream", cfg.stream.model_dump(exclude_none=True))
 
 
+def _is_unexpanded_ci_token(value: str) -> bool:
+    """Return True when *value* is an unexpanded CI variable reference."""
+    candidate = value.strip()
+    return candidate.startswith("$(") or candidate.startswith("${{")
+
+
 def _run_flat_schema_eval(
     *,
     config_path: Path,
     output: Path | None,
     baseline: Path | None,
+    agent: str | None = None,
 ) -> None:
+    import os
+
+    from agentops.core.agentops_config import (
+        AGENT_OVERRIDE_ENV,
+        apply_agent_version_override,
+    )
     from agentops.core.config_loader import load_agentops_config
     from agentops.pipeline.orchestrator import (
         RunOptions,
@@ -3357,6 +3382,22 @@ def _run_flat_schema_eval(
         )
         raise typer.Exit(code=1) from exc
 
+    requested_agent = agent if agent is not None else os.environ.get(AGENT_OVERRIDE_ENV)
+    if requested_agent is not None and _is_unexpanded_ci_token(requested_agent):
+        # Azure DevOps leaves `$(NAME)` verbatim when a variable is undefined,
+        # and GitHub expressions can leak through the same way. Treat that as
+        # "no override" instead of trying to evaluate it as an agent target.
+        requested_agent = None
+    agent_override: str | None = None
+    if requested_agent is not None and requested_agent.strip():
+        try:
+            agent_override = apply_agent_version_override(config_obj.agent, requested_agent)
+        except ValueError as exc:
+            typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        if agent_override != config_obj.agent:
+            typer.echo(f"{_cli_label('Agent override')}: {agent_override}")
+
     use_default_layout = output is None
     if use_default_layout:
         output_dir: Path = _default_flat_output_dir(config_path)
@@ -3369,6 +3410,7 @@ def _run_flat_schema_eval(
         output_dir=output_dir,
         baseline_path=baseline.resolve() if baseline else None,
         progress=lambda msg: typer.echo(msg),
+        agent_override=agent_override,
     )
 
     try:
