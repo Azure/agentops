@@ -29,6 +29,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `_invoke_foundry_prompt` already uses), so pinning semantics are not lost.
   URLs that already point at a `/responses` route and non-Foundry HTTP endpoints
   are left untouched.
+
+## [0.8.1] - 2026-07-16
+
+### Fixed
 - **`agentops doctor` no longer prints noisy non-fatal errors to the console.**
   Three low-level probes that already degrade gracefully were leaking their
   transport errors to the screen during readiness checks:
