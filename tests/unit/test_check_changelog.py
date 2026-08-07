@@ -292,4 +292,25 @@ def test_real_changelog_unreleased_section_is_parseable(guard):
     text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     start, end = guard.unreleased_line_range(text)
     assert start < end
-    assert guard.unreleased_has_content(text) is True
+    # Deliberately not asserting that the section has content. Immediately
+    # after cut-release.yml runs, `## [Unreleased]` is legitimately empty
+    # because everything moved under the new `## [X.Y.Z]` heading. Asserting
+    # content here made every release pull request fail its build.
+    assert isinstance(guard.unreleased_has_content(text), bool)
+
+
+def test_unreleased_section_emptied_by_a_release_cut_is_still_parseable(guard):
+    """A freshly cut release leaves `[Unreleased]` empty. That must parse."""
+    text = (
+        "# Changelog\n"
+        "\n"
+        "## [Unreleased]\n"
+        "\n"
+        "## [1.2.3] - 2026-01-01\n"
+        "\n"
+        "### Added\n"
+        "- Something that shipped.\n"
+    )
+    start, end = guard.unreleased_line_range(text)
+    assert start < end
+    assert guard.unreleased_has_content(text) is False
