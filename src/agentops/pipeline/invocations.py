@@ -18,8 +18,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -48,6 +50,79 @@ _MAX_TOOL_ITERATIONS = 4
 # implementations, so a uniform "ok" stub keeps the loop fully generic
 # while letting the agent produce its final natural-language reply.
 _TOOL_STUB_OUTPUT = '{"status": "ok"}'
+
+# Foundry serves hosted agents on a protocol route hanging off the agent
+# resource, not on the resource URL itself. The portal and `azd` surface
+# identity URLs (`.../agents/<name>` or `.../agents/<name>/versions/<n>`),
+# which cannot be POSTed to, so they are normalised onto this suffix.
+_FOUNDRY_HOSTED_RESPONSES_SUFFIX = "/endpoint/protocols/openai/responses"
+
+# The Foundry protocol route rejects requests without `api-version`
+# (HTTP 400 "Missing required query parameter: api-version"). This is the
+# default applied when the configured URL does not carry one already.
+_FOUNDRY_HOSTED_API_VERSION = "v1"
+
+# Matches a Foundry agent identity path, optionally pinned to a version.
+_FOUNDRY_AGENT_PATH_RE = re.compile(
+    r"^(?P<base>.*/agents/(?P<name>[^/]+))(?:/versions/(?P<version>[^/]+))?$"
+)
+
+
+def _foundry_hosted_responses_target(
+    raw_url: str,
+) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Normalise a Foundry hosted-agent URL into its Responses invocation route.
+
+    Accepts any of the URL shapes users realistically have on hand:
+
+    * ``.../agents/<name>`` - agent identity URL
+    * ``.../agents/<name>/versions/<n>`` - version-pinned identity URL
+    * ``.../agents/<name>/endpoint/protocols/openai`` - protocol route
+    * ``.../agents/<name>/endpoint/protocols/openai/responses`` - full route
+
+    Query parameters on the configured URL are preserved, and ``api-version``
+    is defaulted when absent. When the source URL pinned a specific version,
+    an ``agent_reference`` block is returned so the pin survives the rewrite
+    (the protocol route itself is not version-scoped).
+
+    Returns ``(url, agent_reference_or_None)``.
+    """
+    parts = urllib.parse.urlsplit(raw_url)
+    path = parts.path.rstrip("/")
+    agent_reference: Optional[Dict[str, Any]] = None
+
+    if not path.endswith("/responses"):
+        identity = _FOUNDRY_AGENT_PATH_RE.match(path)
+        if identity:
+            path = identity.group("base") + _FOUNDRY_HOSTED_RESPONSES_SUFFIX
+            version = identity.group("version")
+            if version:
+                agent_reference = {
+                    "type": "agent_reference",
+                    "name": urllib.parse.unquote(identity.group("name")),
+                    "version": urllib.parse.unquote(version),
+                }
+        else:
+            path = f"{path}/responses"
+
+    query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+    # Only Foundry's own protocol route mandates api-version; leave custom
+    # hosted endpoints (e.g. *.azurewebsites.net) byte-for-byte unchanged.
+    if "/protocols/openai" in path and not any(
+        key.lower() == "api-version" for key, _ in query
+    ):
+        query.append(("api-version", _FOUNDRY_HOSTED_API_VERSION))
+
+    url = urllib.parse.urlunsplit(
+        (
+            parts.scheme,
+            parts.netloc,
+            path,
+            urllib.parse.urlencode(query),
+            parts.fragment,
+        )
+    )
+    return url, agent_reference
 
 
 def _summarise_tool_calls(calls: List[Any]) -> str:
@@ -547,16 +622,21 @@ def _invoke_foundry_hosted(
     }
 
     if target.protocol == "responses":
-        url = target.url.rstrip("/")
-        if not url.endswith("/responses"):
-            url = f"{url}/responses"
-        initial_body = {"input": [{"role": "user", "content": _row_input(row)}]}
+        url, agent_reference = _foundry_hosted_responses_target(target.url)
+        initial_body: Dict[str, Any] = {
+            "input": [{"role": "user", "content": _row_input(row)}]
+        }
+        if agent_reference:
+            initial_body["agent_reference"] = agent_reference
 
         text, aggregated_tool_calls, elapsed = _run_responses_tool_loop(
             url=url,
             headers=headers,
             initial_body=initial_body,
             timeout=timeout,
+            follow_up_extras=(
+                {"agent_reference": agent_reference} if agent_reference else None
+            ),
         )
 
         if not text:

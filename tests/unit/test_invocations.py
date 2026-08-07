@@ -52,3 +52,61 @@ def test_project_endpoint_requires_config_or_environment(monkeypatch):
 
     with pytest.raises(RuntimeError, match="project_endpoint"):
         invocations._project_endpoint(_config())
+
+
+_AGENT_BASE = "https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot"
+_PROTOCOL_ROUTE = f"{_AGENT_BASE}/endpoint/protocols/openai/responses"
+
+
+def test_hosted_responses_target_rewrites_version_pinned_identity_url():
+    url, agent_reference = invocations._foundry_hosted_responses_target(
+        f"{_AGENT_BASE}/versions/11"
+    )
+
+    assert url == f"{_PROTOCOL_ROUTE}?api-version=v1"
+    assert agent_reference == {
+        "type": "agent_reference",
+        "name": "helpdeskbot",
+        "version": "11",
+    }
+
+
+def test_hosted_responses_target_rewrites_unversioned_identity_url():
+    url, agent_reference = invocations._foundry_hosted_responses_target(_AGENT_BASE)
+
+    assert url == f"{_PROTOCOL_ROUTE}?api-version=v1"
+    assert agent_reference is None
+
+
+def test_hosted_responses_target_preserves_existing_query_parameters():
+    url, _ = invocations._foundry_hosted_responses_target(
+        f"{_AGENT_BASE}/endpoint/protocols/openai?api-version=2025-05-01&trace=on"
+    )
+
+    assert url == f"{_PROTOCOL_ROUTE}?api-version=2025-05-01&trace=on"
+
+
+def test_hosted_responses_target_is_idempotent_on_full_route():
+    configured = f"{_PROTOCOL_ROUTE}?api-version=v1"
+
+    url, agent_reference = invocations._foundry_hosted_responses_target(configured)
+
+    assert url == configured
+    assert agent_reference is None
+
+
+def test_hosted_responses_target_appends_responses_to_protocol_route():
+    url, _ = invocations._foundry_hosted_responses_target(
+        f"{_AGENT_BASE}/endpoint/protocols/openai"
+    )
+
+    assert url == f"{_PROTOCOL_ROUTE}?api-version=v1"
+
+
+def test_hosted_responses_target_leaves_custom_endpoints_without_api_version():
+    url, agent_reference = invocations._foundry_hosted_responses_target(
+        "https://my-agent.azurewebsites.net/chat"
+    )
+
+    assert url == "https://my-agent.azurewebsites.net/chat/responses"
+    assert agent_reference is None
