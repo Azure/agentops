@@ -809,6 +809,14 @@ the plan before changing GitHub or Azure, and call out anything that needs
 owner/admin permission.
 ```
 
+> **Before the first run**, check the repository's OIDC subject claim prefix
+> with `gh api repos/<owner>/<repo>/actions/oidc/customization/sub`. Accounts
+> with immutable IDs send `repo:<owner>@<accountId>/<repo>@<repoId>:...`, and
+> Entra matches the federated credential subject literally, so a credential
+> built from the plain `repo:<owner>/<repo>:...` format fails with
+> `AADSTS700213`. See
+> [`ci-github-actions.md`](ci-github-actions.md#federated-credential-subject-check-sub_claim_prefix-first).
+
 Open both Doctor outputs. The report explains the findings; the evidence pack
 summarizes what a reviewer needs to decide whether the endpoint is releasable.
 In a fresh tutorial workspace, warnings about production telemetry, CI history, or trace

@@ -1466,6 +1466,15 @@ it skips:
   later tutorial steps that use `git pull`.
 - Create the `dev` GitHub environment.
 - Configure OIDC federated credentials between GitHub and Entra ID.
+- Check the repository's subject claim prefix before the credential is created.
+  Run `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` and read
+  `sub_claim_prefix`. Accounts with immutable IDs send
+  `repo:<owner>@<accountId>/<repo>@<repoId>:environment:dev` rather than
+  `repo:<owner>/<repo>:environment:dev`, and Entra matches the subject
+  literally, so the wrong format fails the first run with `AADSTS700213`.
+  Creating both subjects as separate credentials on the same app registration
+  works on either kind of account. See
+  [`ci-github-actions.md`](ci-github-actions.md#federated-credential-subject-check-sub_claim_prefix-first).
 - Set Actions variables `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_CLIENT_ID`, `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` (the dev
   endpoint), and `APPLICATIONINSIGHTS_CONNECTION_STRING` if available.
