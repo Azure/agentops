@@ -1001,7 +1001,7 @@ def test_azure_devops_with_eval_yaml_uses_azd_eval_runner(tmp_path: Path) -> Non
 
     assert result.eval_runner == "azd-ai-agent-eval"
     assert "install-azd.sh" in content
-    assert 'azd extension install azure.ai.agents --version "1.0.0"' in content
+    assert 'azd extension install azure.ai.agents --version "1.0.0-beta.9"' in content
     assert "Run azd AI agent eval through AgentOps" in content
     assert 'agentops eval run --config ".agentops/deployments/agentops.candidate.yaml" --output ".agentops/results/latest"' in content
     assert "AIAgentEvaluation@2" not in content
