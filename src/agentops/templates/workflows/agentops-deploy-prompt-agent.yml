@@ -60,7 +60,7 @@ jobs:
 
       - name: Install AgentOps Toolkit
         run: |
-          uv pip install --system "agentops-accelerator[foundry,agent]__AGENTOPS_INSTALL_SPEC__"
+          uv pip install --system "agentops-accelerator[agent]__AGENTOPS_INSTALL_SPEC__"
 
       - name: Create candidate agent version from prompt_file
         env:

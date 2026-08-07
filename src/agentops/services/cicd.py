@@ -939,21 +939,63 @@ def generate_cicd_workflows(
 
 
 def _azd_substitutions(platform: str, ailz_preflight: bool) -> Mapping[str, str]:
-    if not ailz_preflight:
-        return {"__AILZ_PREFLIGHT_COMMAND__": ""}
-    if platform == "azure-devops":
-        return {
-            "__AILZ_PREFLIGHT_COMMAND__": (
-                "                        echo \"Running AI Landing Zone preflight.\"\n"
-                "                        pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict"
-            )
-        }
     return {
-        "__AILZ_PREFLIGHT_COMMAND__": (
-            "            echo \"Running AI Landing Zone preflight.\"\n"
-            "            pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict"
-        )
+        "__AILZ_PREFLIGHT_COMMAND__": _ailz_preflight_command(platform, ailz_preflight),
+        "__AZD_CLI_SETUP__": _azd_cli_setup_steps(platform),
     }
+
+
+def _ailz_preflight_command(platform: str, ailz_preflight: bool) -> str:
+    if not ailz_preflight:
+        return ""
+    if platform == "azure-devops":
+        return (
+            "                        echo \"Running AI Landing Zone preflight.\"\n"
+            "                        pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict"
+        )
+    return (
+        "            echo \"Running AI Landing Zone preflight.\"\n"
+        "            pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict"
+    )
+
+
+def _azd_cli_setup_steps(platform: str) -> str:
+    """Steps that make ``azd`` usable in the provision and deploy jobs.
+
+    Two things are missing when only ``azure/login`` runs:
+
+    * ``azure.ai.agents`` is the azd extension behind
+      ``infra: provider: microsoft.foundry``. azd refuses to auto-install
+      extensions on CI runners, so it has to be installed explicitly and
+      pinned to the same version the eval gate uses.
+    * ``azure/login`` authenticates the Azure CLI only. azd keeps its own
+      credential store and never falls back to the ``az`` session, so it
+      needs its own federated login.
+    """
+
+    extension_version = azd_ai_agents_extension_version()
+    if platform == "azure-devops":
+        # Runs inside an AzureCLI@2 inline script, so the service connection
+        # already produced an authenticated `az` session azd can reuse.
+        return (
+            f'                      azd extension install azure.ai.agents --version "{extension_version}"\n'
+            '                      azd config set auth.useAzCliAuth "true"'
+        )
+    return f"""      - name: Install pinned azd AI agents extension
+        env:
+          {AZD_AI_AGENTS_EXTENSION_VERSION_ENV}: "{extension_version}"
+        run: |
+          azd extension install azure.ai.agents --version "${AZD_AI_AGENTS_EXTENSION_VERSION_ENV}"
+
+      - name: azd auth login (OIDC)
+        env:
+          AZURE_CLIENT_ID: ${{{{ vars.AZURE_CLIENT_ID }}}}
+          AZURE_TENANT_ID: ${{{{ vars.AZURE_TENANT_ID }}}}
+        run: |
+          azd auth login \\
+            --client-id "$AZURE_CLIENT_ID" \\
+            --tenant-id "$AZURE_TENANT_ID" \\
+            --federated-credential-provider github"""
 
 
 def generate_cicd_workflow(

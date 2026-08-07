@@ -49,6 +49,7 @@ stages:
                         exit 1
                       }
                       curl -fsSL https://aka.ms/install-azd.sh | bash
+__AZD_CLI_SETUP__
                       azd env new "$(AZURE_ENV_NAME)" --no-prompt --subscription "$(AZURE_SUBSCRIPTION_ID)" ${AZURE_LOCATION:+--location "$AZURE_LOCATION"} \
                         || azd env select "$(AZURE_ENV_NAME)"
                       azd env set AZURE_SUBSCRIPTION_ID "$(AZURE_SUBSCRIPTION_ID)"
@@ -104,6 +105,7 @@ __EVAL_TASKS__
                     scriptLocation: inlineScript
                     inlineScript: |
                       curl -fsSL https://aka.ms/install-azd.sh | bash
+__AZD_CLI_SETUP__
                       test -f azure.yaml || {
                         echo "##vso[task.logissue type=error;sourcepath=azure.yaml]No azure.yaml found. Ask your coding agent to generate a zero-trust azd deployment, then re-run this pipeline."
                         exit 1
