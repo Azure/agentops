@@ -5,6 +5,125 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-08-07
+
+### Added
+- **CI now fails a pull request that changes shipped code without a CHANGELOG
+  entry.** `cut-release.yml` never generates changelog content. It inserts a
+  `## [X.Y.Z] - <date>` heading beneath `## [Unreleased]` and stops there, so a
+  release cycle where no PR wrote anything under `[Unreleased]` publishes an
+  empty section with a green pipeline. Releases 0.8.4 and 0.8.5 both shipped
+  that way and were backfilled by hand, between them hiding six user-visible
+  bug fixes and six dependency bumps.
+
+  A new `changelog` job runs `scripts/check_changelog.py` on every PR to
+  `develop`. It asks for an entry only when the diff touches a file that ships
+  and the PR title reads as user-visible (`feat`, `fix`, `perf`, `revert`, a
+  breaking-change marker, or no conventional-commit type at all). Changes
+  confined to `docs/`, `tests/`, `.github/workflows/`, `.github/ISSUE_TEMPLATE/`,
+  or the top-level markdown files are never asked for one, and neither are PRs
+  typed `docs:`, `test:`, `ci:`,
+  `chore:`, `build:`, `style:`, or `refactor:`. The check resolves each added
+  line to the section it lands in, so a bullet written under an already-released
+  heading fails the same as no bullet, which matches what `cut-release` will
+  actually promote. Apply the `no-changelog` label to bypass it. Dependabot is
+  exempt because a bot cannot respond to a red check.
+
+  The same script guards the release itself. `cut-release.yml` and both local
+  `cut-release` scripts now abort before creating the release branch when
+  `[Unreleased]` is empty, so a cycle that wrote nothing at all cannot reach a
+  published tag. That is a non-emptiness check, not per-change coverage: one
+  bullet from any PR satisfies it.
+
+- **Both local `cut-release` scripts inserted the new version heading in the
+  wrong place.** `scripts/cut-release.sh` and `scripts/cut-release.ps1` anchored
+  the insertion on the "adheres to [Semantic Versioning]" line, which sits
+  *above* `## [Unreleased]`. Cutting a release locally therefore produced an
+  empty `## [X.Y.Z]` section and left every accumulated entry stranded under
+  `[Unreleased]`, where the next cycle would silently absorb it. Both scripts now
+  anchor on `## [Unreleased]` and insert beneath it, matching what
+  `cut-release.yml` has always done, and both abort if that heading is missing.
+
+- **`agentops eval run` accepts an explicit agent target.** The eval target was
+  only ever read from `agentops.yaml`, so retargeting a run meant editing
+  tracked config. `--agent` now overrides it, falling back to the
+  `AGENTOPS_AGENT` environment variable when the flag is absent. A bare number
+  (`--agent 12`) replaces just the version segment of the configured target; a
+  full agent reference (endpoint URL, `name:version`, or `model:<deployment>`)
+  replaces the target outright. Unset means unchanged, so every existing run
+  behaves exactly as before.
+
+  `RunOptions.agent_override` already existed in the orchestrator and was
+  already consumed by all three execution backends, but nothing set it. This
+  connects the CLI to that seam and forwards `AGENTOPS_AGENT` into every
+  generated eval step on GitHub Actions and Azure DevOps, so a future pipeline
+  change can retarget the gate without rewriting `agentops.yaml` mid-run.
+  Nothing in the shipped pipelines assigns a value yet, and the injected
+  expressions read same-job scope, which cannot see a prior job's output.
+  Wiring a producer needs declared job outputs on GitHub Actions or
+  `stageDependencies` on Azure DevOps; see issue #388.
+
+  Azure DevOps leaves `$(NAME)` in the environment verbatim when a variable is
+  undefined, so an unexpanded token is treated as "no override" rather than as
+  an agent expression. An empty or unexpanded value falls back to the
+  configured agent instead of failing, because every pipeline generated today
+  passes exactly that.
+
+  `agentops workflow analyze` reports the pinned agent version as a signal when
+  the repo also has a generated deploy pipeline, which is the only place a
+  later deploy step could move the target underneath the gate. Eval-only repos
+  see nothing.
+
+### Fixed
+- **The eval gate installed `azd` but never gave it credentials, on both GitHub
+  Actions and Azure DevOps.** When a project uses the azd evaluation backend,
+  the generated pipeline runs `agentops eval run`, which shells out to
+  `azd ai agent eval run`. Both platforms installed the pinned
+  `azure.ai.agents` extension and then invoked the binary with no credentials,
+  so the eval gate failed before reaching Foundry.
+
+  This is the issue #379 trap in a job nobody had exercised. The fix differs by
+  platform because the surrounding authentication differs. On Azure DevOps
+  every azd call runs inside `AzureCLI@2`, which completes the
+  service-connection handshake and leaves the Azure CLI authenticated, but
+  `azd` keeps a separate credential store and ignores that session unless
+  `auth.useAzCliAuth` is set; the eval stage now sets it, matching the provision
+  and deploy stages in the same pipeline. On GitHub Actions `azure/login@v3`
+  authenticates only the Azure CLI, so the eval job now runs
+  `azd auth login --federated-credential-provider github` with the same
+  `vars.AZURE_CLIENT_ID` and `vars.AZURE_TENANT_ID` the provision and deploy
+  jobs already use. Every generated job that installs the azd extension now
+  also authenticates it.
+
+- **The generated Azure DevOps PR pipeline was not valid YAML.** The
+  report-comment step embedded a multi-line `python -c` snippet whose
+  continuation lines started at column 0. A column-0 line terminates the
+  surrounding `bash: |` block scalar, so Azure DevOps rejected the file with a
+  parse error before running anything. The continuation lines are now indented
+  into the block; the trailing backslashes still join them into a single
+  logical line, so the Python behaviour is unchanged. A regression test parses
+  every generated ADO pipeline across all eval-runner variants and rejects any
+  stray column-0 line.
+
+- **Publishing a release never rebuilt the documentation site.** The site is
+  built from the `docs` branch, and the `Deploy Documentation` workflow that
+  builds it declares a `release: published` trigger. That trigger could never
+  fire, because the workflow file existed only on `docs`, and GitHub Actions
+  resolves workflows for non-`push` events from the default branch. Four
+  consecutive releases published while the home page kept advertising `v0.8.1`,
+  since the version string is baked into the HTML at build time. The workflow
+  now also lives on the default branch so release events can reach it. It still
+  checks out `docs` explicitly, so the published content is unchanged, and
+  `push` events continue to resolve from the pushed commit, so there is no
+  duplicate run.
+
+- **The contributor setup command in `how-it-works.md` installed nothing.** It
+  suggested `pip install -e ".[dev]"`, but `dev` is a PEP 735 dependency group
+  rather than an extra, so pip warned about an unknown extra and skipped every
+  development dependency. The next documented step, running pytest, then failed
+  on a missing module. The page now uses `uv sync --group dev`, which is what
+  all eleven CI invocations already use.
+
 ## [0.8.5] - 2026-08-07
 
 ### Fixed
