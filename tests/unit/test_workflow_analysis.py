@@ -6,7 +6,13 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
+from agentops.pipeline.official_eval import (
+    AGENTOPS_CLOUD_RUNNER,
+    AZD_EVAL_RUNNER,
+    OFFICIAL_EVAL_RUNNER,
+)
 from agentops.services.workflow_analysis import (
+    _foundry_eval_rows,
     analyze_workflow_project,
     recommended_deploy_mode,
     recommended_eval_runner,
@@ -396,3 +402,63 @@ def test_cli_workflow_analyze_invalid_format_fails(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "--format must be text, markdown, or json" in result.output
+
+
+def _selecting_projects(root: Path) -> list[Path]:
+    """Build one project per code path that selects a Foundry eval runner."""
+
+    azd = root / "azd"
+    azd.mkdir()
+    (azd / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (azd / "eval.yaml").write_text(
+        "name: sample-eval\nevaluators:\n  - name: similarity\n",
+        encoding="utf-8",
+    )
+    (azd / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+    cloud = root / "cloud"
+    cloud.mkdir()
+    (cloud / "data.jsonl").write_text(
+        '{"input": "hi", "expected": "hello"}\n', encoding="utf-8"
+    )
+    (cloud / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+    return [azd, cloud]
+
+
+def test_foundry_eval_rows_always_have_two_reasons_when_selected(tmp_path: Path) -> None:
+    """Guards the invariant that let the hardcoded row fallbacks be removed.
+
+    Both branches that select a Foundry eval runner populate exactly two
+    reasons: the azd branch builds a two-item list inline, and the cloud branch
+    is gated on ``official_support.eligible``, which always carries the
+    two-reason tuple. The old renderer carried `else "Foundry prompt agent."`
+    fallbacks for the empty case, which were unreachable and mislabeled hosted
+    agents (the #370 class of bug).
+    """
+
+    selecting = {AZD_EVAL_RUNNER, AGENTOPS_CLOUD_RUNNER, OFFICIAL_EVAL_RUNNER}
+    checked = set()
+
+    for project in _selecting_projects(tmp_path):
+        analysis = analyze_workflow_project(project)
+        assert analysis.recommended_eval_runner in selecting, project.name
+
+        # The invariant that makes the old `else "Foundry prompt agent."` and
+        # `else "Compatible with Foundry cloud eval."` fallbacks unreachable.
+        assert len(analysis.official_eval_reasons) == 2, project.name
+
+        rows = _foundry_eval_rows(analysis)
+        assert [(label, value) for _, label, value in rows][:2] == [
+            ("Agent target", analysis.official_eval_reasons[0]),
+            ("Dataset", analysis.official_eval_reasons[1]),
+        ], project.name
+        checked.add(analysis.recommended_eval_runner)
+
+    assert checked == {AZD_EVAL_RUNNER, AGENTOPS_CLOUD_RUNNER}

@@ -644,6 +644,11 @@ def _soften_text(text: str) -> str:
     return text
 
 
+#: Row labels for the Foundry eval checklist, paired positionally with the two
+#: reasons that :func:`analyze_official_eval_support` and the azd branch emit.
+_FOUNDRY_EVAL_ROW_LABELS = ("Agent target", "Dataset")
+
+
 def _wrap_text(text: str, *, indent: str) -> List[str]:
     return textwrap.wrap(
         text,
@@ -750,21 +755,17 @@ def _foundry_eval_rows(analysis: WorkflowAnalysis) -> List[tuple[str, str, str]]
         OFFICIAL_EVAL_RUNNER,
     }
     if selected:
+        # Every path that selects one of these runners populates exactly two
+        # reasons: the azd branch builds a two-item list, and the cloud branch
+        # requires ``official_support.eligible``, which always carries the
+        # two-reason tuple. Pair them with their labels instead of indexing so
+        # the rows always describe the real analysis rather than a hardcoded
+        # guess about the target kind.
         rows = [
-            (
-                "[x]",
-                "Agent target",
-                analysis.official_eval_reasons[0]
-                if analysis.official_eval_reasons
-                else "Foundry prompt agent.",
-            ),
-            (
-                "[x]",
-                "Dataset",
-                analysis.official_eval_reasons[1]
-                if len(analysis.official_eval_reasons) > 1
-                else "Compatible with Foundry cloud eval.",
-            ),
+            ("[x]", label, reason)
+            for label, reason in zip(
+                _FOUNDRY_EVAL_ROW_LABELS, analysis.official_eval_reasons
+            )
         ]
         if analysis.official_evaluators:
             rows.append(("[x]", "Evaluators", ", ".join(analysis.official_evaluators)))
