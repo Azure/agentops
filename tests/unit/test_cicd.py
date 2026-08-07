@@ -1433,7 +1433,15 @@ def _seed_hosted_project(root: Path, *, azure_yaml: bool = False) -> None:
 
 
 def test_github_eval_steps_forward_agent_version_override(tmp_path: Path) -> None:
-    """Regression for #388: eval must be retargetable without editing agentops.yaml."""
+    """The seam is wired end to end (#388).
+
+    This asserts only that the generated YAML *plumbs* the variable. It says
+    nothing about the value being populated: nothing in the shipped templates
+    sets AGENTOPS_AGENT today, so at runtime this expression resolves to an
+    empty string and eval falls back to the pin in agentops.yaml. See
+    test_empty_agent_override_falls_back_to_the_configured_agent for the
+    behavior users actually get, and #388 for what a producer would require.
+    """
 
     _seed_hosted_project(tmp_path, azure_yaml=True)
     generate_cicd_workflows(directory=tmp_path, kinds=["dev", "qa", "prod"], force=True)
@@ -1444,6 +1452,33 @@ def test_github_eval_steps_forward_agent_version_override(tmp_path: Path) -> Non
             "AGENTOPS_AGENT: ${{ env.AGENTOPS_AGENT || vars.AGENTOPS_AGENT }}" in content
         ), f"{rel} does not forward the agent override to the eval step"
         assert isinstance(_read_yaml(tmp_path / rel), dict)
+
+
+def test_no_generated_workflow_produces_a_value_for_the_override(
+    tmp_path: Path,
+) -> None:
+    """Documents the gap in #388: the seam has a consumer but no producer.
+
+    When a producer is built it will need `jobs.<id>.outputs` plus
+    `needs.<job>.outputs.*` on GitHub Actions (step-level `env` cannot read a
+    prior job's output), or `stageDependencies` on Azure DevOps. At that point
+    this test must be updated, not deleted.
+    """
+
+    _seed_hosted_project(tmp_path, azure_yaml=True)
+    generate_cicd_workflows(directory=tmp_path, kinds=["dev", "qa", "prod"], force=True)
+
+    for rel in (_DEV_PATH, _QA_PATH, _PROD_PATH):
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        assert "outputs:" not in content, (
+            f"{rel} declares job outputs; if it now emits an agent version, "
+            "update this test and the #388 notes"
+        )
+        assert "needs.provision.outputs" not in content
+        assert "AGENTOPS_AGENT=" not in content, (
+            f"{rel} assigns AGENTOPS_AGENT; the producer described in #388 "
+            "may now exist"
+        )
 
 
 def test_azure_devops_eval_steps_forward_agent_version_override(tmp_path: Path) -> None:
@@ -1460,6 +1495,8 @@ def test_azure_devops_eval_steps_forward_agent_version_override(tmp_path: Path) 
         assert "AGENTOPS_AGENT: $(AGENTOPS_AGENT)" in content, (
             f"{rel} does not forward the agent override to the eval step"
         )
+        # Azure DevOps passes `$(NAME)` through verbatim when undefined, which
+        # the CLI treats as "no override". No pipeline declares it today.
         assert isinstance(_read_yaml(tmp_path / rel), dict)
 
 

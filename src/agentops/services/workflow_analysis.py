@@ -182,26 +182,24 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
                 )
             )
         pinned_version = agentops.get("pinned_agent_version")
-        if pinned_version:
+        if pinned_version and _has_generated_deploy_pipeline(root):
             signals.append(
                 WorkflowSignal(
                     "agent_version_pin",
                     "Pinned agent version",
                     (
-                        f"agentops.yaml pins agent version {pinned_version}. Generated "
-                        "deploy pipelines publish a new Foundry version, so the eval gate "
-                        "scores the pinned version rather than the one the run produced. "
-                        f"Export {AGENT_OVERRIDE_ENV} (or pass `agentops eval run --agent`) "
-                        "with the version the deploy step resolved so the gate follows the "
-                        "deployed artifact."
+                        f"agentops.yaml pins agent version {pinned_version} and this "
+                        "repo has a generated deploy pipeline. The eval gate runs "
+                        "before deploy, so it scores the pinned version, which is "
+                        "correct today. If a later change makes deploy publish a new "
+                        "version that the gate should score instead, the eval step "
+                        f"accepts {AGENT_OVERRIDE_ENV} (or `agentops eval run "
+                        "--agent`) as an override. Nothing in the generated pipelines "
+                        "sets that value yet; see issue #388."
                     ),
                     "agentops.yaml",
                     confidence="medium",
                 )
-            )
-            warnings.append(
-                f"agentops.yaml pins agent version {pinned_version}; set "
-                f"{AGENT_OVERRIDE_ENV} in the eval job so the gate scores the deployed version."
             )
 
     bicep_files = _find_files(root, "*.bicep")
@@ -960,6 +958,25 @@ def _accelerator_hint(readme_lower: str) -> Optional[WorkflowSignal]:
             confidence="medium",
         )
     return None
+
+
+def _has_generated_deploy_pipeline(root: Path) -> bool:
+    """True when the repo already has a generated AgentOps deploy pipeline.
+
+    The pinned-version signal is only interesting where a deploy step could
+    move the agent underneath the gate. Eval-only repos have no such step, so
+    a correctly-pinned target there is just a correctly-pinned target.
+    """
+    for directory, prefix in (
+        (root / ".github" / "workflows", "agentops-deploy-"),
+        (root / ".azuredevops" / "pipelines", "agentops-deploy-"),
+    ):
+        if not directory.is_dir():
+            continue
+        for path in directory.glob(f"{prefix}*.yml"):
+            if path.is_file():
+                return True
+    return False
 
 
 def _existing_ci_signal(root: Path) -> Optional[WorkflowSignal]:

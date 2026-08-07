@@ -465,24 +465,38 @@ def test_foundry_eval_rows_always_have_two_reasons_when_selected(tmp_path: Path)
 
 
 # ---------------------------------------------------------------------------
-# Pinned agent version drift (#388)
+# Pinned agent version visibility (#388)
 # ---------------------------------------------------------------------------
 
 
-def test_analyze_flags_pinned_hosted_agent_version(tmp_path: Path) -> None:
-    """Regression for #388: the pin must be visible before it reaches CI."""
+_PINNED_HOSTED_CONFIG = (
+    "version: 1\n"
+    "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
+    "dataset: data.jsonl\n"
+    "protocol: responses\n"
+)
 
-    (tmp_path / "agentops.yaml").write_text(
-        "version: 1\n"
-        "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
-        "dataset: data.jsonl\n"
-        "protocol: responses\n",
-        encoding="utf-8",
-    )
-    (tmp_path / "data.jsonl").write_text(
+
+def _seed_pinned_hosted(root: Path, *, with_deploy_pipeline: bool) -> None:
+    (root / "agentops.yaml").write_text(_PINNED_HOSTED_CONFIG, encoding="utf-8")
+    (root / "data.jsonl").write_text(
         json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
         encoding="utf-8",
     )
+    if with_deploy_pipeline:
+        workflows = root / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "agentops-deploy-dev.yml").write_text(
+            "name: AgentOps Deploy (DEV)\n", encoding="utf-8"
+        )
+
+
+def test_analyze_reports_pinned_version_when_a_deploy_pipeline_exists(
+    tmp_path: Path,
+) -> None:
+    """The pin is only worth reporting where a deploy step could move the target."""
+
+    _seed_pinned_hosted(tmp_path, with_deploy_pipeline=True)
 
     analysis = analyze_workflow_project(tmp_path)
     signal = next(
@@ -493,8 +507,20 @@ def test_analyze_flags_pinned_hosted_agent_version(tmp_path: Path) -> None:
     assert signal is not None, "analyze did not surface the pinned agent version"
     assert "11" in signal.detail
     assert "AGENTOPS_AGENT" in signal.detail
-    assert any("AGENTOPS_AGENT" in warning for warning in analysis.warnings)
+    # The signal must not instruct an action that no shipped pipeline supports.
+    assert "#388" in signal.detail
     assert "AGENTOPS_AGENT" in render_workflow_analysis(analysis, "text")
+
+
+def test_analyze_stays_quiet_about_pins_in_eval_only_repos(tmp_path: Path) -> None:
+    """No deploy pipeline means nothing can move the agent underneath the gate."""
+
+    _seed_pinned_hosted(tmp_path, with_deploy_pipeline=False)
+
+    analysis = analyze_workflow_project(tmp_path)
+
+    assert not any(s.key == "agent_version_pin" for s in analysis.signals)
+    assert not any("AGENTOPS_AGENT" in warning for warning in analysis.warnings)
 
 
 def test_analyze_does_not_flag_prompt_agent_pin(tmp_path: Path) -> None:

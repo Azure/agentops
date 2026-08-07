@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
@@ -130,6 +131,35 @@ def test_unexpanded_ado_variable_is_ignored(tmp_path, monkeypatch) -> None:
 
     assert result.exit_code == 0, result.output
     assert seen[0].agent_override is None
+
+
+@pytest.mark.parametrize(
+    "ci_value", ["", "   ", "$(AGENTOPS_AGENT)", "${{ env.AGENTOPS_AGENT }}"]
+)
+def test_generated_ci_today_evaluates_the_pin_because_nothing_sets_the_override(
+    tmp_path, monkeypatch, ci_value
+) -> None:
+    """Documents the real behavior of every pipeline this tool generates (#388).
+
+    No shipped workflow or pipeline assigns AGENTOPS_AGENT. GitHub Actions
+    resolves the injected expression to an empty string; Azure DevOps passes
+    `$(AGENTOPS_AGENT)` through untouched. Both must fall back to the pinned
+    target in agentops.yaml rather than fail, because failing closed would
+    break every generated pipeline in existence.
+
+    When a producer is built (see #388), this test must be updated to assert
+    the new behavior. Do not delete it: the fallback still applies to repos
+    whose pipelines predate the producer.
+    """
+
+    monkeypatch.setenv("AGENTOPS_AGENT", ci_value)
+    result, seen = _invoke(tmp_path, monkeypatch, [])
+
+    assert result.exit_code == 0, result.output
+    assert seen[0].agent_override is None, (
+        f"AGENTOPS_AGENT={ci_value!r} was treated as a real override; "
+        "eval must fall back to the configured agent"
+    )
 
 
 def test_full_agent_reference_override_is_used_verbatim(tmp_path, monkeypatch) -> None:

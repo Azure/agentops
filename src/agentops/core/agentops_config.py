@@ -1292,6 +1292,13 @@ def apply_agent_version_override(agent: str, override: str) -> str:
     rebuilding the whole endpoint URL.
 
     An empty *override* leaves *agent* untouched.
+
+    Known limitation: a non-numeric *override* is returned verbatim with no
+    validation, so malformed input (``12abc``, a truncated endpoint URL) is
+    passed straight to :func:`classify_agent` and surfaces as a confusing
+    classification failure rather than a clear message about the override.
+    Worth tightening when the CI producer described in issue #388 lands and
+    starts generating these values programmatically.
     """
 
     base = agent.strip()

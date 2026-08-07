@@ -5,32 +5,36 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
-### Fixed
-- **Generated workflows evaluated a stale agent version.** `agentops.yaml` pins
-  a fully-qualified Foundry agent that ends in a version segment
-  (`.../agents/helpdeskbot/versions/11`), and nothing in the generated dev, QA,
-  or prod pipelines ever retargeted it. `azd provision` published a new agent
-  version and the eval job that ran next still scored the previous one, so the
-  gate reported green on an artifact the pipeline had already replaced. A
-  regression introduced by the deploy could not fail its own quality gate, and
-  in `prod` that same shape gated a release.
+### Added
+- **`agentops eval run` accepts an explicit agent target.** The eval target was
+  only ever read from `agentops.yaml`, so retargeting a run meant editing
+  tracked config. `--agent` now overrides it, falling back to the
+  `AGENTOPS_AGENT` environment variable when the flag is absent. A bare number
+  (`--agent 12`) replaces just the version segment of the configured target; a
+  full agent reference (endpoint URL, `name:version`, or `model:<deployment>`)
+  replaces the target outright. Unset means unchanged, so every existing run
+  behaves exactly as before.
 
   `RunOptions.agent_override` already existed in the orchestrator and was
-  already consumed by all three execution backends, but nothing ever set it.
-  `agentops eval run` now accepts `--agent`, falling back to the
-  `AGENTOPS_AGENT` environment variable, and every generated eval step on
-  GitHub Actions and Azure DevOps forwards that variable. A bare number
-  (`--agent 12`) replaces just the version segment of the configured target;
-  a full agent reference replaces the target outright. Unset means unchanged,
-  so existing pipelines behave exactly as before. `agentops.yaml` stays
-  declarative and CI never writes to tracked config.
+  already consumed by all three execution backends, but nothing set it. This
+  connects the CLI to that seam and forwards `AGENTOPS_AGENT` into every
+  generated eval step on GitHub Actions and Azure DevOps, so a future pipeline
+  change can retarget the gate without rewriting `agentops.yaml` mid-run.
+  Nothing in the shipped pipelines assigns a value yet, and the injected
+  expressions read same-job scope, which cannot see a prior job's output.
+  Wiring a producer needs declared job outputs on GitHub Actions or
+  `stageDependencies` on Azure DevOps; see issue #388.
 
   Azure DevOps leaves `$(NAME)` in the environment verbatim when a variable is
   undefined, so an unexpanded token is treated as "no override" rather than as
-  an agent expression. `workflow analyze` now reports the pinned version as a
-  signal and a warning, so the drift is visible before it reaches CI.
-  Prompt-agent deploys were never affected: they already stage
-  `agentops.candidate.yaml` with a fresh `agent` value for the eval step.
+  an agent expression. An empty or unexpanded value falls back to the
+  configured agent instead of failing, because every pipeline generated today
+  passes exactly that.
+
+  `agentops workflow analyze` reports the pinned agent version as a signal when
+  the repo also has a generated deploy pipeline, which is the only place a
+  later deploy step could move the target underneath the gate. Eval-only repos
+  see nothing.
 
 ## [0.8.5] - 2026-08-07
 
