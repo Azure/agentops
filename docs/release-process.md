@@ -25,7 +25,7 @@ AgentOps follows GitOps practices where **git is the single source of truth** fo
 - **Declarative configuration** - All pipeline behavior is defined in YAML workflow files checked into the repository.
 - **Version-controlled releases** - Every release is traceable to a git tag. No manual version edits.
 - **Automated pipelines** - Pushing branches or tags triggers the corresponding workflow automatically.
-- **Environment gates** - Production deployment requires explicit human approval via GitHub Environments.
+- **Keyless publishing** - PyPI uploads use Trusted Publishing (OIDC). There is no PyPI API token to store or rotate.
 - **Immutable artifacts** - Built packages are uploaded once and reused across pipeline stages (no rebuilds between TestPyPI and PyPI).
 
 ## 2. Branching Model
@@ -57,10 +57,14 @@ develop           ← integration branch, all feature PRs target here
 1. feature/my-change ──PR──→ develop       (contributor)
 2. develop ──branch──→ release/v0.2.0      (maintainer, when ready to release)
 3. release/v0.2.0 ──PR──→ main            (maintainer, after staging validates)
-4. main ──tag──→ v0.2.0                    (maintainer, triggers production release)
-5. main ──merge──→ develop                 (maintainer, sync the tag back)
+4. main ──tag──→ v0.2.0                    (maintainer, publishes to PyPI immediately)
+5. main ──merge──→ develop                 (maintainer, REQUIRED, same sitting as step 4)
 6. release/v0.2.0 ──delete──               (maintainer, cleanup)
 ```
+
+Steps 4 and 5 are a single unit of work. Leaving `develop` behind `main` corrupts
+the next release's CHANGELOG. See
+[Step 5: Tag the release and sync develop](#step-5-tag-the-release-and-sync-develop).
 
 ### Branch Protection Rules (Recommended)
 
@@ -278,7 +282,7 @@ The staging pipeline validates a release candidate by publishing to TestPyPI and
 flowchart TD
     push(["push to release/v0.2.0"])
     build["_build<br/><i>tests + package</i><br/>Version: 0.2.1.dev3 (setuptools-scm)"]
-    publish["publish-testpypi<br/><i>Upload to TestPyPI (staging environment)</i><br/>Uses TEST_PYPI_TOKEN secret"]
+    publish["publish-testpypi<br/><i>Upload to TestPyPI (staging environment)</i><br/>Trusted Publishing (OIDC, no token)"]
     verify["verify-testpypi<br/><i>Install from TestPyPI in fresh environment</i><br/>agentops --version / --help / init"]
 
     push --> build --> publish --> verify
@@ -408,70 +412,46 @@ git checkout develop
 git branch -d release/v0.0.0-test
 ```
 
-### 8.2 Test the Full Release Pipeline (Including PyPI Approval Gate)
+### 8.2 Test the Full Release Pipeline
 
-> **Warning**: This will publish a test version to PyPI if you approve it. Only do this if you want to validate the full production flow. You can cancel at the approval gate to skip the actual PyPI publish.
+> **There is no safe dry run.** The `publish-pypi` job does not pause, so pushing
+> any `v*` tag publishes that version to real PyPI. There is no reject button to
+> catch it. PyPI versions cannot be deleted, only yanked, so a throwaway
+> `v0.0.0-test.1` tag leaves a permanent artifact on the project page.
 
-#### Step 1: Create a Test Tag
+Test everything except the final publish by pushing a `release/v*` branch, which
+exercises build → TestPyPI → verify (see [8.1](#81-test-the-staging-pipeline)).
+That covers every job the release pipeline runs before `publish-pypi`, using the
+same build and the same `pypa/gh-action-pypi-publish` action.
 
-From `develop` or your feature branch:
+If you genuinely need to validate `publish-pypi` end to end, add required
+reviewers to the `release` environment first (see
+[Enabling a real approval gate](#enabling-a-real-approval-gate)). With reviewers
+attached, the job pauses and you can reject it.
 
-```bash
-git tag v0.0.0-test.1
-git push origin v0.0.0-test.1
-```
-
-This triggers the `release.yml` workflow.
-
-#### Step 2: Monitor the Pipeline
-
-1. Go to **Actions** tab → find the **Release** workflow run for `v0.0.0-test.1`
-2. Watch the jobs execute in sequence:
-
-```
-Job 1: build / build        ✅ Tests + build
-Job 2: publish-testpypi     ✅ Upload to TestPyPI
-Job 3: verify-testpypi      ✅ Install + smoke test
-Job 4: publish-pypi         ⏸️  PAUSES - waiting for approval
-Job 5: github-release       ⏳ Waiting for Job 4
-```
-
-3. At the `publish-pypi` step, you have two choices:
-   - **Approve** - publishes to real PyPI (use only if you want to test the full flow)
-   - **Reject** - cancels the remaining jobs without publishing to PyPI
-
-#### Step 3: Inspect the Approval Gate
-
-1. Click on the **Release** workflow run
-2. The `publish-pypi` job shows a yellow "Waiting" badge
-3. Click **Review deployments**
-4. Select the **release** environment
-5. Choose **Reject** to cancel without publishing, or **Approve and deploy** to continue
-
-This validates that the environment protection rules and reviewer requirements work correctly.
-
-#### Step 4: Clean Up
+#### Verifying the publish path without publishing
 
 ```bash
-# Delete the test tag (remote and local)
-git push origin --delete v0.0.0-test.1
-git tag -d v0.0.0-test.1
+# Confirm the release environment's protection rules (empty = no gate).
+gh api repos/Azure/agentops/environments/release --jq '.protection_rules'
 
-# If a GitHub Release was created, delete it manually:
-# Go to Releases → find v0.0.0-test.1 → Delete
+# Confirm the workflow requests an OIDC token instead of using an API key.
+grep -n "id-token\|gh-action-pypi-publish" .github/workflows/release.yml
 ```
 
-If you approved the PyPI publish, the test version (`0.0.0.test1`) will exist on PyPI permanently (PyPI versions cannot be deleted, only yanked). This is harmless but visible.
+Trusted Publishing must also be configured on the PyPI side under
+**Manage project → Publishing**, matching the repository, workflow filename, and
+environment name. A mismatch there surfaces as a `403` at upload time, after the
+tag has already been pushed.
 
 ### 8.3 Quick E2E Test Summary
 
-| What to test        | Command                                                              | What to watch                     |
-| ------------------- | -------------------------------------------------------------------- | --------------------------------- |
-| Staging only        | `git push origin release/v0.0.0-test`                                | 3 jobs: build → TestPyPI → verify |
-| Full release (safe) | `git push origin v0.0.0-test.1` then **reject** at approval          | 4 jobs run, approval gate works   |
-| Full release (real) | `git push origin v0.0.0-test.1` then **approve**                     | All 5 jobs, package on PyPI       |
-| Cleanup (branch)    | `git push origin --delete release/v0.0.0-test`                       | Branch removed                    |
-| Cleanup (tag)       | `git push origin --delete v0.0.0-test.1 && git tag -d v0.0.0-test.1` | Tag removed                       |
+| What to test           | Command                                                              | What to watch                        |
+| ---------------------- | -------------------------------------------------------------------- | ------------------------------------ |
+| Staging only           | `git push origin release/v0.0.0-test`                                | 3 jobs: build → TestPyPI → verify    |
+| Full release           | `git push origin v0.0.0-test.1`                                      | Publishes to PyPI. No undo. Avoid.   |
+| Cleanup (branch)       | `git push origin --delete release/v0.0.0-test`                       | Branch removed                       |
+| Cleanup (tag)          | `git push origin --delete v0.0.0-test.1 && git tag -d v0.0.0-test.1` | Tag removed, PyPI version remains    |
 
 ### 8.4 Testing Workflow Changes on a Feature Branch
 
@@ -516,14 +496,27 @@ flowchart TD
     build["_build<br/><i>tests + package</i><br/>Version: 0.2.0 (clean, from tag)"]
     publishTest["publish-testpypi<br/><i>Final TestPyPI upload (clean version)</i>"]
     verifyTest["verify-testpypi<br/><i>Smoke test from TestPyPI</i>"]
-    publishPypi{{"publish-pypi ⏸<br/><i>PAUSES - requires approval</i><br/>Uses PYPI_TOKEN<br/>environment: release"}}
+    publishPypi["publish-pypi<br/><i>Publishes to PyPI immediately</i><br/>Trusted Publishing (OIDC, no token)<br/>environment: release (no protection rules)"]
     ghRelease["github-release<br/><i>Creates GitHub Release with artifacts</i><br/>Auto-generated release notes"]
 
     tag --> build --> publishTest --> verifyTest --> publishPypi --> ghRelease
 
     classDef gate fill:#fff3cd,stroke:#856404,color:#000;
-    class publishPypi gate;
+    class tag gate;
 ```
+
+> **Pushing the tag is the point of no return.** The `publish-pypi` job declares
+> `environment: release`, but that environment currently has **no protection
+> rules**, so nothing pauses for review. Verify for yourself:
+>
+> ```bash
+> gh api repos/Azure/agentops/environments --jq '.environments[] | {name, protection_rules}'
+> ```
+>
+> PyPI does not allow re-uploading a version, so a bad release can only be
+> yanked, never replaced. Do all your verification on TestPyPI (staging) before
+> you tag. See [Enabling a real approval gate](#enabling-a-real-approval-gate)
+> if you want the pipeline to stop for a human.
 
 ### Step-by-Step: Cutting a Release
 
@@ -572,36 +565,81 @@ Create a PR from `release/v0.2.0` → `main` (or use the one already opened by C
 3. Title: `Release v0.2.0`
 4. Get the required reviews and merge
 
-#### Step 5: Tag the Release
+#### Step 5: Tag the release **and** sync `develop`
+
+These are one step, not two. Tagging publishes to PyPI; syncing `develop` keeps
+the next release's CHANGELOG correct. Run all of it in one sitting.
 
 ```bash
+# 1. Tag main. This publishes to PyPI with no approval prompt.
 git checkout main
 git pull origin main
 git tag v0.2.0
 git push origin v0.2.0
-```
 
-This triggers the [production release pipeline](#8-production-release-pipeline-pypi).
-
-#### Step 6: Approve the PyPI Publish
-
-1. Go to **Actions** tab → find the **Release** workflow run for `v0.2.0`
-2. The pipeline will run through build → TestPyPI → verify
-3. At the `publish-pypi` job, it pauses with **"Waiting for review"**
-4. Click **Review deployments** → select the **release** environment → **Approve and deploy**
-5. The package publishes to PyPI
-6. The `github-release` job creates a GitHub Release with the built artifacts and auto-generated release notes
-
-#### Step 7: Post-Release Cleanup
-
-```bash
-# Sync the tag back to develop
+# 2. Immediately sync main back into develop.
 git checkout develop
 git pull origin develop
 git merge main
 git push origin develop
 
-# Delete the release branch (remote and local)
+# 3. Verify the sync. This MUST print nothing.
+git fetch origin
+git log --oneline origin/develop..origin/main
+```
+
+If step 3 prints any commits, `develop` is behind `main` and the next release
+will be built from a stale CHANGELOG. Fix it before you walk away.
+
+**Why skipping the sync corrupts the next release.** `cut-release.yml` branches
+from `develop` and rewrites the changelog by replacing the `## [Unreleased]`
+marker exactly once, so everything under `Unreleased` becomes the new version's
+content. When `develop` is behind `main`:
+
+- `develop` still carries entries that already shipped, so they get republished
+  under the new version.
+- `develop` has no `## [0.2.0]` heading at all, so merging the next release PR
+  into `main` **deletes the `[0.2.0]` section** from the published changelog.
+
+**If you already skipped it**, do not trust a plain `git merge main`. Git places
+the incoming `## [0.2.0] - <date>` heading above the unreleased entries that
+`develop` accumulated in the same spot, which nests new unreleased work inside an
+already-published version. The result is valid Markdown and easy to miss in
+review. Open `CHANGELOG.md` after the merge and confirm that everything under
+`## [Unreleased]` is genuinely unreleased before pushing.
+
+#### Step 6: Watch the release pipeline
+
+1. Go to **Actions** tab → find the **Release** workflow run for `v0.2.0`
+2. The pipeline runs build → TestPyPI → verify → **publish-pypi** → github-release
+3. `publish-pypi` does not pause. It publishes to PyPI via
+   [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) using the
+   workflow's OIDC identity, so there is no API token to rotate
+4. `github-release` then creates a GitHub Release with the built artifacts and
+   auto-generated release notes
+
+If the run fails after `publish-pypi` succeeded, the package is already on PyPI.
+Fix forward with a new patch version rather than retrying the tag.
+
+##### Enabling a real approval gate
+
+The `release` environment exists and is referenced by the workflow, but it has no
+reviewers attached, so it is a label rather than a gate. To make the pause real,
+a repo admin adds required reviewers:
+
+**Settings → Environments → `release` → Required reviewers**, then confirm:
+
+```bash
+gh api repos/Azure/agentops/environments/release --jq '.protection_rules'
+```
+
+Once reviewers exist, `publish-pypi` stops on **"Waiting for review"** and a
+reviewer approves via **Review deployments → release → Approve and deploy**. No
+workflow change is needed; `environment: release` is already declared.
+
+#### Step 7: Delete the release branch
+
+```bash
 git push origin --delete release/v0.2.0
 git branch -d release/v0.2.0
 ```
@@ -632,49 +670,63 @@ Create two environments in **Settings → Environments → New environment**:
 #### `staging` Environment
 
 - **Purpose**: Controls access to TestPyPI publishing
-- **Protection rules**: None required (auto-deploys), or add reviewers for extra safety
-- **Secrets**:
-
-  | Secret            | Value              | How to get it                                                                     |
-  | ----------------- | ------------------ | --------------------------------------------------------------------------------- |
-  | `TEST_PYPI_TOKEN` | TestPyPI API token | [test.pypi.org/manage/account/token](https://test.pypi.org/manage/account/token/) |
+- **Protection rules**: None
+- **Secrets**: None. `staging.yml` requests `id-token: write` and uploads via Trusted Publishing.
 
 #### `release` Environment
 
-- **Purpose**: Controls access to production PyPI publishing
-- **Protection rules**: **Required reviewers** - add at least one team member who must approve
+- **Purpose**: Scopes the PyPI publish and holds the `VSCE_PAT` secret
+- **Protection rules**: **None today.** The environment is declared by `release.yml`
+  but has no reviewers, so `publish-pypi` runs without pausing. To turn it into a
+  real gate, add required reviewers (see
+  [Enabling a real approval gate](#enabling-a-real-approval-gate)).
 - **Deployment branches**: Optionally restrict to `main` branch and `v*` tags
 - **Secrets**:
 
-  | Secret       | Value                                         | How to get it                                                           |
-  | ------------ | --------------------------------------------- | ----------------------------------------------------------------------- |
-  | `PYPI_TOKEN` | PyPI API token (scoped to `agentops-accelerator`) | [pypi.org/manage/account/token](https://pypi.org/manage/account/token/) |
+  | Secret      | Value                                                              | How to get it                                                             |
+  | ----------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+  | `VSCE_PAT`  | VS Code Marketplace PAT with **Marketplace: Manage**                | [dev.azure.com](https://dev.azure.com) → User settings → Personal access tokens |
 
-### 10.2 PyPI and TestPyPI Accounts
+No PyPI API token is stored. Check the current rules at any time:
+
+```bash
+gh api repos/Azure/agentops/environments/release --jq '.protection_rules'
+```
+
+### 10.2 PyPI and TestPyPI Trusted Publishing
+
+Both `staging.yml` and `release.yml` use
+[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/), so uploads
+are authenticated with a short-lived OIDC token minted by GitHub Actions. There
+are no API tokens to create, store, or rotate.
+
+Configure it once per index, on the index side:
 
 #### TestPyPI (Staging)
 
-1. Go to [test.pypi.org/account/register](https://test.pypi.org/account/register/)
-2. Create an account (separate from PyPI - different databases)
-3. Go to [test.pypi.org/manage/account/token](https://test.pypi.org/manage/account/token/)
-4. Create an API token (scope: entire account for first upload, then project-scoped after)
-5. Add the token as `TEST_PYPI_TOKEN` secret in the GitHub `staging` environment
-
-> **Note**: TestPyPI and PyPI are completely separate systems with separate accounts, tokens, and namespaces. An account on one does not grant access to the other.
+1. Log in at [test.pypi.org](https://test.pypi.org/) (a separate account from PyPI)
+2. Go to the project → **Manage → Publishing → Add a new publisher → GitHub**
+3. Owner `Azure`, repository `agentops`, workflow `staging.yml`, environment `staging`
 
 #### PyPI (Production)
 
-1. Go to [pypi.org/account/register](https://pypi.org/account/register/) or log in
-2. Go to [pypi.org/manage/account/token](https://pypi.org/manage/account/token/)
-3. Create an API token scoped to the `agentops-accelerator` project
-4. Add the token as `PYPI_TOKEN` secret in the GitHub `release` environment
+1. Log in at [pypi.org](https://pypi.org/)
+2. Go to the project → **Manage → Publishing → Add a new publisher → GitHub**
+3. Owner `Azure`, repository `agentops`, workflow `release.yml`, environment `release`
+
+The workflow filename and environment name must match exactly. A mismatch fails
+at upload time with `403 Invalid or non-existent authentication information`,
+which on the release pipeline happens *after* the tag is already pushed.
+
+> **Note**: TestPyPI and PyPI are completely separate systems with separate accounts and namespaces. A publisher configured on one does not apply to the other.
 
 ### 10.3 First-Time Package Registration
 
-The first time you publish to TestPyPI or PyPI, the project name (`agentops-accelerator`) is registered automatically. After the first upload:
-
-- Scope your API tokens to the specific project for better security
-- Add collaborators/maintainers on the PyPI/TestPyPI project page if needed
+Trusted Publishing cannot create a project that does not exist yet. For a brand
+new project name, either upload once manually with a temporary API token, or use
+[PyPI's pending publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
+flow to reserve the name for the workflow. `agentops-accelerator` is already
+registered on both indexes, so this only matters if the package is renamed.
 
 ## 11. Workflow File Reference
 
@@ -718,12 +770,13 @@ Key details:
 
 ```
 Trigger: push v* tags, or workflow_dispatch
-Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi (approval) → github-release
+Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi → github-release
 Purpose: Publish to PyPI and create GitHub Release
 ```
 
 Key details:
-- `publish-pypi` uses `environment: release` which requires reviewer approval
+- `publish-pypi` declares `environment: release`, but that environment has no protection rules, so it publishes without pausing
+- PyPI upload uses Trusted Publishing (`id-token: write`), not an API token
 - `github-release` uses `gh release create` with `--generate-notes` for automatic release notes
 - Built artifacts (.whl, .tar.gz) are attached to the GitHub Release
 
@@ -760,19 +813,19 @@ Use this checklist when cutting a release:
 - [ ] Staging pipeline passes: build + TestPyPI + verify (all 3 green)
 - [ ] PR opened: `release/v0.X.Y` → `main`
 
-**Production**
+**Production (tag + sync, do these together)**
 - [ ] PR from `release/v0.X.Y` → `main` created and approved
 - [ ] PR merged to `main`
-- [ ] Version tag created and pushed: `v0.X.Y`
-- [ ] Release pipeline runs: build + TestPyPI + verify pass
-- [ ] PyPI publish approved in GitHub Actions
+- [ ] Version tag created and pushed: `v0.X.Y` (this publishes to PyPI immediately)
+- [ ] Release pipeline runs: build + TestPyPI + verify + publish-pypi all green
+- [ ] **`main` merged back into `develop` and pushed**
+- [ ] **`git log --oneline origin/develop..origin/main` prints nothing**
+- [ ] `CHANGELOG.md` on `develop` shows only genuinely unreleased work under `## [Unreleased]`
 - [ ] GitHub Release created with artifacts
 - [ ] Published package verified: `pip install agentops-accelerator==0.X.Y`
 
 **Cleanup**
-- [ ] `main` merged back to `develop`
 - [ ] Release branch deleted (remote and local)
-- [ ] CHANGELOG is ready for new entries
 
 ## 13. Troubleshooting
 
@@ -789,7 +842,7 @@ Use this checklist when cutting a release:
 
 | Problem                                       | Cause                            | Solution                                                                                                                |
 | --------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Upload fails with 403                         | Invalid or expired token         | Regenerate `TEST_PYPI_TOKEN` and update the GitHub secret                                                               |
+| Upload fails with 403                         | Trusted Publishing not configured for `staging.yml` / environment `staging` | Fix the publisher on test.pypi.org under **Manage → Publishing**                                                        |
 | Upload fails with "already exists"            | Same version previously uploaded | Normal - `skip-existing: true` handles this. If you need a new upload, push another commit to increment the dev version |
 | Install fails with "no matching distribution" | Package not yet indexed          | The verify job retries automatically (5 attempts, 30s apart). If persistent, check TestPyPI status                      |
 | Install fails with dependency errors          | Dependency not on TestPyPI       | Verify `--extra-index-url https://pypi.org/simple/` is present                                                          |
@@ -798,8 +851,9 @@ Use this checklist when cutting a release:
 
 | Problem                                    | Cause                                     | Solution                                                       |
 | ------------------------------------------ | ----------------------------------------- | -------------------------------------------------------------- |
-| Publish step stuck on "Waiting for review" | Normal - requires approval                | A designated reviewer must approve in the Actions UI           |
-| Upload fails with 403                      | Invalid `PYPI_TOKEN`                      | Regenerate the token on pypi.org and update the GitHub secret  |
+| Published to PyPI without being asked      | Expected. `release` has no protection rules, so `publish-pypi` never pauses | Yank the release on pypi.org and ship a new patch version. See [Enabling a real approval gate](#enabling-a-real-approval-gate) |
+| Publish step stuck on "Waiting for review" | Someone added required reviewers to `release` | A listed reviewer approves via **Review deployments → release** |
+| Upload fails with 403                      | Trusted Publishing not configured for `release.yml` / environment `release` | Fix the publisher on pypi.org under **Manage → Publishing**. The tag is already pushed, so bump the version and retag |
 | Version already exists on PyPI             | Tag points to an already-released version | PyPI versions are immutable. You must use a new version number |
 
 ### Git and Version Issues
@@ -809,6 +863,7 @@ Use this checklist when cutting a release:
 | Wrong version in built package              | Tag not on the expected commit | Verify with `git log --oneline --decorate` that the tag is where you expect                      |
 | `pip install -e .` fails                    | `.git` directory missing       | Editable installs need git history for setuptools-scm. Clone the repo, don't just download a zip |
 | Merge conflicts between release and develop | Normal for concurrent work     | Resolve conflicts on the release branch before merging to main                                   |
+| Next release's CHANGELOG republishes old entries, or drops the previous version's section | `develop` was left behind `main` after the last release | `git merge main` into `develop`, then hand-check `CHANGELOG.md`. See [Step 5](#step-5-tag-the-release-and-sync-develop) |
 
 ### Environment and Permissions
 
@@ -816,6 +871,7 @@ Use this checklist when cutting a release:
 | --------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
 | "Environment not found" error     | GitHub Environment not created      | Create `staging` and `release` environments in Settings → Environments |
 | "Secret not found" error          | Secret not added to the environment | Add secrets to the specific environment, not repository-level secrets  |
+| No one was asked to approve the publish | `release` has no required reviewers | Confirm with `gh api repos/Azure/agentops/environments/release --jq '.protection_rules'` |
 | Reviewer can't approve deployment | Not listed as required reviewer     | Update the environment's required reviewers list                       |
 
 ## Architecture Diagram
@@ -837,10 +893,10 @@ flowchart TD
     tag --> relBuild["_build"]
     relBuild --> relTest["TestPyPI"]
     relTest --> relVerify["Verify"]
-    relVerify --> relPypi{{"PyPI<br/>(approval)"}}
+    relVerify --> relPypi["PyPI<br/>(no approval gate)"]
     relPypi --> relGh["GitHub Release"]
 
-    main -->|merge back| develop
+    main -->|merge back, REQUIRED| develop
 
     subgraph Staging["Staging (staging.yml)"]
         stagingBuild
@@ -857,5 +913,5 @@ flowchart TD
     end
 
     classDef gate fill:#fff3cd,stroke:#856404,color:#000;
-    class cut,relPypi gate;
+    class cut,tag gate;
 ```
