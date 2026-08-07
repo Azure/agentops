@@ -368,13 +368,13 @@ def test_run_evaluation_cloud_requires_project_endpoint(tmp_path: Path, monkeypa
 
 
 def test_run_evaluation_cloud_rejects_non_foundry_target(tmp_path: Path):
-    """execution: cloud only works for Foundry prompt agents."""
+    """execution: cloud only works for Foundry agents."""
     from agentops.core.agentops_config import AgentOpsConfig
     from agentops.pipeline import orchestrator
 
-    # Construct config bypassing validators: only Foundry prompt agents
-    # can be cloud-executed, so build a model_direct target to exercise
-    # the orchestrator-level guard.
+    # Construct config bypassing validators: only Foundry agents can be
+    # cloud-executed, so build a model_direct target to exercise the
+    # orchestrator-level guard.
     dataset_path = tmp_path / "dataset.jsonl"
     dataset_path.write_text('{"input": "hi"}\n', encoding="utf-8")
 
@@ -392,5 +392,33 @@ def test_run_evaluation_cloud_rejects_non_foundry_target(tmp_path: Path):
         config_path=tmp_path / "agentops.yaml",
         output_dir=output_dir,
     )
-    with pytest.raises(ValueError, match="Foundry prompt agents"):
+    with pytest.raises(ValueError, match="only supports Foundry agents"):
+        orchestrator._run_evaluation_cloud(config, options=options)
+
+
+def test_run_evaluation_cloud_rejects_hosted_agent_without_version(tmp_path: Path):
+    """A hosted URL without /versions/ cannot name an azure_ai_agent target,
+    so the guard must reject it with an actionable message instead of
+    failing deep inside the Foundry SDK call."""
+    from agentops.core.agentops_config import AgentOpsConfig
+    from agentops.pipeline import orchestrator
+
+    dataset_path = tmp_path / "dataset.jsonl"
+    dataset_path.write_text('{"input": "hi"}\n', encoding="utf-8")
+
+    config = AgentOpsConfig(
+        version=1,
+        agent="https://acct.services.ai.azure.com/api/projects/p/agents/bot",
+        dataset=dataset_path,
+        execution="cloud",
+        project_endpoint="https://x.example/api/projects/p",
+    )
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    options = orchestrator.RunOptions(
+        config_path=tmp_path / "agentops.yaml",
+        output_dir=output_dir,
+    )
+    with pytest.raises(ValueError, match="could not derive an agent name"):
         orchestrator._run_evaluation_cloud(config, options=options)

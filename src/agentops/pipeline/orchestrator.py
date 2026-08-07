@@ -272,10 +272,20 @@ def _run_evaluation_cloud(
         options.agent_override or config.agent,
         config.protocol,
     )
-    if target.kind != "foundry_prompt":
+    if target.kind not in {"foundry_prompt", "foundry_hosted"}:
         raise ValueError(
-            "execution: cloud only supports Foundry prompt agents "
-            f"('name:version'); got target.kind={target.kind!r}."
+            "execution: cloud only supports Foundry agents - either a "
+            "'name:version' prompt agent or a hosted agent endpoint URL "
+            f"containing '/agents/<name>/versions/<version>'; got "
+            f"target.kind={target.kind!r}."
+        )
+    if not target.name or not target.version:
+        raise ValueError(
+            "execution: cloud could not derive an agent name/version from "
+            f"{target.raw!r}. Foundry runs the agent server-side and needs "
+            "an explicit agent reference. Use a hosted endpoint URL that "
+            "contains '/agents/<name>/versions/<version>', or set "
+            "'agent: <name>:<version>' in agentops.yaml."
         )
 
     dataset_path = options.dataset_override or _resolve_dataset_path(config, options)

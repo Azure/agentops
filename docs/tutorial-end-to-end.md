@@ -444,6 +444,10 @@ Foundry through `agentops eval run`, so AgentOps can enforce thresholds and writ
 repo-side evidence. AgentOps keeps the local path for hosted endpoints, models,
 unsupported evaluator mappings, and fallback cases.
 
+The hosted-endpoint row above is the default, not a hard limit. A hosted agent
+URL that includes `/agents/<name>/versions/<version>` can also run cloud eval by
+setting `execution: cloud` in `agentops.yaml`.
+
 When the quality gate uses a task-specific rubric, keep it as an advanced
 Foundry / azd hardening step: first confirm the rubric evaluator exists in the
 Foundry project and that an azd run emits stable metric names for its scores.
