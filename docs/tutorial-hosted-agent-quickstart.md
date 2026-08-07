@@ -586,9 +586,16 @@ Recommendation
   Copilot skills  installed - available for workflow adaptation handoff
 ```
 
-That is expected. Foundry prompt agents can use AgentOps cloud eval in Foundry;
-hosted endpoints use AgentOps local eval so the repo can invoke the endpoint,
-normalize results, apply thresholds, and keep a stable `results.json` contract.
+That is expected. The default for a hosted endpoint is AgentOps local eval, so
+the repo can invoke the endpoint, normalize results, apply thresholds, and keep
+a stable `results.json` contract.
+
+You can opt into server-side execution instead. Set `execution: cloud` in
+`agentops.yaml` and Foundry runs the agent and the evaluators, with the run
+appearing in the New Foundry Evaluations panel. This requires the hosted URL to
+include `/agents/<name>/versions/<version>`, since that pair is how Foundry
+identifies the target. The trade-off is that latency becomes Foundry-side
+rather than client-measured, and custom evaluators are skipped.
 
 ## 8. Run a local eval
 

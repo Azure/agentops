@@ -5,6 +5,49 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-08-07
+
+### Fixed
+- **`execution: cloud` now works with a Foundry hosted agent.** Setting
+  `execution: cloud` on a hosted agent endpoint failed with
+  `execution: cloud only supports Foundry prompt agents`, so hosted-agent users
+  had no way to run a server-side evaluation and see the results in the New
+  Foundry Evaluations panel. Their only option was `execution: local`, which
+  keeps everything on the client and publishes nothing.
+
+  This was an artificial restriction, not an API limit. The Foundry Evals API
+  identifies its target with `{"type": "azure_ai_agent", "name": ..., "version":
+  ...}`, and a hosted agent URL already carries both values in its path
+  (`/agents/<name>/versions/<version>`). The problem was that `classify_agent()`
+  never extracted them: it returned a `foundry_hosted` target with `name` and
+  `version` left as `None`, so the cloud path had nothing to send and rejected
+  the target up front.
+
+  `classify_agent()` now parses the agent name and version out of a hosted
+  endpoint URL, tolerating trailing path segments (`/responses`), query strings,
+  and fragments. The guards in `pipeline/cloud_runner.py` and
+  `pipeline/orchestrator.py` accept `foundry_hosted` alongside `foundry_prompt`.
+  A hosted URL with no `/versions/<version>` segment is still rejected, because
+  there is no version to pin the run to, but the error now names the missing
+  segment instead of rejecting the whole target kind.
+
+  `execution: local` remains the default for every target kind, so this change
+  adds an option without altering existing behavior.
+
+- **CI: `Install from TestPyPI` no longer fails on a healthy build.** After a
+  dev, staging, or release build uploaded a distribution to TestPyPI and
+  received `200 OK`, the verification step immediately tried to install it and
+  gave up after 5 attempts spaced 30 s apart (~2 min). TestPyPI serves its
+  simple index through a CDN, so propagation regularly takes longer than that,
+  and the job failed with
+  `No matching distribution found for agentops-accelerator==<version>` for a
+  package that had in fact been published successfully. The retry window is now
+  12 attempts (~6 min), and `pip install` runs with `--no-cache-dir` so a
+  negative index response from an earlier attempt is not reused within the same
+  job. Applied to `ci.yml` (`verify-dev`), `staging.yml`, and `release.yml` —
+  in `release.yml` this step gates publication to PyPI, so a false negative
+  there blocked the release entirely.
+
 ## [0.8.2] - 2026-08-07
 
 ### Fixed

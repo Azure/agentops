@@ -28,8 +28,10 @@ point of view.
 
 Limitations (documented in the YAML schema docstring as well):
 
-* Only ``foundry_prompt`` agents (``name:version``) are supported. HTTP
-  endpoints, local adapters, and direct model deployments are rejected.
+* Foundry agents only: a ``foundry_prompt`` target (``name:version``) or a
+  ``foundry_hosted`` endpoint URL carrying ``/agents/<name>/versions/<v>``.
+  Plain HTTP endpoints, local adapters, and direct model deployments are
+  rejected - Foundry has to be able to resolve the agent itself.
 * Only builtin evaluators that map cleanly onto ``azure_ai_evaluator``
   testing criteria are supported. Custom evaluators are skipped with a
   warning.
@@ -184,10 +186,11 @@ def run_on_foundry_cloud(
     """
     progress = progress or (lambda _msg: None)
 
-    if result.target.kind != "foundry_prompt":
+    if result.target.kind not in {"foundry_prompt", "foundry_hosted"}:
         raise ValueError(
-            "publish: foundry_cloud only supports Foundry agents declared "
-            "as 'name:version' (foundry_prompt targets). Got "
+            "execution: cloud only supports Foundry agents - either a "
+            "'name:version' prompt agent or a hosted agent endpoint URL "
+            "containing '/agents/<name>/versions/<version>'. Got "
             f"target.kind={result.target.kind!r}."
         )
     if not dataset_path.exists():
@@ -196,6 +199,15 @@ def run_on_foundry_cloud(
     agent_name = result.target.name
     agent_version = result.target.version
     if not agent_name or not agent_version:
+        if result.target.kind == "foundry_hosted":
+            raise ValueError(
+                "execution: cloud could not derive an agent name/version "
+                f"from the hosted endpoint {result.target.raw!r}. Foundry "
+                "runs the agent server-side and needs an explicit agent "
+                "reference. Use a URL that contains "
+                "'/agents/<name>/versions/<version>', or set "
+                "'agent: <name>:<version>' in agentops.yaml."
+            )
         raise ValueError(
             "Cloud publish requires a fully qualified 'name:version' agent "
             f"reference; got name={agent_name!r} version={agent_version!r}"
