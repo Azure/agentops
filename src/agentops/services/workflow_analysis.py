@@ -1185,10 +1185,28 @@ def _next_steps(
 
 
 def _azd_eval_recipe(root: Path) -> Optional[Path]:
+    if _configured_execution_mode(root / "agentops.yaml") == "cloud":
+        # `execution: cloud` runs the agent and evaluators server-side in
+        # Foundry, so the eval gate never shells out to azd even when an azd
+        # eval recipe is present.
+        return None
     try:
         return find_eval_yaml(root)
     except Exception:
         return None
+
+
+def _configured_execution_mode(config_path: Path) -> Optional[str]:
+    try:
+        data = load_yaml(config_path)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    execution = data.get("execution")
+    if isinstance(execution, str):
+        return execution.strip().lower()
+    return None
 
 
 def _relative_path(path: Path, root: Path) -> str:

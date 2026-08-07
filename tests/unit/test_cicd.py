@@ -238,7 +238,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
     generate_cicd_workflows(directory=tmp_path, kinds=["doctor"])
 
     content = (tmp_path / _DOCTOR_PATH).read_text(encoding="utf-8")
-    assert 'agentops-accelerator[foundry,agent]' in content
+    assert 'agentops-accelerator[agent]' in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
     assert "watchdog" not in content.lower()
@@ -256,7 +256,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
         force=True,
     )
     ado_content = (tmp_path / _ADO_DOCTOR).read_text(encoding="utf-8")
-    assert 'agentops-accelerator[foundry,agent]' in ado_content
+    assert 'agentops-accelerator[agent]' in ado_content
     assert "--evidence-pack" in ado_content
     assert "agentops-doctor-release-evidence" in ado_content
     assert "watchdog" not in ado_content.lower()
@@ -571,6 +571,138 @@ def test_azd_mode_runs_ailz_preflight_when_script_exists(tmp_path: Path) -> None
     assert "Running AI Landing Zone preflight" in content
     assert "pwsh ./scripts/Invoke-PreflightChecks.ps1 -Strict" in content
     assert content.index("Invoke-PreflightChecks.ps1") < content.index("azd provision --no-prompt")
+
+
+def _job_section(content: str, job: str, jobs: tuple[str, ...]) -> str:
+    """Return the YAML block belonging to `job` within a generated workflow."""
+
+    start = content.index(f"\n  {job}:\n")
+    end = len(content)
+    for other in jobs:
+        if other == job:
+            continue
+        marker = f"\n  {other}:\n"
+        index = content.find(marker, start + 1)
+        if index != -1:
+            end = min(end, index)
+    return content[start:end]
+
+
+def test_azd_provision_and_deploy_jobs_authenticate_azd(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+
+    for kind, rel, jobs in (
+        ("dev", _DEV_PATH, ("provision", "eval", "deploy")),
+        ("qa", _QA_PATH, ("provision", "eval", "deploy")),
+        ("prod", _PROD_PATH, ("provision", "safety-eval", "deploy")),
+    ):
+        result = generate_cicd_workflows(directory=tmp_path, kinds=[kind], force=True)
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+
+        assert result.deploy_mode == "azd"
+        assert "__AZD_CLI_SETUP__" not in content
+        for job in ("provision", "deploy"):
+            section = _job_section(content, job, jobs)
+            assert "Azure/setup-azd@v2" in section
+            assert 'azd extension install azure.ai.agents --version "' in section
+            assert "azd auth login \\" in section
+            assert "--federated-credential-provider github" in section
+
+
+def test_azd_eval_job_declares_environment(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+
+    for kind, rel, env in (("dev", _DEV_PATH, "dev"), ("qa", _QA_PATH, "qa")):
+        generate_cicd_workflows(directory=tmp_path, kinds=[kind], force=True)
+        workflow = _read_yaml(tmp_path / rel)
+
+        assert workflow["jobs"]["eval"]["environment"] == env
+        assert workflow["jobs"]["provision"]["environment"] == env
+        assert workflow["jobs"]["deploy"]["environment"] == env
+
+
+def test_prompt_agent_eval_job_declares_environment(tmp_path: Path) -> None:
+    for kind, rel, env in (("dev", _DEV_PATH, "dev"), ("qa", _QA_PATH, "qa")):
+        generate_cicd_workflows(
+            directory=tmp_path,
+            kinds=[kind],
+            deploy_mode="prompt-agent",
+            force=True,
+        )
+        workflow = _read_yaml(tmp_path / rel)
+
+        for job in workflow["jobs"].values():
+            assert job.get("environment") == env
+
+
+def test_cloud_execution_skips_azd_in_eval_job(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (tmp_path / "eval.yaml").write_text("name: eval\n", encoding="utf-8")
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\nexecution: cloud\n",
+        encoding="utf-8",
+    )
+
+    generate_cicd_workflows(directory=tmp_path, kinds=["dev"])
+    content = (tmp_path / _DEV_PATH).read_text(encoding="utf-8")
+    jobs = ("provision", "eval", "deploy")
+
+    eval_section = _job_section(content, "eval", jobs)
+    assert "Azure/setup-azd@v2" not in eval_section
+    assert "azd extension install azure.ai.agents" not in eval_section
+
+    # `execution: cloud` must not strip azd from the jobs that actually need it.
+    for job in ("provision", "deploy"):
+        section = _job_section(content, job, jobs)
+        assert "Azure/setup-azd@v2" in section
+        assert "azd extension install azure.ai.agents" in section
+        assert "azd auth login \\" in section
+
+
+def test_azd_execution_keeps_azd_in_eval_job(tmp_path: Path) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (tmp_path / "eval.yaml").write_text("name: eval\n", encoding="utf-8")
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\nexecution: azd\n",
+        encoding="utf-8",
+    )
+
+    generate_cicd_workflows(directory=tmp_path, kinds=["dev"])
+    content = (tmp_path / _DEV_PATH).read_text(encoding="utf-8")
+
+    eval_section = _job_section(content, "eval", ("provision", "eval", "deploy"))
+    assert "Azure/setup-azd@v2" in eval_section
+    assert "azd extension install azure.ai.agents" in eval_section
+
+
+def test_azure_devops_azd_stages_install_extension_and_configure_auth(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+
+    for kind, rel in (("dev", _ADO_DEV), ("qa", _ADO_QA), ("prod", _ADO_PROD)):
+        result = generate_cicd_workflows(
+            directory=tmp_path,
+            platform="azure-devops",
+            kinds=[kind],
+            force=True,
+        )
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+
+        assert result.deploy_mode == "azd"
+        assert "__AZD_CLI_SETUP__" not in content
+        assert isinstance(_read_yaml(tmp_path / rel), dict)
+        # One install/auth pair per azd stage (provision and deploy).
+        assert content.count('azd extension install azure.ai.agents --version "') == 2
+        assert content.count('azd config set auth.useAzCliAuth "true"') == 2
 
 
 def test_azure_devops_azd_mode_runs_ailz_preflight_when_script_exists(tmp_path: Path) -> None:

@@ -6,6 +6,7 @@ from pathlib import Path
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
+    AZD_EVAL_RUNNER,
     OFFICIAL_EVAL_RUNNER,
     analyze_official_eval_support,
     main,
@@ -111,6 +112,27 @@ def test_support_rejects_missing_ground_truth(tmp_path: Path) -> None:
 
     assert support.eligible is False
     assert "expected" in support.reasons[0]
+
+
+def test_recommended_runner_prefers_azd_when_eval_recipe_exists(tmp_path: Path) -> None:
+    _write_prompt_config(tmp_path)
+    _write_dataset(tmp_path)
+    (tmp_path / "eval.yaml").write_text("name: eval\n", encoding="utf-8")
+
+    assert recommended_eval_runner(tmp_path) == AZD_EVAL_RUNNER
+
+
+def test_recommended_runner_ignores_azd_recipe_for_cloud_execution(tmp_path: Path) -> None:
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: support-agent:4\ndataset: data.jsonl\nexecution: cloud\n",
+        encoding="utf-8",
+    )
+    _write_dataset(tmp_path)
+    (tmp_path / "eval.yaml").write_text("name: eval\n", encoding="utf-8")
+
+    # `execution: cloud` evaluates server-side in Foundry, so the eval gate must
+    # not shell out to azd even when an azd eval recipe is present.
+    assert recommended_eval_runner(tmp_path) == AGENTOPS_CLOUD_RUNNER
 
 
 def test_prepare_cli_writes_github_outputs(tmp_path: Path) -> None:
