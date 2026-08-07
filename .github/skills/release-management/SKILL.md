@@ -225,7 +225,11 @@ Both `staging.yml` and `release.yml` publish through
 
 | Secret | Scope | Purpose |
 |---|---|---|
-| `VSCE_PAT` | environment: `release` | VS Code Marketplace PAT with **Marketplace: Manage**, used by the extension publish job |
+| `VSCE_PAT` | repository | VS Code Marketplace PAT with **Marketplace: Manage**, used by the extension publish jobs in both `staging.yml` and `release.yml` |
+| `RELEASE_PAT` | repository | Used by `cut-release.yml` to open the release PR |
+
+Neither the `staging` nor the `release` environment holds any secret. Confirm with
+`gh api repos/Azure/agentops/actions/secrets --jq '.secrets[].name'`.
 
 Trusted Publishing is configured on the index side (pypi.org and test.pypi.org →
 **Manage → Publishing**) and must match the repository, workflow filename, and

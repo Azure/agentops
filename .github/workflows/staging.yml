@@ -27,18 +27,19 @@
 #   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
 #   and TestPyPI.
 #
-# Required GitHub secrets (environment: staging):
-#   VSCE_PAT — VS Code Marketplace PAT. MUST have "Marketplace: Manage" scope
-#              on the AgentOpsAccelerator publisher.
+# Required GitHub secrets:
+#   VSCE_PAT — VS Code Marketplace PAT (repository secret, not an environment secret).
+#              MUST have "Marketplace: Manage" scope on the AgentOpsAccelerator publisher.
 #
 # Setup (Trusted Publishing + VSCE):
 #   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
-#   2. GitHub repo → Settings → Environments → Create "staging" environment (optional approval)
+#   2. GitHub repo → Settings → Environments → Create "staging" (the name must match
+#      the publisher config in step 1). No protection rules are configured today.
 #   3. https://dev.azure.com/ → PAT with Marketplace scope on the AzDO account that
 #      owns the AgentOpsAccelerator publisher → Create VSCE_PAT.
 #      Verify scope with: vsce ls-publishers -p $VSCE_PAT (must list AgentOpsAccelerator).
-#   4. Add VSCE_PAT to staging environment
+#   4. Add VSCE_PAT as a repository secret (Settings → Secrets and variables → Actions)
 
 name: Staging
 

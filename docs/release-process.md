@@ -675,22 +675,28 @@ Create two environments in **Settings → Environments → New environment**:
 
 #### `release` Environment
 
-- **Purpose**: Scopes the PyPI publish and holds the `VSCE_PAT` secret
+- **Purpose**: Scopes the PyPI publish to a named environment for Trusted Publishing
 - **Protection rules**: **None today.** The environment is declared by `release.yml`
   but has no reviewers, so `publish-pypi` runs without pausing. To turn it into a
   real gate, add required reviewers (see
   [Enabling a real approval gate](#enabling-a-real-approval-gate)).
 - **Deployment branches**: Optionally restrict to `main` branch and `v*` tags
-- **Secrets**:
+- **Secrets**: None. `VSCE_PAT` is a **repository** secret, not an environment secret,
+  so it resolves in both `staging.yml` and `release.yml` without being attached here.
 
-  | Secret      | Value                                                              | How to get it                                                             |
-  | ----------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-  | `VSCE_PAT`  | VS Code Marketplace PAT with **Marketplace: Manage**                | [dev.azure.com](https://dev.azure.com) → User settings → Personal access tokens |
+#### Repository secrets
 
-No PyPI API token is stored. Check the current rules at any time:
+| Secret       | Value                                                | How to get it                                                                   |
+| ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `VSCE_PAT`   | VS Code Marketplace PAT with **Marketplace: Manage** | [dev.azure.com](https://dev.azure.com) → User settings → Personal access tokens |
+| `RELEASE_PAT`| PAT used by `cut-release.yml` to open the release PR | GitHub → Settings → Developer settings → Personal access tokens                 |
+
+No PyPI API token is stored. Check the current rules and secret locations at any time:
 
 ```bash
 gh api repos/Azure/agentops/environments/release --jq '.protection_rules'
+gh api repos/Azure/agentops/environments/release/secrets --jq '.secrets[].name'
+gh api repos/Azure/agentops/actions/secrets --jq '.secrets[].name'
 ```
 
 ### 10.2 PyPI and TestPyPI Trusted Publishing
