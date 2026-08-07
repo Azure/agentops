@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-08-07
+
 ## [0.8.3] - 2026-08-07
 
 ### Fixed
