@@ -59,7 +59,8 @@ jobs:
         run: uv run mypy src/agentops/ --ignore-missing-imports
 
   # Fail a PR that changes user-visible behaviour without a CHANGELOG entry.
-  # cut-release.yml only renames `## [Unreleased]`; it never writes content, so
+  # cut-release.yml inserts a versioned heading beneath `## [Unreleased]`; it
+  # never writes content, so
   # an omission here silently ships an empty release section (0.8.4, 0.8.5).
   # Skipped by the `no-changelog` label. See docs/release-process.md.
   changelog:

@@ -7,15 +7,21 @@ Two subcommands, two failure modes, one root cause.
 changes user-visible behaviour but adds nothing under ``## [Unreleased]`` in
 ``CHANGELOG.md``.
 
-``check-unreleased`` runs inside ``cut-release.yml`` before the release branch
-is created. It fails when ``## [Unreleased]`` is empty.
+``check-unreleased`` runs before a release branch is created, both in
+``cut-release.yml`` and in the local ``cut-release`` scripts. It fails when
+``## [Unreleased]`` is empty.
 
-Why both: ``cut-release.yml`` does not generate changelog content. It renames
-the ``## [Unreleased]`` heading to ``## [X.Y.Z] - <date>``. If nothing was
-written under ``[Unreleased]`` during the cycle, the published release section
-is empty. Releases 0.8.4 and 0.8.5 both shipped that way and were backfilled by
-hand afterwards. ``check-pr`` stops the omission at the source;
-``check-unreleased`` is the last line of defence at the point of no return.
+Why both: ``cut-release.yml`` does not generate changelog content. It inserts a
+``## [X.Y.Z] - <date>`` heading directly beneath ``## [Unreleased]``, so
+whatever sits under ``[Unreleased]`` becomes the release section and nothing
+else does. If nothing was written there during the cycle, the published release
+section is empty. Releases 0.8.4 and 0.8.5 both shipped that way and were
+backfilled by hand afterwards.
+
+``check-pr`` stops the omission at the source. ``check-unreleased`` is a
+non-emptiness check only: one bullet from any PR satisfies it. It catches the
+case where a whole cycle wrote nothing, not the case where a cycle wrote
+something but omitted a particular change.
 """
 
 from __future__ import annotations
@@ -36,15 +42,21 @@ TYPES_REQUIRING_ENTRY = frozenset({"feat", "fix", "perf", "revert"})
 #: Label that skips ``check-pr`` entirely.
 SKIP_LABEL = "no-changelog"
 
-#: Bot authors that cannot write a changelog entry themselves. Their changes
-#: are covered by ``check-unreleased`` when the release is cut instead.
+#: Bot authors that cannot respond to a failing check. Requiring an entry from
+#: them would leave every dependency PR red until a human applied the skip
+#: label, so they are exempt. Nothing else compensates for that today: writing
+#: up merged dependency bumps is a manual step when the release is cut.
 EXEMPT_AUTHORS = frozenset({"dependabot[bot]", "github-actions[bot]"})
 
 #: Path prefixes whose changes never reach a user of the published package.
+#: ``.github/`` is deliberately not listed wholesale: ``.github/plugin/
+#: marketplace.json`` is a shipping artifact that ``cut-release`` version-syncs
+#: alongside ``.claude-plugin/marketplace.json``.
 NON_SHIPPING_PREFIXES = (
     "docs/",
     "tests/",
-    ".github/",
+    ".github/workflows/",
+    ".github/ISSUE_TEMPLATE/",
     ".vscode/",
     "media/",
     "tombstones/",
@@ -121,8 +133,7 @@ def entry_required(
 
     if author.strip().lower() in EXEMPT_AUTHORS:
         return False, (
-            f"`{author}` is an automated author and cannot write an entry; "
-            "its changes are covered by the cut-release guard"
+            f"`{author}` is an automated author and cannot respond to a failing check"
         )
 
     if not touches_shipped_code(changed_files):
@@ -164,7 +175,11 @@ def unreleased_line_range(changelog: str) -> tuple[int, int]:
 
 
 def unreleased_has_content(changelog: str) -> bool:
-    """True when ``[Unreleased]`` holds at least one bullet."""
+    """True when ``[Unreleased]`` holds at least one bullet.
+
+    Non-emptiness only. A single bullet from any PR satisfies this, so it
+    cannot tell whether a *particular* change was written up.
+    """
     lines = changelog.splitlines()
     start, end = unreleased_line_range(changelog)
     for number in range(start, end):
@@ -186,6 +201,10 @@ def added_line_numbers(diff: str) -> set[int]:
         if cursor == 0:
             continue
         if line.startswith("+++"):
+            continue
+        if line.startswith("\\"):
+            # `\ No newline at end of file` annotates the preceding line; it
+            # is not a line of the new file and must not advance the cursor.
             continue
         if line.startswith("+"):
             added.add(cursor)
@@ -227,6 +246,7 @@ def _git(*args: str) -> str:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=True,
     )
     return result.stdout
@@ -264,6 +284,14 @@ def _cmd_check_pr(args: argparse.Namespace) -> int:
     print(f"Author:    {author}")
     print(f"Labels:    {labels or '(none)'}")
     print(f"Changed:   {len(changed_files)} file(s)")
+
+    if not changed_files:
+        return _fail(
+            f"No changed files detected against `{base}`; the guard cannot "
+            "verify this PR. This usually means the base ref was never "
+            "fetched or the checkout was shallow. Confirm the job uses "
+            "`fetch-depth: 0`."
+        )
 
     required, reason = entry_required(title, labels, author, changed_files)
     if not required:

@@ -7,8 +7,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ### Added
 - **CI now fails a pull request that changes shipped code without a CHANGELOG
-  entry.** `cut-release.yml` never generates changelog content. It renames the
-  `## [Unreleased]` heading to `## [X.Y.Z] - <date>` and stops there, so a
+  entry.** `cut-release.yml` never generates changelog content. It inserts a
+  `## [X.Y.Z] - <date>` heading beneath `## [Unreleased]` and stops there, so a
   release cycle where no PR wrote anything under `[Unreleased]` publishes an
   empty section with a green pipeline. Releases 0.8.4 and 0.8.5 both shipped
   that way and were backfilled by hand, between them hiding six user-visible
@@ -18,18 +18,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `develop`. It asks for an entry only when the diff touches a file that ships
   and the PR title reads as user-visible (`feat`, `fix`, `perf`, `revert`, a
   breaking-change marker, or no conventional-commit type at all). Changes
-  confined to `docs/`, `tests/`, `.github/`, or the top-level markdown files are
-  never asked for one, and neither are PRs typed `docs:`, `test:`, `ci:`,
+  confined to `docs/`, `tests/`, `.github/workflows/`, `.github/ISSUE_TEMPLATE/`,
+  or the top-level markdown files are never asked for one, and neither are PRs
+  typed `docs:`, `test:`, `ci:`,
   `chore:`, `build:`, `style:`, or `refactor:`. The check resolves each added
   line to the section it lands in, so a bullet written under an already-released
   heading fails the same as no bullet, which matches what `cut-release` will
   actually promote. Apply the `no-changelog` label to bypass it. Dependabot is
   exempt because a bot cannot respond to a red check.
 
-  `cut-release.yml` gained the matching net at the point of no return: it now
-  aborts before creating the release branch if `[Unreleased]` is empty. That is
-  the step that catches whatever the PR check let through, including merged
-  Dependabot bumps.
+  The same script guards the release itself. `cut-release.yml` and both local
+  `cut-release` scripts now abort before creating the release branch when
+  `[Unreleased]` is empty, so a cycle that wrote nothing at all cannot reach a
+  published tag. That is a non-emptiness check, not per-change coverage: one
+  bullet from any PR satisfies it.
 
 ## [0.8.5] - 2026-08-07
 

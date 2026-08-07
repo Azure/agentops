@@ -6,12 +6,13 @@
 # What it does:
 #   1. Prompts for the version (semver)
 #   2. Checks out develop (latest)
-#   3. Verifies release branch doesn't exist
-#   4. Creates release/v<version> branch
-#   5. Updates CHANGELOG.md with versioned section
-#   6. Syncs plugin versions (package.json, plugin.json, marketplace.json)
-#   7. Commits and pushes the branch
-#   8. Creates a PR to main via gh CLI
+#   3. Verifies [Unreleased] has content
+#   4. Verifies release branch does not exist
+#   5. Creates release/v<version> branch
+#   6. Updates CHANGELOG.md with versioned section
+#   7. Syncs plugin versions (package.json, plugin.json, marketplace.json)
+#   8. Commits and pushes the branch
+#   9. Creates a PR to main via gh CLI
 #
 # Usage:  ./scripts/cut-release.sh
 # Prereq: gh auth login, jq installed
@@ -32,18 +33,25 @@ echo -e "\n>>> Checking out develop..."
 git checkout develop
 git pull origin develop
 
-# ── Step 3: Check release branch does not exist ─────────────────────
+# ── Step 3: Check the Unreleased section has content ────────────────
+# This script only inserts a versioned heading; it never writes changelog
+# content. An empty [Unreleased] would publish an empty release section.
+# `set -e` aborts here before anything is branched, committed, or pushed.
+echo -e "\n>>> Checking CHANGELOG [Unreleased] section..."
+python scripts/check_changelog.py check-unreleased
+
+# ── Step 4: Check release branch does not exist ─────────────────────
 if git ls-remote --exit-code origin "refs/heads/release/v$version" >/dev/null 2>&1; then
     echo "ERROR: Branch release/v$version already exists on remote. Delete it first or use a different version." >&2
     exit 1
 fi
 echo ">>> No existing release/v$version branch — OK"
 
-# ── Step 4: Create release branch ──────────────────────────────────
+# ── Step 5: Create release branch ──────────────────────────────────
 echo -e "\n>>> Creating branch release/v$version..."
 git checkout -b "release/v$version"
 
-# ── Step 5: Update CHANGELOG ────────────────────────────────────────
+# ── Step 6: Update CHANGELOG ────────────────────────────────────────
 echo -e "\n>>> Updating CHANGELOG.md..."
 date_today=$(date +%Y-%m-%d)
 
@@ -55,35 +63,35 @@ else
     echo "CHANGELOG updated with [$version] - $date_today"
 fi
 
-# ── Step 6: Sync plugin versions ────────────────────────────────────
+# ── Step 7: Sync plugin versions ────────────────────────────────────
 echo -e "\n>>> Syncing plugin versions..."
 
-# 6a. package.json (VSIX)
+# 7a. package.json (VSIX)
 pkg_path="plugins/agentops/package.json"
 jq --arg v "$version" '.version = $v' "$pkg_path" > "${pkg_path}.tmp"
 mv "${pkg_path}.tmp" "$pkg_path"
 echo "  package.json  → $version"
 
-# 6b. plugin.json (Agent Plugins)
+# 7b. plugin.json (Agent Plugins)
 plugin_path="plugins/agentops/plugin.json"
 jq --arg v "$version" '.version = $v' "$plugin_path" > "${plugin_path}.tmp"
 mv "${plugin_path}.tmp" "$plugin_path"
 echo "  plugin.json   → $version"
 
-# 6c. marketplace.json (GitHub + Claude Code)
+# 7c. marketplace.json (GitHub + Claude Code)
 for mp in .github/plugin/marketplace.json .claude-plugin/marketplace.json; do
     jq --arg v "$version" '.plugins[0].version = $v' "$mp" > "$mp.tmp"
     mv "$mp.tmp" "$mp"
     echo "  $mp → $version"
 done
 
-# ── Step 7: Commit and push ────────────────────────────────────────
+# ── Step 8: Commit and push ────────────────────────────────────────
 echo -e "\n>>> Committing and pushing..."
 git add CHANGELOG.md plugins/agentops/package.json plugins/agentops/plugin.json .github/plugin/marketplace.json .claude-plugin/marketplace.json
 git commit -m "chore: prepare release $version"
 git push origin "release/v$version"
 
-# ── Step 8: Create PR to main ──────────────────────────────────────
+# ── Step 9: Create PR to main ──────────────────────────────────────
 echo -e "\n>>> Creating PR to main..."
 gh pr create \
     --base main \

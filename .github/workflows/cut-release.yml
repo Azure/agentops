@@ -13,7 +13,8 @@
 # The branch push then triggers staging.yml automatically.
 #
 # The run aborts before creating the branch if `## [Unreleased]` is empty.
-# This workflow only renames that heading, it never generates content, so an
+# This workflow only inserts a versioned heading beneath that one, it never
+# generates content, so an
 # empty section would publish an empty release (as 0.8.4 and 0.8.5 did).
 #
 # Required GitHub secrets:

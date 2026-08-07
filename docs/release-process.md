@@ -223,18 +223,18 @@ The `publish-dev` and `verify-dev` jobs only run on pushes to `develop` (not on 
 
 ### The CHANGELOG guard
 
-`cut-release.yml` does not write changelog content. It renames the `## [Unreleased]` heading to `## [X.Y.Z] - <date>` and nothing more. If no PR wrote anything under `[Unreleased]` during the cycle, the published release section is empty and the release pipeline still goes green. Releases 0.8.4 and 0.8.5 both shipped that way and were backfilled by hand afterwards, between them hiding six bug fixes and six dependency bumps.
+`cut-release.yml` does not write changelog content. It inserts a `## [X.Y.Z] - <date>` heading directly beneath `## [Unreleased]` and nothing more, leaving `[Unreleased]` in place and empty. If no PR wrote anything under `[Unreleased]` during the cycle, the published release section is empty and the release pipeline still goes green. Releases 0.8.4 and 0.8.5 both shipped that way and were backfilled by hand afterwards, between them hiding six bug fixes and six dependency bumps.
 
 Two jobs now close that gap, both driven by `scripts/check_changelog.py`:
 
 - The **`changelog`** job in `ci.yml` runs on every PR to `develop`.
-- A **`check-unreleased`** step in `cut-release.yml` aborts the release before the branch is created if `[Unreleased]` is empty.
+- A **`check-unreleased`** step in `cut-release.yml` aborts the release before the branch is created if `[Unreleased]` is empty. `scripts/cut-release.sh` and `scripts/cut-release.ps1` run the same check at the same point, so the local path cannot skip it.
 
 #### When the PR check requires an entry
 
 The PR must add a bullet under `## [Unreleased]` when **both** hold:
 
-1. The diff touches a file that ships. Changes confined to `docs/`, `tests/`, `.github/`, `.vscode/`, `media/`, `tombstones/`, or the top-level markdown files never require an entry, whatever the PR is titled.
+1. The diff touches a file that ships. Changes confined to `docs/`, `tests/`, `.github/workflows/`, `.github/ISSUE_TEMPLATE/`, `.vscode/`, `media/`, `tombstones/`, or the top-level markdown files never require an entry, whatever the PR is titled.
 2. The PR title carries a user-visible conventional-commit type (`feat`, `fix`, `perf`, `revert`), is marked breaking (`feat!:` or a `BREAKING CHANGE` footer), or has no recognisable type at all. A typed `docs:`, `test:`, `ci:`, `build:`, `style:`, `refactor:`, or `chore:` PR is not asked for an entry.
 
 An untyped title is treated as needing an entry on purpose. A PR that edits shipped code and says nothing about its intent is exactly the case worth a second look.
@@ -249,7 +249,9 @@ Apply the **`no-changelog`** label to the PR. The job then reports why it skippe
 
 #### Dependabot
 
-Dependabot PRs are exempt. The bot cannot act on a failing check, so requiring an entry would leave every dependency PR red until a human labelled it, which trains everyone to reach for `no-changelog` reflexively. That is not the same as saying dependency bumps do not belong in the changelog: the `cryptography` 48 to 50 and `mcp` 1.27.1 to 1.28.1 bumps in 0.8.5 mattered to readers. Cover them when you cut the release, where one person writes one summary line instead of twelve bots writing twelve. The `check-unreleased` step is what makes sure someone looks.
+Dependabot PRs are exempt. The bot cannot act on a failing check, so requiring an entry would leave every dependency PR red until a human labelled it, which trains everyone to reach for `no-changelog` reflexively. That is not the same as saying dependency bumps do not belong in the changelog: the `cryptography` 48 to 50 and `mcp` 1.27.1 to 1.28.1 bumps in 0.8.5 mattered to readers. Cover them when you cut the release, where one person writes one summary line instead of twelve bots writing twelve.
+
+Nothing enforces that today. `check-unreleased` only asserts that `[Unreleased]` is non-empty, and a single bullet from any PR satisfies it, so a cycle can still reach a tag with its dependency bumps undocumented. Closing that gap properly means reading the merged Dependabot PRs for the cycle, which is a separate change.
 
 #### Running it locally
 
@@ -844,7 +846,7 @@ Key details:
 - Opens a PR from `release/v<version>` → `main` with a checklist
 - The branch push triggers `staging.yml` automatically
 - Fails safely if the branch already exists
-- Refuses to run when `## [Unreleased]` is empty, because this workflow only renames that heading and would otherwise publish an empty release section
+- Refuses to run when `## [Unreleased]` is empty, because this workflow only inserts a versioned heading beneath that one and would otherwise publish an empty release section
 - Does NOT auto-tag or auto-publish - tagging remains a manual, intentional step
 
 ## 12. Release Checklist

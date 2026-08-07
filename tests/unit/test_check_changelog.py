@@ -1,8 +1,9 @@
 """Tests for ``scripts/check_changelog.py``.
 
 Locks in the decision table for the CI changelog guard. The guard exists
-because ``cut-release.yml`` only renames ``## [Unreleased]``; it never
-generates content. Releases 0.8.4 and 0.8.5 both published empty sections.
+because ``cut-release.yml`` inserts a versioned heading beneath
+``## [Unreleased]``; it never generates content. Releases 0.8.4 and 0.8.5 both
+published empty sections.
 """
 
 from __future__ import annotations
@@ -116,7 +117,7 @@ def test_dependabot_is_exempt(guard):
         ["pyproject.toml", "uv.lock"],
     )
     assert required is False
-    assert "cut-release guard" in reason
+    assert "automated author" in reason
 
 
 def test_untyped_title_touching_src_requires_entry(guard):
@@ -148,6 +149,27 @@ def test_ci_only_change_does_not_require_entry(guard):
         [],
         "someone",
         [".github/workflows/ci.yml"],
+    )
+    assert required is False
+
+
+def test_github_plugin_marketplace_is_shipping(guard):
+    """``cut-release`` version-syncs this file alongside the Claude one."""
+    required, _ = guard.entry_required(
+        "fix: correct the plugin marketplace entry",
+        [],
+        "someone",
+        [".github/plugin/marketplace.json"],
+    )
+    assert required is True
+
+
+def test_issue_template_change_does_not_require_entry(guard):
+    required, _ = guard.entry_required(
+        "fix: clarify the bug report form",
+        [],
+        "someone",
+        [".github/ISSUE_TEMPLATE/bug_report.yml"],
     )
     assert required is False
 
@@ -222,30 +244,52 @@ def test_no_changelog_diff_fails(guard):
 
 
 def test_subheading_only_addition_fails(guard):
-    changelog = "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n## [0.8.5] - 2026-08-07\n"
-    diff = (
-        "--- a/CHANGELOG.md\n"
-        "+++ b/CHANGELOG.md\n"
-        "@@ -3,0 +4,2 @@\n"
-        "+\n"
-        "+### Fixed\n"
+    changelog = (
+        "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n## [0.8.5] - 2026-08-07\n"
     )
+    diff = "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -3,0 +4,2 @@\n+\n+### Fixed\n"
     assert guard.entry_added_under_unreleased(changelog, diff) is False
 
 
 def test_added_line_numbers_tracks_context(guard):
     diff = (
-        "--- a/CHANGELOG.md\n"
-        "+++ b/CHANGELOG.md\n"
-        "@@ -1,2 +1,3 @@\n"
-        " one\n"
-        "+two\n"
-        " three\n"
+        "--- a/CHANGELOG.md\n+++ b/CHANGELOG.md\n@@ -1,2 +1,3 @@\n one\n+two\n three\n"
     )
     assert guard.added_line_numbers(diff) == {2}
+
+
+def test_added_line_numbers_ignores_no_newline_marker(guard):
+    """``\\ No newline at end of file`` is an annotation, not a line."""
+    diff = (
+        "--- a/CHANGELOG.md\n"
+        "+++ b/CHANGELOG.md\n"
+        "@@ -1,3 +1,5 @@\n"
+        " one\n"
+        " two\n"
+        "-three\n"
+        "\\ No newline at end of file\n"
+        "+three\n"
+        "+four\n"
+        "\\ No newline at end of file\n"
+    )
+    assert guard.added_line_numbers(diff) == {3, 4}
+
+
+def test_added_line_numbers_across_multiple_hunks(guard):
+    diff = (
+        "--- a/CHANGELOG.md\n"
+        "+++ b/CHANGELOG.md\n"
+        "@@ -3,0 +4,2 @@\n"
+        "+### Fixed\n"
+        "+- **First.** In the Unreleased block.\n"
+        "@@ -20,0 +23 @@\n"
+        "+- **Second.** Much further down.\n"
+    )
+    assert guard.added_line_numbers(diff) == {4, 5, 23}
 
 
 def test_real_changelog_unreleased_section_is_parseable(guard):
     text = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     start, end = guard.unreleased_line_range(text)
     assert start < end
+    assert guard.unreleased_has_content(text) is True
