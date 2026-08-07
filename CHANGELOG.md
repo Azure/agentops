@@ -5,6 +5,33 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-07
+
+### Fixed
+- **`protocol: responses` now works against a Foundry hosted agent.** Every
+  invocation failed with
+  `HTTP 400 ... Missing required query parameter: api-version`, because the
+  hosted-agent path built the request URL by string-concatenating `/responses`
+  onto the configured URL. That had three consequences:
+  - Any existing query string was corrupted, because `/responses` was appended
+    after it (`.../responses?api-version=v1` became
+    `.../responses?api-version=v1/responses`).
+  - The required `api-version` query parameter was never added, so the Foundry
+    data plane rejected the request outright.
+  - A Foundry *agent identity* URL
+    (`/api/projects/<project>/agents/<name>/versions/<n>`) was accepted even
+    though it is not an invocable route; the invocable route is
+    `/agents/<name>/endpoint/protocols/openai/responses`.
+
+  The URL is now parsed rather than concatenated: the path and the query string
+  are handled separately, an agent identity URL is normalized onto the protocol
+  route, and `api-version` defaults to `v1` for Foundry protocol routes only.
+  When the configured URL pins a version, the version is preserved by sending an
+  `agent_reference` in the request body (the same mechanism
+  `_invoke_foundry_prompt` already uses), so pinning semantics are not lost.
+  URLs that already point at a `/responses` route and non-Foundry HTTP endpoints
+  are left untouched.
+
 ## [0.8.1] - 2026-07-16
 
 ### Fixed
