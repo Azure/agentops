@@ -1,6 +1,7 @@
 site_name: AgentOps Accelerator
 site_description: Continuous evaluation, safety testing, observability, and release readiness for Microsoft Foundry agents
 site_author: Paulo Lacerda
+site_url: https://azure.github.io/agentops/
 repo_url: https://github.com/Azure/agentops
 repo_name: Azure/agentops
 theme:

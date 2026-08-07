@@ -109,9 +109,13 @@ python -m venv .venv
 Then install AgentOps and confirm the CLI:
 
 ```powershell
-python -m pip install agentops-accelerator
+python -m pip install "agentops-accelerator[agent]"
 agentops --help
 ```
+
+The `[agent]` extra is what makes `agentops cockpit` work in step 13. Without
+it, the CLI installs fine and the eval commands run, but Cockpit raises an
+`ImportError`.
 
 ## 2. Install the skills
 
@@ -210,6 +214,24 @@ variable that holds it:
 auth_header_env: HOSTED_AGENT_TOKEN
 ```
 
+!!! tip "Server-side evaluation of a hosted agent"
+    A hosted agent can also run server-side in Foundry. Use the endpoint form
+    that carries the agent reference, then set `execution: cloud`:
+
+    ```yaml
+    version: 1
+    agent: https://<resource>.services.ai.azure.com/api/projects/<project>/agents/<name>/versions/<version>
+    dataset: .agentops/data/travel-smoke.jsonl
+    protocol: responses
+    execution: cloud
+    ```
+
+    AgentOps parses `<name>` and `<version>` out of the URL and builds the
+    Foundry target from them. Without that `/agents/.../versions/...` segment
+    pair AgentOps has no agent reference to hand Foundry, so the run is rejected
+    and you either add the segments or set `agent: <name>:<version>` instead.
+    Cloud runs publish implicitly and land in the New Foundry Evaluations panel.
+
 The wizard writes local Azure values to `.agentops/.env` so they stay out of
 source control while eval, Doctor, and Cockpit commands resolve the same
 workspace. The Foundry project endpoint lives there, not in `agentops.yaml`.
@@ -282,24 +304,23 @@ wired into eval gates, Doctor findings, Cockpit, and release evidence.
 
 ## 10. Force a regression, compare, then fix it
 
-Prove the gate works. Change the agent behavior so an answer gets worse (for
-example, drop the day-by-day itinerary from the instructions), redeploy it to
-sandbox, and rerun the eval:
+Prove the gate works. First keep the good run as a baseline. Every run writes a
+`results.json` under `.agentops/results/<timestamp>/`, so note the directory from
+your last passing run.
+
+Then change the agent behavior so an answer gets worse (for example, drop the
+day-by-day itinerary from the instructions), redeploy it to sandbox, and rerun
+the eval against that baseline:
 
 ```powershell
-agentops eval run
+agentops eval run --baseline .agentops/results/<good-run>/results.json
 ```
 
-Then compare the two runs:
-
-```powershell
-agentops eval compare
-```
-
-The compare report shows the delta between the good baseline and the regressed
-run, with the git SHA on each side. Restore the itinerary behavior, redeploy,
-and run `agentops eval run` again to confirm the score recovers. This is the
-exact signal CI uses to stop a bad PR.
+The report shows the delta between the good baseline and the regressed run, per
+metric, alongside the thresholds. Restore the itinerary behavior, redeploy, and
+run `agentops eval run` again to confirm the score recovers. This is the exact
+signal CI uses to stop a bad PR: the generated workflows pass the promoted
+baseline the same way.
 
 ## 11. Add a dev environment
 

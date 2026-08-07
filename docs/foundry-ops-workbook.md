@@ -10,7 +10,7 @@ monitoring.
 !!! note "CLI availability"
     The `agentops telemetry dashboard` commands on this page ship in the
     companion feature release. If your installed version does not have them yet,
-    update the package first with `pip install --upgrade agentops-accelerator`.
+    update the package first with `pip install --upgrade "agentops-accelerator[agent]"`.
 
 ## When to use it
 

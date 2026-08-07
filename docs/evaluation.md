@@ -41,10 +41,15 @@ Foundry visibility is opt-in:
 | `execution: local` plus `publish: true` | AgentOps keeps the local run as source of truth, then uploads metrics and row results. | Classic Foundry Evaluations. |
 | `execution: cloud` | Foundry runs the agent and evaluators server-side. | New Foundry Evaluations. |
 
-`execution: cloud` is currently for Foundry prompt agents declared as
-`name:version`. HTTP endpoints use the local runner; if you want those local
-results visible in Foundry, use `publish: true`, which targets the Classic
-Foundry Evaluations upload path.
+`execution: cloud` needs a target Foundry can resolve on its own: a prompt agent
+declared as `name:version`, or a hosted agent endpoint whose URL contains
+`/agents/<name>/versions/<version>`. AgentOps parses the name and version out of
+that URL and builds the server-side target from it, so you do not have to
+duplicate the reference. A hosted endpoint without the versioned path is
+rejected with a message telling you to add it or set `agent: <name>:<version>`.
+Generic HTTP endpoints and raw model deployments always use the local runner; to
+make those results visible in Foundry, use `publish: true`, which targets the
+Classic Foundry Evaluations upload path.
 
 If you configure Application Insights, AgentOps also emits telemetry spans so
 the run can be inspected through Foundry tracing or Azure Monitor Logs. That is
@@ -210,14 +215,13 @@ eval assets.
 ## Where the run executes
 
 The `execution:` field decides where the evaluation actually runs. Local is the
-default and works for every target. Cloud runs a Foundry prompt agent
-server-side. The azd recipe path delegates to an existing `azd ai agent eval`
-flow.
+default and works for every target. Cloud runs a Foundry agent server-side. The
+azd recipe path delegates to an existing `azd ai agent eval` flow.
 
 | Target | Cloud (`execution: cloud`) | Local runner | Recommended default |
 |---|---|---|---|
 | Foundry prompt agent (`name:version`) | Yes | Yes | Cloud for official Foundry runs; local for fast feedback |
-| Foundry hosted agent URL | No | Yes | Local runner; optionally `publish: true` |
+| Foundry hosted agent URL | Yes, when the URL contains `/agents/<name>/versions/<version>` | Yes | Cloud when the endpoint carries the versioned path; otherwise local, optionally `publish: true` |
 | Generic HTTP/JSON endpoint | No | Yes | Local runner; optionally `publish: true` |
 | Raw model deployment (`model:<name>`) | No | Yes | Local runner |
 

@@ -532,7 +532,7 @@ link.
 |---|---|---|---|
 | `execution: local`, `publish: false` | AgentOps invokes target and evaluators locally | None; local artifacts only | Any target |
 | `execution: local`, `publish: true` | AgentOps local run, then metric upload | Classic Foundry Evaluations panel | Any target |
-| `execution: cloud` | Foundry runs agent + evaluators server-side through the OpenAI Evals API | New Foundry Evaluations panel; publish is implicit | Foundry Prompt Agent (`name:version`) |
+| `execution: cloud` | Foundry runs agent + evaluators server-side through the OpenAI Evals API | New Foundry Evaluations panel; publish is implicit | Foundry Prompt Agent (`name:version`) or Foundry Hosted Agent URL containing `/agents/<name>/versions/<version>` |
 
 Foundry-visible modes:
 
@@ -711,7 +711,7 @@ Azure SDK dependencies are kept separate so the CLI stays lightweight and tests 
 
 ## Quick Reference for New Contributors
 
-1. **Install in dev mode**: `pip install -e ".[dev]"` or `pip install -e .` then `pip install pytest`
+1. **Install in dev mode**: `uv sync --group dev`. `dev` is a PEP 735 dependency group, not an extra, so `pip install -e ".[dev]"` fails. With pip, use `pip install -e ".[agent,mcp]"` and add test tools yourself.
 2. **Run tests**: `python -m pytest tests/ -x -q`
 3. **Try it out**: `agentops init` then explore `.agentops/`
 4. **Read the models**: `core/models.py` is the best single file to understand all data structures
