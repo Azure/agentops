@@ -7,7 +7,103 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [0.8.5] - 2026-08-07
 
+### Fixed
+- **Generated `azd` workflows failed at the provision and deploy steps.** Every
+  `azd`-based CI template ran `azd provision` and `azd deploy` without first
+  installing the `azure.ai.agents` extension and without authenticating the
+  `azd` CLI itself, so the provision job stopped with
+  `ERROR: Auto-installation is not supported in CI/CD environments.`
+
+  Two separate gaps caused this. First, `azd` refuses to auto-install
+  extensions in CI, so the extension has to be installed explicitly. Second,
+  `azure/login@v3` authenticates the Azure CLI, not `azd`; `azd` keeps its own
+  credential store and needs its own `azd auth login --federated-credential-provider github`.
+  The `eval` job was unaffected and passed, which made the failure look
+  intermittent: `agentops` itself uses `azure-identity`, which happily reads
+  the Azure CLI session, so only the jobs that shell out to the `azd` binary
+  broke.
+
+  Both steps are now emitted into the provision and deploy jobs of every
+  `azd` template, on GitHub Actions and Azure DevOps alike. The extension
+  version is read from the same source the CLI uses rather than hardcoded, so
+  it cannot drift.
+
+- **`execution: cloud` still emitted `azd` setup into the eval job.** With
+  cloud execution the evaluation runs server-side in Foundry and never invokes
+  `azd`, but the generated workflow installed and authenticated it anyway.
+  That is dead setup work on every run, and it made the eval job fail for a
+  reason unrelated to evaluation whenever `azd` auth was not configured.
+  `workflow analyze` and the eval-runner recommendation now both take the
+  configured execution mode into account.
+
+- **Generated workflows installed a package extra that does not exist.**
+  Templates and two tutorials asked for `agentops-accelerator[foundry,agent]`.
+  There is no `foundry` extra; the real ones are `mcp` and `agent`. Corrected
+  in 10 GitHub Actions templates, 8 Azure DevOps templates, and the tutorials.
+
+- **The eval job ignored the deployment environment.** Dev and QA workflows
+  declared `environment:` on provision and deploy but not on eval, so the eval
+  job could not read the environment-scoped variables it needs and fell back
+  to whatever happened to be set at repository scope. The production
+  `safety-eval` job intentionally keeps no `environment:`, because gating it
+  would force a human to approve the run before seeing any results.
+
+- **`eval analyze` labelled agent targets as `model quality`.** The scenario
+  hint inspected only dataset column names, so any dataset carrying an
+  `expected` column was reported as a model-quality scenario. That is correct
+  for a raw `model:<deployment>` target compared against a reference answer,
+  but wrong for an agent answering `input` with a free-form reply, which is
+  conversational. Foundry hosted *and* prompt agents were both affected. The
+  hint now agrees with `core/evaluators.py`, which already branched on the
+  target kind when picking the actual evaluators. `--format text` also leaked
+  the raw kind string (`Project: foundry_hosted evaluation setup`); both
+  renderers now share one label table so they cannot drift apart again.
+
+- **`workflow analyze` hardcoded "Foundry prompt agent" as the target.** The
+  Foundry eval checklist printed that label regardless of the real target, so
+  a hosted-agent project was told it had a prompt agent. The rows now render
+  the reasons the analysis actually produced.
+
+### Changed
+- **OIDC docs now cover `sub_claim_prefix`.** Accounts configured with an
+  immutable-ID subject claim receive a subject built from numeric account and
+  repository IDs rather than the plain names, so a federated credential
+  matching only `repo:<owner>/<repo>:environment:<env>` is never matched and
+  the workflow fails with `AADSTS700213`. The setup guide now explains how to
+  read the prefix from
+  `repos/<owner>/<repo>/actions/oidc/customization/sub` and register the
+  second credential. Note that the `use_default` and `use_immutable_subject`
+  booleans in that response are not reliable indicators; read the
+  `sub_claim_prefix` string itself.
+- **Release documentation corrected.** `docs/release-process.md` and the
+  release-management skill described a manual approval gate protecting the
+  PyPI publish that does not exist: both environments have empty
+  `protection_rules`, so pushing the tag publishes immediately and
+  irreversibly. The same files also documented `VSCE_PAT` as an environment
+  secret when it is a repository secret. The `main` → `develop` sync step,
+  previously easy to skip, is now called out explicitly.
+
+### Dependencies
+- `mcp` 1.27.1 → 1.28.1, with the floor raised to `mcp>=1.28.1,<2`. The
+  proposed `<3` widening was rejected: `mcp` 2.0.0 renames `FastMCP` to
+  `MCPServer` and is a breaking rewrite. CI reported green on that change only
+  because `uv sync --group dev` never installs the `mcp` extra, so the MCP
+  tests skip.
+- `cryptography` 48.0.1 → 50.0.0. The breaking changes in 49 and 50 concern
+  FFDH deprecation and stricter DER/SCT/OCSP/CRL/PKCS#7 parsing; the only
+  direct consumer, `agent/server/auth.py`, is EC-only over a PEM public key.
+- `aiohttp` 3.14.1 → 3.14.3, `nltk` 3.9.4 → 3.10.0,
+  `actions/setup-node` 6 → 7, `actions/setup-python` 6 → 7.
+
 ## [0.8.4] - 2026-08-07
+
+### Fixed
+- **Generated CI pinned an `azd` extension version that was never published.**
+  The templates asked for `azure.ai.agents` version `1.0.0`, which does not
+  exist in the azd extension registry, so every generated pipeline targeting a
+  Foundry hosted agent stopped at `Install pinned azd AI agents extension`
+  with `ERROR: no extensions found`, on both GitHub Actions and Azure DevOps.
+  Pinned to `1.0.0-beta.9`, the highest version actually published.
 
 ## [0.8.3] - 2026-08-07
 
