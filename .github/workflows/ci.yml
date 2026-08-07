@@ -1,7 +1,7 @@
 # AgentOps Toolkit — CI/CD Pipelines
 #
 # Workflows:
-#   1. ci.yml          — Lint + test on every push/PR; publish dev builds to TestPyPI on develop; VSIX build validation
+#   1. ci.yml          — Lint + changelog guard + test on every push/PR; publish dev builds to TestPyPI on develop; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
 #   3. staging.yml     — Staging: release/* branch → TestPyPI → verify; VSIX pre-release → Marketplace
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
@@ -57,6 +57,33 @@ jobs:
 
       - name: Type check with mypy
         run: uv run mypy src/agentops/ --ignore-missing-imports
+
+  # Fail a PR that changes user-visible behaviour without a CHANGELOG entry.
+  # cut-release.yml inserts a versioned heading beneath `## [Unreleased]`; it
+  # never writes content, so
+  # an omission here silently ships an empty release section (0.8.4, 0.8.5).
+  # Skipped by the `no-changelog` label. See docs/release-process.md.
+  changelog:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # need the merge base to diff against develop
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Check for a CHANGELOG entry
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          python scripts/check_changelog.py check-pr \
+            --base "origin/${{ github.base_ref }}"
 
   test:
     runs-on: ${{ matrix.os }}

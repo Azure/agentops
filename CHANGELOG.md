@@ -6,6 +6,42 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- **CI now fails a pull request that changes shipped code without a CHANGELOG
+  entry.** `cut-release.yml` never generates changelog content. It inserts a
+  `## [X.Y.Z] - <date>` heading beneath `## [Unreleased]` and stops there, so a
+  release cycle where no PR wrote anything under `[Unreleased]` publishes an
+  empty section with a green pipeline. Releases 0.8.4 and 0.8.5 both shipped
+  that way and were backfilled by hand, between them hiding six user-visible
+  bug fixes and six dependency bumps.
+
+  A new `changelog` job runs `scripts/check_changelog.py` on every PR to
+  `develop`. It asks for an entry only when the diff touches a file that ships
+  and the PR title reads as user-visible (`feat`, `fix`, `perf`, `revert`, a
+  breaking-change marker, or no conventional-commit type at all). Changes
+  confined to `docs/`, `tests/`, `.github/workflows/`, `.github/ISSUE_TEMPLATE/`,
+  or the top-level markdown files are never asked for one, and neither are PRs
+  typed `docs:`, `test:`, `ci:`,
+  `chore:`, `build:`, `style:`, or `refactor:`. The check resolves each added
+  line to the section it lands in, so a bullet written under an already-released
+  heading fails the same as no bullet, which matches what `cut-release` will
+  actually promote. Apply the `no-changelog` label to bypass it. Dependabot is
+  exempt because a bot cannot respond to a red check.
+
+  The same script guards the release itself. `cut-release.yml` and both local
+  `cut-release` scripts now abort before creating the release branch when
+  `[Unreleased]` is empty, so a cycle that wrote nothing at all cannot reach a
+  published tag. That is a non-emptiness check, not per-change coverage: one
+  bullet from any PR satisfies it.
+
+- **Both local `cut-release` scripts inserted the new version heading in the
+  wrong place.** `scripts/cut-release.sh` and `scripts/cut-release.ps1` anchored
+  the insertion on the "adheres to [Semantic Versioning]" line, which sits
+  *above* `## [Unreleased]`. Cutting a release locally therefore produced an
+  empty `## [X.Y.Z]` section and left every accumulated entry stranded under
+  `[Unreleased]`, where the next cycle would silently absorb it. Both scripts now
+  anchor on `## [Unreleased]` and insert beneath it, matching what
+  `cut-release.yml` has always done, and both abort if that heading is missing.
+
 - **`agentops eval run` accepts an explicit agent target.** The eval target was
   only ever read from `agentops.yaml`, so retargeting a run meant editing
   tracked config. `--agent` now overrides it, falling back to the
@@ -35,6 +71,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   the repo also has a generated deploy pipeline, which is the only place a
   later deploy step could move the target underneath the gate. Eval-only repos
   see nothing.
+
 ### Fixed
 - **The eval gate installed `azd` but never gave it credentials, on both GitHub
   Actions and Azure DevOps.** When a project uses the azd evaluation backend,
