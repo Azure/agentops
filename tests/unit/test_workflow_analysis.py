@@ -157,6 +157,107 @@ evaluators:
     assert "generated evaluator/rubric assets" in analysis.next_steps[0]
 
 
+def _agent_target_text_row(rendered: str) -> str:
+    """Return the ``Agent target`` row from the text renderer, unwrapped."""
+    lines = rendered.splitlines()
+    for index, line in enumerate(lines):
+        if "Agent target" not in line:
+            continue
+        _, _, detail = line.partition("Agent target")
+        parts = [detail.strip()]
+        for continuation in lines[index + 1 :]:
+            # Wrapped continuations are indented past the label column and carry
+            # no status marker of their own.
+            if not continuation.startswith(" " * 20) or continuation.strip() == "":
+                break
+            parts.append(continuation.strip())
+        return " ".join(parts)
+    raise AssertionError(f"no 'Agent target' row in:\n{rendered}")
+
+
+def _agent_target_markdown_row(markdown: str) -> str:
+    for line in markdown.splitlines():
+        if line.startswith("|") and "Agent target" in line:
+            return line.split("|")[3].strip()
+    raise AssertionError(f"no 'Agent target' row in:\n{markdown}")
+
+
+def test_agent_target_text_matches_markdown_for_hosted_agent(tmp_path: Path) -> None:
+    """Regression for #370: text must not hardcode the prompt-agent label."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
+        "dataset: data.jsonl\n"
+        "protocol: responses\n"
+        "execution: azd\n"
+        "eval_recipe: eval.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "eval.yaml").write_text(
+        "name: helpdeskbot-eval\n"
+        "agent:\n"
+        "  name: helpdeskbot\n"
+        "  kind: hosted\n"
+        "evaluators:\n"
+        "  - name: builtin.intent_resolution\n"
+        "  - name: builtin.task_adherence\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+    rendered = render_workflow_analysis(analysis, "text")
+    markdown = render_workflow_analysis(analysis, "markdown")
+
+    assert analysis.recommended_eval_runner == "azd-ai-agent-eval"
+    assert _agent_target_text_row(rendered) == _agent_target_markdown_row(markdown)
+    assert "Found azd eval recipe" in _agent_target_text_row(rendered)
+    assert "Foundry prompt agent (`name:version`)." not in rendered
+
+
+def test_agent_target_text_matches_markdown_for_prompt_agent(tmp_path: Path) -> None:
+    """A real prompt agent still reports the prompt-agent target in both formats."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_workflow_project(tmp_path)
+    rendered = render_workflow_analysis(analysis, "text")
+    markdown = render_workflow_analysis(analysis, "markdown")
+
+    assert analysis.recommended_eval_runner == "agentops-cloud"
+    assert _agent_target_text_row(rendered) == _agent_target_markdown_row(markdown)
+    assert "Foundry prompt agent" in _agent_target_text_row(rendered)
+
+
+def test_hosted_agent_kind_is_softened_in_text_signals(tmp_path: Path) -> None:
+    """Raw ``classify_agent`` kinds must not leak into the text renderer."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11\n"
+        "dataset: data.jsonl\n"
+        "protocol: responses\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "data.jsonl").write_text(
+        json.dumps({"input": "Hello", "expected": "Hello!"}) + "\n",
+        encoding="utf-8",
+    )
+
+    rendered = render_workflow_analysis(analyze_workflow_project(tmp_path), "text")
+
+    assert "agentops.yaml targets Foundry hosted agent." in rendered
+    assert "foundry_hosted" not in rendered
+
+
 def test_analysis_uses_placeholder_for_generic_repo(tmp_path: Path) -> None:
     analysis = analyze_workflow_project(tmp_path)
 

@@ -614,8 +614,6 @@ def _wrapped_numbered_step(index: int, text: str) -> List[str]:
 
 
 def _friendly_foundry_eval_text(check: str, text: str) -> str:
-    if check == "Agent target":
-        return "Foundry prompt agent (`name:version`)."
     if check == "Evaluators":
         return _friendly_evaluator_list(text.split(", "))
     return _soften_text(text)
@@ -629,8 +627,21 @@ def _friendly_evaluator_list(evaluators: Iterable[str]) -> str:
     )
 
 
+#: Raw target kinds emitted by :func:`classify_agent` mapped to display names.
+#: Ordered longest-key-first so no key is a prefix of another when substituted.
+_TARGET_KIND_LABELS = (
+    ("foundry_prompt", "Foundry prompt agent"),
+    ("foundry_hosted", "Foundry hosted agent"),
+    ("model_deployment", "model deployment"),
+    ("model_direct", "direct model"),
+    ("http_json", "HTTP/JSON agent"),
+)
+
+
 def _soften_text(text: str) -> str:
-    return text.replace("foundry_prompt", "Foundry prompt agent")
+    for kind, label in _TARGET_KIND_LABELS:
+        text = text.replace(kind, label)
+    return text
 
 
 def _wrap_text(text: str, *, indent: str) -> List[str]:
