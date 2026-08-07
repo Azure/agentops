@@ -167,7 +167,7 @@ Before your PR can be merged to `develop`:
 2. **Code review approved** - at least one reviewer
 3. **Architecture rules followed** - see [CONTRIBUTING.md](../CONTRIBUTING.md)
 4. **Tests included** - unit tests in `tests/unit/`, integration tests if needed
-5. **CHANGELOG updated** - add entry under the appropriate versioned section for user-visible changes
+5. **CHANGELOG updated** - add an entry under `## [Unreleased]` for user-visible changes. The `changelog` CI job enforces this; see [The CHANGELOG guard](#the-changelog-guard) below.
 
 ### After Your PR is Merged
 
@@ -191,6 +191,7 @@ The CI pipeline runs on **every push and PR** to `main` or `develop`.
 | Job | What it does | Runs on |
 | --- | --- | --- |
 | **lint** | `ruff check` (linting) + `mypy` (type checking, soft-fail) | Ubuntu, Python 3.11 |
+| **changelog** | Fails a PR that changes shipped code without an `## [Unreleased]` entry | Ubuntu, PRs only |
 | **test** | `pytest tests/` with JUnit XML output | Matrix: 2 OS × 3 Python versions |
 | **coverage** | `pytest --cov` with XML coverage report | Ubuntu, Python 3.13 (after tests pass) |
 | **publish-dev** | Build package + publish to TestPyPI (develop pushes only) | Ubuntu, Python 3.12 (after lint + test pass) |
@@ -212,12 +213,54 @@ The `publish-dev` and `verify-dev` jobs only run on pushes to `develop` (not on 
 - Test failures across platforms
 - Import errors or missing dependencies
 - Regression in exit code behavior
+- User-visible changes shipped without a CHANGELOG entry
 
 ### Viewing CI Results
 
 1. Go to the **Actions** tab → find the CI run for your PR
 2. Click into a failing job to see the error
 3. Download test result artifacts if needed
+
+### The CHANGELOG guard
+
+`cut-release.yml` does not write changelog content. It renames the `## [Unreleased]` heading to `## [X.Y.Z] - <date>` and nothing more. If no PR wrote anything under `[Unreleased]` during the cycle, the published release section is empty and the release pipeline still goes green. Releases 0.8.4 and 0.8.5 both shipped that way and were backfilled by hand afterwards, between them hiding six bug fixes and six dependency bumps.
+
+Two jobs now close that gap, both driven by `scripts/check_changelog.py`:
+
+- The **`changelog`** job in `ci.yml` runs on every PR to `develop`.
+- A **`check-unreleased`** step in `cut-release.yml` aborts the release before the branch is created if `[Unreleased]` is empty.
+
+#### When the PR check requires an entry
+
+The PR must add a bullet under `## [Unreleased]` when **both** hold:
+
+1. The diff touches a file that ships. Changes confined to `docs/`, `tests/`, `.github/`, `.vscode/`, `media/`, `tombstones/`, or the top-level markdown files never require an entry, whatever the PR is titled.
+2. The PR title carries a user-visible conventional-commit type (`feat`, `fix`, `perf`, `revert`), is marked breaking (`feat!:` or a `BREAKING CHANGE` footer), or has no recognisable type at all. A typed `docs:`, `test:`, `ci:`, `build:`, `style:`, `refactor:`, or `chore:` PR is not asked for an entry.
+
+An untyped title is treated as needing an entry on purpose. A PR that edits shipped code and says nothing about its intent is exactly the case worth a second look.
+
+#### Where the entry has to go
+
+The check parses the CHANGELOG diff and resolves each added line to the section it lands in. A bullet added under an already-released heading fails the same as no bullet at all, because `cut-release.yml` only ever promotes `[Unreleased]`. A bare `### Fixed` subheading with no bullet under it does not count either.
+
+#### Bypassing the check
+
+Apply the **`no-changelog`** label to the PR. The job then reports why it skipped and passes. Use it for changes that genuinely cannot matter to a user of the published package, and say so in the PR description so the reviewer can disagree.
+
+#### Dependabot
+
+Dependabot PRs are exempt. The bot cannot act on a failing check, so requiring an entry would leave every dependency PR red until a human labelled it, which trains everyone to reach for `no-changelog` reflexively. That is not the same as saying dependency bumps do not belong in the changelog: the `cryptography` 48 to 50 and `mcp` 1.27.1 to 1.28.1 bumps in 0.8.5 mattered to readers. Cover them when you cut the release, where one person writes one summary line instead of twelve bots writing twelve. The `check-unreleased` step is what makes sure someone looks.
+
+#### Running it locally
+
+```bash
+# Is the Unreleased section empty?
+python scripts/check_changelog.py check-unreleased
+
+# Would my branch pass the PR check?
+PR_TITLE="fix: something" PR_AUTHOR="$USER" PR_LABELS='[]' \
+  python scripts/check_changelog.py check-pr --base origin/develop
+```
 
 ## 6. Versioning with setuptools-scm
 
@@ -791,7 +834,7 @@ Key details:
 ```
 Trigger: workflow_dispatch (manual button in Actions tab)
 Input:   version - semver string (e.g. 0.2.0)
-Flow:    validate → create release branch → update CHANGELOG → push → open PR
+Flow:    validate → check [Unreleased] not empty → create release branch → update CHANGELOG → push → open PR
 Purpose: One-click release branch creation from develop
 ```
 
@@ -801,6 +844,7 @@ Key details:
 - Opens a PR from `release/v<version>` → `main` with a checklist
 - The branch push triggers `staging.yml` automatically
 - Fails safely if the branch already exists
+- Refuses to run when `## [Unreleased]` is empty, because this workflow only renames that heading and would otherwise publish an empty release section
 - Does NOT auto-tag or auto-publish - tagging remains a manual, intentional step
 
 ## 12. Release Checklist
@@ -809,7 +853,7 @@ Use this checklist when cutting a release:
 
 **Preparation**
 - [ ] All intended features/fixes are merged to `develop`
-- [ ] `CHANGELOG.md` has entries for all user-visible changes under the appropriate versioned section
+- [ ] `CHANGELOG.md` has entries under `## [Unreleased]` for all user-visible changes, including anything Dependabot merged (Cut Release aborts if the section is empty)
 - [ ] Tests pass locally: `uv run pytest tests/ -x -q`
 - [ ] Version from setuptools-scm looks correct: `python -m setuptools_scm`
 

@@ -12,6 +12,10 @@
 # VS Code extension version in package.json, and opens a PR to main.
 # The branch push then triggers staging.yml automatically.
 #
+# The run aborts before creating the branch if `## [Unreleased]` is empty.
+# This workflow only renames that heading, it never generates content, so an
+# empty section would publish an empty release (as 0.8.4 and 0.8.5 did).
+#
 # Required GitHub secrets:
 #   RELEASE_PAT — A Personal Access Token (classic or fine-grained) with `repo` scope.
 #                 Needed because the org policy blocks GITHUB_TOKEN from creating PRs.
@@ -53,6 +57,10 @@ jobs:
           ref: develop
           fetch-depth: 0
           token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Check the Unreleased section has content
+        run: |
+          python scripts/check_changelog.py check-unreleased
 
       - name: Check release branch does not exist
         run: |
