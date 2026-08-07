@@ -761,8 +761,8 @@ Azure SDK dependencies are kept separate so the CLI stays lightweight and tests 
 
 ## Quick Reference for New Contributors
 
-1. **Install in dev mode**: `pip install -e ".[dev]"` or `pip install -e .` then `pip install pytest`
-2. **Run tests**: `python -m pytest tests/ -x -q`
+1. **Install in dev mode**: `uv sync --group dev`. This installs the package in editable mode together with the `dev` dependency group, which is exactly what CI runs. `dev` is a PEP 735 dependency group rather than an extra, so `pip install -e ".[dev]"` silently installs nothing extra and leaves you without `pytest`.
+2. **Run tests**: `uv run pytest tests/ -x -q`
 3. **Try it out**: `agentops init` then explore `.agentops/`
 4. **Read the models**: `core/models.py` is the best single file to understand all data structures
 5. **Follow the flow**: `cli/app.py` → `services/runner.py` → `backends/` → `core/`
