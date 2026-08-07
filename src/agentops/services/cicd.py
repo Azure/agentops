@@ -7,6 +7,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Dict, List, Mapping, Sequence, Tuple
 
+from agentops.core.agentops_config import AGENT_OVERRIDE_ENV
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
@@ -457,6 +458,7 @@ def _github_eval_substitutions(
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
           AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
+          {AGENT_OVERRIDE_ENV}: ${{{{ env.{AGENT_OVERRIDE_ENV} || vars.{AGENT_OVERRIDE_ENV} }}}}
         run: |
           set +e
           agentops eval run --config "{config_path}" --output "{_CI_EVAL_OUTPUT}"
@@ -508,6 +510,7 @@ def _github_eval_substitutions(
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
           AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
+          {AGENT_OVERRIDE_ENV}: ${{{{ env.{AGENT_OVERRIDE_ENV} || vars.{AGENT_OVERRIDE_ENV} }}}}
         run: |
           set +e
           agentops eval run --config "$AGENTOPS_CI_CONFIG" --output "{_CI_EVAL_OUTPUT}"
@@ -611,6 +614,7 @@ def _github_eval_substitutions(
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
           AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           APPLICATIONINSIGHTS_CONNECTION_STRING: ${{{{ secrets.APPLICATIONINSIGHTS_CONNECTION_STRING || vars.APPLICATIONINSIGHTS_CONNECTION_STRING }}}}
+          {AGENT_OVERRIDE_ENV}: ${{{{ env.{AGENT_OVERRIDE_ENV} || vars.{AGENT_OVERRIDE_ENV} }}}}
         run: |
           set +e
 {_github_baseline_autodetect_block(kind)}          agentops eval run --config \"{config_path}\"{_baseline_arg_suffix(kind)}
@@ -667,7 +671,8 @@ def _ado_eval_substitutions(
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
     AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
-    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
+    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)
+    {AGENT_OVERRIDE_ENV}: $({AGENT_OVERRIDE_ENV})""",
                 base_indent,
             ),
             "__EVAL_ARTIFACT_TARGET__": _CI_EVAL_OUTPUT,
@@ -711,7 +716,8 @@ def _ado_eval_substitutions(
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
     AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
-    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
+    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)
+    {AGENT_OVERRIDE_ENV}: $({AGENT_OVERRIDE_ENV})""",
                 base_indent,
             ),
             "__EVAL_ARTIFACT_TARGET__": _CI_EVAL_OUTPUT,
@@ -798,7 +804,8 @@ def _ado_eval_substitutions(
     AZURE_OPENAI_ENDPOINT: $(AZURE_OPENAI_ENDPOINT)
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
     AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
-    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)""",
+    APPLICATIONINSIGHTS_CONNECTION_STRING: $(APPLICATIONINSIGHTS_CONNECTION_STRING)
+    {AGENT_OVERRIDE_ENV}: $({AGENT_OVERRIDE_ENV})""",
             base_indent,
         ),
         "__EVAL_ARTIFACT_TARGET__": ".agentops/results/latest",

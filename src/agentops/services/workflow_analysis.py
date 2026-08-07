@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-from agentops.core.agentops_config import classify_agent
+from agentops.core.agentops_config import AGENT_OVERRIDE_ENV, classify_agent
 from agentops.core.azd_eval import find_eval_yaml, load_eval_recipe, recipe_metric_names
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
@@ -176,6 +176,26 @@ def analyze_workflow_project(directory: Path) -> WorkflowAnalysis:
                         "project (dev/qa/prod) fails with a 404 instead of auto-creating the "
                         "first version. Add `prompt_agent_bootstrap: { model: <deployment> }` "
                         "to enable auto-bootstrap."
+                    ),
+                    "agentops.yaml",
+                    confidence="medium",
+                )
+            )
+        pinned_version = agentops.get("pinned_agent_version")
+        if pinned_version and _has_generated_deploy_pipeline(root):
+            signals.append(
+                WorkflowSignal(
+                    "agent_version_pin",
+                    "Pinned agent version",
+                    (
+                        f"agentops.yaml pins agent version {pinned_version} and this "
+                        "repo has a generated deploy pipeline. The eval gate runs "
+                        "before deploy, so it scores the pinned version, which is "
+                        "correct today. If a later change makes deploy publish a new "
+                        "version that the gate should score instead, the eval step "
+                        f"accepts {AGENT_OVERRIDE_ENV} (or `agentops eval run "
+                        "--agent`) as an override. Nothing in the generated pipelines "
+                        "sets that value yet; see issue #388."
                     ),
                     "agentops.yaml",
                     confidence="medium",
@@ -786,6 +806,7 @@ def _signal_type(key: str) -> str:
         "azd_project": "Deploy mode",
         "prompt_file": "Prompt source",
         "prompt_agent_bootstrap_missing": "Prompt-agent bootstrap",
+        "agent_version_pin": "Eval target",
         "bicep_infra": "Infrastructure",
         "ailz_manifest": "Landing zone",
         "ailz_preflight": "Preflight",
@@ -820,6 +841,9 @@ def _agentops_signal(root: Path) -> Dict[str, Any]:
         "prompt_agent": target.kind == "foundry_prompt",
         "prompt_file": prompt_file,
         "prompt_agent_bootstrap": bool(bootstrap),
+        "pinned_agent_version": (
+            target.version if target.kind == "foundry_hosted" else None
+        ),
         "signal": WorkflowSignal(
             "agentops_config",
             "AgentOps config",
@@ -934,6 +958,25 @@ def _accelerator_hint(readme_lower: str) -> Optional[WorkflowSignal]:
             confidence="medium",
         )
     return None
+
+
+def _has_generated_deploy_pipeline(root: Path) -> bool:
+    """True when the repo already has a generated AgentOps deploy pipeline.
+
+    The pinned-version signal is only interesting where a deploy step could
+    move the agent underneath the gate. Eval-only repos have no such step, so
+    a correctly-pinned target there is just a correctly-pinned target.
+    """
+    for directory, prefix in (
+        (root / ".github" / "workflows", "agentops-deploy-"),
+        (root / ".azuredevops" / "pipelines", "agentops-deploy-"),
+    ):
+        if not directory.is_dir():
+            continue
+        for path in directory.glob(f"{prefix}*.yml"):
+            if path.is_file():
+                return True
+    return False
 
 
 def _existing_ci_signal(root: Path) -> Optional[WorkflowSignal]:

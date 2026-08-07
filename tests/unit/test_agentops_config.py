@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from agentops.core.agentops_config import (
+    AGENT_OVERRIDE_ENV,
     AgentOpsConfig,
     DatasetSyncConfig,
     ObservabilityConfig,
@@ -15,6 +16,7 @@ from agentops.core.agentops_config import (
     RubricConfig,
     RubricDimensionConfig,
     Threshold,
+    apply_agent_version_override,
     classify_agent,
 )
 
@@ -120,6 +122,47 @@ class TestClassifyAgent:
     def test_unrecognized_value(self) -> None:
         with pytest.raises(ValueError, match="unrecognized"):
             classify_agent("just-a-name")
+
+
+# ---------------------------------------------------------------------------
+# apply_agent_version_override
+# ---------------------------------------------------------------------------
+
+
+_HOSTED = (
+    "https://acct.services.ai.azure.com/api/projects/proj/agents/helpdeskbot/versions/11"
+)
+
+
+class TestApplyAgentVersionOverride:
+    """Regression for #388: the eval gate must be able to retarget the version."""
+
+    def test_env_var_name_is_stable(self) -> None:
+        assert AGENT_OVERRIDE_ENV == "AGENTOPS_AGENT"
+
+    def test_bare_version_replaces_hosted_url_version(self) -> None:
+        result = apply_agent_version_override(_HOSTED, "12")
+        assert result.endswith("/agents/helpdeskbot/versions/12")
+        assert classify_agent(result).version == "12"
+
+    def test_bare_version_replaces_prompt_agent_version(self) -> None:
+        assert apply_agent_version_override("helpdeskbot:11", "12") == "helpdeskbot:12"
+
+    def test_empty_override_keeps_configured_agent(self) -> None:
+        assert apply_agent_version_override(_HOSTED, "") == _HOSTED
+        assert apply_agent_version_override(_HOSTED, "   ") == _HOSTED
+
+    def test_full_reference_override_wins_outright(self) -> None:
+        other = "https://acct.services.ai.azure.com/api/projects/other/agents/bot/versions/3"
+        assert apply_agent_version_override(_HOSTED, other) == other
+
+    def test_bare_version_without_version_slot_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="no version segment"):
+            apply_agent_version_override("https://plain.example.com/chat", "12")
+
+    def test_bare_version_against_model_target_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="no version segment"):
+            apply_agent_version_override("model:gpt-4o-mini", "12")
 
 
 # ---------------------------------------------------------------------------
