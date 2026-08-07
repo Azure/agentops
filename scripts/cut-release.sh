@@ -58,7 +58,15 @@ date_today=$(date +%Y-%m-%d)
 if grep -q "## \[$version\]" CHANGELOG.md; then
     echo "CHANGELOG already has [$version] entry — skipping"
 else
-    sed -i.bak "s/adheres to \[Semantic Versioning\](https:\/\/semver.org\/)./&\n\n## [$version] - $date_today/" CHANGELOG.md
+    # Anchor on the [Unreleased] heading, not on the intro paragraph above it.
+    # Inserting below [Unreleased] is what promotes the accumulated entries into
+    # the new version; inserting above it would create an empty versioned section
+    # and strand every entry under [Unreleased]. This matches cut-release.yml.
+    if ! grep -q "^## \[Unreleased\]" CHANGELOG.md; then
+        echo "CHANGELOG.md is missing the ## [Unreleased] section." >&2
+        exit 1
+    fi
+    sed -i.bak "0,/^## \[Unreleased\]/s//## [Unreleased]\n\n## [$version] - $date_today/" CHANGELOG.md
     rm -f CHANGELOG.md.bak
     echo "CHANGELOG updated with [$version] - $date_today"
 fi

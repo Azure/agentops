@@ -1,0 +1,58 @@
+name: Deploy Documentation
+
+# IMPORTANT: this file must exist on the DEFAULT branch, not only on `docs`.
+#
+# GitHub Actions resolves workflows for non-`push` events (such as `release`)
+# from the default branch only. While this file lived exclusively on the
+# orphan `docs` branch, the `release` trigger below was inert and never fired,
+# so the published site kept serving stale release metadata until someone ran
+# the workflow by hand.
+#
+# Keeping a copy here does NOT cause duplicate runs. For `push` events GitHub
+# uses the workflow file from the pushed commit, so pushing to `docs` still
+# runs the copy on `docs`, and pushing to this branch matches no trigger.
+# Every job below checks out `docs` explicitly, so the site content is always
+# built from that branch regardless of which ref started the run.
+
+on:
+  push:
+    branches:
+      - docs
+
+  # Rebuild when a release or pre-release is published, since the home page
+  # shows release metadata baked at build time.
+  release:
+    types:
+      - published
+      - released
+      - prereleased
+
+  # Allow triggering a rebuild manually from the Actions UI.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: docs
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+
+      - name: Install MkDocs and dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Deploy to GitHub Pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mkdocs gh-deploy --force --clean --remote-branch gh-pages

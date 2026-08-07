@@ -33,6 +33,46 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   published tag. That is a non-emptiness check, not per-change coverage: one
   bullet from any PR satisfies it.
 
+- **Both local `cut-release` scripts inserted the new version heading in the
+  wrong place.** `scripts/cut-release.sh` and `scripts/cut-release.ps1` anchored
+  the insertion on the "adheres to [Semantic Versioning]" line, which sits
+  *above* `## [Unreleased]`. Cutting a release locally therefore produced an
+  empty `## [X.Y.Z]` section and left every accumulated entry stranded under
+  `[Unreleased]`, where the next cycle would silently absorb it. Both scripts now
+  anchor on `## [Unreleased]` and insert beneath it, matching what
+  `cut-release.yml` has always done, and both abort if that heading is missing.
+
+### Fixed
+- **The eval gate installed `azd` but never gave it credentials, on both GitHub
+  Actions and Azure DevOps.** When a project uses the azd evaluation backend,
+  the generated pipeline runs `agentops eval run`, which shells out to
+  `azd ai agent eval run`. Both platforms installed the pinned
+  `azure.ai.agents` extension and then invoked the binary with no credentials,
+  so the eval gate failed before reaching Foundry.
+
+  This is the issue #379 trap in a job nobody had exercised. The fix differs by
+  platform because the surrounding authentication differs. On Azure DevOps
+  every azd call runs inside `AzureCLI@2`, which completes the
+  service-connection handshake and leaves the Azure CLI authenticated, but
+  `azd` keeps a separate credential store and ignores that session unless
+  `auth.useAzCliAuth` is set; the eval stage now sets it, matching the provision
+  and deploy stages in the same pipeline. On GitHub Actions `azure/login@v3`
+  authenticates only the Azure CLI, so the eval job now runs
+  `azd auth login --federated-credential-provider github` with the same
+  `vars.AZURE_CLIENT_ID` and `vars.AZURE_TENANT_ID` the provision and deploy
+  jobs already use. Every generated job that installs the azd extension now
+  also authenticates it.
+
+- **The generated Azure DevOps PR pipeline was not valid YAML.** The
+  report-comment step embedded a multi-line `python -c` snippet whose
+  continuation lines started at column 0. A column-0 line terminates the
+  surrounding `bash: |` block scalar, so Azure DevOps rejected the file with a
+  parse error before running anything. The continuation lines are now indented
+  into the block; the trailing backslashes still join them into a single
+  logical line, so the Python behaviour is unchanged. A regression test parses
+  every generated ADO pipeline across all eval-runner variants and rejects any
+  stray column-0 line.
+
 ## [0.8.5] - 2026-08-07
 
 ### Fixed

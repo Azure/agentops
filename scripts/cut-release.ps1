@@ -65,9 +65,18 @@ $date = Get-Date -Format "yyyy-MM-dd"
 if ($changelog -match [regex]::Escape("## [$version]")) {
     Write-Host "CHANGELOG already has [$version] entry — skipping" -ForegroundColor DarkYellow
 } else {
-    $anchor = "adheres to [Semantic Versioning]"
-    $replacement = "$anchor(https://semver.org/).`n`n## [$version] - $date"
-    $changelog = $changelog -replace [regex]::Escape("${anchor}(https://semver.org/)."), $replacement
+    # Anchor on the [Unreleased] heading, not on the intro paragraph above it.
+    # Inserting below [Unreleased] is what promotes the accumulated entries into
+    # the new version; inserting above it would create an empty versioned section
+    # and strand every entry under [Unreleased]. This matches cut-release.yml.
+    $marker = "## [Unreleased]"
+    if ($changelog -notmatch [regex]::Escape($marker)) {
+        Write-Error "CHANGELOG.md is missing the ## [Unreleased] section."
+        exit 1
+    }
+    $replacement = "$marker`n`n## [$version] - $date"
+    $rx = [regex]::new([regex]::Escape($marker))
+    $changelog = $rx.Replace($changelog, $replacement, 1)
     Set-Content CHANGELOG.md -Value $changelog -NoNewline
     Write-Host "CHANGELOG updated with [$version] - $date" -ForegroundColor Green
 }
