@@ -705,6 +705,88 @@ def test_azure_devops_azd_stages_install_extension_and_configure_auth(
         assert content.count('azd config set auth.useAzCliAuth "true"') == 2
 
 
+def _write_azd_eval_project(directory: Path) -> None:
+    """Lay out a project whose recommended eval runner is the azd backend."""
+
+    (directory / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (directory / "eval.yaml").write_text("name: eval\n", encoding="utf-8")
+    (directory / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+    (directory / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\nexecution: azd\n",
+        encoding="utf-8",
+    )
+
+
+def _ado_stage(path: Path, stage: str) -> str:
+    """Return the raw YAML text of a single Azure DevOps stage."""
+
+    content = path.read_text(encoding="utf-8")
+    start = content.index(f"\n  - stage: {stage}\n")
+    end = content.find("\n  - stage: ", start + 1)
+    return content[start:] if end == -1 else content[start:end]
+
+
+def test_azure_devops_azd_eval_stage_configures_azd_auth(tmp_path: Path) -> None:
+    """The ADO eval gate shells out to `azd`, so it needs azd credentials too.
+
+    `AzureCLI@2` authenticates the Azure CLI, not azd, and azd keeps its own
+    credential store. Without `auth.useAzCliAuth` the eval stage hits the same
+    failure that issue #379 fixed for provision and deploy.
+    """
+
+    _write_azd_eval_project(tmp_path)
+
+    for kind, rel, stage in (
+        ("dev", _ADO_DEV, "eval"),
+        ("qa", _ADO_QA, "eval"),
+        ("prod", _ADO_PROD, "safety_eval"),
+        ("pr", _ADO_PR, "eval"),
+    ):
+        generate_cicd_workflows(
+            directory=tmp_path,
+            platform="azure-devops",
+            kinds=[kind],
+            force=True,
+        )
+        section = _ado_stage(tmp_path / rel, stage)
+
+        assert "curl -fsSL https://aka.ms/install-azd.sh | bash" in section
+        assert 'azd extension install azure.ai.agents --version "' in section
+        assert 'azd config set auth.useAzCliAuth "true"' in section
+        assert "azureSubscription: $(AZURE_SERVICE_CONNECTION)" in section
+        # GitHub Actions expression syntax must never leak into ADO output.
+        assert "${{" not in section
+
+
+def test_azure_devops_pipelines_stay_valid_yaml_for_every_eval_runner(
+    tmp_path: Path,
+) -> None:
+    """Guard against block-scalar indentation regressions in the ADO templates.
+
+    A line at column 0 inside a `bash: |` block terminates the scalar and makes
+    Azure DevOps reject the whole pipeline, so parse every generated file.
+    """
+
+    _write_azd_eval_project(tmp_path)
+    generate_cicd_workflows(
+        directory=tmp_path,
+        platform="azure-devops",
+        kinds=list(ALL_KINDS),
+        force=True,
+    )
+
+    for rel in _ADO_PATHS:
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        assert isinstance(_read_yaml(tmp_path / rel), dict), rel
+        for number, line in enumerate(content.splitlines(), start=1):
+            if not line or line[0].isspace() or line.startswith("#"):
+                continue
+            assert line.split(":", 1)[0].isidentifier(), f"{rel}:{number}: {line}"
+
+
 def test_azure_devops_azd_mode_runs_ailz_preflight_when_script_exists(tmp_path: Path) -> None:
     (tmp_path / "azure.yaml").write_text("name: azure-ai-lz\n", encoding="utf-8")
     scripts = tmp_path / "scripts"

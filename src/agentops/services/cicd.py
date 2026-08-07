@@ -637,6 +637,7 @@ def _ado_eval_substitutions(
                 f"""- bash: |
     curl -fsSL https://aka.ms/install-azd.sh | bash
     azd extension install azure.ai.agents --version "{extension_version}"
+    azd config set auth.useAzCliAuth "true"
   displayName: Install pinned azd AI agents extension
 
 - task: AzureCLI@2
