@@ -439,6 +439,16 @@ def _github_eval_substitutions(
         run: |
           azd extension install azure.ai.agents --version "${AZD_AI_AGENTS_EXTENSION_VERSION_ENV}"
 
+      - name: azd auth login (OIDC)
+        env:
+          AZURE_CLIENT_ID: ${{{{ vars.AZURE_CLIENT_ID }}}}
+          AZURE_TENANT_ID: ${{{{ vars.AZURE_TENANT_ID }}}}
+        run: |
+          azd auth login \\
+            --client-id "$AZURE_CLIENT_ID" \\
+            --tenant-id "$AZURE_TENANT_ID" \\
+            --federated-credential-provider github
+
       - name: Run azd AI agent eval through AgentOps
         id: eval
         env:
@@ -637,6 +647,7 @@ def _ado_eval_substitutions(
                 f"""- bash: |
     curl -fsSL https://aka.ms/install-azd.sh | bash
     azd extension install azure.ai.agents --version "{extension_version}"
+    azd config set auth.useAzCliAuth "true"
   displayName: Install pinned azd AI agents extension
 
 - task: AzureCLI@2
