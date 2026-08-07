@@ -6,20 +6,25 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Fixed
-- **The Azure DevOps eval stage installed `azd` but never gave it credentials.**
-  When a project uses the azd evaluation backend, the generated ADO pipeline
-  runs `agentops eval run`, which shells out to `azd ai agent eval run`. That
-  stage installed the pinned `azure.ai.agents` extension but skipped
-  `azd config set auth.useAzCliAuth "true"`, so the azd binary had no
-  credentials and the eval gate failed before reaching Foundry.
+- **The eval gate installed `azd` but never gave it credentials, on both GitHub
+  Actions and Azure DevOps.** When a project uses the azd evaluation backend,
+  the generated pipeline runs `agentops eval run`, which shells out to
+  `azd ai agent eval run`. Both platforms installed the pinned
+  `azure.ai.agents` extension and then invoked the binary with no credentials,
+  so the eval gate failed before reaching Foundry.
 
-  This is the issue #379 trap in a stage nobody had exercised. `AzureCLI@2`
-  completes the service-connection handshake and leaves the Azure CLI
-  authenticated, but `azd` keeps a separate credential store and does not read
-  that session unless `auth.useAzCliAuth` is set. The provision and deploy
-  stages already set it, so the eval stage was also inconsistent with the rest
-  of the same pipeline. All four ADO pipelines (pr, dev, qa, prod) now emit the
-  same install, pin, and auth triple wherever they invoke `azd`.
+  This is the issue #379 trap in a job nobody had exercised. The fix differs by
+  platform because the surrounding authentication differs. On Azure DevOps
+  every azd call runs inside `AzureCLI@2`, which completes the
+  service-connection handshake and leaves the Azure CLI authenticated, but
+  `azd` keeps a separate credential store and ignores that session unless
+  `auth.useAzCliAuth` is set; the eval stage now sets it, matching the provision
+  and deploy stages in the same pipeline. On GitHub Actions `azure/login@v3`
+  authenticates only the Azure CLI, so the eval job now runs
+  `azd auth login --federated-credential-provider github` with the same
+  `vars.AZURE_CLIENT_ID` and `vars.AZURE_TENANT_ID` the provision and deploy
+  jobs already use. Every generated job that installs the azd extension now
+  also authenticates it.
 
 - **The generated Azure DevOps PR pipeline was not valid YAML.** The
   report-comment step embedded a multi-line `python -c` snippet whose

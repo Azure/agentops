@@ -683,6 +683,52 @@ def test_azd_execution_keeps_azd_in_eval_job(tmp_path: Path) -> None:
     assert "azd extension install azure.ai.agents" in eval_section
 
 
+def test_github_azd_eval_job_authenticates_azd(tmp_path: Path) -> None:
+    """The GitHub eval gate shells out to `azd`, so it needs azd credentials.
+
+    `azure/login@v3` authenticates the Azure CLI only. azd keeps its own
+    credential store and never falls back to the `az` session, so the eval job
+    needs the same federated `azd auth login` the provision and deploy jobs run.
+    """
+
+    _write_azd_eval_project(tmp_path)
+
+    for kind, rel, job, jobs in (
+        ("dev", _DEV_PATH, "eval", ("provision", "eval", "deploy")),
+        ("qa", _QA_PATH, "eval", ("provision", "eval", "deploy")),
+        ("prod", _PROD_PATH, "safety-eval", ("provision", "safety-eval", "deploy")),
+        ("pr", _PR_PATH, "eval", ("eval",)),
+    ):
+        generate_cicd_workflows(directory=tmp_path, kinds=[kind], force=True)
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        section = _job_section(content, job, jobs)
+
+        assert "Azure/setup-azd@v2" in section
+        assert 'azd extension install azure.ai.agents --version "' in section
+        assert "azd auth login \\" in section
+        assert "--federated-credential-provider github" in section
+
+
+def test_azd_eval_jobs_never_install_azd_without_authenticating(
+    tmp_path: Path,
+) -> None:
+    """Every generated job that installs the azd extension must also log in.
+
+    Pairing the counts catches a new azd call site that copies the install step
+    but forgets the credentials, which is how the eval gate broke.
+    """
+
+    _write_azd_eval_project(tmp_path)
+    generate_cicd_workflows(directory=tmp_path, kinds=ALL_KINDS, force=True)
+
+    for rel in (_PR_PATH, _DEV_PATH, _QA_PATH, _PROD_PATH):
+        content = (tmp_path / rel).read_text(encoding="utf-8")
+        installs = content.count('azd extension install azure.ai.agents --version "')
+        logins = content.count("--federated-credential-provider github")
+        assert installs > 0
+        assert installs == logins
+
+
 def test_azure_devops_azd_stages_install_extension_and_configure_auth(
     tmp_path: Path,
 ) -> None:
