@@ -168,3 +168,68 @@ def test_cli_eval_analyze_invalid_format_fails(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "--format must be text, markdown, or json" in result.output
+
+
+HOSTED_AGENT_URL = (
+    "https://acct.services.ai.azure.com/api/projects/proj/agents/helpdesk/versions/11"
+)
+
+
+def _write_reference_answer_project(root: Path, agent: str) -> None:
+    """Write a project whose dataset has ``input`` + ``expected`` and nothing else."""
+
+    (root / "data.jsonl").write_text(
+        '{"input": "Why can the user not sign in?", "expected": "The token expired."}\n',
+        encoding="utf-8",
+    )
+    (root / "agentops.yaml").write_text(
+        f"version: 1\nagent: {agent}\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+
+def test_eval_analysis_hosted_agent_with_expected_is_conversational(tmp_path: Path) -> None:
+    """A hosted agent answering `input` is conversational, not model quality.
+
+    Regression test for #363: `_scenario_hint` used to label any dataset with an
+    `expected` column as model quality regardless of the resolved target.
+    """
+
+    _write_reference_answer_project(tmp_path, HOSTED_AGENT_URL)
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.target_kind == "foundry_hosted"
+    assert analysis.scenario_hint == "conversational"
+    assert "model_quality" not in analysis.classification
+
+
+def test_eval_analysis_prompt_agent_with_expected_is_conversational(tmp_path: Path) -> None:
+    _write_reference_answer_project(tmp_path, "quickstart-agent:2")
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.target_kind == "foundry_prompt"
+    assert analysis.scenario_hint == "conversational"
+
+
+def test_eval_analysis_model_target_with_expected_is_model_quality(tmp_path: Path) -> None:
+    """Model targets keep the model-quality label; #363 must not overcorrect."""
+
+    _write_reference_answer_project(tmp_path, "model:gpt-4o")
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.target_kind == "model_direct"
+    assert analysis.scenario_hint == "model_quality"
+
+
+def test_eval_analysis_text_softens_hosted_agent_kind(tmp_path: Path) -> None:
+    """Rendered text must not leak the raw `foundry_hosted` kind string."""
+
+    _write_reference_answer_project(tmp_path, HOSTED_AGENT_URL)
+
+    text = render_eval_analysis(analyze_eval_project(tmp_path), "text")
+
+    assert "Foundry hosted agent" in text
+    assert "foundry_hosted" not in text

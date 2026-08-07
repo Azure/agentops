@@ -18,6 +18,22 @@ _SCAN_LIMIT = 80
 _DATASET_ROW_LIMIT = 20
 _TEXT_WRAP_WIDTH = 92
 _TEXT_SUFFIXES = {".py", ".ts", ".tsx", ".js", ".jsx", ".bicep", ".yaml", ".yml"}
+
+#: Human-readable label for each resolved target kind. Single source of truth
+#: for both the summary table and for softening raw kind strings that appear
+#: inside signal text, so the two cannot drift apart.
+_TARGET_KIND_LABELS: Dict[str, str] = {
+    "foundry_prompt": "Foundry prompt agent",
+    "foundry_hosted": "Foundry hosted agent",
+    "http_json": "HTTP/JSON agent",
+    "model_deployment": "model deployment",
+    "model_direct": "direct model",
+}
+
+#: Target kinds that evaluate a raw model deployment rather than an agent.
+#: Mirrors the ``model_direct`` branch in ``agentops.core.evaluators``, which
+#: drives the actual evaluator selection.
+_MODEL_TARGET_KINDS = frozenset({"model_direct", "model_deployment"})
 _WALK_FILE_LIMIT = 2_000
 _IGNORE_PARTS = {
     ".azure",
@@ -123,7 +139,11 @@ def analyze_eval_project(directory: Path) -> EvalAnalysis:
     structural_signals = _structural_signals(root, text_for_hints)
     signals.extend(structural_signals)
 
-    scenario_hint = _scenario_hint(config_info.dataset_columns, text_for_hints)
+    scenario_hint = _scenario_hint(
+        config_info.dataset_columns,
+        text_for_hints,
+        config_info.target_kind,
+    )
     if scenario_hint != "unknown":
         signals.append(
             EvalSignal(
@@ -407,7 +427,11 @@ def _structural_signals(root: Path, text: str) -> List[EvalSignal]:
     return signals
 
 
-def _scenario_hint(dataset_columns: Set[str], text: str) -> str:
+def _scenario_hint(
+    dataset_columns: Set[str],
+    text: str,
+    target_kind: Optional[str] = None,
+) -> str:
     if {"tool_calls", "tool_definitions"} & dataset_columns:
         return "agent_workflow"
     if "context" in dataset_columns:
@@ -415,6 +439,15 @@ def _scenario_hint(dataset_columns: Set[str], text: str) -> str:
     if "conversation" in dataset_columns or "turns" in dataset_columns:
         return "conversational"
     if "expected" in dataset_columns:
+        # An ``expected`` column on its own does not imply model quality. Model
+        # quality means comparing a raw ``model:<deployment>`` response against
+        # a reference answer; an agent target answering ``input`` with a
+        # free-form reply is conversational. This mirrors the evaluator
+        # selection in ``agentops.core.evaluators``, which gives model targets
+        # reference checks and agent targets answer-quality checks. When the
+        # target is unknown, keep the historical label.
+        if target_kind is not None and target_kind not in _MODEL_TARGET_KINDS:
+            return "conversational"
         return "model_quality"
     if "tool_calls" in text or "function_call" in text or "@tool" in text:
         return "agent_workflow"
@@ -686,13 +719,7 @@ def _wrap_text(text: str, *, indent: str) -> List[str]:
 def _friendly_target(target_kind: Optional[str]) -> str:
     if not target_kind:
         return "unknown"
-    return {
-        "foundry_prompt": "Foundry prompt agent",
-        "foundry_hosted": "Foundry hosted agent",
-        "http_json": "HTTP/JSON agent",
-        "model_deployment": "model deployment",
-        "model_direct": "direct model",
-    }.get(target_kind, _friendly_status(target_kind))
+    return _TARGET_KIND_LABELS.get(target_kind, _friendly_status(target_kind))
 
 
 def _friendly_status(value: str) -> str:
@@ -700,12 +727,10 @@ def _friendly_status(value: str) -> str:
 
 
 def _soften_text(text: str) -> str:
-    return (
-        text.replace("foundry_prompt", "Foundry prompt agent")
-        .replace("model_direct", "direct model")
-        .replace("model_quality", "model quality")
-        .replace("agent_workflow", "agent workflow")
-        .replace("http_json", "HTTP/JSON agent")
+    for kind, label in _TARGET_KIND_LABELS.items():
+        text = text.replace(kind, label)
+    return text.replace("model_quality", "model quality").replace(
+        "agent_workflow", "agent workflow"
     )
 
 
