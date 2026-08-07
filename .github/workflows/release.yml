@@ -124,20 +124,24 @@ jobs:
 
       - name: Install from TestPyPI
         run: |
-          for i in 1 2 3 4 5; do
-            echo "Attempt $i: installing agentops-accelerator==${{ steps.version.outputs.version }}"
-            if pip install \
+          # TestPyPI serves its simple index through a CDN, so a freshly
+          # uploaded release is not immediately resolvable even after the
+          # upload returns 200 OK. Allow ~6 minutes for it to propagate.
+          ATTEMPTS=12
+          for i in $(seq 1 "$ATTEMPTS"); do
+            echo "Attempt $i/$ATTEMPTS: installing agentops-accelerator==${{ steps.version.outputs.version }}"
+            if pip install --no-cache-dir \
               "agentops-accelerator==${{ steps.version.outputs.version }}" \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/; then
               exit 0
             fi
-            if [ "$i" -lt 5 ]; then
+            if [ "$i" -lt "$ATTEMPTS" ]; then
               echo "Not available yet, waiting 30s..."
               sleep 30
             fi
           done
-          echo "::error::agentops-accelerator==${{ steps.version.outputs.version }} was not available from TestPyPI after 5 attempts."
+          echo "::error::agentops-accelerator==${{ steps.version.outputs.version }} was not available from TestPyPI after $ATTEMPTS attempts (~6 min)."
           exit 1
 
       - name: Smoke test — version and help

@@ -5,6 +5,21 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **CI: `Install from TestPyPI` no longer fails on a healthy build.** After a
+  dev, staging, or release build uploaded a distribution to TestPyPI and
+  received `200 OK`, the verification step immediately tried to install it and
+  gave up after 5 attempts spaced 30 s apart (~2 min). TestPyPI serves its
+  simple index through a CDN, so propagation regularly takes longer than that,
+  and the job failed with
+  `No matching distribution found for agentops-accelerator==<version>` for a
+  package that had in fact been published successfully. The retry window is now
+  12 attempts (~6 min), and `pip install` runs with `--no-cache-dir` so a
+  negative index response from an earlier attempt is not reused within the same
+  job. Applied to `ci.yml` (`verify-dev`), `staging.yml`, and `release.yml` —
+  in `release.yml` this step gates publication to PyPI, so a false negative
+  there blocked the release entirely.
+
 ## [0.8.2] - 2026-08-07
 
 ### Fixed
