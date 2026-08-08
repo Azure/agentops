@@ -235,6 +235,7 @@ auth_header_env: HOSTED_AGENT_TOKEN
     project must be the one holding this agent version. Pointing it at a
     different project either fails to resolve the agent or silently resolves a
     same-named agent there.
+
     Cloud runs publish implicitly and land in the New Foundry Evaluations panel.
 
 The wizard writes local Azure values to `.agentops/.env` so they stay out of

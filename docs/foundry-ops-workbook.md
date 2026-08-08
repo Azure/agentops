@@ -7,10 +7,13 @@ latency, token consumption, and throttling. You deploy it once with a single
 command and then open it in the Azure portal alongside the rest of your
 monitoring.
 
-!!! note "CLI availability"
-    The `agentops telemetry dashboard` commands on this page ship in the
-    companion feature release. If your installed version does not have them yet,
-    update the package first with `pip install --upgrade "agentops-accelerator[agent]"`.
+!!! note "What you need installed"
+    These commands ship in every published `agentops-accelerator` release, so
+    there is nothing extra to install for the CLI itself. `deploy` is the one
+    that shells out to the Azure CLI, so `az` must be on `PATH` and logged in
+    (`az login`). Without it, `deploy` stops with *The Azure CLI ('az') was not
+    found on PATH*. Use `deploy --dry-run` to emit the ARM template instead.
+    `open` and `export` do not need the Azure CLI.
 
 ## When to use it
 

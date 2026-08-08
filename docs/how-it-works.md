@@ -228,10 +228,20 @@ flowchart LR
 | `agentops init show` | Inspect resolved config (`agentops.yaml` + local env values) |
 | `agentops init explain` | Long-form `init` manual |
 | `agentops eval analyze` | Inspect eval setup and recommend direct run vs skill-assisted configuration |
+| `agentops eval init` | Initialize Foundry-native eval assets with `azd` |
 | `agentops eval run` | Run an evaluation; the main command |
 | `agentops eval run --baseline <results.json>` | Run an eval and add a baseline comparison section to the report |
 | `agentops eval promote-traces` | Convert local trace exports into reviewable regression dataset rows |
 | `agentops report generate` | Regenerate `report.md` from a `results.json` |
+| `agentops assert run` | Invoke the ASSERT (`assert-ai`) CLI and normalize its results |
+| `agentops redteam run` | Invoke the Foundry / PyRIT AI Red Teaming agent and normalize its results |
+| `agentops prompt pull` | Pull Foundry prompt-agent instructions into a prompt file |
+| `agentops telemetry validate <name>` | Validate a named telemetry import without querying Azure |
+| `agentops telemetry preview <name>` | Query Azure Monitor and print a small dataset preview |
+| `agentops telemetry import <name>` | Import telemetry into the configured JSONL output path |
+| `agentops telemetry dashboard deploy` | Deploy the Foundry operations workbook to Azure Monitor |
+| `agentops telemetry dashboard open` | Open the Foundry operations workbook in the Azure portal |
+| `agentops telemetry dashboard export` | Export the packaged workbook JSON to a local path |
 | `agentops doctor [--evidence-pack]` | Run the AgentOps Doctor and optionally write release evidence |
 | `agentops doctor explain` | Long-form Doctor manual |
 | `agentops cockpit` | Local read-only Cockpit UI (FastAPI) that links out to Foundry |

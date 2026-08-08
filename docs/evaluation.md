@@ -50,6 +50,7 @@ submitted against the project in `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, so that
 endpoint must point at the project that holds the agent version. A hosted
 endpoint without the versioned path is rejected with a message telling you to
 add it or set `agent: <name>:<version>`.
+
 Generic HTTP endpoints and raw model deployments always use the local runner; to
 make those results visible in Foundry, use `publish: true`, which targets the
 Classic Foundry Evaluations upload path.
