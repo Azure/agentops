@@ -53,7 +53,7 @@ src/
     │
     ├── pipeline/              # Run orchestration - ADD execution flows here
     │   ├── orchestrator.py    # End-to-end `eval run` driver
-    │   ├── runtime.py         # Pre-flight checks (deps, creds, endpoints)
+    │   ├── runtime.py         # Evaluator loading and per-row evaluator execution
     │   ├── invocations.py     # Per-row agent / model invocation strategies
     │   ├── thresholds.py      # Threshold pass/fail evaluation
     │   ├── reporter.py        # Markdown report generation
@@ -68,6 +68,7 @@ src/
     │   ├── skills.py          # Coding agent skill installation
     │   ├── cicd.py            # CI/CD workflow generation
     │   ├── evidence_pack.py   # Release evidence aggregation/writer
+    │   ├── preflight.py       # Pre-flight checks (workspace, auth, Foundry, App Insights)
     │   └── trace_promotion.py # Trace export → dataset candidates
     │
     ├── agent/                 # Doctor, Cockpit, and agent server
@@ -91,7 +92,7 @@ src/
 |---|---|
 | Add a field to `agentops.yaml` | `core/agentops_config.py` |
 | Add a new evaluator preset | `core/evaluators.py` (catalog) |
-| Change pre-flight checks | `pipeline/runtime.py` |
+| Change pre-flight checks | `services/preflight.py` |
 | Add a target kind | `pipeline/invocations.py` + `core/agentops_config.py` |
 | Tweak the report layout | `pipeline/reporter.py` |
 | Add a publish destination | `pipeline/publisher.py` or `pipeline/cloud_runner.py` |
@@ -577,21 +578,25 @@ Implementation lives in [src/agentops/pipeline/publisher.py](https://github.com/
 
 ## Pre-flight checks
 
-Before any agent invocation, [pipeline/runtime.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/runtime.py)
-runs a short series of checks and reports **all** failures at once:
+`agentops doctor` and `agentops cockpit` run a short pre-flight before doing
+real work. It lives in
+[src/agentops/services/preflight.py](https://github.com/Azure/agentops/blob/main/src/agentops/services/preflight.py)
+and reports **all** rows at once instead of stopping at the first problem:
 
-* Required Python packages installed (`azure-identity`,
-  `azure-ai-evaluation` for AI-assisted evaluators, `azure-ai-projects`
-  for Foundry invocation, publishing, or `execution: cloud`).
-* Required env vars set (`AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`,
-  `AZURE_OPENAI_*` deployment fields).
-* Azure CLI credential acquires a token within 30 s
-  (`process_timeout=30` is set everywhere `DefaultAzureCredential` is
-  instantiated to absorb Windows `az.cmd` cold starts).
-* For URL agents, the endpoint resolves and accepts a TCP connection.
+* **Workspace** — the target directory is a usable AgentOps workspace.
+* **Azure authentication** — `DefaultAzureCredential` acquires an ARM token
+  within 30 s (`process_timeout=30` is set to absorb Windows `az.cmd` cold
+  starts).
+* **Foundry project** — the configured project endpoint is reachable.
+* **Application Insights** — a connection string is available, either
+  auto-discovered from Foundry or set through
+  `APPLICATIONINSIGHTS_CONNECTION_STRING`.
 
-`agentops eval run --dry-run` runs only the pre-flight phase and exits
-`0` (all clear) or `1` (something to fix). Useful for CI gating.
+Each check is a single best-effort attempt with no retries, and a failing
+check never raises into the CLI. The default policy is advisory: warnings
+print and the command continues. For CI gating, pass `--strict-preflight`
+to `agentops doctor` so any failure exits non-zero. Pass `--no-preflight`
+to `doctor` or `cockpit` to skip the checks entirely.
 
 ## Invocation strategies (target kind → wire call)
 
