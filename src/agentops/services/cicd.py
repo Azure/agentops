@@ -303,8 +303,11 @@ _PROMPT_AGENT_TEMPLATES_BY_PLATFORM: Dict[str, Dict[str, Tuple[str, str]]] = {
 
 # Path of the optional committed baseline file consumed by the PR template's
 # ``agentops eval run`` step. When present in the consumer repo, the PR
-# eval step passes ``--baseline <path>`` so threshold comparisons run
-# against the committed baseline instead of any prior artifact.
+# eval step passes ``--baseline <path>`` so the run reports deltas against
+# the committed baseline instead of any prior artifact. The baseline does
+# not gate: ``exit_code_from`` in pipeline/orchestrator.py derives the exit
+# code from the configured thresholds alone, so a regression against the
+# baseline is reported but never fails the job on its own.
 _PR_BASELINE_PATH: str = ".agentops/baseline/results.json"
 
 
