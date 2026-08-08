@@ -212,7 +212,7 @@ install AgentOps, and install the Copilot skills:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install agentops-accelerator
+python -m pip install "agentops-accelerator[agent]"
 agentops --version
 agentops skills install
 ```
@@ -460,10 +460,12 @@ If you do not want to publish to Foundry, leave the `publish` field out.
     This still runs locally. AgentOps invokes the HTTP endpoint from your machine
     or CI runner, then uploads the finished metrics and row results to Classic
     Foundry Evaluations. It does not create a New Foundry server-side evaluation
-    run. In AgentOps, `execution: cloud` currently applies to Foundry prompt
-    agents (`name:version`) only. Foundry hosted agent endpoints can still use the
-    local runner with `publish: true`, and hosted/prompt agents can use
-    `execution: azd` when you have an `azd ai agent eval` recipe.
+    run. `execution: cloud` requires a target Foundry can resolve itself: a
+    prompt agent (`name:version`) or a hosted agent endpoint whose URL contains
+    `/agents/<name>/versions/<version>`. A generic HTTP endpoint like this one
+    has neither, so it stays on the local runner with `publish: true`. Hosted and
+    prompt agents can also use `execution: azd` when you have an
+    `azd ai agent eval` recipe.
 
 ```powershell
 agentops eval run
@@ -874,8 +876,9 @@ jobs:
 
 The dev workflow is the same shape: the `eval` job runs the gates, then a
 `deploy` job with `needs: eval` runs the same `azd deploy` step against the dev
-environment. The complete, proven files live in the reference repo
-[placerda/gpt-rag-orchestrator-agentops](https://github.com/placerda/gpt-rag-orchestrator-agentops/tree/develop/.github/workflows).
+environment. Both files are what `agentops workflow generate` writes into
+`.github/workflows/`, so generate them in your own repo and diff against the
+snippets above rather than copying from elsewhere.
 
 ### Required GitHub configuration
 

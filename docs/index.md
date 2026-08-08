@@ -41,10 +41,14 @@ evidence pack that proves a release is ready for production.
     coding agent.
 
     ```bash
-    pip install agentops-accelerator
+    pip install "agentops-accelerator[agent]"
     agentops init
     agentops skills install --platform copilot
     ```
+
+    The `[agent]` extra pulls in the FastAPI stack behind `agentops cockpit` and
+    `agentops agent serve`. Plain `pip install agentops-accelerator` gives you
+    the eval and Doctor commands but raises an `ImportError` on those two.
 
 <div class="agentops-video-embed">
   <iframe

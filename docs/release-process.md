@@ -161,7 +161,7 @@ Before your PR can be merged to `develop`:
 
 1. **CI pipeline passes** - lint + tests across OS/Python matrix
 2. **Code review approved** - at least one reviewer
-3. **Architecture rules followed** - see [CONTRIBUTING.md](../CONTRIBUTING.md)
+3. **Architecture rules followed** - see [CONTRIBUTING.md](https://github.com/Azure/agentops/blob/main/CONTRIBUTING.md)
 4. **Tests included** - unit tests in `tests/unit/`, integration tests if needed
 5. **CHANGELOG updated** - add entry under the appropriate versioned section for user-visible changes
 
@@ -581,7 +581,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-This triggers the [production release pipeline](#8-production-release-pipeline-pypi).
+This triggers the [production release pipeline](#9-production-release-pipeline-pypi).
 
 #### Step 6: Approve the PyPI Publish
 

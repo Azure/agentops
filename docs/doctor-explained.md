@@ -369,7 +369,7 @@ For thresholds, source configuration, and check toggles, edit
 ## 10. The WAF knowledge base (editable CSV)
 
 The Doctor ships with a **packaged baseline** at
-[`src/agentops/agent/knowledge/waf-checklist.csv`](../src/agentops/agent/knowledge/waf-checklist.csv).
+[`src/agentops/agent/knowledge/waf-checklist.csv`](https://github.com/Azure/agentops/blob/main/src/agentops/agent/knowledge/waf-checklist.csv).
 It maps every Doctor finding id to a row that names its WAF pillar,
 area, and a public Microsoft Learn reference link. The reporter
 annotates each finding with a `WAF: <pillar> / <area>` line when a

@@ -184,7 +184,7 @@ evidence outputs into a release gate.
 | Target | Foundry server-side eval through AgentOps | AgentOps local runner | Recommended default |
 |---|---|---|---|
 | Foundry Prompt Agent (`name:version`) | Yes, with `execution: cloud` | Yes | Use cloud for official Foundry-hosted runs; use local for fast feedback or fallback. |
-| Foundry Hosted Agent URL | No | Yes | Use local runner; optionally publish local metrics to Foundry with `publish: true`. |
+| Foundry Hosted Agent URL | Yes, with `execution: cloud`, when the URL contains `/agents/<name>/versions/<version>` | Yes | Use cloud when the endpoint carries the versioned agent path; otherwise use the local runner and optionally `publish: true`. |
 | Generic HTTP/JSON endpoint | No | Yes | Use local runner. |
 | Raw model deployment (`model:<name>`) | No | Yes | Use local runner. |
 

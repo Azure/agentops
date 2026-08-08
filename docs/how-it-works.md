@@ -291,7 +291,7 @@ continue to use `.azure/<env>/.env`.
 
 The legacy layered layout (`.agentops/config.yaml` + `bundles/` +
 `datasets/*.yaml` + `run.yaml`) **no longer exists**. The new schema is
-declared by [src/agentops/core/agentops_config.py](../src/agentops/core/agentops_config.py)
+declared by [src/agentops/core/agentops_config.py](https://github.com/Azure/agentops/blob/main/src/agentops/core/agentops_config.py)
 and rejects any of the legacy top-level keys (`target`, `bundle`,
 `execution`, `output`, `scenario`, `backend`, `run`) at parse time with
 an actionable error.
@@ -479,7 +479,7 @@ have permission to create Foundry datasets.
 
 ## Evaluator auto-selection
 
-The catalog is defined in [src/agentops/core/evaluators.py](../src/agentops/core/evaluators.py).
+The catalog is defined in [src/agentops/core/evaluators.py](https://github.com/Azure/agentops/blob/main/src/agentops/core/evaluators.py).
 Selection rules (in order):
 
 1. If `evaluators:` is set in `agentops.yaml`, use it verbatim (escape hatch).
@@ -532,7 +532,7 @@ link.
 |---|---|---|---|
 | `execution: local`, `publish: false` | AgentOps invokes target and evaluators locally | None; local artifacts only | Any target |
 | `execution: local`, `publish: true` | AgentOps local run, then metric upload | Classic Foundry Evaluations panel | Any target |
-| `execution: cloud` | Foundry runs agent + evaluators server-side through the OpenAI Evals API | New Foundry Evaluations panel; publish is implicit | Foundry Prompt Agent (`name:version`) |
+| `execution: cloud` | Foundry runs agent + evaluators server-side through the OpenAI Evals API | New Foundry Evaluations panel; publish is implicit | Foundry Prompt Agent (`name:version`) or Foundry Hosted Agent URL containing `/agents/<name>/versions/<version>` |
 
 Foundry-visible modes:
 
@@ -560,14 +560,14 @@ pack. The standalone Microsoft Foundry AI Agent Evaluation GitHub Action or
 Azure DevOps extension remains useful for platform-native validation outside the
 AgentOps release-readiness flow.
 
-Implementation lives in [src/agentops/pipeline/publisher.py](../src/agentops/pipeline/publisher.py)
-(Classic) and [src/agentops/pipeline/cloud_runner.py](../src/agentops/pipeline/cloud_runner.py)
+Implementation lives in [src/agentops/pipeline/publisher.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/publisher.py)
+(Classic) and [src/agentops/pipeline/cloud_runner.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/cloud_runner.py)
 (New Foundry). Dispatch happens in
-[src/agentops/pipeline/orchestrator.py](../src/agentops/pipeline/orchestrator.py).
+[src/agentops/pipeline/orchestrator.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/orchestrator.py).
 
 ## Pre-flight checks
 
-Before any agent invocation, [pipeline/runtime.py](../src/agentops/pipeline/runtime.py)
+Before any agent invocation, [pipeline/runtime.py](https://github.com/Azure/agentops/blob/main/src/agentops/pipeline/runtime.py)
 runs a short series of checks and reports **all** failures at once:
 
 * Required Python packages installed (`azure-identity`,
@@ -711,9 +711,9 @@ Azure SDK dependencies are kept separate so the CLI stays lightweight and tests 
 
 ## Quick Reference for New Contributors
 
-1. **Install in dev mode**: `pip install -e ".[dev]"` or `pip install -e .` then `pip install pytest`
-2. **Run tests**: `python -m pytest tests/ -x -q`
-3. **Try it out**: `agentops init` then explore `.agentops/`
+1. **Install in dev mode**: `uv sync --group dev`. `dev` is a PEP 735 dependency group, not an extra, so `pip install -e ".[dev]"` does not install it: pip warns about an unknown extra and installs the project without the dev tools. With pip, use `pip install -e ".[agent,mcp]"` and add test tools yourself. See the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+2. **Run tests**: `uv run python -m pytest tests/ -x -q`. `uv sync` populates `.venv` but does not activate it, so a bare `python` may be the system interpreter. `uv run` is what CI uses. If you prefer, activate `.venv` first and then call `python` directly.
+3. **Try it out**: `uv run agentops init` then explore `.agentops/`
 4. **Read the models**: `core/models.py` is the best single file to understand all data structures
 5. **Follow the flow**: `cli/app.py` → `services/runner.py` → `backends/` → `core/`
 6. **Keep CLI thin**: never put logic in `cli/app.py` - delegate to `services/`
