@@ -1291,7 +1291,7 @@ rule detects the signal" reference.</p>
   <code>warning</code> severity, never affects CI exit codes.</li>
 </ul>
 <h2 id="data-sources">Data sources<a class="headerlink" href="#data-sources" title="Permanent link">&para;</a></h2>
-<p>The Doctor reaches Azure through five sources, all configured in
+<p>The Doctor reaches Azure through six sources, all configured in
 <code>.agentops/agent.yaml</code>:</p>
 <table>
 <thead>
@@ -1320,6 +1320,10 @@ rule detects the signal" reference.</p>
 <tr>
 <td><code>azure_resources</code></td>
 <td>Cognitive Services account properties via <code>azure-mgmt-cognitiveservices</code>; inferred from explicit config, AZD <code>.azure/&lt;env&gt;/.env</code> when present, or Foundry endpoint/account matching</td>
+</tr>
+<tr>
+<td><code>graph</code></td>
+<td>Microsoft Entra agent identity blueprints via Microsoft Graph, read-only, and only when <code>identity.verify</code> is enabled</td>
 </tr>
 </tbody>
 </table>
@@ -1384,8 +1388,38 @@ stopping the whole run.</p>
 <td>llm-judged</td>
 <td>judge model scans system prompt for override-phrasing, embedded secrets, unbounded role-play</td>
 </tr>
+<tr>
+<td><code>agent_identity.not_registered</code></td>
+<td>warning</td>
+<td><code>graph</code></td>
+<td>programmatic</td>
+<td>no Entra Agent ID in <code>.agentops/identity/agent-identity.json</code> or <code>AGENTOPS_ENTRA_AGENT_ID</code></td>
+</tr>
+<tr>
+<td><code>agent_identity.not_recorded</code></td>
+<td>info</td>
+<td><code>graph</code></td>
+<td>programmatic</td>
+<td><code>identity.verify: true</code> and Graph finds a blueprint, but no local record exists</td>
+</tr>
+<tr>
+<td><code>agent_identity.lookup_failed</code></td>
+<td>warning</td>
+<td><code>graph</code></td>
+<td>programmatic</td>
+<td><code>identity.verify: true</code> and the Graph lookup failed (missing consent, throttling, network)</td>
+</tr>
 </tbody>
 </table>
+<div class="admonition info">
+<p class="admonition-title">Identity checks are read-only</p>
+<p>The <code>agent_identity.*</code> checks never create or modify anything in Microsoft
+Entra. Registration is an explicit, separate action: <code>agentops agent
+register</code>. Graph is contacted only when <code>identity.verify</code> is set to true in
+<code>agentops.yaml</code>; with it off, the check reads local state only and still
+reports whether an identity exists. See
+<a href="../observe/#agent-identity-on-traces">Agent identity on traces</a>.</p>
+</div>
 <h3 id="operational-excellence">⚙️ Operational Excellence<a class="headerlink" href="#operational-excellence" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
