@@ -26,10 +26,11 @@ kinds - ``foundry_prompt``, ``foundry_hosted``, ``http_json``, or
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -1325,6 +1326,47 @@ def apply_agent_version_override(agent: str, override: str) -> str:
         "hosted endpoint URL ending in '/agents/<name>/versions/<version>' or "
         "'<name>:<version>'."
     )
+
+
+def is_unexpanded_ci_token(value: str) -> bool:
+    """Return True when *value* is an unexpanded CI variable reference.
+
+    Azure DevOps leaves ``$(NAME)`` verbatim when a variable is undefined, and
+    GitHub expressions can leak through as ``${{ ... }}`` the same way. Callers
+    treat that as "no override" instead of trying to evaluate it as an agent
+    target.
+    """
+
+    candidate = value.strip()
+    return candidate.startswith("$(") or candidate.startswith("${{")
+
+
+def resolve_agent_override(
+    agent: str,
+    *,
+    explicit: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Return the effective ``agent`` expression when an override applies.
+
+    *explicit* is a command-line value such as ``--agent``. When it is ``None``
+    the value of :data:`AGENT_OVERRIDE_ENV` in *env* (defaulting to the process
+    environment) is used instead. Unexpanded CI tokens and blank values are
+    ignored.
+
+    Returns ``None`` when no override applies, so callers can distinguish "keep
+    the configured agent" from "the override happened to match the config".
+    """
+
+    source = os.environ if env is None else env
+    requested = explicit if explicit is not None else source.get(AGENT_OVERRIDE_ENV)
+    if requested is None:
+        return None
+    if is_unexpanded_ci_token(requested):
+        return None
+    if not requested.strip():
+        return None
+    return apply_agent_version_override(agent, requested)
 
 
 def classify_agent(

@@ -543,6 +543,9 @@ def _github_eval_substitutions(
           AZURE_OPENAI_DEPLOYMENT: ${{{{ vars.AZURE_OPENAI_DEPLOYMENT }}}}
           AZURE_OPENAI_MODEL_NAME: ${{{{ vars.AZURE_OPENAI_MODEL_NAME }}}}
           {OFFICIAL_EVAL_ACTION_ENV}: {official_action}
+          # The prepare step reads this and scores the overridden agent version.
+          # An unset variable expands to an empty string, which is ignored.
+          {AGENT_OVERRIDE_ENV}: ${{{{ env.{AGENT_OVERRIDE_ENV} || vars.{AGENT_OVERRIDE_ENV} }}}}
         run: |
           python -m agentops.pipeline.official_eval prepare \\
             --config \"{config_path}\" \\
@@ -745,6 +748,9 @@ def _ado_eval_substitutions(
     AZURE_OPENAI_DEPLOYMENT: $(AZURE_OPENAI_DEPLOYMENT)
     AZURE_OPENAI_MODEL_NAME: $(AZURE_OPENAI_MODEL_NAME)
     {OFFICIAL_EVAL_ADO_TASK_ENV}: {official_task}
+    # The prepare step reads this and scores the overridden agent version. An
+    # undefined variable stays literal as $(NAME) and is ignored.
+    {AGENT_OVERRIDE_ENV}: $({AGENT_OVERRIDE_ENV})
 
 - task: {official_task}
   displayName: Run official AI Agent Evaluation

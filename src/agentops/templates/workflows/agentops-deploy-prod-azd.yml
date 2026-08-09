@@ -83,6 +83,10 @@ __AILZ_PREFLIGHT_COMMAND__
             echo "Skipping azd provision for PROD. Use workflow_dispatch with provision=true for reviewed infra changes."
           fi
 
+  # No `environment:` here on purpose. This job is the gate that must run
+  # *before* the protected environment approval, so the reviewer sees the
+  # safety result when they approve. Adding an `environment:` would make the
+  # gate itself wait for the approval it is supposed to inform.
   safety-eval:
     name: Safety eval (gate)
     needs: provision

@@ -76,28 +76,12 @@ jobs:
 
       - name: Update CHANGELOG
         run: |
-          DATE=$(date +%Y-%m-%d)
-          if grep -q "## \[${{ env.version }}\]" CHANGELOG.md; then
-            echo "CHANGELOG already has [${{ env.version }}] entry — skipping insertion"
-            exit 0
-          fi
-          VERSION="${{ env.version }}" DATE="$DATE" python - <<'PY'
-          import os
-          import sys
-          from pathlib import Path
-
-          path = Path("CHANGELOG.md")
-          text = path.read_text(encoding="utf-8")
-          marker = "## [Unreleased]"
-          version = os.environ["VERSION"]
-          date = os.environ["DATE"]
-          if marker not in text:
-              print("::error::CHANGELOG.md is missing the ## [Unreleased] section.")
-              sys.exit(1)
-          replacement = f"{marker}\n\n## [{version}] - {date}"
-          path.write_text(text.replace(marker, replacement, 1), encoding="utf-8")
-          PY
-          echo "CHANGELOG updated with [${{ env.version }}] - $DATE"
+          # The insertion lives in scripts/check_changelog.py so that
+          # tests/unit/test_check_changelog.py exercises the real code path
+          # instead of a copy that would drift from this workflow.
+          python scripts/check_changelog.py cut \
+            --version "${{ env.version }}" \
+            --date "$(date +%Y-%m-%d)"
 
       - name: Sync plugin versions
         run: |

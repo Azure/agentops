@@ -43,6 +43,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # No `environment:` here on purpose. This job is the gate that must run
+  # *before* the protected environment approval, so the reviewer sees the
+  # safety result when they approve. Adding an `environment:` would make the
+  # gate itself wait for the approval it is supposed to inform.
   safety-eval:
     name: Safety eval (gate)
     runs-on: ubuntu-latest
