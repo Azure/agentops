@@ -1,7 +1,7 @@
 # Live Azure E2E - one-time setup
 
 This guide walks through the human-only steps needed to enable the **live**
-jobs in [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml). Once
+jobs in [`.github/workflows/e2e.yml`](https://github.com/Azure/agentops/blob/main/.github/workflows/e2e.yml). Once
 completed, anyone with `Run workflow` permission can dispatch the workflow
 and pick which scenario(s) to execute against real Azure resources.
 
@@ -136,7 +136,7 @@ Save the three values printed at the end - you'll add them as
 > use its `sub_claim_prefix` value, not the booleans beside it. Creating both
 > subjects as separate credentials on the same app works on either kind of
 > account. See
-> [`docs/ci-github-actions.md`](ci-github-actions.md#federated-credential-subject-check-sub_claim_prefix-first)
+> [`ci-github-actions.md`](ci-github-actions.md#federated-credential-subject-check-sub_claim_prefix-first)
 > for the full walkthrough.
 
 ---

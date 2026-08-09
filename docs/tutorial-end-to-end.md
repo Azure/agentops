@@ -506,7 +506,7 @@ agentops workflow generate `
 > not yet contain the agent, it reads that block plus `prompt_file` and
 > creates the first version automatically. No per-environment manual
 > seeding. See the
-> [prompt-agent tutorial](tutorial-prompt-agent-quickstart.md) for the
+> [prompt-agent tutorial](tutorial-prompt-agent.md) for the
 > full multi-environment journey.
 
 Before running that workflow, make the PR gate runnable in GitHub. Install the
@@ -1028,10 +1028,12 @@ You are ready for a release review when:
 
 - **Detailed prompt-agent walkthrough** (sandbox + dev journey, regression
   PR, Doctor-blocking gate, fix + redeploy):
-  [tutorial-prompt-agent-quickstart.md](tutorial-prompt-agent-quickstart.md).
+  [tutorial-prompt-agent.md](tutorial-prompt-agent.md).
 - **Detailed hosted-agent walkthrough** (same sandbox + dev story but
   for endpoints, with the git SHA / image tag identity story):
-  [tutorial-hosted-agent-quickstart.md](tutorial-hosted-agent-quickstart.md).
+  [tutorial-hosted-agent.md](tutorial-hosted-agent.md) for Foundry hosted
+  runtimes, or [tutorial-http-agent.md](tutorial-http-agent.md) for an
+  agent you operate behind your own URL.
 - **CI/CD reference** ([docs/ci-github-actions.md](ci-github-actions.md))
   for full `agentops workflow generate` flag reference including the
   `--doctor-gate` semantics.

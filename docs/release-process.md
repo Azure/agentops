@@ -165,7 +165,7 @@ Before your PR can be merged to `develop`:
 
 1. **CI pipeline passes** - lint + tests across OS/Python matrix
 2. **Code review approved** - at least one reviewer
-3. **Architecture rules followed** - see [CONTRIBUTING.md](../CONTRIBUTING.md)
+3. **Architecture rules followed** - see [CONTRIBUTING.md](https://github.com/Azure/agentops/blob/main/CONTRIBUTING.md)
 4. **Tests included** - unit tests in `tests/unit/`, integration tests if needed
 5. **CHANGELOG updated** - add an entry under `## [Unreleased]` for user-visible changes. The `changelog` CI job enforces this; see [The CHANGELOG guard](#the-changelog-guard) below.
 

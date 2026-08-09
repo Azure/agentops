@@ -2,8 +2,8 @@
 
 A 10-minute read for a platform, observability, or AI engineer (and
 the engineering managers who own those teams) who runs
-`agentops doctor` for the first time. For step-by-step setup, see
-the [end-to-end tutorial](tutorial-end-to-end.md).
+`agentops doctor` for the first time. For step-by-step setup, pick a
+[tutorial](tutorials.md).
 
 ## 1. What the Doctor is - and isn't
 
@@ -369,7 +369,7 @@ For thresholds, source configuration, and check toggles, edit
 ## 10. The WAF knowledge base (editable CSV)
 
 The Doctor ships with a **packaged baseline** at
-[`src/agentops/agent/knowledge/waf-checklist.csv`](../src/agentops/agent/knowledge/waf-checklist.csv).
+[`src/agentops/agent/knowledge/waf-checklist.csv`](https://github.com/Azure/agentops/blob/main/src/agentops/agent/knowledge/waf-checklist.csv).
 It maps every Doctor finding id to a row that names its WAF pillar,
 area, and a public Microsoft Learn reference link. The reporter
 annotates each finding with a `WAF: <pillar> / <area>` line when a
@@ -410,8 +410,8 @@ members and CI.
 
 ## 11. Next steps
 
-- Walk through a full setup with Azure resources:
-  [end-to-end tutorial](tutorial-end-to-end.md).
+- Walk through a full setup with Azure resources: pick a
+  [tutorial](tutorials.md).
 - Open the workspace command center: `agentops cockpit` shows eval
   history, Doctor findings, CI/CD status, telemetry readiness, and
   Foundry/Azure navigation.
