@@ -66,6 +66,74 @@ with no monitoring does not look healthy simply because nothing is being graded.
     is intended: a real release should investigate latency and errors before
     promoting, even when the candidate's eval scores pass.
 
+## Agent identity on traces
+
+Traces tell you what an agent did. They do not, by default, tell you *which*
+agent did it in a way an auditor can reconcile with your tenant. Microsoft
+Entra Agent ID closes that gap: the agent gets a first-class identity, and the
+same identifier travels from registration through traces into release evidence.
+
+The handshake has three steps, and each one is a different tool, so it is worth
+being explicit about who writes what.
+
+**1. Register the identity.** `agentops agent register` creates (or adopts) an
+agent identity blueprint in Microsoft Entra and records the resolved
+application id locally:
+
+```bash
+agentops agent register --sponsor owner@contoso.com
+```
+
+The sponsor is required. An agent identity with no accountable owner cannot be
+governed, so there is no default. The command is idempotent: if a blueprint
+with the same display name already exists, AgentOps reuses it instead of
+creating a duplicate. Run it with `--dry-run` first to see the resolved display
+name and sponsor without calling Microsoft Graph.
+
+The resolved id is written to `.agentops/identity/agent-identity.json`. Declare
+the inputs in `agentops.yaml` so they are source-controlled:
+
+```yaml
+identity:
+  display_name: support-agent
+  sponsor: owner@contoso.com
+  verify: true
+```
+
+`verify: true` tells the Doctor to confirm the blueprint against Microsoft
+Graph. It is off by default because that lookup needs tenant admin consent
+(`AgentIdentityBlueprint.Read.All`), which most workspaces will not have on day
+one. With it off, the Doctor still reports whether an identity is registered at
+all, using only local state.
+
+**2. Stamp it on traces.** Once an identity is resolved, AgentOps adds it to
+the OpenTelemetry resource as `gen_ai.agent.id`, so every span AgentOps emits
+carries the Entra Agent ID. In CI, where the local record is not checked in,
+set `AGENTOPS_ENTRA_AGENT_ID` instead and the attribute resolves from the
+environment.
+
+The attribute is **omitted** when no identity is registered, never emitted as an
+empty string. That distinction matters when you query: filtering on presence
+tells you which traffic is attributable and which is not.
+
+```kusto
+dependencies
+| where isnotempty(customDimensions["gen_ai.agent.id"])
+| summarize runs = count() by tostring(customDimensions["gen_ai.agent.id"])
+```
+
+**3. Publish it as evidence.** The release evidence pack reads the same record
+and adds an `agent_identity` section reporting the id and where it came from
+(the local record or the environment variable). When no identity is registered,
+the pack raises a warning rather than a blocker, because identity registration
+is a governance improvement rather than a correctness gate.
+
+!!! note "AgentOps does not ingest into Agent 365"
+    There is no public ingestion API for Agent 365 telemetry today. AgentOps
+    stamps the identifier and publishes it as evidence so the correlation is
+    possible from the Azure Monitor side. It does not push traces into Agent
+    365.
+
 ## Trace-to-regression promotion
 
 The strongest use of observability is turning real production behavior into new
