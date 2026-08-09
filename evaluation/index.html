@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://azure.github.io/agentops/evaluation/">
       
       
-        <link rel="prev" href="../tutorial-http-agent/">
+        <link rel="prev" href="../tutorial-end-to-end/">
       
       
         <link rel="next" href="../foundry-evaluation-sdk-built-in-evaluators/">
@@ -570,6 +570,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-end-to-end/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    End-to-End Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -732,6 +753,24 @@
   <a href="#where-the-run-executes" class="md-nav__link">
     <span class="md-ellipsis">
       Where the run executes
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#input-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      Input mapping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#import-production-traces-into-a-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Import production traces into a dataset
     </span>
   </a>
   
@@ -1322,6 +1361,24 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#input-mapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      Input mapping
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#import-production-traces-into-a-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Import production traces into a dataset
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#mini-glossary" class="md-nav__link">
     <span class="md-ellipsis">
       Mini-glossary
@@ -1595,11 +1652,53 @@ Start with the defaults, then add only the fields your endpoint needs.</p>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">text_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">choices.0.delta.content</span>
 <a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">done_marker</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;[DONE]&quot;</span>
 </code></pre></div>
+<h3 id="grey-box-score-the-live-retrieved-context">Grey-box: score the live retrieved context<a class="headerlink" href="#grey-box-score-the-live-retrieved-context" title="Permanent link">&para;</a></h3>
+<p><code>response_field</code> extracts the final answer. When the endpoint also returns the
+chunks it retrieved, capture them with <code>response_fields</code> (plural) so RAG
+evaluators can score what the agent actually grounded on for that request. Each
+entry maps a name to a dot-path into the JSON body, and the captured value
+becomes available to evaluator <code>input_mapping</code> as <code>$response.&lt;name&gt;</code>.</p>
+<p>Given an endpoint that answers like this:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">&quot;answer&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customers can request a refund within 30 days.&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Refunds are available for 30 days after purchase.&quot;</span><span class="p">],</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">&quot;citations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;refund-policy.md&quot;</span><span class="p">]</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">}</span>
+</code></pre></div>
+<p>Capture the extra fields and point the evaluators at them:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://support-dev.example.com/chat</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/rag-smoke.jsonl</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http-json</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">answer</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="nt">response_fields</span><span class="p">:</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">context</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span><span class="nt">citations</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citations</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="nt">evaluators</span><span class="p">:</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">GroundednessEvaluator</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="w">    </span><span class="nt">input_mapping</span><span class="p">:</span>
+<a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="w">      </span><span class="nt">query</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">$prompt</span>
+<a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="w">      </span><span class="nt">response</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">$prediction</span>
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">      </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">$response.context</span>
+<a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">RetrievalEvaluator</span>
+<a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="w">    </span><span class="nt">input_mapping</span><span class="p">:</span>
+<a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a><span class="w">      </span><span class="nt">query</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">$prompt</span>
+<a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="w">      </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">$response.context</span>
+</code></pre></div>
+<p><code>response_fields</code> only applies when <code>response_mode</code> is <code>json</code>. The primary
+answer still comes from <code>response_field</code>. <code>input_mapping</code> is merged onto the
+preset defaults, so list only the keys you want to change.</p>
+<p>This is the path to use when a groundedness or retrieval score moves and you
+need to see whether the agent retrieved the wrong chunks or reasoned badly over
+the right ones.</p>
 <h2 id="datasets-and-scenarios">Datasets and scenarios<a class="headerlink" href="#datasets-and-scenarios" title="Permanent link">&para;</a></h2>
 <p>A dataset is a plain JSONL file, one evaluation row per line. Each row has an
 <code>input</code> prompt and usually an <code>expected</code> reference answer. Optional fields drive
 which evaluators run.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span><span class="p">}</span>
 </code></pre></div>
 <p>The presence of optional fields tells AgentOps which evaluation scenario you are
 running. You do not declare the scenario; the row shape implies it.</p>
@@ -1712,6 +1811,142 @@ delegates execution to azd, normalizes the metrics, binds thresholds, writes
 <code>results.json</code>, and fails closed for any threshold that has no emitted
 metric. Rubric evaluator dimensions are treated as first-class metric names.</p>
 </div>
+<h2 id="input-mapping">Input mapping<a class="headerlink" href="#input-mapping" title="Permanent link">&para;</a></h2>
+<p>Every evaluator receives a fixed set of named inputs. <code>input_mapping</code> decides
+which part of the dataset row or the target response feeds each input. AgentOps
+provides a preset per evaluator, so you only list the keys you want to override.</p>
+<table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Resolves to</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$prompt</code> or <code>$row.input</code></td>
+<td>The <code>input</code> column of the dataset row</td>
+</tr>
+<tr>
+<td><code>$expected</code> or <code>$row.expected</code></td>
+<td>The <code>expected</code> column of the dataset row</td>
+</tr>
+<tr>
+<td><code>$prediction</code> or <code>$response.response</code></td>
+<td>The primary answer, read via <code>response_field</code></td>
+</tr>
+<tr>
+<td><code>$response.&lt;name&gt;</code></td>
+<td>An extra field captured by the target's <code>response_fields</code></td>
+</tr>
+<tr>
+<td><code>$retrieved_context</code> or <code>$response.context</code></td>
+<td>Live retrieved chunks returned by the same call</td>
+</tr>
+<tr>
+<td><code>$retrieved_context_items</code></td>
+<td>The same chunks as a list, for evaluators that expect items</td>
+</tr>
+<tr>
+<td><code>$context</code> or <code>$row.context</code></td>
+<td>Static context stored in the dataset row</td>
+</tr>
+<tr>
+<td><code>$telemetry.trace_id</code></td>
+<td>The trace ID of the invocation, when telemetry is available</td>
+</tr>
+</tbody>
+</table>
+<p>Use <code>$row.context</code> when the ground truth is fixed and lives in the dataset. Use
+<code>$response.context</code> when you want to score what the agent retrieved at request
+time. Mixing them silently is the most common reason a groundedness score looks
+fine while retrieval is broken.</p>
+<h2 id="import-production-traces-into-a-dataset">Import production traces into a dataset<a class="headerlink" href="#import-production-traces-into-a-dataset" title="Permanent link">&para;</a></h2>
+<p>Real traffic is the best source of eval cases, because it contains the questions
+users actually ask. <code>telemetry_imports</code> declares a named import that reads
+Azure Monitor telemetry and writes an AgentOps JSONL dataset. AgentOps generates
+the KQL, so you never pass raw query text.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">support-agent:3</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/prod-candidates.jsonl</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nt">telemetry_imports</span><span class="p">:</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">prod-candidates</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="nt">source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">azure-monitor</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">application-insights</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="nt">resource_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/subscriptions/&lt;sub&gt;/resourceGroups/&lt;rg&gt;/providers/microsoft.insights/components/&lt;ai&gt;</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="nt">time_range</span><span class="p">:</span>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">      </span><span class="nt">lookback_days</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">7</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">    </span><span class="nt">filters</span><span class="p">:</span>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">      </span><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">support-agent</span>
+<a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">    </span><span class="nt">fields</span><span class="p">:</span>
+<a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">      </span><span class="nt">input</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customDimensions.prompt</span>
+<a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a><span class="w">      </span><span class="nt">response</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customDimensions.completion</span>
+<a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a><span class="w">    </span><span class="nt">privacy</span><span class="p">:</span>
+<a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a><span class="w">      </span><span class="nt">redact_fields</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">authorization</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">api_key</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">token</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">password</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">secret</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a><span class="w">      </span><span class="nt">max_field_length</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4000</span>
+<a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a><span class="w">    </span><span class="nt">output</span><span class="p">:</span>
+<a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a><span class="w">      </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/prod-candidates.jsonl</span>
+<a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a><span class="w">      </span><span class="nt">label_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pending</span>
+<a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a><span class="w">    </span><span class="nt">max_rows</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span>
+</code></pre></div>
+<p>Point <code>target</code> at <code>application-insights</code> (needs <code>resource_id</code>,
+<code>application_id</code>, or <code>connection_string</code>) or <code>log-analytics</code> (needs
+<code>workspace_id</code>). Use either <code>lookback_days</code> (1 to 90) or an explicit
+<code>from</code>/<code>to</code> pair, never both.</p>
+<p><code>fields</code> overrides the auto-detection for a column. AgentOps already probes the
+common shapes (<code>input</code>, <code>prompt</code>, <code>customDimensions.prompt</code>, and so on), so set
+it only when your telemetry uses a name AgentOps cannot infer.</p>
+<p>Then work the import in three steps, so nothing lands in your dataset unseen:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>validate<span class="w"> </span>prod-candidates<span class="w">        </span><span class="c1"># check config and connectivity</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>preview<span class="w"> </span>prod-candidates<span class="w">         </span><span class="c1"># show the generated KQL and sample rows</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>import<span class="w"> </span>prod-candidates<span class="w"> </span>--apply<span class="w">  </span><span class="c1"># write the JSONL dataset and manifest</span>
+</code></pre></div>
+<p><code>agentops telemetry import</code> is a dry run without <code>--apply</code>. It prints what it
+would write and touches nothing, which makes it safe to run on a shared machine.</p>
+<h3 id="choose-a-label-mode">Choose a label mode<a class="headerlink" href="#choose-a-label-mode" title="Permanent link">&para;</a></h3>
+<p><code>output.label_mode</code> decides what goes into the <code>expected</code> column, and it changes
+what the resulting dataset can be used for.</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th><code>expected</code> is set to</th>
+<th>Use it for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>self-similarity</code> (default)</td>
+<td>The production response</td>
+<td>Drift detection: catch when new behavior diverges from known production behavior</td>
+</tr>
+<tr>
+<td><code>pending</code></td>
+<td>Empty, every row flagged for review</td>
+<td>Building human-verified ground truth before gating a release</td>
+</tr>
+</tbody>
+</table>
+<p><code>self-similarity</code> is not human-verified ground truth. It answers "did the answer
+change?", not "was the answer correct?". If production was already wrong, the
+eval will happily certify the wrong answer. Use <code>pending</code> and fill the rows in
+before you make the dataset a blocking gate.</p>
+<p>Every imported row carries a <code>telemetry</code> block (trace ID, turn ID, timestamp,
+source, target, and the import name) so you can jump from a failing eval row
+back to the original production trace in Foundry or App Insights.</p>
+<h3 id="safety-notes">Safety notes<a class="headerlink" href="#safety-notes" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Do not treat production output as ground truth without review.</li>
+<li>Do not import payloads that contain personal or regulated data. <code>privacy.redact_fields</code>
+  redacts on field-name fragments only, so it will not catch secrets embedded in
+  free text. Read the <code>preview</code> output before you run with <code>--apply</code>.</li>
+<li><code>privacy.include_raw</code> is <code>false</code> by default. Leave it off unless you have a
+  specific reason, because it writes the untouched telemetry record.</li>
+<li>Keep credentials in environment variables. <code>agentops.yaml</code> is committed.</li>
+<li><code>max_rows</code> caps the import (1 to 5000). Start small and inspect the result.</li>
+<li>Imported rows carry <code>metadata.needs_review: true</code>. Clear that flag deliberately, not in bulk.</li>
+</ul>
 <h2 id="mini-glossary">Mini-glossary<a class="headerlink" href="#mini-glossary" title="Permanent link">&para;</a></h2>
 <p>The tutorials defer to these definitions, so they live here once.</p>
 <div class="admonition note">
@@ -1741,49 +1976,49 @@ the few rows and one or two evaluators that must always pass.</p>
 fields your target needs. For the complete schema, every top-level field, and
 more examples, see <a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>
 for evaluator config and the tutorials for end-to-end setups.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="nt">thresholds</span><span class="p">:</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
 </code></pre></div>
 <h2 id="try-it">Try it<a class="headerlink" href="#try-it" title="Permanent link">&para;</a></h2>
 <p>Run these five commands in order to go from an empty repo to a gated result.</p>
 <ol>
 <li>
 <p>Bootstrap the workspace and a starter <code>agentops.yaml</code> with the init wizard.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>agentops<span class="w"> </span>init
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>agentops<span class="w"> </span>init
 </code></pre></div>
 </li>
 <li>
 <p>Inspect the repo and get an evaluator recommendation for your target and dataset.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>analyze
 </code></pre></div>
 </li>
 <li>
 <p>Write the recommended eval assets once the plan looks right.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>init
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>init
 </code></pre></div>
 </li>
 <li>
 <p>Send the dataset to the target, score the responses, and gate them against thresholds.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>run
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>run
 </code></pre></div>
 </li>
 <li>
 <p>Regenerate the human-readable report from the latest results.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>agentops<span class="w"> </span>report<span class="w"> </span>generate
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>agentops<span class="w"> </span>report<span class="w"> </span>generate
 </code></pre></div>
 </li>
 </ol>
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can run these steps for you.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>
 <p>The skills that map to evaluation are:</p>
 <table>

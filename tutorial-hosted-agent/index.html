@@ -795,6 +795,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-end-to-end/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    End-to-End Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1662,7 +1683,7 @@ a real Foundry Hosted Agent, not a service on your laptop:</p>
 <li>Copy the deployed endpoint URL from the Foundry Toolkit or the Foundry portal.</li>
 </ol>
 <p>Store the sandbox endpoint so the AgentOps commands can reach it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;your-foundry-hosted-travel-agent-endpoint&gt;&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nv">$env:TRAVEL_AGENT_ENDPOINT</span> <span class="p">=</span> <span class="s2">&quot;https://&lt;resource&gt;.services.ai.azure.com/api/projects/&lt;project&gt;/agents/&lt;name&gt;/versions/&lt;version&gt;&quot;</span>
 </code></pre></div>
 <p>This deployed endpoint is your <strong>sandbox</strong> for the tutorial. Later you add a
 separate <strong>dev</strong> endpoint that CI evaluates on every PR.</p>
@@ -1715,10 +1736,17 @@ regression.</p>
 Foundry Hosted Agent that follows the Responses API shape uses
 <code>protocol: responses</code>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;your-foundry-hosted-travel-agent-endpoint&gt;</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;resource&gt;.services.ai.azure.com/api/projects/&lt;project&gt;/agents/&lt;name&gt;/versions/&lt;version&gt;</span>
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/travel-smoke.jsonl</span>
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="nt">protocol</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">responses</span>
 </code></pre></div>
+<p>Keep the real Foundry host in that URL. AgentOps decides whether an endpoint is
+a Foundry hosted agent by looking at the domain, not the path, and it only
+accepts <code>protocol: responses</code> for Foundry hosts. Point <code>agent:</code> at a domain it
+does not recognize and the config is rejected with "non-Foundry URLs must use
+protocol 'http-json'". That is the same check described in
+<a href="../tutorial-http-agent/">HTTP agents</a>, where <code>http-json</code> is the correct
+protocol.</p>
 <p>If the deployed endpoint is protected by a bearer token, add the environment
 variable that holds it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HOSTED_AGENT_TOKEN</span>

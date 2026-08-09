@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#gitops-guide-building-and-releasing-agentops-accelerator" class="md-skip">
+        <a href="#gitops-guide-building-and-releasing-agentops-toolkit" class="md-skip">
           Skip to content
         </a>
       
@@ -561,6 +561,27 @@
   
   <span class="md-ellipsis">
     HTTP Agent Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-end-to-end/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    End-to-End Tutorial
   </span>
   
 
@@ -1438,7 +1459,7 @@
   
 
 
-<h1 id="gitops-guide-building-and-releasing-agentops-accelerator">GitOps Guide: Building and Releasing AgentOps Accelerator<a class="headerlink" href="#gitops-guide-building-and-releasing-agentops-accelerator" title="Permanent link">&para;</a></h1>
+<h1 id="gitops-guide-building-and-releasing-agentops-toolkit">GitOps Guide: Building and Releasing AgentOps Toolkit<a class="headerlink" href="#gitops-guide-building-and-releasing-agentops-toolkit" title="Permanent link">&para;</a></h1>
 <p>This guide is a comprehensive instruction manual for engineers working on the <strong>agentops-accelerator</strong> project. It covers the full GitOps lifecycle - from setting up your development environment, through the branching model and CI pipeline, to staging and production releases.</p>
 <h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1462,7 +1483,7 @@
 <li><strong>Declarative configuration</strong> - All pipeline behavior is defined in YAML workflow files checked into the repository.</li>
 <li><strong>Version-controlled releases</strong> - Every release is traceable to a git tag. No manual version edits.</li>
 <li><strong>Automated pipelines</strong> - Pushing branches or tags triggers the corresponding workflow automatically.</li>
-<li><strong>Environment gates</strong> - Production deployment requires explicit human approval via GitHub Environments.</li>
+<li><strong>Keyless publishing</strong> - PyPI uploads use Trusted Publishing (OIDC). There is no PyPI API token to store or rotate.</li>
 <li><strong>Immutable artifacts</strong> - Built packages are uploaded once and reused across pipeline stages (no rebuilds between TestPyPI and PyPI).</li>
 </ul>
 <h2 id="2-branching-model">2. Branching Model<a class="headerlink" href="#2-branching-model" title="Permanent link">&para;</a></h2>
@@ -1516,10 +1537,13 @@
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>1. feature/my-change ──PR──→ develop       (contributor)
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>2. develop ──branch──→ release/v0.2.0      (maintainer, when ready to release)
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>3. release/v0.2.0 ──PR──→ main            (maintainer, after staging validates)
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>4. main ──tag──→ v0.2.0                    (maintainer, triggers production release)
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>5. main ──merge──→ develop                 (maintainer, sync the tag back)
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>4. main ──tag──→ v0.2.0                    (maintainer, publishes to PyPI immediately)
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>5. main ──merge──→ develop                 (maintainer, REQUIRED, same sitting as step 4)
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>6. release/v0.2.0 ──delete──               (maintainer, cleanup)
 </code></pre></div>
+<p>Steps 4 and 5 are a single unit of work. Leaving <code>develop</code> behind <code>main</code> corrupts
+the next release's CHANGELOG. See
+<a href="#step-5-tag-the-release-and-sync-develop">Step 5: Tag the release and sync develop</a>.</p>
 <h3 id="branch-protection-rules-recommended">Branch Protection Rules (Recommended)<a class="headerlink" href="#branch-protection-rules-recommended" title="Permanent link">&para;</a></h3>
 <p>Configure these in <strong>Settings → Branches → Branch protection rules</strong>:</p>
 <table>
@@ -1619,7 +1643,7 @@
 <li><strong>Code review approved</strong> - at least one reviewer</li>
 <li><strong>Architecture rules followed</strong> - see <a href="https://github.com/Azure/agentops/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a></li>
 <li><strong>Tests included</strong> - unit tests in <code>tests/unit/</code>, integration tests if needed</li>
-<li><strong>CHANGELOG updated</strong> - add entry under the appropriate versioned section for user-visible changes</li>
+<li><strong>CHANGELOG updated</strong> - add an entry under <code>## [Unreleased]</code> for user-visible changes. The <code>changelog</code> CI job enforces this; see <a href="#the-changelog-guard">The CHANGELOG guard</a> below.</li>
 </ol>
 <h3 id="after-your-pr-is-merged">After Your PR is Merged<a class="headerlink" href="#after-your-pr-is-merged" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Sync your local develop</span>
@@ -1646,6 +1670,11 @@
 <td><strong>lint</strong></td>
 <td><code>ruff check</code> (linting) + <code>mypy</code> (type checking, soft-fail)</td>
 <td>Ubuntu, Python 3.11</td>
+</tr>
+<tr>
+<td><strong>changelog</strong></td>
+<td>Fails a PR that changes shipped code without an <code>## [Unreleased]</code> entry</td>
+<td>Ubuntu, PRs only</td>
 </tr>
 <tr>
 <td><strong>test</strong></td>
@@ -1702,6 +1731,7 @@
 <li>Test failures across platforms</li>
 <li>Import errors or missing dependencies</li>
 <li>Regression in exit code behavior</li>
+<li>User-visible changes shipped without a CHANGELOG entry</li>
 </ul>
 <h3 id="viewing-ci-results">Viewing CI Results<a class="headerlink" href="#viewing-ci-results" title="Permanent link">&para;</a></h3>
 <ol>
@@ -1709,6 +1739,35 @@
 <li>Click into a failing job to see the error</li>
 <li>Download test result artifacts if needed</li>
 </ol>
+<h3 id="the-changelog-guard">The CHANGELOG guard<a class="headerlink" href="#the-changelog-guard" title="Permanent link">&para;</a></h3>
+<p><code>cut-release.yml</code> does not write changelog content. It inserts a <code>## [X.Y.Z] - &lt;date&gt;</code> heading directly beneath <code>## [Unreleased]</code> and nothing more, leaving <code>[Unreleased]</code> in place and empty. If no PR wrote anything under <code>[Unreleased]</code> during the cycle, the published release section is empty and the release pipeline still goes green. Releases 0.8.4 and 0.8.5 both shipped that way and were backfilled by hand afterwards, between them hiding six bug fixes and six dependency bumps.</p>
+<p>Two jobs now close that gap, both driven by <code>scripts/check_changelog.py</code>:</p>
+<ul>
+<li>The <strong><code>changelog</code></strong> job in <code>ci.yml</code> runs on every PR to <code>develop</code>.</li>
+<li>A <strong><code>check-unreleased</code></strong> step in <code>cut-release.yml</code> aborts the release before the branch is created if <code>[Unreleased]</code> is empty. <code>scripts/cut-release.sh</code> and <code>scripts/cut-release.ps1</code> run the same check at the same point, so the local path cannot skip it.</li>
+</ul>
+<h4 id="when-the-pr-check-requires-an-entry">When the PR check requires an entry<a class="headerlink" href="#when-the-pr-check-requires-an-entry" title="Permanent link">&para;</a></h4>
+<p>The PR must add a bullet under <code>## [Unreleased]</code> when <strong>both</strong> hold:</p>
+<ol>
+<li>The diff touches a file that ships. Changes confined to <code>docs/</code>, <code>tests/</code>, <code>.github/workflows/</code>, <code>.github/ISSUE_TEMPLATE/</code>, <code>.vscode/</code>, <code>media/</code>, <code>tombstones/</code>, or the top-level markdown files never require an entry, whatever the PR is titled.</li>
+<li>The PR title carries a user-visible conventional-commit type (<code>feat</code>, <code>fix</code>, <code>perf</code>, <code>revert</code>), is marked breaking (<code>feat!:</code> or a <code>BREAKING CHANGE</code> footer), or has no recognisable type at all. A typed <code>docs:</code>, <code>test:</code>, <code>ci:</code>, <code>build:</code>, <code>style:</code>, <code>refactor:</code>, or <code>chore:</code> PR is not asked for an entry.</li>
+</ol>
+<p>An untyped title is treated as needing an entry on purpose. A PR that edits shipped code and says nothing about its intent is exactly the case worth a second look.</p>
+<h4 id="where-the-entry-has-to-go">Where the entry has to go<a class="headerlink" href="#where-the-entry-has-to-go" title="Permanent link">&para;</a></h4>
+<p>The check parses the CHANGELOG diff and resolves each added line to the section it lands in. A bullet added under an already-released heading fails the same as no bullet at all, because <code>cut-release.yml</code> only ever promotes <code>[Unreleased]</code>. A bare <code>### Fixed</code> subheading with no bullet under it does not count either.</p>
+<h4 id="bypassing-the-check">Bypassing the check<a class="headerlink" href="#bypassing-the-check" title="Permanent link">&para;</a></h4>
+<p>Apply the <strong><code>no-changelog</code></strong> label to the PR. The job then reports why it skipped and passes. Use it for changes that genuinely cannot matter to a user of the published package, and say so in the PR description so the reviewer can disagree.</p>
+<h4 id="dependabot">Dependabot<a class="headerlink" href="#dependabot" title="Permanent link">&para;</a></h4>
+<p>Dependabot PRs are exempt. The bot cannot act on a failing check, so requiring an entry would leave every dependency PR red until a human labelled it, which trains everyone to reach for <code>no-changelog</code> reflexively. That is not the same as saying dependency bumps do not belong in the changelog: the <code>cryptography</code> 48 to 50 and <code>mcp</code> 1.27.1 to 1.28.1 bumps in 0.8.5 mattered to readers. Cover them when you cut the release, where one person writes one summary line instead of twelve bots writing twelve.</p>
+<p>Nothing enforces that today. <code>check-unreleased</code> only asserts that <code>[Unreleased]</code> is non-empty, and a single bullet from any PR satisfies it, so a cycle can still reach a tag with its dependency bumps undocumented. Closing that gap properly means reading the merged Dependabot PRs for the cycle, which is a separate change.</p>
+<h4 id="running-it-locally">Running it locally<a class="headerlink" href="#running-it-locally" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Is the Unreleased section empty?</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python<span class="w"> </span>scripts/check_changelog.py<span class="w"> </span>check-unreleased
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Would my branch pass the PR check?</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="nv">PR_TITLE</span><span class="o">=</span><span class="s2">&quot;fix: something&quot;</span><span class="w"> </span><span class="nv">PR_AUTHOR</span><span class="o">=</span><span class="s2">&quot;</span><span class="nv">$USER</span><span class="s2">&quot;</span><span class="w"> </span><span class="nv">PR_LABELS</span><span class="o">=</span><span class="s1">&#39;[]&#39;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">  </span>python<span class="w"> </span>scripts/check_changelog.py<span class="w"> </span>check-pr<span class="w"> </span>--base<span class="w"> </span>origin/develop
+</code></pre></div>
 <h2 id="6-versioning-with-setuptools-scm">6. Versioning with setuptools-scm<a class="headerlink" href="#6-versioning-with-setuptools-scm" title="Permanent link">&para;</a></h2>
 <p>AgentOps uses <a href="https://github.com/pypa/setuptools-scm">setuptools-scm</a> for <strong>fully automatic versioning</strong>. There is <strong>no <code>version</code> field in <code>pyproject.toml</code></strong> - the version is derived from git tags at build time.</p>
 <h3 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h3>
@@ -1741,24 +1800,24 @@
 </table>
 <h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
 <p>In <code>pyproject.toml</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">[build-system]</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">requires</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;setuptools&gt;=68&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;wheel&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;setuptools-scm&gt;=8&quot;</span><span class="p">]</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">[project]</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">dynamic</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;version&quot;</span><span class="p">]</span><span class="w">    </span><span class="c1"># Version comes from setuptools-scm, not a static field</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="k">[tool.setuptools_scm]</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">local_scheme</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;no-local-version&quot;</span><span class="w">   </span><span class="c1"># Strips +hash suffix (PyPI rejects local versions)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">[build-system]</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="n">requires</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;setuptools&gt;=68&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;wheel&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;setuptools-scm&gt;=8&quot;</span><span class="p">]</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="k">[project]</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">dynamic</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;version&quot;</span><span class="p">]</span><span class="w">    </span><span class="c1"># Version comes from setuptools-scm, not a static field</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="k">[tool.setuptools_scm]</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">local_scheme</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;no-local-version&quot;</span><span class="w">   </span><span class="c1"># Strips +hash suffix (PyPI rejects local versions)</span>
 </code></pre></div>
 <h3 id="checking-the-version">Checking the Version<a class="headerlink" href="#checking-the-version" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># From the installed CLI</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>agentops<span class="w"> </span>--version
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># From setuptools-scm directly</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
-<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># From Python code</span>
-<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;from agentops import __version__; print(__version__)&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># From the installed CLI</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>agentops<span class="w"> </span>--version
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># From setuptools-scm directly</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="c1"># From Python code</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;from agentops import __version__; print(__version__)&quot;</span>
 </code></pre></div>
 <h3 id="rules">Rules<a class="headerlink" href="#rules" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1774,9 +1833,9 @@
 <h3 id="pipeline-flow">Pipeline Flow<a class="headerlink" href="#pipeline-flow" title="Permanent link">&para;</a></h3>
 <pre class="mermaid"><code>flowchart TD
     push(["push to release/v0.2.0"])
-    build["_build&lt;br/&gt;tests + package&lt;br/&gt;Version: 0.2.1.dev3 (setuptools-scm)"]
-    publish["publish-testpypi&lt;br/&gt;Upload to TestPyPI (staging environment)&lt;br/&gt;Uses TEST_PYPI_TOKEN secret"]
-    verify["verify-testpypi&lt;br/&gt;Install from TestPyPI in fresh environment&lt;br/&gt;agentops --version / --help / init"]
+    build["_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.1.dev3 (setuptools-scm)"]
+    publish["publish-testpypi&lt;br/&gt;&lt;i&gt;Upload to TestPyPI (staging environment)&lt;/i&gt;&lt;br/&gt;Trusted Publishing (OIDC, no token)"]
+    verify["verify-testpypi&lt;br/&gt;&lt;i&gt;Install from TestPyPI in fresh environment&lt;/i&gt;&lt;br/&gt;agentops --version / --help / init"]
 
     push --&gt; build --&gt; publish --&gt; verify</code></pre>
 <h3 id="what-gets-validated">What Gets Validated<a class="headerlink" href="#what-gets-validated" title="Permanent link">&para;</a></h3>
@@ -1790,28 +1849,28 @@
 </ol>
 <h3 id="iterating-on-a-release-branch">Iterating on a Release Branch<a class="headerlink" href="#iterating-on-a-release-branch" title="Permanent link">&para;</a></h3>
 <p>If staging fails, fix the issue and push again:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># On your release/v0.2.0 branch</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># ... fix the issue ...</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>git<span class="w"> </span>add<span class="w"> </span>.
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct packaging issue&quot;</span>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
-<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="c1"># Staging pipeline re-runs automatically</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># On your release/v0.2.0 branch</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="c1"># ... fix the issue ...</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>git<span class="w"> </span>add<span class="w"> </span>.
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct packaging issue&quot;</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># Staging pipeline re-runs automatically</span>
 </code></pre></div>
 <p>Each push generates a new dev version (e.g. <code>0.2.1.dev4</code>, <code>0.2.1.dev5</code>), so there are no version conflicts on TestPyPI. The <code>skip-existing: true</code> flag also prevents failures if the same version is re-uploaded.</p>
 <h3 id="manual-verification-optional">Manual Verification (Optional)<a class="headerlink" href="#manual-verification-optional" title="Permanent link">&para;</a></h3>
 <p>After the staging pipeline passes, you can manually test the package:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Install the specific dev version from TestPyPI</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==0.2.1.dev3&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
-<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>agentops<span class="w"> </span>--version
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>agentops<span class="w"> </span>--help
-<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a>
-<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="c1"># Test init in a temp directory</span>
-<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
-<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>agentops<span class="w"> </span>init
-<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>ls<span class="w"> </span>.agentops/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Install the specific dev version from TestPyPI</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==0.2.1.dev3&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>agentops<span class="w"> </span>--version
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>agentops<span class="w"> </span>--help
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># Test init in a temp directory</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>agentops<span class="w"> </span>init
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>ls<span class="w"> </span>.agentops/
 </code></pre></div>
 <blockquote>
 <p><strong>Note</strong>: <code>--extra-index-url https://pypi.org/simple/</code> is required so that dependencies (typer, pydantic, ruamel.yaml) resolve from the real PyPI.</p>
@@ -1827,10 +1886,10 @@
 <h3 id="81-test-the-staging-pipeline">8.1 Test the Staging Pipeline<a class="headerlink" href="#81-test-the-staging-pipeline" title="Permanent link">&para;</a></h3>
 <h4 id="step-1-create-a-test-release-branch">Step 1: Create a Test Release Branch<a class="headerlink" href="#step-1-create-a-test-release-branch" title="Permanent link">&para;</a></h4>
 <p>From the branch that contains your workflow changes (or from <code>develop</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w">          </span><span class="c1"># or your feature branch with workflow changes</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w">          </span><span class="c1"># or your feature branch with workflow changes</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
 </code></pre></div>
 <p>This triggers the <code>staging.yml</code> workflow automatically.</p>
 <h4 id="step-2-monitor-the-pipeline">Step 2: Monitor the Pipeline<a class="headerlink" href="#step-2-monitor-the-pipeline" title="Permanent link">&para;</a></h4>
@@ -1838,90 +1897,72 @@
 <li>Go to <strong>Actions</strong> tab → find the <strong>Staging</strong> workflow run for <code>release/v0.0.0-test</code></li>
 <li>Watch all 3 jobs:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>Job 1: build / build        → Should tests pass? Package build?
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>Job 2: publish-testpypi     → Does TestPyPI upload succeed?
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>Job 3: verify-testpypi      → Can the package install and run?
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Job 1: build / build        → Should tests pass? Package build?
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Job 2: publish-testpypi     → Does TestPyPI upload succeed?
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>Job 3: verify-testpypi      → Can the package install and run?
 </code></pre></div>
 <ol>
 <li>Click into each job to inspect step-level output</li>
 <li>If a job fails, read the logs, fix the issue, push again:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Fix and re-push</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>git<span class="w"> </span>add<span class="w"> </span>.
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct workflow issue&quot;</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="c1"># Pipeline re-runs automatically</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Fix and re-push</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>git<span class="w"> </span>add<span class="w"> </span>.
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;fix: correct workflow issue&quot;</span>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="c1"># Pipeline re-runs automatically</span>
 </code></pre></div>
 <h4 id="step-3-verify-on-testpypi-optional">Step 3: Verify on TestPyPI (Optional)<a class="headerlink" href="#step-3-verify-on-testpypi-optional" title="Permanent link">&para;</a></h4>
 <p>Confirm the test package appeared on TestPyPI:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Check the version that was published</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># Install and test manually</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==</span><span class="k">$(</span>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-14-7" name="__codelineno-14-7" href="#__codelineno-14-7"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
-<a id="__codelineno-14-8" name="__codelineno-14-8" href="#__codelineno-14-8"></a>
-<a id="__codelineno-14-9" name="__codelineno-14-9" href="#__codelineno-14-9"></a>agentops<span class="w"> </span>--version
-<a id="__codelineno-14-10" name="__codelineno-14-10" href="#__codelineno-14-10"></a>agentops<span class="w"> </span>--help
-<a id="__codelineno-14-11" name="__codelineno-14-11" href="#__codelineno-14-11"></a>
-<a id="__codelineno-14-12" name="__codelineno-14-12" href="#__codelineno-14-12"></a><span class="c1"># Test init</span>
-<a id="__codelineno-14-13" name="__codelineno-14-13" href="#__codelineno-14-13"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
-<a id="__codelineno-14-14" name="__codelineno-14-14" href="#__codelineno-14-14"></a>agentops<span class="w"> </span>init
-<a id="__codelineno-14-15" name="__codelineno-14-15" href="#__codelineno-14-15"></a>ls<span class="w"> </span>.agentops/
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Check the version that was published</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Install and test manually</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;agentops-accelerator==</span><span class="k">$(</span>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm<span class="k">)</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
+<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
+<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>agentops<span class="w"> </span>--version
+<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>agentops<span class="w"> </span>--help
+<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>
+<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="c1"># Test init</span>
+<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
+<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>agentops<span class="w"> </span>init
+<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>ls<span class="w"> </span>.agentops/
 </code></pre></div>
 <h4 id="step-4-clean-up-the-test-branch">Step 4: Clean Up the Test Branch<a class="headerlink" href="#step-4-clean-up-the-test-branch" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Delete remote branch</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Switch back and delete local branch</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Delete remote branch</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># Switch back and delete local branch</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
 </code></pre></div>
-<h3 id="82-test-the-full-release-pipeline-including-pypi-approval-gate">8.2 Test the Full Release Pipeline (Including PyPI Approval Gate)<a class="headerlink" href="#82-test-the-full-release-pipeline-including-pypi-approval-gate" title="Permanent link">&para;</a></h3>
+<h3 id="82-test-the-full-release-pipeline">8.2 Test the Full Release Pipeline<a class="headerlink" href="#82-test-the-full-release-pipeline" title="Permanent link">&para;</a></h3>
 <blockquote>
-<p><strong>Warning</strong>: This will publish a test version to PyPI if you approve it. Only do this if you want to validate the full production flow. You can cancel at the approval gate to skip the actual PyPI publish.</p>
+<p><strong>There is no safe dry run.</strong> The <code>publish-pypi</code> job does not pause, so pushing
+any <code>v*</code> tag publishes that version to real PyPI. There is no reject button to
+catch it. PyPI versions cannot be deleted, only yanked, so a throwaway
+<code>v0.0.0-test.1</code> tag leaves a permanent artifact on the project page.</p>
 </blockquote>
-<h4 id="step-1-create-a-test-tag">Step 1: Create a Test Tag<a class="headerlink" href="#step-1-create-a-test-tag" title="Permanent link">&para;</a></h4>
-<p>From <code>develop</code> or your feature branch:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.0.0-test.1
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.0.0-test.1
+<p>Test everything except the final publish by pushing a <code>release/v*</code> branch, which
+exercises build → TestPyPI → verify (see <a href="#81-test-the-staging-pipeline">8.1</a>).
+That covers every job the release pipeline runs before <code>publish-pypi</code>, using the
+same build and the same <code>pypa/gh-action-pypi-publish</code> action.</p>
+<p>If you genuinely need to validate <code>publish-pypi</code> end to end, add required
+reviewers to the <code>release</code> environment first (see
+<a href="#enabling-a-real-approval-gate">Enabling a real approval gate</a>). With reviewers
+attached, the job pauses and you can reject it.</p>
+<h4 id="verifying-the-publish-path-without-publishing">Verifying the publish path without publishing<a class="headerlink" href="#verifying-the-publish-path-without-publishing" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Confirm the release environment&#39;s protection rules (empty = no gate).</span>
+<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">&#39;.protection_rules&#39;</span>
+<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
+<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1"># Confirm the workflow requests an OIDC token instead of using an API key.</span>
+<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">&quot;id-token\|gh-action-pypi-publish&quot;</span><span class="w"> </span>.github/workflows/release.yml
 </code></pre></div>
-<p>This triggers the <code>release.yml</code> workflow.</p>
-<h4 id="step-2-monitor-the-pipeline_1">Step 2: Monitor the Pipeline<a class="headerlink" href="#step-2-monitor-the-pipeline_1" title="Permanent link">&para;</a></h4>
-<ol>
-<li>Go to <strong>Actions</strong> tab → find the <strong>Release</strong> workflow run for <code>v0.0.0-test.1</code></li>
-<li>Watch the jobs execute in sequence:</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>Job 1: build / build        ✅ Tests + build
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>Job 2: publish-testpypi     ✅ Upload to TestPyPI
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>Job 3: verify-testpypi      ✅ Install + smoke test
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>Job 4: publish-pypi         ⏸️  PAUSES - waiting for approval
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>Job 5: github-release       ⏳ Waiting for Job 4
-</code></pre></div>
-<ol>
-<li>At the <code>publish-pypi</code> step, you have two choices:</li>
-<li><strong>Approve</strong> - publishes to real PyPI (use only if you want to test the full flow)</li>
-<li><strong>Reject</strong> - cancels the remaining jobs without publishing to PyPI</li>
-</ol>
-<h4 id="step-3-inspect-the-approval-gate">Step 3: Inspect the Approval Gate<a class="headerlink" href="#step-3-inspect-the-approval-gate" title="Permanent link">&para;</a></h4>
-<ol>
-<li>Click on the <strong>Release</strong> workflow run</li>
-<li>The <code>publish-pypi</code> job shows a yellow "Waiting" badge</li>
-<li>Click <strong>Review deployments</strong></li>
-<li>Select the <strong>release</strong> environment</li>
-<li>Choose <strong>Reject</strong> to cancel without publishing, or <strong>Approve and deploy</strong> to continue</li>
-</ol>
-<p>This validates that the environment protection rules and reviewer requirements work correctly.</p>
-<h4 id="step-4-clean-up">Step 4: Clean Up<a class="headerlink" href="#step-4-clean-up" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Delete the test tag (remote and local)</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>v0.0.0-test.1
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>git<span class="w"> </span>tag<span class="w"> </span>-d<span class="w"> </span>v0.0.0-test.1
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="c1"># If a GitHub Release was created, delete it manually:</span>
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a><span class="c1"># Go to Releases → find v0.0.0-test.1 → Delete</span>
-</code></pre></div>
-<p>If you approved the PyPI publish, the test version (<code>0.0.0.test1</code>) will exist on PyPI permanently (PyPI versions cannot be deleted, only yanked). This is harmless but visible.</p>
+<p>Trusted Publishing must also be configured on the PyPI side under
+<strong>Manage project → Publishing</strong>, matching the repository, workflow filename, and
+environment name. A mismatch there surfaces as a <code>403</code> at upload time, after the
+tag has already been pushed.</p>
 <h3 id="83-quick-e2e-test-summary">8.3 Quick E2E Test Summary<a class="headerlink" href="#83-quick-e2e-test-summary" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1938,14 +1979,9 @@
 <td>3 jobs: build → TestPyPI → verify</td>
 </tr>
 <tr>
-<td>Full release (safe)</td>
-<td><code>git push origin v0.0.0-test.1</code> then <strong>reject</strong> at approval</td>
-<td>4 jobs run, approval gate works</td>
-</tr>
-<tr>
-<td>Full release (real)</td>
-<td><code>git push origin v0.0.0-test.1</code> then <strong>approve</strong></td>
-<td>All 5 jobs, package on PyPI</td>
+<td>Full release</td>
+<td><code>git push origin v0.0.0-test.1</code></td>
+<td>Publishes to PyPI. No undo. Avoid.</td>
 </tr>
 <tr>
 <td>Cleanup (branch)</td>
@@ -1955,28 +1991,28 @@
 <tr>
 <td>Cleanup (tag)</td>
 <td><code>git push origin --delete v0.0.0-test.1 &amp;&amp; git tag -d v0.0.0-test.1</code></td>
-<td>Tag removed</td>
+<td>Tag removed, PyPI version remains</td>
 </tr>
 </tbody>
 </table>
 <h3 id="84-testing-workflow-changes-on-a-feature-branch">8.4 Testing Workflow Changes on a Feature Branch<a class="headerlink" href="#84-testing-workflow-changes-on-a-feature-branch" title="Permanent link">&para;</a></h3>
 <p>If you're modifying the workflow files on a feature branch (not yet merged to <code>develop</code>), you can still test them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Your workflow changes are on feature/my-ci-changes</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Create a test release branch directly from your feature branch</span>
-<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a>
-<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="c1"># GitHub Actions uses the workflow files from the pushed branch,</span>
-<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="c1"># so your modifications are what actually runs</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Your workflow changes are on feature/my-ci-changes</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># Create a test release branch directly from your feature branch</span>
+<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
+<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="c1"># GitHub Actions uses the workflow files from the pushed branch,</span>
+<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="c1"># so your modifications are what actually runs</span>
 </code></pre></div>
 <p>This is useful because GitHub Actions reads workflow files from the branch being pushed, not from <code>main</code> or <code>develop</code>. Your modified workflows execute immediately without needing to merge first.</p>
 <p>After testing:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="c1"># Clean up</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Clean up</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
 </code></pre></div>
 <h2 id="9-production-release-pipeline-pypi">9. Production Release Pipeline (PyPI)<a class="headerlink" href="#9-production-release-pipeline-pypi" title="Permanent link">&para;</a></h2>
 <p>The production pipeline publishes a final release to PyPI and creates a GitHub Release.</p>
@@ -1985,16 +2021,27 @@
 <h3 id="pipeline-flow_1">Pipeline Flow<a class="headerlink" href="#pipeline-flow_1" title="Permanent link">&para;</a></h3>
 <pre class="mermaid"><code>flowchart TD
     tag(["push tag v0.2.0"])
-    build["_build&lt;br/&gt;tests + package&lt;br/&gt;Version: 0.2.0 (clean, from tag)"]
-    publishTest["publish-testpypi&lt;br/&gt;Final TestPyPI upload (clean version)"]
-    verifyTest["verify-testpypi&lt;br/&gt;Smoke test from TestPyPI"]
-    publishPypi["publish-pypi (pauses)&lt;br/&gt;requires approval&lt;br/&gt;Uses PYPI_TOKEN&lt;br/&gt;environment: release"]
-    ghRelease["github-release&lt;br/&gt;Creates GitHub Release with artifacts&lt;br/&gt;Auto-generated release notes"]
+    build["_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.0 (clean, from tag)"]
+    publishTest["publish-testpypi&lt;br/&gt;&lt;i&gt;Final TestPyPI upload (clean version)&lt;/i&gt;"]
+    verifyTest["verify-testpypi&lt;br/&gt;&lt;i&gt;Smoke test from TestPyPI&lt;/i&gt;"]
+    publishPypi["publish-pypi&lt;br/&gt;&lt;i&gt;Publishes to PyPI immediately&lt;/i&gt;&lt;br/&gt;Trusted Publishing (OIDC, no token)&lt;br/&gt;environment: release (no protection rules)"]
+    ghRelease["github-release&lt;br/&gt;&lt;i&gt;Creates GitHub Release with artifacts&lt;/i&gt;&lt;br/&gt;Auto-generated release notes"]
 
     tag --&gt; build --&gt; publishTest --&gt; verifyTest --&gt; publishPypi --&gt; ghRelease
 
     classDef gate fill:#fff3cd,stroke:#856404,color:#000;
-    class publishPypi gate;</code></pre>
+    class tag gate;</code></pre>
+<blockquote>
+<p><strong>Pushing the tag is the point of no return.</strong> The <code>publish-pypi</code> job declares
+<code>environment: release</code>, but that environment currently has <strong>no protection
+rules</strong>, so nothing pauses for review. Verify for yourself:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments<span class="w"> </span>--jq<span class="w"> </span><span class="s1">&#39;.environments[] | {name, protection_rules}&#39;</span>
+</code></pre></div>
+<p>PyPI does not allow re-uploading a version, so a bad release can only be
+yanked, never replaced. Do all your verification on TestPyPI (staging) before
+you tag. See <a href="#enabling-a-real-approval-gate">Enabling a real approval gate</a>
+if you want the pipeline to stop for a human.</p>
+</blockquote>
 <h3 id="step-by-step-cutting-a-release">Step-by-Step: Cutting a Release<a class="headerlink" href="#step-by-step-cutting-a-release" title="Permanent link">&para;</a></h3>
 <h4 id="step-1-cut-the-release-one-click">Step 1: Cut the Release (One-Click)<a class="headerlink" href="#step-1-cut-the-release-one-click" title="Permanent link">&para;</a></h4>
 <ol>
@@ -2036,40 +2083,76 @@
 <li>Title: <code>Release v0.2.0</code></li>
 <li>Get the required reviews and merge</li>
 </ol>
-<h4 id="step-5-tag-the-release">Step 5: Tag the Release<a class="headerlink" href="#step-5-tag-the-release" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.2.0
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.2.0
+<h4 id="step-5-tag-the-release-and-sync-develop">Step 5: Tag the release <strong>and</strong> sync <code>develop</code><a class="headerlink" href="#step-5-tag-the-release-and-sync-develop" title="Permanent link">&para;</a></h4>
+<p>These are one step, not two. Tagging publishes to PyPI; syncing <code>develop</code> keeps
+the next release's CHANGELOG correct. Run all of it in one sitting.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># 1. Tag main. This publishes to PyPI with no approval prompt.</span>
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.2.0
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.2.0
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
+<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="c1"># 2. Immediately sync main back into develop.</span>
+<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
+<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>git<span class="w"> </span>merge<span class="w"> </span>main
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="c1"># 3. Verify the sync. This MUST print nothing.</span>
+<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a>git<span class="w"> </span>fetch<span class="w"> </span>origin
+<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a>git<span class="w"> </span>log<span class="w"> </span>--oneline<span class="w"> </span>origin/develop..origin/main
 </code></pre></div>
-<p>This triggers the <a href="#9-production-release-pipeline-pypi">production release pipeline</a>.</p>
-<h4 id="step-6-approve-the-pypi-publish">Step 6: Approve the PyPI Publish<a class="headerlink" href="#step-6-approve-the-pypi-publish" title="Permanent link">&para;</a></h4>
+<p>If step 3 prints any commits, <code>develop</code> is behind <code>main</code> and the next release
+will be built from a stale CHANGELOG. Fix it before you walk away.</p>
+<p><strong>Why skipping the sync corrupts the next release.</strong> <code>cut-release.yml</code> branches
+from <code>develop</code> and rewrites the changelog by replacing the <code>## [Unreleased]</code>
+marker exactly once, so everything under <code>Unreleased</code> becomes the new version's
+content. When <code>develop</code> is behind <code>main</code>:</p>
+<ul>
+<li><code>develop</code> still carries entries that already shipped, so they get republished
+  under the new version.</li>
+<li><code>develop</code> has no <code>## [0.2.0]</code> heading at all, so merging the next release PR
+  into <code>main</code> <strong>deletes the <code>[0.2.0]</code> section</strong> from the published changelog.</li>
+</ul>
+<p><strong>If you already skipped it</strong>, do not trust a plain <code>git merge main</code>. Git places
+the incoming <code>## [0.2.0] - &lt;date&gt;</code> heading above the unreleased entries that
+<code>develop</code> accumulated in the same spot, which nests new unreleased work inside an
+already-published version. The result is valid Markdown and easy to miss in
+review. Open <code>CHANGELOG.md</code> after the merge and confirm that everything under
+<code>## [Unreleased]</code> is genuinely unreleased before pushing.</p>
+<h4 id="step-6-watch-the-release-pipeline">Step 6: Watch the release pipeline<a class="headerlink" href="#step-6-watch-the-release-pipeline" title="Permanent link">&para;</a></h4>
 <ol>
 <li>Go to <strong>Actions</strong> tab → find the <strong>Release</strong> workflow run for <code>v0.2.0</code></li>
-<li>The pipeline will run through build → TestPyPI → verify</li>
-<li>At the <code>publish-pypi</code> job, it pauses with <strong>"Waiting for review"</strong></li>
-<li>Click <strong>Review deployments</strong> → select the <strong>release</strong> environment → <strong>Approve and deploy</strong></li>
-<li>The package publishes to PyPI</li>
-<li>The <code>github-release</code> job creates a GitHub Release with the built artifacts and auto-generated release notes</li>
+<li>The pipeline runs build → TestPyPI → verify → <strong>publish-pypi</strong> → github-release</li>
+<li><code>publish-pypi</code> does not pause. It publishes to PyPI via
+   <a href="https://docs.pypi.org/trusted-publishers/">Trusted Publishing</a> using the
+   workflow's OIDC identity, so there is no API token to rotate</li>
+<li><code>github-release</code> then creates a GitHub Release with the built artifacts and
+   auto-generated release notes</li>
 </ol>
-<h4 id="step-7-post-release-cleanup">Step 7: Post-Release Cleanup<a class="headerlink" href="#step-7-post-release-cleanup" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Sync the tag back to develop</span>
-<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>git<span class="w"> </span>merge<span class="w"> </span>main
-<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>
-<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="c1"># Delete the release branch (remote and local)</span>
-<a id="__codelineno-23-8" name="__codelineno-23-8" href="#__codelineno-23-8"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.2.0
-<a id="__codelineno-23-9" name="__codelineno-23-9" href="#__codelineno-23-9"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.2.0
+<p>If the run fails after <code>publish-pypi</code> succeeded, the package is already on PyPI.
+Fix forward with a new patch version rather than retrying the tag.</p>
+<h5 id="enabling-a-real-approval-gate">Enabling a real approval gate<a class="headerlink" href="#enabling-a-real-approval-gate" title="Permanent link">&para;</a></h5>
+<p>The <code>release</code> environment exists and is referenced by the workflow, but it has no
+reviewers attached, so it is a label rather than a gate. To make the pause real,
+a repo admin adds required reviewers:</p>
+<p><strong>Settings → Environments → <code>release</code> → Required reviewers</strong>, then confirm:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">&#39;.protection_rules&#39;</span>
+</code></pre></div>
+<p>Once reviewers exist, <code>publish-pypi</code> stops on <strong>"Waiting for review"</strong> and a
+reviewer approves via <strong>Review deployments → release → Approve and deploy</strong>. No
+workflow change is needed; <code>environment: release</code> is already declared.</p>
+<h4 id="step-7-delete-the-release-branch">Step 7: Delete the release branch<a class="headerlink" href="#step-7-delete-the-release-branch" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.2.0
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.2.0
 </code></pre></div>
 <h4 id="step-8-verify-the-published-package">Step 8: Verify the Published Package<a class="headerlink" href="#step-8-verify-the-published-package" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="c1"># Install from PyPI</span>
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>pip<span class="w"> </span>install<span class="w"> </span>agentops-accelerator<span class="o">==</span><span class="m">0</span>.2.0
-<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>
-<a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="c1"># Verify</span>
-<a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a>agentops<span class="w"> </span>--version<span class="w">    </span><span class="c1"># Should show 0.2.0</span>
-<a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a>agentops<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Install from PyPI</span>
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>pip<span class="w"> </span>install<span class="w"> </span>agentops-accelerator<span class="o">==</span><span class="m">0</span>.2.0
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="c1"># Verify</span>
+<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>agentops<span class="w"> </span>--version<span class="w">    </span><span class="c1"># Should show 0.2.0</span>
+<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>agentops<span class="w"> </span>--help
 </code></pre></div>
 <p>Check the published package:
 - PyPI: https://pypi.org/project/agentops-accelerator/0.2.0/
@@ -2081,32 +2164,21 @@
 <h4 id="staging-environment"><code>staging</code> Environment<a class="headerlink" href="#staging-environment" title="Permanent link">&para;</a></h4>
 <ul>
 <li><strong>Purpose</strong>: Controls access to TestPyPI publishing</li>
-<li><strong>Protection rules</strong>: None required (auto-deploys), or add reviewers for extra safety</li>
-<li><strong>Secrets</strong>:</li>
+<li><strong>Protection rules</strong>: None</li>
+<li><strong>Secrets</strong>: None. <code>staging.yml</code> requests <code>id-token: write</code> and uploads via Trusted Publishing.</li>
 </ul>
-<table>
-<thead>
-<tr>
-<th>Secret</th>
-<th>Value</th>
-<th>How to get it</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>TEST_PYPI_TOKEN</code></td>
-<td>TestPyPI API token</td>
-<td><a href="https://test.pypi.org/manage/account/token/">test.pypi.org/manage/account/token</a></td>
-</tr>
-</tbody>
-</table>
 <h4 id="release-environment"><code>release</code> Environment<a class="headerlink" href="#release-environment" title="Permanent link">&para;</a></h4>
 <ul>
-<li><strong>Purpose</strong>: Controls access to production PyPI publishing</li>
-<li><strong>Protection rules</strong>: <strong>Required reviewers</strong> - add at least one team member who must approve</li>
+<li><strong>Purpose</strong>: Scopes the PyPI publish to a named environment for Trusted Publishing</li>
+<li><strong>Protection rules</strong>: <strong>None today.</strong> The environment is declared by <code>release.yml</code>
+  but has no reviewers, so <code>publish-pypi</code> runs without pausing. To turn it into a
+  real gate, add required reviewers (see
+  <a href="#enabling-a-real-approval-gate">Enabling a real approval gate</a>).</li>
 <li><strong>Deployment branches</strong>: Optionally restrict to <code>main</code> branch and <code>v*</code> tags</li>
-<li><strong>Secrets</strong>:</li>
+<li><strong>Secrets</strong>: None. <code>VSCE_PAT</code> is a <strong>repository</strong> secret, not an environment secret,
+  so it resolves in both <code>staging.yml</code> and <code>release.yml</code> without being attached here.</li>
 </ul>
+<h4 id="repository-secrets">Repository secrets<a class="headerlink" href="#repository-secrets" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
 <tr>
@@ -2117,75 +2189,91 @@
 </thead>
 <tbody>
 <tr>
-<td><code>PYPI_TOKEN</code></td>
-<td>PyPI API token (scoped to <code>agentops-accelerator</code>)</td>
-<td><a href="https://pypi.org/manage/account/token/">pypi.org/manage/account/token</a></td>
+<td><code>VSCE_PAT</code></td>
+<td>VS Code Marketplace PAT with <strong>Marketplace: Manage</strong></td>
+<td><a href="https://dev.azure.com">dev.azure.com</a> → User settings → Personal access tokens</td>
+</tr>
+<tr>
+<td><code>RELEASE_PAT</code></td>
+<td>PAT used by <code>cut-release.yml</code> to open the release PR</td>
+<td>GitHub → Settings → Developer settings → Personal access tokens</td>
 </tr>
 </tbody>
 </table>
-<h3 id="102-pypi-and-testpypi-accounts">10.2 PyPI and TestPyPI Accounts<a class="headerlink" href="#102-pypi-and-testpypi-accounts" title="Permanent link">&para;</a></h3>
+<p>No PyPI API token is stored. Check the current rules and secret locations at any time:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">&#39;.protection_rules&#39;</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release/secrets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">&#39;.secrets[].name&#39;</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/actions/secrets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">&#39;.secrets[].name&#39;</span>
+</code></pre></div>
+<h3 id="102-pypi-and-testpypi-trusted-publishing">10.2 PyPI and TestPyPI Trusted Publishing<a class="headerlink" href="#102-pypi-and-testpypi-trusted-publishing" title="Permanent link">&para;</a></h3>
+<p>Both <code>staging.yml</code> and <code>release.yml</code> use
+<a href="https://docs.pypi.org/trusted-publishers/">PyPI Trusted Publishing</a>, so uploads
+are authenticated with a short-lived OIDC token minted by GitHub Actions. There
+are no API tokens to create, store, or rotate.</p>
+<p>Configure it once per index, on the index side:</p>
 <h4 id="testpypi-staging">TestPyPI (Staging)<a class="headerlink" href="#testpypi-staging" title="Permanent link">&para;</a></h4>
 <ol>
-<li>Go to <a href="https://test.pypi.org/account/register/">test.pypi.org/account/register</a></li>
-<li>Create an account (separate from PyPI - different databases)</li>
-<li>Go to <a href="https://test.pypi.org/manage/account/token/">test.pypi.org/manage/account/token</a></li>
-<li>Create an API token (scope: entire account for first upload, then project-scoped after)</li>
-<li>Add the token as <code>TEST_PYPI_TOKEN</code> secret in the GitHub <code>staging</code> environment</li>
+<li>Log in at <a href="https://test.pypi.org/">test.pypi.org</a> (a separate account from PyPI)</li>
+<li>Go to the project → <strong>Manage → Publishing → Add a new publisher → GitHub</strong></li>
+<li>Owner <code>Azure</code>, repository <code>agentops</code>, workflow <code>staging.yml</code>, environment <code>staging</code></li>
 </ol>
-<blockquote>
-<p><strong>Note</strong>: TestPyPI and PyPI are completely separate systems with separate accounts, tokens, and namespaces. An account on one does not grant access to the other.</p>
-</blockquote>
 <h4 id="pypi-production">PyPI (Production)<a class="headerlink" href="#pypi-production" title="Permanent link">&para;</a></h4>
 <ol>
-<li>Go to <a href="https://pypi.org/account/register/">pypi.org/account/register</a> or log in</li>
-<li>Go to <a href="https://pypi.org/manage/account/token/">pypi.org/manage/account/token</a></li>
-<li>Create an API token scoped to the <code>agentops-accelerator</code> project</li>
-<li>Add the token as <code>PYPI_TOKEN</code> secret in the GitHub <code>release</code> environment</li>
+<li>Log in at <a href="https://pypi.org/">pypi.org</a></li>
+<li>Go to the project → <strong>Manage → Publishing → Add a new publisher → GitHub</strong></li>
+<li>Owner <code>Azure</code>, repository <code>agentops</code>, workflow <code>release.yml</code>, environment <code>release</code></li>
 </ol>
+<p>The workflow filename and environment name must match exactly. A mismatch fails
+at upload time with <code>403 Invalid or non-existent authentication information</code>,
+which on the release pipeline happens <em>after</em> the tag is already pushed.</p>
+<blockquote>
+<p><strong>Note</strong>: TestPyPI and PyPI are completely separate systems with separate accounts and namespaces. A publisher configured on one does not apply to the other.</p>
+</blockquote>
 <h3 id="103-first-time-package-registration">10.3 First-Time Package Registration<a class="headerlink" href="#103-first-time-package-registration" title="Permanent link">&para;</a></h3>
-<p>The first time you publish to TestPyPI or PyPI, the project name (<code>agentops-accelerator</code>) is registered automatically. After the first upload:</p>
-<ul>
-<li>Scope your API tokens to the specific project for better security</li>
-<li>Add collaborators/maintainers on the PyPI/TestPyPI project page if needed</li>
-</ul>
+<p>Trusted Publishing cannot create a project that does not exist yet. For a brand
+new project name, either upload once manually with a temporary API token, or use
+<a href="https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/">PyPI's pending publisher</a>
+flow to reserve the name for the workflow. <code>agentops-accelerator</code> is already
+registered on both indexes, so this only matters if the package is renamed.</p>
 <h2 id="11-workflow-file-reference">11. Workflow File Reference<a class="headerlink" href="#11-workflow-file-reference" title="Permanent link">&para;</a></h2>
 <p>All workflow files are in <code>.github/workflows/</code>:</p>
 <h3 id="ciyml-continuous-integration"><code>ci.yml</code> - Continuous Integration<a class="headerlink" href="#ciyml-continuous-integration" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>Trigger: push to develop, PR to develop
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>Flow:    lint → test (matrix) → coverage
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>         + on develop push: publish-dev → verify-dev (TestPyPI)
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>Purpose: Quality gate for all code changes; auto-publish dev builds
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Trigger: push to develop, PR to develop
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>Flow:    lint → test (matrix) → coverage
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>         + on develop push: publish-dev → verify-dev (TestPyPI)
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>Purpose: Quality gate for all code changes; auto-publish dev builds
 </code></pre></div>
 <p>Key detail: <code>publish-dev</code> and <code>verify-dev</code> only run on pushes to <code>develop</code> (not PRs). Every merge to develop produces a dev version on TestPyPI (e.g. <code>0.1.3.dev12</code>) via setuptools-scm. PRs to <code>main</code> are not covered by CI because they come from <code>release/*</code> branches which are already validated by the staging pipeline.</p>
 <h3 id="_buildyml-reusable-build"><code>_build.yml</code> - Reusable Build<a class="headerlink" href="#_buildyml-reusable-build" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>Trigger: workflow_call (called by staging.yml and release.yml)
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>Flow:    checkout (full history) → uv sync → pytest → uv build → upload artifact
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>Purpose: Single source of truth for the build process
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>Trigger: workflow_call (called by staging.yml and release.yml)
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>Flow:    checkout (full history) → uv sync → pytest → uv build → upload artifact
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>Purpose: Single source of truth for the build process
 </code></pre></div>
 <p>Key detail: Uses <code>fetch-depth: 0</code> to ensure setuptools-scm has full git history for version derivation.</p>
 <h3 id="stagingyml-staging-pipeline"><code>staging.yml</code> - Staging Pipeline<a class="headerlink" href="#stagingyml-staging-pipeline" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Trigger: push to release/* branches, or workflow_dispatch
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>Flow:    _build → publish-testpypi → verify-testpypi
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>Purpose: Validate release candidates before production
+<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>Trigger: push to release/* branches, or workflow_dispatch
+<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>Flow:    _build → publish-testpypi → verify-testpypi
+<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>Purpose: Validate release candidates before production
 </code></pre></div>
 <p>Key details:
 - <code>skip-existing: true</code> allows re-pushes without upload failures
 - Verify step uses a retry loop (5 attempts, 30s apart) for TestPyPI index propagation
 - Smoke tests cover <code>--version</code>, <code>--help</code>, and <code>agentops init</code></p>
 <h3 id="releaseyml-production-release"><code>release.yml</code> - Production Release<a class="headerlink" href="#releaseyml-production-release" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>Trigger: push v* tags, or workflow_dispatch
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi (approval) → github-release
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>Purpose: Publish to PyPI and create GitHub Release
+<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>Trigger: push v* tags, or workflow_dispatch
+<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi → github-release
+<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>Purpose: Publish to PyPI and create GitHub Release
 </code></pre></div>
 <p>Key details:
-- <code>publish-pypi</code> uses <code>environment: release</code> which requires reviewer approval
+- <code>publish-pypi</code> declares <code>environment: release</code>, but that environment has no protection rules, so it publishes without pausing
+- PyPI upload uses Trusted Publishing (<code>id-token: write</code>), not an API token
 - <code>github-release</code> uses <code>gh release create</code> with <code>--generate-notes</code> for automatic release notes
 - Built artifacts (.whl, .tar.gz) are attached to the GitHub Release</p>
 <h3 id="cut-releaseyml-cut-release-manual-dispatch"><code>cut-release.yml</code> - Cut Release (Manual Dispatch)<a class="headerlink" href="#cut-releaseyml-cut-release-manual-dispatch" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>Trigger: workflow_dispatch (manual button in Actions tab)
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>Input:   version - semver string (e.g. 0.2.0)
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>Flow:    validate → create release branch → update CHANGELOG → push → open PR
-<a id="__codelineno-29-4" name="__codelineno-29-4" href="#__codelineno-29-4"></a>Purpose: One-click release branch creation from develop
+<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>Trigger: workflow_dispatch (manual button in Actions tab)
+<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>Input:   version - semver string (e.g. 0.2.0)
+<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>Flow:    validate → check [Unreleased] not empty → create release branch → update CHANGELOG → push → open PR
+<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>Purpose: One-click release branch creation from develop
 </code></pre></div>
 <p>Key details:
 - Creates <code>release/v&lt;version&gt;</code> branch from <code>develop</code>
@@ -2193,12 +2281,13 @@
 - Opens a PR from <code>release/v&lt;version&gt;</code> → <code>main</code> with a checklist
 - The branch push triggers <code>staging.yml</code> automatically
 - Fails safely if the branch already exists
+- Refuses to run when <code>## [Unreleased]</code> is empty, because this workflow only inserts a versioned heading beneath that one and would otherwise publish an empty release section
 - Does NOT auto-tag or auto-publish - tagging remains a manual, intentional step</p>
 <h2 id="12-release-checklist">12. Release Checklist<a class="headerlink" href="#12-release-checklist" title="Permanent link">&para;</a></h2>
 <p>Use this checklist when cutting a release:</p>
 <p><strong>Preparation</strong>
 - [ ] All intended features/fixes are merged to <code>develop</code>
-- [ ] <code>CHANGELOG.md</code> has entries for all user-visible changes under the appropriate versioned section
+- [ ] <code>CHANGELOG.md</code> has entries under <code>## [Unreleased]</code> for all user-visible changes, including anything Dependabot merged (Cut Release aborts if the section is empty)
 - [ ] Tests pass locally: <code>uv run pytest tests/ -x -q</code>
 - [ ] Version from setuptools-scm looks correct: <code>python -m setuptools_scm</code></p>
 <p><strong>Staging</strong>
@@ -2206,18 +2295,18 @@
 - [ ] CHANGELOG automatically updated with version and date
 - [ ] Staging pipeline passes: build + TestPyPI + verify (all 3 green)
 - [ ] PR opened: <code>release/v0.X.Y</code> → <code>main</code></p>
-<p><strong>Production</strong>
+<p><strong>Production (tag + sync, do these together)</strong>
 - [ ] PR from <code>release/v0.X.Y</code> → <code>main</code> created and approved
 - [ ] PR merged to <code>main</code>
-- [ ] Version tag created and pushed: <code>v0.X.Y</code>
-- [ ] Release pipeline runs: build + TestPyPI + verify pass
-- [ ] PyPI publish approved in GitHub Actions
+- [ ] Version tag created and pushed: <code>v0.X.Y</code> (this publishes to PyPI immediately)
+- [ ] Release pipeline runs: build + TestPyPI + verify + publish-pypi all green
+- [ ] <strong><code>main</code> merged back into <code>develop</code> and pushed</strong>
+- [ ] <strong><code>git log --oneline origin/develop..origin/main</code> prints nothing</strong>
+- [ ] <code>CHANGELOG.md</code> on <code>develop</code> shows only genuinely unreleased work under <code>## [Unreleased]</code>
 - [ ] GitHub Release created with artifacts
 - [ ] Published package verified: <code>pip install agentops-accelerator==0.X.Y</code></p>
 <p><strong>Cleanup</strong>
-- [ ] <code>main</code> merged back to <code>develop</code>
-- [ ] Release branch deleted (remote and local)
-- [ ] CHANGELOG is ready for new entries</p>
+- [ ] Release branch deleted (remote and local)</p>
 <h2 id="13-troubleshooting">13. Troubleshooting<a class="headerlink" href="#13-troubleshooting" title="Permanent link">&para;</a></h2>
 <h3 id="build-failures">Build Failures<a class="headerlink" href="#build-failures" title="Permanent link">&para;</a></h3>
 <table>
@@ -2263,8 +2352,8 @@
 <tbody>
 <tr>
 <td>Upload fails with 403</td>
-<td>Invalid or expired token</td>
-<td>Regenerate <code>TEST_PYPI_TOKEN</code> and update the GitHub secret</td>
+<td>Trusted Publishing not configured for <code>staging.yml</code> / environment <code>staging</code></td>
+<td>Fix the publisher on test.pypi.org under <strong>Manage → Publishing</strong></td>
 </tr>
 <tr>
 <td>Upload fails with "already exists"</td>
@@ -2294,14 +2383,19 @@
 </thead>
 <tbody>
 <tr>
+<td>Published to PyPI without being asked</td>
+<td>Expected. <code>release</code> has no protection rules, so <code>publish-pypi</code> never pauses</td>
+<td>Yank the release on pypi.org and ship a new patch version. See <a href="#enabling-a-real-approval-gate">Enabling a real approval gate</a></td>
+</tr>
+<tr>
 <td>Publish step stuck on "Waiting for review"</td>
-<td>Normal - requires approval</td>
-<td>A designated reviewer must approve in the Actions UI</td>
+<td>Someone added required reviewers to <code>release</code></td>
+<td>A listed reviewer approves via <strong>Review deployments → release</strong></td>
 </tr>
 <tr>
 <td>Upload fails with 403</td>
-<td>Invalid <code>PYPI_TOKEN</code></td>
-<td>Regenerate the token on pypi.org and update the GitHub secret</td>
+<td>Trusted Publishing not configured for <code>release.yml</code> / environment <code>release</code></td>
+<td>Fix the publisher on pypi.org under <strong>Manage → Publishing</strong>. The tag is already pushed, so bump the version and retag</td>
 </tr>
 <tr>
 <td>Version already exists on PyPI</td>
@@ -2335,6 +2429,11 @@
 <td>Normal for concurrent work</td>
 <td>Resolve conflicts on the release branch before merging to main</td>
 </tr>
+<tr>
+<td>Next release's CHANGELOG republishes old entries, or drops the previous version's section</td>
+<td><code>develop</code> was left behind <code>main</code> after the last release</td>
+<td><code>git merge main</code> into <code>develop</code>, then hand-check <code>CHANGELOG.md</code>. See <a href="#step-5-tag-the-release-and-sync-develop">Step 5</a></td>
+</tr>
 </tbody>
 </table>
 <h3 id="environment-and-permissions">Environment and Permissions<a class="headerlink" href="#environment-and-permissions" title="Permanent link">&para;</a></h3>
@@ -2358,6 +2457,11 @@
 <td>Add secrets to the specific environment, not repository-level secrets</td>
 </tr>
 <tr>
+<td>No one was asked to approve the publish</td>
+<td><code>release</code> has no required reviewers</td>
+<td>Confirm with <code>gh api repos/Azure/agentops/environments/release --jq '.protection_rules'</code></td>
+</tr>
+<tr>
 <td>Reviewer can't approve deployment</td>
 <td>Not listed as required reviewer</td>
 <td>Update the environment's required reviewers list</td>
@@ -2368,7 +2472,7 @@
 <pre class="mermaid"><code>flowchart TD
     feat["feature/*"] --&gt;|PR| develop(["develop"])
     develop --&gt; ci["CI (ci.yml)&lt;br/&gt;lint + test + coverage&lt;br/&gt;publish-dev → TestPyPI (dev version)"]
-    develop --&gt; cut["Cut Release (cut-release.yml)&lt;br/&gt;manual dispatch - enter version"]
+    develop --&gt; cutCut Release (cut-release.yml)&lt;br/&gt;manual dispatch - enter version
     cut --&gt; rel(["release/v0.2.0"])
 
     rel --&gt; stagingBuild["_build&lt;br/&gt;test + build"]
@@ -2381,10 +2485,10 @@
     tag --&gt; relBuild["_build"]
     relBuild --&gt; relTest["TestPyPI"]
     relTest --&gt; relVerify["Verify"]
-    relVerify --&gt; relPypi["PyPI&lt;br/&gt;(approval)"]
+    relVerify --&gt; relPypi["PyPI&lt;br/&gt;(no approval gate)"]
     relPypi --&gt; relGh["GitHub Release"]
 
-    main --&gt;|merge back| develop
+    main --&gt;|merge back, REQUIRED| develop
 
     subgraph Staging["Staging (staging.yml)"]
         stagingBuild
@@ -2401,7 +2505,7 @@
     end
 
     classDef gate fill:#fff3cd,stroke:#856404,color:#000;
-    class cut,relPypi gate;</code></pre>
+    class cut,tag gate;</code></pre>
 
 
 

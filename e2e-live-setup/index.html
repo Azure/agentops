@@ -570,6 +570,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial-end-to-end/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    End-to-End Tutorial
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1440,6 +1461,17 @@ relationship between the repo and an Entra app.</p>
 <blockquote>
 <p>If you ever rename the branch or merge to <code>main</code>, add another federated
 credential entry with the new <code>subject:</code> value.</p>
+<p><strong>Check your subject claim prefix first.</strong> Some accounts send numeric
+account and repository IDs in the OIDC <code>sub</code> claim
+(<code>repo:&lt;owner&gt;@&lt;accountId&gt;/&lt;repo&gt;@&lt;repoId&gt;:ref:refs/heads/...</code>) instead of
+the plain <code>repo:&lt;owner&gt;/&lt;repo&gt;:ref:...</code> used above. Entra matches <code>subject</code>
+literally, so the wrong format fails with <code>AADSTS700213</code>. Read the real
+prefix with <code>gh api repos/Azure/agentops/actions/oidc/customization/sub</code> and
+use its <code>sub_claim_prefix</code> value, not the booleans beside it. Creating both
+subjects as separate credentials on the same app works on either kind of
+account. See
+<a href="../ci-github-actions/#federated-credential-subject-check-sub_claim_prefix-first"><code>ci-github-actions.md</code></a>
+for the full walkthrough.</p>
 </blockquote>
 <hr />
 <h2 id="step-4-add-actions-variables">Step 4 - Add Actions Variables<a class="headerlink" href="#step-4-add-actions-variables" title="Permanent link">&para;</a></h2>
@@ -1568,6 +1600,10 @@ appear in the Actions tab.</p>
 <tr>
 <td><code>AADSTS70021: No matching federated identity record found</code></td>
 <td>Branch name in workflow run does not match the <code>subject:</code> of any federated credential. Add a credential for the new ref.</td>
+</tr>
+<tr>
+<td><code>AADSTS700213: No matching federated identity record found for presented assertion subject</code></td>
+<td>The credential <code>subject</code> is not byte-identical to what GitHub sent. Copy the subject quoted in the error and compare it against <code>az ad app federated-credential list</code>. On accounts with an immutable-ID subject claim prefix the token carries numeric IDs; check <code>gh api repos/Azure/agentops/actions/oidc/customization/sub</code>.</td>
 </tr>
 <tr>
 <td><code>AuthorizationFailed</code> on Bicep deployment</td>
