@@ -1284,10 +1284,13 @@ latency, token consumption, and throttling. You deploy it once with a single
 command and then open it in the Azure portal alongside the rest of your
 monitoring.</p>
 <div class="admonition note">
-<p class="admonition-title">CLI availability</p>
-<p>The <code>agentops telemetry dashboard</code> commands on this page ship in the
-companion feature release. If your installed version does not have them yet,
-update the package first with <code>pip install --upgrade "agentops-accelerator[agent]"</code>.</p>
+<p class="admonition-title">What you need installed</p>
+<p>These commands ship in every published <code>agentops-accelerator</code> release, so
+there is nothing extra to install for the CLI itself. <code>deploy</code> is the one
+that shells out to the Azure CLI, so <code>az</code> must be on <code>PATH</code> and logged in
+(<code>az login</code>). Without it, <code>deploy</code> stops with <em>The Azure CLI ('az') was not
+found on PATH</em>. Use <code>deploy --dry-run</code> to emit the ARM template instead.
+<code>open</code> and <code>export</code> do not need the Azure CLI.</p>
 </div>
 <h2 id="when-to-use-it">When to use it<a class="headerlink" href="#when-to-use-it" title="Permanent link">&para;</a></h2>
 <p>The workbook, the Cockpit, and Foundry each answer a different question, so pick
