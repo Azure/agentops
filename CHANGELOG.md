@@ -5,6 +5,27 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Fixed
+- **The official evaluation runner now honours the agent version override.**
+  `prepare_official_eval` read the agent name and version straight from
+  `agentops.yaml` and ignored both the `--agent` flag and the
+  `AGENTOPS_AGENT` environment variable, so a pipeline that pinned a
+  specific agent version still evaluated whatever version the config
+  happened to carry. The override is now resolved in one place
+  (`resolve_agent_override`), applied by `official_eval.py`, and forwarded
+  by the generated GitHub Actions and Azure DevOps workflows. An
+  unexpanded CI token such as `$(AGENTOPS_AGENT)` is treated as absent
+  instead of being parsed as an agent name.
+
+### Changed
+- **The release cut logic moved out of `cut-release.yml` and into
+  `scripts/check_changelog.py cut`.** The workflow used to carry the
+  transformation as an inline Python heredoc, which no test could import,
+  so a regression in it was only visible when a release was already being
+  cut. That is exactly how the 0.8.6 cut broke. The same code now backs
+  both the workflow and the unit tests, and the subcommand is idempotent:
+  re-running it for a version already present in the file is a no-op.
+
 ## [0.8.6] - 2026-08-07
 
 ### Added

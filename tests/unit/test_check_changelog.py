@@ -314,3 +314,88 @@ def test_unreleased_section_emptied_by_a_release_cut_is_still_parseable(guard):
     start, end = guard.unreleased_line_range(text)
     assert start < end
     assert guard.unreleased_has_content(text) is False
+
+
+def test_real_changelog_survives_a_release_cut(guard):
+    """Run the real cut against the real CHANGELOG and re-parse the result.
+
+    Release 0.8.6 failed CI because no test ever constructed the repository's
+    post-cut state. `apply_release_cut` is the same function `cut-release.yml`
+    invokes, so this exercises the shipped code path rather than a copy.
+    """
+    before = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    # Deliberately no precondition on `[Unreleased]` having content: on a
+    # release branch it is empty, and that is the state this test exists for.
+
+    after = guard.apply_release_cut(before, "99.0.0", "2099-12-31")
+
+    start, end = guard.unreleased_line_range(after)
+    assert start < end
+    # Everything moved under the new heading, so the section is now empty. The
+    # guard must report that as a fact instead of raising.
+    assert guard.unreleased_has_content(after) is False
+    assert "## [99.0.0] - 2099-12-31" in after
+    # No content is lost, only re-attributed.
+    assert after.replace("\n\n## [99.0.0] - 2099-12-31", "", 1) == before
+
+
+def test_release_cut_is_idempotent_on_content(guard):
+    """Cutting twice must not duplicate the bullets under the first heading."""
+    text = "# Changelog\n\n## [Unreleased]\n\n- One entry.\n"
+
+    once = guard.apply_release_cut(text, "1.0.0", "2026-01-01")
+    twice = guard.apply_release_cut(once, "1.0.1", "2026-01-02")
+
+    assert twice.count("- One entry.") == 1
+    assert twice.index("## [1.0.1]") < twice.index("## [1.0.0]")
+
+
+def test_release_cut_rejects_a_changelog_without_the_marker(guard):
+    with pytest.raises(ValueError, match=r"\[Unreleased\]"):
+        guard.apply_release_cut("# Changelog\n\n## [1.0.0] - 2026-01-01\n", "2.0.0", "x")
+
+
+@pytest.mark.parametrize(
+    ("title", "labels", "changed_files"),
+    [
+        pytest.param(
+            "chore(deps): bump cryptography from 48.0.1 to 50.0.0",
+            ["dependencies", "python:uv"],
+            ["uv.lock"],
+            id="pr-362-lockfile",
+        ),
+        pytest.param(
+            "chore(deps): bump actions/setup-python from 6 to 7",
+            ["dependencies"],
+            [
+                ".github/workflows/agentops-watchdog.yml",
+                ".github/workflows/ci.yml",
+                ".github/workflows/e2e.yml",
+                ".github/workflows/release.yml",
+                ".github/workflows/staging.yml",
+            ],
+            id="pr-358-actions",
+        ),
+        pytest.param(
+            "chore(deps-dev): update mcp requirement from <2,>=1.0 to >=1.0,<3",
+            ["dependencies"],
+            ["pyproject.toml"],
+            id="pr-359-shipping-manifest",
+        ),
+    ],
+)
+def test_real_dependabot_pull_requests_never_require_an_entry(
+    guard, title, labels, changed_files
+):
+    """Payloads copied verbatim from merged Dependabot PRs.
+
+    `pyproject.toml` is shipping code, so that case only passes because the
+    author exemption is checked before the file classification. A regression
+    that reorders those checks would block every dependency bump.
+    """
+    required, reason = guard.entry_required(
+        title, labels, "dependabot[bot]", changed_files
+    )
+
+    assert required is False
+    assert "automated author" in reason

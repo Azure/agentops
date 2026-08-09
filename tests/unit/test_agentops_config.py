@@ -18,6 +18,8 @@ from agentops.core.agentops_config import (
     Threshold,
     apply_agent_version_override,
     classify_agent,
+    is_unexpanded_ci_token,
+    resolve_agent_override,
 )
 
 
@@ -163,6 +165,83 @@ class TestApplyAgentVersionOverride:
     def test_bare_version_against_model_target_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="no version segment"):
             apply_agent_version_override("model:gpt-4o-mini", "12")
+
+
+# ---------------------------------------------------------------------------
+# resolve_agent_override
+# ---------------------------------------------------------------------------
+
+
+class TestResolveAgentOverride:
+    """The single entry point every runner uses to pick up an override."""
+
+    def test_explicit_value_wins_over_the_environment(self) -> None:
+        assert (
+            resolve_agent_override(
+                "helpdeskbot:11",
+                explicit="12",
+                env={AGENT_OVERRIDE_ENV: "99"},
+            )
+            == "helpdeskbot:12"
+        )
+
+    def test_environment_is_used_when_no_explicit_value(self) -> None:
+        assert (
+            resolve_agent_override("helpdeskbot:11", env={AGENT_OVERRIDE_ENV: "12"})
+            == "helpdeskbot:12"
+        )
+
+    def test_absent_override_returns_none(self) -> None:
+        assert resolve_agent_override("helpdeskbot:11", env={}) is None
+
+    def test_blank_override_returns_none(self) -> None:
+        assert resolve_agent_override("helpdeskbot:11", explicit="   ") is None
+
+    @pytest.mark.parametrize(
+        "token",
+        [
+            # Azure DevOps leaves an undefined variable verbatim.
+            "$(AGENTOPS_AGENT)",
+            # GitHub can leak an expression the same way.
+            "${{ env.AGENTOPS_AGENT }}",
+            "  $(AGENTOPS_AGENT)  ",
+        ],
+    )
+    def test_unexpanded_ci_tokens_are_ignored(self, token: str) -> None:
+        """A generated pipeline must stay valid when the variable is undefined."""
+
+        assert resolve_agent_override("helpdeskbot:11", explicit=token) is None
+
+    def test_full_reference_override_is_returned_verbatim(self) -> None:
+        assert (
+            resolve_agent_override("helpdeskbot:11", explicit="other:3") == "other:3"
+        )
+
+    def test_process_environment_is_the_default_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(AGENT_OVERRIDE_ENV, "12")
+        assert resolve_agent_override("helpdeskbot:11") == "helpdeskbot:12"
+
+    def test_bare_version_without_version_slot_still_raises(self) -> None:
+        with pytest.raises(ValueError, match="no version segment"):
+            resolve_agent_override("model:gpt-4o-mini", explicit="12")
+
+
+class TestIsUnexpandedCiToken:
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ("$(AGENTOPS_AGENT)", True),
+            ("${{ env.AGENTOPS_AGENT }}", True),
+            ("  $(X)", True),
+            ("helpdeskbot:12", False),
+            ("12", False),
+            ("", False),
+        ],
+    )
+    def test_detection(self, value: str, expected: bool) -> None:
+        assert is_unexpanded_ci_token(value) is expected
 
 
 # ---------------------------------------------------------------------------

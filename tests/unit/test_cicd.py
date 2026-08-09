@@ -2,10 +2,17 @@
 
 from pathlib import Path
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
+from agentops.core.agentops_config import AGENT_OVERRIDE_ENV
+from agentops.pipeline.official_eval import (
+    AGENTOPS_CLOUD_RUNNER,
+    AGENTOPS_LOCAL_RUNNER,
+    AZD_EVAL_RUNNER,
+)
 from agentops.services.cicd import (
     ALL_KINDS,
     DEFAULT_KINDS,
@@ -766,6 +773,46 @@ def _write_azd_eval_project(directory: Path) -> None:
     )
 
 
+def _write_cloud_eval_project(directory: Path) -> None:
+    """Lay out a project whose recommended eval runner is Foundry cloud eval."""
+
+    (directory / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (directory / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+    (directory / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+
+def _write_local_eval_project(directory: Path) -> None:
+    """Lay out a project whose recommended eval runner is AgentOps local eval."""
+
+    (directory / "azure.yaml").write_text("name: sample\n", encoding="utf-8")
+    (directory / "data.jsonl").write_text(
+        '{"input": "Hello", "expected": "Hello!"}\n',
+        encoding="utf-8",
+    )
+    (directory / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: https://example.com/api/agents/demo\n"
+        "protocol: http-json\n"
+        "dataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+
+# Each writer produces a project that `recommended_eval_runner` resolves to the
+# paired runner, so the generated pipelines exercise a different eval block.
+_EVAL_RUNNER_PROJECTS = (
+    (AZD_EVAL_RUNNER, _write_azd_eval_project),
+    (AGENTOPS_CLOUD_RUNNER, _write_cloud_eval_project),
+    (AGENTOPS_LOCAL_RUNNER, _write_local_eval_project),
+)
+
+
 def _ado_stage(path: Path, stage: str) -> str:
     """Return the raw YAML text of a single Azure DevOps stage."""
 
@@ -807,22 +854,35 @@ def test_azure_devops_azd_eval_stage_configures_azd_auth(tmp_path: Path) -> None
         assert "${{" not in section
 
 
+@pytest.mark.parametrize(
+    ("expected_runner", "write_project"),
+    _EVAL_RUNNER_PROJECTS,
+    ids=[name for name, _ in _EVAL_RUNNER_PROJECTS],
+)
 def test_azure_devops_pipelines_stay_valid_yaml_for_every_eval_runner(
     tmp_path: Path,
+    expected_runner: str,
+    write_project,
 ) -> None:
     """Guard against block-scalar indentation regressions in the ADO templates.
 
     A line at column 0 inside a `bash: |` block terminates the scalar and makes
-    Azure DevOps reject the whole pipeline, so parse every generated file.
+    Azure DevOps reject the whole pipeline, so parse every generated file. Each
+    eval runner emits a different set of tasks, so run the check once per
+    runner instead of only for the azd backend.
     """
 
-    _write_azd_eval_project(tmp_path)
-    generate_cicd_workflows(
+    write_project(tmp_path)
+    result = generate_cicd_workflows(
         directory=tmp_path,
         platform="azure-devops",
         kinds=list(ALL_KINDS),
         force=True,
     )
+
+    # Fail loudly if a fixture stops selecting the runner it is named after,
+    # otherwise the parametrization would silently retest the same block.
+    assert result.eval_runner == expected_runner
 
     for rel in _ADO_PATHS:
         content = (tmp_path / rel).read_text(encoding="utf-8")
@@ -831,6 +891,67 @@ def test_azure_devops_pipelines_stay_valid_yaml_for_every_eval_runner(
             if not line or line[0].isspace() or line.startswith("#"):
                 continue
             assert line.split(":", 1)[0].isidentifier(), f"{rel}:{number}: {line}"
+
+
+def test_official_eval_prepare_step_forwards_the_agent_override(tmp_path: Path) -> None:
+    """The official runner must honor `--agent` / `AGENTOPS_AGENT` like the others.
+
+    Without this, a pipeline that just published a new agent version scores the
+    version pinned in `agentops.yaml` instead of the candidate it built.
+    """
+
+    from agentops.pipeline.official_eval import OFFICIAL_EVAL_RUNNER
+    from agentops.services.cicd import _eval_substitutions
+
+    # The two platforms name the rendered block differently.
+    for platform, key in (("github", "__EVAL_STEPS__"), ("azure-devops", "__EVAL_TASKS__")):
+        tasks = _eval_substitutions(
+            platform,
+            OFFICIAL_EVAL_RUNNER,
+            "agentops.yaml",
+            kind="pr",
+        )[key]
+
+        assert AGENT_OVERRIDE_ENV in tasks, platform
+
+
+def test_prod_workflow_documents_why_safety_eval_has_no_environment(
+    tmp_path: Path,
+) -> None:
+    """The missing `environment:` on the safety gate is deliberate, not an oversight.
+
+    The gate has to run before the protected environment approval so reviewers
+    can see the safety result while approving.
+    """
+
+    _write_azd_eval_project(tmp_path)
+    generate_cicd_workflows(directory=tmp_path, kinds=["prod"], force=True)
+    content = (tmp_path / _PROD_PATH).read_text(encoding="utf-8")
+
+    marker = "No `environment:` here on purpose."
+    assert marker in content
+    assert content.index(marker) < content.index("safety-eval:")
+
+    prod = _read_yaml(tmp_path / _PROD_PATH)
+    assert "environment" not in prod["jobs"]["safety-eval"]
+
+
+def test_prod_workflow_documents_safety_eval_gate_in_placeholder_mode(
+    tmp_path: Path,
+) -> None:
+    """The same rationale must survive in the non-azd prod template."""
+
+    generate_cicd_workflows(
+        directory=tmp_path,
+        kinds=["prod"],
+        deploy_mode="placeholder",
+        force=True,
+    )
+    content = (tmp_path / _PROD_PATH).read_text(encoding="utf-8")
+
+    assert "No `environment:` here on purpose." in content
+    prod = _read_yaml(tmp_path / _PROD_PATH)
+    assert "environment" not in prod["jobs"]["safety-eval"]
 
 
 def test_azure_devops_azd_mode_runs_ailz_preflight_when_script_exists(tmp_path: Path) -> None:

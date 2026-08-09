@@ -189,6 +189,27 @@ def unreleased_has_content(changelog: str) -> bool:
     return False
 
 
+def apply_release_cut(changelog: str, version: str, date: str) -> str:
+    """Return *changelog* with a `## [version] - date` heading opened below Unreleased.
+
+    This is the whole of the release cut: the workflow never moves text. It
+    inserts the new heading directly under `## [Unreleased]`, so everything that
+    was accumulating there is now attributed to the release, and `[Unreleased]`
+    becomes empty until the next merged change adds to it.
+
+    `cut-release.yml` calls this so a test can exercise the real implementation
+    instead of a copy that would silently drift.
+
+    Raises:
+        ValueError: when the `## [Unreleased]` heading is missing.
+    """
+
+    marker = "## [Unreleased]"
+    if marker not in changelog:
+        raise ValueError("CHANGELOG.md is missing the ## [Unreleased] section.")
+    return changelog.replace(marker, f"{marker}\n\n## [{version}] - {date}", 1)
+
+
 def added_line_numbers(diff: str) -> set[int]:
     """Return new-file line numbers of added lines in a unified diff."""
     added: set[int] = set()
@@ -351,6 +372,27 @@ def _cmd_check_unreleased(args: argparse.Namespace) -> int:
     )
 
 
+def _cmd_cut(args: argparse.Namespace) -> int:
+    path = Path(args.path) if args.path else REPO_ROOT / "CHANGELOG.md"
+    if not path.exists():
+        return _fail(f"{path} does not exist.")
+
+    changelog = path.read_text(encoding="utf-8")
+    if f"## [{args.version}]" in changelog:
+        print(f"CHANGELOG already has [{args.version}], skipping insertion")
+        return 0
+
+    try:
+        path.write_text(
+            apply_release_cut(changelog, args.version, args.date), encoding="utf-8"
+        )
+    except ValueError as exc:
+        return _fail(str(exc))
+
+    print(f"CHANGELOG updated with [{args.version}] - {args.date}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -372,6 +414,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     unreleased.add_argument("--path", default=None, help="Path to CHANGELOG.md.")
     unreleased.set_defaults(func=_cmd_check_unreleased)
+
+    cut = sub.add_parser(
+        "cut",
+        help="Open a versioned heading below [Unreleased] (used by cut-release.yml).",
+    )
+    cut.add_argument("--version", required=True, help="Release version, e.g. 0.9.0.")
+    cut.add_argument("--date", required=True, help="Release date, e.g. 2026-01-31.")
+    cut.add_argument("--path", default=None, help="Path to CHANGELOG.md.")
+    cut.set_defaults(func=_cmd_cut)
 
     args = parser.parse_args(argv)
     return int(args.func(args))
