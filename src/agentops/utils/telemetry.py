@@ -129,8 +129,6 @@ def init_tracing() -> None:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-        import agentops
-
         resource = Resource(attributes=_resource_attributes())
 
         provider = TracerProvider(resource=resource)
