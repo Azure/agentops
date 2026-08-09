@@ -1,3 +1,7 @@
+---
+render_macros: false
+---
+
 # AgentOps GenAIOps GitFlow on GitHub Actions
 
 This guide shows how to wire AgentOps into a complete GenAIOps CI/CD
@@ -18,37 +22,54 @@ workflow is available separately when you explicitly generate `--kinds doctor`.
 
 | File | Trigger | GitHub Environment | Purpose |
 |---|---|---|---|
-| `agentops-pr.yml` | PRs to `develop`, `release/**`, `main` | `dev` | Eval gate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
+| `agentops-pr.yml` | PRs to `develop`, `release/**` | `sandbox` for prompt-agent PR candidates, `dev` for generic PR gates | Eval PR candidate + Doctor gate (default blocks on critical findings; configurable via `--doctor-gate`) + PR comment |
 | `agentops-deploy-dev.yml` | push to `develop` | `dev` | Eval → build → deploy DEV |
 | `agentops-deploy-qa.yml` | push to `release/**` | `qa` | Eval → build → deploy QA |
-| `agentops-deploy-prod.yml` | push to `main` | `production` | Safety eval → evidence → build → deploy PROD |
+| `agentops-deploy-prod.yml` | push to `main` | `production` | Deploy PROD → smoke test |
 | `agentops-doctor.yml` | daily cron | `dev` | Optional scheduled Doctor + release evidence |
 
 ## GitFlow assumed
 
 ```mermaid
 flowchart LR
-    feat["feature/*"] -->|PR| prGate1{{"agentops-pr.yml<br/>(gate)"}}
-    prGate1 -->|merge| dev["develop"]
-    dev --> deployDev["agentops-deploy-dev.yml"]
-    deployDev --> DEV(["DEV"])
+    feature["feature/*"] --> prDev["PR eval<br/>candidate"]
+    prDev --> sandbox["sandbox"]
+    prDev --> develop["develop"]
+    develop --> devDeploy["Eval + deploy<br/>agentops-deploy-dev"]
+    devDeploy --> devEnv["dev"]
 
-    rel["release/*"] -->|push| deployQa["agentops-deploy-qa.yml"]
-    deployQa --> QA(["QA"])
+    develop --> release["release/*"]
+    release --> qaDeploy["Eval + deploy<br/>agentops-deploy-qa"]
+    qaDeploy --> qaEnv["qa"]
 
-    rel -->|PR| prGate2{{"agentops-pr.yml<br/>(gate)"}}
-    prGate2 -->|merge| main["main"]
-    main --> deployProd["agentops-deploy-prod.yml"]
-    deployProd --> PROD(["PROD<br/>(required reviewers)"])
+    release --> prProd["PR: release to main<br/>manual approval"]
+    prProd --> main["main"]
+    main --> prodDeploy["Prod release process<br/>deploy + smoke test<br/>agentops-deploy-prod"]
+    prodDeploy --> prodEnv["production"]
 
-    classDef gate fill:#fff3cd,stroke:#856404,color:#000;
+    classDef branch fill:#e7f0fd,stroke:#1f4e79,color:#000;
+    classDef pipeline fill:#ede7f6,stroke:#4527a0,color:#000;
     classDef env fill:#d1ecf1,stroke:#0c5460,color:#000;
-    class prGate1,prGate2 gate;
-    class DEV,QA,PROD env;
+    class feature,develop,release,main branch;
+    class prDev,devDeploy,qaDeploy,prProd,prodDeploy pipeline;
+    class sandbox,devEnv,qaEnv,prodEnv env;
 ```
+
+Legend:
+<span style="display:inline-block;width:0.9em;height:0.9em;background:#e7f0fd;border:1px solid #1f4e79;vertical-align:-0.1em;"></span> Git branch
+<span style="display:inline-block;width:0.9em;height:0.9em;background:#ede7f6;border:1px solid #4527a0;vertical-align:-0.1em;"></span> PR or workflow gate
+<span style="display:inline-block;width:0.9em;height:0.9em;background:#d1ecf1;border:1px solid #0c5460;vertical-align:-0.1em;"></span> deployed environment
 
 If you are on trunk-based development, generate only the templates you
 need: `agentops workflow generate --kinds pr,dev,prod`.
+
+The PR gate validates candidates before they enter `develop` or `release/**`. It
+is not a dev deployment. HTTP agent tutorials point that candidate at the
+sandbox endpoint; prompt-agent workflows stage and evaluate the candidate prompt
+version in sandbox. The PR from `release/**` to `main` is a manual approval gate
+with static checks only. It does not call agents. After it merges,
+`agentops-deploy-prod` runs the production release process: deploy and smoke
+test.
 
 ## Quick start
 
@@ -253,7 +274,8 @@ az ad app federated-credential list --id "$APP_ID" \
 | Error | Cause | Fix |
 |---|---|---|
 | `AADSTS700213: No matching federated identity record found for presented assertion subject` | The credential `subject` is not byte-identical to the subject GitHub sent. Usually the immutable-ID prefix above. Also caused by the wrong environment name, or a `ref:refs/heads/...` subject on a job that uses `environment:`. | Copy the subject quoted in the error, compare it against `az ad app federated-credential list`, and add the missing credential. |
-| `AADSTS53003: Access has been blocked by Conditional Access policies` | Usually `AZURE_TENANT_ID` points at a tenant that cannot see the app registration, not an actual CA policy. | Set `AZURE_TENANT_ID` to the tenant that owns the app registration and the federated credential, not a subscription `managedByTenants` entry. |
+| `AADSTS53003: Access has been blocked by Conditional Access policies` | A Conditional Access policy blocked the token. Workload identities are in scope of CA, so a policy that requires MFA, a compliant device, or a named location will block a GitHub-hosted runner. | Open the sign-in in Entra ID > Sign-in logs > Service principal sign-ins, read the Conditional Access tab to find the policy that applied, then exclude the workload identity or scope the policy so it does not target it. |
+| `AADSTS700016: Application with identifier '<id>' was not found in the directory` | `AZURE_CLIENT_ID` or `AZURE_TENANT_ID` is wrong. The app registration exists in a different tenant than the one being authenticated against. | Set `AZURE_TENANT_ID` to the tenant that owns the app registration and the federated credential, not a subscription `managedByTenants` entry. Confirm with `az ad app show --id "$AZURE_CLIENT_ID" --query appId`. |
 | `AuthorizationFailed` on `azd provision` | The principal has no role at the scope the ARM deployment targets. | Check the template's target scope, then assign at that scope. See below. |
 
 `azd` templates commonly declare `targetScope = 'subscription'` in
@@ -287,6 +309,45 @@ Resource-group scope is enough only when the template is
 `targetScope = 'resourceGroup'` and the group already exists. This is separate
 from the Foundry roles below, which stay scoped to the Foundry project and the
 AI Services account.
+
+#### `azd` in CI
+
+`azure/login@v3` authenticates the Azure CLI. It does not authenticate `azd`,
+which keeps a separate credential store and never falls back to the `az`
+session. CI jobs that call `azd` need three extra things, all of which the
+generated workflows already do:
+
+1. **Install the `azure.ai.agents` extension explicitly and pin it.** azd
+   refuses to auto-install extensions on CI runners. AgentOps pins
+   `1.0.0-beta.9`, the same version the eval gate uses, and reads an override
+   from `AGENTOPS_AZD_AI_AGENTS_EXTENSION_VERSION`.
+
+   ```bash
+   azd extension install azure.ai.agents --version "1.0.0-beta.9"
+   ```
+
+2. **Log azd in on GitHub Actions**, using the same federated credential as the
+   `az` login:
+
+   ```bash
+   azd auth login \
+     --client-id "$AZURE_CLIENT_ID" \
+     --tenant-id "$AZURE_TENANT_ID" \
+     --federated-credential-provider github
+   ```
+
+3. **On Azure DevOps, reuse the `az` session instead.** The steps run inside an
+   `AzureCLI@2` inline script, so the service connection has already produced an
+   authenticated CLI session that azd can borrow:
+
+   ```bash
+   azd config set auth.useAzCliAuth "true"
+   ```
+
+Skipping step 1 surfaces as `ERROR: no extensions found` or
+`Auto-installation is not supported in CI/CD environments`. Skipping step 2 or 3
+surfaces as an azd authentication failure in a job where `az` commands work
+fine.
 
 For Foundry prompt-agent gates, the same app registration / service principal
 needs **two** Azure RBAC roles before the first workflow run. Both are required
@@ -330,9 +391,6 @@ In Settings → Environments, create three:
 - Override env-specific variables for QA infra.
 
 #### `production`
-- **Required reviewers**: at least one. Deploys to PROD pause until
-  approved.
-- Optional: **Wait timer** for an extra cool-down.
 - Optional: **Deployment branches**: restrict to `main`.
 - Override env-specific variables for production infra.
 
@@ -359,7 +417,7 @@ prompt.
 ### 4. Choose deployment mode
 
 AgentOps is azd-first for deployment: AgentOps runs the evaluation gate,
-while Azure Developer CLI manages infrastructure, packaging, deployment, and
+while Azure Developer CLI owns infrastructure, packaging, deployment, and
 hooks declared in `azure.yaml`.
 
 Before choosing manually, run:
@@ -529,11 +587,11 @@ agentops workflow analyze --format markdown --out agentops-workflow-plan.md
 
 Use the output as the plan for your coding agent:
 
-1. AgentOps handles repo-side eval gates, Doctor readiness checks, artifacts, and
+1. AgentOps owns repo-side eval gates, Doctor readiness checks, artifacts, and
    Cockpit visibility.
-2. `azd` manages `provision`, `deploy`, and hooks for app/infra lifecycle when
+2. `azd` owns `provision`, `deploy`, and hooks for app/infra lifecycle when
    `azure.yaml` is present or can be added.
-3. Foundry manages hosted agents, evaluations, traces, and operations.
+3. Foundry owns hosted agents, evaluations, traces, and operations.
 4. Project-specific steps such as indexing data, seeding search, building
    containers, updating app config, or running private-network post-provision
    work stay in the accelerator's azd hooks or existing deployment tooling.
@@ -583,8 +641,8 @@ contract to gate deploys:
 | `2` | Eval ran, one or more thresholds failed | ❌ fail (deploy never runs) |
 | `1` | Runtime / config error | ❌ fail |
 
-For prompt-agent cloud eval, Foundry runs the managed evaluation and
-AgentOps enforces the CI exit code. A threshold failure exits `2`, so the PR/deploy
+For prompt-agent cloud eval, Foundry owns the managed evaluation run and
+AgentOps owns the CI exit code. A threshold failure exits `2`, so the PR/deploy
 gate fails with the failing threshold rows in `report.md`.
 
 ## Artifacts

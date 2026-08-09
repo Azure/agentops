@@ -1,282 +1,498 @@
 # Evaluation
 
-Use this page when you need to choose how AgentOps should evaluate a RAG or
-agent workflow. The goal is simple: pick the path that matches where your
-evidence comes from, run the evaluation, and keep the result in a format that
-reviewers can trust.
+This is the canonical page for how evaluation works in AgentOps. An evaluation
+runs a dataset against a target agent, scores the responses, and gates the
+result against thresholds. Foundry operates the agent at runtime; AgentOps turns
+that run into repo-side release proof.
 
-AgentOps supports three evaluation paths:
+If you want a hands-on walkthrough instead of a reference, pick a
+[tutorial](tutorials.md) and follow it end to end.
 
-1. **Static dataset**: use a JSONL file that already contains the prompt,
-   expected answer, and optional retrieval context.
-2. **Grey-box HTTP**: call an HTTP endpoint and extract both the answer and
-   retrieval context from the live response.
-3. **Telemetry/trace import**: import production traces into a reviewable
-   dataset so real traffic can become future regression coverage.
+## What an evaluation is
 
-## Choose a path
+An evaluation is defined by one flat file, `agentops.yaml`. It connects three
+things: the **agent** (the target to evaluate), the **dataset** (the rows to
+send), and the **thresholds** (the quality gates that decide pass or fail).
 
-| Path | Use it when | Best first step |
-|---|---|---|
-| Static dataset | You already know the test cases, expected answers, and optionally the target responses. | Create or edit `.agentops/data/*.jsonl`. |
-| Grey-box HTTP | Your endpoint can return the answer plus retrieval details for the same request. | Configure `request_field` and `response_fields`. |
-| Telemetry/trace import | You want to learn from production traffic before adding new regression rows. | Configure `telemetry_imports`, then run `agentops telemetry preview`. |
-
-The paths build on each other. Most teams start with a static dataset, add
-grey-box HTTP when they need retrieval telemetry, then use telemetry import after
-the agent is running in production.
-
-```mermaid
-flowchart LR
-  Static[Static dataset] --> HTTP[Grey-box HTTP]
-  HTTP --> Traces[Telemetry import]
-  Traces --> Static
-```
-
-## Static dataset
-
-Choose this path when the data you need is already in the dataset file. Each row
-is a test case. AgentOps sends `input` to the target, compares the target
-response with `expected`, and uses `context` when present to select RAG
-evaluators.
-
-By default, `response_source: agent` means AgentOps calls the configured target.
-Use `response_source: dataset` only when the dataset already includes the answer
-you want to evaluate in a `response`, `prediction`, `output`, or `answer` field.
-That is useful for offline review or imported trace rows that should not call a
-live endpoint again.
-
-Minimal RAG row:
-
-```json
-{"id":"refund-001","input":"What is the refund window?","expected":"Customers can request a refund within 30 days.","context":"Refunds are available for 30 days after purchase."}
-```
-
-Minimal config:
+The minimum config is three lines:
 
 ```yaml
 version: 1
-agent: "support-agent:3"
-dataset: .agentops/data/rag-smoke.jsonl
-response_source: agent
-
-thresholds:
-  groundedness: ">=3"
-  retrieval: ">=3"
-  response_completeness: ">=3"
+agent: "travel-agent:1"
+dataset: .agentops/data/smoke.jsonl
 ```
 
-Run it:
+The AgentOps runner reads that config, sends each dataset row to the target,
+collects responses, scores them with evaluators, and checks the scores against
+your thresholds. It writes two outputs every run: `results.json` for automation
+and `report.md` for human review.
 
-```powershell
-agentops eval analyze
-agentops eval run
+## Where evaluations run
+
+By default, `agentops eval run` is a local runner. It runs wherever you execute
+the command: your laptop, a dev container, GitHub Actions, or another CI host.
+The output is written to that workspace under `.agentops/results/latest/`.
+
+Foundry visibility is opt-in:
+
+| Config | What happens | Foundry surface |
+|---|---|---|
+| `execution: local` or omitted | AgentOps invokes the target and scores rows locally. | Local `results.json` and `report.md` only. |
+| `execution: local` plus `publish: true` | AgentOps keeps the local run as source of truth, then uploads metrics and row results. | Classic Foundry Evaluations. |
+| `execution: cloud` | Foundry runs the agent and evaluators server-side. | New Foundry Evaluations. |
+
+`execution: cloud` needs a target Foundry can resolve on its own: a prompt agent
+declared as `name:version`, or a hosted agent endpoint whose URL contains
+`/agents/<name>/versions/<version>`. AgentOps parses the name and version out of
+that URL and builds the server-side target from it, so you do not have to
+duplicate the reference. Only the name and version are used. The run is
+submitted against the project in `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`, so that
+endpoint must point at the project that holds the agent version. A hosted
+endpoint without the versioned path is rejected with a message telling you to
+add it or set `agent: <name>:<version>`.
+
+Generic HTTP endpoints and raw model deployments always use the local runner; to
+make those results visible in Foundry, use `publish: true`, which targets the
+Classic Foundry Evaluations upload path.
+
+If you configure Application Insights, AgentOps also emits telemetry spans so
+the run can be inspected through Foundry tracing or Azure Monitor Logs. That is
+separate from the Evaluations page.
+
+!!! info "Exit codes are the CI contract"
+    The runner returns `0` when every threshold passes, `2` when the run
+    succeeded but one or more thresholds failed, and `1` for a runtime or
+    configuration error. These three codes are the public gate contract. CI
+    treats `2` as a hard fail so a deploy never runs on a regression.
+
+```mermaid
+graph TD
+    A[agentops.yaml target dataset thresholds]
+    B[JSONL dataset rows]
+    C[AgentOps runner]
+    D[Foundry target]
+    E[HTTP target]
+    F[Model target]
+    G[Evaluators and thresholds]
+    H[results.json]
+    I[report.md]
+
+    A --> C
+    B --> C
+    C --> D
+    C --> E
+    C --> F
+    D --> G
+    E --> G
+    F --> G
+    G --> H
+    G --> I
 ```
 
-Use this path for:
+## Target kinds
 
-- Fast local checks before opening a PR.
-- CI gates with stable examples.
-- Baseline comparison with `agentops eval run --baseline`.
-- Manual review of newly written or newly labeled examples.
+AgentOps resolves the `agent:` value into one of four target kinds by its shape.
+You do not choose a backend by hand; the shape of `agent:` selects both the kind
+and the fields that make sense for it.
 
-## Grey-box HTTP
+| `agent:` value | Target kind | Use case |
+|---|---|---|
+| `"travel-agent:1"` (`name:version`) | Foundry prompt agent | Foundry Agent Service agents |
+| `"https://...services.ai.azure.com/.../agents/<id>"` | Foundry hosted agent | A deployed agent endpoint on a Foundry domain |
+| `"https://api.example.com/chat"` | HTTP/JSON endpoint | LangGraph, Agent Framework, ACA, AKS, custom REST |
+| `"model:gpt-4o-mini"` | Model-direct | Raw model deployment checks |
 
-Choose this path when the endpoint can return more than final text. This is the
-best path for RAG services because the evaluator can see what the agent actually
-retrieved for the request.
+!!! note "HTTP targets need request and response mapping"
+    A custom HTTP endpoint rarely matches AgentOps defaults exactly, so you map
+    its request and response shape with top-level fields. Use `request_field`
+    and `response_field` (dot-paths) to point at the right JSON keys,
+    `tool_calls_field` for tool output, `auth_header_env` to name an env var
+    holding a Bearer token, and `extra_fields` for any static body fields.
 
-The endpoint response should include:
+```yaml
+version: 1
+agent: https://my-aca-app.eastus2.azurecontainerapps.io/chat
+dataset: .agentops/data/qa.jsonl
+request_field: message            # default is "message"
+response_field: text              # dot-path; default is "text"
+auth_header_env: APP_API_TOKEN    # value is sent as a Bearer token
+```
 
-- the final answer;
-- retrieval context, citations, or document chunks;
-- optional tool calls or workflow metadata.
+## Configure an HTTP target
 
-Example endpoint response:
+For HTTP agents, fill `agentops.yaml` from the shape of the request and response.
+Start with the defaults, then add only the fields your endpoint needs.
+
+```yaml
+version: 1
+agent: https://api.example.com/chat
+dataset: .agentops/data/qa.jsonl
+protocol: http-json
+request_field: message
+response_field: text
+```
+
+| If the endpoint response is... | Use this config |
+|---|---|
+| JSON, for example `{"text": "answer"}` | `response_mode: json` or omit it. Set `response_field: text` if needed. |
+| Plain text, returned all at once | `response_mode: text`. Do not add `stream:`. |
+| Plain text, streamed in chunks | `response_mode: text`. Do not add `stream:` unless the first chunk is not part of the answer. |
+| Plain text stream with a leading id or token | `response_mode: text` plus `stream.strip_leading_token: true`. |
+| Server-Sent Events with `data:` lines | `response_mode: sse`. |
+| Server-Sent Events where each `data:` line is JSON | `response_mode: sse` plus `stream.text_field`, for example `stream.text_field: choices.0.delta.content`. |
+| Server-Sent Events with a final marker | `response_mode: sse` plus `stream.done_marker`, for example `stream.done_marker: "[DONE]"`. |
+
+Examples:
+
+```yaml
+# JSON response: {"answer": "..."}
+response_mode: json
+response_field: answer
+```
+
+```yaml
+# Plain text response, streamed or not.
+response_mode: text
+```
+
+```yaml
+# GPT-RAG orchestrator: text stream where the first token is a conversation id.
+response_mode: text
+stream:
+  strip_leading_token: true
+```
+
+```yaml
+# SSE response with JSON data frames.
+response_mode: sse
+stream:
+  text_field: choices.0.delta.content
+  done_marker: "[DONE]"
+```
+
+### Grey-box: score the live retrieved context
+
+`response_field` extracts the final answer. When the endpoint also returns the
+chunks it retrieved, capture them with `response_fields` (plural) so RAG
+evaluators can score what the agent actually grounded on for that request. Each
+entry maps a name to a dot-path into the JSON body, and the captured value
+becomes available to evaluator `input_mapping` as `$response.<name>`.
+
+Given an endpoint that answers like this:
 
 ```json
 {
   "answer": "Customers can request a refund within 30 days.",
-  "context": [
-    "Refunds are available for 30 days after purchase.",
-    "Refunds require the original order number."
-  ],
+  "context": ["Refunds are available for 30 days after purchase."],
   "citations": ["refund-policy.md"]
 }
 ```
 
-Example config:
+Capture the extra fields and point the evaluators at them:
 
 ```yaml
 version: 1
-agent: "https://support-dev.example.com/chat"
+agent: https://support-dev.example.com/chat
 dataset: .agentops/data/rag-smoke.jsonl
-
 protocol: http-json
 request_field: message
+response_field: answer
+
 response_fields:
-  response: answer
   context: context
   citations: citations
 
-thresholds:
-  groundedness: ">=3"
-  retrieval: ">=3"
-  relevance: ">=3"
+evaluators:
+  - name: GroundednessEvaluator
+    input_mapping:
+      query: $prompt
+      response: $prediction
+      context: $response.context
+  - name: RetrievalEvaluator
+    input_mapping:
+      query: $prompt
+      context: $response.context
 ```
 
-What happens:
+`response_fields` only applies when `response_mode` is `json`. The primary
+answer still comes from `response_field`. `input_mapping` is merged onto the
+preset defaults, so list only the keys you want to change.
 
-1. AgentOps reads each row from the dataset.
-2. It sends `row.input` as the HTTP request field named by `request_field`.
-3. It extracts the final answer from `response_fields.response`.
-4. It extracts retrieval context from `response_fields.context`.
-5. RAG evaluators can use the extracted context through `$response.context`,
-   `$retrieved_context`, or `$retrieved_context_items`.
+This is the path to use when a groundedness or retrieval score moves and you
+need to see whether the agent retrieved the wrong chunks or reasoned badly over
+the right ones.
 
-Use dot paths when fields are nested:
+## Datasets and scenarios
 
-```yaml
-response_fields:
-  response: output.text
-  context: output.retrieval.chunks
+A dataset is a plain JSONL file, one evaluation row per line. Each row has an
+`input` prompt and usually an `expected` reference answer. Optional fields drive
+which evaluators run.
+
+```json
+{"id": "1", "input": "What is the refund policy?", "expected": "Refunds within 30 days.", "context": "Our policy: refunds are available within 30 days."}
 ```
 
-Use this path for:
+The presence of optional fields tells AgentOps which evaluation scenario you are
+running. You do not declare the scenario; the row shape implies it.
 
-- RAG services where the retrieved chunks matter.
-- Debugging why a groundedness or retrieval score changed.
-- Endpoint-based agents hosted in Azure Container Apps, AKS, Foundry Hosted
-  Agents, or another HTTP host.
-
-## Telemetry import
-
-Choose this path when production traffic has useful examples that are not yet in
-your test set. Telemetry import does not make production responses automatically
-correct. It creates reviewable dataset candidates.
-
-Configure a named telemetry import in `agentops.yaml`:
-
-```yaml
-telemetry_imports:
-  - name: prod-rag
-    target: application-insights
-    resource_id: $APPINSIGHTS_RESOURCE_ID
-    time_range:
-      lookback_days: 7
-    filters:
-      customDimensions.agent: support-agent
-    fields:
-      input: customDimensions.question
-      response: customDimensions.answer
-      context: customDimensions.retrieved_context
-      trace_id: operation_Id
-    output:
-      path: .agentops/data/prod-rag-candidates.jsonl
-      label_mode: pending
-```
-
-Validate the import without querying Azure:
-
-```powershell
-agentops telemetry validate prod-rag
-```
-
-Preview rows from Azure Monitor:
-
-```powershell
-agentops telemetry preview prod-rag --rows 10
-```
-
-Write the candidate dataset and manifest:
-
-```powershell
-agentops telemetry import prod-rag --apply
-```
-
-Label modes:
-
-| Mode | What it writes | Use it when |
+| Scenario | Signal in the row | Purpose |
 |---|---|---|
-| `pending` | Empty `expected` values with review metadata. | A human must write the correct answer before the row can gate a release. |
-| `self-similarity` | The production response becomes `expected`. | You want drift detection against known production behavior. |
+| Model quality | `model:<deployment>` target plus `expected` | Direct model checks |
+| RAG | `context` | Grounding and retrieval checks |
+| Conversational | `input` plus `expected` | Chatbot and Q&A quality |
+| Agent workflow | `tool_calls` plus `tool_definitions` | Tool-use quality |
+| Content safety | Safety evaluators | Responsible AI checks |
 
-Telemetry import keeps lineage metadata such as trace ID, timestamp, replay URL,
-and source system when those values exist in the export. If the trace includes
-retrieval context, AgentOps writes it as `context` so RAG evaluators can use it
-later. Evaluator mappings can also use `$telemetry.trace_id` when a trace ID is
-needed for reporting or troubleshooting.
+## Evaluators
 
-If you already have a local trace export file, `agentops eval promote-traces`
-still works. Use `agentops telemetry` when the source is Azure Monitor or
-Application Insights.
+An evaluator is a scoring function that measures one aspect of a response. They
+come in two flavors. **AI-assisted** evaluators use a judge model to score
+qualities like coherence, similarity, or groundedness. **Local metrics** are
+computed without a judge, such as `avg_latency_seconds` or `F1ScoreEvaluator`
+for exact-reference checks.
 
-Use this path for:
+AgentOps auto-selects evaluators from the target kind and the dataset shape, so a
+three-line config still scores the right things. Prompt and hosted agents get
+answer-quality judges, `context` rows add the RAG set, and tool rows add the
+tool-use set.
 
-- Turning incidents or surprising production answers into regression tests.
-- Sampling real traffic for future review.
-- Building a trace-to-dataset flywheel without skipping human judgment.
+Run `agentops eval init` after you create the dataset to see the recommendation.
+For HTTP, model, and other local targets, this is recommendation-only: AgentOps
+does not call `azd` or create `eval.yaml`. For Foundry prompt agents, the same
+command can also delegate to `azd ai agent eval init` to create Foundry-native
+eval assets.
+
+!!! note "Override only when you must"
+    Set the `evaluators:` list in `agentops.yaml` only when you need to replace
+    the auto-selection. It is an escape hatch, not the normal path. For the full
+    catalog of evaluator names and their required inputs, see
+    [Built-in Evaluators](foundry-evaluation-sdk-built-in-evaluators.md).
+
+## Where the run executes
+
+The `execution:` field decides where the evaluation actually runs. Local is the
+default and works for every target. Cloud runs a Foundry agent server-side. The
+azd recipe path delegates to an existing `azd ai agent eval` flow.
+
+| Target | Cloud (`execution: cloud`) | Local runner | Recommended default |
+|---|---|---|---|
+| Foundry prompt agent (`name:version`) | Yes | Yes | Cloud for official Foundry runs; local for fast feedback |
+| Foundry hosted agent URL | Yes, when the URL contains `/agents/<name>/versions/<version>` | Yes | Cloud when the endpoint carries the versioned path; otherwise local, optionally `publish: true` |
+| Generic HTTP/JSON endpoint | No | Yes | Local runner; optionally `publish: true` |
+| Raw model deployment (`model:<name>`) | No | Yes | Local runner |
+
+For prompt-agent CI pipelines that need a merge or deploy gate, prefer cloud
+eval. Foundry executes the managed evaluation and AgentOps enforces thresholds,
+baselines, Doctor readiness, and release evidence.
+
+!!! info "Reusing an azd eval recipe"
+    If a Foundry project already uses the public-preview `azd ai agent eval`
+    recipe, set `execution: azd` and `eval_recipe: eval.yaml`. AgentOps
+    delegates execution to azd, normalizes the metrics, binds thresholds, writes
+    `results.json`, and fails closed for any threshold that has no emitted
+    metric. Rubric evaluator dimensions are treated as first-class metric names.
 
 ## Input mapping
 
-Evaluator inputs come from three places:
+Every evaluator receives a fixed set of named inputs. `input_mapping` decides
+which part of the dataset row or the target response feeds each input. AgentOps
+provides a preset per evaluator, so you only list the keys you want to override.
 
-| Source | Placeholder | Example |
-|---|---|---|
-| Dataset prompt | `$row.input` or `$prompt` | User question sent to the agent. |
-| Dataset expected answer | `$row.expected` or `$expected` | Ground truth or acceptance criteria. |
-| Agent response | `$response.response` or `$prediction` | Final answer returned by the target. |
-| Any response field | `$response.<field>` | Any field extracted through `response_fields`. |
-| Extracted retrieval context | `$response.context`, `$retrieved_context`, or `$retrieved_context_items` | Chunks, citations, or grounding text from the live response. |
-| Dataset retrieval context | `$row.context` | Static context stored in JSONL. |
-| Trace ID | `$telemetry.trace_id` | Azure Monitor or Application Insights operation ID. |
+| Token | Resolves to |
+|---|---|
+| `$prompt` or `$row.input` | The `input` column of the dataset row |
+| `$expected` or `$row.expected` | The `expected` column of the dataset row |
+| `$prediction` or `$response.response` | The primary answer, read via `response_field` |
+| `$response.<name>` | An extra field captured by the target's `response_fields` |
+| `$retrieved_context` or `$response.context` | Live retrieved chunks returned by the same call |
+| `$retrieved_context_items` | The same chunks as a list, for evaluators that expect items |
+| `$context` or `$row.context` | Static context stored in the dataset row |
+| `$telemetry.trace_id` | The trace ID of the invocation, when telemetry is available |
 
-For beginners, the easiest rule is:
+Use `$row.context` when the ground truth is fixed and lives in the dataset. Use
+`$response.context` when you want to score what the agent retrieved at request
+time. Mixing them silently is the most common reason a groundedness score looks
+fine while retrieval is broken.
 
-- Put known test data in the dataset.
-- Put live endpoint outputs under `response_fields`.
-- Let AgentOps map the common fields to evaluators.
+## Import production traces into a dataset
 
-Only customize evaluator selection when the automatic choice is not enough:
+Real traffic is the best source of eval cases, because it contains the questions
+users actually ask. `telemetry_imports` declares a named import that reads
+Azure Monitor telemetry and writes an AgentOps JSONL dataset. AgentOps generates
+the KQL, so you never pass raw query text.
 
 ```yaml
-evaluators:
-  - GroundednessEvaluator
-  - RetrievalEvaluator
-  - RelevanceEvaluator
+version: 1
+agent: support-agent:3
+dataset: .agentops/data/prod-candidates.jsonl
+
+telemetry_imports:
+  - name: prod-candidates
+    source: azure-monitor
+    target: application-insights
+    resource_id: /subscriptions/<sub>/resourceGroups/<rg>/providers/microsoft.insights/components/<ai>
+    time_range:
+      lookback_days: 7
+    filters:
+      agent: support-agent
+    fields:
+      input: customDimensions.prompt
+      response: customDimensions.completion
+    privacy:
+      redact_fields: [authorization, api_key, token, password, secret]
+      max_field_length: 4000
+    output:
+      path: .agentops/data/prod-candidates.jsonl
+      label_mode: pending
+    max_rows: 200
 ```
 
-## Safety notes
+Point `target` at `application-insights` (needs `resource_id`,
+`application_id`, or `connection_string`) or `log-analytics` (needs
+`workspace_id`). Use either `lookback_days` (1 to 90) or an explicit
+`from`/`to` pair, never both.
 
-- Do not treat production responses as ground truth without review.
-- Do not import sensitive trace payloads into a repository dataset.
-- Keep secrets in environment variables or `.agentops/.env`, not in JSONL files.
-- Prefer `--label-mode pending` when correctness matters.
-- Use `self-similarity` only for drift detection.
-- Keep trace replay links in metadata so reviewers can investigate the original
-  runtime behavior.
+`fields` overrides the auto-detection for a column. AgentOps already probes the
+common shapes (`input`, `prompt`, `customDimensions.prompt`, and so on), so set
+it only when your telemetry uses a name AgentOps cannot infer.
 
-## View Foundry trace-evaluation results in the workbook
+Then work the import in three steps, so nothing lands in your dataset unseen:
 
-Deploy or open the Azure Monitor workbook with
-`agentops telemetry dashboard deploy` and `agentops telemetry dashboard open`,
-then select **Agent behavior**. The tab reads Microsoft Foundry-owned
-compatible `gen_ai.evaluation.result` events and observed `invoke_agent` spans
-from the selected Log Analytics workspace. Official Foundry documentation
-verifies this event for
-[human trace annotations](https://learn.microsoft.com/azure/foundry/observability/how-to/trace-annotations#log-end-user-feedback-as-trace-annotations);
-automated trace-evaluation export through the same schema is
-validation-dependent and must be proven in the target workspace. The tab shows
-data status and freshness first,
-then separate invocation, evaluated-trace, and evaluation-event counts,
-per-evaluator pass-rate / volume trends, raw scores grouped by evaluator, and
-recent trace IDs for investigation in Foundry Tracing.
+```bash
+agentops telemetry validate prod-candidates        # check config and connectivity
+agentops telemetry preview prod-candidates         # show the generated KQL and sample rows
+agentops telemetry import prod-candidates --apply  # write the JSONL dataset and manifest
+```
 
-Foundry trace evaluation is a preview, platform-owned feature. The workbook is
-read-only: it does not schedule evaluations, change rules, add release gates, or
-replace the Foundry trace view. Filters work when environment, agent, version,
-and evaluator properties are present; missing versions are shown as **Version
-not reported**. Trace-ID evaluation and correlation do not require an emitted
-`gen_ai.agent.id`. For supported table shapes, verified producers, state
-meanings, schema assumptions, and trace-correlation instructions, see the packaged
-[workbook authoring guide](../src/agentops/templates/workbooks/README.md#agent-behavior-tab).
+`agentops telemetry import` is a dry run without `--apply`. It prints what it
+would write and touches nothing, which makes it safe to run on a shared machine.
+
+### Choose a label mode
+
+`output.label_mode` decides what goes into the `expected` column, and it changes
+what the resulting dataset can be used for.
+
+| Mode | `expected` is set to | Use it for |
+|---|---|---|
+| `self-similarity` (default) | The production response | Drift detection: catch when new behavior diverges from known production behavior |
+| `pending` | Empty, every row flagged for review | Building human-verified ground truth before gating a release |
+
+`self-similarity` is not human-verified ground truth. It answers "did the answer
+change?", not "was the answer correct?". If production was already wrong, the
+eval will happily certify the wrong answer. Use `pending` and fill the rows in
+before you make the dataset a blocking gate.
+
+Every imported row carries a `telemetry` block (trace ID, turn ID, timestamp,
+source, target, and the import name) so you can jump from a failing eval row
+back to the original production trace in Foundry or App Insights.
+
+### Safety notes
+
+- Do not treat production output as ground truth without review.
+- Do not import payloads that contain personal or regulated data. `privacy.redact_fields`
+  redacts on field-name fragments only, so it will not catch secrets embedded in
+  free text. Read the `preview` output before you run with `--apply`.
+- `privacy.include_raw` is `false` by default. Leave it off unless you have a
+  specific reason, because it writes the untouched telemetry record.
+- Keep credentials in environment variables. `agentops.yaml` is committed.
+- `max_rows` caps the import (1 to 5000). Start small and inspect the result.
+- Imported rows carry `metadata.needs_review: true`. Clear that flag deliberately, not in bulk.
+
+## Mini-glossary
+The tutorials defer to these definitions, so they live here once.
+
+!!! note "Dimension"
+    A dimension is a single named axis a rubric or evaluator scores. A Travel
+    Agent rubric might score the dimensions `helpfulness`, `safety`, and
+    `format_adherence` separately, so one response produces one score per
+    dimension rather than a single blended number.
+
+!!! note "Rubric"
+    A rubric is an evaluator that scores responses against a written scoring
+    guide, usually one score per dimension. For example, a rubric can define
+    `helpfulness: 1 to 5` with a short description of what a 1 and a 5 look like,
+    and the judge model applies that guide to each row. Rubric dimensions become
+    metric names you can put thresholds on.
+
+!!! note "smoke-core"
+    A smoke-core is a small, fast smoke dataset plus the minimal evaluator set
+    that gates it. It is the quick check you run on every change to catch obvious
+    breakage in seconds, before the larger scenario datasets run. Think of it as
+    the few rows and one or two evaluators that must always pass.
+
+## Configuration model
+
+`agentops.yaml` is the single source of truth. Keep it small and add only the
+fields your target needs. For the complete schema, every top-level field, and
+more examples, see [Built-in Evaluators](foundry-evaluation-sdk-built-in-evaluators.md)
+for evaluator config and the tutorials for end-to-end setups.
+
+```yaml
+version: 1
+agent: "https://api.example.com/chat"
+dataset: .agentops/data/support.jsonl
+
+request_field: message
+response_field: text
+
+thresholds:
+  coherence: ">=3"
+  avg_latency_seconds: "<=2"
+```
+
+## Try it
+
+Run these five commands in order to go from an empty repo to a gated result.
+
+1. Bootstrap the workspace and a starter `agentops.yaml` with the init wizard.
+
+    ```bash
+    agentops init
+    ```
+
+2. Inspect the repo and get an evaluator recommendation for your target and dataset.
+
+    ```bash
+    agentops eval analyze
+    ```
+
+3. Write the recommended eval assets once the plan looks right.
+
+    ```bash
+    agentops eval init
+    ```
+
+4. Send the dataset to the target, score the responses, and gate them against thresholds.
+
+    ```bash
+    agentops eval run
+    ```
+
+5. Regenerate the human-readable report from the latest results.
+
+    ```bash
+    agentops report generate
+    ```
+
+## Run from your coding agent
+
+Install the AgentOps skills so your coding agent can run these steps for you.
+
+```bash
+agentops skills install --platform copilot
+```
+
+The skills that map to evaluation are:
+
+| Skill | What it helps with |
+|---|---|
+| `agentops-config` | Generate and edit `agentops.yaml`. |
+| `agentops-dataset` | Create JSONL datasets and pick the right scenario. |
+| `agentops-eval` | Run evaluations, benchmark, and compare runs. |
+| `agentops-report` | Interpret results and regenerate the report. |
+
+## Next
+
+Continue with the [Built-in Evaluators](foundry-evaluation-sdk-built-in-evaluators.md)
+catalog, wire the gate into CI on the [Ship](ship.md) page, or pick a
+[tutorial](tutorials.md) and follow it end to end.

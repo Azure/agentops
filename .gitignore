@@ -464,3 +464,6 @@ e2e-runs/
 tmp-artifacts/
 
 tmp/
+
+# MkDocs local build output
+site/
