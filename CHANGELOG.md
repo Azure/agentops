@@ -5,6 +5,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Agents can now carry a first-class Microsoft Entra identity that travels
+  from registration through traces into release evidence.** Before this, a
+  trace could tell you what an agent did but not which registered agent did it,
+  so nothing in the evidence pack tied runtime behaviour back to an accountable
+  owner in the tenant. Three pieces close that loop. `agentops agent register`
+  creates or adopts an agent identity blueprint in Microsoft Entra (idempotent,
+  sponsor required, `--dry-run` supported) and records the resolved id under
+  `.agentops/identity/agent-identity.json`. AgentOps then stamps that id on
+  every span it emits as the OpenTelemetry resource attribute
+  `gen_ai.agent.id`, omitting the attribute entirely when no identity is
+  registered so presence is a meaningful filter. Finally, the release evidence
+  pack publishes an `agent_identity` section reporting the id and its source.
+  A read-only Doctor check reports registration posture, contacting Microsoft
+  Graph only when `identity.verify` is enabled in `agentops.yaml`. `agentops.yaml`
+  accepts a new optional `identity` block (`display_name`, `sponsor`, `verify`).
+
 ### Fixed
 - **The official evaluation runner now honours the agent version override.**
   `prepare_official_eval` read the agent name and version straight from

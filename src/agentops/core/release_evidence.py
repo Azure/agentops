@@ -54,5 +54,6 @@ class ReleaseEvidence(BaseModel):
     observability: Dict[str, Any] = Field(default_factory=dict)
     ailz: Dict[str, Any] = Field(default_factory=dict)
     governance: Dict[str, Any] = Field(default_factory=dict)
+    agent_identity: Dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
