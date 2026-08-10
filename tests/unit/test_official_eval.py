@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agentops.core.agentops_config import AGENT_OVERRIDE_ENV
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
@@ -158,3 +159,117 @@ def test_prepare_cli_writes_github_outputs(tmp_path: Path) -> None:
     output = github_output.read_text(encoding="utf-8")
     assert "agent_ids=support-agent:4" in output
     assert "deployment_name=gpt-4o-mini" in output
+
+
+# ---------------------------------------------------------------------------
+# Agent override (#398)
+# ---------------------------------------------------------------------------
+
+
+def test_prepare_honors_explicit_agent_override(tmp_path: Path) -> None:
+    """`--agent 5` must retarget the version without touching agentops.yaml."""
+
+    _write_prompt_config(tmp_path)
+    _write_dataset(tmp_path)
+
+    prepared = prepare_official_eval(
+        tmp_path / "agentops.yaml",
+        tmp_path / "input.json",
+        deployment_name="gpt-4o-mini",
+        agent="5",
+    )
+
+    metadata = json.loads(prepared.metadata_path.read_text(encoding="utf-8"))
+    assert metadata["agent_ids"] == "support-agent:5"
+
+
+def test_prepare_honors_agent_override_from_the_environment(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """CI exports the version it just published instead of passing a flag."""
+
+    _write_prompt_config(tmp_path)
+    _write_dataset(tmp_path)
+    monkeypatch.setenv(AGENT_OVERRIDE_ENV, "7")
+
+    prepared = prepare_official_eval(
+        tmp_path / "agentops.yaml",
+        tmp_path / "input.json",
+        deployment_name="gpt-4o-mini",
+    )
+
+    metadata = json.loads(prepared.metadata_path.read_text(encoding="utf-8"))
+    assert metadata["agent_ids"] == "support-agent:7"
+
+
+def test_prepare_ignores_an_unexpanded_ci_token(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """The generated step stays valid when the CI variable is never defined."""
+
+    _write_prompt_config(tmp_path)
+    _write_dataset(tmp_path)
+    monkeypatch.setenv(AGENT_OVERRIDE_ENV, "$(AGENTOPS_AGENT)")
+
+    prepared = prepare_official_eval(
+        tmp_path / "agentops.yaml",
+        tmp_path / "input.json",
+        deployment_name="gpt-4o-mini",
+    )
+
+    metadata = json.loads(prepared.metadata_path.read_text(encoding="utf-8"))
+    assert metadata["agent_ids"] == "support-agent:4"
+
+
+def test_support_analysis_applies_the_override(tmp_path: Path) -> None:
+    _write_prompt_config(tmp_path)
+    _write_dataset(tmp_path)
+
+    support = analyze_official_eval_support(tmp_path / "agentops.yaml", agent="9")
+
+    assert support.eligible is True
+    assert support.agent_ids == "support-agent:9"
+
+
+def test_override_without_a_version_slot_is_reported_as_unsupported(
+    tmp_path: Path,
+) -> None:
+    """A bare version against a model target must not crash the eval gate."""
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: model:gpt-4o-mini\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+    _write_dataset(tmp_path)
+
+    support = analyze_official_eval_support(tmp_path / "agentops.yaml", agent="9")
+
+    assert support.eligible is False
+    assert "no version segment" in support.reasons[0]
+
+
+def test_prepare_cli_accepts_the_agent_flag(tmp_path: Path) -> None:
+    _write_prompt_config(tmp_path)
+    _write_dataset(tmp_path)
+    github_output = tmp_path / "github-output.txt"
+
+    code = main(
+        [
+            "prepare",
+            "--config",
+            str(tmp_path / "agentops.yaml"),
+            "--out",
+            str(tmp_path / "input.json"),
+            "--deployment-name",
+            "gpt-4o-mini",
+            "--agent",
+            "5",
+            "--github-output",
+            str(github_output),
+        ]
+    )
+
+    assert code == 0
+    assert "agent_ids=support-agent:5" in github_output.read_text(encoding="utf-8")

@@ -81,7 +81,8 @@ Run the AgentOps watchdog and summarize production latency findings.
 ## Links
 
 - [AgentOps Accelerator](https://github.com/Azure/agentops)
-- [Foundry Prompt Agent tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-prompt-agent-quickstart.md)
-- [Hosted or HTTP Agent tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-hosted-agent-quickstart.md)
+- [Foundry Prompt Agent tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-prompt-agent.md)
+- [Hosted Agent tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-hosted-agent.md)
+- [HTTP Agent tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-http-agent.md)
 - [End-to-end tutorial](https://github.com/Azure/agentops/blob/main/docs/tutorial-end-to-end.md)
 - [How it works](https://github.com/Azure/agentops/blob/main/docs/how-it-works.md)

@@ -43,6 +43,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # No `environment:` here on purpose. This job is the gate that must run
+  # *before* the protected environment approval, so the reviewer sees the
+  # safety result when they approve. Adding an `environment:` would make the
+  # gate itself wait for the approval it is supposed to inform.
   safety-eval:
     name: Safety eval (gate)
     runs-on: ubuntu-latest
@@ -157,6 +161,27 @@ __EVAL_STEPS__
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Opt-in: register the agent's Microsoft Entra identity blueprint so
+      # traces and release evidence can be attributed to a governed agent.
+      # Off unless you set the `AGENTOPS_IDENTITY_SPONSOR` repository variable
+      # to the accountable owner's UPN. The command is idempotent: an existing
+      # blueprint with the same display name is adopted, not duplicated.
+      # Requires the workload identity to hold `AgentIdentityBlueprint.Create`.
+      - name: Set up Python (agent identity)
+        if: vars.AGENTOPS_IDENTITY_SPONSOR != ''
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Register agent identity (optional)
+        if: vars.AGENTOPS_IDENTITY_SPONSOR != ''
+        env:
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          pip install "agentops-accelerator[agent]__AGENTOPS_INSTALL_SPEC__"
+          agentops agent register --workspace . \
+            --sponsor "${{ vars.AGENTOPS_IDENTITY_SPONSOR }}"
 
       # ---------------------------------------------------------------
       # TODO: replace this placeholder with your deploy step.

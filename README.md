@@ -26,9 +26,15 @@ AgentOps Accelerator helps Microsoft Foundry agent teams evaluate quality, prepa
 ## Get started
 
 ```powershell
-python -m pip install agentops-accelerator
+python -m pip install "agentops-accelerator[agent]"
 agentops init
 ```
+
+The `[agent]` extra pulls in the FastAPI stack and the Azure Monitor and
+management SDKs. Without it `agentops init`, `agentops eval`, and `agentops
+doctor` still work, but `agentops cockpit`, `agentops agent serve`, and the
+observability commands raise an `ImportError`. Both tutorials below use those
+commands, so install the extra unless you only need evaluation.
 
 `agentops init` starts a guided setup that creates your `agentops.yaml` and
 `.agentops/` workspace.
@@ -149,7 +155,8 @@ Cockpit sections, in display order:
 ## Documentation
 
 - [Foundry Prompt Agent tutorial](docs/tutorial-prompt-agent.md) - use this when the Foundry target is `agent: name:version`. Walks the sandbox to dev journey with a PR gate.
-- [Hosted or HTTP Agent tutorial](docs/tutorial-hosted-agent-quickstart.md) - use this when the target is a Foundry hosted or HTTP endpoint URL. Same sandbox to dev journey for endpoint-based agents.
+- [Hosted Agent tutorial](docs/tutorial-hosted-agent.md) - use this when Foundry runs your agent code as a managed hosted runtime behind a stable endpoint.
+- [HTTP Agent tutorial](docs/tutorial-http-agent.md) - use this when the target is an HTTP service you operate behind your own URL.
 - [End-to-end tutorial](docs/tutorial-end-to-end.md) - extends either of the above with the full sandbox to dev to qa to prod promotion, Foundry red-team scans, and trace-to-regression promotion.
 - [Evaluation paths](docs/evaluation.md) - choose static dataset, grey-box HTTP, or telemetry/trace import.
 - [Core concepts](docs/concepts.md)

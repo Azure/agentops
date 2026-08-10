@@ -26,10 +26,11 @@ kinds - ``foundry_prompt``, ``foundry_hosted``, ``http_json``, or
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -732,6 +733,50 @@ class RedTeamRunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class AgentIdentityConfig(BaseModel):
+    """Optional Microsoft Agent 365 identity settings.
+
+    Declares the agent's first-class identity in Microsoft Entra so Doctor,
+    tracing, and the release evidence pack all reference the same Entra Agent
+    ID. AgentOps never invents these values: ``agentops agent register``
+    creates or adopts the blueprint and records the resolved id under
+    ``.agentops/identity/agent-identity.json``.
+
+    Example::
+
+        identity:
+          display_name: support-agent
+          sponsor: owner@contoso.com
+          verify: true
+    """
+
+    display_name: Optional[str] = Field(
+        None,
+        description=(
+            "Blueprint display name in Microsoft Entra. When omitted, "
+            "AgentOps derives one from the 'agent' target."
+        ),
+    )
+    sponsor: Optional[str] = Field(
+        None,
+        description=(
+            "Accountable owner (UPN or object id). Required to register a "
+            "blueprint; there is no silent fallback because an unowned agent "
+            "identity cannot be governed."
+        ),
+    )
+    verify: bool = Field(
+        False,
+        description=(
+            "When true, Doctor calls Microsoft Graph to confirm the blueprint "
+            "exists. Off by default because the lookup needs tenant admin "
+            "consent that most workspaces will not have on day one."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class StreamConfig(BaseModel):
     """Streaming aggregation options for ``http-json`` targets.
 
@@ -866,6 +911,13 @@ class AgentOpsConfig(BaseModel):
         single-turn evals working while letting Doctor, Cockpit, CI evidence, and
         azd/Foundry recipes reason about multi-turn coverage, rubric gates, trace
         sampling, and trace replay links.
+
+    ``identity``
+        Optional Microsoft Agent 365 identity settings (display name, sponsor,
+        and whether Doctor verifies the blueprint against Microsoft Graph). The
+        resolved Entra Agent ID itself is not stored here; it lives in
+        ``.agentops/identity/agent-identity.json`` after
+        ``agentops agent register``.
     """
 
     version: int = Field(..., description="Schema version. Must be 1.")
@@ -929,6 +981,14 @@ class AgentOpsConfig(BaseModel):
             "redteam run' invokes the Foundry/PyRIT AI Red Teaming agent and "
             "writes normalized results that the evidence pack ingests via "
             "redteam_path automatically."
+        ),
+    )
+    identity: Optional[AgentIdentityConfig] = Field(
+        None,
+        description=(
+            "Optional Microsoft Agent 365 identity settings used by 'agentops "
+            "agent register', the Doctor registration posture check, trace "
+            "stamping, and the release evidence pack."
         ),
     )
 
@@ -1325,6 +1385,47 @@ def apply_agent_version_override(agent: str, override: str) -> str:
         "hosted endpoint URL ending in '/agents/<name>/versions/<version>' or "
         "'<name>:<version>'."
     )
+
+
+def is_unexpanded_ci_token(value: str) -> bool:
+    """Return True when *value* is an unexpanded CI variable reference.
+
+    Azure DevOps leaves ``$(NAME)`` verbatim when a variable is undefined, and
+    GitHub expressions can leak through as ``${{ ... }}`` the same way. Callers
+    treat that as "no override" instead of trying to evaluate it as an agent
+    target.
+    """
+
+    candidate = value.strip()
+    return candidate.startswith("$(") or candidate.startswith("${{")
+
+
+def resolve_agent_override(
+    agent: str,
+    *,
+    explicit: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str | None:
+    """Return the effective ``agent`` expression when an override applies.
+
+    *explicit* is a command-line value such as ``--agent``. When it is ``None``
+    the value of :data:`AGENT_OVERRIDE_ENV` in *env* (defaulting to the process
+    environment) is used instead. Unexpanded CI tokens and blank values are
+    ignored.
+
+    Returns ``None`` when no override applies, so callers can distinguish "keep
+    the configured agent" from "the override happened to match the config".
+    """
+
+    source = os.environ if env is None else env
+    requested = explicit if explicit is not None else source.get(AGENT_OVERRIDE_ENV)
+    if requested is None:
+        return None
+    if is_unexpanded_ci_token(requested):
+        return None
+    if not requested.strip():
+        return None
+    return apply_agent_version_override(agent, requested)
 
 
 def classify_agent(

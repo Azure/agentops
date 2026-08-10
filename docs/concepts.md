@@ -27,6 +27,35 @@ regression data.
 The short version is: **Foundry operates the agent; AgentOps turns that operating
 signal into repo-side release proof.**
 
+## What AgentOps produces
+
+AgentOps Accelerator turns every readiness run into outputs that people and CI
+can both use.
+
+| Output | Use it for |
+|---|---|
+| `report.md` | PR review: what passed, what failed, and what changed from the baseline. |
+| `results.json` | CI automation: stable metrics, thresholds, exit status, and target details. |
+| `evidence.md` / `evidence.json` | Release approval: the proof package for the ship/no-ship decision. |
+| Cockpit | Local review: latest evals, Doctor findings, evidence, and next actions in one view. |
+
+## Reference architecture
+
+Use this as the mental model for the AgentOps loop: build and learn in a
+sandbox, commit the release contract to source control, promote through
+environments with evidence, then feed production learning back into the next
+evaluation set.
+
+![AgentOps Accelerator reference architecture](media/agentops-architecture.png){ .agentops-reference-architecture }
+
+| Area | What it owns |
+|---|---|
+| **Sandbox inner loop** | Create, evaluate, and improve the candidate agent in a safe Foundry project before it is promoted. |
+| **AgentOps Accelerator** | Keep release readiness close to the repo: config, datasets, evaluation gates, Doctor diagnostics, Cockpit views, CI workflows, thresholds, and release evidence. |
+| **Foundry** | Hosts managed agent projects, Prompt Agent and Hosted Agent runtime options, traces, operate views, guardrails, and evaluations where applicable. |
+| **Outer loop delivery** | Move the same reviewed candidate through dev, QA or staging, and production. Production release should be gated by reviewable evidence, not memory or a manual spot check. |
+| **Operate and improve** | Watch telemetry, dashboards, alerts, cost, success rate, compliance, quota, security posture, and data governance. Turn production traces into the next regression cases. |
+
 ## How an Evaluation Works
 
 ```mermaid
@@ -96,10 +125,8 @@ Common `agent:` values:
 | `"model:gpt-4o-mini"` | Direct model deployment |
 
 HTTP targets can add top-level mapping fields such as `request_field`,
-`response_fields`, `tool_calls_field`, `auth_header_env`, and `extra_fields`.
-Use `response_fields.response` for the final answer and
-`response_fields.context` for retrieved context. Use `response_source: dataset`
-when each dataset row already contains the response to evaluate.
+`response_field`, `tool_calls_field`, `auth_header_env`, and
+`extra_fields`.
 
 ### Dataset
 
@@ -157,7 +184,7 @@ evidence outputs into a release gate.
 | Target | Foundry server-side eval through AgentOps | AgentOps local runner | Recommended default |
 |---|---|---|---|
 | Foundry Prompt Agent (`name:version`) | Yes, with `execution: cloud` | Yes | Use cloud for official Foundry-hosted runs; use local for fast feedback or fallback. |
-| Foundry Hosted Agent URL | No | Yes | Use local runner; optionally publish local metrics to Foundry with `publish: true`. |
+| Foundry Hosted Agent URL | Yes, with `execution: cloud`, when the URL contains `/agents/<name>/versions/<version>` | Yes | Use cloud when the endpoint carries the versioned agent path; otherwise use the local runner and optionally `publish: true`. |
 | Generic HTTP/JSON endpoint | No | Yes | Use local runner. |
 | Raw model deployment (`model:<name>`) | No | Yes | Use local runner. |
 
@@ -198,17 +225,12 @@ AgentOps auto-selects common evaluation patterns from the dataset:
 | **Agent workflow** | `tool_calls` + `tool_definitions` | Tool-use quality |
 | **Content safety** | Safety evaluators | Responsible AI checks |
 
-Use one of the three hands-on tutorials for scenario coverage:
+Use the hands-on tutorials for scenario coverage:
 
-- [Evaluation paths](evaluation.md) explains when to use a static dataset,
-  grey-box HTTP response mapping, or telemetry/trace import.
-- [Foundry Prompt Agent tutorial](tutorial-prompt-agent-quickstart.md) for Foundry
+- [Prompt agent tutorial](tutorial-prompt-agent.md) for Foundry
   prompt agents referenced as `name:version`.
-- [Hosted or HTTP Agent tutorial](tutorial-hosted-agent-quickstart.md) for Foundry
-  hosted endpoints, generic HTTP agents, RAG services, and code-based workflows.
-- [End-to-end tutorial](tutorial-end-to-end.md) for the complete Foundry +
-  AgentOps loop, including CI/CD, observability, red-team follow-through,
-  Doctor, release evidence, and trace regression.
+- [HTTP agent tutorial](tutorial-http-agent.md) for HTTP agents,
+  RAG services, and code-based workflows behind a JSON endpoint.
 
 ## Configuration Model
 
@@ -219,13 +241,9 @@ the fields your target needs:
 version: 1
 agent: "https://api.example.com/chat"
 dataset: .agentops/data/support.jsonl
-response_source: agent
 
-protocol: http-json
 request_field: message
-response_fields:
-  response: text
-  context: retrieved_context
+response_field: text
 
 thresholds:
   coherence: ">=3"

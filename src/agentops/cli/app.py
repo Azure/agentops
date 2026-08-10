@@ -935,8 +935,42 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         title="Agent server commands",
         command="agentops agent",
         synopsis=("agentops agent COMMAND [ARGS]...", "agentops agent explain"),
-        summary=("Contains commands that host AgentOps Doctor as an HTTP agent/Copilot Extension surface.",),
-        children=("serve",),
+        summary=("Contains commands that host AgentOps Doctor as an HTTP agent/Copilot Extension surface, and that manage the agent's Microsoft Entra identity.",),
+        children=("serve", "register"),
+    ),
+    ("agent", "register"): ExplainPage(
+        title="Register the agent identity blueprint",
+        command="agentops agent register",
+        synopsis=(
+            "agentops agent register [--sponsor UPN_OR_ID] [--display-name NAME] [--workspace PATH] [--dry-run]",
+            "agentops agent register explain",
+        ),
+        summary=(
+            "Creates the agent's identity blueprint in Microsoft Entra so the agent becomes a governed principal in Microsoft Agent 365.",
+            "Registration is what makes an agent visible in the tenant agent inventory, targetable by Conditional Access, and attributable to an accountable sponsor. Until it exists, the agent is just a workload with no identity of its own.",
+            "The command is idempotent: it looks the blueprint up by display name first and adopts the existing one instead of creating a duplicate.",
+        ),
+        how_it_works=(
+            "Resolves the display name from `--display-name`, then `identity.display_name` in `agentops.yaml`, then the agent target name.",
+            "Resolves the sponsor from `--sponsor` or `identity.sponsor` in `agentops.yaml`. A sponsor is mandatory: Agent 365 requires an accountable human owner.",
+            "Acquires an app-only Microsoft Graph token through the shared Azure credential chain.",
+            "Queries `GET /applications` filtered by display name. If a blueprint already exists it is reused.",
+            "Otherwise it POSTs a `Microsoft.Graph.AgentIdentityBlueprint` application to Graph v1.0.",
+            "Writes `.agentops/identity/agent-identity.json` so Doctor, the OTel exporter, and the release evidence pack can all quote the same Entra Agent ID.",
+        ),
+        inputs=(
+            "`agentops.yaml` keys `identity.sponsor`, `identity.display_name`, `identity.owner`.",
+            "Microsoft Graph application permission `AgentIdentityBlueprint.Create` with tenant admin consent.",
+        ),
+        outputs=(
+            "`.agentops/identity/agent-identity.json` containing `app_id`, `object_id`, and `display_name`.",
+            "The Entra Agent ID echoed to stdout for use in CI logs.",
+        ),
+        examples=(
+            "agentops agent register --sponsor jane@contoso.com",
+            "agentops agent register --dry-run",
+        ),
+        see_also=("agentops explain doctor", "agentops explain telemetry"),
     ),
     ("agent", "serve"): ExplainPage(
         title="Serve AgentOps as an HTTP agent",
@@ -4791,6 +4825,7 @@ def _build_doctor_explain_text(
         "azure_monitor",
         "azure_resources",
         "judge_model",
+        "graph",
     ]
     lines: list[str] = _manual_banner(
         "AgentOps Doctor",
@@ -5015,6 +5050,7 @@ def _build_doctor_explain_markdown(
         "azure_monitor",
         "azure_resources",
         "judge_model",
+        "graph",
     ]
     lines: list[str] = [
         "# AgentOps Doctor manual",
@@ -6157,6 +6193,96 @@ def cmd_agent_serve(
         )
 
     uvicorn.run(fastapi_app, host=host, port=port, workers=workers)
+
+
+@agent_app.command("register")
+def cmd_agent_register(
+    sponsor: Annotated[
+        str | None,
+        typer.Option(
+            "--sponsor",
+            help=(
+                "Accountable owner (UPN or object id). Falls back to "
+                "`identity.sponsor` in agentops.yaml."
+            ),
+        ),
+    ] = None,
+    display_name: Annotated[
+        str | None,
+        typer.Option(
+            "--display-name",
+            help=(
+                "Blueprint display name. Falls back to "
+                "`identity.display_name`, then the agent target name."
+            ),
+        ),
+    ] = None,
+    workspace: Annotated[
+        Path,
+        typer.Option("--workspace", "-w", help="Project root."),
+    ] = Path("."),
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Resolve inputs and report what would happen, without calling Graph.",
+        ),
+    ] = False,
+    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
+) -> None:
+    """Register the agent's identity blueprint in Microsoft Entra.
+
+    Idempotent: an existing blueprint with the same display name is
+    adopted rather than duplicated. The resolved Entra Agent ID is
+    written to ``.agentops/identity/agent-identity.json`` so Doctor,
+    tracing, and the release evidence pack all quote the same value.
+    """
+    if _maybe_explain_leaf(("agent", "register"), explain):
+        return
+
+    from agentops.services.agent_identity import (
+        AgentIdentityError,
+        register_blueprint,
+        resolve_registration_inputs,
+        write_identity_record,
+    )
+
+    workspace = workspace.resolve()
+
+    try:
+        resolved_name, resolved_sponsor = resolve_registration_inputs(
+            workspace,
+            display_name=display_name,
+            sponsor=sponsor,
+        )
+    except AgentIdentityError as exc:
+        typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"{_cli_label('Display name')}: {resolved_name}")
+    typer.echo(f"{_cli_label('Sponsor')}: {resolved_sponsor}")
+
+    if dry_run:
+        typer.echo(
+            "Dry run: no Microsoft Graph call was made. "
+            "Re-run without --dry-run to register."
+        )
+        return
+
+    try:
+        blueprint, created = register_blueprint(
+            resolved_name, sponsor=resolved_sponsor
+        )
+    except AgentIdentityError as exc:
+        typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    record_path = write_identity_record(workspace, blueprint, created=created)
+
+    action = "Registered" if created else "Reused existing"
+    typer.echo(f"{_cli_label(action + ' agent identity')}: {blueprint.app_id}")
+    typer.echo(f"{_cli_label('Wrote')}: {_cli_path(record_path)}")
+    typer.echo(f"{_cli_label('Entra portal')}: {blueprint.portal_url}")
 
 
 @app.command("cockpit")

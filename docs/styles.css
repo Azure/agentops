@@ -1,0 +1,386 @@
+/* AgentOps brand primary (Azure / Foundry blue) */
+[data-md-color-primary=custom] {
+  --md-primary-fg-color: #0078D4;
+  --md-primary-fg-color--light: #2B88D8;
+  --md-primary-fg-color--dark: #005A9E;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+
+[data-md-color-accent=blue] {
+  --md-accent-fg-color: #0078D4;
+}
+
+/* Keep the docs chrome quiet. The product mark belongs in the landing hero,
+   not as a tiny icon in the navigation drawer. */
+.md-header {
+  background: rgba(255, 255, 255, 0.94);
+  color: #17233f;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+}
+
+.md-header__button.md-logo {
+  display: none;
+}
+
+.md-header__title {
+  margin-left: 0;
+  font-weight: 650;
+}
+
+.md-header__topic[data-md-component="header-topic"] {
+  display: none;
+}
+
+.md-tabs {
+  background: rgba(255, 255, 255, 0.94);
+  color: #24364f;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.md-tabs__link {
+  opacity: 0.72;
+}
+
+.md-tabs__link--active,
+.md-tabs__link:is(:focus, :hover) {
+  color: #005A9E;
+  opacity: 1;
+}
+
+.md-nav--primary .md-nav__title {
+  background: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  box-shadow: none;
+  font-weight: 650;
+}
+
+.md-nav--primary .md-nav__title .md-logo {
+  display: none;
+}
+
+[data-md-color-scheme="slate"] .md-header,
+[data-md-color-scheme="slate"] .md-tabs {
+  background: rgba(24, 29, 38, 0.94);
+  color: #f5f9ff;
+  border-bottom-color: rgba(255, 255, 255, 0.10);
+}
+
+[data-md-color-scheme="slate"] .md-tabs__link--active,
+[data-md-color-scheme="slate"] .md-tabs__link:is(:focus, :hover) {
+  color: #8cc8ff;
+}
+
+.mermaid {
+  font-size: 18px;
+}
+
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Landing banner (hero) */
+.agentops-banner {
+  position: relative;
+  margin: -0.25rem 0 1.4rem 0;
+  padding: 1.35rem 1.6rem 1.25rem 1.6rem;
+  border: 1px solid rgba(0, 120, 212, 0.16);
+  border-radius: 14px;
+  overflow: hidden;
+  color: var(--md-default-fg-color);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(126, 63, 242, 0.13), transparent 34%),
+    linear-gradient(135deg, rgba(0, 120, 212, 0.12), rgba(255, 255, 255, 0.96) 46%, rgba(255, 255, 255, 1));
+  box-shadow: 0 8px 24px rgba(7, 35, 90, 0.08);
+}
+
+.agentops-banner::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 120, 212, 0.72), rgba(126, 63, 242, 0.52));
+  height: 3px;
+  pointer-events: none;
+}
+
+.agentops-banner-inner {
+  position: relative;
+  z-index: 1;
+}
+
+.agentops-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0 0 0.35rem 0;
+}
+
+.agentops-banner-logo {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  box-shadow: 0 6px 18px rgba(0, 120, 212, 0.16);
+  margin: 0;
+  flex: none;
+  display: block;
+}
+
+.agentops-banner h1 {
+  color: #16325c;
+  font-weight: 760;
+  font-size: 1.85rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.agentops-banner h1 .headerlink {
+  display: none;
+}
+
+.agentops-banner-tagline {
+  color: var(--md-default-fg-color--light);
+  font-size: 0.86rem;
+  line-height: 1.35;
+  max-width: 760px;
+  margin: 0 0 0.35rem 0;
+}
+
+.agentops-banner-question {
+  color: #005A9E;
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin: 0.05rem 0 0.75rem 0;
+}
+
+.agentops-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.agentops-banner-actions .md-button--pill {
+  background: rgba(0, 120, 212, 0.08);
+  color: #005A9E;
+  border-color: rgba(0, 120, 212, 0.24);
+}
+
+.agentops-banner-actions .md-button--pill:hover {
+  background: rgba(0, 120, 212, 0.14);
+  border-color: rgba(0, 120, 212, 0.38);
+}
+
+[data-md-color-scheme="slate"] .agentops-banner {
+  border-color: rgba(77, 166, 255, 0.20);
+  color: var(--md-default-fg-color);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(126, 63, 242, 0.16), transparent 34%),
+    linear-gradient(135deg, rgba(0, 120, 212, 0.14), rgba(24, 29, 38, 0.98) 46%, rgba(24, 29, 38, 1));
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.30);
+}
+
+[data-md-color-scheme="slate"] .agentops-banner h1 {
+  color: #f5f9ff;
+}
+
+[data-md-color-scheme="slate"] .agentops-banner-question,
+[data-md-color-scheme="slate"] .agentops-banner-actions .md-button--pill {
+  color: #8cc8ff;
+}
+
+@media screen and (max-width: 600px) {
+  .agentops-banner {
+    padding: 1.25rem 1rem 1.15rem 1rem;
+    border-radius: 14px;
+  }
+  .agentops-banner h1 {
+    font-size: 1.65rem;
+  }
+  .agentops-banner-tagline {
+    font-size: 0.86rem;
+  }
+}
+
+.agentops-tagline {
+  font-size: 1.05rem;
+  color: var(--md-default-fg-color--light);
+  margin: 0.2rem 0 0.6rem 0;
+}
+
+.agentops-video-embed {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  aspect-ratio: 16 / 9;
+  border-radius: 14px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.20);
+  margin: 1.6rem auto 0.75rem auto;
+  overflow: hidden;
+  background: #000;
+}
+
+.agentops-video-embed iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+[data-md-color-scheme="slate"] .agentops-video-embed {
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+}
+
+.agentops-reference-architecture {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 1.25rem auto 1.5rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.35rem;
+  background: var(--md-default-bg-color);
+}
+
+
+/* Pill buttons for release / install links */
+.md-button--pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+
+  padding: 0.3em 0.85em;
+  font-size: 0.72rem;
+  font-weight: 500;
+
+  background-color: #f6f8fa;
+  color: #0969da;
+  border: 1px solid #d0d7de;
+  border-radius: 999px;
+
+  text-decoration: none;
+  line-height: 1.2;
+}
+
+.md-button--pill:hover {
+  background-color: #eef1f4;
+  border-color: #c5ccd3;
+}
+
+[data-md-color-scheme="slate"] .md-button--pill {
+  background-color: #1c2128;
+  color: #4493f8;
+  border-color: #30363d;
+}
+
+.md-button--pill--rc {
+  background-color: var(--md-accent-fg-color--transparent);
+  color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+}
+
+.md-button--pill--rc:hover {
+  background-color: var(--md-accent-fg-color);
+  border-color: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}
+
+/* Avoid single-word "widows" wrapping alone on the last line of headings */
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3,
+.md-typeset h4,
+.agentops-banner h1,
+.agentops-card h3 {
+  text-wrap: balance;
+}
+
+/* Feature cards on the landing page */
+.agentops-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 1.2rem 0;
+}
+
+.agentops-card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  background: var(--md-default-bg-color);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.agentops-card:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.agentops-card h3 {
+  margin: 0 0 0.3rem 0;
+  font-size: 0.95rem;
+}
+
+.agentops-card p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Knowledge nugget: a teaching aside distinct from info/tip admonitions.
+   Use as: !!! concept "Title"  (or ??? concept for collapsible). */
+:root {
+  --md-admonition-icon--concept: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z"/></svg>');
+}
+
+.md-typeset .admonition.concept,
+.md-typeset details.concept {
+  border-color: #7E3FF2;
+}
+
+.md-typeset .concept > .admonition-title,
+.md-typeset .concept > summary {
+  background-color: rgba(126, 63, 242, 0.10);
+}
+
+.md-typeset .concept > .admonition-title::before,
+.md-typeset .concept > summary::before {
+  background-color: #7E3FF2;
+  -webkit-mask-image: var(--md-admonition-icon--concept);
+          mask-image: var(--md-admonition-icon--concept);
+}
+
+[data-md-color-scheme="slate"] .md-typeset .concept > .admonition-title,
+[data-md-color-scheme="slate"] .md-typeset .concept > summary {
+  background-color: rgba(140, 90, 255, 0.16);
+}
+
+/* Get-started call to action above the cards */
+.agentops-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.75rem;
+  max-width: none;
+  margin: 1.4rem 0 0.4rem 0;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 12px;
+  background: var(--md-default-bg-color);
+}
+
+.agentops-cta p {
+  margin: 0;
+}
+
+.agentops-cta p:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}

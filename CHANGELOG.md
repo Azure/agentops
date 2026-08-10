@@ -5,6 +5,46 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-08-10
+
+### Added
+- **Agents can now carry a first-class Microsoft Entra identity that travels
+  from registration through traces into release evidence.** Before this, a
+  trace could tell you what an agent did but not which registered agent did it,
+  so nothing in the evidence pack tied runtime behaviour back to an accountable
+  owner in the tenant. Three pieces close that loop. `agentops agent register`
+  creates or adopts an agent identity blueprint in Microsoft Entra (idempotent,
+  sponsor required, `--dry-run` supported) and records the resolved id under
+  `.agentops/identity/agent-identity.json`. AgentOps then stamps that id on
+  every span it emits as the OpenTelemetry resource attribute
+  `gen_ai.agent.id`, omitting the attribute entirely when no identity is
+  registered so presence is a meaningful filter. Finally, the release evidence
+  pack publishes an `agent_identity` section reporting the id and its source.
+  A read-only Doctor check reports registration posture, contacting Microsoft
+  Graph only when `identity.verify` is enabled in `agentops.yaml`. `agentops.yaml`
+  accepts a new optional `identity` block (`display_name`, `sponsor`, `verify`).
+
+### Fixed
+- **The official evaluation runner now honours the agent version override.**
+  `prepare_official_eval` read the agent name and version straight from
+  `agentops.yaml` and ignored both the `--agent` flag and the
+  `AGENTOPS_AGENT` environment variable, so a pipeline that pinned a
+  specific agent version still evaluated whatever version the config
+  happened to carry. The override is now resolved in one place
+  (`resolve_agent_override`), applied by `official_eval.py`, and forwarded
+  by the generated GitHub Actions and Azure DevOps workflows. An
+  unexpanded CI token such as `$(AGENTOPS_AGENT)` is treated as absent
+  instead of being parsed as an agent name.
+
+### Changed
+- **The release cut logic moved out of `cut-release.yml` and into
+  `scripts/check_changelog.py cut`.** The workflow used to carry the
+  transformation as an inline Python heredoc, which no test could import,
+  so a regression in it was only visible when a release was already being
+  cut. That is exactly how the 0.8.6 cut broke. The same code now backs
+  both the workflow and the unit tests, and the subcommand is idempotent:
+  re-running it for a version already present in the file is a no-op.
+
 ## [0.8.6] - 2026-08-07
 
 ### Added

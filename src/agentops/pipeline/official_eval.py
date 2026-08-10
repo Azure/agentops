@@ -9,7 +9,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from agentops.core.agentops_config import AgentOpsConfig, classify_agent
+from agentops.core.agentops_config import (
+    AGENT_OVERRIDE_ENV,
+    AgentOpsConfig,
+    classify_agent,
+    resolve_agent_override,
+)
 from agentops.core.config_loader import load_agentops_config
 from agentops.core.evaluators import EvaluatorPreset, detect_dataset_shape, select_evaluators
 from agentops.utils.yaml import load_yaml
@@ -108,11 +113,15 @@ class _EvalPlan:
     warnings: tuple[str, ...]
 
 
-def analyze_official_eval_support(config_path: Path) -> OfficialEvalSupport:
+def analyze_official_eval_support(
+    config_path: Path,
+    *,
+    agent: str | None = None,
+) -> OfficialEvalSupport:
     """Report whether ``config_path`` can use the Microsoft Foundry eval runner."""
 
     try:
-        plan = _build_plan(config_path)
+        plan = _build_plan(config_path, agent=agent)
     except OfficialEvalUnsupported as exc:
         return OfficialEvalSupport(
             eligible=False,
@@ -182,10 +191,17 @@ def prepare_official_eval(
     output_path: Path,
     *,
     deployment_name: str | None = None,
+    agent: str | None = None,
 ) -> OfficialEvalPreparation:
-    """Convert AgentOps JSONL config into Microsoft Foundry AI Agent Evaluation JSON."""
+    """Convert AgentOps JSONL config into Microsoft Foundry AI Agent Evaluation JSON.
 
-    plan = _build_plan(config_path)
+    *agent* overrides the ``agent:`` target for this run. When it is ``None`` the
+    ``AGENTOPS_AGENT`` environment variable is honored, so a CI step that just
+    produced a new agent version scores that version instead of the one pinned in
+    ``agentops.yaml``.
+    """
+
+    plan = _build_plan(config_path, agent=agent)
     deployment = _resolve_deployment_name(deployment_name)
     payload = _build_payload(plan)
 
@@ -224,7 +240,7 @@ def prepare_official_eval(
     )
 
 
-def _build_plan(config_path: Path) -> _EvalPlan:
+def _build_plan(config_path: Path, *, agent: str | None = None) -> _EvalPlan:
     config_path = config_path.resolve()
     if not config_path.exists():
         raise OfficialEvalUnsupported(
@@ -233,7 +249,12 @@ def _build_plan(config_path: Path) -> _EvalPlan:
         )
 
     config = load_agentops_config(config_path)
-    target = classify_agent(config.agent, config.protocol)
+    try:
+        override = resolve_agent_override(config.agent, explicit=agent)
+    except ValueError as exc:
+        raise OfficialEvalUnsupported(str(exc)) from exc
+    agent_expression = override or config.agent
+    target = classify_agent(agent_expression, config.protocol)
     if target.kind != "foundry_prompt":
         raise OfficialEvalUnsupported(
             "Microsoft Foundry AI Agent Evaluation only evaluates Foundry prompt agents "
@@ -262,7 +283,7 @@ def _build_plan(config_path: Path) -> _EvalPlan:
         config=config,
         config_path=config_path,
         dataset_path=dataset_path,
-        agent_ids=config.agent,
+        agent_ids=agent_expression,
         official_evaluators=tuple(official_evaluators),
         skipped_agentops_evaluators=tuple(skipped),
         warnings=tuple(warnings),
@@ -410,6 +431,7 @@ def _command_prepare(args: argparse.Namespace) -> int:
         Path(args.config),
         Path(args.out),
         deployment_name=args.deployment_name,
+        agent=args.agent,
     )
     outputs = {
         "data_path": str(prepared.data_path),
@@ -436,6 +458,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     prepare_parser.add_argument("--config", default="agentops.yaml")
     prepare_parser.add_argument("--out", required=True)
     prepare_parser.add_argument("--deployment-name")
+    prepare_parser.add_argument(
+        "--agent",
+        help=(
+            "Override the agent target for this run. Accepts a bare version or a "
+            f"full agent expression. Falls back to ${AGENT_OVERRIDE_ENV}."
+        ),
+    )
     prepare_parser.add_argument("--github-output")
     prepare_parser.add_argument("--ado-output", action="store_true")
     prepare_parser.add_argument("--print-json", action="store_true")
