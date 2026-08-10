@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-08-10
+
 ### Added
 - **Agents can now carry a first-class Microsoft Entra identity that travels
   from registration through traces into release evidence.** Before this, a
