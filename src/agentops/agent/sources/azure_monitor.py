@@ -105,12 +105,29 @@ def collect_azure_monitor(
 ) -> AzureMonitorPayload:
     """Run KQL queries against Application Insights for the lookback window."""
     diagnostics: Dict[str, Any] = {"enabled": config.enabled}
+    app_insights_resource_id = config.app_insights_resource_id
 
     if not config.enabled:
         diagnostics["status"] = "disabled"
         return AzureMonitorPayload(diagnostics=diagnostics)
 
-    if not config.app_insights_resource_id and not config.log_analytics_workspace_id:
+    if not app_insights_resource_id and not config.log_analytics_workspace_id:
+        resource_reason: Optional[str] = None
+        try:
+            from agentops.utils.foundry_discovery import (
+                resolve_appinsights_resource_id_from_env_with_reason,
+            )
+
+            app_insights_resource_id, resource_reason = (
+                resolve_appinsights_resource_id_from_env_with_reason()
+            )
+        except Exception as exc:  # noqa: BLE001
+            resource_reason = f"Foundry App Insights metadata discovery failed: {exc}"
+
+        if app_insights_resource_id:
+            diagnostics["target_source"] = "foundry_project_connection"
+
+    if not app_insights_resource_id and not config.log_analytics_workspace_id:
         application_id, source, reason = _resolve_application_id()
         if application_id:
             diagnostics["target"] = application_id
@@ -127,8 +144,9 @@ def collect_azure_monitor(
             "is configured, and no App Insights ApplicationId could be "
             "discovered from the connection string or Foundry project"
         )
-        if reason:
-            diagnostics["discovery_reason"] = reason
+        discovery_reason = reason or resource_reason
+        if discovery_reason:
+            diagnostics["discovery_reason"] = discovery_reason
         return AzureMonitorPayload(diagnostics=diagnostics)
 
     try:
@@ -146,7 +164,7 @@ def collect_azure_monitor(
     from ._credentials import format_source_error, get_shared_credential, log_source_error  # noqa: F401
 
     workspace_or_resource = (
-        config.log_analytics_workspace_id or config.app_insights_resource_id
+        config.log_analytics_workspace_id or app_insights_resource_id
     )
     diagnostics["target"] = workspace_or_resource
 
@@ -175,7 +193,7 @@ def collect_azure_monitor(
                 )
                 return AzureMonitorPayload(diagnostics=diagnostics)
             response = query_resource(
-                resource_id=config.app_insights_resource_id,
+                resource_id=app_insights_resource_id,
                 query=kql,
                 timespan=None,
             )
@@ -224,7 +242,7 @@ def collect_azure_monitor(
             )
         else:
             safety_response = client.query_resource(  # type: ignore[union-attr]
-                resource_id=config.app_insights_resource_id,
+                resource_id=app_insights_resource_id,
                 query=safety_kql,
                 timespan=None,
             )
@@ -265,7 +283,7 @@ def collect_azure_monitor(
             )
         else:
             tok_response = client.query_resource(  # type: ignore[union-attr]
-                resource_id=config.app_insights_resource_id,
+                resource_id=app_insights_resource_id,
                 query=token_kql,
                 timespan=None,
             )
@@ -300,7 +318,7 @@ def collect_azure_monitor(
             )
         else:
             rl_response = client.query_resource(  # type: ignore[union-attr]
-                resource_id=config.app_insights_resource_id,
+                resource_id=app_insights_resource_id,
                 query=rl_kql,
                 timespan=None,
             )

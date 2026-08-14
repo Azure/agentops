@@ -283,6 +283,81 @@ def resolve_appinsights_connection(project_endpoint: str) -> Optional[str]:
     return conn
 
 
+def resolve_appinsights_resource_id_with_reason(
+    project_endpoint: str,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Return the ARM resource ID of the Foundry-linked App Insights resource.
+
+    Connection metadata is credential-free, so this works for both API-key and
+    ProjectManagedIdentity connections without requesting connection secrets.
+    """
+    if not project_endpoint:
+        return None, "no AZURE_AI_FOUNDRY_PROJECT_ENDPOINT set"
+
+    cache_key = f"appinsights-resource:{project_endpoint}"
+    cached = _lookup(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        from azure.ai.projects import AIProjectClient
+        from azure.identity import DefaultAzureCredential
+    except ImportError:
+        reason = (
+            "azure-ai-projects / azure-identity not installed in the cockpit's "
+            "Python environment. Install with "
+            "`pip install azure-ai-projects azure-identity`."
+        )
+        _store(cache_key, None, reason)
+        return None, reason
+
+    try:
+        credential = DefaultAzureCredential(
+            exclude_developer_cli_credential=True,
+            process_timeout=30,
+        )
+        client = AIProjectClient(endpoint=project_endpoint, credential=credential)
+        connections = getattr(client, "connections", None)
+        list_connections = getattr(connections, "list", None)
+        if not callable(list_connections):
+            reason = (
+                "AIProjectClient has no connections.list helper "
+                "(azure-ai-projects too old)."
+            )
+            _store(cache_key, None, reason)
+            return None, reason
+
+        for connection in list_connections():
+            connection_type = str(getattr(connection, "type", "") or "").lower()
+            target = str(getattr(connection, "target", "") or "").strip()
+            is_app_insights = (
+                "application_insights" in connection_type
+                or "applicationinsights" in connection_type
+            )
+            is_resource_id = (
+                target.lower().startswith("/subscriptions/")
+                and "/providers/microsoft.insights/components/" in target.lower()
+            )
+            if is_app_insights and is_resource_id:
+                _store(cache_key, target, None)
+                return target, None
+    except Exception as exc:  # noqa: BLE001
+        reason = _summarize_discovery_exception(
+            exc,
+            context="Foundry App Insights connection metadata discovery",
+        )
+        _store(cache_key, None, reason)
+        return None, reason
+
+    reason = (
+        "Foundry returned no Application Insights connection metadata. Wire "
+        "one in: Project details \u2192 Connected resources \u2192 "
+        "Add connection \u2192 Application Insights."
+    )
+    _store(cache_key, None, reason)
+    return None, reason
+
+
 def resolve_appinsights_connection_from_env() -> Optional[str]:
     """Resolve using ``AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`` if set."""
     endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
@@ -300,3 +375,13 @@ def resolve_appinsights_connection_from_env_with_reason() -> Tuple[
     if not endpoint:
         return None, "no AZURE_AI_FOUNDRY_PROJECT_ENDPOINT set"
     return resolve_appinsights_connection_with_reason(endpoint)
+
+
+def resolve_appinsights_resource_id_from_env_with_reason() -> Tuple[
+    Optional[str], Optional[str]
+]:
+    """Resolve App Insights ARM metadata from the configured Foundry project."""
+    endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    if not endpoint:
+        return None, "no AZURE_AI_FOUNDRY_PROJECT_ENDPOINT set"
+    return resolve_appinsights_resource_id_with_reason(endpoint)

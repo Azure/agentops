@@ -5,6 +5,39 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-14
+
+### Changed
+- **The AgentOps Cockpit now focuses on five release-readiness sections.**
+  The page renders only the readiness and Doctor ship verdicts, Foundry and
+  GitHub connections, the 13-item observability checklist, the latest Doctor
+  findings, and prioritized next actions. Date-window and auto-refresh controls
+  were removed because the remaining sections describe current configuration
+  and the latest analysis rather than time-series dashboards.
+- **Observability readiness now distinguishes native Foundry tracing from
+  optional custom spans.** Hosted agents and prompt agents are recognized as
+  natively instrumented, while repository OpenTelemetry spans are reported as
+  optional extensions. App Insights linkage, rubric evaluators, alert
+  definitions, and tracing evidence are resolved independently so unknown state
+  is no longer presented as a failure.
+
+### Fixed
+- **Project-managed Application Insights connections now work throughout
+  Doctor and Cockpit.** AgentOps discovers the attached Application Insights
+  ARM resource from credential-free Foundry connection metadata and queries it
+  with `LogsQueryClient.query_resource`, avoiding false missing-telemetry
+  findings when no API-key connection string exists.
+- **`agentops agent register` now derives hosted-agent names from Foundry
+  target URLs.** A command that supplies only `--sponsor` correctly resolves
+  names such as `helpdeskbot`, matching the fallback promised by `--help`.
+
+### Removed
+- **The experimental AgentOps telemetry import and custom Operations Dashboard
+  have been removed.** The public telemetry command group, Log Analytics
+  workbook deployment, bundled workbook/KQL assets, and dashboard-specific
+  posture rule are no longer shipped while native product observability support
+  is reviewed.
+
 ## [0.8.8] - 2026-08-14
 
 ### Fixed

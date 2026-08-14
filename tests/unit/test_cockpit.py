@@ -116,88 +116,11 @@ def _write_eval_run(
 
 def test_empty_workspace_yields_empty_state(tmp_path: Path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    assert payload["eval"]["has_runs"] is False
-    assert payload["metrics"] == []
     assert payload["watchdog"]["has_history"] is False
+    assert len(payload["readiness"]["checks"]) == 13
     html = render_cockpit_html(payload)
-    assert "No eval runs yet" in html
     assert "No analysis history yet" in html
-    assert "agentops eval run" in html
-
-
-def test_cockpit_loads_eval_runs(tmp_path: Path):
-    _write_eval_run(
-        tmp_path,
-        timestamp_dir="2026-05-11T20-00-00Z",
-        passed=True,
-        metrics={"coherence": 4.5, "similarity": 4.0, "fluency": 3.7, "f1_score": 0.9},
-    )
-    _write_eval_run(
-        tmp_path,
-        timestamp_dir="2026-05-11T21-00-00Z",
-        passed=False,
-        metrics={"coherence": 4.0, "similarity": 3.0, "fluency": 3.0, "f1_score": 0.6},
-        target="agent-smoke:3",
-    )
-
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    assert payload["eval"]["has_runs"] is True
-    eval_keys = {c["key"] for c in payload["eval"]["cards"]}
-    assert "total_runs" in eval_keys
-    assert "pass_rate" in eval_keys
-    assert "latest_run" in eval_keys
-    # Latest target wins.
-    latest_card = next(c for c in payload["eval"]["cards"] if c["key"] == "latest_run")
-    assert latest_card["value"] == "agent-smoke:3"
-    assert latest_card["badge"]["tone"] == "crit"
-
-    metric_keys = {c["key"] for c in payload["metrics"]}
-    assert {"coherence", "similarity", "fluency", "f1_score"} <= metric_keys
-
-
-def test_pass_rate_badge_reflects_history(tmp_path: Path):
-    for i in range(4):
-        _write_eval_run(
-            tmp_path,
-            timestamp_dir=f"2026-05-11T0{i}-00-00Z",
-            passed=True,
-            metrics={"coherence": 4.0},
-        )
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    pass_card = next(c for c in payload["eval"]["cards"] if c["key"] == "pass_rate")
-    assert pass_card["value"] == "100%"
-    assert pass_card["badge"]["tone"] == "ok"
-
-
-def test_metric_trend_badge_detects_regression_for_quality(tmp_path: Path):
-    _write_eval_run(
-        tmp_path, timestamp_dir="2026-05-11T01-00-00Z", passed=True,
-        metrics={"coherence": 5.0},
-    )
-    _write_eval_run(
-        tmp_path, timestamp_dir="2026-05-11T02-00-00Z", passed=True,
-        metrics={"coherence": 3.0},
-    )
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    coh = next(c for c in payload["metrics"] if c["key"] == "coherence")
-    assert coh["badge"]["label"] == "regressed"
-    assert coh["badge"]["tone"] == "warn"
-
-
-def test_metric_trend_badge_treats_latency_inversely(tmp_path: Path):
-    _write_eval_run(
-        tmp_path, timestamp_dir="2026-05-11T01-00-00Z", passed=True,
-        metrics={"avg_latency_seconds": 5.0},
-    )
-    _write_eval_run(
-        tmp_path, timestamp_dir="2026-05-11T02-00-00Z", passed=True,
-        metrics={"avg_latency_seconds": 2.0},
-    )
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    lat = next(c for c in payload["metrics"] if c["key"] == "avg_latency_seconds")
-    # Latency dropping is an improvement, not a regression.
-    assert lat["badge"]["label"] == "improved"
-    assert lat["badge"]["tone"] == "ok"
+    assert "NO-GO" in html
 
 
 def test_telemetry_status_reflects_env(tmp_path: Path, monkeypatch):
@@ -214,6 +137,44 @@ def test_telemetry_status_reflects_env(tmp_path: Path, monkeypatch):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     assert payload["telemetry"]["enabled"] is True
     assert payload["telemetry"]["source"] == "env"
+
+
+def test_telemetry_status_accepts_foundry_project_managed_identity(monkeypatch):
+    from agentops.agent.cockpit import _telemetry_status
+    from agentops.utils import foundry_discovery
+
+    resource_id = (
+        "/subscriptions/000/resourceGroups/rg/providers/"
+        "Microsoft.Insights/components/appi-pmi"
+    )
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AGENTOPS_OTLP_ENDPOINT", raising=False)
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://x.services.ai.azure.com/api/projects/pmi",
+    )
+    monkeypatch.setattr(
+        foundry_discovery,
+        "resolve_appinsights_connection_from_env_with_reason",
+        lambda: (
+            None,
+            "Foundry Application Insights connection uses "
+            "ProjectManagedIdentity; API Key credentials are not required.",
+        ),
+    )
+    monkeypatch.setattr(
+        foundry_discovery,
+        "resolve_appinsights_resource_id_from_env_with_reason",
+        lambda: (resource_id, None),
+    )
+
+    status = _telemetry_status()
+
+    assert status["enabled"] is True
+    assert status["source"] == "foundry_project_connection"
+    assert status["resource_id"] == resource_id
+    assert status["portal_url"].endswith(f"#resource{resource_id}/overview")
 
 
 def test_watchdog_section_surfaces_latest_findings(tmp_path: Path):
@@ -294,7 +255,9 @@ def test_finding_recommendation_renders_safe_markdown(tmp_path: Path):
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
 
 
-def test_html_includes_all_sections_when_data_present(tmp_path: Path, monkeypatch):
+def test_html_contains_exactly_five_sections_in_required_order(
+    tmp_path: Path, monkeypatch,
+):
     _set_appinsights_env(monkeypatch)
     _write_eval_run(
         tmp_path, timestamp_dir="2026-05-11T01-00-00Z", passed=True,
@@ -310,122 +273,74 @@ def test_html_includes_all_sections_when_data_present(tmp_path: Path, monkeypatc
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     html = render_cockpit_html(payload)
 
-    # New strategic sections.
-    assert "Foundry connection" in html
-    assert "Foundry launchpad" in html
-    assert "Azure Monitor" in html
-    assert "Observability readiness" in html
-    assert "Next actions" in html
-    # Consolidated top status cards ("can I ship?").
-    assert 'id="section-status-cards"' in html
-    assert "Can I ship?" in html
-    # Gate summary sections: eval + quality gate are merged into one
-    # "Eval gates" section with two subgroups.
-    assert "Eval gates" in html
-    assert "Eval gate summary" in html
-    assert "AgentOps Doctor" in html
-    assert "CI/CD" in html
-    assert "Quality gate summary" in html
-    # Production telemetry is now rendered as a minimal signal into
-    # Foundry Monitor; the section title is "Production signal".
-    assert "Production signal" in html
-    assert "Full view in Foundry Monitor" in html
-    assert "Fast health snapshot from App Insights" in html
-    assert "Foundry Monitor</strong> for the full production view" in html
-    assert "Quality gate trends computed from AgentOps result artifacts" in html
-    assert "AgentOps gate history from local artifacts and CI runs" in html
-    assert "<svg" in html
-
-    # Sections render in the redesigned "can I ship?" order: Foundry
-    # connection → consolidated status cards → Next actions →
-    # Observability readiness → AgentOps Doctor → Eval gates →
-    # Production signal → CI/CD → Foundry launchpad (footer).
-    connection_pos = html.find('<span class="section-title-text">Foundry connection')
     status_cards_pos = html.find('id="section-status-cards"')
-    actions_pos = html.find('<span class="section-title-text">Next actions')
+    connections_pos = html.find('<span class="section-title-text">Connections')
     readiness_pos = html.find('<span class="section-title-text">Observability readiness')
     doctor_pos = html.find('<span class="section-title-text">AgentOps Doctor')
-    eval_gates_pos = html.find('<span class="section-title-text">Eval gates')
-    prod_pos = html.find('<span class="section-title-text">Production signal')
-    deploy_pos = html.find('<span class="section-title-text">CI/CD')
-    launchpad_pos = html.find('<span class="section-title-text">Foundry launchpad')
-    for pos in (
-        connection_pos, status_cards_pos, actions_pos, readiness_pos,
-        doctor_pos, eval_gates_pos, prod_pos, deploy_pos, launchpad_pos,
+    actions_pos = html.find('<span class="section-title-text">Next actions')
+    assert -1 not in (
+        status_cards_pos,
+        connections_pos,
+        readiness_pos,
+        doctor_pos,
+        actions_pos,
+    )
+    assert (
+        status_cards_pos
+        < connections_pos
+        < readiness_pos
+        < doctor_pos
+        < actions_pos
+    )
+    assert html.count('id="section-status-cards"') == 1
+    assert html.count('id="section-connections"') == 1
+    assert html.count('id="section-readiness"') == 1
+    assert html.count('id="section-agentops-doctor"') == 1
+    assert html.count('id="section-next-actions"') == 1
+    assert html.count('<a class="card status-card') == 2
+    assert "Readiness" in html
+    assert "Doctor" in html
+
+    for removed in (
+        '<span class="section-title-text">Eval gates',
+        '<span class="section-title-text">Production signal',
+        '<span class="section-title-text">CI/CD Pipelines',
+        '<span class="section-title-text">Foundry launchpad',
+        "range-pills",
+        "refreshSelect",
+        "Auto-refresh",
+        "window:",
     ):
-        assert pos != -1, "missing strategic section in cockpit HTML"
-    assert (
-        connection_pos < status_cards_pos < actions_pos < readiness_pos
-        < doctor_pos < eval_gates_pos < prod_pos < deploy_pos < launchpad_pos
+        assert removed not in html
+
+
+def test_connections_only_contains_foundry_and_github(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://account.services.ai.azure.com/api/projects/project",
     )
-    # Both subgroup labels live inside the merged Eval gates section, eval
-    # before quality.
-    assert (
-        eval_gates_pos
-        < html.find("Eval gate summary")
-        < html.find("Quality gate summary")
+    monkeypatch.setattr(
+        "agentops.agent.cockpit._resolve_github_repository",
+        lambda _workspace: {
+            "name": "owner/repo",
+            "url": "https://github.com/owner/repo",
+        },
     )
-    # Detail sections collapse by default; the top status/next-actions
-    # sections stay open. At least one collapsed <details> is present.
-    assert '<details class="section-block" id="section-readiness"' in html
-
-
-
-def test_open_in_foundry_panel_separates_foundry_from_azure_monitor(tmp_path: Path):
-    """The launchpad separates configured-agent and Foundry project links.
-
-    The former single-tile "Azure Monitor" group is folded into the
-    Foundry project subgroup (App Insights + the new Foundry operations
-    dashboard tile), so there is one place to look instead of a duplicated
-    one-tile group.
-    """
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-
-    open_panel = payload["open_in_foundry"]
-    groups = open_panel.get("groups") or []
-    keys = [g.get("key") for g in groups]
-    assert keys == ["agent", "project"], (
-        "Agent links must precede project links; Azure Monitor is folded "
-        "into the project group"
-    )
-
-    agent_titles = {t["title"] for t in groups[0]["targets"]}
-    assert {"Agent build", "Monitor", "Traces"}.issubset(agent_titles)
-
-    project_titles = {t["title"] for t in groups[1]["targets"]}
-    assert {
-        "Evaluations",
-        "Datasets",
-        "Red Teaming",
-        "Operate overview",
-        "Foundry operations dashboard",
-        "App Insights",
-    }.issubset(project_titles)
-
-    # The new Foundry operations dashboard tile renders right after
-    # Operate overview, and the two descriptions must not read the same.
-    project_keys = [t["key"] for t in groups[1]["targets"]]
-    assert project_keys.index("foundry_ops_dashboard") == (
-        project_keys.index("operate") + 1
-    )
-    descriptions = {t["key"]: t.get("description", "") for t in groups[1]["targets"]}
-    assert descriptions["operate"] != descriptions["foundry_ops_dashboard"]
-
+    payload = build_cockpit_payload(tmp_path)
+    items = payload["connections"]["items"]
+    assert [item["title"] for item in items] == [
+        "Foundry project",
+        "GitHub repository",
+    ]
     html = render_cockpit_html(payload)
-    # Subheaders render (only the two remaining groups).
-    assert ">Configured agent<" in html
-    assert ">Foundry project<" in html
-    # The legacy flat ``targets`` key is kept for backwards-compat and
-    # combines both groups in display order.
-    flat_keys = [t["key"] for t in open_panel["targets"]]
-    assert flat_keys[0] == "agent"
-    assert flat_keys[-1] == "app_insights"
+    assert "Open in Foundry" in html
+    assert "Open in GitHub" in html
+    assert "Azure tenant" not in html
+    assert "Application Insights</div>" not in html
 
 
-def test_readiness_splits_tracing_and_includes_continuous_eval(tmp_path: Path):
-    """Readiness now lists separate server-side and client-side tracing
-    rows plus a dedicated continuous-evaluation row sourced from the
-    latest Doctor analysis."""
+def test_readiness_splits_connection_and_instrumentation(tmp_path: Path):
+    """Readiness separates App Insights linkage from agent instrumentation."""
     from agentops.agent.cockpit import (
         _build_readiness_checklist,
         _render_readiness_section,
@@ -441,8 +356,8 @@ def test_readiness_splits_tracing_and_includes_continuous_eval(tmp_path: Path):
         tmp_path, telemetry, deployments, watchdog=None,
     )
     titles = [c["title"] for c in readiness["checks"]]
-    assert any("Server-side tracing" in t for t in titles)
-    assert any("Client-side tracing" in t for t in titles)
+    assert "App Insights connection" in titles
+    assert "Agent tracing instrumentation" in titles
     cont_row = next(
         c for c in readiness["checks"]
         if "Continuous evaluation rules" in c["title"]
@@ -452,7 +367,7 @@ def test_readiness_splits_tracing_and_includes_continuous_eval(tmp_path: Path):
 
     html = _render_readiness_section(readiness)
     assert "&amp;rarr;" not in html
-    assert "Server-side tracing (agent → App Insights)" in html
+    assert "App Insights connection" in html
 
 
 def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
@@ -492,6 +407,114 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
     assert by_title["Trace replay linked to evidence"]["status"] == "ok"
 
 
+def test_readiness_detects_hosted_otel_eval_rubric_and_unknown_alerts(
+    tmp_path: Path,
+):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "azure.yaml").write_text(
+        "services:\n"
+        "  helpdeskbot:\n"
+        "    host: azure.ai.agent\n"
+        "    kind: hosted\n"
+        "    project: ./src/helpdeskbot\n",
+        encoding="utf-8",
+    )
+    source = tmp_path / "src" / "helpdeskbot"
+    source.mkdir(parents=True)
+    (source / "acs_middleware.py").write_text(
+        "from opentelemetry import trace\n"
+        "tracer = trace.get_tracer(__name__)\n"
+        "with tracer.start_as_current_span('acs'):\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    (source / "eval.yaml").write_text(
+        "evaluators:\n"
+        "  - name: helpdeskbot-safe-eval\n"
+        "    local_uri: evaluators/helpdeskbot-safe-eval\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {
+            "enabled": True,
+            "detail": "Linked through Project Managed Identity.",
+            "portal_url": "https://portal.azure.com/#resource/appi",
+        },
+        {"has_data": False},
+        watchdog=None,
+    )
+    by_title = {check["title"]: check for check in readiness["checks"]}
+
+    assert by_title["App Insights connection"]["status"] == "ok"
+    tracing = by_title["Agent tracing instrumentation"]
+    assert tracing["status"] == "ok"
+    assert "native tracing" in tracing["detail"]
+    assert "no application-side OpenTelemetry setup is required" in tracing["detail"]
+    assert "acs_middleware.py" in tracing["detail"]
+    assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
+    assert "src/helpdeskbot/eval.yaml" in by_title[
+        "Optional rubric evaluator gate"
+    ]["detail"]
+    assert by_title["Alerts wired"]["status"] == "info"
+    assert "Not verified" in by_title["Alerts wired"]["detail"]
+    assert "does not claim" in by_title["Alerts wired"]["detail"]
+
+
+def test_readiness_recognizes_prompt_agent_native_tracing(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: support-agent:4\n"
+        "dataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    tracing = next(
+        check
+        for check in readiness["checks"]
+        if check["title"] == "Agent tracing instrumentation"
+    )
+
+    assert tracing["status"] == "ok"
+    assert "prompt agent runtime" in tracing["detail"]
+    assert "Custom spans remain optional" in tracing["detail"]
+
+
+def test_readiness_detects_alerts_declared_as_infrastructure(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    infra = tmp_path / "infra"
+    infra.mkdir()
+    (infra / "alerts.bicep").write_text(
+        "resource failedRequests 'Microsoft.Insights/metricAlerts@2018-03-01' = {\n"
+        "  name: 'failed-requests'\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "ok"
+    assert "infra/alerts.bicep" in alerts["detail"]
+
+
 def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypatch):
     from agentops.agent.cockpit import _build_readiness_checklist
 
@@ -514,13 +537,16 @@ def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypat
     assert non_ready
     for check in non_ready:
         detail = check["detail"]
+        if check["title"] == "Alerts wired":
+            assert "Not verified" in detail
+            continue
         assert "How to complete:" in detail
         assert ("<a " in detail) or ("<code>" in detail) or ("Foundry" in detail)
     by_title = {check["title"]: check["detail"] for check in readiness["checks"]}
-    assert "OpenTelemetry" in by_title["Client-side tracing (app code instrumented)"]
+    assert "OpenTelemetry" in by_title["Agent tracing instrumentation"]
     assert "agentops eval run" in by_title["Scheduled eval (drift watch)"]
     assert "safe_agent_baseline.yaml" in by_title["Red team scans"]
-    assert "agentops.eval.*" in by_title["Alerts wired"]
+    assert "does not claim" in by_title["Alerts wired"]
 
 
 def test_readiness_dots_are_binary_ready_or_not(tmp_path: Path):
@@ -580,45 +606,49 @@ def test_readiness_continuous_eval_warns_when_doctor_flags_missing_rules(
     assert "Foundry monitor docs" in cont_row["detail"]
 
 
-def test_next_actions_do_not_suggest_workflow_when_ci_gate_exists(tmp_path: Path):
-    from agentops.agent.cockpit import (
-        _build_next_actions,
-        _build_readiness_checklist,
-    )
+def test_next_actions_prioritize_doctor_then_incomplete_readiness():
+    from agentops.agent.cockpit import _build_next_actions
 
-    workflows = tmp_path / ".github" / "workflows"
-    workflows.mkdir(parents=True)
-    (workflows / "agentops-pr.yml").write_text(
-        "name: AgentOps PR\nsteps:\n  - run: agentops eval run\n",
-        encoding="utf-8",
-    )
-    readiness = _build_readiness_checklist(
-        tmp_path,
-        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
-        {"has_data": False},
+    actions = _build_next_actions(
         watchdog={
-            "has_history": True,
             "latest_findings": [
                 {
-                    "id": "safety.config.continuous_eval_missing",
+                    "id": "quality.answer",
+                    "severity": "critical",
+                    "title": "Answer quality is blocked",
+                    "summary": "The response is incomplete.",
+                    "recommendation": "Fix the response policy.",
+                },
+                {
+                    "id": "reliability.trace",
                     "severity": "warning",
-                }
+                    "title": "Trace coverage is incomplete",
+                    "summary": "A trace is missing.",
+                    "recommendation": "Enable trace capture.",
+                },
+            ],
+        },
+        readiness={
+            "checks": [
+                {
+                    "title": "Server-side tracing",
+                    "status": "warn",
+                    "detail": "How to complete: enable tracing.",
+                },
+                {
+                    "title": "Alerts wired",
+                    "status": "ok",
+                    "detail": "Ready.",
+                },
             ],
         },
     )
 
-    actions = _build_next_actions(
-        tmp_path,
-        {"enabled": True},
-        watchdog={"latest_findings": []},
-        readiness=readiness,
-        eval_payload={"runs": [object()]},
-    )
-
-    assert not any(
-        action["title"] == "Add a CI eval workflow"
-        for action in actions["actions"]
-    )
+    assert [action["title"] for action in actions["actions"]] == [
+        "Fix Doctor: Answer quality is blocked",
+        "Fix Doctor: Trace coverage is incomplete",
+        "Complete readiness: Server-side tracing",
+    ]
 
 
 def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
@@ -780,43 +810,6 @@ def test_readiness_details_include_azd_eval_and_governance_evidence(tmp_path: Pa
     assert "Governance evidence: assert: present, acs: present." in detail
 
 
-def test_cockpit_surfaces_official_eval_artifacts_without_local_runs(tmp_path: Path):
-    official_dir = tmp_path / ".agentops" / "official-eval"
-    official_dir.mkdir(parents=True)
-    (official_dir / "metadata.json").write_text(
-        json.dumps(
-            {
-                "runner": "official-ai-agent-evaluation",
-                "items_total": 2,
-                "machine_readable_thresholds": False,
-            }
-        ),
-        encoding="utf-8",
-    )
-    (official_dir / "result.json").write_text(
-        json.dumps(
-            {
-                "runner": "official-ai-agent-evaluation",
-                "status": "success",
-                "system": "github-actions",
-                "machine_readable_thresholds": False,
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    html = render_cockpit_html(payload)
-
-    assert payload["eval"]["has_runs"] is False
-    assert payload["eval"]["official_eval"]["present"] is True
-    assert "Official Microsoft Foundry AI Agent Evaluation evidence exists" in html
-    assert "agentops doctor --evidence-pack" in html
-    action_titles = [action["title"] for action in payload["next_actions"]["actions"]]
-    assert "Run your first evaluation" not in action_titles
-    assert "Generate release evidence" in action_titles
-
-
 def test_readiness_detects_prompt_agent_deploy_workflow(tmp_path: Path):
     from agentops.agent.cockpit import _build_readiness_checklist
 
@@ -864,70 +857,6 @@ def test_readiness_continuous_eval_ok_when_doctor_finds_no_problem(
         if "Continuous evaluation rules" in c["title"]
     )
     assert cont_row["status"] == "ok"
-
-
-def test_production_section_is_a_teaser_into_foundry_monitor(tmp_path: Path, monkeypatch):
-    """Production telemetry now ships as a 2-card teaser (error rate +
-    P95 latency) with a prominent "Full view in Foundry Monitor" CTA. The
-    cockpit keeps the quick health snapshot next to the full Foundry
-    Monitor drilldown."""
-    _set_appinsights_env(monkeypatch)
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    html = render_cockpit_html(payload)
-
-    # Section title reflects the new "signal" framing.
-    assert "Production signal" in html
-    assert "Production telemetry" not in html
-    assert "Fast health snapshot from App Insights" in html
-    # The skeleton placeholder for the deferred load shows only the
-    # two surviving teaser cards.
-    assert "Error rate" in html
-    assert "P95 latency" in html
-    assert "Invocations" not in html or "Invocations" in (
-        # The token "Invocations" may still appear in unrelated copy
-        # (e.g. App Insights description in the Foundry connection
-        # card). Restrict the assertion to the production grid.
-        ""
-    )
-
-    # The production grid renders exactly two skeleton placeholder cards
-    # (Error rate / P95 latency). Invocations and tokens stay in the full
-    # Foundry Monitor drilldown.
-    # The ``skeleton-card`` class is unique to the deferred production
-    # grid, so counting it across the full HTML is sufficient.
-    assert html.count("skeleton-card") == 2
-
-
-def test_production_section_links_to_foundry_monitor_first(tmp_path: Path, monkeypatch):
-    """The Production signal section must surface the Foundry Monitor
-    deep-link as a primary CTA so users always know where the full
-    runtime monitoring surface lives."""
-    _set_appinsights_env(monkeypatch)
-    _write_eval_run(
-        tmp_path,
-        timestamp_dir="2026-05-11T01-00-00Z",
-        passed=True,
-        metrics={"coherence": 5.0},
-        cloud_evaluation={
-            "eval_id": "evl_x",
-            "run_id": "run_x",
-            "report_url": (
-                "https://acct.services.ai.azure.com/api/projects/p/"
-                "build/evaluations/evl_x"
-            ),
-        },
-    )
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    html = render_cockpit_html(payload)
-
-    assert "Full view in Foundry Monitor" in html
-    # The duplicated "Open App Insights KQL" CTA was removed from the
-    # Production signal section; the App Insights portal URL now lives only
-    # in the launchpad "App Insights" tile and the Doctor / Eval gate links.
-    assert "Open App Insights KQL" not in html
-    # The Foundry Monitor link is styled as the primary section CTA.
-    assert "section-link-primary" in html
-
 
 
 def test_deployments_diagnostic_not_a_git_repo(tmp_path: Path):
@@ -998,17 +927,8 @@ def test_create_app_serves_cockpit(tmp_path: Path):
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
     assert "AgentOps Cockpit" in r.text
-    # Range bar is present.
-    assert "range-pills" in r.text
-    assert 'range=1d' in r.text and 'range=7d' in r.text and 'range=30d' in r.text
-
-    # Custom range round-trip (also returns shell unless _partial is set).
-    r = client.get("/?range=custom&from=2020-01-01&to=2030-01-01&_partial=1")
-    assert r.status_code == 200
-
-    # Unknown range falls back to 7d default.
-    r = client.get("/?range=eternity&_partial=1")
-    assert r.status_code == 200
+    assert "range-pills" not in r.text
+    assert "refreshSelect" not in r.text
 
     r = client.get("/healthz")
     assert r.status_code == 200
@@ -1218,68 +1138,6 @@ def test_foundry_deeplinks_use_only_build_routes(tmp_path):
     assert links["operate"].split("?")[0].endswith("/operate/overview")
 
 
-def test_foundry_dataset_card_explains_inline_eval_data(tmp_path: Path):
-    _write_eval_run(
-        tmp_path,
-        timestamp_dir="2026-05-12T22-30-00Z",
-        passed=True,
-        metrics={"similarity": 0.9},
-        cloud_evaluation={
-            "report_url": (
-                "https://ai.azure.com/nextgen/r/"
-                "abc123,rg-x,,acct-y,proj-z/build/evaluations/"
-                "eval_001/run/run_001"
-            ),
-            "dataset": {
-                "mode": "inline",
-                "requested_mode": "auto",
-                "source_type": "file_content",
-                "local_path": ".agentops/data/smoke.jsonl",
-                "foundry_behavior": (
-                    "Foundry may materialize inline rows as eval-data-* "
-                    "backing dataset assets."
-                ),
-            },
-        },
-    )
-
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    html = render_cockpit_html(payload)
-
-    assert "Latest cloud run used local JSONL inline" in html
-    assert "eval-data-*" in html
-
-
-def test_foundry_dataset_card_shows_synced_dataset(tmp_path: Path):
-    _write_eval_run(
-        tmp_path,
-        timestamp_dir="2026-05-12T22-31-00Z",
-        passed=True,
-        metrics={"similarity": 0.9},
-        cloud_evaluation={
-            "report_url": (
-                "https://ai.azure.com/nextgen/r/"
-                "abc123,rg-x,,acct-y,proj-z/build/evaluations/"
-                "eval_001/run/run_001"
-            ),
-            "dataset": {
-                "mode": "foundry",
-                "requested_mode": "auto",
-                "source_type": "file_id",
-                "local_path": ".agentops/data/smoke.jsonl",
-                "foundry_name": "agentops-smoke",
-                "foundry_version": "sha256-abc123",
-            },
-        },
-    )
-
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    html = render_cockpit_html(payload)
-
-    assert "Latest cloud run used Foundry dataset agentops-smoke@sha256-abc123" in html
-    assert "eval-data-*" not in html
-
-
 def test_readiness_detail_links_use_info_color(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
@@ -1301,23 +1159,6 @@ def test_doctor_section_has_no_foundry_control_plane_link(tmp_path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     html = render_cockpit_html(payload)
     assert "Open Foundry control plane" not in html
-
-
-def test_tenant_card_source_moves_to_tooltip(tmp_path, monkeypatch):
-    """The "(from az account show)" suffix used to live inline in the
-    tenant card detail. It is now an ``(i)`` hover tooltip so the card
-    body stays compact."""
-    # Force the tenant detection to a known value without invoking az.
-    monkeypatch.setattr(
-        "agentops.agent.cockpit._az_tenant_id",
-        lambda: "16b3c013-d300-468d-ac64-7eda0820b6d3",
-    )
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    html = render_cockpit_html(payload)
-    # Inline source text is gone.
-    assert "(from <code>az account show</code>)" not in html
-    # Tooltip surfaces the same source via title= attribute.
-    assert "Resolved from `az account show`." in html
 
 
 def test_tenant_lookup_allows_slow_az_cmd_cold_start(monkeypatch):
@@ -1345,26 +1186,6 @@ def test_tenant_lookup_allows_slow_az_cmd_cold_start(monkeypatch):
     assert cockpit._az_tenant_id() == tenant
     assert captured["timeout"] == 30
     cockpit._TENANT_CACHE.clear()
-
-
-def test_app_insights_card_source_moves_to_tooltip(
-    tmp_path, monkeypatch
-):
-    """The "Connected via APPLICATIONINSIGHTS_CONNECTION_STRING" detail
-    used to render inline. It is now an ``(i)`` hover tooltip on the
-    App Insights card."""
-    monkeypatch.setenv(
-        "APPLICATIONINSIGHTS_CONNECTION_STRING",
-        "InstrumentationKey=00000000-0000-0000-0000-000000000000;"
-        "IngestionEndpoint=https://example.in.applicationinsights.azure.com/",
-    )
-    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
-    html = render_cockpit_html(payload)
-    # The verbose inline message is gone.
-    assert "Connected via <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code>" not in html
-    # The tooltip carries the env-var reference.
-    assert "APPLICATIONINSIGHTS_CONNECTION_STRING" in html
-    assert "info-i" in html
 
 
 def test_app_insights_logs_query_is_bounded(monkeypatch):
@@ -1439,7 +1260,7 @@ def test_app_insights_eval_runs_query_and_link(monkeypatch, tmp_path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     html = render_cockpit_html(payload)
 
-    assert "View CI evals in App Insights" in html
+    assert "View CI evals in App Insights" not in html
 
 
 def test_foundry_project_card_compacts_endpoint_and_exposes_copy(tmp_path, monkeypatch):

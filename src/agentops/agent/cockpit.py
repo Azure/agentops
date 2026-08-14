@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
-from agentops.agent.time_range import TimeRange, parse_time_range, preset_keys
+from agentops.agent.time_range import TimeRange
 from agentops.utils.yaml import load_yaml
 
 
@@ -70,65 +70,25 @@ def build_cockpit_payload(
     history: Optional[List[AnalysisRecord]] = None,
     time_range: Optional[TimeRange] = None,
 ) -> Dict[str, Any]:
-    """Reduce raw history + eval runs into a cockpit-ready dict.
-
-    Note: the production section is **not** fetched here. It is rendered
-    as a placeholder in the initial HTML and filled in asynchronously by
-    the browser hitting ``/api/production/html``. This keeps the initial
-    page load fast (local file reads only) even when App Insights is
-    slow to authenticate or query.
-    """
-    if time_range is None:
-        time_range = parse_time_range()
-    all_records = history if history is not None else load_analysis_history(workspace)
-    records = _filter_records(all_records, time_range)
-    eval_runs_all = _load_eval_runs(workspace, limit=200)
-    eval_runs = _filter_eval_runs(eval_runs_all, time_range)
+    """Reduce local configuration and the latest Doctor run for the cockpit."""
+    _ = time_range  # Retained for callers; the cockpit no longer filters by date.
+    records = history if history is not None else load_analysis_history(workspace)
     telemetry = _telemetry_status()
-    # Production is deferred to /api/production/html; render a placeholder.
-    production = {"has_data": False, "deferred": telemetry.get("enabled", False), "cards": []}
-
-    eval_payload = _build_eval_section(eval_runs)
-    eval_payload["official_eval"] = _official_eval_artifact_status(workspace)
     watchdog_payload = _build_watchdog_section(records)
-    deployments_payload = _build_deployments_section(workspace, time_range)
-    foundry_connection = _build_foundry_connection(workspace, telemetry)
-    open_in_foundry = _build_open_in_foundry(workspace, telemetry)
     readiness = _build_readiness_checklist(
-        workspace, telemetry, deployments_payload, watchdog_payload,
+        workspace, telemetry, watchdog=watchdog_payload,
     )
     next_actions = _build_next_actions(
-        workspace, telemetry, watchdog_payload, readiness, eval_payload,
+        watchdog_payload, readiness,
     )
 
     return {
         "workspace": str(workspace.resolve()),
-        "foundry_project_url": _resolve_foundry_project_url(workspace),
-        "foundry_compliance_url": _resolve_foundry_compliance_url(workspace),
-        "foundry_setup_url": _foundry_setup_url(),
-        "az_tenant_id": _az_tenant_id(),
-        "time_range": {
-            "key": time_range.key,
-            "label": time_range.label,
-            "start": time_range.start.isoformat(),
-            "end": time_range.end.isoformat(),
-            "hours": time_range.hours,
-            "query": time_range.to_query(),
-        },
         "telemetry": telemetry,
-        "production": production,
-        "eval": eval_payload,
-        "metrics": _build_metrics_cards(eval_runs),
         "watchdog": watchdog_payload,
-        "deployments": deployments_payload,
-        "foundry_connection": foundry_connection,
-        "open_in_foundry": open_in_foundry,
+        "connections": _build_connections(workspace),
         "readiness": readiness,
         "next_actions": next_actions,
-        "summary_counts": {
-            "eval_runs": len(eval_runs),
-            "analyses": len(records),
-        },
     }
 
 
@@ -1488,13 +1448,19 @@ def _telemetry_status() -> Dict[str, Any]:
         }
     if project:
         reason: Optional[str] = None
+        resource_reason: Optional[str] = None
         try:
             from agentops.utils.foundry_discovery import (
                 resolve_appinsights_connection_from_env_with_reason,
+                resolve_appinsights_resource_id_from_env_with_reason,
             )
             conn, reason = resolve_appinsights_connection_from_env_with_reason()
+            resource_id, resource_reason = (
+                resolve_appinsights_resource_id_from_env_with_reason()
+            )
         except Exception as exc:  # noqa: BLE001
             conn = None
+            resource_id = None
             reason = f"discovery raised {type(exc).__name__}: {exc}"
         if conn:
             portal_url = _appinsights_portal_url(conn)
@@ -1508,13 +1474,35 @@ def _telemetry_status() -> Dict[str, Any]:
                 "doctor_findings_url": _appinsights_doctor_findings_portal_url(conn),
                 "tone": "ok",
             }
+        if resource_id:
+            return {
+                "enabled": True,
+                "source": "foundry_project_connection",
+                "label": "App Insights",
+                "detail": (
+                    "Linked to the Foundry project with Project Managed Identity."
+                ),
+                "hint": (
+                    "Resolved from credential-free Foundry connection metadata; "
+                    "an API key connection string is not required."
+                ),
+                "resource_id": resource_id,
+                "portal_url": _azure_resource_portal_url(resource_id),
+                "tone": "ok",
+            }
         # Surface the actual reason inline so the user does not have to
         # tail the cockpit server logs to learn why discovery failed.
+        connection_is_pmi = bool(reason and "ProjectManagedIdentity" in reason)
+        failure_reason = (
+            resource_reason or reason
+            if connection_is_pmi
+            else reason or resource_reason
+        )
         reason_html = (
             f'<div class="telemetry-reason">'
-            f'<strong>Why:</strong> {_html_escape(reason)}'
+            f'<strong>Why:</strong> {_html_escape(failure_reason)}'
             "</div>"
-            if reason
+            if failure_reason
             else ""
         )
         return {
@@ -1586,6 +1574,11 @@ def _appinsights_portal_url(connection_string: Optional[str]) -> Optional[str]:
         "\n| take 100"
     )
     return _appinsights_logs_url(app_id, query)
+
+
+def _azure_resource_portal_url(resource_id: str) -> str:
+    """Build a portal link without requiring App Insights API-key metadata."""
+    return f"https://portal.azure.com/#resource{resource_id}/overview"
 
 
 def _appinsights_doctor_findings_portal_url(connection_string: Optional[str]) -> Optional[str]:
@@ -1668,23 +1661,11 @@ def _url_quote(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _build_foundry_connection(
-    workspace: Path,
-    telemetry: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Summarize how this repo connects to Microsoft Foundry.
-
-    Inputs are read-only: env vars, run.yaml/agent.yaml, and the most
-    recent ``cloud_evaluation.json`` (for the project root). Cockpit
-    renders this as the first card on the page so users can verify they
-    are pointed at the right Foundry tenant/project before drilling in.
-    """
+def _build_connections(workspace: Path) -> Dict[str, Any]:
+    """Describe the Foundry project and GitHub repository in scope."""
     project_env = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
-    tenant = _az_tenant_id()
     project_url = _resolve_foundry_project_url(workspace)
     project_root = _resolve_foundry_project_root(workspace)
-
-    agent_id, agent_source = _resolve_agent_identity(workspace)
 
     if project_env:
         project_status = "ok"
@@ -1705,40 +1686,9 @@ def _build_foundry_connection(
         )
         project_copy_value = None
 
-    if tenant:
-        tenant_status = "ok"
-        tenant_label = "Azure tenant resolved"
-        tenant_detail = f"<code>{_html_escape(tenant)}</code>"
-        tenant_hint = "Resolved from `az account show`."
-    else:
-        tenant_status = "warn"
-        tenant_label = "Azure tenant unknown"
-        tenant_detail = (
-            "Run <code>az login</code> so Foundry deep-links open in "
-            "the correct directory."
-        )
-        tenant_hint = None
-
-    if agent_id:
-        agent_status = "ok"
-        agent_label = "Agent configured"
-        agent_detail = (
-            f"<code>{_html_escape(agent_id)}</code>"
-        )
-        agent_hint = f"Resolved from {agent_source}."
-    else:
-        agent_status = "muted"
-        agent_label = "No agent pinned"
-        agent_detail = (
-            "Set <code>agent</code> in <code>agentops.yaml</code> when "
-            "you want the cockpit to surface a specific Foundry agent."
-        )
-        agent_hint = None
-
-    telemetry_status = telemetry.get("tone", "muted")
-    telemetry_label = telemetry.get("label", "Telemetry off")
-    telemetry_detail = telemetry.get("detail", "")
-    telemetry_hint = telemetry.get("hint")
+    github = _resolve_github_repository(workspace)
+    github_name = github.get("name")
+    github_url = github.get("url")
 
     items = [
         {
@@ -1751,34 +1701,46 @@ def _build_foundry_connection(
             "copy_value": project_copy_value,
         },
         {
-            "title": "Azure tenant",
-            "status": tenant_status,
-            "label": tenant_label,
-            "detail": tenant_detail,
-            "hint": tenant_hint,
-        },
-        {
-            "title": "Agent",
-            "status": agent_status,
-            "label": agent_label,
-            "detail": agent_detail,
-            "hint": agent_hint,
-            "link": (_foundry_deeplinks(workspace).get("agent") if agent_id else None),
-            "link_label": "Open agent",
-        },
-        {
-            "title": "Application Insights",
-            "status": telemetry_status,
-            "label": telemetry_label,
-            "detail": telemetry_detail,
-            "hint": telemetry_hint,
-            "link": telemetry.get("portal_url"),
-            "link_label": "Open App Insights",
+            "title": "GitHub repository",
+            "status": "ok" if github_url else "warn",
+            "label": github_name or "GitHub repository missing",
+            "detail": (
+                "Repository remote resolved from local Git configuration."
+                if github_url
+                else "Configure an <code>origin</code> remote that points to GitHub."
+            ),
+            "link": github_url,
+            "link_label": "Open in GitHub",
+            "copy_value": github_url,
         },
     ]
+    return {"items": items}
+
+
+def _resolve_github_repository(workspace: Path) -> Dict[str, Optional[str]]:
+    """Resolve a browser URL from the local ``origin`` remote."""
+    proc = _run_quick(["git", "remote", "get-url", "origin"], cwd=workspace)
+    if proc is None or proc.returncode != 0:
+        return {"name": None, "url": None}
+    remote = (proc.stdout or "").strip()
+    if not remote:
+        return {"name": None, "url": None}
+
+    match = re.match(
+        r"^(?:https?://|ssh://git@)(?P<host>[^/:]+)[/:](?P<path>.+?)(?:\.git)?$",
+        remote,
+    )
+    if not match:
+        match = re.match(r"^git@(?P<host>[^:]+):(?P<path>.+?)(?:\.git)?$", remote)
+    if not match or "github" not in match.group("host").lower():
+        return {"name": None, "url": None}
+
+    path = match.group("path").removesuffix(".git").strip("/")
+    if path.count("/") != 1:
+        return {"name": None, "url": None}
     return {
-        "items": items,
-        "has_project": bool(project_env or project_root),
+        "name": path,
+        "url": f"https://{match.group('host')}/{path}",
     }
 
 
@@ -1791,14 +1753,13 @@ def _build_open_in_foundry(
 
     Cockpit surfaces a curated panel of Foundry links so users can drill
     down without manually navigating the portal. Azure Monitor surfaces
-    (raw App Insights telemetry and the Foundry operations workbook) are
-    folded into the Foundry project subgroup so there is a single place to
-    look, rather than a duplicated one-tile group.
+    (raw App Insights telemetry) are folded into the Foundry project subgroup
+    so there is a single place to look, rather than a duplicated one-tile
+    group.
     """
     deeplinks = _foundry_deeplinks(workspace)
     portal_url = telemetry.get("portal_url") if isinstance(telemetry, dict) else None
     project_url = _resolve_foundry_project_url(workspace)
-    workbook_url = _resolve_workbook_portal_url(workspace)
 
     agent_targets: List[Dict[str, Any]] = [
         {
@@ -1852,17 +1813,6 @@ def _build_open_in_foundry(
             "url": deeplinks.get("operate") or project_url,
         },
         {
-            "key": "foundry_ops_dashboard",
-            "title": "Foundry operations dashboard",
-            "description": (
-                "Azure Monitor workbook with PTU capacity, token traffic, "
-                "latency percentiles, throttling, and read-only Foundry "
-                "trace-evaluation behavior. Deploy or open it with "
-                "`agentops telemetry dashboard`."
-            ),
-            "url": workbook_url,
-        },
-        {
             "key": "app_insights",
             "title": "App Insights",
             "description": "Raw KQL access to spans, dependencies, and traces.",
@@ -1891,31 +1841,10 @@ def _build_open_in_foundry(
     }
 
 
-def _resolve_workbook_portal_url(workspace: Path) -> Optional[str]:
-    """Return the Foundry operations workbook portal URL (read-only).
-
-    Mirrors ``agentops telemetry dashboard open``: discovery reads the azd
-    ``.env`` (a file read, no Azure calls) so the deep link matches. Any
-    failure falls back to ``None`` so the cockpit never breaks.
-    """
-    try:
-        from agentops.services import dashboard as dash
-
-        target = dash.discover_target(workspace)
-        return dash.build_workbook_portal_url(
-            subscription_id=target.subscription_id,
-            resource_group=target.resource_group,
-            name=target.name,
-            tenant_id=target.tenant_id,
-        )
-    except Exception:  # noqa: BLE001 - deep link is best-effort, cockpit stays up
-        return None
-
-
 def _build_readiness_checklist(
     workspace: Path,
     telemetry: Dict[str, Any],
-    deployments: Dict[str, Any],
+    deployments: Optional[Dict[str, Any]] = None,
     watchdog: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Read-only checklist of repo-side observability readiness.
@@ -1927,6 +1856,7 @@ def _build_readiness_checklist(
     lives in the Monitor / Evaluations panels users open from the
     deep-links panel.
     """
+    _ = deployments  # Backwards-compatible input; readiness is repo/Doctor based.
     checks: List[Dict[str, Any]] = []
     agentops_config = _read_agentops_config(workspace)
     trace_manifest = _read_trace_regression_manifest(workspace)
@@ -1934,15 +1864,17 @@ def _build_readiness_checklist(
     trace_lineage: Dict[str, Any] = (
         raw_trace_lineage if isinstance(raw_trace_lineage, dict) else {}
     )
+    custom_tracing_path = _detect_custom_tracing(workspace)
+    foundry_runtime = _detect_foundry_agent_runtime(workspace, agentops_config)
 
-    tracing_ok = bool(telemetry.get("enabled"))
+    tracing_linked = bool(telemetry.get("enabled"))
     checks.append(
         {
-            "title": "Server-side tracing (agent → App Insights)",
-            "status": "ok" if tracing_ok else "warn",
+            "title": "App Insights connection",
+            "status": "ok" if tracing_linked else "warn",
             "detail": (
-                telemetry.get("detail", "")
-                if tracing_ok
+                str(telemetry.get("detail") or "Linked to Application Insights.")
+                if tracing_linked
                 else "<strong>How to complete:</strong> wire "
                 "<code>APPLICATIONINSIGHTS_CONNECTION_STRING</code> or attach "
                 "App Insights to the Foundry project. "
@@ -1952,25 +1884,31 @@ def _build_readiness_checklist(
         }
     )
 
-    # Client-side tracing is not auto-detectable from outside the
-    # caller process — it depends on whether the application itself
-    # imports the OTel SDK and instruments outbound model / agent
-    # calls. Surface it as an "info" reminder + docs link so the
-    # readiness panel stays honest about what AgentOps can verify.
-    client_side_ok = bool(os.getenv("AGENTOPS_CLIENT_TRACING")) or tracing_ok
+    agent_tracing_ready = bool(foundry_runtime or custom_tracing_path)
     checks.append(
         {
-            "title": "Client-side tracing (app code instrumented)",
-            "status": "info" if client_side_ok else "muted",
+            "title": "Agent tracing instrumentation",
+            "status": "ok" if agent_tracing_ready else "muted",
             "detail": (
-                "<strong>How to complete:</strong> instrument the application "
-                "that calls your agent, not just AgentOps. Add Azure Monitor "
-                "OpenTelemetry to the app process, configure the same "
-                "<code>APPLICATIONINSIGHTS_CONNECTION_STRING</code>, and wrap "
-                "outbound model/agent/tool calls so a user request shows one "
-                "end-to-end trace across client code, agent execution, and "
-                "dependencies. Set <code>AGENTOPS_CLIENT_TRACING=1</code> only "
-                "after the app is instrumented. "
+                f"Microsoft Foundry provides native tracing for this "
+                f"{_html_escape(foundry_runtime)}; no application-side "
+                "OpenTelemetry setup is required."
+                + (
+                    " Additional custom spans were detected in "
+                    f"<code>{_html_escape(custom_tracing_path)}</code>."
+                    if custom_tracing_path
+                    else " Custom spans remain optional."
+                )
+                if foundry_runtime
+                else (
+                    "Detected custom OpenTelemetry instrumentation in "
+                    f"<code>{_html_escape(custom_tracing_path)}</code>."
+                )
+                if custom_tracing_path
+                else "<strong>How to complete:</strong> instrument the agent "
+                "runtime with OpenTelemetry. Foundry hosted "
+                "agents and prompt agents provide this natively; custom or "
+                "external runtimes must configure their own tracer and exporter. "
                 '<a href="https://learn.microsoft.com/azure/ai-foundry/observability/concepts/trace-agent-concept" '
                 'target="_blank" rel="noopener noreferrer">Foundry tracing docs &#x2197;</a>'
             ),
@@ -2011,16 +1949,19 @@ def _build_readiness_checklist(
         }
     )
 
-    rubrics = agentops_config.get("rubrics")
-    rubric_ready = isinstance(rubrics, list) and bool(rubrics)
+    rubric_ready, rubric_source = _detect_rubric_evaluator(
+        workspace,
+        agentops_config,
+    )
     checks.append(
         {
             "title": "Optional rubric evaluator gate",
             "status": "ok" if rubric_ready else "muted",
             "detail": (
-                "Detected <code>rubrics:</code> in <code>agentops.yaml</code>. "
-                "Keep thresholds bound only to metric names emitted by your "
-                "Foundry / azd run."
+                f"Detected a rubric evaluator in "
+                f"<code>{_html_escape(rubric_source)}</code>. "
+                "Keep thresholds bound only to metric names emitted by the "
+                "corresponding Foundry / azd evaluation run."
                 if rubric_ready
                 else "<strong>How to complete:</strong> optional - add "
                 "<code>rubrics:</code> only after a real Foundry rubric evaluator "
@@ -2189,29 +2130,22 @@ def _build_readiness_checklist(
         }
     )
 
-    alerts = bool(telemetry.get("portal_url")) and tracing_ok
+    alerts, alerts_source = _detect_alert_configuration(
+        workspace,
+        agentops_config,
+    )
     checks.append(
         {
             "title": "Alerts wired",
-            "status": "info" if alerts else "muted",
+            "status": "ok" if alerts else "info",
             "detail": (
-                "App Insights is linked. Next, create Azure Monitor alert "
-                "rules for the agent workload: failures in "
-                "<code>requests</code>, slow P95 duration, high dependency "
-                "error rate, and optionally AgentOps CI/Doctor spans such as "
-                "<code>agentops.eval.*</code> and "
-                "<code>agentops.agent.finding.*</code>. "
-                '<a href="https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-create-new-alert-rule" '
-                'target="_blank" rel="noopener noreferrer">Alert docs &#x2197;</a>'
+                "Detected Azure Monitor alert configuration in "
+                f"<code>{_html_escape(alerts_source)}</code>."
                 if alerts
-                else "<strong>How to complete:</strong> once tracing is wired, "
-                "create Azure Monitor / App Insights alert rules for the "
-                "agent workload. Start with <code>requests | where success == false</code> "
-                "for failures, P95 request duration for latency, and "
-                "<code>dependencies</code> failures for downstream services. "
-                "If you want AgentOps signals in alerts too, add rules over "
-                "<code>agentops.eval.*</code> and "
-                "<code>agentops.agent.finding.*</code> custom dimensions. "
+                else "Not verified: Cockpit found no alert definition in repo "
+                "configuration, and the latest Doctor analysis does not inventory "
+                "Azure Monitor alert rules. This does not claim that cloud-side "
+                "alerts are absent. Define alerts as IaC or verify them in Azure Monitor. "
                 '<a href="https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-create-new-alert-rule" '
                 'target="_blank" rel="noopener noreferrer">Alert docs &#x2197;</a>'
             ),
@@ -2296,87 +2230,39 @@ def _continuous_eval_status_from_watchdog(
 
 
 def _build_next_actions(
-    workspace: Path,
-    telemetry: Dict[str, Any],
     watchdog: Dict[str, Any],
     readiness: Dict[str, Any],
-    eval_payload: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Surface a short, ordered list of contextual next actions.
-
-    Each action either opens a Cockpit section or links to the relevant
-    Foundry / Azure runtime view.
-    """
+    """Prioritize Doctor findings, then incomplete readiness checks."""
     actions: List[Dict[str, Any]] = []
-
-    if not telemetry.get("enabled"):
+    severity_order = {"critical": 0, "warning": 1, "info": 2}
+    findings = sorted(
+        watchdog.get("latest_findings") or [],
+        key=lambda item: severity_order.get(str(item.get("severity") or "").lower(), 3),
+    )
+    for finding in findings:
+        recommendation = str(finding.get("recommendation") or finding.get("summary") or "")
         actions.append(
             {
-                "title": "Wire App Insights to Foundry",
-                "detail": (
-                    "Tracing is off. Without it Foundry Monitor, "
-                    "Evaluations, and Traces stay empty."
-                ),
-                "cta": "Open Foundry connected resources",
-                "url": _resolve_foundry_project_url(workspace),
-            }
-        )
-
-    readiness_checks = readiness.get("checks", [])
-    if any(c["status"] == "warn" for c in readiness_checks if c["title"].startswith("CI eval gate")):
-        actions.append(
-            {
-                "title": "Add a CI eval workflow",
-                "detail": (
-                    "Generate a PR workflow. Prompt-agent repos use the "
-                    "official Microsoft eval runner when compatible; hosted "
-                    "and fallback cases use <code>agentops eval run</code>."
-                ),
-                "cta": "agentops workflow generate",
-            }
-        )
-
-    latest_findings = watchdog.get("latest_findings") or []
-    crit_findings = [f for f in latest_findings if (f.get("severity") or "").lower() == "critical"]
-    if crit_findings:
-        actions.append(
-            {
-                "title": f"Fix {len(crit_findings)} critical Doctor finding(s)",
-                "detail": "Doctor surfaced critical readiness gaps in the repo.",
-                "cta": "Jump to AgentOps Doctor",
+                "title": f"Fix Doctor: {finding.get('title') or finding.get('id') or 'finding'}",
+                "detail": _render_recommendation_body(recommendation),
+                "cta": "Open Doctor finding",
                 "anchor": "#section-agentops-doctor",
             }
         )
 
-    official_eval = _official_eval_artifact_status(workspace)
-    has_eval_proof = (
-        bool(eval_payload.get("has_runs"))
-        or bool(eval_payload.get("runs"))
-        or bool(official_eval.get("present"))
+    readiness_order = {"warn": 0, "muted": 1, "info": 2}
+    incomplete = sorted(
+        (check for check in readiness.get("checks", []) if check.get("status") != "ok"),
+        key=lambda item: readiness_order.get(str(item.get("status") or ""), 3),
     )
-    if not has_eval_proof:
+    for check in incomplete:
         actions.append(
             {
-                "title": "Run your first evaluation",
-                "detail": (
-                    "No eval gate evidence yet. Run <code>agentops eval run</code> "
-                    "locally, or run the generated official-eval workflow for a "
-                    "compatible Foundry prompt agent."
-                ),
-                "cta": "agentops eval run",
-            }
-        )
-
-    evidence = _release_evidence_status(workspace)
-    if has_eval_proof and evidence.get("status") in {"missing", "unreadable"}:
-        actions.append(
-            {
-                "title": "Generate release evidence",
-                "detail": (
-                    "Package the latest eval gate, Doctor findings, CI/CD "
-                    "status, and Foundry links into the release-review artifact."
-                ),
-                "cta": "agentops doctor --evidence-pack",
+                "title": f"Complete readiness: {check.get('title') or 'configuration'}",
+                "detail": check.get("detail", ""),
+                "cta": "Open readiness item",
+                "anchor": "#section-readiness",
             }
         )
 
@@ -2385,8 +2271,7 @@ def _build_next_actions(
             {
                 "title": "All caught up",
                 "detail": (
-                    "No outstanding readiness gaps detected in the repo. "
-                    "Use the Foundry deep-links above to monitor runtime."
+                    "All readiness items are complete and Doctor has no findings."
                 ),
                 "cta": None,
             }
@@ -2608,6 +2493,142 @@ def _read_agentops_config(workspace: Path) -> Dict[str, Any]:
     except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _detect_foundry_agent_runtime(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+) -> Optional[str]:
+    """Identify Foundry runtimes that provide native agent tracing."""
+    path = workspace / "azure.yaml"
+    if path.is_file():
+        try:
+            payload = load_yaml(path)
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            services = payload.get("services")
+            if isinstance(services, dict) and any(
+                isinstance(service, dict)
+                and service.get("host") == "azure.ai.agent"
+                and service.get("kind") == "hosted"
+                for service in services.values()
+            ):
+                return "hosted agent runtime"
+
+    raw_agent = agentops_config.get("agent")
+    if isinstance(raw_agent, str) and raw_agent.strip():
+        try:
+            from agentops.core.agentops_config import classify_agent
+
+            target = classify_agent(
+                raw_agent,
+                protocol=agentops_config.get("protocol"),
+            )
+        except (TypeError, ValueError):
+            target = None
+        if target is not None:
+            if target.kind == "foundry_hosted":
+                return "hosted agent runtime"
+            if target.kind == "foundry_prompt":
+                return "prompt agent runtime"
+
+    for eval_path in (workspace / "src").glob("**/eval.y*ml"):
+        try:
+            eval_payload = load_yaml(eval_path)
+        except Exception:
+            continue
+        if not isinstance(eval_payload, dict):
+            continue
+        agent = eval_payload.get("agent")
+        kind = agent.get("kind") if isinstance(agent, dict) else None
+        if kind == "hosted":
+            return "hosted agent runtime"
+        if kind in {"prompt", "prompt-agent"}:
+            return "prompt agent runtime"
+    return None
+
+
+def _detect_custom_tracing(workspace: Path) -> Optional[str]:
+    """Find optional repository code that emits custom OpenTelemetry spans."""
+    candidates = list((workspace / "src").glob("**/*.py"))
+    candidates.extend(workspace.glob("*.py"))
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        has_otel = "opentelemetry" in text or "configure_azure_monitor" in text
+        emits_spans = any(
+            marker in text
+            for marker in (
+                "start_as_current_span",
+                "start_span(",
+                "get_tracer(",
+                "configure_azure_monitor(",
+            )
+        )
+        if has_otel and emits_spans:
+            return path.relative_to(workspace).as_posix()
+    return None
+
+
+def _detect_rubric_evaluator(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+) -> Tuple[bool, str]:
+    """Resolve rubric evidence from AgentOps or azd AI Agent eval config."""
+    rubrics = agentops_config.get("rubrics")
+    if isinstance(rubrics, list) and rubrics:
+        return True, "agentops.yaml"
+
+    for path in (workspace / "src").glob("**/eval.y*ml"):
+        try:
+            payload = load_yaml(path)
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        evaluators = payload.get("evaluators")
+        if isinstance(evaluators, list) and any(
+            isinstance(evaluator, dict)
+            and bool(evaluator.get("local_uri") or evaluator.get("id"))
+            for evaluator in evaluators
+        ):
+            return True, path.relative_to(workspace).as_posix()
+    return False, ""
+
+
+def _detect_alert_configuration(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+) -> Tuple[bool, str]:
+    """Find explicit alert definitions without claiming cloud state."""
+    observability = agentops_config.get("observability")
+    if isinstance(observability, dict) and observability.get("alerts"):
+        return True, "agentops.yaml"
+
+    markers = (
+        "microsoft.insights/metricalerts",
+        "microsoft.insights/scheduledqueryrules",
+        "azurerm_monitor_metric_alert",
+        "azurerm_monitor_scheduled_query_rules_alert",
+    )
+    candidates: List[Path] = []
+    for root in (workspace / "infra", workspace / "deploy"):
+        if root.is_dir():
+            for pattern in ("**/*.bicep", "**/*.tf", "**/*.json", "**/*.y*ml"):
+                candidates.extend(root.glob(pattern))
+    for pattern in ("*.bicep", "*.tf"):
+        candidates.extend(workspace.glob(pattern))
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore").lower()
+        except OSError:
+            continue
+        if any(marker in text for marker in markers):
+            return True, path.relative_to(workspace).as_posix()
+    return False, ""
 
 
 def _read_trace_regression_manifest(workspace: Path) -> Dict[str, Any]:
@@ -3468,10 +3489,8 @@ def _collapsible_section(
 def _render_status_cards_section(
     readiness: Dict[str, Any],
     watchdog: Dict[str, Any],
-    eval_payload: Dict[str, Any],
 ) -> str:
-    """Render the consolidated top status: three clickable cards that
-    answer "can I ship?" at a glance (Readiness, Doctor, Eval gate).
+    """Render the two go/no-go verdicts that answer "Can I ship?".
 
     Each card is an anchor to the matching detail section below; the
     template's hash-open script expands that (collapsed) section when the
@@ -3503,9 +3522,9 @@ def _render_status_cards_section(
         readiness_tone = "warn"
     readiness_card = _card(
         title="Readiness",
-        value=readiness_label,
+        value="GO" if readiness_tone == "ok" else "NO-GO",
         tone=readiness_tone,
-        sub="Observability checks green",
+        sub=readiness_label,
         anchor="#section-readiness",
     )
 
@@ -3521,9 +3540,9 @@ def _render_status_cards_section(
         return 0
 
     if not watchdog.get("has_history"):
-        doctor_tone = "muted"
-        doctor_value = "No runs"
-        doctor_sub = "Run agentops doctor"
+        doctor_tone = "warn"
+        doctor_value = "NO-GO"
+        doctor_sub = "No Doctor run"
     else:
         findings_total = _headline_value("findings_total")
         critical = _headline_value("critical")
@@ -3533,7 +3552,7 @@ def _render_status_cards_section(
             doctor_tone = "warn"
         else:
             doctor_tone = "ok"
-        doctor_value = f"{findings_total} finding(s)"
+        doctor_value = "GO" if findings_total == 0 else "NO-GO"
         doctor_sub = f"{critical} critical"
     doctor_card = _card(
         title="Doctor",
@@ -3543,28 +3562,7 @@ def _render_status_cards_section(
         anchor="#section-agentops-doctor",
     )
 
-    if not eval_payload.get("has_runs"):
-        eval_tone = "muted"
-        eval_value = "No runs"
-        eval_sub = "Run agentops eval run"
-    else:
-        passed = bool(eval_payload.get("latest_passed"))
-        eval_tone = "ok" if passed else "crit"
-        eval_value = "Pass" if passed else "Fail"
-        pass_rate = eval_payload.get("pass_rate")
-        if isinstance(pass_rate, (int, float)):
-            eval_sub = f"{int(pass_rate * 100)}% pass rate"
-        else:
-            eval_sub = "Latest run"
-    eval_card = _card(
-        title="Eval gate",
-        value=eval_value,
-        tone=eval_tone,
-        sub=eval_sub,
-        anchor="#section-eval-gates",
-    )
-
-    cards = readiness_card + doctor_card + eval_card
+    cards = readiness_card + doctor_card
     return (
         '<section class="status-cards-section" id="section-status-cards">'
         '<div class="status-cards-caption">Can I ship? '
@@ -3636,7 +3634,7 @@ def _render_foundry_connection_section(connection: Dict[str, Any]) -> str:
         )
     body = f'<div class="grid">{"".join(items_html)}</div>'
     return _collapsible_section(
-        "Foundry connection", body, section_id="section-foundry-connection"
+        "Connections", body, section_id="section-connections"
     )
 
 
@@ -3914,121 +3912,6 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
     :func:`build_cockpit_payload`. Returns a complete HTML document.
     """
     telemetry = payload["telemetry"]
-    # Show the telemetry card only when telemetry is OFF - it then acts as
-    # the "why is the production section empty" hint. When telemetry is
-    # active, the dedicated Production signal section communicates the
-    # connection state already.
-    show_telemetry_card = not telemetry.get("enabled", False)
-    telemetry_card = _render_telemetry_card(telemetry) if show_telemetry_card else ""
-    eval_runs_url = (
-        telemetry.get("eval_runs_url") if isinstance(telemetry, dict) else None
-    )
-    eval_link = ""
-    if eval_runs_url:
-        eval_link = (
-            f' <a class="section-link" href="{_html_escape(eval_runs_url)}" '
-            f'target="_blank" rel="noopener noreferrer">'
-            f'View CI evals in App Insights →</a>'
-        )
-
-    eval_body = ""
-    eval_subtitle = "Eval gate summary"
-    eval_caption = (
-        '<div class="section-subcaption">'
-        'AgentOps gate history from local artifacts and CI runs. For '
-        '<strong>Foundry cloud</strong> runs, use this as the quick pass/fail '
-        'triage view and open Foundry Evaluations for full analysis.'
-        '</div>'
-    )
-    if payload["eval"]["has_runs"]:
-        cards_html = "".join(_render_card(c) for c in payload["eval"]["cards"])
-        exec_tag = _render_exec_section_tag(
-            payload["eval"].get("latest_execution"),
-        )
-        eval_body = f'{eval_caption}<div class="grid">{cards_html}{telemetry_card}</div>'
-        eval_subtitle = f"Eval gate summary{exec_tag}"
-    else:
-        official_eval = payload["eval"].get("official_eval") or {}
-        if official_eval.get("present"):
-            status = _html_escape(official_eval.get("status") or "metadata-only")
-            empty_text = (
-                "No AgentOps-normalized eval runs yet under "
-                "<code>.agentops/results/</code>. Official Microsoft Foundry "
-                "AI Agent Evaluation evidence exists under "
-                f"<code>.agentops/official-eval/</code> with status <strong>{status}</strong>. "
-                "Run <code>agentops doctor --evidence-pack</code> to package it "
-                "for release review."
-            )
-        else:
-            empty_text = (
-                "No eval runs yet under <code>.agentops/results/</code>. "
-                "Run <code>agentops eval run</code> to populate this section."
-            )
-        eval_body = (
-            eval_caption +
-            '<div class="empty-state">'
-            f"{empty_text}"
-            "</div>"
-            + (f'<div class="grid">{telemetry_card}</div>' if telemetry_card else "")
-        )
-        eval_subtitle = "Eval gate summary"
-
-    deployments = payload.get("deployments") or {}
-    if deployments.get("has_data") and deployments.get("cards"):
-        deploy_cards = "".join(_render_card(c) for c in deployments["cards"])
-        deployments_body = f'<div class="grid">{deploy_cards}</div>'
-    else:
-        hint = deployments.get("hint") or (
-            "Install the GitHub CLI and run <code>gh auth login</code> "
-            "to surface workflow runs here."
-        )
-        deployments_body = f'<div class="empty-state">{hint}</div>'
-    deployments_section = _collapsible_section(
-        "CI/CD Pipelines", deployments_body, section_id="section-cicd",
-        open_by_default=False,
-    )
-
-    metrics_subtitle = "Quality gate summary"
-    metrics_body = ""
-    if payload["metrics"]:
-        metrics_html = "".join(_render_card(c) for c in payload["metrics"])
-        exec_tag = _render_exec_section_tag(
-            payload["eval"].get("latest_execution") if payload["eval"].get("has_runs") else None,
-        )
-        metrics_caption = (
-            '<div class="section-subcaption">'
-            'Quality gate trends computed from AgentOps result artifacts. '
-            'Keep this as a compact threshold/regression summary; detailed '
-            'cloud-evaluation drilldown belongs in Foundry Evaluations.'
-            '</div>'
-        )
-        metrics_body = f'{metrics_caption}<div class="grid">{metrics_html}</div>'
-        metrics_subtitle = f"Quality gate summary{exec_tag}"
-
-    # Merge the eval gate + quality gate into a single "Eval gates" section
-    # with two subgroups. They share a source (AgentOps result artifacts)
-    # and CTA (View CI evals in App Insights), so folding them removes a
-    # redundant top-level section and keeps the gate story in one place.
-    eval_gate_subgroup = (
-        '<div class="deeplink-group">'
-        f'<div class="deeplink-group-label">{eval_subtitle}</div>'
-        f'{eval_body}'
-        '</div>'
-    )
-    quality_gate_subgroup = ""
-    if metrics_body:
-        quality_gate_subgroup = (
-            '<div class="deeplink-group">'
-            f'<div class="deeplink-group-label">{metrics_subtitle}</div>'
-            f'{metrics_body}'
-            '</div>'
-        )
-    eval_gates_section = _collapsible_section(
-        f"Eval gates{eval_link}",
-        eval_gate_subgroup + quality_gate_subgroup,
-        section_id="section-eval-gates",
-        open_by_default=False,
-    )
 
     watchdog = payload["watchdog"]
     watchdog_title = "AgentOps Doctor"
@@ -4063,114 +3946,9 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         open_by_default=False,
     )
 
-    production = payload.get("production") or {}
-    production_section = ""
-    # The App Insights KQL portal URL is already surfaced by the launchpad
-    # "App Insights" tile and the Doctor / Eval gate "View in App Insights"
-    # links, so we no longer repeat it here. Production signal keeps a
-    # single primary CTA: the full Foundry Monitor view.
-    _portal_url_unused = telemetry.get("portal_url") if isinstance(telemetry, dict) else None
-
-    # Cockpit surfaces a 2-card teaser (error rate + P95); this link is
-    # the primary call-to-action for the full Foundry Monitor view.
-    foundry_monitor_url = None
-    open_panel = payload.get("open_in_foundry") or {}
-    for target in open_panel.get("targets", []):
-        if target.get("key") == "monitor":
-            foundry_monitor_url = target.get("url")
-            break
-    foundry_monitor_link = ""
-    if foundry_monitor_url:
-        foundry_monitor_link = (
-            f' <a class="section-link section-link-primary" '
-            f'href="{_html_escape(foundry_monitor_url)}" '
-            'target="_blank" rel="noopener noreferrer">'
-            'Full view in Foundry Monitor →</a>'
-        )
-
-    prod_title = (
-        'Production signal'
-        ' <span class="live-pill">live · App Insights</span>'
-        f'{foundry_monitor_link}'
-    )
-    if production.get("has_data") and production.get("cards"):
-        # Server-side render (rare - happens when /api/production/html is
-        # invoked directly without a deferred placeholder).
-        prod_html = "".join(_render_card(c, hero=True) for c in production["cards"])
-        prod_caption = (
-            '<div class="section-subcaption">'
-            'Fast health snapshot from App Insights. Use '
-            '<strong>Foundry Monitor</strong> for the full production view '
-            '(invocations, tokens, per-model breakdown). Raw App Insights '
-            'KQL is available from the launchpad "App Insights" tile.'
-            '</div>'
-        )
-        prod_body = f'{prod_caption}<div class="grid" id="production-grid">{prod_html}</div>'
-        production_section = _collapsible_section(
-            prod_title, prod_body, open_by_default=False,
-        )
-    elif production.get("deferred"):
-        # Telemetry is wired up; the cards will arrive async from
-        # /api/production/html so the page can render immediately.
-        # Render 2 skeleton cards matching the teaser layout
-        # (Error rate / P95 latency). Invocations and tokens
-        # intentionally live in Foundry Monitor only.
-        skeleton_labels = ("Error rate", "P95 latency")
-        skeleton_cards = "".join(
-            (
-                '<div class="card hero loading-card skeleton-card">'
-                f'<div class="card-label">{label}</div>'
-                '<div class="card-value skeleton-bar skeleton-bar-value"></div>'
-                '<div class="skeleton-bar skeleton-bar-spark"></div>'
-                '<div class="skeleton-bar skeleton-bar-detail"></div>'
-                '</div>'
-            )
-            for label in skeleton_labels
-        )
-        prod_caption = (
-            '<div class="section-subcaption">'
-            'Fast health snapshot from App Insights. Use '
-            '<strong>Foundry Monitor</strong> for the full production view '
-            '(invocations, tokens, per-model breakdown). Raw App Insights '
-            'KQL is available from the launchpad "App Insights" tile.'
-            '</div>'
-        )
-        prod_body = (
-            f'{prod_caption}'
-            f'<div class="grid" id="production-grid">{skeleton_cards}</div>'
-        )
-        production_section = _collapsible_section(
-            prod_title, prod_body, open_by_default=False,
-        )
-
-    counts = payload["summary_counts"]
     workspace_display = _shorten_workspace(payload["workspace"])
-    range_info = payload.get("time_range") or {}
-    range_bar = _render_range_bar(range_info)
-
-    foundry_uri = _foundry_logo_data_uri()
-    foundry_url = payload.get("foundry_project_url") or "https://ai.azure.com"
-    if foundry_uri:
-        powered_by_html = (
-            f'<a class="powered-by" href="{_html_escape(foundry_url)}" '
-            'target="_blank" rel="noopener noreferrer" '
-            'title="Open this project in Microsoft Foundry">'
-            f'<img src="{foundry_uri}" alt="Foundry" />'
-            '<span>Your Foundry project &#x2197;</span>'
-            '</a>'
-        )
-    else:
-        powered_by_html = ""
-
-    # Banner removed; the primer click is now folded into the project
-    # action button above, which carries the ?tid= hint.
-    setup_banner_html = ""
-
-    foundry_connection_section = _render_foundry_connection_section(
-        payload.get("foundry_connection") or {"items": []}
-    )
-    open_in_foundry_section = _render_open_in_foundry_section(
-        payload.get("open_in_foundry") or {"targets": []}
+    connections_section = _render_foundry_connection_section(
+        payload.get("connections") or {"items": []}
     )
     readiness_section = _render_readiness_section(
         payload.get("readiness") or {"checks": [], "label": "0/0 ready"}
@@ -4181,96 +3959,18 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
     status_cards_section = _render_status_cards_section(
         payload.get("readiness") or {"checks": [], "label": "0/0 ready"},
         payload.get("watchdog") or {},
-        payload.get("eval") or {},
     )
 
     return _COCKPIT_TEMPLATE.format(
-        foundry_connection_section=foundry_connection_section,
-        open_in_foundry_section=open_in_foundry_section,
         status_cards_section=status_cards_section,
+        connections_section=connections_section,
         readiness_section=readiness_section,
-        next_actions_section=next_actions_section,
-        eval_gates_section=eval_gates_section,
-        deployments_section=deployments_section,
-        production_section=production_section,
         watchdog_section=watchdog_section,
-        eval_runs=counts["eval_runs"],
-        analyses=counts["analyses"],
+        next_actions_section=next_actions_section,
         workspace_display=workspace_display,
         workspace=payload["workspace"],
         icon_uri=_icon_data_uri(),
-        powered_by=powered_by_html,
-        setup_banner=setup_banner_html,
-        range_bar=range_bar,
-        range_label=_html_escape(range_info.get("label", "")),
     )
-
-
-def _render_range_bar(range_info: Dict[str, Any]) -> str:
-    """Render the 1D / 7D / 30D / Custom selector."""
-    active_key = range_info.get("key", "7d")
-    pills: List[str] = []
-    labels = {"1d": "1D", "7d": "7D", "30d": "30D"}
-    for key in preset_keys():
-        cls = "range-pill active" if key == active_key else "range-pill"
-        pills.append(f'<a class="{cls}" href="?range={key}">{labels[key]}</a>')
-    custom_cls = "range-pill active" if active_key == "custom" else "range-pill"
-    pills.append(
-        f'<a class="{custom_cls}" href="#" onclick="document.getElementById(\'rangeCustomForm\').classList.toggle(\'open\'); return false;">Custom</a>'
-    )
-
-    today = _today_iso()
-    week_ago = _days_ago_iso(7)
-    custom_from = range_info.get("start", "")[:10] if active_key == "custom" else week_ago
-    custom_to = range_info.get("end", "")[:10] if active_key == "custom" else today
-    form_class = "range-custom-form open" if active_key == "custom" else "range-custom-form"
-
-    custom_form = (
-        f'<form id="rangeCustomForm" class="{form_class}" method="get">'
-        f'<input type="hidden" name="range" value="custom" />'
-        f'<label>From <input type="date" name="from" value="{custom_from}" max="{today}" /></label>'
-        f'<label>To <input type="date" name="to" value="{custom_to}" max="{today}" /></label>'
-        f'<button type="submit">Apply</button>'
-        f'</form>'
-    )
-
-    refresh_control = (
-        '<div class="refresh-control" title="How often the cockpit reloads">'
-        '<svg class="refresh-icon" viewBox="0 0 16 16" width="12" height="12" '
-        'fill="none" stroke="currentColor" stroke-width="1.6" '
-        'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        '<path d="M13.5 8a5.5 5.5 0 1 1-1.61-3.89" />'
-        '<polyline points="13.5,2 13.5,5 10.5,5" />'
-        '</svg>'
-        '<span class="refresh-label">Refresh</span>'
-        '<select id="refreshSelect" aria-label="Refresh period">'
-        '<option value="0">Off</option>'
-        '<option value="60000">1 min</option>'
-        '<option value="300000" selected>5 min</option>'
-        '<option value="900000">15 min</option>'
-        '<option value="1800000">30 min</option>'
-        '<option value="3600000">1 hour</option>'
-        '</select>'
-        '</div>'
-    )
-
-    return (
-        '<div class="range-bar">'
-        + '<div class="range-pills">' + "".join(pills) + '</div>'
-        + custom_form
-        + refresh_control
-        + '</div>'
-    )
-
-
-def _today_iso() -> str:
-    from datetime import datetime, timezone
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
-
-
-def _days_ago_iso(days: int) -> str:
-    from datetime import datetime, timedelta, timezone
-    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
 
 def _shorten_workspace(path: str) -> str:
@@ -4736,91 +4436,6 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     0%, 100% {{ opacity: 1; }}
     50% {{ opacity: 0.6; }}
   }}
-  .range-bar {{
-    display: flex; align-items: center; flex-wrap: wrap; gap: 12px;
-    margin-bottom: 8px;
-  }}
-  .range-pills {{ display: flex; gap: 4px; }}
-  .range-pill {{
-    padding: 6px 14px; border-radius: 999px;
-    color: var(--text-dim); text-decoration: none;
-    font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border);
-    transition: background 0.15s ease, color 0.15s ease;
-  }}
-  .range-pill:hover {{
-    background: rgba(255, 255, 255, 0.06); color: var(--text);
-  }}
-  .range-pill.active {{
-    background: rgba(56, 189, 248, 0.14); color: var(--info);
-    border-color: rgba(56, 189, 248, 0.35);
-  }}
-  .range-custom-form {{
-    display: none; gap: 10px; align-items: center;
-    background: var(--card); padding: 10px 14px;
-    border-radius: 999px; border: 1px solid var(--border);
-    font-size: 12px; color: var(--text-dim);
-  }}
-  .range-custom-form.open {{ display: flex; }}
-  .range-custom-form input[type="date"] {{
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border); color: var(--text);
-    padding: 4px 8px; border-radius: 8px; font-size: 12px;
-    color-scheme: dark;
-  }}
-  .range-custom-form button {{
-    background: var(--info); color: #08090b; border: 0;
-    padding: 5px 12px; border-radius: 999px;
-    font-size: 12px; font-weight: 700; cursor: pointer;
-  }}
-  .range-current {{
-    color: var(--text-faint); font-size: 11px; font-weight: 500;
-    margin-left: auto;
-    font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
-  }}
-  .refresh-control {{
-    margin-left: auto;
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 5px 10px 5px 12px; border-radius: 999px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    font-size: 12px; font-weight: 600; letter-spacing: 0.02em;
-    transition: background 0.15s ease, color 0.15s ease,
-                border-color 0.15s ease;
-  }}
-  .refresh-control:hover {{
-    background: rgba(255, 255, 255, 0.06); color: var(--text);
-    border-color: rgba(56, 189, 248, 0.35);
-  }}
-  .refresh-control .refresh-icon {{
-    color: var(--info); opacity: 0.9;
-  }}
-  .refresh-control.spinning .refresh-icon {{
-    animation: refresh-spin 0.8s linear;
-  }}
-  .refresh-label {{
-    color: var(--text-faint); text-transform: uppercase;
-    font-size: 10px; letter-spacing: 0.06em;
-  }}
-  #refreshSelect {{
-    appearance: none; -webkit-appearance: none;
-    background: transparent; color: var(--text);
-    border: 0; outline: none;
-    font: inherit; font-weight: 600;
-    padding: 0 18px 0 2px; cursor: pointer;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='2,4 5,7 8,4'/></svg>");
-    background-repeat: no-repeat;
-    background-position: right 2px center;
-  }}
-  #refreshSelect option {{
-    background: var(--card); color: var(--text);
-  }}
-  @keyframes refresh-spin {{
-    from {{ transform: rotate(0deg); }}
-    to   {{ transform: rotate(360deg); }}
-  }}
   .grid {{
     display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 14px;
@@ -5207,84 +4822,17 @@ _COCKPIT_TEMPLATE = """<!doctype html>
       <div class="subtitle" title="{workspace}">{workspace_display}</div>
     </div>
   </div>
-  <div class="stats">
-    <div class="stats-counts">
-      <div><span class="stat-num">{eval_runs}</span> eval(s)</div>
-      <div><span class="stat-num">{analyses}</span> analysis run(s)</div>
-    </div>
-    {powered_by}
-  </div>
 </header>
 
-{setup_banner}
-
-{range_bar}
-<div class="range-current">window: {range_label}</div>
-
-{foundry_connection_section}
 {status_cards_section}
-{next_actions_section}
+{connections_section}
 {readiness_section}
 {watchdog_section}
-{eval_gates_section}
-{production_section}
-{deployments_section}
-{open_in_foundry_section}
+{next_actions_section}
 
-<footer>Auto-refresh: <span id="refreshFooter">every 5 min</span> · <code>agentops cockpit</code></footer>
+<footer><code>agentops cockpit</code></footer>
 
 <script>
-// Wire interactive sparkline hover on every card. Exposed as a function
-// so we can re-run it after the production grid is replaced via fetch.
-function wireSparklineHover(root) {{
-  (root || document).querySelectorAll('.card').forEach(function(card) {{
-    if (card.dataset.hoverWired === '1') return;
-    card.dataset.hoverWired = '1';
-    const valueNum = card.querySelector('.value-num');
-    const hoverDetail = card.querySelector('.hover-detail');
-    if (!valueNum) return;
-    const origValue = valueNum.dataset.orig || valueNum.textContent;
-    card.querySelectorAll('svg.sparkline .dot').forEach(function(dot) {{
-      dot.addEventListener('mouseenter', function() {{
-        const v = dot.getAttribute('data-v');
-        const l = dot.getAttribute('data-l');
-        const altHref = dot.getAttribute('data-alt-href');
-        const altLabel = dot.getAttribute('data-alt-label');
-        if (v) valueNum.textContent = v;
-        if (hoverDetail) {{
-          hoverDetail.innerHTML = '';
-          if (l) {{
-            const labelSpan = document.createElement('span');
-            labelSpan.className = 'hover-label';
-            labelSpan.textContent = l;
-            hoverDetail.appendChild(labelSpan);
-          }}
-          if (altHref && altLabel) {{
-            const a = document.createElement('a');
-            a.className = 'hover-alt-pill';
-            a.href = altHref;
-            if (!altHref.startsWith('/')) {{
-              a.target = '_blank';
-              a.rel = 'noopener noreferrer';
-            }}
-            a.textContent = altLabel + ' \u2197';
-            hoverDetail.appendChild(a);
-          }}
-          hoverDetail.classList.add('active');
-        }}
-      }});
-    }});
-    card.addEventListener('mouseleave', function() {{
-      valueNum.textContent = origValue;
-      if (hoverDetail) {{
-        hoverDetail.innerHTML = '';
-        hoverDetail.classList.remove('active');
-      }}
-    }});
-  }});
-}}
-wireSparklineHover();
-
 // Auto-expand a collapsed <details> section when it is targeted via the
 // URL hash (status cards and Next-actions CTAs link to #section-... ids).
 // Details sections collapse by default now, so anchor navigation must open
@@ -5339,66 +4887,6 @@ openHashSection();
   }});
 }})();
 
-// Deferred load of the Production signal grid. The initial page render
-// skips the App Insights round-trip so the cockpit opens immediately;
-// this fetch fills in the slow part asynchronously without blocking.
-(function() {{
-  const grid = document.getElementById('production-grid');
-  if (!grid || !grid.querySelector('.loading-card')) return;
-  const params = window.location.search || '';
-  fetch('/api/production/html' + params)
-    .then(function(r) {{ return r.ok ? r.text() : null; }})
-    .then(function(html) {{
-      if (html === null) return;
-      grid.innerHTML = html;
-      wireSparklineHover(grid);
-    }})
-    .catch(function() {{ /* best-effort; leave the placeholder up */ }});
-}})();
-
-// Configurable auto-refresh. Replaces the old <meta http-equiv="refresh">
-// so the user can pick the cadence (Off / 1m / 5m / 15m / 30m / 1h) and
-// the choice persists across reloads via localStorage.
-(function() {{
-  const STORAGE_KEY = 'agentops.cockpit.refreshMs';
-  const select = document.getElementById('refreshSelect');
-  const footer = document.getElementById('refreshFooter');
-  const control = select ? select.closest('.refresh-control') : null;
-  if (!select) return;
-
-  const LABELS = {{
-    '0':       'off',
-    '60000':   'every 1 min',
-    '300000':  'every 5 min',
-    '900000':  'every 15 min',
-    '1800000': 'every 30 min',
-    '3600000': 'every 1 hour'
-  }};
-
-  let timerId = null;
-  function applyPeriod(ms) {{
-    if (timerId) {{ clearTimeout(timerId); timerId = null; }}
-    if (footer) footer.textContent = LABELS[String(ms)] || 'off';
-    if (ms > 0) {{
-      timerId = setTimeout(function() {{
-        if (control) control.classList.add('spinning');
-        window.location.reload();
-      }}, ms);
-    }}
-  }}
-
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored !== null && LABELS[stored] !== undefined) {{
-    select.value = stored;
-  }}
-  applyPeriod(parseInt(select.value, 10) || 0);
-
-  select.addEventListener('change', function() {{
-    const ms = parseInt(select.value, 10) || 0;
-    try {{ window.localStorage.setItem(STORAGE_KEY, String(ms)); }} catch (e) {{}}
-    applyPeriod(ms);
-  }});
-}})();
 </script>
 </body>
 </html>
@@ -5425,21 +4913,12 @@ def create_app(workspace: Path):
 
     @app.get("/", response_class=HTMLResponse)
     def _index(
-        range_: Optional[str] = Query(None, alias="range"),
-        from_: Optional[str] = Query(None, alias="from"),
-        to: Optional[str] = Query(None),
         partial: Optional[str] = Query(None, alias="_partial"),
     ) -> HTMLResponse:
-        # The full render does file IO, history aggregation, and a
-        # `gh run list` subprocess for CI/CD, which together can take
-        # several seconds. To avoid a "black page" while the browser
-        # waits, ``/`` returns a tiny branded shell with an animated
-        # loader, and the shell fetches ``/?_partial=1`` to hydrate
-        # the real cockpit once the heavy work completes.
+        # Return a tiny shell immediately, then hydrate the local cockpit.
         if not partial:
             return HTMLResponse(_render_loading_shell())
-        time_range = parse_time_range(range_, from_, to)
-        payload = build_cockpit_payload(workspace, time_range=time_range)
+        payload = build_cockpit_payload(workspace)
         return HTMLResponse(render_cockpit_html(payload))
 
     @app.get("/favicon.ico")
@@ -5467,25 +4946,6 @@ def create_app(workspace: Path):
     @app.get("/api/telemetry")
     def _api_telemetry() -> JSONResponse:
         return JSONResponse(_telemetry_status())
-
-    @app.get("/api/production")
-    def _api_production(
-        range_: Optional[str] = Query(None, alias="range"),
-        from_: Optional[str] = Query(None, alias="from"),
-        to: Optional[str] = Query(None),
-    ) -> JSONResponse:
-        time_range = parse_time_range(range_, from_, to)
-        return JSONResponse(_build_production_section(_telemetry_status(), time_range=time_range))
-
-    @app.get("/api/production/html", response_class=HTMLResponse)
-    def _api_production_html(
-        range_: Optional[str] = Query(None, alias="range"),
-        from_: Optional[str] = Query(None, alias="from"),
-        to: Optional[str] = Query(None),
-    ) -> HTMLResponse:
-        time_range = parse_time_range(range_, from_, to)
-        production = _build_production_section(_telemetry_status(), time_range=time_range)
-        return HTMLResponse(render_production_grid_html(production))
 
     @app.get("/healthz")
     def _healthz() -> Dict[str, str]:

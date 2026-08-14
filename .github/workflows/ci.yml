@@ -149,6 +149,8 @@ jobs:
     needs: [lint, test]
     runs-on: ubuntu-latest
     environment: staging
+    outputs:
+      version: ${{ steps.package-version.outputs.version }}
     permissions:
       id-token: write  # Required for PyPI Trusted Publishing (OIDC)
     steps:
@@ -171,10 +173,44 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Determine built version
+        id: package-version
+        run: |
+          VERSION=$(uv run python - <<'PY'
+          from email.parser import BytesParser
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheels = sorted(Path("dist").glob("*.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(
+                  f"Expected exactly one wheel in dist/, found {len(wheels)}."
+              )
+          with ZipFile(wheels[0]) as archive:
+              metadata_files = [
+                  name
+                  for name in archive.namelist()
+                  if name.endswith(".dist-info/METADATA")
+              ]
+              if len(metadata_files) != 1:
+                  raise SystemExit(
+                      "Expected exactly one .dist-info/METADATA file in "
+                      f"{wheels[0].name}, found {len(metadata_files)}."
+                  )
+              metadata = BytesParser().parsebytes(archive.read(metadata_files[0]))
+          version = metadata.get("Version")
+          if not version:
+              raise SystemExit(f"No Version field found in {wheels[0].name}.")
+          print(version)
+          PY
+          )
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Built package version: $VERSION"
+
       - name: Show version
         run: |
           ls -la dist/
-          uv run python -c "from importlib.metadata import version; print(f'Dev version: {version(\"agentops-accelerator\")}')"
+          echo "Dev version: ${{ steps.package-version.outputs.version }}"
 
       - name: Publish to TestPyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -189,33 +225,27 @@ jobs:
     needs: publish-dev
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
-      - name: Determine expected version
-        id: version
-        run: |
-          pip install setuptools-scm
-          VERSION=$(python -m setuptools_scm)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Expected dev version: $VERSION"
-
       - name: Install from TestPyPI
+        env:
+          PACKAGE_VERSION: ${{ needs.publish-dev.outputs.version }}
         run: |
+          if [ -z "$PACKAGE_VERSION" ]; then
+            echo "::error::publish-dev did not expose the built package version."
+            exit 1
+          fi
           # TestPyPI serves its simple index through a CDN, so a freshly
           # uploaded release is not immediately resolvable even after the
           # upload returns 200 OK. Allow ~6 minutes for it to propagate.
           ATTEMPTS=12
           for i in $(seq 1 "$ATTEMPTS"); do
-            echo "Attempt $i/$ATTEMPTS: installing agentops-accelerator==${{ steps.version.outputs.version }}"
+            echo "Attempt $i/$ATTEMPTS: installing agentops-accelerator==$PACKAGE_VERSION"
             if pip install --no-cache-dir \
-              "agentops-accelerator==${{ steps.version.outputs.version }}" \
+              "agentops-accelerator==$PACKAGE_VERSION" \
               --index-url https://test.pypi.org/simple/ \
               --extra-index-url https://pypi.org/simple/; then
               exit 0
@@ -225,7 +255,7 @@ jobs:
               sleep 30
             fi
           done
-          echo "::error::agentops-accelerator==${{ steps.version.outputs.version }} was not available from TestPyPI after $ATTEMPTS attempts (~6 min)."
+          echo "::error::agentops-accelerator==$PACKAGE_VERSION was not available from TestPyPI after $ATTEMPTS attempts (~6 min)."
           exit 1
 
       - name: Smoke test
@@ -234,13 +264,15 @@ jobs:
           agentops --help
 
       - name: Summary
+        env:
+          PACKAGE_VERSION: ${{ needs.publish-dev.outputs.version }}
         run: |
           echo "## ✅ Dev build published and verified" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Version: \`${{ steps.version.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- TestPyPI: https://test.pypi.org/project/agentops-accelerator/${{ steps.version.outputs.version }}/" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: \`$PACKAGE_VERSION\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- TestPyPI: https://test.pypi.org/project/agentops-accelerator/$PACKAGE_VERSION/" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Install: \`pip install agentops-accelerator==${{ steps.version.outputs.version }} --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Install: \`pip install agentops-accelerator==$PACKAGE_VERSION --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/\`" >> "$GITHUB_STEP_SUMMARY"
 
   # Validate that the VSIX extension packages correctly
   build-vsix:

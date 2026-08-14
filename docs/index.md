@@ -78,8 +78,8 @@ candidate versions become a release. Start with
 <div class="agentops-card" markdown>
 ### :material-radar: Observe
 [Observe](observe.md) covers Foundry traces and Azure Monitor, and how
-production signals feed continuous evaluation. Start with
-`agentops telemetry validate` and the `agentops-agent` skill.
+production signals inform release readiness. Start with the `agentops-agent`
+skill.
 </div>
 
 <div class="agentops-card" markdown>

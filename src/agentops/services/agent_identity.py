@@ -518,10 +518,15 @@ def _name_from_target(workspace: Path) -> Optional[str]:
     if not isinstance(agent, str):
         return None
     raw = agent.strip()
-    if not raw or "://" in raw:
+    if not raw:
         return None
-    name = raw.split(":", 1)[0].strip()
-    return name or None
+    try:
+        from agentops.core.agentops_config import classify_agent
+
+        target = classify_agent(raw)
+    except ValueError:
+        return None
+    return target.name
 
 
 def resolve_registration_inputs(
