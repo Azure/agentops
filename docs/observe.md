@@ -115,54 +115,14 @@ is a governance improvement rather than a correctness gate.
     possible from the Azure Monitor side. It does not push traces into Agent
     365.
 
-## Trace-to-regression promotion
-
-The strongest use of observability is turning real production behavior into new
-evaluation coverage. Reviewed production traces become new dataset rows, so the
-cases your agent actually sees keep getting evaluated on every future run.
-
-In Foundry, this is the trace-to-dataset flow: sample recent traces, let
-intelligent sampling deduplicate and select a representative set, and create an
-evaluation dataset from them. AgentOps then promotes that into reviewable
-regression rows with `agentops eval promote-traces`.
-
-!!! warning "Promotion is review-first"
-    Trace-derived rows are candidates, not ground truth. Self-similarity labels
-    are useful for drift detection, not human-verified correctness, so a person
-    should confirm or fill the expected answers before those rows gate a
-    release. This keeps regression data trustworthy as it grows.
-
-The loop is the point: traces become datasets, datasets gate the next release,
-and the agent keeps getting evaluated on the behavior that matters in
-production.
-
-## Try it
-
-Turn reviewed production traces into regression coverage.
-
-1. Export or curate representative Foundry or Application Insights traces as
-   JSON or JSONL, then review them for quality and sensitive data.
-
-2. Preview how AgentOps converts the reviewed traces into regression candidates.
-
-    ```bash
-    agentops eval promote-traces --source .agentops/traces/export.jsonl
-    ```
-
-3. If the candidates are suitable, apply them to the regression dataset.
-
-    ```bash
-    agentops eval promote-traces --source .agentops/traces/export.jsonl --apply
-    ```
-
 To browse this signal interactively and deep-link into Foundry and Azure
 Monitor, run `agentops cockpit`. That local command center is covered on the
 [Operate](operate.md#cockpit) page.
 
 ## Run from your coding agent
 
-Install the AgentOps skills so your coding agent can read telemetry and grow the
-regression set for you.
+Install the AgentOps skills so your coding agent can read telemetry and
+investigate production health.
 
 ```bash
 agentops skills install --platform copilot
@@ -173,7 +133,6 @@ The skills that map to observability are:
 | Skill | What it helps with |
 |---|---|
 | `agentops-agent` | Watchdog analysis of production health and latency spikes. |
-| `agentops-eval` | Promote traces and re-evaluate against the hardened dataset. |
 
 ## Next
 
