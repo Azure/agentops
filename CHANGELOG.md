@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-08-14
+
 ### Fixed
 - **Pre-flight now validates Foundry project reachability independently from
   Application Insights credential discovery.** Projects whose attached
