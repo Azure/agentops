@@ -847,15 +847,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#operations-dashboard" class="md-nav__link">
-    <span class="md-ellipsis">
-      Operations dashboard
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#traces-as-evaluation-signal" class="md-nav__link">
     <span class="md-ellipsis">
       Traces as evaluation signal
@@ -1266,15 +1257,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#operations-dashboard" class="md-nav__link">
-    <span class="md-ellipsis">
-      Operations dashboard
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#traces-as-evaluation-signal" class="md-nav__link">
     <span class="md-ellipsis">
       Traces as evaluation signal
@@ -1347,10 +1329,10 @@
 
 
 <h1 id="observe">Observe<a class="headerlink" href="#observe" title="Permanent link">&para;</a></h1>
-<p>This page explains how AgentOps uses agent observability. Foundry and Azure
-Monitor produce the runtime signal; AgentOps reads that signal so release
-readiness reflects what is actually happening in production, not just what
-passed in CI.</p>
+<p>This page explains how AgentOps turns agent observability into release evidence
+and regression coverage. Foundry and Azure Monitor produce the runtime signal;
+AgentOps reads that signal so readiness reflects what is actually happening in
+production, not just what passed in CI.</p>
 <p>Observability is conceptual here. For the hands-on portal and KQL walkthrough,
 see step 18 of the <a href="../tutorial-prompt-agent/">Foundry Prompt Agent tutorial</a>.</p>
 <h2 id="where-the-signal-comes-from">Where the signal comes from<a class="headerlink" href="#where-the-signal-comes-from" title="Permanent link">&para;</a></h2>
@@ -1371,23 +1353,6 @@ falls back to that connection string when discovery is not available.</p>
 Eval runs emit <code>agentops.eval.*</code> spans and scheduled Doctor runs emit
 <code>agentops.agent.finding.*</code> spans, both of which the Cockpit can deep-link
 into Azure Monitor Logs.</p>
-</div>
-<h2 id="operations-dashboard">Operations dashboard<a class="headerlink" href="#operations-dashboard" title="Permanent link">&para;</a></h2>
-<p>Traces answer "what did this run do." Operational metrics answer "is the
-deployment healthy." AgentOps ships an Azure Monitor workbook for the Foundry /
-Azure OpenAI deployments behind your agent, so operators read PTU utilization,
-PAYG spillover, throughput, latency percentiles, and error and throttling rates
-in one place.</p>
-<p>The workbook is scoped per Azure OpenAI resource and per Log Analytics
-workspace, with tabs for capacity, traffic and tokens, latency, and errors and
-throttling. You can deploy it, open it, or export the JSON with the CLI, or
-import it by hand into Azure Monitor.</p>
-<div class="admonition info">
-<p class="admonition-title">Doctor checks the diagnostic settings</p>
-<p>The dashboard needs the Azure OpenAI resource to send <code>RequestResponse</code> and
-<code>AzureOpenAIRequestUsage</code> logs to Log Analytics. <code>agentops doctor</code> flags
-when they are missing (rule <code>waf.observability.aoai_diagnostic_categories</code>)
-and prints the exact <code>az monitor diagnostic-settings</code> command to fix it.</p>
 </div>
 <h2 id="traces-as-evaluation-signal">Traces as evaluation signal<a class="headerlink" href="#traces-as-evaluation-signal" title="Permanent link">&para;</a></h2>
 <p>A single trace shows what one request did. The value for release readiness comes
@@ -1475,37 +1440,20 @@ release. This keeps regression data trustworthy as it grows.</p>
 and the agent keeps getting evaluated on the behavior that matters in
 production.</p>
 <h2 id="try-it">Try it<a class="headerlink" href="#try-it" title="Permanent link">&para;</a></h2>
-<p>Confirm the signal is flowing, then turn real traces into regression coverage.</p>
+<p>Turn reviewed production traces into regression coverage.</p>
 <ol>
 <li>
-<p>Check that AgentOps can reach Application Insights before you rely on the signal.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>validate
+<p>Export or curate representative Foundry or Application Insights traces as
+   JSON or JSONL, then review them for quality and sensitive data.</p>
+</li>
+<li>
+<p>Preview how AgentOps converts the reviewed traces into regression candidates.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>promote-traces<span class="w"> </span>--source<span class="w"> </span>.agentops/traces/export.jsonl
 </code></pre></div>
 </li>
 <li>
-<p>Preview the traces and evaluation events AgentOps can currently see.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>preview
-</code></pre></div>
-</li>
-<li>
-<p>Import a trace export so it can become regression coverage.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>import
-</code></pre></div>
-</li>
-<li>
-<p>Promote reviewed production traces into regression dataset rows.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>promote-traces<span class="w"> </span>--source<span class="w"> </span>.agentops/traces/export.jsonl
-</code></pre></div>
-</li>
-<li>
-<p>Preview the operations dashboard as an ARM template, without touching Azure.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>dashboard<span class="w"> </span>deploy<span class="w"> </span>--dry-run
-</code></pre></div>
-</li>
-<li>
-<p>Deploy the workbook, then open it in the Azure portal.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>dashboard<span class="w"> </span>deploy
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>agentops<span class="w"> </span>telemetry<span class="w"> </span>dashboard<span class="w"> </span>open
+<p>If the candidates are suitable, apply them to the regression dataset.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>promote-traces<span class="w"> </span>--source<span class="w"> </span>.agentops/traces/export.jsonl<span class="w"> </span>--apply
 </code></pre></div>
 </li>
 </ol>
@@ -1515,7 +1463,7 @@ Monitor, run <code>agentops cockpit</code>. That local command center is covered
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can read telemetry and grow the
 regression set for you.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>
 <p>The skills that map to observability are:</p>
 <table>
