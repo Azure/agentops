@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-14
+
 ### Changed
 - **The AgentOps Cockpit now focuses on five release-readiness sections.**
   The page renders only the readiness and Doctor ship verdicts, Foundry and
