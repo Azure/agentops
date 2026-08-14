@@ -172,7 +172,7 @@ def _check_azure_cli() -> PreflightCheck:
 
 
 def _check_foundry_project() -> PreflightCheck:
-    """`AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` reachable + App Insights wired."""
+    """Check that `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT` is reachable."""
     started = time.time()
     endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
     if not endpoint:
@@ -189,7 +189,7 @@ def _check_foundry_project() -> PreflightCheck:
         )
     try:
         from agentops.utils.foundry_discovery import (
-            resolve_appinsights_connection_with_reason,
+            check_foundry_project_reachable_with_reason,
         )
     except ImportError:
         return PreflightCheck(
@@ -199,20 +199,20 @@ def _check_foundry_project() -> PreflightCheck:
             message="agentops.utils.foundry_discovery not available.",
             duration_seconds=time.time() - started,
         )
-    conn, reason = resolve_appinsights_connection_with_reason(endpoint)
-    if conn:
+    reachable, reason = check_foundry_project_reachable_with_reason(endpoint)
+    if reachable:
         return PreflightCheck(
             name="foundry_project",
             display_name="Foundry project",
             status="ok",
-            message="Project reachable; App Insights auto-discovered.",
+            message="Project reachable.",
             duration_seconds=time.time() - started,
         )
     return PreflightCheck(
         name="foundry_project",
         display_name="Foundry project",
         status="warn",
-        message=f"Discovery failed — {reason}",
+        message=f"Reachability check failed — {reason}",
         remediation=(
             "Confirm the signed-in identity has Reader on the project "
             "resource group, then re-run."
@@ -221,9 +221,7 @@ def _check_foundry_project() -> PreflightCheck:
     )
 
 
-def _check_application_insights_env(
-    foundry_check: Optional[PreflightCheck] = None,
-) -> PreflightCheck:
+def _check_application_insights_env() -> PreflightCheck:
     """Heads-up when neither env var nor Foundry discovery yields a
     connection string. The production telemetry tile will stay grey."""
     started = time.time()
@@ -256,51 +254,41 @@ def _check_application_insights_env(
             duration_seconds=time.time() - started,
         )
 
-    if foundry_check and foundry_check.status == "ok":
-        return PreflightCheck(
-            name="app_insights",
-            display_name="Application Insights",
-            status="ok",
-            message="Resolved via Foundry discovery.",
-            duration_seconds=time.time() - started,
-        )
-
-    if (
-        foundry_check
-        and foundry_check.status == "warn"
-        and "discovery failed" in foundry_check.message.lower()
-        and "returned no application insights connection"
-        not in foundry_check.message.lower()
-    ):
-        return PreflightCheck(
-            name="app_insights",
-            display_name="Application Insights",
-            status="warn",
-            message=(
-                "Could not verify the Foundry App Insights connection because "
-                "Foundry discovery did not complete."
-            ),
-            remediation=(
-                "Fix the Foundry project warning above, or set "
-                "APPLICATIONINSIGHTS_CONNECTION_STRING explicitly."
-            ),
-            duration_seconds=time.time() - started,
-        )
-
-    # Try Foundry discovery as a fallback (uses the same cached helper).
     endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
     if endpoint:
         try:
             from agentops.utils.foundry_discovery import (
+                PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON,
                 resolve_appinsights_connection_with_reason,
             )
-            conn, _ = resolve_appinsights_connection_with_reason(endpoint)
+            conn, reason = resolve_appinsights_connection_with_reason(endpoint)
             if conn:
                 return PreflightCheck(
                     name="app_insights",
                     display_name="Application Insights",
                     status="ok",
                     message="Resolved via Foundry discovery.",
+                    duration_seconds=time.time() - started,
+                )
+            if reason == PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON:
+                return PreflightCheck(
+                    name="app_insights",
+                    display_name="Application Insights",
+                    status="ok",
+                    message=PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON,
+                    duration_seconds=time.time() - started,
+                )
+            if reason and "returned no application insights connection" not in reason.lower():
+                return PreflightCheck(
+                    name="app_insights",
+                    display_name="Application Insights",
+                    status="warn",
+                    message=f"Connection-string discovery failed — {reason}",
+                    remediation=(
+                        "Confirm the signed-in identity can read the Foundry "
+                        "project, or set APPLICATIONINSIGHTS_CONNECTION_STRING "
+                        "explicitly."
+                    ),
                     duration_seconds=time.time() - started,
                 )
         except ImportError:
@@ -345,9 +333,8 @@ def run_preflight(
     # Foundry / App Insights probes are advisory; they help the user
     # understand *why* certain sources will be silent rather than
     # blocking the run.
-    foundry_check = _check_foundry_project()
-    checks.append(foundry_check)
-    checks.append(_check_application_insights_env(foundry_check))
+    checks.append(_check_foundry_project())
+    checks.append(_check_application_insights_env())
 
     return PreflightReport(checks=checks)
 
@@ -373,7 +360,7 @@ def format_report(
 
           ✓ Workspace             /repo/path
           ✓ Azure authentication  ARM token acquired (expires in 89 min)
-          ✓ Foundry project       Project reachable; App Insights auto-discovered.
+          ✓ Foundry project       Project reachable.
           ⚠ Application Insights  No connection string available; production telemetry will be empty.
                                   → Wire App Insights in Foundry or set APPLICATIONINSIGHTS_CONNECTION_STRING.
 
