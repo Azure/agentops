@@ -883,15 +883,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#agent-identity-on-traces" class="md-nav__link">
-    <span class="md-ellipsis">
-      Agent identity on traces
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
       Run from your coding agent
@@ -1302,15 +1293,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#agent-identity-on-traces" class="md-nav__link">
-    <span class="md-ellipsis">
-      Agent identity on traces
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#run-from-your-coding-agent" class="md-nav__link">
     <span class="md-ellipsis">
       Run from your coding agent
@@ -1507,66 +1489,11 @@ findings from your own production traffic, separate from the eval gate. That
 is intended: a real release should investigate latency and errors before
 promoting, even when the candidate's eval scores pass.</p>
 </div>
-<h2 id="agent-identity-on-traces">Agent identity on traces<a class="headerlink" href="#agent-identity-on-traces" title="Permanent link">&para;</a></h2>
-<p>Traces tell you what an agent did. They do not, by default, tell you <em>which</em>
-agent did it in a way an auditor can reconcile with your tenant. Microsoft
-Entra Agent ID closes that gap: the agent gets a first-class identity, and the
-same identifier travels from registration through traces into release evidence.</p>
-<p>The handshake has three steps, and each one is a different tool, so it is worth
-being explicit about who writes what.</p>
-<p><strong>1. Register the identity.</strong> <code>agentops agent register</code> creates (or adopts) an
-agent identity blueprint in Microsoft Entra and records the resolved
-application id locally:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>agent<span class="w"> </span>register<span class="w"> </span>--sponsor<span class="w"> </span>owner@contoso.com
-</code></pre></div>
-<p>The sponsor is required. An agent identity with no accountable owner cannot be
-governed, so there is no default. The command is idempotent: if a blueprint
-with the same display name already exists, AgentOps reuses it instead of
-creating a duplicate. Run it with <code>--dry-run</code> first to see the resolved display
-name and sponsor without calling Microsoft Graph.</p>
-<p>The resolved id is written to <code>.agentops/identity/agent-identity.json</code>. Declare
-the inputs in <code>agentops.yaml</code> so they are source-controlled:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">identity</span><span class="p">:</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">display_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">support-agent</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="nt">sponsor</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">owner@contoso.com</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">verify</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
-</code></pre></div>
-<p><code>verify: true</code> tells the Doctor to confirm the blueprint against Microsoft
-Graph. It is off by default because that lookup needs tenant admin consent
-(<code>AgentIdentityBlueprint.Read.All</code>), which most workspaces will not have on day
-one. With it off, the Doctor still reports whether an identity is registered at
-all, using only local state.</p>
-<p><strong>2. Stamp it on traces.</strong> Once an identity is resolved, AgentOps adds it to
-the OpenTelemetry resource as <code>gen_ai.agent.id</code>, so every span AgentOps emits
-carries the Entra Agent ID. In CI, where the local record is not checked in,
-set <code>AGENTOPS_ENTRA_AGENT_ID</code> instead and the attribute resolves from the
-environment.</p>
-<p>The attribute is <strong>omitted</strong> when no identity is registered, never emitted as an
-empty string. That distinction matters when you query: filtering on presence
-tells you which traffic is attributable and which is not.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">dependencies</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">isnotempty</span><span class="p">(</span><span class="n">customDimensions</span><span class="p">[</span><span class="s">&quot;gen_ai.agent.id&quot;</span><span class="p">])</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="p">|</span><span class="w"> </span><span class="k">summarize</span><span class="w"> </span><span class="n">runs</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">count</span><span class="p">()</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">tostring</span><span class="p">(</span><span class="n">customDimensions</span><span class="p">[</span><span class="s">&quot;gen_ai.agent.id&quot;</span><span class="p">])</span>
-</code></pre></div>
-<p><strong>3. Publish it as evidence.</strong> The release evidence pack reads the same record
-and adds an <code>agent_identity</code> section reporting the id and where it came from
-(the local record or the environment variable). When no identity is registered,
-the pack raises a warning rather than a blocker, because identity registration
-is a governance improvement rather than a correctness gate.</p>
-<div class="admonition note">
-<p class="admonition-title">AgentOps does not ingest into Agent 365</p>
-<p>There is no public ingestion API for Agent 365 telemetry today. AgentOps
-stamps the identifier and publishes it as evidence so the correlation is
-possible from the Azure Monitor side. It does not push traces into Agent
-365.</p>
-</div>
-<p>To browse this signal interactively and deep-link into Foundry and Azure
-Monitor, run <code>agentops cockpit</code>. That local command center is covered on the
-<a href="../operate/#cockpit">Operate</a> page.</p>
+<p><a id="agent-identity-on-traces"></a></p>
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can read telemetry and
 investigate production health.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>
 <p>The skills that map to observability are:</p>
 <table>
