@@ -1,9 +1,9 @@
 # Observe
 
-This page explains how AgentOps uses agent observability. Foundry and Azure
-Monitor produce the runtime signal; AgentOps reads that signal so release
-readiness reflects what is actually happening in production, not just what
-passed in CI.
+This page explains how AgentOps turns agent observability into release evidence
+and regression coverage. Foundry and Azure Monitor produce the runtime signal;
+AgentOps reads that signal so readiness reflects what is actually happening in
+production, not just what passed in CI.
 
 Observability is conceptual here. For the hands-on portal and KQL walkthrough,
 see step 18 of the [Foundry Prompt Agent tutorial](tutorial-prompt-agent.md).
@@ -30,25 +30,6 @@ falls back to that connection string when discovery is not available.
     Eval runs emit `agentops.eval.*` spans and scheduled Doctor runs emit
     `agentops.agent.finding.*` spans, both of which the Cockpit can deep-link
     into Azure Monitor Logs.
-
-## Operations dashboard
-
-Traces answer "what did this run do." Operational metrics answer "is the
-deployment healthy." AgentOps ships an Azure Monitor workbook for the Foundry /
-Azure OpenAI deployments behind your agent, so operators read PTU utilization,
-PAYG spillover, throughput, latency percentiles, and error and throttling rates
-in one place.
-
-The workbook is scoped per Azure OpenAI resource and per Log Analytics
-workspace, with tabs for capacity, traffic and tokens, latency, and errors and
-throttling. You can deploy it, open it, or export the JSON with the CLI, or
-import it by hand into Azure Monitor.
-
-!!! info "Doctor checks the diagnostic settings"
-    The dashboard needs the Azure OpenAI resource to send `RequestResponse` and
-    `AzureOpenAIRequestUsage` logs to Log Analytics. `agentops doctor` flags
-    when they are missing (rule `waf.observability.aoai_diagnostic_categories`)
-    and prints the exact `az monitor diagnostic-settings` command to fix it.
 
 ## Traces as evaluation signal
 
@@ -157,43 +138,21 @@ production.
 
 ## Try it
 
-Confirm the signal is flowing, then turn real traces into regression coverage.
+Turn reviewed production traces into regression coverage.
 
-1. Check that AgentOps can reach Application Insights before you rely on the signal.
+1. Export or curate representative Foundry or Application Insights traces as
+   JSON or JSONL, then review them for quality and sensitive data.
 
-    ```bash
-    agentops telemetry validate
-    ```
-
-2. Preview the traces and evaluation events AgentOps can currently see.
-
-    ```bash
-    agentops telemetry preview
-    ```
-
-3. Import a trace export so it can become regression coverage.
-
-    ```bash
-    agentops telemetry import
-    ```
-
-4. Promote reviewed production traces into regression dataset rows.
+2. Preview how AgentOps converts the reviewed traces into regression candidates.
 
     ```bash
     agentops eval promote-traces --source .agentops/traces/export.jsonl
     ```
 
-5. Preview the operations dashboard as an ARM template, without touching Azure.
+3. If the candidates are suitable, apply them to the regression dataset.
 
     ```bash
-    agentops telemetry dashboard deploy --dry-run
-    ```
-
-6. Deploy the workbook, then open it in the Azure portal.
-
-    ```bash
-    agentops telemetry dashboard deploy
-    agentops telemetry dashboard open
+    agentops eval promote-traces --source .agentops/traces/export.jsonl --apply
     ```
 
 To browse this signal interactively and deep-link into Foundry and Azure
