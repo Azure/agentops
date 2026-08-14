@@ -64,6 +64,28 @@ def test_foundry_project_skip_when_env_missing(monkeypatch) -> None:
     assert c.status == "skip"
 
 
+def test_foundry_project_reachability_is_independent_from_app_insights(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://x.services.ai.azure.com/api/projects/p",
+    )
+    with mock.patch(
+        "agentops.utils.foundry_discovery."
+        "check_foundry_project_reachable_with_reason",
+        return_value=(True, None),
+    ), mock.patch(
+        "agentops.utils.foundry_discovery."
+        "resolve_appinsights_connection_with_reason",
+        side_effect=AssertionError("Foundry reachability must not request telemetry"),
+    ):
+        c = _check_foundry_project()
+
+    assert c.status == "ok"
+    assert c.message == "Project reachable."
+
+
 def test_application_insights_ok_when_env_var_set(monkeypatch) -> None:
     monkeypatch.setenv(
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
@@ -71,6 +93,52 @@ def test_application_insights_ok_when_env_var_set(monkeypatch) -> None:
     )
     c = _check_application_insights_env()
     assert c.status == "ok"
+
+
+def test_application_insights_explicit_connection_skips_foundry_discovery(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "APPLICATIONINSIGHTS_CONNECTION_STRING",
+        "InstrumentationKey=11111111-2222-3333-4444-555555555555",
+    )
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://x.services.ai.azure.com/api/projects/p",
+    )
+    with mock.patch(
+        "agentops.utils.foundry_discovery."
+        "resolve_appinsights_connection_with_reason",
+        side_effect=AssertionError("Explicit configuration must win"),
+    ):
+        c = _check_application_insights_env()
+
+    assert c.status == "ok"
+    assert c.message == "APPLICATIONINSIGHTS_CONNECTION_STRING is set."
+
+
+def test_application_insights_accepts_project_managed_identity(
+    monkeypatch,
+) -> None:
+    from agentops.utils.foundry_discovery import (
+        PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON,
+    )
+
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://x.services.ai.azure.com/api/projects/p",
+    )
+    with mock.patch(
+        "agentops.utils.foundry_discovery."
+        "resolve_appinsights_connection_with_reason",
+        return_value=(None, PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON),
+    ):
+        c = _check_application_insights_env()
+
+    assert c.status == "ok"
+    assert c.message == PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON
 
 
 def test_application_insights_warns_when_env_var_is_invalid(monkeypatch) -> None:
@@ -96,19 +164,21 @@ def test_application_insights_warns_when_unconfigured(monkeypatch) -> None:
 def test_application_insights_warns_when_foundry_auth_blocks_discovery(monkeypatch) -> None:
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
-    c = _check_application_insights_env(
-        PreflightCheck(
-            name="foundry_project",
-            display_name="Foundry project",
-            status="warn",
-            message=(
-                "Discovery failed - Foundry authentication failed while reading "
-                "telemetry metadata."
-            ),
-        )
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://x.services.ai.azure.com/api/projects/p",
     )
+    with mock.patch(
+        "agentops.utils.foundry_discovery."
+        "resolve_appinsights_connection_with_reason",
+        return_value=(
+            None,
+            "Foundry authentication failed while reading telemetry metadata.",
+        ),
+    ):
+        c = _check_application_insights_env()
     assert c.status == "warn"
-    assert "could not verify" in c.message.lower()
+    assert "connection-string discovery failed" in c.message.lower()
     assert "no connection string available" not in c.message.lower()
     assert "APPLICATIONINSIGHTS_CONNECTION_STRING" in c.remediation
 

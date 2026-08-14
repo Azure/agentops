@@ -22,6 +22,15 @@ from typing import Optional, Tuple
 
 log = logging.getLogger(__name__)
 
+PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON = (
+    "Foundry Application Insights connection uses ProjectManagedIdentity; "
+    "API Key credentials are not required."
+)
+_PROJECT_MANAGED_IDENTITY_APPINSIGHTS_ERROR = (
+    "Application Insights connection does not use API Key credentials."
+)
+_NO_APPINSIGHTS_CONNECTION_ERROR = "No Application Insights connection found."
+
 
 # Per-process cache so the cockpit does not re-query Foundry on every
 # page load. Successful results are remembered for a long window
@@ -94,6 +103,56 @@ def _summarize_discovery_exception(exc: Exception, *, context: str) -> str:
     if len(snippet) > 220:
         snippet = snippet[:217] + "..."
     return f"{context} failed ({type(exc).__name__}: {snippet})."
+
+
+def check_foundry_project_reachable_with_reason(
+    project_endpoint: str,
+) -> Tuple[bool, Optional[str]]:
+    """Return whether *project_endpoint* is reachable with the current identity.
+
+    The reachability probe lists project connections without requesting their
+    credentials. This keeps project validation independent from Application
+    Insights connection-string discovery, which is unavailable for
+    ProjectManagedIdentity connections by design.
+    """
+    if not project_endpoint:
+        return False, "no AZURE_AI_FOUNDRY_PROJECT_ENDPOINT set"
+
+    try:
+        from azure.ai.projects import AIProjectClient
+        from azure.identity import DefaultAzureCredential
+    except ImportError:
+        return (
+            False,
+            "azure-ai-projects / azure-identity not installed in the cockpit's "
+            "Python environment. Install with "
+            "`pip install azure-ai-projects azure-identity`.",
+        )
+
+    try:
+        credential = DefaultAzureCredential(
+            exclude_developer_cli_credential=True,
+            process_timeout=30,
+        )
+        client = AIProjectClient(
+            endpoint=project_endpoint,
+            credential=credential,
+        )
+        connections = getattr(client, "connections", None)
+        list_connections = getattr(connections, "list", None)
+        if not callable(list_connections):
+            return (
+                False,
+                "AIProjectClient has no connections.list helper "
+                "(azure-ai-projects too old).",
+            )
+        next(iter(list_connections()), None)
+    except Exception as exc:  # noqa: BLE001
+        return False, _summarize_discovery_exception(
+            exc,
+            context="Foundry project reachability check",
+        )
+    return True, None
 
 
 def resolve_appinsights_connection_with_reason(
@@ -183,7 +242,21 @@ def resolve_appinsights_connection_with_reason(
             _store(project_endpoint, value, None)
             return value, None
 
-    if last_exc is not None:
+    if (
+        isinstance(last_exc, ValueError)
+        and str(last_exc) == _PROJECT_MANAGED_IDENTITY_APPINSIGHTS_ERROR
+    ):
+        reason = PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON
+    elif (
+        type(last_exc).__name__ == "ResourceNotFoundError"
+        and str(last_exc) == _NO_APPINSIGHTS_CONNECTION_ERROR
+    ):
+        reason = (
+            "Foundry returned no Application Insights connection. Wire "
+            "one in: Project details \u2192 Connected resources \u2192 "
+            "Add connection \u2192 Application Insights."
+        )
+    elif last_exc is not None:
         reason = _summarize_discovery_exception(
             last_exc,
             context="Foundry telemetry discovery",
