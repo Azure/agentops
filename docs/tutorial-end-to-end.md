@@ -883,7 +883,7 @@ regression candidates may not exist yet. That is useful tutorial feedback, not
 a failure of Doctor.
 
 If production telemetry *does* carry enough live traffic to trip latency or
-error criticals, those are honest signals — not tutorial noise. The thresholds
+error criticals, those are production signals — not tutorial noise. The thresholds
 that decide critical-vs-warning live in `.agentops/agent.yaml`
 (`checks.latency.p95_threshold_seconds`, `checks.errors.rate_threshold`) and are
 separate from the `agentops.yaml` eval-gate thresholds; raise them only if you

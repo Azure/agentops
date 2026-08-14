@@ -282,7 +282,7 @@ agents AgentOps uses judge-based quality and completeness on this shape.
     These few rows are the contract your agent has to keep passing. Because an
     LLM judge reads `expected` as acceptance criteria, you are encoding the
     behavior you care about, not memorizing one correct sentence. Start small and
-    honest: a handful of rows that capture real requirements is worth more than a
+    concrete: a handful of rows that capture real requirements is worth more than a
     large set that nobody trusts.
 
 ```text
@@ -453,7 +453,7 @@ server-side evaluator setup.
 Confirm the eval runner the generator will use:
 
 !!! concept "What the smoke gate proves"
-    A smoke gate is the smallest honest test: a few rows, run end to end against
+    A smoke gate is the smallest meaningful test: a few rows, run end to end against
     the real agent, scored by a judge. It will not catch every regression, and it
     is not meant to. Its job is to fail fast and loud when something is obviously
     broken, so you trust green to mean "safe to keep going." You harden it into a

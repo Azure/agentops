@@ -5,9 +5,6 @@ and regression coverage. Foundry and Azure Monitor produce the runtime signal;
 AgentOps reads that signal so readiness reflects what is actually happening in
 production, not just what passed in CI.
 
-Observability is conceptual here. For the hands-on portal and KQL walkthrough,
-see step 18 of the [Foundry Prompt Agent tutorial](tutorial-prompt-agent.md).
-
 ## Where the signal comes from
 
 Foundry gives you the runtime view of an agent: traces, conversations, spans,
@@ -41,7 +38,7 @@ The Doctor turns this into findings. It reads App Insights for p95 latency and
 error rate, and it reports when telemetry is connected but silent, so a project
 with no monitoring does not look healthy simply because nothing is being graded.
 
-!!! note "Real telemetry produces honest findings"
+!!! note "Real telemetry surfaces production findings"
     Because the Doctor reads live runtime data, it can surface latency or error
     findings from your own production traffic, separate from the eval gate. That
     is intended: a real release should investigate latency and errors before
