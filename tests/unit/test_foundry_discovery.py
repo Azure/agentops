@@ -244,6 +244,91 @@ def test_with_reason_surfaces_telemetry_call_failure():
     assert "Reader on the Foundry project resource group" in reason
 
 
+def test_with_reason_accepts_project_managed_identity_connection():
+    fake_telemetry = mock.MagicMock(spec=["get_application_insights_connection_string"])
+    fake_telemetry.get_application_insights_connection_string.side_effect = ValueError(
+        "Application Insights connection does not use API Key credentials."
+    )
+    fake_client = mock.MagicMock()
+    fake_client.telemetry = fake_telemetry
+    fake_projects_mod = mock.MagicMock()
+    fake_projects_mod.AIProjectClient.return_value = fake_client
+    fake_identity_mod = mock.MagicMock()
+
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": fake_projects_mod, "azure.identity": fake_identity_mod},
+    ):
+        from agentops.utils.foundry_discovery import (
+            PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON,
+            resolve_appinsights_connection_with_reason,
+        )
+
+        conn, reason = resolve_appinsights_connection_with_reason(
+            "https://x.services.ai.azure.com/api/projects/project-managed-identity"
+        )
+
+    assert conn is None
+    assert reason == PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON
+
+
+def test_with_reason_reports_missing_app_insights_connection():
+    class ResourceNotFoundError(Exception):
+        pass
+
+    fake_telemetry = mock.MagicMock(spec=["get_application_insights_connection_string"])
+    fake_telemetry.get_application_insights_connection_string.side_effect = (
+        ResourceNotFoundError("No Application Insights connection found.")
+    )
+    fake_client = mock.MagicMock()
+    fake_client.telemetry = fake_telemetry
+    fake_projects_mod = mock.MagicMock()
+    fake_projects_mod.AIProjectClient.return_value = fake_client
+    fake_identity_mod = mock.MagicMock()
+
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": fake_projects_mod, "azure.identity": fake_identity_mod},
+    ):
+        from agentops.utils.foundry_discovery import (
+            resolve_appinsights_connection_with_reason,
+        )
+
+        conn, reason = resolve_appinsights_connection_with_reason(
+            "https://x.services.ai.azure.com/api/projects/no-app-insights"
+        )
+
+    assert conn is None
+    assert reason and "returned no Application Insights connection" in reason
+
+
+def test_project_reachability_does_not_request_connection_credentials():
+    fake_connections = mock.MagicMock()
+    fake_connections.list.return_value = iter([])
+    fake_client = mock.MagicMock()
+    fake_client.connections = fake_connections
+    fake_projects_mod = mock.MagicMock()
+    fake_projects_mod.AIProjectClient.return_value = fake_client
+    fake_identity_mod = mock.MagicMock()
+
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": fake_projects_mod, "azure.identity": fake_identity_mod},
+    ):
+        from agentops.utils.foundry_discovery import (
+            check_foundry_project_reachable_with_reason,
+        )
+
+        reachable, reason = check_foundry_project_reachable_with_reason(
+            "https://x.services.ai.azure.com/api/projects/reachable"
+        )
+
+    assert reachable is True
+    assert reason is None
+    fake_connections.list.assert_called_once_with()
+    assert not fake_client.telemetry.get_application_insights_connection_string.called
+
+
 def test_successful_discovery_is_cached_in_process():
     """A second call must reuse the cached connection string instead of
     invoking the SDK again."""
