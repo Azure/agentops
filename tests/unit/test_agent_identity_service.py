@@ -249,6 +249,16 @@ def test_resolve_display_name_falls_back_to_existing_record(tmp_path: Path) -> N
     assert resolve_display_name(tmp_path) == "from-record"
 
 
+def test_resolve_display_name_from_hosted_agent_url(tmp_path: Path) -> None:
+    _write_config(
+        tmp_path,
+        "agent: https://example.services.ai.azure.com/api/projects/demo/"
+        "agents/helpdeskbot/versions/13\n",
+    )
+
+    assert resolve_display_name(tmp_path) == "helpdeskbot"
+
+
 def test_resolve_registration_inputs_returns_name_and_sponsor(tmp_path: Path) -> None:
     _write_config(
         tmp_path,

@@ -272,6 +272,39 @@ def test_with_reason_accepts_project_managed_identity_connection():
     assert reason == PROJECT_MANAGED_IDENTITY_APPINSIGHTS_REASON
 
 
+def test_resource_id_discovery_accepts_project_managed_identity_metadata():
+    resource_id = (
+        "/subscriptions/000/resourceGroups/rg/providers/"
+        "Microsoft.Insights/components/appi"
+    )
+    connection = mock.Mock()
+    connection.type = "ConnectionType.APPLICATION_INSIGHTS"
+    connection.target = resource_id
+    fake_connections = mock.MagicMock()
+    fake_connections.list.return_value = iter([connection])
+    fake_client = mock.MagicMock()
+    fake_client.connections = fake_connections
+    fake_projects_mod = mock.MagicMock()
+    fake_projects_mod.AIProjectClient.return_value = fake_client
+    fake_identity_mod = mock.MagicMock()
+
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": fake_projects_mod, "azure.identity": fake_identity_mod},
+    ):
+        from agentops.utils.foundry_discovery import (
+            resolve_appinsights_resource_id_with_reason,
+        )
+
+        result, reason = resolve_appinsights_resource_id_with_reason(
+            "https://x.services.ai.azure.com/api/projects/pmi"
+        )
+
+    assert result == resource_id
+    assert reason is None
+    fake_connections.list.assert_called_once_with()
+
+
 def test_with_reason_reports_missing_app_insights_connection():
     class ResourceNotFoundError(Exception):
         pass

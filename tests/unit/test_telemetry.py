@@ -581,6 +581,62 @@ def test_azure_monitor_queries_requests_and_dependencies(
     assert payload.p95_duration_seconds == 2.5
 
 
+def test_azure_monitor_uses_foundry_app_insights_resource_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentops.utils import foundry_discovery
+
+    resource_id = (
+        "/subscriptions/000/resourceGroups/rg/providers/"
+        "Microsoft.Insights/components/appi-pmi"
+    )
+    captured: dict[str, object] = {}
+
+    class LogsQueryStatus:
+        FAILURE = "Failure"
+
+    class Response:
+        status = "Success"
+        tables: list[object] = []
+
+    class LogsQueryClient:
+        def __init__(self, _credential: object) -> None:
+            pass
+
+        def query_resource(
+            self,
+            *,
+            resource_id: str,
+            query: str,
+            timespan: object,
+        ) -> Response:
+            captured["resource_id"] = resource_id
+            return Response()
+
+    identity_module = types.ModuleType("azure.identity")
+    identity_module.DefaultAzureCredential = object  # type: ignore[attr-defined]
+    query_module = types.ModuleType("azure.monitor.query")
+    query_module.LogsQueryClient = LogsQueryClient  # type: ignore[attr-defined]
+    query_module.LogsQueryStatus = LogsQueryStatus  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "azure.identity", identity_module)
+    monkeypatch.setitem(sys.modules, "azure.monitor.query", query_module)
+    monkeypatch.setattr(
+        foundry_discovery,
+        "resolve_appinsights_resource_id_from_env_with_reason",
+        lambda: (resource_id, None),
+    )
+
+    payload = azure_monitor.collect_azure_monitor(
+        AzureMonitorSourceConfig(enabled=True),
+        lookback_days=7,
+    )
+
+    assert captured["resource_id"] == resource_id
+    assert payload.diagnostics["target"] == resource_id
+    assert payload.diagnostics["target_source"] == "foundry_project_connection"
+    assert payload.diagnostics["status"] == "ok"
+
+
 def test_azure_monitor_uses_connection_string_application_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
