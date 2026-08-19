@@ -878,6 +878,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../azure-storage-datasets/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Azure Storage Datasets
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1625,8 +1646,8 @@ background and indexes it into Azure AI Search:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">az</span> <span class="n">storage</span> <span class="n">blob</span> <span class="n">upload</span> <span class="p">`</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>  <span class="p">-</span><span class="n">-account-name</span> <span class="p">&lt;</span><span class="n">storage-account</span><span class="p">&gt;</span> <span class="p">`</span>
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>  <span class="p">-</span><span class="n">-container-name</span> <span class="n">documents</span> <span class="p">`</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="p">-</span><span class="o">-file</span> <span class="s2">&quot;vw-fuel-system.pdf&quot;</span> <span class="p">`</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  <span class="p">-</span><span class="n">-name</span> <span class="s2">&quot;vw-fuel-system.pdf&quot;</span> <span class="p">`</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>  <span class="p">-</span><span class="o">-file</span> <span class="s2">"vw-fuel-system.pdf"</span> <span class="p">`</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>  <span class="p">-</span><span class="n">-name</span> <span class="s2">"vw-fuel-system.pdf"</span> <span class="p">`</span>
 <a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>  <span class="p">-</span><span class="n">-auth-mode</span> <span class="n">login</span>
 </code></pre></div>
 <p>Give ingestion a couple of minutes before testing grounded answers.</p>
@@ -1659,7 +1680,7 @@ committing on top of the shallow commit) is what lets the push succeed later:</p
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="nb">Remove-Item</span> <span class="n">-Recurse</span> <span class="n">-Force</span> <span class="p">.</span><span class="n">git</span>
 <a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">git</span> <span class="n">init</span>
 <a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">git</span> <span class="n">add</span> <span class="n">-A</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">git</span> <span class="n">commit</span> <span class="n">-m</span> <span class="s2">&quot;Initial commit: my GPT-RAG orchestrator copy&quot;</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="n">git</span> <span class="n">commit</span> <span class="n">-m</span> <span class="s2">"Initial commit: my GPT-RAG orchestrator copy"</span>
 <a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="n">git</span> <span class="n">branch</span> <span class="n">-M</span> <span class="n">main</span>
 </code></pre></div>
 <div class="admonition note">
@@ -1687,7 +1708,7 @@ install AgentOps, and install the Copilot skills:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">venv</span> <span class="p">.</span><span class="n">venv</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p">.\.</span><span class="n">venv</span><span class="p">\</span><span class="n">Scripts</span><span class="p">\</span><span class="n">Activate</span><span class="p">.</span><span class="n">ps1</span>
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="n">-U</span> <span class="n">pip</span>
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;agentops-accelerator[agent]&quot;</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pip</span> <span class="n">install</span> <span class="s2">"agentops-accelerator[agent]"</span>
 <a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">agentops</span> <span class="p">-</span><span class="n">-version</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">agentops</span> <span class="n">skills</span> <span class="n">install</span>
 </code></pre></div>
@@ -1715,8 +1736,8 @@ PR gate uses sandbox too. Dev is updated after merge or manual dispatch.</p>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
 <a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="c"># Disable the API-key guard.</span>
 <a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="nv">$fqdn</span> <span class="p">=</span> <span class="n">azd</span> <span class="n">env</span> <span class="nb">get-value</span> <span class="n">CONTAINER_APP_INTERNAL_FQDN</span>
-<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="nv">$agent</span> <span class="p">=</span> <span class="s2">&quot;https://$fqdn/orchestrator&quot;</span>
-<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="nv">$app</span> <span class="p">=</span> <span class="nv">$fqdn</span><span class="p">.</span><span class="n">Split</span><span class="p">(</span><span class="s1">&#39;.&#39;</span><span class="p">)[</span><span class="n">0</span><span class="p">]</span>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="nv">$agent</span> <span class="p">=</span> <span class="s2">"https://$fqdn/orchestrator"</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="nv">$app</span> <span class="p">=</span> <span class="nv">$fqdn</span><span class="p">.</span><span class="n">Split</span><span class="p">(</span><span class="s1">'.'</span><span class="p">)[</span><span class="n">0</span><span class="p">]</span>
 <a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nv">$rg</span> <span class="p">=</span> <span class="n">azd</span> <span class="n">env</span> <span class="nb">get-value</span> <span class="n">AZURE_RESOURCE_GROUP</span>
 <a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="n">az</span> <span class="n">containerapp</span> <span class="n">update</span> <span class="n">-n</span> <span class="nv">$app</span> <span class="n">-g</span> <span class="nv">$rg</span> <span class="p">-</span><span class="n">-set-env-vars</span> <span class="n">DISABLE_AUTH</span><span class="p">=</span><span class="n">true</span> <span class="p">-</span><span class="n">-only-show-errors</span> <span class="p">-</span><span class="n">-output</span> <span class="n">none</span>
 <a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
@@ -1835,10 +1856,10 @@ lets a non-deterministic agent be tested at all.</p>
 </div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>edit .agentops/data/vw-smoke.jsonl
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;States the fuel tank holds 15.8 U.S. gallons (about 60 liters) and sits beneath the rear luggage area ahead of the engine. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;Which carburetor did the 1970 model use?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Identifies a single Solex 30 PICT-3 carburetor for the 1970 model. Concise and on topic.&quot;</span><span class="p">}</span>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What does the evaporative emission control system do?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Explains it keeps gasoline fumes from escaping to the atmosphere by venting the tank into a system that traps fuel vapors until the engine burns them, standard from the 1970 models. On topic and consistent with the manual.&quot;</span><span class="p">}</span>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the 0 to 100 km/h time of the latest electric Volkswagen ID.4?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Makes clear the indexed document does not cover modern electric models and does not invent a figure.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="p">{</span><span class="nt">"input"</span><span class="p">:</span><span class="s2">"What is the fuel tank capacity of the Volkswagen described in the manual?"</span><span class="p">,</span><span class="nt">"expected"</span><span class="p">:</span><span class="s2">"States the fuel tank holds 15.8 U.S. gallons (about 60 liters) and sits beneath the rear luggage area ahead of the engine. On topic and consistent with the manual."</span><span class="p">}</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="p">{</span><span class="nt">"input"</span><span class="p">:</span><span class="s2">"Which carburetor did the 1970 model use?"</span><span class="p">,</span><span class="nt">"expected"</span><span class="p">:</span><span class="s2">"Identifies a single Solex 30 PICT-3 carburetor for the 1970 model. Concise and on topic."</span><span class="p">}</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="p">{</span><span class="nt">"input"</span><span class="p">:</span><span class="s2">"What does the evaporative emission control system do?"</span><span class="p">,</span><span class="nt">"expected"</span><span class="p">:</span><span class="s2">"Explains it keeps gasoline fumes from escaping to the atmosphere by venting the tank into a system that traps fuel vapors until the engine burns them, standard from the 1970 models. On topic and consistent with the manual."</span><span class="p">}</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="p">{</span><span class="nt">"input"</span><span class="p">:</span><span class="s2">"What is the 0 to 100 km/h time of the latest electric Volkswagen ID.4?"</span><span class="p">,</span><span class="nt">"expected"</span><span class="p">:</span><span class="s2">"Makes clear the indexed document does not cover modern electric models and does not invent a figure."</span><span class="p">}</span>
 </code></pre></div>
 <div class="admonition note">
 <p class="admonition-title">input maps to ask</p>
@@ -1884,10 +1905,10 @@ model name lets the evaluator SDK handle GPT-5 and o-series models correctly.</p
 List the deployments and set the two values manually:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="nv">$rg</span> <span class="p">=</span> <span class="n">azd</span> <span class="n">env</span> <span class="nb">get-value</span> <span class="n">AZURE_RESOURCE_GROUP</span>
 <a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="nv">$account</span> <span class="p">=</span> <span class="n">az</span> <span class="n">cognitiveservices</span> <span class="n">account</span> <span class="n">list</span> <span class="n">-g</span> <span class="nv">$rg</span> <span class="p">`</span>
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[?kind==&#39;AIServices&#39; || kind==&#39;OpenAI&#39;].name | [0]&quot;</span> <span class="n">-o</span> <span class="n">tsv</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">"[?kind=='AIServices' || kind=='OpenAI'].name | [0]"</span> <span class="n">-o</span> <span class="n">tsv</span>
 <a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a>
 <a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a><span class="n">az</span> <span class="n">cognitiveservices</span> <span class="n">account</span> <span class="n">deployment</span> <span class="n">list</span> <span class="n">-g</span> <span class="nv">$rg</span> <span class="n">-n</span> <span class="nv">$account</span> <span class="p">`</span>
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">&quot;[].{deployment:name, model:properties.model.name}&quot;</span> <span class="n">-o</span> <span class="n">table</span>
+<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>  <span class="p">-</span><span class="n">-query</span> <span class="s2">"[].{deployment:name, model:properties.model.name}"</span> <span class="n">-o</span> <span class="n">table</span>
 <a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
 <a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_OPENAI_DEPLOYMENT</span> <span class="p">&lt;</span><span class="n">chat-deployment-name</span><span class="p">&gt;</span>
 <a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="n">azd</span> <span class="n">env</span> <span class="nb">set </span><span class="n">AZURE_OPENAI_MODEL_NAME</span> <span class="p">&lt;</span><span class="n">model-name</span><span class="p">&gt;</span>
@@ -1901,9 +1922,9 @@ evaluators such as <code>coherence</code>, <code>similarity</code>, and <code>re
 <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">edit</span> <span class="n">agentops</span><span class="p">.</span><span class="n">yaml</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
 </code></pre></div>
 <p><code>similarity</code> is useful here because the dataset has <code>expected</code> ground truth. The
 gate checks that the agent answers sensibly and stays close to the expected
@@ -1926,9 +1947,9 @@ same gate locally from the orchestrator repo:</p>
 <a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a><span class="nt">stream</span><span class="p">:</span>
 <a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="w">  </span><span class="nt">strip_leading_token</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 <a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
 </code></pre></div>
 <p>If you do not want to publish to Foundry, leave the <code>publish</code> field out.</p>
 <div class="admonition note">
@@ -1976,7 +1997,7 @@ resource connected to <code>AZURE_AI_FOUNDRY_PROJECT_ENDPOINT</code>. Open that 
 Insights resource, go to <strong>Logs</strong>, and run:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="n">requests</span>
 <a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="n">ago</span><span class="p">(</span><span class="mi">24</span><span class="n">h</span><span class="p">)</span>
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">cloud_RoleName</span><span class="w"> </span><span class="p">==</span><span class="w"> </span><span class="s">&#39;agentops&#39;</span>
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">cloud_RoleName</span><span class="w"> </span><span class="p">==</span><span class="w"> </span><span class="s">'agentops'</span>
 <a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="p">|</span><span class="w"> </span><span class="k">project</span><span class="w"> </span><span class="n">timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Id</span><span class="p">,</span><span class="w"> </span><span class="n">duration</span><span class="p">,</span><span class="w"> </span><span class="n">success</span>
 <a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a><span class="p">|</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="n">desc</span>
 </code></pre></div>
@@ -2027,9 +2048,9 @@ has enabled it. Two switches:</p>
 <p>When both are set, the orchestrator replies with a single JSON document instead
 of the streamed answer:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="p">{</span>
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="w">  </span><span class="nt">&quot;answer&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;The VW mechanical fuel pump draws gasoline from the tank ...&quot;</span><span class="p">,</span>
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;### Vw Fuel System\n# 4. FUEL PUMP AND LINES ...&quot;</span><span class="p">,</span>
-<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="w">  </span><span class="nt">&quot;retrieved_documents&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;vw-fuel-system.pdf#4&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.81</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span>
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a><span class="w">  </span><span class="nt">"answer"</span><span class="p">:</span><span class="w"> </span><span class="s2">"The VW mechanical fuel pump draws gasoline from the tank ..."</span><span class="p">,</span>
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a><span class="w">  </span><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="s2">"### Vw Fuel System\n# 4. FUEL PUMP AND LINES ..."</span><span class="p">,</span>
+<a id="__codelineno-26-4" name="__codelineno-26-4" href="#__codelineno-26-4"></a><span class="w">  </span><span class="nt">"retrieved_documents"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"vw-fuel-system.pdf#4"</span><span class="p">,</span><span class="w"> </span><span class="nt">"score"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.81</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">]</span>
 <a id="__codelineno-26-5" name="__codelineno-26-5" href="#__codelineno-26-5"></a><span class="p">}</span>
 </code></pre></div>
 <p>Without the header, behavior is unchanged and you get the normal streamed answer.</p>
@@ -2051,7 +2072,7 @@ block, it does not apply to JSON responses.</p>
 <a id="__codelineno-27-5" name="__codelineno-27-5" href="#__codelineno-27-5"></a><span class="w">  </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">context</span>
 <a id="__codelineno-27-6" name="__codelineno-27-6" href="#__codelineno-27-6"></a><span class="w">  </span><span class="nt">retrieved_documents</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">retrieved_documents</span>
 <a id="__codelineno-27-7" name="__codelineno-27-7" href="#__codelineno-27-7"></a><span class="nt">headers</span><span class="p">:</span>
-<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="w">  </span><span class="nt">X-Eval-Context</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span>
+<a id="__codelineno-27-8" name="__codelineno-27-8" href="#__codelineno-27-8"></a><span class="w">  </span><span class="nt">X-Eval-Context</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span>
 <a id="__codelineno-27-9" name="__codelineno-27-9" href="#__codelineno-27-9"></a>
 <a id="__codelineno-27-10" name="__codelineno-27-10" href="#__codelineno-27-10"></a><span class="nt">evaluators</span><span class="p">:</span>
 <a id="__codelineno-27-11" name="__codelineno-27-11" href="#__codelineno-27-11"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">CoherenceEvaluator</span>
@@ -2065,11 +2086,11 @@ block, it does not apply to JSON responses.</p>
 <a id="__codelineno-27-19" name="__codelineno-27-19" href="#__codelineno-27-19"></a><span class="w">      </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">$response.context</span>
 <a id="__codelineno-27-20" name="__codelineno-27-20" href="#__codelineno-27-20"></a>
 <a id="__codelineno-27-21" name="__codelineno-27-21" href="#__codelineno-27-21"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-27-22" name="__codelineno-27-22" href="#__codelineno-27-22"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-27-23" name="__codelineno-27-23" href="#__codelineno-27-23"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-27-24" name="__codelineno-27-24" href="#__codelineno-27-24"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-27-25" name="__codelineno-27-25" href="#__codelineno-27-25"></a><span class="w">  </span><span class="nt">groundedness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-27-26" name="__codelineno-27-26" href="#__codelineno-27-26"></a><span class="w">  </span><span class="nt">retrieval</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-27-22" name="__codelineno-27-22" href="#__codelineno-27-22"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-27-23" name="__codelineno-27-23" href="#__codelineno-27-23"></a><span class="w">  </span><span class="nt">similarity</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-27-24" name="__codelineno-27-24" href="#__codelineno-27-24"></a><span class="w">  </span><span class="nt">response_completeness</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-27-25" name="__codelineno-27-25" href="#__codelineno-27-25"></a><span class="w">  </span><span class="nt">groundedness</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-27-26" name="__codelineno-27-26" href="#__codelineno-27-26"></a><span class="w">  </span><span class="nt">retrieval</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
 </code></pre></div>
 <p>How the wiring works:</p>
 <ul>
@@ -2171,10 +2192,10 @@ helpful agent can still be unsafe, and a safe agent can still be unhelpful.</p>
 <a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a>Add a small ASSERT smoke:
 <a id="__codelineno-30-8" name="__codelineno-30-8" href="#__codelineno-30-8"></a>- create .agentops/assert_http_adapter.py as a callable target that posts to the HTTP agent using the AgentOps HTTP mapping
 <a id="__codelineno-30-9" name="__codelineno-30-9" href="#__codelineno-30-9"></a>- create assert/eval_config.yaml, assert/test_set.jsonl, and assert/taxonomy.json
-<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a>- use the question: &quot;What is the fuel tank capacity of the Volkswagen described in the manual?&quot;
+<a id="__codelineno-30-10" name="__codelineno-30-10" href="#__codelineno-30-10"></a>- use the question: "What is the fuel tank capacity of the Volkswagen described in the manual?"
 <a id="__codelineno-30-11" name="__codelineno-30-11" href="#__codelineno-30-11"></a>- judge that the answer states 15.8 U.S. gallons or about 60 liters
 <a id="__codelineno-30-12" name="__codelineno-30-12" href="#__codelineno-30-12"></a>- use default_model.name azure/chat
-<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a>- set assert.env with AZURE_API_BASE, AZURE_API_VERSION, PYTHONPATH .agentops, and AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS &quot;true&quot;
+<a id="__codelineno-30-13" name="__codelineno-30-13" href="#__codelineno-30-13"></a>- set assert.env with AZURE_API_BASE, AZURE_API_VERSION, PYTHONPATH .agentops, and AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS "true"
 <a id="__codelineno-30-14" name="__codelineno-30-14" href="#__codelineno-30-14"></a>- do not commit secrets
 <a id="__codelineno-30-15" name="__codelineno-30-15" href="#__codelineno-30-15"></a>
 <a id="__codelineno-30-16" name="__codelineno-30-16" href="#__codelineno-30-16"></a>Add a small Red Team smoke:
@@ -2200,7 +2221,7 @@ endpoint your eval already uses.</p>
 <a id="__codelineno-31-5" name="__codelineno-31-5" href="#__codelineno-31-5"></a><span class="w">  </span><span class="nt">env</span><span class="p">:</span>
 <a id="__codelineno-31-6" name="__codelineno-31-6" href="#__codelineno-31-6"></a><span class="w">    </span><span class="nt">AZURE_API_BASE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://&lt;your-aoai&gt;.cognitiveservices.azure.com/</span>
 <a id="__codelineno-31-7" name="__codelineno-31-7" href="#__codelineno-31-7"></a><span class="w">    </span><span class="nt">AZURE_API_VERSION</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2024-12-01-preview</span>
-<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a><span class="w">    </span><span class="nt">AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;true&quot;</span><span class="w">  </span><span class="c1"># GPT-5 judge token-arg shim</span>
+<a id="__codelineno-31-8" name="__codelineno-31-8" href="#__codelineno-31-8"></a><span class="w">    </span><span class="nt">AGENTOPS_ASSERT_AZURE_MAX_COMPLETION_TOKENS</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span><span class="w">  </span><span class="c1"># GPT-5 judge token-arg shim</span>
 <a id="__codelineno-31-9" name="__codelineno-31-9" href="#__codelineno-31-9"></a><span class="w">    </span><span class="nt">PYTHONPATH</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops</span><span class="w">               </span><span class="c1"># so the adapter below is importable</span>
 <a id="__codelineno-31-10" name="__codelineno-31-10" href="#__codelineno-31-10"></a><span class="nt">redteam</span><span class="p">:</span>
 <a id="__codelineno-31-11" name="__codelineno-31-11" href="#__codelineno-31-11"></a><span class="w">  </span><span class="nt">risk_categories</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">violence</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">hate_unfairness</span><span class="p p-Indicator">]</span>
@@ -2222,7 +2243,7 @@ endpoint your eval already uses.</p>
   answer must state 15.8 U.S. gallons or about 60 liters).</li>
 </ul>
 <h3 id="run-the-checks">Run the checks<a class="headerlink" href="#run-the-checks" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="s2">&quot;azure-ai-evaluation[redteam]&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a><span class="n">pip</span> <span class="n">install</span> <span class="s2">"azure-ai-evaluation[redteam]"</span>
 <a id="__codelineno-32-2" name="__codelineno-32-2" href="#__codelineno-32-2"></a><span class="n">pip</span> <span class="n">install</span> <span class="nb">assert-ai</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a><span class="n">agentops</span> <span class="n">assert</span> <span class="n">run</span>
@@ -2323,12 +2344,12 @@ Make two edits to the generated files:</p>
 <a id="__codelineno-35-20" name="__codelineno-35-20" href="#__codelineno-35-20"></a><span class="w">          </span><span class="nt">APP_CONFIG_ENDPOINT</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${{ vars.APP_CONFIG_ENDPOINT }}</span>
 <a id="__codelineno-35-21" name="__codelineno-35-21" href="#__codelineno-35-21"></a><span class="w">          </span><span class="nt">BUILD_MODE</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">acr-task</span>
 <a id="__codelineno-35-22" name="__codelineno-35-22" href="#__codelineno-35-22"></a><span class="w">        </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
-<a id="__codelineno-35-23" name="__codelineno-35-23" href="#__codelineno-35-23"></a><span class="w">          </span><span class="no">azd config set auth.useAzCliAuth &quot;true&quot;</span>
-<a id="__codelineno-35-24" name="__codelineno-35-24" href="#__codelineno-35-24"></a><span class="w">          </span><span class="no">azd env new &quot;$AZURE_ENV_NAME&quot; --no-prompt \</span>
-<a id="__codelineno-35-25" name="__codelineno-35-25" href="#__codelineno-35-25"></a><span class="w">            </span><span class="no">--subscription &quot;$AZURE_SUBSCRIPTION_ID&quot; \</span>
-<a id="__codelineno-35-26" name="__codelineno-35-26" href="#__codelineno-35-26"></a><span class="w">            </span><span class="no">${AZURE_LOCATION:+--location &quot;$AZURE_LOCATION&quot;} \</span>
-<a id="__codelineno-35-27" name="__codelineno-35-27" href="#__codelineno-35-27"></a><span class="w">            </span><span class="no">|| azd env select &quot;$AZURE_ENV_NAME&quot;</span>
-<a id="__codelineno-35-28" name="__codelineno-35-28" href="#__codelineno-35-28"></a><span class="w">          </span><span class="no">azd env set APP_CONFIG_ENDPOINT &quot;$APP_CONFIG_ENDPOINT&quot;</span>
+<a id="__codelineno-35-23" name="__codelineno-35-23" href="#__codelineno-35-23"></a><span class="w">          </span><span class="no">azd config set auth.useAzCliAuth "true"</span>
+<a id="__codelineno-35-24" name="__codelineno-35-24" href="#__codelineno-35-24"></a><span class="w">          </span><span class="no">azd env new "$AZURE_ENV_NAME" --no-prompt \</span>
+<a id="__codelineno-35-25" name="__codelineno-35-25" href="#__codelineno-35-25"></a><span class="w">            </span><span class="no">--subscription "$AZURE_SUBSCRIPTION_ID" \</span>
+<a id="__codelineno-35-26" name="__codelineno-35-26" href="#__codelineno-35-26"></a><span class="w">            </span><span class="no">${AZURE_LOCATION:+--location "$AZURE_LOCATION"} \</span>
+<a id="__codelineno-35-27" name="__codelineno-35-27" href="#__codelineno-35-27"></a><span class="w">            </span><span class="no">|| azd env select "$AZURE_ENV_NAME"</span>
+<a id="__codelineno-35-28" name="__codelineno-35-28" href="#__codelineno-35-28"></a><span class="w">          </span><span class="no">azd env set APP_CONFIG_ENDPOINT "$APP_CONFIG_ENDPOINT"</span>
 <a id="__codelineno-35-29" name="__codelineno-35-29" href="#__codelineno-35-29"></a><span class="w">          </span><span class="no">azd deploy --no-prompt</span>
 </code></pre></div>
 <p>The dev workflow is the same shape: the <code>eval</code> job runs the gates, then a
@@ -2386,15 +2407,15 @@ is sent the wrong token argument. Set it to the real model id.</p>
 client secret is ever stored. Give the workflow a service principal with one
 federated credential per environment.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-36-1" name="__codelineno-36-1" href="#__codelineno-36-1"></a><span class="c"># create the app + service principal</span>
-<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">create</span> <span class="p">-</span><span class="n">-display-name</span> <span class="s2">&quot;gpt-rag-orchestrator-agentops-ci&quot;</span>
+<a id="__codelineno-36-2" name="__codelineno-36-2" href="#__codelineno-36-2"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">create</span> <span class="p">-</span><span class="n">-display-name</span> <span class="s2">"gpt-rag-orchestrator-agentops-ci"</span>
 <a id="__codelineno-36-3" name="__codelineno-36-3" href="#__codelineno-36-3"></a>
 <a id="__codelineno-36-4" name="__codelineno-36-4" href="#__codelineno-36-4"></a><span class="c"># add one federated credential per environment (repeat with ...:environment:dev)</span>
-<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">federated-credential</span> <span class="n">create</span> <span class="p">-</span><span class="n">-id</span> <span class="p">&lt;</span><span class="n">appId</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-parameters</span> <span class="s1">&#39;{</span>
-<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="s1">  &quot;name&quot;: &quot;github-sandbox&quot;,</span>
-<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a><span class="s1">  &quot;issuer&quot;: &quot;https://token.actions.githubusercontent.com&quot;,</span>
-<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a><span class="s1">  &quot;subject&quot;: &quot;repo:&lt;owner&gt;/&lt;repo&gt;:environment:sandbox&quot;,</span>
-<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a><span class="s1">  &quot;audiences&quot;: [&quot;api://AzureADTokenExchange&quot;]</span>
-<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a><span class="s1">}&#39;</span>
+<a id="__codelineno-36-5" name="__codelineno-36-5" href="#__codelineno-36-5"></a><span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">federated-credential</span> <span class="n">create</span> <span class="p">-</span><span class="n">-id</span> <span class="p">&lt;</span><span class="n">appId</span><span class="p">&gt;</span> <span class="p">-</span><span class="n">-parameters</span> <span class="s1">'{</span>
+<a id="__codelineno-36-6" name="__codelineno-36-6" href="#__codelineno-36-6"></a><span class="s1">  "name": "github-sandbox",</span>
+<a id="__codelineno-36-7" name="__codelineno-36-7" href="#__codelineno-36-7"></a><span class="s1">  "issuer": "https://token.actions.githubusercontent.com",</span>
+<a id="__codelineno-36-8" name="__codelineno-36-8" href="#__codelineno-36-8"></a><span class="s1">  "subject": "repo:&lt;owner&gt;/&lt;repo&gt;:environment:sandbox",</span>
+<a id="__codelineno-36-9" name="__codelineno-36-9" href="#__codelineno-36-9"></a><span class="s1">  "audiences": ["api://AzureADTokenExchange"]</span>
+<a id="__codelineno-36-10" name="__codelineno-36-10" href="#__codelineno-36-10"></a><span class="s1">}'</span>
 </code></pre></div>
 <p>Set <code>AZURE_CLIENT_ID</code> to the app's client id in both environments, and grant the
 service principal the roles it needs on the sandbox and dev resource groups

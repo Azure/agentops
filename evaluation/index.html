@@ -851,6 +851,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../azure-storage-datasets/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Azure Storage Datasets
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1442,10 +1463,9 @@
 
 
 <h1 id="evaluation">Evaluation<a class="headerlink" href="#evaluation" title="Permanent link">&para;</a></h1>
-<p>This is the canonical page for how evaluation works in AgentOps. An evaluation
-runs a dataset against a target agent, scores the responses, and gates the
-result against thresholds. Foundry operates the agent at runtime; AgentOps turns
-that run into repo-side release proof.</p>
+<p>An evaluation runs a dataset against a target agent, scores the responses, and
+gates the result against thresholds. Foundry operates the agent at runtime;
+AgentOps turns that run into repo-side release proof.</p>
 <p>If you want a hands-on walkthrough instead of a reference, pick a
 <a href="../tutorials/">tutorial</a> and follow it end to end.</p>
 <h2 id="what-an-evaluation-is">What an evaluation is<a class="headerlink" href="#what-an-evaluation-is" title="Permanent link">&para;</a></h2>
@@ -1454,7 +1474,7 @@ things: the <strong>agent</strong> (the target to evaluate), the <strong>dataset
 send), and the <strong>thresholds</strong> (the quality gates that decide pass or fail).</p>
 <p>The minimum config is three lines:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;travel-agent:1&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">"travel-agent:1"</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
 </code></pre></div>
 <p>The AgentOps runner reads that config, sends each dataset row to the target,
@@ -1513,6 +1533,12 @@ separate from the Evaluations page.</p>
 succeeded but one or more thresholds failed, and <code>1</code> for a runtime or
 configuration error. These three codes are the public gate contract. CI
 treats <code>2</code> as a hard fail so a deploy never runs on a regression.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">The azd dataset remains recipe-owned</p>
+<p>When <code>execution: azd</code> is selected, azd continues to read the dataset declared
+in <code>eval.yaml</code>. AgentOps does not rewrite that external recipe from the
+<code>dataset</code> value in <code>agentops.yaml</code>.</p>
 </div>
 <pre class="mermaid"><code>graph TD
     A[agentops.yaml target dataset thresholds]
@@ -1581,8 +1607,8 @@ holding a Bearer token, and <code>extra_fields</code> for any static body fields
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://my-aca-app.eastus2.azurecontainerapps.io/chat</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/qa.jsonl</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span><span class="w">            </span><span class="c1"># default is &quot;message&quot;</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span><span class="w">              </span><span class="c1"># dot-path; default is &quot;text&quot;</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span><span class="w">            </span><span class="c1"># default is "message"</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span><span class="w">              </span><span class="c1"># dot-path; default is "text"</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">auth_header_env</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">APP_API_TOKEN</span><span class="w">    </span><span class="c1"># value is sent as a Bearer token</span>
 </code></pre></div>
 <h2 id="configure-an-http-target">Configure an HTTP target<a class="headerlink" href="#configure-an-http-target" title="Permanent link">&para;</a></h2>
@@ -1634,7 +1660,7 @@ Start with the defaults, then add only the fields your endpoint needs.</p>
 </tbody>
 </table>
 <p>Examples:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># JSON response: {&quot;answer&quot;: &quot;...&quot;}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># JSON response: {"answer": "..."}</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">json</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">answer</span>
 </code></pre></div>
@@ -1650,7 +1676,7 @@ Start with the defaults, then add only the fields your endpoint needs.</p>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">response_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">sse</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">stream</span><span class="p">:</span>
 <a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">text_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">choices.0.delta.content</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">done_marker</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;[DONE]&quot;</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">done_marker</span><span class="p">:</span><span class="w"> </span><span class="s">"[DONE]"</span>
 </code></pre></div>
 <h3 id="grey-box-score-the-live-retrieved-context">Grey-box: score the live retrieved context<a class="headerlink" href="#grey-box-score-the-live-retrieved-context" title="Permanent link">&para;</a></h3>
 <p><code>response_field</code> extracts the final answer. When the endpoint also returns the
@@ -1660,9 +1686,9 @@ entry maps a name to a dot-path into the JSON body, and the captured value
 becomes available to evaluator <code>input_mapping</code> as <code>$response.&lt;name&gt;</code>.</p>
 <p>Given an endpoint that answers like this:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">&quot;answer&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Customers can request a refund within 30 days.&quot;</span><span class="p">,</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;Refunds are available for 30 days after purchase.&quot;</span><span class="p">],</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">&quot;citations&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;refund-policy.md&quot;</span><span class="p">]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">"answer"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Customers can request a refund within 30 days."</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"Refunds are available for 30 days after purchase."</span><span class="p">],</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">"citations"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"refund-policy.md"</span><span class="p">]</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">}</span>
 </code></pre></div>
 <p>Capture the extra fields and point the evaluators at them:</p>
@@ -1698,7 +1724,7 @@ the right ones.</p>
 <p>A dataset is a plain JSONL file, one evaluation row per line. Each row has an
 <code>input</code> prompt and usually an <code>expected</code> reference answer. Optional fields drive
 which evaluators run.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;What is the refund policy?&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Refunds within 30 days.&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;Our policy: refunds are available within 30 days.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="p">{</span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span><span class="w"> </span><span class="nt">"input"</span><span class="p">:</span><span class="w"> </span><span class="s2">"What is the refund policy?"</span><span class="p">,</span><span class="w"> </span><span class="nt">"expected"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Refunds within 30 days."</span><span class="p">,</span><span class="w"> </span><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Our policy: refunds are available within 30 days."</span><span class="p">}</span>
 </code></pre></div>
 <p>The presence of optional fields tells AgentOps which evaluation scenario you are
 running. You do not declare the scenario; the row shape implies it.</p>
@@ -1738,6 +1764,12 @@ running. You do not declare the scenario; the row shape implies it.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="optional-keep-datasets-in-azure-storage">Optional: keep datasets in Azure Storage<a class="headerlink" href="#optional-keep-datasets-in-azure-storage" title="Permanent link">&para;</a></h3>
+<p>The default and simplest setup is a JSONL file in the repository workspace. If
+your organization keeps evaluation data in Azure Blob Storage or ADLS Gen2,
+AgentOps can read the object with the identity already running the command. See
+<a href="../azure-storage-datasets/">Azure Storage Datasets</a> for supported URLs, RBAC,
+private networking, CI identities, cloud execution, and troubleshooting.</p>
 <h2 id="evaluators">Evaluators<a class="headerlink" href="#evaluators" title="Permanent link">&para;</a></h2>
 <p>An evaluator is a scoring function that measures one aspect of a response. They
 come in two flavors. <strong>AI-assisted</strong> evaluators use a judge model to score
@@ -1977,15 +2009,15 @@ fields your target needs. For the complete schema, every top-level field, and
 more examples, see <a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>
 for evaluator config and the tutorials for end-to-end setups.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.example.com/chat&quot;</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.example.com/chat"</span>
 <a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/support.jsonl</span>
 <a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>
 <a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="nt">request_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
 <a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="nt">response_field</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
 <a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>
 <a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&lt;=2&quot;</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">  </span><span class="nt">avg_latency_seconds</span><span class="p">:</span><span class="w"> </span><span class="s">"&lt;=2"</span>
 </code></pre></div>
 <h2 id="try-it">Try it<a class="headerlink" href="#try-it" title="Permanent link">&para;</a></h2>
 <p>Run these five commands in order to go from an empty repo to a gated result.</p>

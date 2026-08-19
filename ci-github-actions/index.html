@@ -680,6 +680,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../azure-storage-datasets/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Azure Storage Datasets
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1545,15 +1566,15 @@ presents is normally:</p>
 are no wildcards and no normalization, so a credential built from the default
 format never matches on an account that sends IDs, and <code>azure/login</code> fails with:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>AADSTS700213: No matching federated identity record found for presented
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>assertion subject &#39;repo:my-user@6265211/my-repo@1326633902:environment:dev&#39;
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>assertion subject 'repo:my-user@6265211/my-repo@1326633902:environment:dev'
 </code></pre></div>
 <p>Read the prefix your repository actually sends before creating the credential:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/&lt;owner&gt;/&lt;repo&gt;/actions/oidc/customization/sub
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="p">{</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">&quot;use_default&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">&quot;use_immutable_subject&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">&quot;sub_claim_prefix&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;repo:my-user@6265211/my-repo@1326633902&quot;</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">"use_default"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">"use_immutable_subject"</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">"sub_claim_prefix"</span><span class="p">:</span><span class="w"> </span><span class="s2">"repo:my-user@6265211/my-repo@1326633902"</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="p">}</span>
 </code></pre></div>
 <p>Read <code>sub_claim_prefix</code> itself, not the booleans next to it. As the response
@@ -1569,60 +1590,60 @@ configuration changes later.</p>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nv">OWNER_REPO</span><span class="o">=</span>&lt;owner&gt;/&lt;repo&gt;
 <a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nv">ENV_NAME</span><span class="o">=</span>dev
 <a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nv">PREFIX</span><span class="o">=</span><span class="k">$(</span>gh<span class="w"> </span>api<span class="w"> </span><span class="s2">&quot;repos/</span><span class="si">${</span><span class="nv">OWNER_REPO</span><span class="si">}</span><span class="s2">/actions/oidc/customization/sub&quot;</span><span class="w"> </span>--jq<span class="w"> </span>.sub_claim_prefix<span class="k">)</span>
-<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;sub_claim_prefix: </span><span class="nv">$PREFIX</span><span class="s2">&quot;</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="nv">PREFIX</span><span class="o">=</span><span class="k">$(</span>gh<span class="w"> </span>api<span class="w"> </span><span class="s2">"repos/</span><span class="si">${</span><span class="nv">OWNER_REPO</span><span class="si">}</span><span class="s2">/actions/oidc/customization/sub"</span><span class="w"> </span>--jq<span class="w"> </span>.sub_claim_prefix<span class="k">)</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"sub_claim_prefix: </span><span class="nv">$PREFIX</span><span class="s2">"</span>
 <a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
 <a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>create_fic<span class="w"> </span><span class="o">()</span><span class="w"> </span><span class="o">{</span>
 <a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="w">  </span>cat<span class="w"> </span>&gt;<span class="w"> </span>fic.json<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
 <a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="s">{</span>
-<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="s">  &quot;name&quot;: &quot;$1&quot;,</span>
-<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="s">  &quot;issuer&quot;: &quot;https://token.actions.githubusercontent.com&quot;,</span>
-<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="s">  &quot;subject&quot;: &quot;$2&quot;,</span>
-<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="s">  &quot;audiences&quot;: [&quot;api://AzureADTokenExchange&quot;]</span>
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a><span class="s">  "name": "$1",</span>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="s">  "issuer": "https://token.actions.githubusercontent.com",</span>
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a><span class="s">  "subject": "$2",</span>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a><span class="s">  "audiences": ["api://AzureADTokenExchange"]</span>
 <a id="__codelineno-8-15" name="__codelineno-8-15" href="#__codelineno-8-15"></a><span class="s">}</span>
 <a id="__codelineno-8-16" name="__codelineno-8-16" href="#__codelineno-8-16"></a><span class="s">EOF</span>
-<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">  </span>az<span class="w"> </span>ad<span class="w"> </span>app<span class="w"> </span>federated-credential<span class="w"> </span>create<span class="w"> </span>--id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--parameters<span class="w"> </span>@fic.json
+<a id="__codelineno-8-17" name="__codelineno-8-17" href="#__codelineno-8-17"></a><span class="w">  </span>az<span class="w"> </span>ad<span class="w"> </span>app<span class="w"> </span>federated-credential<span class="w"> </span>create<span class="w"> </span>--id<span class="w"> </span><span class="s2">"</span><span class="nv">$APP_ID</span><span class="s2">"</span><span class="w"> </span>--parameters<span class="w"> </span>@fic.json
 <a id="__codelineno-8-18" name="__codelineno-8-18" href="#__codelineno-8-18"></a><span class="w">  </span>rm<span class="w"> </span>-f<span class="w"> </span>fic.json
 <a id="__codelineno-8-19" name="__codelineno-8-19" href="#__codelineno-8-19"></a><span class="o">}</span>
 <a id="__codelineno-8-20" name="__codelineno-8-20" href="#__codelineno-8-20"></a>
 <a id="__codelineno-8-21" name="__codelineno-8-21" href="#__codelineno-8-21"></a><span class="c1"># 1. Default subject.</span>
-<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>create_fic<span class="w"> </span><span class="s2">&quot;gh-</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;repo:</span><span class="si">${</span><span class="nv">OWNER_REPO</span><span class="si">}</span><span class="s2">:environment:</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-8-22" name="__codelineno-8-22" href="#__codelineno-8-22"></a>create_fic<span class="w"> </span><span class="s2">"gh-</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="s2">"repo:</span><span class="si">${</span><span class="nv">OWNER_REPO</span><span class="si">}</span><span class="s2">:environment:</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-8-23" name="__codelineno-8-23" href="#__codelineno-8-23"></a>
 <a id="__codelineno-8-24" name="__codelineno-8-24" href="#__codelineno-8-24"></a><span class="c1"># 2. Immutable-ID subject, only when the prefix differs from the default.</span>
-<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$PREFIX</span><span class="s2">&quot;</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span><span class="s2">&quot;repo:</span><span class="si">${</span><span class="nv">OWNER_REPO</span><span class="si">}</span><span class="s2">&quot;</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
-<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="w">  </span>create_fic<span class="w"> </span><span class="s2">&quot;gh-</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">-ids&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">PREFIX</span><span class="si">}</span><span class="s2">:environment:</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-8-25" name="__codelineno-8-25" href="#__codelineno-8-25"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">"</span><span class="nv">$PREFIX</span><span class="s2">"</span><span class="w"> </span>!<span class="o">=</span><span class="w"> </span><span class="s2">"repo:</span><span class="si">${</span><span class="nv">OWNER_REPO</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+<a id="__codelineno-8-26" name="__codelineno-8-26" href="#__codelineno-8-26"></a><span class="w">  </span>create_fic<span class="w"> </span><span class="s2">"gh-</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">-ids"</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">PREFIX</span><span class="si">}</span><span class="s2">:environment:</span><span class="si">${</span><span class="nv">ENV_NAME</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-8-27" name="__codelineno-8-27" href="#__codelineno-8-27"></a><span class="k">fi</span>
 </code></pre></div>
 <p>On Windows PowerShell, build the subject with <code>${...}</code> delimiters and let
 <code>ConvertTo-Json</code> write the payload. Writing <code>"repo:$repo:environment:$env"</code>
 silently breaks because <code>$repo:</code> parses as a scoped variable:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">$appId</span>   <span class="p">=</span> <span class="s2">&quot;&lt;AZURE_CLIENT_ID&gt;&quot;</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nv">$repo</span>    <span class="p">=</span> <span class="s2">&quot;&lt;owner&gt;/&lt;repo&gt;&quot;</span>
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nv">$envName</span> <span class="p">=</span> <span class="s2">&quot;dev&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nv">$appId</span>   <span class="p">=</span> <span class="s2">"&lt;AZURE_CLIENT_ID&gt;"</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nv">$repo</span>    <span class="p">=</span> <span class="s2">"&lt;owner&gt;/&lt;repo&gt;"</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nv">$envName</span> <span class="p">=</span> <span class="s2">"dev"</span>
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>
-<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="nv">$prefix</span> <span class="p">=</span> <span class="n">gh</span> <span class="n">api</span> <span class="s2">&quot;repos/$repo/actions/oidc/customization/sub&quot;</span> <span class="p">-</span><span class="n">-jq</span> <span class="p">.</span><span class="n">sub_claim_prefix</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="nv">$prefix</span> <span class="p">=</span> <span class="n">gh</span> <span class="n">api</span> <span class="s2">"repos/$repo/actions/oidc/customization/sub"</span> <span class="p">-</span><span class="n">-jq</span> <span class="p">.</span><span class="n">sub_claim_prefix</span>
 <a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
-<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nv">$subjects</span> <span class="p">=</span> <span class="p">@{</span> <span class="s2">&quot;gh-$envName&quot;</span> <span class="p">=</span> <span class="s2">&quot;repo:${repo}:environment:${envName}&quot;</span> <span class="p">}</span>
-<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="k">if</span> <span class="p">(</span><span class="nv">$prefix</span> <span class="o">-ne</span> <span class="s2">&quot;repo:${repo}&quot;</span><span class="p">)</span> <span class="p">{</span>
-<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="nv">$subjects</span><span class="p">[</span><span class="s2">&quot;gh-$envName-ids&quot;</span><span class="p">]</span> <span class="p">=</span> <span class="s2">&quot;${prefix}:environment:${envName}&quot;</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nv">$subjects</span> <span class="p">=</span> <span class="p">@{</span> <span class="s2">"gh-$envName"</span> <span class="p">=</span> <span class="s2">"repo:${repo}:environment:${envName}"</span> <span class="p">}</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="k">if</span> <span class="p">(</span><span class="nv">$prefix</span> <span class="o">-ne</span> <span class="s2">"repo:${repo}"</span><span class="p">)</span> <span class="p">{</span>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>    <span class="nv">$subjects</span><span class="p">[</span><span class="s2">"gh-$envName-ids"</span><span class="p">]</span> <span class="p">=</span> <span class="s2">"${prefix}:environment:${envName}"</span>
 <a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="p">}</span>
 <a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
 <a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="k">foreach</span> <span class="p">(</span><span class="nv">$name</span> <span class="k">in</span> <span class="nv">$subjects</span><span class="p">.</span><span class="n">Keys</span><span class="p">)</span> <span class="p">{</span>
 <a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    <span class="no">[pscustomobject]</span><span class="p">@{</span>
 <a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>        <span class="n">name</span>      <span class="p">=</span> <span class="nv">$name</span>
-<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>        <span class="n">issuer</span>    <span class="p">=</span> <span class="s2">&quot;https://token.actions.githubusercontent.com&quot;</span>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>        <span class="n">issuer</span>    <span class="p">=</span> <span class="s2">"https://token.actions.githubusercontent.com"</span>
 <a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>        <span class="n">subject</span>   <span class="p">=</span> <span class="nv">$subjects</span><span class="p">[</span><span class="nv">$name</span><span class="p">]</span>
-<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>        <span class="n">audiences</span> <span class="p">=</span> <span class="p">@(</span><span class="s2">&quot;api://AzureADTokenExchange&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>        <span class="n">audiences</span> <span class="p">=</span> <span class="p">@(</span><span class="s2">"api://AzureADTokenExchange"</span><span class="p">)</span>
 <a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>    <span class="p">}</span> <span class="p">|</span> <span class="nb">ConvertTo-Json</span> <span class="p">|</span> <span class="nb">Set-Content</span> <span class="n">fic</span><span class="p">.</span><span class="n">json</span> <span class="n">-Encoding</span> <span class="n">utf8</span>
-<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    <span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">federated-credential</span> <span class="n">create</span> <span class="p">-</span><span class="n">-id</span> <span class="nv">$appId</span> <span class="p">-</span><span class="n">-parameters</span> <span class="s2">&quot;@fic.json&quot;</span>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>    <span class="n">az</span> <span class="n">ad</span> <span class="n">app</span> <span class="n">federated-credential</span> <span class="n">create</span> <span class="p">-</span><span class="n">-id</span> <span class="nv">$appId</span> <span class="p">-</span><span class="n">-parameters</span> <span class="s2">"@fic.json"</span>
 <a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="p">}</span>
 <a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="nb">Remove-Item</span> <span class="n">fic</span><span class="p">.</span><span class="n">json</span> <span class="n">-ErrorAction</span> <span class="n">SilentlyContinue</span>
 </code></pre></div>
 <p>Repeat for every environment your workflows reference (<code>dev</code>, <code>qa</code>,
 <code>production</code>, plus <code>sandbox</code> for prompt-agent PR candidates). Then read the
 credentials back before dispatching a workflow:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>az<span class="w"> </span>ad<span class="w"> </span>app<span class="w"> </span>federated-credential<span class="w"> </span>list<span class="w"> </span>--id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>--query<span class="w"> </span><span class="s2">&quot;[].{name:name, subject:subject, issuer:issuer, audiences:audiences}&quot;</span><span class="w"> </span>-o<span class="w"> </span>table
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>az<span class="w"> </span>ad<span class="w"> </span>app<span class="w"> </span>federated-credential<span class="w"> </span>list<span class="w"> </span>--id<span class="w"> </span><span class="s2">"</span><span class="nv">$APP_ID</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>--query<span class="w"> </span><span class="s2">"[].{name:name, subject:subject, issuer:issuer, audiences:audiences}"</span><span class="w"> </span>-o<span class="w"> </span>table
 </code></pre></div>
 <h4 id="troubleshooting-azure-login-and-provisioning">Troubleshooting Azure login and provisioning<a class="headerlink" href="#troubleshooting-azure-login-and-provisioning" title="Permanent link">&para;</a></h4>
 <table>
@@ -1665,14 +1686,14 @@ subscription scope rather than inside a resource group:</p>
 with <code>AuthorizationFailed</code>, even when every resource the template creates lands
 inside that one resource group. Check what your own template targets before
 assigning roles:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>head<span class="w"> </span>-1<span class="w"> </span>infra/main.bicep<span class="w">    </span><span class="c1"># targetScope = &#39;subscription&#39; or &#39;resourceGroup&#39;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>head<span class="w"> </span>-1<span class="w"> </span>infra/main.bicep<span class="w">    </span><span class="c1"># targetScope = 'subscription' or 'resourceGroup'</span>
 </code></pre></div>
 <p>When it is <code>subscription</code>, grant the OIDC principal Contributor at subscription
 scope:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nv">SP_OBJECT_ID</span><span class="o">=</span><span class="k">$(</span>az<span class="w"> </span>ad<span class="w"> </span>sp<span class="w"> </span>show<span class="w"> </span>--id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$APP_ID</span><span class="s2">&quot;</span><span class="w"> </span>--query<span class="w"> </span>id<span class="w"> </span>-o<span class="w"> </span>tsv<span class="k">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nv">SP_OBJECT_ID</span><span class="o">=</span><span class="k">$(</span>az<span class="w"> </span>ad<span class="w"> </span>sp<span class="w"> </span>show<span class="w"> </span>--id<span class="w"> </span><span class="s2">"</span><span class="nv">$APP_ID</span><span class="s2">"</span><span class="w"> </span>--query<span class="w"> </span>id<span class="w"> </span>-o<span class="w"> </span>tsv<span class="k">)</span>
 <a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>az<span class="w"> </span>role<span class="w"> </span>assignment<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>--assignee-object-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$SP_OBJECT_ID</span><span class="s2">&quot;</span><span class="w"> </span>--assignee-principal-type<span class="w"> </span>ServicePrincipal<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span>--role<span class="w"> </span>Contributor<span class="w"> </span>--scope<span class="w"> </span><span class="s2">&quot;/subscriptions/</span><span class="nv">$AZURE_SUBSCRIPTION_ID</span><span class="s2">&quot;</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>--assignee-object-id<span class="w"> </span><span class="s2">"</span><span class="nv">$SP_OBJECT_ID</span><span class="s2">"</span><span class="w"> </span>--assignee-principal-type<span class="w"> </span>ServicePrincipal<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span>--role<span class="w"> </span>Contributor<span class="w"> </span>--scope<span class="w"> </span><span class="s2">"/subscriptions/</span><span class="nv">$AZURE_SUBSCRIPTION_ID</span><span class="s2">"</span>
 </code></pre></div>
 <p>Resource-group scope is enough only when the template is
 <code>targetScope = 'resourceGroup'</code> and the group already exists. This is separate
@@ -1689,15 +1710,15 @@ generated workflows already do:</p>
    <code>1.0.0-beta.9</code>, the same version the eval gate uses, and reads an override
    from <code>AGENTOPS_AZD_AI_AGENTS_EXTENSION_VERSION</code>.</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>azd<span class="w"> </span>extension<span class="w"> </span>install<span class="w"> </span>azure.ai.agents<span class="w"> </span>--version<span class="w"> </span><span class="s2">&quot;1.0.0-beta.9&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>azd<span class="w"> </span>extension<span class="w"> </span>install<span class="w"> </span>azure.ai.agents<span class="w"> </span>--version<span class="w"> </span><span class="s2">"1.0.0-beta.9"</span>
 </code></pre></div>
 <ol>
 <li><strong>Log azd in on GitHub Actions</strong>, using the same federated credential as the
    <code>az</code> login:</li>
 </ol>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>azd<span class="w"> </span>auth<span class="w"> </span>login<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span>--client-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AZURE_CLIENT_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span>--tenant-id<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$AZURE_TENANT_ID</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span>--client-id<span class="w"> </span><span class="s2">"</span><span class="nv">$AZURE_CLIENT_ID</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="w">  </span>--tenant-id<span class="w"> </span><span class="s2">"</span><span class="nv">$AZURE_TENANT_ID</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span>--federated-credential-provider<span class="w"> </span>github
 </code></pre></div>
 <ol>
@@ -1705,7 +1726,7 @@ generated workflows already do:</p>
    <code>AzureCLI@2</code> inline script, so the service connection has already produced an
    authenticated CLI session that azd can borrow:</li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>azd<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>auth.useAzCliAuth<span class="w"> </span><span class="s2">&quot;true&quot;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>azd<span class="w"> </span>config<span class="w"> </span><span class="nb">set</span><span class="w"> </span>auth.useAzCliAuth<span class="w"> </span><span class="s2">"true"</span>
 </code></pre></div>
 <p>Skipping step 1 surfaces as <code>ERROR: no extensions found</code> or
 <code>Auto-installation is not supported in CI/CD environments</code>. Skipping step 2 or 3
@@ -1846,7 +1867,7 @@ commands.</p>
 <p>For the simplest Foundry prompt-agent workflow, keep the instructions in
 source control and point <code>agentops.yaml</code> at them:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;quickstart-agent:2&quot;</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">"quickstart-agent:2"</span>
 <a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/smoke.jsonl</span>
 <a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a><span class="nt">execution</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cloud</span>
 <a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a><span class="nt">prompt_file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/prompts/agent-instructions.md</span>
@@ -1877,22 +1898,22 @@ AgentOps cloud eval so threshold failures produce normalized PR evidence.</p>
 <a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Build image</span>
 <a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
 <a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span><span class="no">az acr build \</span>
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">      </span><span class="no">--registry &quot;${{ vars.ACR_NAME }}&quot; \</span>
-<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">      </span><span class="no">--image &quot;myapp:${{ github.sha }}&quot; \</span>
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">      </span><span class="no">--registry "${{ vars.ACR_NAME }}" \</span>
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">      </span><span class="no">--image "myapp:${{ github.sha }}" \</span>
 <a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">      </span><span class="no">.</span>
 <a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>
 <a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a><span class="c1"># Deploy</span>
 <a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Deploy to ACA</span>
 <a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a><span class="w">  </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
 <a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a><span class="w">    </span><span class="no">az containerapp update \</span>
-<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="w">      </span><span class="no">--name &quot;${{ vars.ACA_APP_NAME }}&quot; \</span>
-<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a><span class="w">      </span><span class="no">--resource-group &quot;${{ vars.AZURE_RESOURCE_GROUP }}&quot; \</span>
-<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a><span class="w">      </span><span class="no">--image &quot;${{ vars.ACR_NAME }}.azurecr.io/myapp:${{ github.sha }}&quot;</span>
+<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="w">      </span><span class="no">--name "${{ vars.ACA_APP_NAME }}" \</span>
+<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a><span class="w">      </span><span class="no">--resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \</span>
+<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a><span class="w">      </span><span class="no">--image "${{ vars.ACR_NAME }}.azurecr.io/myapp:${{ github.sha }}"</span>
 </code></pre></div>
 <h4 id="app-service">App Service<a class="headerlink" href="#app-service" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="c1"># Build</span>
 <a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">uses</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">actions/setup-python@v6</span>
-<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> python-version</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;3.11&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="w">  </span><span class="nt">with</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> python-version</span><span class="p">:</span><span class="w"> </span><span class="s">"3.11"</span><span class="w"> </span><span class="p p-Indicator">}</span>
 <a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pip install -r requirements.txt -t ./dist</span>
 <a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">run</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cp -r src ./dist/</span>
 <a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a>

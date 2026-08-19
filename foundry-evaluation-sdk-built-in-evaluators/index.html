@@ -18,7 +18,7 @@
         <link rel="prev" href="../evaluation/">
       
       
-        <link rel="next" href="../ship/">
+        <link rel="next" href="../azure-storage-datasets/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -824,6 +824,27 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../azure-storage-datasets/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Azure Storage Datasets
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1397,7 +1418,7 @@ to understand what each evaluator receives.</p>
 <h2 id="config-shape">Config shape<a class="headerlink" href="#config-shape" title="Permanent link">&para;</a></h2>
 <p>The normal config stays small:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://support-dev.example.com/chat&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">"https://support-dev.example.com/chat"</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.agentops/data/rag-smoke.jsonl</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nt">response_source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
@@ -1408,9 +1429,9 @@ to understand what each evaluator receives.</p>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">context</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">context</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="nt">thresholds</span><span class="p">:</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">groundedness</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">retrieval</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&gt;=3&quot;</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">groundedness</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">retrieval</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="nt">coherence</span><span class="p">:</span><span class="w"> </span><span class="s">"&gt;=3"</span>
 </code></pre></div>
 <p>Use <code>evaluators:</code> only when you want to override the automatic choice:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">evaluators</span><span class="p">:</span>
@@ -1528,7 +1549,7 @@ That gives the judge the same evidence the agent used for the answer. Use static
 <code>row.context</code> when you want a fixed, hand-authored reference context.</p>
 <h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
 <p>Static dataset row:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">&quot;input&quot;</span><span class="p">:</span><span class="s2">&quot;What is the refund window?&quot;</span><span class="p">,</span><span class="nt">&quot;expected&quot;</span><span class="p">:</span><span class="s2">&quot;Customers can request a refund within 30 days.&quot;</span><span class="p">,</span><span class="nt">&quot;context&quot;</span><span class="p">:</span><span class="s2">&quot;Refunds are available for 30 days after purchase.&quot;</span><span class="p">}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">"input"</span><span class="p">:</span><span class="s2">"What is the refund window?"</span><span class="p">,</span><span class="nt">"expected"</span><span class="p">:</span><span class="s2">"Customers can request a refund within 30 days."</span><span class="p">,</span><span class="nt">"context"</span><span class="p">:</span><span class="s2">"Refunds are available for 30 days after purchase."</span><span class="p">}</span>
 </code></pre></div>
 <p>Static dataset config:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">response_source</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dataset</span>

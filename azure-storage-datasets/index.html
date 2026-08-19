@@ -12,13 +12,13 @@
         <meta name="author" content="Paulo Lacerda">
       
       
-        <link rel="canonical" href="https://azure.github.io/agentops/observe/">
+        <link rel="canonical" href="https://azure.github.io/agentops/azure-storage-datasets/">
       
       
-        <link rel="prev" href="../ci-github-actions/">
+        <link rel="prev" href="../foundry-evaluation-sdk-built-in-evaluators/">
       
       
-        <link rel="next" href="../operate/">
+        <link rel="next" href="../ship/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>Observe - AgentOps Accelerator</title>
+        <title>Azure Storage Datasets - AgentOps Accelerator</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#observe" class="md-skip">
+        <a href="#azure-storage-datasets" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Observe
+              Azure Storage Datasets
             
           </span>
         </div>
@@ -268,10 +268,12 @@
         
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../evaluation/" class="md-tabs__link">
           
   
@@ -304,11 +306,9 @@
         
   
   
-    
   
-  
-    <li class="md-tabs__item md-tabs__item--active">
-      <a href="./" class="md-tabs__link">
+    <li class="md-tabs__item">
+      <a href="../observe/" class="md-tabs__link">
         
   
     
@@ -602,25 +602,30 @@
       
   
   
+    
   
   
+  
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
         
           
-          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -631,7 +636,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_4">
             <span class="md-nav__icon md-icon"></span>
             Evaluation
@@ -684,10 +689,30 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../azure-storage-datasets/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Azure Storage Datasets
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   <span class="md-ellipsis">
@@ -696,6 +721,89 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-access-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How access works
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configure-a-private-blob-dataset" class="md-nav__link">
+    <span class="md-ellipsis">
+      Configure a private Blob dataset
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#run-the-evaluation-in-foundry" class="md-nav__link">
+    <span class="md-ellipsis">
+      Run the evaluation in Foundry
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#use-azure-storage-from-ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      Use Azure Storage from CI
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security-and-url-restrictions" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security and URL restrictions
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Troubleshooting
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#next" class="md-nav__link">
+    <span class="md-ellipsis">
+      Next
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -801,30 +909,10 @@
       
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    Observe
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../observe/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -833,98 +921,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#where-the-signal-comes-from" class="md-nav__link">
-    <span class="md-ellipsis">
-      Where the signal comes from
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#what-agentops-reads" class="md-nav__link">
-    <span class="md-ellipsis">
-      What AgentOps reads
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#opentelemetry-spans-and-semantic-conventions" class="md-nav__link">
-    <span class="md-ellipsis">
-      OpenTelemetry spans and semantic conventions
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#configure-an-agent-to-emit-telemetry" class="md-nav__link">
-    <span class="md-ellipsis">
-      Configure an agent to emit telemetry
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#instrument-a-custom-python-agent" class="md-nav__link">
-    <span class="md-ellipsis">
-      Instrument a custom Python agent
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#traces-as-evaluation-signal" class="md-nav__link">
-    <span class="md-ellipsis">
-      Traces as evaluation signal
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#run-from-your-coding-agent" class="md-nav__link">
-    <span class="md-ellipsis">
-      Run from your coding agent
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#next" class="md-nav__link">
-    <span class="md-ellipsis">
-      Next
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1260,63 +1256,54 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#where-the-signal-comes-from" class="md-nav__link">
+  <a href="#how-access-works" class="md-nav__link">
     <span class="md-ellipsis">
-      Where the signal comes from
+      How access works
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#what-agentops-reads" class="md-nav__link">
+  <a href="#configure-a-private-blob-dataset" class="md-nav__link">
     <span class="md-ellipsis">
-      What AgentOps reads
+      Configure a private Blob dataset
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#opentelemetry-spans-and-semantic-conventions" class="md-nav__link">
+  <a href="#run-the-evaluation-in-foundry" class="md-nav__link">
     <span class="md-ellipsis">
-      OpenTelemetry spans and semantic conventions
+      Run the evaluation in Foundry
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#configure-an-agent-to-emit-telemetry" class="md-nav__link">
+  <a href="#use-azure-storage-from-ci" class="md-nav__link">
     <span class="md-ellipsis">
-      Configure an agent to emit telemetry
+      Use Azure Storage from CI
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#instrument-a-custom-python-agent" class="md-nav__link">
+  <a href="#security-and-url-restrictions" class="md-nav__link">
     <span class="md-ellipsis">
-      Instrument a custom Python agent
+      Security and URL restrictions
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#traces-as-evaluation-signal" class="md-nav__link">
+  <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
-      Traces as evaluation signal
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#run-from-your-coding-agent" class="md-nav__link">
-    <span class="md-ellipsis">
-      Run from your coding agent
+      Troubleshooting
     </span>
   </a>
   
@@ -1349,192 +1336,165 @@
   
 
 
-<h1 id="observe">Observe<a class="headerlink" href="#observe" title="Permanent link">&para;</a></h1>
-<p>This page explains how AgentOps turns agent observability into release evidence
-and regression coverage. Foundry and Azure Monitor produce the runtime signal;
-AgentOps reads that signal so readiness reflects what is actually happening in
-production, not just what passed in CI.</p>
-<h2 id="where-the-signal-comes-from">Where the signal comes from<a class="headerlink" href="#where-the-signal-comes-from" title="Permanent link">&para;</a></h2>
-<p>Foundry gives you the runtime view of an agent: traces, conversations, spans,
-latency, and model calls per run. Behind that view, Foundry emits telemetry to
-<strong>Azure Monitor / Application Insights</strong>, where requests, errors, and evaluation
-events are stored and queryable.</p>
-<p>AgentOps does not replace either surface. It reads them so the same runtime
-truth feeds the readiness story alongside eval results and Doctor findings.</p>
-<h2 id="what-agentops-reads">What AgentOps reads<a class="headerlink" href="#what-agentops-reads" title="Permanent link">&para;</a></h2>
-<p>AgentOps connects to Application Insights through
-<code>APPLICATIONINSIGHTS_CONNECTION_STRING</code>. When a Foundry project endpoint is set,
-AgentOps first tries to auto-discover the project's App Insights resource and
-falls back to that connection string when discovery is not available.</p>
-<div class="admonition info">
-<p class="admonition-title">Telemetry from CI runs</p>
-<p>Generated eval and Doctor workflows install OpenTelemetry support.
-Eval runs emit <code>agentops.eval.*</code> spans and scheduled Doctor runs emit
-<code>agentops.agent.finding.*</code> spans, both of which the Cockpit can deep-link
-into Azure Monitor Logs.</p>
-</div>
-<h2 id="opentelemetry-spans-and-semantic-conventions">OpenTelemetry spans and semantic conventions<a class="headerlink" href="#opentelemetry-spans-and-semantic-conventions" title="Permanent link">&para;</a></h2>
-<p>An OpenTelemetry trace is a tree of spans. Each span represents one unit of
-work and records a name, start and end timestamps, status, attributes, and its
-parent/child relationship to other spans. The OpenTelemetry generative AI
-semantic conventions give those spans consistent names and <code>gen_ai.*</code>
-attributes, so the same telemetry remains meaningful in Foundry and Azure
-Monitor.</p>
+<h1 id="azure-storage-datasets">Azure Storage Datasets<a class="headerlink" href="#azure-storage-datasets" title="Permanent link">&para;</a></h1>
+<p>Most AgentOps projects should keep their first evaluation dataset as a local
+JSONL file, such as <code>.agentops/data/smoke.jsonl</code>. Use Azure Storage when the
+dataset already belongs in centrally managed storage, must be shared across
+runners, or cannot live in the repository workspace.</p>
+<p>AgentOps supports one Azure Blob Storage or Azure Data Lake Storage Gen2 object
+as the <code>dataset</code> value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Azure Blob Storage</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://examplestorage.blob.core.windows.net/evals/smoke.jsonl</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Azure Data Lake Storage Gen2</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://examplestorage.dfs.core.windows.net/evals/regression/smoke.jsonl</span>
+</code></pre></div>
+<h2 id="how-access-works">How access works<a class="headerlink" href="#how-access-works" title="Permanent link">&para;</a></h2>
+<p>Remote reads reuse the Azure identity already available to AgentOps:</p>
+<ul>
+<li>Local development uses the identity established by <code>az login</code>.</li>
+<li>CI uses its existing workload or service-principal identity.</li>
+<li>Azure-hosted runners use managed identity when configured.</li>
+</ul>
+<p>AgentOps does not accept dataset-specific tokens, SAS URLs, storage account
+keys, or connection strings. Grant the running identity <code>Storage Blob Data
+Reader</code>, preferably at container scope. ADLS Gen2 path ACLs may also be
+required.</p>
+<p>For each analysis or evaluation operation, AgentOps downloads one read-only
+snapshot and applies the same JSONL validation and evaluator selection used for
+local files. Remote objects are limited to 100 MiB. The snapshot is removed
+after the operation, while results, reports, telemetry, and cloud lineage retain
+the original Azure Storage URL.</p>
+<h2 id="configure-a-private-blob-dataset">Configure a private Blob dataset<a class="headerlink" href="#configure-a-private-blob-dataset" title="Permanent link">&para;</a></h2>
+<ol>
+<li>
+<p>Sign in and select the subscription:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">az</span> <span class="n">login</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">az</span> <span class="n">account</span> <span class="nb">set </span><span class="p">-</span><span class="n">-subscription</span> <span class="p">&lt;</span><span class="n">subscription-id</span><span class="p">&gt;</span>
+</code></pre></div>
+</li>
+<li>
+<p>Have an Azure administrator grant read access at the narrowest practical
+   scope:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">$scope</span> <span class="p">=</span> <span class="s2">"/subscriptions/&lt;subscription-id&gt;/resourceGroups/&lt;resource-group&gt;/providers/Microsoft.Storage/storageAccounts/&lt;account&gt;/blobServices/default/containers/&lt;container&gt;"</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">az</span> <span class="n">role</span> <span class="n">assignment</span> <span class="n">create</span> <span class="p">`</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>  <span class="p">-</span><span class="n">-assignee-object-id</span> <span class="p">&lt;</span><span class="n">user</span><span class="o">-or</span><span class="n">-workload-object-id</span><span class="p">&gt;</span> <span class="p">`</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>  <span class="p">-</span><span class="n">-assignee-principal-type</span> <span class="n">User</span> <span class="p">`</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>  <span class="p">-</span><span class="n">-role</span> <span class="s2">"Storage Blob Data Reader"</span> <span class="p">`</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>  <span class="p">-</span><span class="n">-scope</span> <span class="nv">$scope</span>
+</code></pre></div>
+<p>Use the actual principal type for automation identities. Role propagation
+can take several minutes.</p>
+</li>
+<li>
+<p>Set the object URL in <code>agentops.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">"my-agent:1"</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="s">"https://&lt;account&gt;.blob.core.windows.net/&lt;container&gt;/smoke.jsonl"</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">project_endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">"https://&lt;resource&gt;.services.ai.azure.com/api/projects/&lt;project&gt;"</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">execution</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+</code></pre></div>
+</li>
+<li>
+<p>Validate access and run the evaluation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">analyze</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+</code></pre></div>
+</li>
+</ol>
+<p><code>eval analyze</code> reports <code>dataset_status: ready</code> when the identity can read and
+validate the remote JSONL. A successful run preserves the Blob URL in
+<code>results.json.dataset_path</code>.</p>
+<h2 id="run-the-evaluation-in-foundry">Run the evaluation in Foundry<a class="headerlink" href="#run-the-evaluation-in-foundry" title="Permanent link">&para;</a></h2>
+<p>Local execution does not create an item on the Foundry <strong>Evaluations</strong> page.
+For a supported Foundry agent, change the execution mode when you want Foundry
+to invoke the agent and evaluators server-side:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">agent</span><span class="p">:</span><span class="w"> </span><span class="s">"my-agent:1"</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="s">"https://&lt;account&gt;.blob.core.windows.net/&lt;container&gt;/smoke.jsonl"</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="nt">project_endpoint</span><span class="p">:</span><span class="w"> </span><span class="s">"https://&lt;resource&gt;.services.ai.azure.com/api/projects/&lt;project&gt;"</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nt">execution</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cloud</span>
+</code></pre></div>
+<p>Then run <code>agentops eval run</code>. On completion AgentOps writes:</p>
+<ul>
+<li><code>results.json</code> and <code>report.md</code>;</li>
+<li><code>cloud_evaluation.json</code> with the Foundry evaluation and run IDs;</li>
+<li><code>cloud_output_items.json</code> with the downloaded per-row cloud results;</li>
+<li>a direct link to the run in the New Foundry Evaluations experience.</li>
+</ul>
+<p>Cloud mode first reads and validates the private object through the runner
+identity, then synchronizes the content to the selected Foundry project.
+Foundry runs the agent and supported evaluators. Runtime-only metrics such as
+client-observed latency are skipped because the cloud runner cannot measure
+them.</p>
+<h2 id="use-azure-storage-from-ci">Use Azure Storage from CI<a class="headerlink" href="#use-azure-storage-from-ci" title="Permanent link">&para;</a></h2>
+<p>Use workload identity federation or managed identity rather than credentials in
+repository secrets. Grant that principal <code>Storage Blob Data Reader</code> on the
+container and access to the Foundry project. The same <code>agentops.yaml</code> works
+locally and in CI; authentication changes with the hosting environment, not with
+the dataset setting.</p>
+<h2 id="security-and-url-restrictions">Security and URL restrictions<a class="headerlink" href="#security-and-url-restrictions" title="Permanent link">&para;</a></h2>
+<p>The dataset URL must identify one object on a canonical Blob or DFS HTTPS host.
+AgentOps rejects query strings, fragments, embedded user information, SAS
+tokens, noncanonical hosts, and unsupported schemes before making a network
+request. A private storage endpoint must be reachable from the runner; AgentOps
+does not provision networking or role assignments.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
-<th>Work</th>
-<th>Span and operation</th>
-<th>Key attributes</th>
+<th>Symptom</th>
+<th>Likely cause</th>
+<th>Resolution</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Agent invocation</td>
-<td><code>invoke_agent &lt;agent-name&gt;</code>; <code>gen_ai.operation.name=invoke_agent</code></td>
-<td><code>gen_ai.agent.name</code>, <code>gen_ai.agent.id</code>, <code>gen_ai.conversation.id</code></td>
+<td><code>AuthorizationPermissionMismatch</code> or HTTP 403</td>
+<td>The active identity lacks data-plane access, or RBAC has not propagated.</td>
+<td>Confirm the object ID used by <code>az login</code>, grant <code>Storage Blob Data Reader</code>, and retry after propagation. Generic Azure <code>Reader</code> or <code>Contributor</code> is insufficient.</td>
 </tr>
 <tr>
-<td>Model call</td>
-<td><code>chat &lt;model&gt;</code>; <code>gen_ai.operation.name=chat</code></td>
-<td><code>gen_ai.provider.name</code>, <code>gen_ai.request.model</code>, <code>gen_ai.usage.input_tokens</code>, <code>gen_ai.usage.output_tokens</code></td>
+<td>Message says the request may be blocked by network rules</td>
+<td>The runner cannot reach the Storage data-plane endpoint.</td>
+<td>Allow the runner through the Storage firewall, run inside the private network, or use an approved Network Security Perimeter rule.</td>
 </tr>
 <tr>
-<td>Tool execution</td>
-<td><code>execute_tool &lt;tool-name&gt;</code>; <code>gen_ai.operation.name=execute_tool</code></td>
-<td><code>gen_ai.tool.name</code></td>
+<td>DNS or connection timeout with a private endpoint</td>
+<td>Private DNS or network routing does not resolve or reach the private endpoint from the runner.</td>
+<td>Run AgentOps from the connected VNet or fix private DNS and routing.</td>
 </tr>
-</tbody>
-</table>
-<p>Domain attributes such as <code>helpdesk.ticket.queue</code> can add business context, but
-they complement rather than replace the standard <code>gen_ai.*</code> attributes.</p>
-<div class="admonition warning">
-<p class="admonition-title">Keep sensitive content out of telemetry</p>
-<p>Do not record secrets, tokens, or personal data in span attributes.
-<code>gen_ai.input.messages</code>, <code>gen_ai.output.messages</code>, and tool arguments or
-results can contain sensitive content, so omit, minimize, or redact them.</p>
-</div>
-<h2 id="configure-an-agent-to-emit-telemetry">Configure an agent to emit telemetry<a class="headerlink" href="#configure-an-agent-to-emit-telemetry" title="Permanent link">&para;</a></h2>
-<p>Agents hosted in Foundry receive server-side tracing after you connect an
-Application Insights resource to the project. If you own application code
-around the agent call, add client-side instrumentation to capture that custom
-logic as well.</p>
-<p>Install the Azure Monitor OpenTelemetry distribution:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>azure-monitor-opentelemetry
-</code></pre></div>
-<p>Set <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code> in the process environment; using
-an application setting or secret reference is recommended in production. Then
-configure Azure Monitor once during application startup:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">azure.monitor.opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_azure_monitor</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.sdk.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resource</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">configure_azure_monitor</span><span class="p">(</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">resource</span><span class="o">=</span><span class="n">Resource</span><span class="o">.</span><span class="n">create</span><span class="p">({</span><span class="s2">"service.name"</span><span class="p">:</span> <span class="s2">"helpdesk-agent"</span><span class="p">}),</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>
-</code></pre></div>
-<p>Do not hardcode the connection string in source. After startup, run the agent
-and verify a new trace in <strong>Foundry &gt; Agents &gt; Traces</strong> or <strong>Application
-Insights &gt; Investigate &gt; Agents (Preview)</strong>. See the official
-<a href="https://learn.microsoft.com/azure/foundry/observability/how-to/trace-agent-setup">Foundry tracing setup</a>
-for the complete connection, permissions, and verification flow.</p>
-<h2 id="instrument-a-custom-python-agent">Instrument a custom Python agent<a class="headerlink" href="#instrument-a-custom-python-agent" title="Permanent link">&para;</a></h2>
-<p>Once Azure Monitor is configured, application code can reuse the global tracer
-provider without depending on an agent framework:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.trace</span><span class="w"> </span><span class="kn">import</span> <span class="n">Status</span><span class="p">,</span> <span class="n">StatusCode</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">tracer</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">get_tracer</span><span class="p">(</span><span class="s2">"contoso.helpdesk.agent"</span><span class="p">)</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">lookup_ticket</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">"Ticket </span><span class="si">{</span><span class="n">ticket_id</span><span class="si">}</span><span class="s2"> is queued for review."</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_agent</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">conversation_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>    <span class="n">agent_attributes</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>        <span class="s2">"gen_ai.operation.name"</span><span class="p">:</span> <span class="s2">"invoke_agent"</span><span class="p">,</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>        <span class="s2">"gen_ai.agent.name"</span><span class="p">:</span> <span class="s2">"helpdesk-agent"</span><span class="p">,</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>        <span class="s2">"gen_ai.agent.id"</span><span class="p">:</span> <span class="s2">"helpdesk-agent-v1"</span><span class="p">,</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>        <span class="s2">"gen_ai.conversation.id"</span><span class="p">:</span> <span class="n">conversation_id</span><span class="p">,</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="p">}</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>        <span class="s2">"invoke_agent helpdesk-agent"</span><span class="p">,</span>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>        <span class="n">attributes</span><span class="o">=</span><span class="n">agent_attributes</span><span class="p">,</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a>        <span class="n">record_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>        <span class="n">set_status_on_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">agent_span</span><span class="p">:</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>            <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a>                <span class="s2">"execute_tool lookup_ticket"</span><span class="p">,</span>
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a>                <span class="n">attributes</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>                    <span class="s2">"gen_ai.operation.name"</span><span class="p">:</span> <span class="s2">"execute_tool"</span><span class="p">,</span>
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a>                    <span class="s2">"gen_ai.tool.name"</span><span class="p">:</span> <span class="s2">"lookup_ticket"</span><span class="p">,</span>
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a>                <span class="p">},</span>
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a>                <span class="n">record_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a>                <span class="n">set_status_on_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">tool_span</span><span class="p">:</span>
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a>                    <span class="n">ticket</span> <span class="o">=</span> <span class="n">lookup_ticket</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">)</span>
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>                    <span class="n">tool_span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">"error.type"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a>                    <span class="n">tool_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">ERROR</span><span class="p">))</span>
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a>                    <span class="k">raise</span>
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a>
-<a id="__codelineno-2-41" name="__codelineno-2-41" href="#__codelineno-2-41"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">OK</span><span class="p">))</span>
-<a id="__codelineno-2-42" name="__codelineno-2-42" href="#__codelineno-2-42"></a>            <span class="k">return</span> <span class="sa">f</span><span class="s2">"Helpdesk response: </span><span class="si">{</span><span class="n">ticket</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-2-43" name="__codelineno-2-43" href="#__codelineno-2-43"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-2-44" name="__codelineno-2-44" href="#__codelineno-2-44"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">"error.type"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
-<a id="__codelineno-2-45" name="__codelineno-2-45" href="#__codelineno-2-45"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">ERROR</span><span class="p">))</span>
-<a id="__codelineno-2-46" name="__codelineno-2-46" href="#__codelineno-2-46"></a>            <span class="k">raise</span>
-</code></pre></div>
-<p>The span context managers preserve the parent/child relationship and finish
-each span with its measured duration automatically. The example disables
-automatic exception recording and records only <code>error.type</code>, avoiding exception
-messages, stack traces, and tool arguments in telemetry.</p>
-<p>For a more specific policy-span implementation, see the
-<a href="https://github.com/placerda/safe-agent-on-foundry/blob/main/src/helpdeskbot/acs_middleware.py#L280"><code>acs_middleware.py</code> example</a>.
-The official guide to
-<a href="https://learn.microsoft.com/azure/foundry/how-to/develop/langchain-traces#understand-trace-structure">trace structure and semantic conventions</a>
-describes the same agent, model, and tool span hierarchy in detail.</p>
-<h2 id="traces-as-evaluation-signal">Traces as evaluation signal<a class="headerlink" href="#traces-as-evaluation-signal" title="Permanent link">&para;</a></h2>
-<p>A single trace shows what one request did. The value for release readiness comes
-from reading many traces at once: latency percentiles, error rates, and the
-evaluation results Foundry records as <code>gen_ai.evaluation.result</code> events.</p>
-<p>The Doctor turns this into findings. It reads App Insights for p95 latency and
-error rate, and it reports when telemetry is connected but silent, so a project
-with no monitoring does not look healthy simply because nothing is being graded.</p>
-<div class="admonition note">
-<p class="admonition-title">Real telemetry surfaces production findings</p>
-<p>Because the Doctor reads live runtime data, it can surface latency or error
-findings from your own production traffic, separate from the eval gate. That
-is intended: a real release should investigate latency and errors before
-promoting, even when the candidate's eval scores pass.</p>
-</div>
-<p><a id="agent-identity-on-traces"></a></p>
-<h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
-<p>Install the AgentOps skills so your coding agent can read telemetry and
-investigate production health.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
-</code></pre></div>
-<p>The skills that map to observability are:</p>
-<table>
-<thead>
 <tr>
-<th>Skill</th>
-<th>What it helps with</th>
+<td>ADLS Gen2 returns 403 despite Blob Reader</td>
+<td>Hierarchical namespace ACL traversal is missing.</td>
+<td>Add the required execute and read ACLs on the filesystem and parent paths.</td>
 </tr>
-</thead>
-<tbody>
 <tr>
-<td><code>agentops-agent</code></td>
-<td>Watchdog analysis of production health and latency spikes.</td>
+<td>URL is rejected before download</td>
+<td>The URL contains a query string, fragment, embedded credentials, unsupported host, or does not identify one object.</td>
+<td>Use the Blob or DFS HTTPS object URL without SAS or other query parameters.</td>
+</tr>
+<tr>
+<td>Object exceeds the limit</td>
+<td>The remote JSONL is larger than 100 MiB.</td>
+<td>Split it into smaller evaluation datasets.</td>
+</tr>
+<tr>
+<td>Evaluation passes locally but is absent from the portal</td>
+<td><code>execution</code> is local or omitted.</td>
+<td>Set <code>execution: cloud</code> for a New Foundry Evaluation, or <code>publish: true</code> for the Classic upload path.</td>
+</tr>
+<tr>
+<td>Cloud mode cannot resolve the target</td>
+<td>The agent is not a Foundry <code>name:version</code> target, or the project endpoint points elsewhere.</td>
+<td>Use an existing prompt-agent version and its owning Foundry project endpoint.</td>
 </tr>
 </tbody>
 </table>
 <h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
-<p>Act on the signal over time on the <a href="../operate/">Operate</a> page, feed passing
-evidence back into the gate on the <a href="../ship/">Ship</a> page, or harden the dataset
-on the <a href="../evaluation/">Evaluation</a> page.</p>
+<p>Return to the <a href="../evaluation/">Evaluation overview</a>, review the
+<a href="../foundry-evaluation-sdk-built-in-evaluators/">Built-in Evaluators</a>, or wire
+the evaluation into CI from the <a href="../ship/">Ship</a> guide.</p>
 
 
 
