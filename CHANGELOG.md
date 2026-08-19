@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-19
+
 ### Added
 - **Evaluations can load JSONL datasets directly from Azure Blob Storage and
   ADLS Gen2.** The existing scalar `dataset` setting accepts canonical Blob and
