@@ -1,9 +1,8 @@
 # Evaluation
 
-This is the canonical page for how evaluation works in AgentOps. An evaluation
-runs a dataset against a target agent, scores the responses, and gates the
-result against thresholds. Foundry operates the agent at runtime; AgentOps turns
-that run into repo-side release proof.
+An evaluation runs a dataset against a target agent, scores the responses, and
+gates the result against thresholds. Foundry operates the agent at runtime;
+AgentOps turns that run into repo-side release proof.
 
 If you want a hands-on walkthrough instead of a reference, pick a
 [tutorial](tutorials.md) and follow it end to end.
