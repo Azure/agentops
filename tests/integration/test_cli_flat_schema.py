@@ -16,6 +16,7 @@ pytest.importorskip(
 )
 
 from agentops.cli.app import app
+from agentops.services.dataset_source import DatasetSourceError
 
 runner = CliRunner()
 
@@ -122,3 +123,63 @@ def test_eval_run_supports_baseline_flag(tmp_path: Path, echo_server: str) -> No
     payload = json.loads((current / "results.json").read_text(encoding="utf-8"))
     assert payload["comparison"] is not None
     assert payload["comparison"]["baseline_path"].endswith("results.json")
+
+
+@pytest.mark.parametrize(
+    "dataset",
+    [
+        "https://examplestorage.blob.core.windows.net/evals/data.jsonl",
+        "https://examplestorage.dfs.core.windows.net/evals/data.jsonl",
+    ],
+)
+def test_remote_dataset_resolution_failure_is_exit_one_without_success_artifacts(
+    tmp_path: Path,
+    echo_server: str,
+    monkeypatch: pytest.MonkeyPatch,
+    dataset: str,
+) -> None:
+    config = tmp_path / "agentops.yaml"
+    config.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "agent": echo_server,
+                "dataset": dataset,
+                "evaluators": [{"name": "F1ScoreEvaluator"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "out"
+
+    def fail_resolution(*args, **kwargs):
+        raise DatasetSourceError(
+            "authorization_failed",
+            dataset,
+            (
+                f"authorization_failed: cannot read {dataset}. Assign Storage "
+                "Blob Data Reader and review ADLS ACLs."
+            ),
+        )
+
+    monkeypatch.setattr(
+        "agentops.pipeline.orchestrator.resolve_dataset_source",
+        fail_resolution,
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "run",
+            "--config",
+            str(config),
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "authorization_failed" in result.output
+    assert not (output / "results.json").exists()
+    assert not (output / "report.md").exists()

@@ -18,6 +18,15 @@ version: 1
 # the *agent* version published in Foundry (not the schema version above).
 agent: "my-agent:1"
 
+# Local JSONL path (default), or one canonical Azure Storage object URL:
+# dataset: https://<account>.blob.core.windows.net/<container>/smoke.jsonl
+# dataset: https://<account>.dfs.core.windows.net/<filesystem>/evals/smoke.jsonl
+#
+# Remote datasets reuse the Azure identity already available to AgentOps
+# (`az login` locally, or the workload/managed/service-principal identity in
+# automation). Grant that identity Storage Blob Data Reader and any required
+# ADLS path ACLs. SAS, account keys, connection strings, and URL query strings
+# are not accepted.
 dataset: .agentops/data/smoke.jsonl
 
 # Optional. Leave as auto for existing single-turn smoke tests. Set to

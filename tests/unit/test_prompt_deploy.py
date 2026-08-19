@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+from agentops.core.agentops_config import AgentOpsConfig
 from agentops.pipeline import prompt_deploy
+from agentops.utils.yaml import load_yaml
 
 
 def test_stage_prompt_agent_candidate_creates_version_and_candidate_config(
@@ -70,6 +72,33 @@ def test_stage_prompt_agent_candidate_creates_version_and_candidate_config(
     )
     assert "agent: support-agent:4" in candidate_config
     assert str(dataset) in candidate_config
+
+
+def test_candidate_eval_config_preserves_remote_dataset_uri(tmp_path: Path) -> None:
+    source_uri = (
+        "https://examplestorage.blob.core.windows.net/evals/golden.jsonl"
+    )
+    source = tmp_path / "agentops.yaml"
+    source.write_text(
+        f"version: 1\nagent: support-agent:3\ndataset: {source_uri}\n",
+        encoding="utf-8",
+    )
+    destination = tmp_path / ".agentops" / "candidate.yaml"
+
+    prompt_deploy._write_candidate_eval_config(
+        source_config_path=source,
+        config=AgentOpsConfig(
+            version=1,
+            agent="support-agent:3",
+            dataset=source_uri,
+        ),
+        candidate_agent="support-agent:4",
+        destination=destination,
+    )
+
+    written = load_yaml(destination)
+    assert written["dataset"] == source_uri
+    assert "\\" not in written["dataset"]
 
 
 def test_stage_prompt_agent_candidate_reuses_unchanged_prompt(

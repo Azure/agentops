@@ -302,8 +302,39 @@ class TestAgentOpsConfig:
         cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")
         assert cfg.version == 1
         assert cfg.agent == "my-rag:3"
+        assert cfg.dataset == Path("qa.jsonl")
+        assert isinstance(cfg.dataset, Path)
         assert cfg.thresholds == {}
         assert cfg.response_source == "agent"
+
+    @pytest.mark.parametrize(
+        "dataset",
+        [
+            "https://examplestorage.blob.core.windows.net/evals/smoke.jsonl",
+            "https://examplestorage.dfs.core.windows.net/evals/regression/smoke.jsonl",
+        ],
+    )
+    def test_remote_dataset_url_survives_path_coercion(self, dataset: str) -> None:
+        cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset=dataset)
+
+        assert cfg.dataset == dataset
+        assert isinstance(cfg.dataset, str)
+        assert "\\" not in cfg.dataset
+
+    @pytest.mark.parametrize(
+        "dataset",
+        [
+            "http://examplestorage.blob.core.windows.net/evals/smoke.jsonl",
+            "https://example.com/evals/smoke.jsonl",
+            "https://examplestorage.blob.core.windows.net/evals/",
+            "https://examplestorage.blob.core.windows.net/evals/*.jsonl",
+        ],
+    )
+    def test_remote_dataset_validation_rejects_unsupported_values(
+        self, dataset: str
+    ) -> None:
+        with pytest.raises(ValidationError, match="Azure Storage dataset"):
+            AgentOpsConfig(version=1, agent="my-rag:3", dataset=dataset)
 
     def test_resolved_target(self) -> None:
         cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")

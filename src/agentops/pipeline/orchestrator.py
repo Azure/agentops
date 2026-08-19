@@ -35,6 +35,7 @@ from agentops.core.results import (
 )
 from agentops.pipeline import comparison as comparison_module
 from agentops.pipeline import invocations, publisher, reporter, runtime, thresholds
+from agentops.services.dataset_source import DatasetSnapshot, resolve_dataset_source
 from agentops.utils import telemetry
 from agentops.utils.colors import style
 
@@ -116,6 +117,25 @@ def _run_evaluation_local(
     *,
     options: RunOptions,
 ) -> RunResult:
+    value = options.dataset_override or config.dataset
+    with resolve_dataset_source(
+        value,
+        config_dir=options.config_path.parent,
+        snapshot_dir=options.config_path.parent / ".agentops" / ".resolved",
+    ) as snapshot:
+        return _run_evaluation_local_snapshot(
+            config,
+            options=options,
+            snapshot=snapshot,
+        )
+
+
+def _run_evaluation_local_snapshot(
+    config: AgentOpsConfig,
+    *,
+    options: RunOptions,
+    snapshot: DatasetSnapshot,
+) -> RunResult:
     """Local execution: AgentOps invokes the agent + evaluators row-by-row."""
 
     started_at = datetime.now(timezone.utc)
@@ -126,7 +146,8 @@ def _run_evaluation_local(
         config.protocol,
     )
 
-    dataset_path = options.dataset_override or _resolve_dataset_path(config, options)
+    dataset_path = snapshot.local_path
+    dataset_provenance = snapshot.provenance
     shape = detect_dataset_shape(dataset_path)
 
     overrides = (
@@ -165,14 +186,14 @@ def _run_evaluation_local(
     )
     progress(
         f"Loaded {style(str(total), 'bold')} row(s) from "
-        f"{style(dataset_path.name, 'cyan')}; running "
+        f"{style(dataset_provenance, 'cyan')}; running "
         f"{style(str(len(presets)), 'bold')} evaluator(s) against "
         f"{_friendly_target_kind(target.kind)}: {style(target.raw, 'bold')}."
     )
 
     with telemetry.eval_run_span(
         bundle_name=options.config_path.stem,
-        dataset_name=dataset_path.name,
+        dataset_name=dataset_provenance,
         backend_type=target.kind,
         target=target.raw,
         model=target.deployment,
@@ -221,7 +242,7 @@ def _run_evaluation_local(
             url=target.url,
             deployment=target.deployment,
         ),
-        dataset_path=str(dataset_path),
+        dataset_path=dataset_provenance,
         evaluators=[preset.name for preset in presets],
         rows=rows,
         aggregate_metrics=aggregate,
@@ -257,6 +278,25 @@ def _run_evaluation_cloud(
     *,
     options: RunOptions,
 ) -> RunResult:
+    value = options.dataset_override or config.dataset
+    with resolve_dataset_source(
+        value,
+        config_dir=options.config_path.parent,
+        snapshot_dir=options.config_path.parent / ".agentops" / ".resolved",
+    ) as snapshot:
+        return _run_evaluation_cloud_snapshot(
+            config,
+            options=options,
+            snapshot=snapshot,
+        )
+
+
+def _run_evaluation_cloud_snapshot(
+    config: AgentOpsConfig,
+    *,
+    options: RunOptions,
+    snapshot: DatasetSnapshot,
+) -> RunResult:
     """Cloud execution: Foundry invokes the agent + evaluators server-side.
 
     The agent is invoked exactly once - on Foundry's side. AgentOps does
@@ -288,7 +328,8 @@ def _run_evaluation_cloud(
             "'agent: <name>:<version>' in agentops.yaml."
         )
 
-    dataset_path = options.dataset_override or _resolve_dataset_path(config, options)
+    dataset_path = snapshot.local_path
+    dataset_provenance = snapshot.provenance
     shape = detect_dataset_shape(dataset_path)
     overrides = (
         [override.name for override in config.evaluators] if config.evaluators else None
@@ -348,6 +389,7 @@ def _run_evaluation_cloud(
         f"and {style(str(len(presets)), 'bold')} evaluator(s) server-side. "
         f"Agent: {style(target.raw, 'bold')}."
     )
+    progress(f"Dataset source: {style(dataset_provenance, 'cyan')}.")
     if skipped_runtime:
         progress(
             f"  (skipped client-side runtime evaluators: "
@@ -359,7 +401,7 @@ def _run_evaluation_cloud(
         finished_at=started_at.isoformat(),
         duration_seconds=0.0,
         target=shell_target,
-        dataset_path=str(dataset_path),
+        dataset_path=dataset_provenance,
         evaluators=[preset.name for preset in presets],
         rows=[],
         aggregate_metrics={},
@@ -384,7 +426,7 @@ def _run_evaluation_cloud(
 
     with telemetry.eval_run_span(
         bundle_name=options.config_path.stem,
-        dataset_name=dataset_path.name,
+        dataset_name=dataset_provenance,
         backend_type="foundry_cloud",
         target=target.raw,
         model=target.deployment,
@@ -395,6 +437,8 @@ def _run_evaluation_cloud(
             dataset_path=dataset_path,
             project_endpoint=endpoint,
             dataset_sync=config.dataset_sync,
+            source_uri=snapshot.source.source_uri,
+            display_name=snapshot.display_name,
             progress=progress,
         )
 
@@ -473,7 +517,7 @@ def _run_evaluation_cloud(
         finished_at=finished_at.isoformat(),
         duration_seconds=duration,
         target=shell_target,
-        dataset_path=str(dataset_path),
+        dataset_path=dataset_provenance,
         evaluators=[preset.name for preset in presets],
         rows=rows,
         aggregate_metrics=aggregate,
@@ -660,7 +704,7 @@ def exit_code_from(result: RunResult) -> int:
 
 
 def _resolve_dataset_path(config: AgentOpsConfig, options: RunOptions) -> Path:
-    candidate = config.dataset
+    candidate = Path(str(config.dataset))
     if candidate.is_absolute() and candidate.exists():
         return candidate
     base = options.config_path.parent

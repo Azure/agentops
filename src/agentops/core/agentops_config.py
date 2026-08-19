@@ -11,7 +11,7 @@ Design goals:
   ``agent`` value and the evaluator set from the dataset row shape (see
   :mod:`agentops.core.evaluators`).
 * No bundle / dataset YAML configs. Datasets are plain JSONL files referenced
-  directly by path.
+  by local path or canonical Azure Storage HTTPS URL.
 
 The minimal valid config is three lines::
 
@@ -33,6 +33,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from agentops.core.dataset_source import parse_dataset_reference
 
 # ---------------------------------------------------------------------------
 # Public type aliases
@@ -730,10 +732,10 @@ class AgentOpsConfig(BaseModel):
         See :func:`classify_agent` for the full resolution table.
 
     ``dataset``
-        Relative path to a JSONL file with one evaluation row per line. Rows
-        must contain at least ``input`` and ``expected``; optional fields
-        ``context``, ``tool_calls``, and ``tool_definitions`` drive evaluator
-        auto-selection.
+        Local path or canonical Azure Blob/DFS HTTPS URL to a JSONL file with
+        one evaluation row per line. Rows must contain at least ``input`` and
+        ``expected``; optional fields ``context``, ``tool_calls``, and
+        ``tool_definitions`` drive evaluator auto-selection.
 
     ``prompt_file``
         Optional source-controlled instructions file for Foundry prompt-agent
@@ -807,7 +809,10 @@ class AgentOpsConfig(BaseModel):
 
     version: int = Field(..., description="Schema version. Must be 1.")
     agent: str = Field(..., description="Target identifier (name:version, URL, or model:deployment)")
-    dataset: Path = Field(..., description="Path to a JSONL dataset file")
+    dataset: Path | str = Field(
+        ...,
+        description="Path or canonical Azure Storage HTTPS URL to a JSONL dataset",
+    )
     response_source: ResponseSource = Field(
         "agent",
         description=(
@@ -1034,6 +1039,17 @@ class AgentOpsConfig(BaseModel):
                 f"agentops.yaml version must be 1 (got {value!r})"
             )
         return value
+
+    @field_validator("dataset", mode="before")
+    @classmethod
+    def _validate_dataset_scalar(cls, value: Any) -> Path | str:
+        if not isinstance(value, (str, Path)):
+            raise ValueError("dataset must be one path or Azure Storage URL")
+        reference = parse_dataset_reference(value)
+        if reference.is_remote:
+            assert reference.source_uri is not None
+            return reference.source_uri
+        return Path(reference.original)
 
     @field_validator("agent")
     @classmethod

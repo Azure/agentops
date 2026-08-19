@@ -142,6 +142,8 @@ def run_on_foundry_cloud(
     project_endpoint: str,
     evaluation_name: Optional[str] = None,
     dataset_sync: Optional[DatasetSyncConfig] = None,
+    source_uri: Optional[str] = None,
+    display_name: Optional[str] = None,
     poll_interval_seconds: float = _DEFAULT_POLL_INTERVAL_SECONDS,
     max_poll_attempts: int = _DEFAULT_MAX_POLL_ATTEMPTS,
     progress: Optional[Callable[[str], None]] = None,
@@ -165,6 +167,12 @@ def run_on_foundry_cloud(
         Optional submission policy. ``auto`` and ``inline`` currently use
         inline ``file_content`` compatibility and record that lineage; ``foundry``
         fails fast until the Foundry dataset reference path is validated.
+    source_uri:
+        Validated source provenance for a remotely materialized snapshot. The
+        upload still reads ``dataset_path``, but lineage never exposes that
+        temporary path when this value is supplied.
+    display_name:
+        Stable source-derived filename used for progress and dataset naming.
     poll_interval_seconds, max_poll_attempts:
         Control polling cadence and bound. The default budget is
         ~10 minutes.
@@ -254,6 +262,8 @@ def run_on_foundry_cloud(
         dataset_sync or DatasetSyncConfig(),
         project_client=project_client,
         progress=progress,
+        source_uri=source_uri,
+        display_name=display_name,
     )
 
     progress(
@@ -440,6 +450,7 @@ def _build_file_content_source(
     dataset_path: Path,
     *,
     progress: Callable[[str], None],
+    display_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Inline JSONL rows for Foundry target-completions runs.
 
@@ -448,7 +459,7 @@ def _build_file_content_source(
     service-side filename loss where valid ``.jsonl`` uploads can be read back
     as extensionless files.
     """
-    progress(f"cloud: preparing {dataset_path.name}")
+    progress(f"cloud: preparing {display_name or dataset_path.name}")
     content: List[Dict[str, Any]] = []
     with dataset_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
@@ -477,10 +488,21 @@ def _build_dataset_source(
     *,
     project_client: Any,
     progress: Callable[[str], None],
+    source_uri: Optional[str] = None,
+    display_name: Optional[str] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     if dataset_sync.mode == "inline":
-        source = _build_file_content_source(dataset_path, progress=progress)
-        return source, _build_inline_dataset_lineage(dataset_path, dataset_sync)
+        source = _build_file_content_source(
+            dataset_path,
+            progress=progress,
+            display_name=display_name,
+        )
+        return source, _build_inline_dataset_lineage(
+            dataset_path,
+            dataset_sync,
+            source_uri=source_uri,
+            display_name=display_name,
+        )
 
     try:
         source, lineage = _build_foundry_dataset_source(
@@ -488,6 +510,8 @@ def _build_dataset_source(
             dataset_sync,
             project_client=project_client,
             progress=progress,
+            source_uri=source_uri,
+            display_name=display_name,
         )
     except Exception as exc:  # noqa: BLE001
         if dataset_sync.mode == "foundry":
@@ -501,8 +525,17 @@ def _build_dataset_source(
             "cloud: dataset sync unavailable; using inline rows for this run. "
             f"Reason: {reason}"
         )
-        source = _build_file_content_source(dataset_path, progress=progress)
-        lineage = _build_inline_dataset_lineage(dataset_path, dataset_sync)
+        source = _build_file_content_source(
+            dataset_path,
+            progress=progress,
+            display_name=display_name,
+        )
+        lineage = _build_inline_dataset_lineage(
+            dataset_path,
+            dataset_sync,
+            source_uri=source_uri,
+            display_name=display_name,
+        )
         lineage["status"] = "auto_fallback_inline"
         lineage["sync_error"] = reason
         return source, lineage
@@ -515,9 +548,13 @@ def _build_foundry_dataset_source(
     *,
     project_client: Any,
     progress: Callable[[str], None],
+    source_uri: Optional[str] = None,
+    display_name: Optional[str] = None,
 ) -> tuple[Dict[str, Any], Dict[str, Any]]:
     sha256 = _sha256_file(dataset_path)
-    name = dataset_sync.name or _derived_foundry_dataset_name(dataset_path)
+    name = dataset_sync.name or _derived_foundry_dataset_name(
+        display_name or dataset_path.name
+    )
     version = _resolved_foundry_dataset_version(dataset_sync.version, sha256)
     progress(f"cloud: syncing dataset to Foundry {name}@{version}")
 
@@ -534,23 +571,29 @@ def _build_foundry_dataset_source(
             f"Foundry dataset {name}@{version} did not return an id."
         )
     progress(f"cloud: using Foundry dataset {name}@{version}")
+    lineage: Dict[str, Any] = {
+        "mode": "foundry",
+        "requested_mode": dataset_sync.mode,
+        "source_type": "file_id",
+        "sha256": sha256,
+        "status": "synced",
+        "foundry_name": name,
+        "foundry_version": version,
+        "foundry_id": dataset_id,
+        "foundry_uri": _dataset_attr(dataset, "dataUri"),
+    }
+    if source_uri:
+        lineage["source_uri"] = source_uri
+    else:
+        lineage["local_path"] = str(dataset_path)
+    if display_name:
+        lineage["display_name"] = display_name
     return (
         {
             "type": "file_id",
             "id": dataset_id,
         },
-        {
-            "mode": "foundry",
-            "requested_mode": dataset_sync.mode,
-            "source_type": "file_id",
-            "local_path": str(dataset_path),
-            "sha256": sha256,
-            "status": "synced",
-            "foundry_name": name,
-            "foundry_version": version,
-            "foundry_id": dataset_id,
-            "foundry_uri": _dataset_attr(dataset, "dataUri"),
-        },
+        lineage,
     )
 
 
@@ -589,13 +632,15 @@ def _get_or_upload_foundry_dataset(
 def _build_inline_dataset_lineage(
     dataset_path: Path,
     dataset_sync: DatasetSyncConfig,
+    *,
+    source_uri: Optional[str] = None,
+    display_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Describe the local-to-Foundry dataset relationship for inline runs."""
     lineage: Dict[str, Any] = {
         "mode": "inline",
         "requested_mode": dataset_sync.mode,
         "source_type": "file_content",
-        "local_path": str(dataset_path),
         "sha256": _sha256_file(dataset_path),
         "status": "compatibility_inline",
         "foundry_behavior": (
@@ -603,6 +648,12 @@ def _build_inline_dataset_lineage(
             "dataset assets in the project Data page."
         ),
     }
+    if source_uri:
+        lineage["source_uri"] = source_uri
+    else:
+        lineage["local_path"] = str(dataset_path)
+    if display_name:
+        lineage["display_name"] = display_name
     if dataset_sync.name:
         lineage["configured_name"] = dataset_sync.name
     if dataset_sync.version:
@@ -630,8 +681,8 @@ def _summarize_dataset_sync_error(exc: Exception) -> str:
     return f"{exc.__class__.__name__}: {first_line}"
 
 
-def _derived_foundry_dataset_name(dataset_path: Path) -> str:
-    stem = dataset_path.stem.lower()
+def _derived_foundry_dataset_name(dataset_name: str | Path) -> str:
+    stem = Path(dataset_name).stem.lower()
     slug = re.sub(r"[^a-z0-9_-]+", "-", stem).strip("-_")
     return f"agentops-{slug or 'dataset'}"
 
