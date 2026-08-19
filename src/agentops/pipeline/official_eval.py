@@ -17,6 +17,7 @@ from agentops.core.agentops_config import (
 )
 from agentops.core.config_loader import load_agentops_config
 from agentops.core.evaluators import EvaluatorPreset, detect_dataset_shape, select_evaluators
+from agentops.services.dataset_source import DatasetSnapshot, resolve_dataset_source
 from agentops.utils.yaml import load_yaml
 
 
@@ -111,6 +112,7 @@ class _EvalPlan:
     official_evaluators: tuple[str, ...]
     skipped_agentops_evaluators: tuple[str, ...]
     warnings: tuple[str, ...]
+    snapshot: DatasetSnapshot
 
 
 def analyze_official_eval_support(
@@ -143,18 +145,21 @@ def analyze_official_eval_support(
             data_path=None,
         )
 
-    return OfficialEvalSupport(
-        eligible=True,
-        runner=OFFICIAL_EVAL_RUNNER,
-        reasons=(
-            "Agent target is a Foundry prompt agent (`name:version`).",
-            "Dataset columns are compatible with Microsoft Foundry eval.",
-        ),
-        warnings=plan.warnings,
-        official_evaluators=plan.official_evaluators,
-        agent_ids=plan.agent_ids,
-        data_path=plan.dataset_path,
-    )
+    try:
+        return OfficialEvalSupport(
+            eligible=True,
+            runner=OFFICIAL_EVAL_RUNNER,
+            reasons=(
+                "Agent target is a Foundry prompt agent (`name:version`).",
+                "Dataset columns are compatible with Microsoft Foundry eval.",
+            ),
+            warnings=plan.warnings,
+            official_evaluators=plan.official_evaluators,
+            agent_ids=plan.agent_ids,
+            data_path=None if plan.snapshot.temporary else plan.dataset_path,
+        )
+    finally:
+        plan.snapshot.cleanup()
 
 
 def recommended_eval_runner(directory: Path) -> str:
@@ -202,42 +207,46 @@ def prepare_official_eval(
     """
 
     plan = _build_plan(config_path, agent=agent)
-    deployment = _resolve_deployment_name(deployment_name)
-    payload = _build_payload(plan)
+    try:
+        deployment = _resolve_deployment_name(deployment_name)
+        payload = _build_payload(plan)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
 
-    metadata_path = output_path.with_name("metadata.json")
-    metadata = {
-        "runner": OFFICIAL_EVAL_RUNNER,
-        "action": official_eval_action_ref(),
-        "azure_devops_task": official_eval_ado_task_ref(),
-        "agent_ids": plan.agent_ids,
-        "deployment_name": deployment,
-        "data_path": str(output_path),
-        "items_total": len(payload.get("data", [])),
-        "official_evaluators": list(plan.official_evaluators),
-        "skipped_agentops_evaluators": list(plan.skipped_agentops_evaluators),
-        "machine_readable_thresholds": False,
-        "warnings": list(plan.warnings),
-    }
-    metadata_path.write_text(
-        json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+        metadata_path = output_path.with_name("metadata.json")
+        metadata = {
+            "runner": OFFICIAL_EVAL_RUNNER,
+            "action": official_eval_action_ref(),
+            "azure_devops_task": official_eval_ado_task_ref(),
+            "agent_ids": plan.agent_ids,
+            "deployment_name": deployment,
+            "data_path": str(output_path),
+            "dataset_source": plan.snapshot.provenance,
+            "items_total": len(payload.get("data", [])),
+            "official_evaluators": list(plan.official_evaluators),
+            "skipped_agentops_evaluators": list(plan.skipped_agentops_evaluators),
+            "machine_readable_thresholds": False,
+            "warnings": list(plan.warnings),
+        }
+        metadata_path.write_text(
+            json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
 
-    return OfficialEvalPreparation(
-        data_path=output_path,
-        metadata_path=metadata_path,
-        agent_ids=plan.agent_ids,
-        deployment_name=deployment,
-        official_evaluators=plan.official_evaluators,
-        warnings=plan.warnings,
-    )
+        return OfficialEvalPreparation(
+            data_path=output_path,
+            metadata_path=metadata_path,
+            agent_ids=plan.agent_ids,
+            deployment_name=deployment,
+            official_evaluators=plan.official_evaluators,
+            warnings=plan.warnings,
+        )
+    finally:
+        plan.snapshot.cleanup()
 
 
 def _build_plan(config_path: Path, *, agent: str | None = None) -> _EvalPlan:
@@ -262,32 +271,42 @@ def _build_plan(config_path: Path, *, agent: str | None = None) -> _EvalPlan:
             "HTTP agents, and model targets."
         )
 
-    dataset_path = _resolve_dataset_path(config_path, config.dataset)
-    shape = detect_dataset_shape(dataset_path)
-    overrides = [item.name for item in config.evaluators or []] or None
-    presets = select_evaluators(
-        target,
-        shape,
-        overrides=overrides,
-        threshold_metrics=config.thresholds.keys(),
+    snapshot = resolve_dataset_source(
+        config.dataset,
+        config_dir=config_path.parent,
+        snapshot_dir=config_path.parent / ".agentops" / ".resolved",
     )
-    official_evaluators, skipped, warnings = _map_evaluators(presets)
-    if not official_evaluators:
-        raise OfficialEvalUnsupported(
-            "no AgentOps evaluators could be mapped to Microsoft Foundry evaluators."
+    try:
+        dataset_path = snapshot.local_path
+        shape = detect_dataset_shape(dataset_path)
+        overrides = [item.name for item in config.evaluators or []] or None
+        presets = select_evaluators(
+            target,
+            shape,
+            overrides=overrides,
+            threshold_metrics=config.thresholds.keys(),
         )
+        official_evaluators, skipped, warnings = _map_evaluators(presets)
+        if not official_evaluators:
+            raise OfficialEvalUnsupported(
+                "no AgentOps evaluators could be mapped to Microsoft Foundry evaluators."
+            )
 
-    _validate_dataset_for_official_runner(dataset_path, official_evaluators)
+        _validate_dataset_for_official_runner(dataset_path, official_evaluators)
 
-    return _EvalPlan(
-        config=config,
-        config_path=config_path,
-        dataset_path=dataset_path,
-        agent_ids=agent_expression,
-        official_evaluators=tuple(official_evaluators),
-        skipped_agentops_evaluators=tuple(skipped),
-        warnings=tuple(warnings),
-    )
+        return _EvalPlan(
+            config=config,
+            config_path=config_path,
+            dataset_path=dataset_path,
+            agent_ids=agent_expression,
+            official_evaluators=tuple(official_evaluators),
+            skipped_agentops_evaluators=tuple(skipped),
+            warnings=tuple(warnings),
+            snapshot=snapshot,
+        )
+    except Exception:
+        snapshot.cleanup()
+        raise
 
 
 def _map_evaluators(
@@ -317,7 +336,7 @@ def _map_evaluators(
 def _build_payload(plan: _EvalPlan) -> dict[str, Any]:
     rows = list(_convert_rows(plan.dataset_path))
     payload: dict[str, Any] = {
-        "name": _dataset_name(plan.config_path, plan.dataset_path),
+        "name": _dataset_name(plan.config_path, plan.snapshot.display_name),
         "evaluators": list(plan.official_evaluators),
         "data": rows,
     }
@@ -399,10 +418,10 @@ def _resolve_deployment_name(value: str | None) -> str:
     return deployment
 
 
-def _dataset_name(config_path: Path, dataset_path: Path) -> str:
+def _dataset_name(config_path: Path, dataset_name: str | Path) -> str:
     parts = [
         config_path.parent.name or "workspace",
-        dataset_path.stem or "dataset",
+        Path(dataset_name).stem or "dataset",
     ]
     raw = "-".join(parts)
     safe = "".join(ch.lower() if ch.isalnum() else "-" for ch in raw)

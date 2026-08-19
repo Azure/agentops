@@ -81,6 +81,7 @@ nav:
   - Evaluation:
       - Overview: evaluation.md
       - Built-in Evaluators: foundry-evaluation-sdk-built-in-evaluators.md
+      - Azure Storage Datasets: azure-storage-datasets.md
   - Ship:
       - Overview: ship.md
       - GitHub Actions: ci-github-actions.md

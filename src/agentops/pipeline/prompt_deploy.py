@@ -23,6 +23,7 @@ from agentops.core.agentops_config import (
     PromptAgentBootstrap,
     classify_agent,
 )
+from agentops.core.dataset_source import parse_dataset_reference
 from agentops.core.config_loader import load_agentops_config
 from agentops.utils.azd_env import discover_azd_env, parse_env_file
 from agentops.utils.yaml import load_yaml, save_yaml
@@ -679,10 +680,14 @@ def _write_candidate_eval_config(
 ) -> None:
     data = load_yaml(source_config_path)
     data["agent"] = candidate_agent
-    dataset_path = config.dataset
-    if not dataset_path.is_absolute():
-        dataset_path = (source_config_path.parent / dataset_path).resolve()
-    data["dataset"] = str(dataset_path)
+    dataset_reference = parse_dataset_reference(config.dataset)
+    if dataset_reference.source_uri:
+        data["dataset"] = dataset_reference.source_uri
+    else:
+        dataset_path = dataset_reference.local_path or Path(str(config.dataset))
+        if not dataset_path.is_absolute():
+            dataset_path = (source_config_path.parent / dataset_path).resolve()
+        data["dataset"] = str(dataset_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     save_yaml(destination, data)
 

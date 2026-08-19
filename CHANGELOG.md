@@ -5,6 +5,21 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Evaluations can load JSONL datasets directly from Azure Blob Storage and
+  ADLS Gen2.** The existing scalar `dataset` setting accepts canonical Blob and
+  DFS HTTPS object URLs. AgentOps resolves one read-only snapshot of up to
+  100 MiB for local, cloud, official-evaluation, and readiness-analysis flows
+  while preserving the original source URI in reports and lineage.
+
+### Security
+- **Remote datasets use only the Azure identity already running AgentOps.**
+  Local runs reuse `az login`; automated runs reuse their federated, workload,
+  managed, or service-principal identity. SAS URLs, dataset-specific tokens,
+  account keys, connection strings, query strings, and embedded credentials are
+  rejected. The identity needs `Storage Blob Data Reader` and any applicable
+  ADLS path ACLs.
+
 ## [0.9.0] - 2026-08-14
 
 ### Changed

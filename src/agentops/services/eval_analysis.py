@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from agentops.core.agentops_config import classify_agent
+from agentops.services.dataset_source import diagnose_dataset_source
 from agentops.utils.yaml import load_yaml
 
 _TEXT_LIMIT = 200_000
@@ -119,9 +120,9 @@ class EvalAnalysis:
 def analyze_eval_project(directory: Path) -> EvalAnalysis:
     """Analyze local project shape before running an evaluation.
 
-    This is intentionally local-only: it does not call Azure, Foundry, Copilot,
-    or any model. It tells users whether `agentops eval run` is ready or
-    whether evaluation setup should be adapted with AgentOps skills first.
+    This does not call Foundry, Copilot, or a model. Remote dataset references
+    perform one bounded read-only Azure Storage inspection with the same resolver
+    used by ``eval run``.
     """
 
     root = directory.resolve()
@@ -159,7 +160,7 @@ def analyze_eval_project(directory: Path) -> EvalAnalysis:
             "No agentops.yaml found. Use `agentops init` for the base file, "
             "then use the agentops-config skill if target or scenario inference is not obvious."
         )
-    if config_info.has_config and not config_info.dataset_exists:
+    if config_info.has_config and config_info.dataset_status == "not_found":
         warnings.append(
             "The configured dataset was not found. Use the agentops-dataset skill "
             "to create or map realistic JSONL rows before `agentops eval run`."
@@ -248,10 +249,26 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
         agent = str(data.get("agent", "") or "")
         dataset_value = data.get("dataset")
         target = classify_agent(agent, data.get("protocol"))
-        dataset_path = _resolve_dataset_path(path.parent, dataset_value)
-        dataset_exists = dataset_path.exists() if dataset_path is not None else False
-        dataset_columns = _dataset_columns(dataset_path) if dataset_path is not None else set()
-        dataset_status = _dataset_status(dataset_value, dataset_exists, dataset_columns)
+        if dataset_value is None:
+            diagnosis = None
+            dataset_exists = False
+            dataset_columns: Set[str] = set()
+            dataset_status = "missing"
+            dataset_source = None
+        else:
+            diagnosis = diagnose_dataset_source(
+                dataset_value,
+                config_dir=path.parent,
+                snapshot_dir=path.parent / ".agentops" / ".resolved",
+            )
+            dataset_exists = diagnosis.status == "ready"
+            dataset_columns = set(diagnosis.columns)
+            dataset_status = (
+                _dataset_status(dataset_value, True, dataset_columns)
+                if dataset_exists
+                else diagnosis.status
+            )
+            dataset_source = diagnosis.source
         signals = [
             EvalSignal(
                 "agentops_config",
@@ -265,8 +282,18 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
                 EvalSignal(
                     "dataset_ref",
                     "Evaluation dataset reference",
-                    f"Dataset path is {dataset_value}.",
-                    _rel(root, dataset_path) if dataset_path is not None else None,
+                    f"Dataset source is {dataset_source}.",
+                    dataset_source,
+                    confidence="high" if dataset_exists else "medium",
+                )
+            )
+        if diagnosis is not None and diagnosis.access_checked:
+            signals.append(
+                EvalSignal(
+                    "dataset_access",
+                    "Azure Storage dataset access",
+                    diagnosis.message,
+                    dataset_source,
                     confidence="high" if dataset_exists else "medium",
                 )
             )
@@ -276,9 +303,14 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
                     "dataset_columns",
                     "Dataset row columns",
                     "Found columns: " + ", ".join(sorted(dataset_columns)) + ".",
-                    _rel(root, dataset_path) if dataset_path is not None else None,
+                    dataset_source,
                 )
             )
+        diagnosis_warnings = (
+            [diagnosis.message]
+            if diagnosis is not None and diagnosis.status != "ready"
+            else []
+        )
         ready = bool(agent and dataset_value and dataset_exists and "input" in dataset_columns)
         status = "ready" if ready else "incomplete"
         return _ConfigInfo(
@@ -290,6 +322,7 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
             dataset_exists=dataset_exists,
             dataset_columns=dataset_columns,
             signals=signals,
+            warnings=diagnosis_warnings,
         )
     except Exception as exc:
         return _ConfigInfo(

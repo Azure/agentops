@@ -81,3 +81,27 @@ def test_report_includes_foundry_cloud_session_from_config():
     assert "https://ai.azure.com/foundry/runs/run-1" in text
     assert "**Dataset:** Foundry dataset `agentops-smoke`@`sha256-abc123` (requested `auto`)" in text
     assert ".agentops/data/smoke.jsonl" in text
+
+
+def test_report_renders_remote_provenance_without_temporary_path():
+    source_uri = (
+        "https://examplestorage.blob.core.windows.net/evals/golden.jsonl"
+    )
+    result = _result()
+    result.dataset_path = source_uri
+    result.config["cloud_evaluation"] = {
+        "status": "completed",
+        "dataset": {
+            "mode": "inline",
+            "requested_mode": "inline",
+            "source_type": "file_content",
+            "source_uri": source_uri,
+            "sha256": "abc123def456",
+        },
+    }
+
+    text = reporter.render(result)
+
+    assert source_uri in text
+    assert "agentops-dataset-" not in text
+    assert "Local source:" not in text

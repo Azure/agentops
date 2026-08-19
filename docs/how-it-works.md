@@ -46,6 +46,7 @@ src/
     │
     ├── core/                  # Pure data layer - no Azure imports, no I/O
     │   ├── agentops_config.py # Flat 1.0 `agentops.yaml` Pydantic schema
+    │   ├── dataset_source.py  # Local/Blob/ADLS reference validation
     │   ├── config_loader.py   # YAML → AgentOpsConfig
     │   ├── evaluators.py      # Evaluator catalog (presets + auto-selection)
     │   ├── release_evidence.py # ReleaseEvidence schema
@@ -62,6 +63,7 @@ src/
     │   └── cloud_runner.py # New Foundry publish (server-side via OpenAI Evals API)
     │
     ├── services/              # Workspace / project tooling
+    │   ├── dataset_source.py  # Read-only Azure snapshot materialization
     │   ├── eval_analysis.py   # `agentops eval analyze` read-only triage
     │   ├── workflow_analysis.py # `agentops workflow analyze` CI/CD triage
     │   ├── initializer.py     # `agentops init` workspace scaffolding
@@ -143,7 +145,10 @@ flowchart TD
     B --> C["classify_agent"]
     C --> D["Pre-flight checks"]
     D --> E{"execution mode"}
-    E -->|local/cloud| F["Read JSONL dataset"]
+    E -->|local/cloud| DS{"Local path or Azure Storage URL?"}
+    DS -->|local| F["Read JSONL dataset"]
+    DS -->|Blob / ADLS| RS["Resolve one bounded temporary snapshot"]
+    RS --> F
     F --> G["Invoke target per row or submit Foundry cloud eval"]
     G --> H["Run/collect evaluator scores"]
     E -->|azd| AZD["Call azd ai agent eval using eval.yaml"]
@@ -161,6 +166,23 @@ flowchart TD
 
 Exit codes are `0` when all thresholds pass, `2` when one or more thresholds
 fail, and `1` for runtime or configuration errors.
+
+For AgentOps-owned local, cloud, official-evaluation, and readiness-analysis
+paths, `dataset` may identify a local JSONL file or one canonical Blob/ADLS Gen2
+HTTPS object. The pure core parser validates the untouched scalar before
+`pathlib.Path` coercion, which preserves URLs on Windows. The service layer then
+uses the process's existing Azure identity to stream one object of at most
+100 MiB into a private temporary file. Existing readers consume that stable
+snapshot, while results, reports, telemetry, and cloud lineage retain the
+validated remote URI. Temporary files are cleaned after the operation.
+
+Local users authenticate with `az login`; automation uses its existing
+federated, workload, managed, or service-principal identity. The identity needs
+`Storage Blob Data Reader`, plus any required ADLS path ACLs. Dataset-specific
+tokens, SAS, account keys, connection strings, query strings, fragments, and
+embedded credentials are unsupported. Storage firewall and private-endpoint
+connectivity remain runner responsibilities. `execution: azd` is unchanged and
+continues to use the dataset declared by `eval.yaml`.
 
 ## POC-to-production readiness flow
 
@@ -332,7 +354,7 @@ That's a complete config. AgentOps:
 |---|---|---|
 | `version` | yes | Schema version. Must be `1`. |
 | `agent` | yes | Target identifier. See "Target kinds" below. |
-| `dataset` | yes | Relative path to a JSONL file with one evaluation row per line. |
+| `dataset` | yes | Relative/absolute JSONL path, or canonical Blob/ADLS Gen2 HTTPS object URL, with one evaluation row per line. |
 | `thresholds` | no | Metric gates such as `">=3"` or `"<=10"`. |
 | `protocol` | no | URL protocol: `responses`, `invocations`, or `http-json`. |
 | `request_field` / `response_field` / `tool_calls_field` | no | Request/response JSON keys or dot-paths. |

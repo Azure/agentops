@@ -10,13 +10,14 @@ from typing import Any
 import pytest
 
 from agentops.agent.sources import _credentials
+from agentops.utils import azure_credentials
 
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
-    _credentials.reset_shared_credentials()
+    azure_credentials.reset_shared_credentials()
     yield
-    _credentials.reset_shared_credentials()
+    azure_credentials.reset_shared_credentials()
 
 
 def _install_fake_identity(monkeypatch, default_cls, cli_cls=None):
@@ -32,7 +33,15 @@ def _install_fake_identity(monkeypatch, default_cls, cli_cls=None):
 
 def _force_default_credential(monkeypatch):
     """Pretend the Azure CLI is not logged in so the default chain is used."""
-    monkeypatch.setattr(_credentials, "_az_cli_logged_in", lambda _t: False)
+    monkeypatch.setattr(azure_credentials, "_az_cli_logged_in", lambda _t: False)
+
+
+def test_doctor_module_compatibly_reexports_shared_helpers() -> None:
+    assert _credentials.get_shared_credential is azure_credentials.get_shared_credential
+    assert (
+        _credentials.reset_shared_credentials
+        is azure_credentials.reset_shared_credentials
+    )
 
 
 def test_get_shared_credential_returns_singleton(monkeypatch):
@@ -46,8 +55,8 @@ def test_get_shared_credential_returns_singleton(monkeypatch):
     _install_fake_identity(monkeypatch, _FakeCredential)
     _force_default_credential(monkeypatch)
 
-    first = _credentials.get_shared_credential(process_timeout=30)
-    second = _credentials.get_shared_credential(process_timeout=30)
+    first = azure_credentials.get_shared_credential()
+    second = azure_credentials.get_shared_credential()
 
     assert first is second
     assert len(instances) == 1
@@ -65,12 +74,28 @@ def test_get_shared_credential_keys_by_options(monkeypatch):
     _install_fake_identity(monkeypatch, _FakeCredential)
     _force_default_credential(monkeypatch)
 
-    a = _credentials.get_shared_credential(exclude_developer_cli_credential=False)
-    b = _credentials.get_shared_credential(exclude_developer_cli_credential=True)
+    a = azure_credentials.get_shared_credential(exclude_developer_cli_credential=False)
+    b = azure_credentials.get_shared_credential(exclude_developer_cli_credential=True)
 
     assert a is not b
     assert a.kwargs["exclude_developer_cli_credential"] is False
     assert b.kwargs["exclude_developer_cli_credential"] is True
+
+
+def test_reset_shared_credentials_discards_cached_instance(monkeypatch):
+    class _FakeCredential:
+        def __init__(self, **kwargs: Any) -> None:
+            self.kwargs = kwargs
+
+    _install_fake_identity(monkeypatch, _FakeCredential)
+    _force_default_credential(monkeypatch)
+
+    first = azure_credentials.get_shared_credential()
+    azure_credentials.reset_shared_credentials()
+    _force_default_credential(monkeypatch)
+    second = azure_credentials.get_shared_credential()
+
+    assert first is not second
 
 
 def test_get_shared_credential_prefers_azure_cli_when_logged_in(monkeypatch):
@@ -86,9 +111,9 @@ def test_get_shared_credential_prefers_azure_cli_when_logged_in(monkeypatch):
             cli_instances.append(kwargs)
 
     _install_fake_identity(monkeypatch, _FakeDefault, _FakeCli)
-    monkeypatch.setattr(_credentials, "_az_cli_logged_in", lambda _t: True)
+    monkeypatch.setattr(azure_credentials, "_az_cli_logged_in", lambda _t: True)
 
-    cred = _credentials.get_shared_credential(process_timeout=45)
+    cred = azure_credentials.get_shared_credential(process_timeout=45)
 
     assert isinstance(cred, _FakeCli)
     assert default_instances == []

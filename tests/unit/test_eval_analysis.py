@@ -6,7 +6,9 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
+from agentops.services import eval_analysis
 from agentops.services.eval_analysis import analyze_eval_project, render_eval_analysis
+from agentops.services.dataset_source import DatasetSourceDiagnosis
 
 
 runner = CliRunner()
@@ -29,6 +31,99 @@ def test_eval_analysis_ready_foundry_prompt_config(tmp_path: Path) -> None:
     assert analysis.target_kind == "foundry_prompt"
     assert analysis.requires_copilot_adaptation is False
     assert "agentops eval run" in analysis.recommended_commands
+
+
+def test_eval_analysis_recommends_dataset_fix_when_input_column_is_missing(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "data.jsonl").write_text(
+        '{"expected": "hi"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: quickstart-agent:2\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.dataset_status == "missing_input_column"
+    assert analysis.config_status == "incomplete"
+    assert "agentops-dataset" in analysis.recommended_skills
+    assert any("Create or fix the dataset JSONL" in step for step in analysis.next_steps)
+    assert analysis.copilot_prompt is not None
+    assert analysis.copilot_prompt.startswith("/agentops-dataset")
+
+
+def test_eval_analysis_uses_shared_remote_resolver_and_reports_columns(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_uri = (
+        "https://examplestorage.blob.core.windows.net/evals/golden.jsonl"
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        f"version: 1\nagent: support-agent:2\ndataset: {source_uri}\n",
+        encoding="utf-8",
+    )
+    calls: list[object] = []
+
+    def diagnose(value, **kwargs):
+        calls.append((value, kwargs))
+        return DatasetSourceDiagnosis(
+            status="ready",
+            source=source_uri,
+            columns=frozenset({"input", "expected", "context"}),
+            message="Remote dataset is ready.",
+            access_checked=True,
+        )
+
+    monkeypatch.setattr(eval_analysis, "diagnose_dataset_source", diagnose)
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert len(calls) == 1
+    assert analysis.dataset_status == "ready"
+    assert analysis.config_status == "ready"
+    assert analysis.scenario_hint == "rag"
+    assert any(
+        signal.key == "dataset_ref" and source_uri in signal.detail
+        for signal in analysis.signals
+    )
+
+
+def test_eval_analysis_preserves_stable_remote_failure_diagnosis(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_uri = (
+        "https://examplestorage.dfs.core.windows.net/evals/denied.jsonl"
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        f"version: 1\nagent: support-agent:2\ndataset: {source_uri}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        eval_analysis,
+        "diagnose_dataset_source",
+        lambda value, **kwargs: DatasetSourceDiagnosis(
+            status="authorization_failed",
+            source=source_uri,
+            columns=frozenset(),
+            message=(
+                f"authorization_failed: cannot read {source_uri}. Assign Storage "
+                "Blob Data Reader and review ADLS ACLs."
+            ),
+            access_checked=True,
+        ),
+    )
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.dataset_status == "authorization_failed"
+    assert analysis.config_status == "incomplete"
+    assert any("Storage Blob Data Reader" in warning for warning in analysis.warnings)
+    assert not any("credential chain" in warning.lower() for warning in analysis.warnings)
 
 
 def test_eval_analysis_missing_config_recommends_config_skill(tmp_path: Path) -> None:

@@ -185,6 +185,8 @@ def _render_cloud_dataset(dataset: dict) -> List[str]:
     lines = [f"- **Dataset:** {label} (requested `{requested}`)"]
     if dataset.get("local_path"):
         lines.append(f"  - Local source: `{dataset['local_path']}`")
+    if dataset.get("source_uri"):
+        lines.append(f"  - Source: `{dataset['source_uri']}`")
     if dataset.get("sha256"):
         lines.append(f"  - SHA-256: `{str(dataset['sha256'])[:12]}...`")
     if behavior:

@@ -32,6 +32,7 @@ dist/
 .agentops
 .agentops/results/
 .agentops/.resolved/
+.azure/
 eval/
 
 # User-specific files

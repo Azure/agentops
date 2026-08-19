@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from agentops.core.agentops_config import AGENT_OVERRIDE_ENV
+from agentops.pipeline import official_eval
 from agentops.pipeline.official_eval import (
     AGENTOPS_CLOUD_RUNNER,
     AGENTOPS_LOCAL_RUNNER,
@@ -69,6 +71,52 @@ def test_prepare_official_eval_writes_data_and_metadata(tmp_path: Path) -> None:
     assert metadata["items_total"] == 1
     assert metadata["machine_readable_thresholds"] is False
     assert metadata["skipped_agentops_evaluators"] == ["avg_latency_seconds"]
+
+
+def test_prepare_official_eval_resolves_remote_snapshot_and_cleans_it(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    source_uri = (
+        "https://examplestorage.dfs.core.windows.net/evals/"
+        "golden-customer-support.jsonl"
+    )
+    _write_prompt_config(tmp_path, source_uri)
+    snapshot_path = tmp_path / "private-snapshot.jsonl"
+    snapshot_path.write_text(
+        json.dumps({"input": "Hello", "expected": "Hi"}) + "\n",
+        encoding="utf-8",
+    )
+    state = {"cleaned": False}
+
+    class Snapshot(SimpleNamespace):
+        def cleanup(self) -> None:
+            snapshot_path.unlink()
+            state["cleaned"] = True
+
+    monkeypatch.setattr(
+        official_eval,
+        "resolve_dataset_source",
+        lambda value, **kwargs: Snapshot(
+            local_path=snapshot_path,
+            provenance=source_uri,
+            display_name="golden-customer-support.jsonl",
+            temporary=True,
+        ),
+    )
+
+    prepared = prepare_official_eval(
+        tmp_path / "agentops.yaml",
+        tmp_path / "official-input.json",
+        deployment_name="gpt-4o-mini",
+    )
+    payload = json.loads(prepared.data_path.read_text(encoding="utf-8"))
+
+    assert payload["data"][0]["query"] == "Hello"
+    assert "golden-customer-support" in payload["name"]
+    assert "private-snapshot" not in payload["name"]
+    assert state["cleaned"] is True
+    assert not snapshot_path.exists()
 
 
 def test_prepare_official_eval_records_preview_runner_refs(

@@ -41,8 +41,9 @@ commands, so install the extra unless you only need evaluation.
 
 Next, follow the tutorial that matches your agent type:
 
-- [Prompt Agent tutorial](https://azure.github.io/agentops/tutorial-prompt-agent/)
-- [Hosted or HTTP Agent tutorial](https://azure.github.io/agentops/tutorial-hosted-agent/)
+- Open the documentation entry point:
+  [https://aka.ms/agentops-accelerator](https://aka.ms/agentops-accelerator)
+- Choose the Prompt Agent or Hosted/HTTP Agent tutorial from **Tutorials**.
 
 ## What it helps you do
 
@@ -158,7 +159,8 @@ Cockpit sections, in display order:
 - [Hosted Agent tutorial](docs/tutorial-hosted-agent.md) - use this when Foundry runs your agent code as a managed hosted runtime behind a stable endpoint.
 - [HTTP Agent tutorial](docs/tutorial-http-agent.md) - use this when the target is an HTTP service you operate behind your own URL.
 - [End-to-end tutorial](docs/tutorial-end-to-end.md) - extends either of the above with the full sandbox to dev to qa to prod promotion, Foundry red-team scans, and trace-to-regression promotion.
-- [Evaluation paths](docs/evaluation.md) - choose static dataset, grey-box HTTP, or telemetry/trace import.
+- [Evaluation paths](docs/evaluation.md) - create datasets and choose local or Foundry cloud execution.
+- [Azure Storage datasets](docs/azure-storage-datasets.md) - optionally read private Blob or ADLS Gen2 datasets with Azure identity.
 - [Core concepts](docs/concepts.md)
 - [How it works](docs/how-it-works.md)
 - [Doctor explained](docs/doctor-explained.md)

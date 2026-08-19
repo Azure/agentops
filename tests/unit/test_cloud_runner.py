@@ -178,6 +178,62 @@ def test_build_item_schema_empty_file_falls_back(tmp_path: Path):
     assert "input" in schema["properties"]
 
 
+def test_remote_snapshot_upload_keeps_source_uri_out_of_local_lineage(
+    tmp_path: Path,
+) -> None:
+    snapshot = tmp_path / "agentops-dataset-private.jsonl"
+    snapshot.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+    source_uri = (
+        "https://examplestorage.blob.core.windows.net/evals/customer-support.jsonl"
+    )
+
+    source, lineage = cloud_runner._build_dataset_source(
+        snapshot,
+        DatasetSyncConfig(mode="inline"),
+        project_client=SimpleNamespace(),
+        progress=lambda _message: None,
+        source_uri=source_uri,
+        display_name="customer-support.jsonl",
+    )
+
+    assert source["type"] == "file_content"
+    assert lineage["source_uri"] == source_uri
+    assert "local_path" not in lineage
+    assert str(snapshot) not in json.dumps(lineage)
+
+
+def test_foundry_dataset_name_is_derived_from_remote_object_name(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    snapshot = tmp_path / "agentops-dataset-private.jsonl"
+    snapshot.write_text('{"input":"hi"}\n', encoding="utf-8")
+    uploaded: dict[str, str] = {}
+
+    def fake_upload(_client, *, name, version, dataset_path, progress):
+        uploaded.update(name=name, version=version, path=str(dataset_path))
+        return SimpleNamespace(id="dataset-id", dataUri="azureai://dataset")
+
+    monkeypatch.setattr(cloud_runner, "_get_or_upload_foundry_dataset", fake_upload)
+
+    _, lineage = cloud_runner._build_dataset_source(
+        snapshot,
+        DatasetSyncConfig(mode="foundry"),
+        project_client=SimpleNamespace(),
+        progress=lambda _message: None,
+        source_uri=(
+            "https://examplestorage.dfs.core.windows.net/evals/"
+            "golden-customer-support.jsonl"
+        ),
+        display_name="golden-customer-support.jsonl",
+    )
+
+    assert uploaded["name"] == "agentops-golden-customer-support"
+    assert uploaded["path"] == str(snapshot)
+    assert lineage["source_uri"].endswith("/golden-customer-support.jsonl")
+    assert "local_path" not in lineage
+
+
 # ---------------------------------------------------------------------------
 # Validation guards
 # ---------------------------------------------------------------------------

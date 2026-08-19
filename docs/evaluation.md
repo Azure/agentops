@@ -1,9 +1,8 @@
 # Evaluation
 
-This is the canonical page for how evaluation works in AgentOps. An evaluation
-runs a dataset against a target agent, scores the responses, and gates the
-result against thresholds. Foundry operates the agent at runtime; AgentOps turns
-that run into repo-side release proof.
+An evaluation runs a dataset against a target agent, scores the responses, and
+gates the result against thresholds. Foundry operates the agent at runtime;
+AgentOps turns that run into repo-side release proof.
 
 If you want a hands-on walkthrough instead of a reference, pick a
 [tutorial](tutorials.md) and follow it end to end.
@@ -64,6 +63,11 @@ separate from the Evaluations page.
     succeeded but one or more thresholds failed, and `1` for a runtime or
     configuration error. These three codes are the public gate contract. CI
     treats `2` as a hard fail so a deploy never runs on a regression.
+
+!!! note "The azd dataset remains recipe-owned"
+    When `execution: azd` is selected, azd continues to read the dataset declared
+    in `eval.yaml`. AgentOps does not rewrite that external recipe from the
+    `dataset` value in `agentops.yaml`.
 
 ```mermaid
 graph TD
@@ -242,6 +246,14 @@ running. You do not declare the scenario; the row shape implies it.
 | Conversational | `input` plus `expected` | Chatbot and Q&A quality |
 | Agent workflow | `tool_calls` plus `tool_definitions` | Tool-use quality |
 | Content safety | Safety evaluators | Responsible AI checks |
+
+### Optional: keep datasets in Azure Storage
+
+The default and simplest setup is a JSONL file in the repository workspace. If
+your organization keeps evaluation data in Azure Blob Storage or ADLS Gen2,
+AgentOps can read the object with the identity already running the command. See
+[Azure Storage Datasets](azure-storage-datasets.md) for supported URLs, RBAC,
+private networking, CI identities, cloud execution, and troubleshooting.
 
 ## Evaluators
 
