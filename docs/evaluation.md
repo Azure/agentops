@@ -26,133 +26,6 @@ collects responses, scores them with evaluators, and checks the scores against
 your thresholds. It writes two outputs every run: `results.json` for automation
 and `report.md` for human review.
 
-### Load a dataset from Azure Storage
-
-`dataset` can be a local JSONL path or one canonical HTTPS object URL:
-
-```yaml
-# Azure Blob Storage
-dataset: https://examplestorage.blob.core.windows.net/evals/smoke.jsonl
-
-# Azure Data Lake Storage Gen2
-dataset: https://examplestorage.dfs.core.windows.net/evals/regression/smoke.jsonl
-```
-
-AgentOps downloads one read-only snapshot per analysis or evaluation operation
-and applies the same JSONL validation and evaluator selection used for local
-files. Remote objects are limited to 100 MiB. Results, reports, telemetry, and
-cloud lineage identify the validated Azure Storage URL rather than the temporary
-materialization path.
-
-Remote reads reuse the Azure identity already available to AgentOps:
-
-- Run `az login` for local development.
-- CI and Azure-hosted runners use their existing federated, workload, managed,
-  or service-principal identity.
-- Grant that identity `Storage Blob Data Reader`, preferably scoped to the
-  container. ADLS Gen2 path ACLs may also be required.
-
-AgentOps does not accept dataset-specific tokens, SAS URLs, storage account
-keys, or connection strings. URLs containing query strings, fragments, or
-embedded user information are rejected before a network request. A private
-storage endpoint must be reachable from the runner; AgentOps does not provision
-networking or role assignments.
-
-#### Quickstart: private Blob dataset
-
-The following flow uses one identity from setup through evaluation.
-
-1. Sign in and select the subscription:
-
-    ```powershell
-    az login
-    az account set --subscription <subscription-id>
-    ```
-
-2. Grant read access at the narrowest practical scope. An Azure administrator
-   can run:
-
-    ```powershell
-    $scope = "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Storage/storageAccounts/<account>/blobServices/default/containers/<container>"
-    az role assignment create `
-      --assignee-object-id <user-or-workload-object-id> `
-      --assignee-principal-type User `
-      --role "Storage Blob Data Reader" `
-      --scope $scope
-    ```
-
-    Use the actual principal type for automation identities. Role propagation
-    can take several minutes.
-
-3. Point `agentops.yaml` at the object:
-
-    ```yaml
-    version: 1
-    agent: "my-agent:1"
-    dataset: "https://<account>.blob.core.windows.net/<container>/smoke.jsonl"
-    project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<project>"
-    execution: local
-    ```
-
-4. Validate access before running:
-
-    ```powershell
-    agentops eval analyze
-    agentops eval run
-    ```
-
-`eval analyze` reports `dataset_status: ready` when the identity can read and
-validate the remote JSONL. A successful run preserves the Blob URL in
-`results.json.dataset_path`; the private temporary snapshot is removed after
-the operation.
-
-#### Make the evaluation visible in Foundry
-
-Local execution does not create an item on the Foundry **Evaluations** page.
-Change only the execution mode when you want Foundry to invoke the prompt agent
-and evaluators server-side:
-
-```yaml
-version: 1
-agent: "my-agent:1"
-dataset: "https://<account>.blob.core.windows.net/<container>/smoke.jsonl"
-project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<project>"
-execution: cloud
-```
-
-Then run `agentops eval run`. On completion AgentOps writes:
-
-- `results.json` and `report.md`;
-- `cloud_evaluation.json` with the Foundry evaluation and run IDs;
-- `cloud_output_items.json` with the downloaded per-row cloud results;
-- a direct HTTPS link to the run in the New Foundry Evaluations experience.
-
-Cloud mode first reads the private object through the runner identity, validates
-it, and syncs the content to the selected Foundry project. Foundry then runs the
-agent and supported evaluators. Runtime-only metrics such as client-observed
-latency are skipped because they cannot be measured by the cloud runner.
-
-#### CI and Azure-hosted runners
-
-Use workload identity federation or managed identity rather than credentials in
-repository secrets. Grant that principal `Storage Blob Data Reader` on the
-container and access to the Foundry project. The same `agentops.yaml` works
-locally and in CI; authentication changes with the hosting environment, not with
-the dataset setting.
-
-#### Troubleshooting Azure Storage datasets
-
-| Symptom | Likely cause | Resolution |
-|---|---|---|
-| `AuthorizationPermissionMismatch` or HTTP 403 | The active identity lacks data-plane access, or RBAC has not propagated. | Confirm the object ID used by `az login`, grant `Storage Blob Data Reader`, and retry after propagation. Generic Azure `Reader` or `Contributor` is insufficient. |
-| Message says the request may be blocked by network rules | The runner cannot reach the Storage data-plane endpoint. | Allow the runner through the Storage firewall, run inside the private network, or use an approved Network Security Perimeter rule. |
-| DNS or connection timeout with a private endpoint | Private DNS or network routing does not resolve/reach the private endpoint from the runner. | Run AgentOps from the connected VNet or fix private DNS and routing. |
-| ADLS Gen2 returns 403 despite Blob Reader | Hierarchical namespace ACL traversal is missing. | Add the required execute/read ACLs on the filesystem and parent paths. |
-| URL is rejected before download | The URL contains a query string, fragment, embedded credentials, unsupported host, or does not identify one object. | Use the canonical Blob or DFS HTTPS object URL without SAS or other query parameters. |
-| Object exceeds the limit | The remote JSONL is larger than 100 MiB. | Split it into smaller evaluation datasets. |
-| Evaluation passes locally but is absent from the portal | `execution` is local or omitted. | Set `execution: cloud` for a New Foundry Evaluation, or `publish: true` for the Classic upload path. |
-| Cloud mode cannot resolve the target | The agent is not a Foundry `name:version` target, or the project endpoint points elsewhere. | Use an existing prompt-agent version and its owning Foundry project endpoint. |
-
 ## Where evaluations run
 
 By default, `agentops eval run` is a local runner. It runs wherever you execute
@@ -373,6 +246,14 @@ running. You do not declare the scenario; the row shape implies it.
 | Conversational | `input` plus `expected` | Chatbot and Q&A quality |
 | Agent workflow | `tool_calls` plus `tool_definitions` | Tool-use quality |
 | Content safety | Safety evaluators | Responsible AI checks |
+
+### Optional: keep datasets in Azure Storage
+
+The default and simplest setup is a JSONL file in the repository workspace. If
+your organization keeps evaluation data in Azure Blob Storage or ADLS Gen2,
+AgentOps can read the object with the identity already running the command. See
+[Azure Storage Datasets](azure-storage-datasets.md) for supported URLs, RBAC,
+private networking, CI identities, cloud execution, and troubleshooting.
 
 ## Evaluators
 

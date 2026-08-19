@@ -83,38 +83,6 @@ agentops doctor --evidence-pack
 For Foundry targets, use either `project_endpoint:` in `agentops.yaml` or
 `AZURE_AI_FOUNDRY_PROJECT_ENDPOINT`. Config wins when both are set.
 
-### Use a private Azure Storage dataset
-
-AgentOps can read JSONL directly from Azure Blob Storage or ADLS Gen2 using the
-same passwordless identity as the CLI. No SAS, account key, connection string,
-or dataset token is required.
-
-1. Run `az login`.
-2. Grant the identity `Storage Blob Data Reader`, preferably at container scope.
-3. Set the HTTPS object URL as `dataset`:
-
-```yaml
-version: 1
-agent: "my-agent:1"
-dataset: "https://<account>.blob.core.windows.net/<container>/smoke.jsonl"
-project_endpoint: "https://<resource>.services.ai.azure.com/api/projects/<project>"
-execution: cloud
-```
-
-Use `execution: local` to keep evaluation artifacts only in the workspace, or
-`execution: cloud` to run the agent and evaluators in Foundry and create a
-portal-visible evaluation. Then run:
-
-```powershell
-agentops eval analyze
-agentops eval run
-```
-
-For ADLS URLs, CI identities, private networking, permissions, limits, and
-troubleshooting, start at
-[https://aka.ms/agentops-accelerator](https://aka.ms/agentops-accelerator) and
-open **Evaluation**.
-
 Outputs land in `.agentops/results/latest/`:
 
 - `results.json` - machine-readable (versioned, stable schema)
@@ -191,7 +159,8 @@ Cockpit sections, in display order:
 - [Hosted Agent tutorial](docs/tutorial-hosted-agent.md) - use this when Foundry runs your agent code as a managed hosted runtime behind a stable endpoint.
 - [HTTP Agent tutorial](docs/tutorial-http-agent.md) - use this when the target is an HTTP service you operate behind your own URL.
 - [End-to-end tutorial](docs/tutorial-end-to-end.md) - extends either of the above with the full sandbox to dev to qa to prod promotion, Foundry red-team scans, and trace-to-regression promotion.
-- [Evaluation paths](docs/evaluation.md) - use local, Azure Blob, or ADLS Gen2 datasets and choose local or Foundry cloud execution.
+- [Evaluation paths](docs/evaluation.md) - create datasets and choose local or Foundry cloud execution.
+- [Azure Storage datasets](docs/azure-storage-datasets.md) - optionally read private Blob or ADLS Gen2 datasets with Azure identity.
 - [Core concepts](docs/concepts.md)
 - [How it works](docs/how-it-works.md)
 - [Doctor explained](docs/doctor-explained.md)

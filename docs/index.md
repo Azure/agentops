@@ -64,10 +64,8 @@ evidence pack that proves a release is ready for production.
 <div class="agentops-card" markdown>
 ### :material-clipboard-check: Evaluate
 Read [Evaluation](evaluation.md) to learn how datasets, evaluators, thresholds,
-and rubrics turn an agent into a pass or fail gate. Datasets can be local JSONL
-files or private Azure Blob/ADLS Gen2 objects accessed through the identity
-already running AgentOps. Start with `agentops eval run` and the
-`agentops-eval` skill.
+and rubrics turn an agent into a pass or fail gate. Start with
+`agentops eval run` and the `agentops-eval` skill.
 </div>
 
 <div class="agentops-card" markdown>
