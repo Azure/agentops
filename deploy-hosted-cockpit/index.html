@@ -12,13 +12,13 @@
         <meta name="author" content="Paulo Lacerda">
       
       
-        <link rel="canonical" href="https://azure.github.io/agentops/e2e-live-setup/">
+        <link rel="canonical" href="https://azure.github.io/agentops/deploy-hosted-cockpit/">
       
       
-        <link rel="prev" href="../release-process/">
+        <link rel="prev" href="../operate/">
       
       
-        <link rel="next" href="../e2e-live-architecture/">
+        <link rel="next" href="../foundry-ops-workbook/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -26,7 +26,7 @@
     
     
       
-        <title>End-to-End Test Setup - AgentOps Accelerator</title>
+        <title>Deploy the Hosted Cockpit - AgentOps Accelerator</title>
       
     
     
@@ -80,7 +80,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#live-azure-e2e-one-time-setup" class="md-skip">
+        <a href="#deploy-the-hosted-cockpit" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              End-to-End Test Setup
+              Deploy the Hosted Cockpit
             
           </span>
         </div>
@@ -321,10 +321,12 @@
         
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
+      <li class="md-tabs__item md-tabs__item--active">
         <a href="../operate/" class="md-tabs__link">
           
   
@@ -339,12 +341,10 @@
         
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../how-it-works/" class="md-tabs__link">
           
   
@@ -821,25 +821,30 @@
       
   
   
+    
   
   
+  
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -850,7 +855,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             Operate
@@ -882,10 +887,30 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../deploy-hosted-cockpit/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Deploy the Hosted Cockpit
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   <span class="md-ellipsis">
@@ -894,6 +919,89 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      Prerequisites
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#select-the-observe-scope" class="md-nav__link">
+    <span class="md-ellipsis">
+      Select the Observe scope
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#preview-before-deployment" class="md-nav__link">
+    <span class="md-ellipsis">
+      Preview before deployment
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#identity-and-access-at-runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      Identity and access at runtime
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#recovery-and-reruns" class="md-nav__link">
+    <span class="md-ellipsis">
+      Recovery and reruns
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#health-and-troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Health and troubleshooting
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#preview-dependencies" class="md-nav__link">
+    <span class="md-ellipsis">
+      Preview dependencies
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1015,30 +1123,25 @@
       
   
   
-    
   
   
-  
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1049,7 +1152,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_8">
             <span class="md-nav__icon md-icon"></span>
             Contributing
@@ -1102,30 +1205,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    End-to-End Test Setup
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../e2e-live-setup/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -1134,107 +1217,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#prerequisites" class="md-nav__link">
-    <span class="md-ellipsis">
-      Prerequisites
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-1-one-time-shared-infra-bootstrapbicep" class="md-nav__link">
-    <span class="md-ellipsis">
-      Step 1 - One-time shared infra (bootstrap.bicep)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-2-foundry-agents-manual-in-the-portal" class="md-nav__link">
-    <span class="md-ellipsis">
-      Step 2 - Foundry agents (manual, in the portal)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-3-entra-app-federated-credential" class="md-nav__link">
-    <span class="md-ellipsis">
-      Step 3 - Entra app + federated credential
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-4-add-actions-variables" class="md-nav__link">
-    <span class="md-ellipsis">
-      Step 4 - Add Actions Variables
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#step-5-trigger-the-workflow" class="md-nav__link">
-    <span class="md-ellipsis">
-      Step 5 - Trigger the workflow
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cost-lifecycle-notes" class="md-nav__link">
-    <span class="md-ellipsis">
-      Cost &amp; lifecycle notes
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      Troubleshooting
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#whats-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      What's next
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1304,72 +1286,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-1-one-time-shared-infra-bootstrapbicep" class="md-nav__link">
+  <a href="#select-the-observe-scope" class="md-nav__link">
     <span class="md-ellipsis">
-      Step 1 - One-time shared infra (bootstrap.bicep)
+      Select the Observe scope
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-2-foundry-agents-manual-in-the-portal" class="md-nav__link">
+  <a href="#preview-before-deployment" class="md-nav__link">
     <span class="md-ellipsis">
-      Step 2 - Foundry agents (manual, in the portal)
+      Preview before deployment
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-3-entra-app-federated-credential" class="md-nav__link">
+  <a href="#identity-and-access-at-runtime" class="md-nav__link">
     <span class="md-ellipsis">
-      Step 3 - Entra app + federated credential
+      Identity and access at runtime
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-4-add-actions-variables" class="md-nav__link">
+  <a href="#recovery-and-reruns" class="md-nav__link">
     <span class="md-ellipsis">
-      Step 4 - Add Actions Variables
+      Recovery and reruns
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#step-5-trigger-the-workflow" class="md-nav__link">
+  <a href="#health-and-troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
-      Step 5 - Trigger the workflow
+      Health and troubleshooting
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#cost-lifecycle-notes" class="md-nav__link">
+  <a href="#preview-dependencies" class="md-nav__link">
     <span class="md-ellipsis">
-      Cost &amp; lifecycle notes
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#troubleshooting" class="md-nav__link">
-    <span class="md-ellipsis">
-      Troubleshooting
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#whats-next" class="md-nav__link">
-    <span class="md-ellipsis">
-      What's next
+      Preview dependencies
     </span>
   </a>
   
@@ -1393,288 +1357,179 @@
   
 
 
-<h1 id="live-azure-e2e-one-time-setup">Live Azure E2E - one-time setup<a class="headerlink" href="#live-azure-e2e-one-time-setup" title="Permanent link">&para;</a></h1>
-<p>This guide walks through the human-only steps needed to enable the <strong>live</strong>
-jobs in <a href="https://github.com/Azure/agentops/blob/main/.github/workflows/e2e.yml"><code>.github/workflows/e2e.yml</code></a>. Once
-completed, anyone with <code>Run workflow</code> permission can dispatch the workflow
-and pick which scenario(s) to execute against real Azure resources.</p>
-<blockquote>
-<p><strong>Auth model:</strong> GitHub OIDC + Entra federated credential. <strong>No client
-secrets</strong> are stored in the repository.</p>
-</blockquote>
-<hr />
+<h1 id="deploy-the-hosted-cockpit">Deploy the Hosted Cockpit<a class="headerlink" href="#deploy-the-hosted-cockpit" title="Permanent link">&para;</a></h1>
+<p>The hosted Cockpit is an authenticated, read-only Azure App Service for teams
+that need a shared Observe experience. Deployment starts from a configured
+AgentOps workspace, defaults to that workspace's Foundry project, and requires a
+complete preview before it changes Azure or Microsoft Entra.</p>
+<p>The local command remains unchanged:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>agentops<span class="w"> </span>cockpit
+</code></pre></div>
+<p>Use the hosted deployment command only when a shared surface is required:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span>--workspace<span class="w"> </span>.
+</code></pre></div>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<p>The target must be Azure public cloud and use workspace-based Application
+Insights. Authenticate Azure CLI and Azure Developer CLI to the same workforce
+tenant and target subscription.</p>
+<p>Supply an existing, single-tenant app registration. AgentOps does not create an
+app registration or service principal. The registration needs:</p>
 <ul>
-<li>An Azure subscription you control (the test subscription is fine).</li>
-<li>A pre-created resource group in your subscription. Any RG works - the
-  workflow reads its name from the <code>AZURE_E2E_RESOURCE_GROUP</code> Variable.
-  Examples in this guide use <code>&lt;YOUR_RESOURCE_GROUP&gt;</code> as a placeholder.</li>
-<li>Sufficient role on that RG to assign roles (Owner or <code>User Access
-  Administrator</code>).</li>
-<li><code>az</code> CLI ≥ 2.60 and <code>bicep</code> ≥ 0.27 installed locally.</li>
-<li>Admin access to <strong>GitHub repository settings</strong> for <code>Azure/agentops</code>
-  (to add Actions Variables and review the federated credential).</li>
+<li>the hosted Web App redirect URI;</li>
+<li>delegated Azure Monitor Logs <code>Data.Read</code> access with tenant admin consent;</li>
+<li>permission to accept the hosted app's user-assigned managed identity through
+  one named federated identity credential;</li>
+<li>optional group claims when access is restricted to one group.</li>
 </ul>
-<hr />
-<h2 id="step-1-one-time-shared-infra-bootstrapbicep">Step 1 - One-time shared infra (<code>bootstrap.bicep</code>)<a class="headerlink" href="#step-1-one-time-shared-infra-bootstrapbicep" title="Permanent link">&para;</a></h2>
-<p>Deploys the long-lived resources that every workflow run reuses:
-AI Services + Foundry project + <code>gpt-4o-mini</code> deployment + Container Apps
-managed environment + Log Analytics + ACR.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>az<span class="w"> </span>login
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>az<span class="w"> </span>account<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--subscription<span class="w"> </span>&lt;SUBSCRIPTION_ID&gt;
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>az<span class="w"> </span>deployment<span class="w"> </span>group<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span>--resource-group<span class="w"> </span>&lt;YOUR_RESOURCE_GROUP&gt;<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span>--name<span class="w"> </span>agentops-e2e-bootstrap<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span>--template-file<span class="w"> </span>infra/e2e/bootstrap.bicep<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span>--parameters<span class="w"> </span>@infra/e2e/bootstrap.parameters.example.json
-</code></pre></div>
-<p>Capture the outputs (printed at the end of the deployment):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>az<span class="w"> </span>deployment<span class="w"> </span>group<span class="w"> </span>show<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>-g<span class="w"> </span>&lt;YOUR_RESOURCE_GROUP&gt;<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>-n<span class="w"> </span>agentops-e2e-bootstrap<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span>--query<span class="w"> </span>properties.outputs
-</code></pre></div>
-<p>You will use these values in <strong>Step 4</strong>.</p>
-<hr />
-<h2 id="step-2-foundry-agents-manual-in-the-portal">Step 2 - Foundry agents (manual, in the portal)<a class="headerlink" href="#step-2-foundry-agents-manual-in-the-portal" title="Permanent link">&para;</a></h2>
-<p>Bicep does not yet declaratively manage Foundry agents, so create them
-once via the <a href="https://ai.azure.com">Azure AI Foundry portal</a>:</p>
-<ol>
-<li>Open the project created by <code>bootstrap.bicep</code>.</li>
-<li><strong>Prompt agent</strong> (covers the <code>foundry-prompt</code> scenario)</li>
-<li>Create a new prompt-based agent.</li>
-<li>Name it <code>e2e-prompt</code>.</li>
-<li>Use <code>gpt-4o-mini</code> as the model.</li>
-<li>Save and <strong>publish</strong>. Note the version (usually <code>1</code>).</li>
-<li>The agent ID is <code>e2e-prompt:&lt;version&gt;</code> (e.g. <code>e2e-prompt:1</code>).</li>
-<li><strong>Hosted agent</strong> (covers the <code>foundry-hosted</code> scenario, optional)</li>
-<li>Deploy any agent that exposes the <strong>Responses</strong> protocol.</li>
-<li>Copy its endpoint URL (<code>https://...</code>).</li>
-<li>This scenario is opt-in: leave the related Variable empty to skip it.</li>
-</ol>
-<hr />
-<h2 id="step-3-entra-app-federated-credential">Step 3 - Entra app + federated credential<a class="headerlink" href="#step-3-entra-app-federated-credential" title="Permanent link">&para;</a></h2>
-<p>The workflow authenticates to Azure with OIDC. No secrets, just a trust
-relationship between the repo and an Entra app.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nv">APP_NAME</span><span class="o">=</span>agentops-e2e
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nv">SUBSCRIPTION_ID</span><span class="o">=</span>&lt;your-sub&gt;
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nv">RG</span><span class="o">=</span>&lt;YOUR_RESOURCE_GROUP&gt;
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="c1"># 1. Create the app registration (no client secret).</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nv">APP_ID</span><span class="o">=</span><span class="k">$(</span>az<span class="w"> </span>ad<span class="w"> </span>app<span class="w"> </span>create<span class="w"> </span>--display-name<span class="w"> </span><span class="s2">"</span><span class="nv">$APP_NAME</span><span class="s2">"</span><span class="w"> </span>--query<span class="w"> </span>appId<span class="w"> </span>-o<span class="w"> </span>tsv<span class="k">)</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="nv">SP_ID</span><span class="o">=</span><span class="k">$(</span>az<span class="w"> </span>ad<span class="w"> </span>sp<span class="w"> </span>create<span class="w"> </span>--id<span class="w"> </span><span class="s2">"</span><span class="nv">$APP_ID</span><span class="s2">"</span><span class="w"> </span>--query<span class="w"> </span>id<span class="w"> </span>-o<span class="w"> </span>tsv<span class="k">)</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="c1"># 2. Assign roles on the RG only (least privilege you can get away with).</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="c1">#    `User Access Administrator` is needed because Foundry agent operations</span>
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="c1">#    can trigger role assignments to managed identities. If you want a</span>
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="c1">#    tighter role, swap UAA for a custom role with just</span>
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="c1">#    `Microsoft.Authorization/roleAssignments/*` over the AI Services scope.</span>
-<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>az<span class="w"> </span>role<span class="w"> </span>assignment<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span>--assignee-object-id<span class="w"> </span><span class="s2">"</span><span class="nv">$SP_ID</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">  </span>--assignee-principal-type<span class="w"> </span>ServicePrincipal<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span>--role<span class="w"> </span>Contributor<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">  </span>--scope<span class="w"> </span><span class="s2">"/subscriptions/</span><span class="nv">$SUBSCRIPTION_ID</span><span class="s2">/resourceGroups/</span><span class="nv">$RG</span><span class="s2">"</span>
-<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a>
-<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a>az<span class="w"> </span>role<span class="w"> </span>assignment<span class="w"> </span>create<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">  </span>--assignee-object-id<span class="w"> </span><span class="s2">"</span><span class="nv">$SP_ID</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">  </span>--assignee-principal-type<span class="w"> </span>ServicePrincipal<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="w">  </span>--role<span class="w"> </span><span class="s2">"User Access Administrator"</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">  </span>--scope<span class="w"> </span><span class="s2">"/subscriptions/</span><span class="nv">$SUBSCRIPTION_ID</span><span class="s2">/resourceGroups/</span><span class="nv">$RG</span><span class="s2">"</span>
-<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a>
-<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="c1"># 3. Federated credential - bind the app to runs of e2e.yml on the</span>
-<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="c1">#    feature/revamp-1.0 branch. Add another credential for `main` later.</span>
-<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a>cat<span class="w"> </span>&gt;<span class="w"> </span>/tmp/fic.json<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
-<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="s">{</span>
-<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="s">  "name": "agentops-e2e-feature-revamp-1.0",</span>
-<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="s">  "issuer": "https://token.actions.githubusercontent.com",</span>
-<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="s">  "subject": "repo:Azure/agentops:ref:refs/heads/feature/revamp-1.0",</span>
-<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="s">  "audiences": ["api://AzureADTokenExchange"]</span>
-<a id="__codelineno-2-34" name="__codelineno-2-34" href="#__codelineno-2-34"></a><span class="s">}</span>
-<a id="__codelineno-2-35" name="__codelineno-2-35" href="#__codelineno-2-35"></a><span class="s">EOF</span>
-<a id="__codelineno-2-36" name="__codelineno-2-36" href="#__codelineno-2-36"></a>az<span class="w"> </span>ad<span class="w"> </span>app<span class="w"> </span>federated-credential<span class="w"> </span>create<span class="w"> </span>--id<span class="w"> </span><span class="s2">"</span><span class="nv">$APP_ID</span><span class="s2">"</span><span class="w"> </span>--parameters<span class="w"> </span>@/tmp/fic.json
-<a id="__codelineno-2-37" name="__codelineno-2-37" href="#__codelineno-2-37"></a>
-<a id="__codelineno-2-38" name="__codelineno-2-38" href="#__codelineno-2-38"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"AZURE_CLIENT_ID=</span><span class="nv">$APP_ID</span><span class="s2">"</span>
-<a id="__codelineno-2-39" name="__codelineno-2-39" href="#__codelineno-2-39"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"AZURE_TENANT_ID=</span><span class="k">$(</span>az<span class="w"> </span>account<span class="w"> </span>show<span class="w"> </span>--query<span class="w"> </span>tenantId<span class="w"> </span>-o<span class="w"> </span>tsv<span class="k">)</span><span class="s2">"</span>
-<a id="__codelineno-2-40" name="__codelineno-2-40" href="#__codelineno-2-40"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">"AZURE_SUBSCRIPTION_ID=</span><span class="nv">$SUBSCRIPTION_ID</span><span class="s2">"</span>
-</code></pre></div>
-<p>Save the three values printed at the end - you'll add them as
-<strong>Variables</strong> (not secrets) in Step 4.</p>
-<blockquote>
-<p>If you ever rename the branch or merge to <code>main</code>, add another federated
-credential entry with the new <code>subject:</code> value.</p>
-<p><strong>Check your subject claim prefix first.</strong> Some accounts send numeric
-account and repository IDs in the OIDC <code>sub</code> claim
-(<code>repo:&lt;owner&gt;@&lt;accountId&gt;/&lt;repo&gt;@&lt;repoId&gt;:ref:refs/heads/...</code>) instead of
-the plain <code>repo:&lt;owner&gt;/&lt;repo&gt;:ref:...</code> used above. Entra matches <code>subject</code>
-literally, so the wrong format fails with <code>AADSTS700213</code>. Read the real
-prefix with <code>gh api repos/Azure/agentops/actions/oidc/customization/sub</code> and
-use its <code>sub_claim_prefix</code> value, not the booleans beside it. Creating both
-subjects as separate credentials on the same app works on either kind of
-account. See
-<a href="../ci-github-actions/#federated-credential-subject-check-sub_claim_prefix-first"><code>ci-github-actions.md</code></a>
-for the full walkthrough.</p>
-</blockquote>
-<hr />
-<h2 id="step-4-add-actions-variables">Step 4 - Add Actions Variables<a class="headerlink" href="#step-4-add-actions-variables" title="Permanent link">&para;</a></h2>
-<p>GitHub → <strong>Settings → Secrets and variables → Actions → Variables</strong>
-(repo-level). Add the following keys.</p>
-<p><strong>Identity:</strong></p>
+<p>The deploying operator needs:</p>
 <table>
 <thead>
 <tr>
-<th>Variable</th>
-<th>Value</th>
+<th>Surface</th>
+<th>Required access</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>AZURE_CLIENT_ID</code></td>
-<td>App ID from Step 3</td>
+<td>Azure Resource Manager</td>
+<td>Contributor-equivalent rights for the Cockpit App Service plan, Web App, UAMI, authentication settings, and non-secret app settings</td>
 </tr>
 <tr>
-<td><code>AZURE_TENANT_ID</code></td>
-<td>Tenant ID from Step 3</td>
+<td>Azure RBAC</td>
+<td><code>roleAssignments/read</code> and <code>roleAssignments/write</code> on every planned assignment scope</td>
 </tr>
 <tr>
-<td><code>AZURE_SUBSCRIPTION_ID</code></td>
-<td>Subscription ID</td>
+<td>Microsoft Graph</td>
+<td>Delegated <code>Application.ReadWrite.All</code> and a supported owner or directory role for the supplied application</td>
 </tr>
 <tr>
-<td><code>AZURE_E2E_RESOURCE_GROUP</code></td>
-<td>name of the RG you deployed <code>bootstrap.bicep</code> into</td>
+<td>Group resolution</td>
+<td><code>GroupMember.Read.All</code> only when <code>--allowed-group</code> is used</td>
 </tr>
 </tbody>
 </table>
-<p><strong>Bootstrap outputs (Step 1):</strong></p>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Source</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>AZURE_E2E_FOUNDRY_PROJECT_ENDPOINT</code></td>
-<td><code>outputs.foundryProjectEndpoint.value</code></td>
-</tr>
-<tr>
-<td><code>AZURE_E2E_MODEL_DEPLOYMENT</code></td>
-<td><code>outputs.modelDeployment.value</code></td>
-</tr>
-<tr>
-<td><code>AZURE_E2E_ACA_ENV_ID</code></td>
-<td><code>outputs.acaEnvironmentId.value</code></td>
-</tr>
-<tr>
-<td><code>AZURE_E2E_ACR_LOGIN_SERVER</code></td>
-<td><code>outputs.acrLoginServer.value</code></td>
-</tr>
-</tbody>
-</table>
-<p><strong>Foundry agents (Step 2):</strong></p>
-<table>
-<thead>
-<tr>
-<th>Variable</th>
-<th>Value</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT</code></td>
-<td><code>e2e-prompt:1</code></td>
-</tr>
-<tr>
-<td><code>AGENTOPS_E2E_FOUNDRY_HOSTED_URL</code></td>
-<td>hosted agent URL, or leave unset to skip</td>
-</tr>
-</tbody>
-</table>
-<p>No GitHub Secrets are required.</p>
-<hr />
-<h2 id="step-5-trigger-the-workflow">Step 5 - Trigger the workflow<a class="headerlink" href="#step-5-trigger-the-workflow" title="Permanent link">&para;</a></h2>
-<p>The workflow is manual-only:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Default: run only the offline demo + unit tests.</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>e2e.yml<span class="w"> </span>--ref<span class="w"> </span>feature/revamp-1.0
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># All four live scenarios.</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>e2e.yml<span class="w"> </span>--ref<span class="w"> </span>feature/revamp-1.0<span class="w"> </span>-f<span class="w"> </span><span class="nv">scenarios</span><span class="o">=</span>all
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># Just one scenario (foundry-prompt | foundry-hosted | http-aca | model-direct).</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>e2e.yml<span class="w"> </span>--ref<span class="w"> </span>feature/revamp-1.0<span class="w"> </span>-f<span class="w"> </span><span class="nv">scenarios</span><span class="o">=</span>http-aca
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="c1"># Keep the per-run ACA app around for debugging.</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>gh<span class="w"> </span>workflow<span class="w"> </span>run<span class="w"> </span>e2e.yml<span class="w"> </span>--ref<span class="w"> </span>feature/revamp-1.0<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">  </span>-f<span class="w"> </span><span class="nv">scenarios</span><span class="o">=</span>http-aca<span class="w"> </span>-f<span class="w"> </span><span class="nv">keep_resources</span><span class="o">=</span><span class="nb">true</span>
+<p>The runtime UAMI receives only <code>Reader</code> and <code>Log Analytics Reader</code> at scopes
+shown in the preview. It never receives <code>Privileged Monitoring Data Reader</code>.</p>
+<h2 id="select-the-observe-scope">Select the Observe scope<a class="headerlink" href="#select-the-observe-scope" title="Permanent link">&para;</a></h2>
+<p>The default is the one Foundry project resolved from <code>agentops.yaml</code> and the
+current workspace context. An ambiguous or missing project is an error; AgentOps
+does not silently deploy every project in a resource group.</p>
+<p>Expand scope explicitly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Explicit projects</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span>--scope<span class="w"> </span>projects<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span>--project-id<span class="w"> </span>/subscriptions/.../projects/project-a<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span>--project-id<span class="w"> </span>/subscriptions/.../projects/project-b
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># One Foundry account, resource group, or subscription</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span>--scope<span class="w"> </span>foundry<span class="w"> </span>--scope-resource-id<span class="w"> </span>/subscriptions/.../accounts/foundry
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span>--scope<span class="w"> </span>resource-group<span class="w"> </span>--scope-resource-id<span class="w"> </span>/subscriptions/.../resourceGroups/rg
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span>--scope<span class="w"> </span>subscription<span class="w"> </span>--scope-resource-id<span class="w"> </span>/subscriptions/...
 </code></pre></div>
-<blockquote>
-<p>The <code>Run workflow</code> button only renders on the repository's <strong>default
-branch</strong>. While <code>e2e.yml</code> lives on <code>feature/revamp-1.0</code>, use the <code>gh</code>
-CLI as shown above. Once PR #108 merges to <code>main</code>, the button will
-appear in the Actions tab.</p>
-</blockquote>
-<hr />
-<h2 id="cost-lifecycle-notes">Cost &amp; lifecycle notes<a class="headerlink" href="#cost-lifecycle-notes" title="Permanent link">&para;</a></h2>
+<p>Subscription scope produces a separate warning and confirmation. The effective
+scope is stored as one versioned, non-secret <code>AGENTOPS_OBSERVE_SCOPE</code> JSON value
+containing canonical ARM resource IDs. <code>AGENTOPS_COCKPIT_MODE=hosted</code> selects
+the hosted runtime.</p>
+<h2 id="preview-before-deployment">Preview before deployment<a class="headerlink" href="#preview-before-deployment" title="Permanent link">&para;</a></h2>
+<p>Run a no-mutation preview:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span>--workspace<span class="w"> </span>.<span class="w"> </span>--preview
+</code></pre></div>
+<p>The preview lists the exact App Service plan, Web App, UAMI,
+<code>authsettingsV2</code>, non-secret app settings, role assignments, and federated
+credential action. It also includes the azd/Bicep infrastructure preview and
+blocks unknown, destructive, or out-of-bound changes.</p>
+<p>The mutation allowlist is deliberately narrow:</p>
 <ul>
-<li><strong>Bootstrap (one-time):</strong> ~5 minutes to deploy. Idle costs are minimal  - 
-  AI Services and ACA are pay-per-request, ACR Basic is ~$5/mo, Log
-  Analytics has a generous free tier for low ingestion.</li>
-<li><strong>Per run:</strong> ~3–5 minutes total (ACA app comes up in ~30s, scenarios run
-  in parallel, teardown is fast). Token cost is a few cents per run with
-  the small datasets shipped in <code>scripts/e2e_data/</code>.</li>
-<li><strong>Teardown:</strong> the workflow always deletes the per-run ACA app on exit
-  unless <code>keep_resources=true</code>. A second pass sweeps any <code>aca-echo-run*</code>
-  app older than one day to catch leftovers from runs that aborted before
-  teardown could register.</li>
+<li>one Linux App Service plan;</li>
+<li>one Linux Web App;</li>
+<li>one dedicated UAMI;</li>
+<li>Web App <code>authsettingsV2</code>;</li>
+<li>non-secret application settings;</li>
+<li><code>Reader</code> and <code>Log Analytics Reader</code> assignments;</li>
+<li>one named federated credential on the supplied app registration.</li>
 </ul>
-<hr />
-<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<p>Foundry projects, telemetry resources, agents, models, alerts, gateways, and
+diagnostic settings are monitored resources and remain immutable.</p>
+<p><code>--yes</code> suppresses only the final confirmation and is valid only when every
+required deployment and scope value is explicit. It does not bypass validation
+or subscription-scope warnings.</p>
+<h2 id="identity-and-access-at-runtime">Identity and access at runtime<a class="headerlink" href="#identity-and-access-at-runtime" title="Permanent link">&para;</a></h2>
+<p>App Service authentication rejects unauthenticated users on every application
+route except <code>/healthz</code>. Tokens must belong to the configured tenant and, when
+configured, the allowed group. The application validates the same tenant and
+group boundary server-side.</p>
+<p>Aggregate discovery and telemetry queries use the dedicated UAMI. Raw
+generative-AI content is different: an explicit trace-content request exchanges
+the signed-in user's Easy Auth assertion through an on-behalf-of flow and reads
+Azure Monitor with that user's delegated permission. Therefore aggregate access
+does not grant protected-content access.</p>
+<h2 id="recovery-and-reruns">Recovery and reruns<a class="headerlink" href="#recovery-and-reruns" title="Permanent link">&para;</a></h2>
+<p>Deployment state is written to:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>.agentops/deploy/cockpit/deployment-state.json
+</code></pre></div>
+<p>The journal contains resource IDs and mutation status, never tokens, connection
+strings, credentials, or telemetry content. Before a rerun, AgentOps reconciles
+the journal with live ARM and Graph state and generates a new preview. Stable
+inputs reuse the Web App, UAMI, role assignments, federated credential, and URL.</p>
+<p>If provisioning, federation, deployment, RBAC propagation, or health
+verification fails, AgentOps preserves created cloud resources and reports the
+completed, incomplete, uncertain, and failed stages. It does not attempt an
+automatic destructive rollback. Correct the prerequisite or permission, rerun
+the preview, and resume. Resource deletion is an explicit operator action
+outside this command.</p>
+<h2 id="health-and-troubleshooting">Health and troubleshooting<a class="headerlink" href="#health-and-troubleshooting" title="Permanent link">&para;</a></h2>
+<p>After deployment, AgentOps checks process liveness, authenticated application
+readiness, configuration validity, and effective UAMI reads. <code>/healthz</code> is
+anonymous but returns liveness only.</p>
+<p>Common failures:</p>
 <table>
 <thead>
 <tr>
 <th>Symptom</th>
-<th>Likely cause</th>
+<th>Action</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>AADSTS70021: No matching federated identity record found</code></td>
-<td>Branch name in workflow run does not match the <code>subject:</code> of any federated credential. Add a credential for the new ref.</td>
+<td>Workspace project is ambiguous</td>
+<td>Pass explicit <code>--project-id</code> values or correct the workspace project endpoint.</td>
 </tr>
 <tr>
-<td><code>AADSTS700213: No matching federated identity record found for presented assertion subject</code></td>
-<td>The credential <code>subject</code> is not byte-identical to what GitHub sent. Copy the subject quoted in the error and compare it against <code>az ad app federated-credential list</code>. On accounts with an immutable-ID subject claim prefix the token carries numeric IDs; check <code>gh api repos/Azure/agentops/actions/oidc/customization/sub</code>.</td>
+<td>ARM role assignment is denied</td>
+<td>Grant the deployer <code>roleAssignments/read</code> and <code>roleAssignments/write</code> on each previewed scope.</td>
 </tr>
 <tr>
-<td><code>AuthorizationFailed</code> on Bicep deployment</td>
-<td>App registration is missing <code>Contributor</code> on the RG.</td>
+<td>Federated credential conflicts</td>
+<td>Remove or intentionally replace the conflicting credential after reviewing its issuer, subject, and audience.</td>
 </tr>
 <tr>
-<td><code>RoleAssignmentRequiresElevation</code> during bootstrap</td>
-<td>App registration is missing <code>User Access Administrator</code>.</td>
+<td>Group cannot be resolved</td>
+<td>Verify the group object ID and delegated <code>GroupMember.Read.All</code> consent.</td>
 </tr>
 <tr>
-<td><code>live-foundry-prompt</code> fails with 404 on agent</td>
-<td><code>AGENTOPS_E2E_FOUNDRY_PROMPT_AGENT</code> does not match a real agent in the project. Re-publish in the portal and update the Variable.</td>
+<td>Aggregate queries are denied</td>
+<td>Restore the UAMI's previewed <code>Reader</code> and <code>Log Analytics Reader</code> assignments and allow RBAC propagation.</td>
 </tr>
 <tr>
-<td>ACA echo URL returns HTML instead of JSON</td>
-<td>The container failed to start. Check logs in <code>Microsoft.App/containerApps/&lt;name&gt;/logs</code>.</td>
+<td>Protected content is unavailable</td>
+<td>Verify the signed-in user's delegated Azure Monitor permission; do not grant the UAMI privileged content access.</td>
+</tr>
+<tr>
+<td>Health verification fails</td>
+<td>Inspect App Service logs and the deployment journal, then rerun after correction.</td>
 </tr>
 </tbody>
 </table>
-<hr />
-<h2 id="whats-next">What's next<a class="headerlink" href="#whats-next" title="Permanent link">&para;</a></h2>
-<ul>
-<li>A future iteration may declaratively create Foundry agents via the
-  <code>azure-ai-projects</code> SDK from a one-time bootstrap script, removing
-  Step 2.</li>
-<li>Hosted Foundry agent provisioning via container build + push to ACR is
-  tracked under the v1.1 follow-ups (see <code>docs/concepts.md</code> deferred
-  list).</li>
-</ul>
+<p>Preview and successful deployment return exit code <code>0</code>; invalid configuration,
+validation, deployment, federation, or health failures return <code>1</code>. Cockpit
+deployment never returns the eval/Doctor threshold code <code>2</code>.</p>
+<h2 id="preview-dependencies">Preview dependencies<a class="headerlink" href="#preview-dependencies" title="Permanent link">&para;</a></h2>
+<p><code>protectGenAISensitiveData</code>, protected tables, and <code>AppGenAIContent</code> are public
+preview capabilities and must be revalidated before release. The planned
+migration windows are September 30, 2026 for legacy generative-AI evaluation
+events and September 30, 2027 for legacy message fields. If the required
+protected-content capability is unsupported, Observe reports it as unavailable;
+it does not recover values from legacy telemetry fields.</p>
 
 
 

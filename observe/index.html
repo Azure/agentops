@@ -868,6 +868,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#multi-project-observe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multi-project Observe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#opentelemetry-spans-and-semantic-conventions" class="md-nav__link">
     <span class="md-ellipsis">
       OpenTelemetry spans and semantic conventions
@@ -981,6 +990,27 @@
   
   <span class="md-ellipsis">
     Overview
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../deploy-hosted-cockpit/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Deploy the Hosted Cockpit
   </span>
   
 
@@ -1278,6 +1308,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#multi-project-observe" class="md-nav__link">
+    <span class="md-ellipsis">
+      Multi-project Observe
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#opentelemetry-spans-and-semantic-conventions" class="md-nav__link">
     <span class="md-ellipsis">
       OpenTelemetry spans and semantic conventions
@@ -1366,6 +1405,91 @@ truth feeds the readiness story alongside eval results and Doctor findings.</p>
 <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code>. When a Foundry project endpoint is set,
 AgentOps first tries to auto-discover the project's App Insights resource and
 falls back to that connection string when discovery is not available.</p>
+<h2 id="multi-project-observe">Multi-project Observe<a class="headerlink" href="#multi-project-observe" title="Permanent link">&para;</a></h2>
+<p>Observe can aggregate multiple Foundry resources and projects without hiding
+where a value came from. The local workspace project is the default. An
+operator may explicitly select project ARM resource IDs or widen the boundary
+to one Foundry account, resource group, or subscription. The hosted application
+stores that choice as one versioned <code>AGENTOPS_OBSERVE_SCOPE</code> setting; it does
+not infer "all projects in the deployment resource group."</p>
+<p>Discovery resolves each project's credential-free connection metadata to
+Application Insights and its backing Log Analytics workspace. Shared workspaces
+are queried once while retaining every Foundry/project origin. Observe limits a
+request to ten telemetry sources, applies filters before aggregation, and keeps
+successful source results when another source is denied, throttled, or times
+out.</p>
+<p>The four views share the same explicit filter state:</p>
+<ul>
+<li><strong>Overview</strong> shows bounded aggregate activity, latency, errors, and observed
+  token usage.</li>
+<li><strong>Agents</strong> attributes observed activity to standard <code>gen_ai.*</code> identifiers,
+  with documented external-agent fallback semantics.</li>
+<li><strong>Models and usage</strong> shows model/provider attribution and observed tokens,
+  not billing or quota.</li>
+<li><strong>Telemetry coverage</strong> explains readable, empty, denied, unconfigured,
+  unattributed, protected, timed-out, and partial sources.</li>
+</ul>
+<p>The default range is 24 hours. Draft filters do not query until <strong>Apply</strong> is
+selected. Applied filters are bookmarkable in the URL, refresh every five
+minutes, and may be refreshed manually. Raw trace content is never part of that
+URL or browser persistence.</p>
+<h3 id="truthful-source-and-dimension-states">Truthful source and dimension states<a class="headerlink" href="#truthful-source-and-dimension-states" title="Permanent link">&para;</a></h3>
+<p>Observe does not turn missing evidence into numeric zero. Every response carries
+source attribution, refresh time, query duration, source counts, partial
+failures, and dimension coverage. "Last seen" means observed activity in the
+selected range, not deployment or lifecycle status.</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Available</td>
+<td>The source/dimension was readable and reported values.</td>
+</tr>
+<tr>
+<td>No data</td>
+<td>The source was readable and had no matching rows in the selected range.</td>
+</tr>
+<tr>
+<td>Not configured</td>
+<td>No linked telemetry source was found.</td>
+</tr>
+<tr>
+<td>Inaccessible</td>
+<td>The active identity could not read the source.</td>
+</tr>
+<tr>
+<td>Not reported</td>
+<td>Rows existed but the requested semantic dimension was absent.</td>
+</tr>
+<tr>
+<td>Partial</td>
+<td>Some bounded sources succeeded and others did not.</td>
+</tr>
+<tr>
+<td>Error / timed out</td>
+<td>The source failed or exceeded its query budget.</td>
+</tr>
+<tr>
+<td>Protected or unavailable</td>
+<td>Protected content could not be proven readable, including ambiguous zero-row results.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="aggregate-access-versus-trace-content">Aggregate access versus trace content<a class="headerlink" href="#aggregate-access-versus-trace-content" title="Permanent link">&para;</a></h3>
+<p>The shared UAMI reads discovery and aggregate telemetry with <code>Reader</code> and
+<code>Log Analytics Reader</code>. It never receives <code>Privileged Monitoring Data Reader</code>.
+Raw <code>AppGenAIContent</code> loads only after an explicit trace-detail action and uses
+the signed-in user's delegated Azure Monitor permission through OBO, correlated
+by source scope, <code>TraceId</code>, and <code>SpanId</code>. There is no legacy-field fallback.</p>
+<p>Trace-content responses use <code>Cache-Control: no-store</code>; raw values never enter
+shared caches, URLs, browser storage, telemetry, diagnostics, or deployment
+artifacts. See <a href="../operate/#shared-hosted-cockpit-and-protected-content">Operate</a>
+and <a href="../deploy-hosted-cockpit/">Deploy the hosted Cockpit</a>.</p>
 <div class="admonition info">
 <p class="admonition-title">Telemetry from CI runs</p>
 <p>Generated eval and Doctor workflows install OpenTelemetry support.
