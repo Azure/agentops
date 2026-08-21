@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-19
+
 ### Added
 - **The Cockpit can be deployed as an authenticated, read-only Azure App
   Service.** `agentops cockpit deploy` defaults to the current workspace
