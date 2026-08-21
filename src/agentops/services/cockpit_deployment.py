@@ -2098,6 +2098,8 @@ def run_cli(
     if env:
         full_env.update(env)
     command = list(args)
+    if command:
+        command[0] = shutil.which(command[0], path=full_env.get("PATH")) or command[0]
     try:
         completed = subprocess.run(
             command,
@@ -2215,9 +2217,14 @@ class AzCliContext:
         return str(value) if value else None
 
     def check_web_app_name_available(self, name: str) -> PermissionResult:
-        payload = json.dumps(
-            {"name": name, "type": "Microsoft.Web/sites", "isFqdn": False}
-        )
+        subscription_id = self.current_subscription_id()
+        if not subscription_id:
+            return PermissionResult(
+                name="web_app_name_available",
+                granted=False,
+                reason="Azure CLI did not return an active subscription.",
+            )
+        payload = json.dumps({"name": name, "type": "Site", "isFqdn": False})
         code, stdout, stderr = run_cli(
             [
                 "az",
@@ -2226,9 +2233,12 @@ class AzCliContext:
                 "post",
                 "--url",
                 (
-                    "https://management.azure.com/providers/Microsoft.Web/"
+                    f"https://management.azure.com/subscriptions/{subscription_id}/"
+                    "providers/Microsoft.Web/"
                     "checknameavailability?api-version=2023-12-01"
                 ),
+                "--headers",
+                "Content-Type=application/json",
                 "--body",
                 payload,
                 "--output",

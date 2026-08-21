@@ -36,6 +36,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   ADLS path ACLs.
 
 ### Fixed
+- **Hosted Cockpit deployment preview now works with Windows Azure CLI shims
+  and the live App Service name API.** Command execution resolves wrappers such
+  as `az.cmd`, and hostname checks use the active subscription's documented
+  `Site` availability contract before any Azure mutation.
 - **Hosted Cockpit delegated consent now targets the Log Analytics API.**
   Deployment preflight resolves the `Data.Read` scope from the correct resource
   application, allowing tenant administrators to grant the required permission.
