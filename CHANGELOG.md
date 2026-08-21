@@ -36,6 +36,9 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   ADLS path ACLs.
 
 ### Fixed
+- **Hosted Cockpit delegated consent now targets the Log Analytics API.**
+  Deployment preflight resolves the `Data.Read` scope from the correct resource
+  application, allowing tenant administrators to grant the required permission.
 - **Developer installs include the hosted Cockpit test dependencies.** The
   standard development environment can collect and run the FastAPI integration
   tests used by CI.
