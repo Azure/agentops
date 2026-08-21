@@ -927,7 +927,7 @@ def test_azcli_app_registration_client_get_app_registration(monkeypatch):
                     "sp",
                     "show",
                     "--id",
-                    "de8bc8b5-d9f9-48b1-a8ad-b748da725064",
+                    "ca7f3f0b-7d91-482c-8e09-c5d840d0eac5",
                 ): (
                     0,
                     '{"id": "log-analytics-service-principal"}',
@@ -950,6 +950,10 @@ def test_azcli_app_registration_client_get_app_registration(monkeypatch):
 
     info = client.get_app_registration(tenant_id=TENANT_ID, client_id=CLIENT_ID)
 
+    assert cockpit_deployment.LOG_ANALYTICS_API_APP_ID == (
+        "ca7f3f0b-7d91-482c-8e09-c5d840d0eac5"
+    )
+    assert cockpit_deployment.LOG_ANALYTICS_DELEGATED_SCOPE == "Data.Read"
     assert info.application_object_id == APP_OBJECT_ID
     assert info.client_id == CLIENT_ID
     assert info.service_principal_object_id == SP_OBJECT_ID
@@ -981,7 +985,7 @@ def test_azcli_app_registration_rejects_unrelated_delegated_consent(monkeypatch)
                     "sp",
                     "show",
                     "--id",
-                    "de8bc8b5-d9f9-48b1-a8ad-b748da725064",
+                    "ca7f3f0b-7d91-482c-8e09-c5d840d0eac5",
                 ): (0, '{"id": "log-analytics-service-principal"}', ""),
                 ("az", "ad", "sp", "show"): (0, '{"id": "%s"}' % SP_OBJECT_ID, ""),
                 ("az", "rest"): (
