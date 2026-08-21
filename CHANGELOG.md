@@ -5,8 +5,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
-## [0.10.0] - 2026-08-19
-
 ### Added
 - **The Cockpit can be deployed as an authenticated, read-only Azure App
   Service.** `agentops cockpit deploy` defaults to the current workspace
@@ -17,11 +15,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   source attribution and coverage.** Shared filters drive Overview, Agents,
   Models and usage, and Telemetry coverage views while bounded queries preserve
   partial results and distinguish missing evidence from numeric zero.
-- **Evaluations can load JSONL datasets directly from Azure Blob Storage and
-  ADLS Gen2.** The existing scalar `dataset` setting accepts canonical Blob and
-  DFS HTTPS object URLs. AgentOps resolves one read-only snapshot of up to
-  100 MiB for local, cloud, official-evaluation, and readiness-analysis flows
-  while preserving the original source URI in reports and lineage.
 
 ### Security
 - **Aggregate telemetry and protected generative-AI content use separate
@@ -30,12 +23,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   Monitor permission through OBO, return `no-store`, and never enter shared
   caches, URLs, browser persistence, telemetry, diagnostics, or deployment
   artifacts.
-- **Remote datasets use only the Azure identity already running AgentOps.**
-  Local runs reuse `az login`; automated runs reuse their federated, workload,
-  managed, or service-principal identity. SAS URLs, dataset-specific tokens,
-  account keys, connection strings, query strings, and embedded credentials are
-  rejected. The identity needs `Storage Blob Data Reader` and any applicable
-  ADLS path ACLs.
 
 ### Fixed
 - **Hosted Cockpit deployment preview now works with Windows Azure CLI shims
@@ -48,6 +35,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - **Developer installs include the hosted Cockpit test dependencies.** The
   standard development environment can collect and run the FastAPI integration
   tests used by CI.
+
+## [0.10.0] - 2026-08-19
+
+### Added
+- **Evaluations can load JSONL datasets directly from Azure Blob Storage and
+  ADLS Gen2.** The existing scalar `dataset` setting accepts canonical Blob and
+  DFS HTTPS object URLs. AgentOps resolves one read-only snapshot of up to
+  100 MiB for local, cloud, official-evaluation, and readiness-analysis flows
+  while preserving the original source URI in reports and lineage.
+
+### Security
+- **Remote datasets use only the Azure identity already running AgentOps.**
+  Local runs reuse `az login`; automated runs reuse their federated, workload,
+  managed, or service-principal identity. SAS URLs, dataset-specific tokens,
+  account keys, connection strings, query strings, and embedded credentials are
+  rejected. The identity needs `Storage Blob Data Reader` and any applicable
+  ADLS path ACLs.
 
 ## [0.9.0] - 2026-08-14
 
