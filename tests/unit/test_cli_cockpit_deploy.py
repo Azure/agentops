@@ -13,8 +13,16 @@ from agentops.services import cockpit_deployment
 runner = CliRunner()
 
 
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences for reliable help-text matching."""
+    import re
+
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def test_cockpit_deploy_help_exposes_preview_and_explicit_scope_options() -> None:
     result = runner.invoke(app, ["cockpit", "deploy", "--help"])
+    output = _strip_ansi(result.output)
 
     assert result.exit_code == 0
     for option in (
@@ -32,7 +40,7 @@ def test_cockpit_deploy_help_exposes_preview_and_explicit_scope_options() -> Non
         "--preview",
         "--yes",
     ):
-        assert option in result.output
+        assert option in output
 
 
 def test_nested_cockpit_deploy_explain_is_available() -> None:
