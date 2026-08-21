@@ -1004,6 +1004,9 @@ def test_installed_version_falls_back_to_zero_when_neither_distribution_installe
 
 def test_run_cli_returns_returncode_stdout_stderr_on_success(monkeypatch):
     captured: dict = {}
+    monkeypatch.setattr(
+        "agentops.services.cockpit_deployment.shutil.which", lambda *_args, **_kwargs: None
+    )
 
     def fake_run(command, *, cwd, env, capture_output, text, timeout, check):
         captured["command"] = command
@@ -1033,7 +1036,32 @@ def test_run_cli_returns_returncode_stdout_stderr_on_success(monkeypatch):
     assert captured["check"] is False
 
 
+def test_run_cli_resolves_windows_command_shims(monkeypatch):
+    captured: dict = {}
+    az_cmd = "C:\\Program Files\\Azure CLI\\az.cmd"
+
+    monkeypatch.setattr(
+        "agentops.services.cockpit_deployment.shutil.which",
+        lambda executable, **_kwargs: az_cmd if executable == "az" else None,
+    )
+
+    def fake_run(command, **_kwargs):
+        captured["command"] = command
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    returncode, _stdout, _stderr = run_cli(["az", "account", "show"])
+
+    assert returncode == 0
+    assert captured["command"] == [az_cmd, "account", "show"]
+
+
 def test_run_cli_raises_actionable_error_when_executable_missing(monkeypatch):
+    monkeypatch.setattr(
+        "agentops.services.cockpit_deployment.shutil.which", lambda *_args, **_kwargs: None
+    )
+
     def fake_run(*args, **kwargs):
         raise FileNotFoundError("az")
 

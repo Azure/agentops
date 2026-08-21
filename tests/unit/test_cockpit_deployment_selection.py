@@ -9,6 +9,7 @@ Azure CLI, or network calls occur.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -769,6 +770,30 @@ def test_azcli_context_returns_none_when_account_show_output_is_malformed(monkey
 
     assert context.current_subscription_id() is None
     assert context.current_tenant_id() is None
+
+
+def test_azcli_context_checks_web_app_name_in_active_subscription(monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args, **_kwargs):
+        calls.append(list(args))
+        if args[:3] == ["az", "account", "show"]:
+            return 0, '{"id": "sub-1"}', ""
+        if args[:3] == ["az", "rest", "--method"]:
+            return 0, '{"nameAvailable": true}', ""
+        raise AssertionError(f"unexpected run_cli invocation: {args}")
+
+    monkeypatch.setattr(cockpit_deployment, "run_cli", fake_run_cli)
+
+    result = AzCliContext().check_web_app_name_available("agentops-test")
+
+    assert result.granted is True
+    rest_call = calls[1]
+    url = rest_call[rest_call.index("--url") + 1]
+    body = json.loads(rest_call[rest_call.index("--body") + 1])
+    assert "/subscriptions/sub-1/providers/Microsoft.Web/" in url
+    assert rest_call[rest_call.index("--headers") + 1] == "Content-Type=application/json"
+    assert body == {"name": "agentops-test", "type": "Site", "isFqdn": False}
 
 
 def test_workspace_project_resolver_discovers_from_agentops_env_fallback(
