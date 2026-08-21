@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentops.dev/contracts/observe-scope-v1.schema.json",
+  "title": "AgentOps Observe Scope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "mode"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "mode": {
+      "enum": ["projects", "foundry", "resource_group", "subscription"]
+    },
+    "root_resource_id": {
+      "type": ["string", "null"],
+      "pattern": "^/subscriptions/[^/]+(?:/resourcegroups/[^/]+)?(?:/providers/[^/]+/[^/]+/[^/]+)?$"
+    },
+    "project_resource_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.cognitiveservices/accounts/[^/]+/projects/[^/]+$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "default_project_resource_id": {
+      "type": ["string", "null"],
+      "pattern": "^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.cognitiveservices/accounts/[^/]+/projects/[^/]+$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "projects"
+          }
+        }
+      },
+      "then": {
+        "required": ["project_resource_ids"],
+        "properties": {
+          "root_resource_id": {
+            "type": "null"
+          },
+          "project_resource_ids": {
+            "minItems": 1
+          }
+        }
+      },
+      "else": {
+        "required": ["root_resource_id"],
+        "properties": {
+          "project_resource_ids": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "foundry"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "root_resource_id": {
+            "pattern": "^/subscriptions/[^/]+/resourcegroups/[^/]+/providers/microsoft\\.cognitiveservices/accounts/[^/]+$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "resource_group"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "root_resource_id": {
+            "pattern": "^/subscriptions/[^/]+/resourcegroups/[^/]+$"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": {
+            "const": "subscription"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "root_resource_id": {
+            "pattern": "^/subscriptions/[^/]+$"
+          }
+        }
+      }
+    }
+  ]
+}

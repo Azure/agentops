@@ -1,0 +1,474 @@
+"""Bounded Azure Monitor query construction and execution.
+
+This module never imports ``azure.monitor.query`` (it is not a declared
+dependency of AgentOps). Query execution is expressed purely in terms of a
+duck-typed ``client.query_batch(requests)`` coroutine so unit tests can use
+lightweight fakes and production code can inject the real async
+``LogsQueryClient`` without this module needing to import the SDK.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Any, Callable, Literal, Mapping, Sequence
+
+from agentops.core.observe import GenerativeAIContent, ObserveFilterState, TelemetrySource
+
+# ---------------------------------------------------------------------------
+# Bounds shared across builders and batch execution (T043/T044).
+# ---------------------------------------------------------------------------
+
+MAX_SOURCES_PER_BATCH = 10
+SOURCE_TIMEOUT_SECONDS = 30
+DEFAULT_REQUEST_DEADLINE_SECONDS = 10
+DEFAULT_LOOKBACK_HOURS = 24
+MAX_ROWS_PER_QUERY = 500
+
+_TELEMETRY_TABLES = "union AppDependencies, AppRequests"
+_APPGENAI_TABLE = "AppGenAIContent"
+
+_EVENT_NAME_TO_FIELD = {
+    "gen_ai.system.message": "system_instructions",
+    "gen_ai.user.message": "input_messages",
+    "gen_ai.assistant.message": "output_messages",
+    "gen_ai.choice": "output_messages",
+    "gen_ai.tool.message": "tool_content",
+    "gen_ai.evaluation.result": "evaluation_explanation",
+}
+
+
+class SupersededRequestError(RuntimeError):
+    """Raised when an in-flight batch is discarded for a newer request (T057)."""
+
+
+def _kql_escape(value: str) -> str:
+    """Escape a string literal for safe interpolation into a KQL query."""
+    return value.replace("'", "''")
+
+
+def _iso(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def default_lookback_window(
+    *, now: datetime | None = None, hours: int = DEFAULT_LOOKBACK_HOURS
+) -> tuple[datetime, datetime]:
+    """Return a bounded ``(start, end)`` window defaulting to 24 hours."""
+    end = now or datetime.now(timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    start = end - timedelta(hours=hours)
+    return start, end
+
+
+def _time_window_clause(filters: ObserveFilterState) -> str:
+    return (
+        f"| where TimeGenerated between "
+        f"(datetime({_iso(filters.start)}) .. datetime({_iso(filters.end)}))"
+    )
+
+
+def _dimension_filters(
+    filters: ObserveFilterState, scope_source: TelemetrySource | None = None
+) -> list[str]:
+    """Build early, bounded per-dimension filter clauses (T043)."""
+    clauses: list[str] = []
+    if filters.foundry_resource_id:
+        value = _kql_escape(filters.foundry_resource_id)
+        clauses.append(
+            '| where tostring(Properties["gen_ai.foundry.resource.id"]) '
+            f"== '{value}'"
+        )
+    elif scope_source and scope_source.foundry_resource_id:
+        value = _kql_escape(scope_source.foundry_resource_id)
+        clauses.append(
+            '| where tostring(Properties["gen_ai.foundry.resource.id"]) '
+            f"== '{value}'"
+        )
+    if filters.project_resource_id:
+        value = _kql_escape(filters.project_resource_id)
+        clauses.append(
+            '| where tostring(Properties["gen_ai.project.id"]) '
+            f"== '{value}'"
+        )
+    elif scope_source and scope_source.project_resource_ids:
+        values = ", ".join(
+            f"'{_kql_escape(project_id)}'" for project_id in scope_source.project_resource_ids
+        )
+        clauses.append(
+            f'| where tostring(Properties["gen_ai.project.id"]) in ({values})'
+        )
+    if filters.agent_id:
+        value = _kql_escape(filters.agent_id)
+        clauses.append(
+            '| where tostring(coalesce(Properties["gen_ai.agent.id"], '
+            'Properties["gen_ai.agent.name"])) '
+            f"== '{value}'"
+        )
+    if filters.model:
+        value = _kql_escape(filters.model)
+        clauses.append(
+            '| where tostring(coalesce(Properties["gen_ai.request.model"], '
+            'Properties["gen_ai.response.model"])) '
+            f"== '{value}'"
+        )
+    return clauses
+
+
+def _agent_extend_clauses() -> list[str]:
+    return [
+        '| extend project_resource_id = tostring(Properties["gen_ai.project.id"])',
+        '| extend agent_key = tostring(coalesce(Properties["gen_ai.agent.id"], '
+        'Properties["gen_ai.agent.name"], "unknown"))',
+        # Raw (uncoalesced) id, kept distinct from agent_key so the service
+        # layer can tell a managed Foundry agent (gen_ai.agent.id present)
+        # apart from an externally-instrumented one (id only, name set).
+        '| extend agent_id = tostring(Properties["gen_ai.agent.id"])',
+        '| extend agent_name = tostring(Properties["gen_ai.agent.name"])',
+        '| extend model = tostring(coalesce(Properties["gen_ai.request.model"], '
+        'Properties["gen_ai.response.model"]))',
+        '| extend input_tokens = toint(Properties["gen_ai.usage.input_tokens"])',
+        '| extend output_tokens = toint(Properties["gen_ai.usage.output_tokens"])',
+    ]
+
+
+def build_overview_query(
+    filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
+) -> str:
+    """Bounded aggregate invocation/failure/latency query for the overview view."""
+    lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        "| where isnotempty(Name)",
+        "| summarize invocations = count(), "
+        "failures = countif(Success == false), "
+        "avg_latency_ms = avg(DurationMs), "
+        "p95_latency_ms = percentile(DurationMs, 95)",
+    ]
+    return "\n".join(lines)
+
+
+def build_agents_query(
+    filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
+) -> str:
+    """Bounded per-agent summary query (agent id/name, model, tokens, last seen)."""
+    lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        *_agent_extend_clauses(),
+        "| summarize invocations = count(), "
+        "failures = countif(Success == false), "
+        "p95_latency_ms = percentile(DurationMs, 95), "
+        "input_tokens = sum(input_tokens), "
+        "output_tokens = sum(output_tokens), "
+        "last_seen = max(TimeGenerated) "
+        "by project_resource_id, agent_key, agent_id, agent_name, model",
+        f"| top {MAX_ROWS_PER_QUERY} by invocations desc",
+    ]
+    return "\n".join(lines)
+
+
+def build_models_query(
+    filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
+) -> str:
+    """Bounded per-model/deployment usage summary query."""
+    lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        *_agent_extend_clauses(),
+        '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
+        "| summarize requests = count(), "
+        "failures = countif(Success == false), "
+        "p95_latency_ms = percentile(DurationMs, 95), "
+        "input_tokens = sum(input_tokens), "
+        "output_tokens = sum(output_tokens), "
+        "last_seen = max(TimeGenerated) "
+        "by project_resource_id, model, deployment",
+        f"| top {MAX_ROWS_PER_QUERY} by requests desc",
+    ]
+    return "\n".join(lines)
+
+
+def build_usage_query(
+    filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
+) -> str:
+    """Bounded token-usage query broken down by agent and model together."""
+    lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        *_agent_extend_clauses(),
+        "| summarize input_tokens = sum(input_tokens), "
+        "output_tokens = sum(output_tokens), "
+        "requests = count() "
+        "by agent_key, model",
+        f"| top {MAX_ROWS_PER_QUERY} by requests desc",
+    ]
+    return "\n".join(lines)
+
+
+def build_trends_query(
+    filters: ObserveFilterState,
+    *,
+    bucket: timedelta = timedelta(hours=1),
+    scope_source: TelemetrySource | None = None,
+) -> str:
+    """Bounded time-bucketed invocation/latency trend query."""
+    bucket_expr = f"{max(int(bucket.total_seconds()), 1)}s"
+    lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        "| summarize invocations = count(), "
+        "failures = countif(Success == false), "
+        f"p95_latency_ms = percentile(DurationMs, 95) by bin(TimeGenerated, {bucket_expr})",
+        "| order by TimeGenerated asc",
+        f"| take {MAX_ROWS_PER_QUERY}",
+    ]
+    return "\n".join(lines)
+
+
+def build_agent_detail_query(
+    filters: ObserveFilterState,
+    *,
+    agent_key: str,
+    bucket: timedelta = timedelta(hours=1),
+    scope_source: TelemetrySource | None = None,
+) -> str:
+    """Bounded single-agent trend query used by the agent detail view."""
+    if not agent_key:
+        raise ValueError("agent_key is required for agent detail queries")
+    bucket_expr = f"{max(int(bucket.total_seconds()), 1)}s"
+    lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        '| extend agent_key = tostring(coalesce(Properties["gen_ai.agent.id"], '
+        'Properties["gen_ai.agent.name"], "unknown"))',
+        f"| where agent_key == '{_kql_escape(agent_key)}'",
+        "| summarize invocations = count(), "
+        "failures = countif(Success == false), "
+        f"p95_latency_ms = percentile(DurationMs, 95) by bin(TimeGenerated, {bucket_expr})",
+        "| order by TimeGenerated asc",
+        f"| take {MAX_ROWS_PER_QUERY}",
+    ]
+    return "\n".join(lines)
+
+
+def build_appgenai_content_query(*, trace_id: str, span_id: str | None = None) -> str:
+    """Explicit, correlation-keyed ``AppGenAIContent`` query with no legacy fallback.
+
+    Only ``AppGenAIContent`` is ever queried here (T048): there is no union
+    with ``AppTraces``/``AppDependencies`` and no ``customDimensions``
+    fallback, so a protected, zero-row result can never be silently backfilled
+    from unprotected legacy telemetry.
+    """
+    if not trace_id:
+        raise ValueError("trace_id is required for AppGenAIContent queries")
+    lines = [
+        _APPGENAI_TABLE,
+        f"| where TraceId == '{_kql_escape(trace_id)}'",
+    ]
+    if span_id:
+        lines.append(f"| where SpanId == '{_kql_escape(span_id)}'")
+    lines.extend(
+        [
+            "| project TraceId, SpanId, EventName, Content",
+            f"| take {MAX_ROWS_PER_QUERY}",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def classify_appgenai_content_result(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    source_resource_id: str,
+    trace_id: str,
+    span_id: str | None = None,
+) -> GenerativeAIContent:
+    """Classify ``AppGenAIContent`` rows honoring zero-row ambiguity (T048).
+
+    A delegated query that returns zero rows is reported as
+    ``protected_or_unavailable`` rather than an inferred "no data" state,
+    because Azure Monitor cannot distinguish an unauthorized protected-table
+    read from a table that genuinely has no matching rows.
+    """
+    if not rows:
+        return GenerativeAIContent(
+            trace_id=trace_id,
+            span_id=span_id,
+            source_resource_id=source_resource_id,
+            protection_state="protected_or_unavailable",
+        )
+
+    fields: dict[str, list[Any]] = {}
+    resolved_span_id = span_id
+    for row in rows:
+        event_name = row.get("EventName") or row.get("event_name")
+        field_name = _EVENT_NAME_TO_FIELD.get(str(event_name))
+        content = row.get("Content", row.get("content"))
+        if field_name is not None and content is not None:
+            fields.setdefault(field_name, []).append(content)
+        row_span_id = row.get("SpanId") or row.get("span_id")
+        if row_span_id and not resolved_span_id:
+            resolved_span_id = row_span_id
+
+    return GenerativeAIContent(
+        trace_id=trace_id,
+        span_id=resolved_span_id,
+        source_resource_id=source_resource_id,
+        protection_state="available",
+        input_messages=fields.get("input_messages"),
+        output_messages=fields.get("output_messages"),
+        system_instructions=fields.get("system_instructions"),
+        tool_content=fields.get("tool_content"),
+        evaluation_explanation=fields.get("evaluation_explanation"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batched execution, per-source classification, and deadline handling (T044).
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SourceQuery:
+    """One bounded KQL query targeting a single telemetry source."""
+
+    source_id: str
+    workspace_id: str
+    query: str
+    timespan: tuple[datetime, datetime] | None = None
+
+
+SourceStatus = Literal["success", "partial", "timeout", "throttled", "error"]
+
+
+@dataclass(frozen=True)
+class SourceResult:
+    """Per-source outcome of a batched Azure Monitor query."""
+
+    source_id: str
+    status: SourceStatus
+    tables: Any = None
+    reason: str | None = None
+    duration_ms: int = 0
+
+
+@dataclass(frozen=True)
+class _BatchRequestSpec:
+    id: str
+    workspace_id: str
+    query: str
+    timespan: tuple[datetime, datetime] | None
+    server_timeout_seconds: int
+
+
+def _classify_batch_item(item: Any) -> tuple[SourceStatus, Any, str | None]:
+    error = getattr(item, "error", None)
+    if error is not None:
+        code = str(getattr(error, "code", "") or "").lower()
+        message = str(getattr(error, "message", "") or error).lower()
+        if "timeout" in code or "timeout" in message:
+            return "timeout", None, str(getattr(error, "message", error))
+        if "toomanyrequests" in code or "throttl" in message or " 429" in f" {message}":
+            return "throttled", None, str(getattr(error, "message", error))
+        return "error", None, str(getattr(error, "message", error))
+
+    partial_error = getattr(item, "partial_error", None)
+    tables = getattr(item, "tables", None)
+    if partial_error is not None:
+        reason = str(getattr(partial_error, "message", partial_error))
+        return "partial", getattr(item, "partial_data", tables), reason
+
+    status = str(getattr(item, "status", "") or "").lower()
+    if "partial" in status:
+        return "partial", tables, None
+    return "success", tables, None
+
+
+async def execute_source_batch(
+    queries: Sequence[SourceQuery],
+    *,
+    client: Any,
+    source_timeout_seconds: int = SOURCE_TIMEOUT_SECONDS,
+    request_deadline_seconds: int = DEFAULT_REQUEST_DEADLINE_SECONDS,
+    clock: Callable[[], float] = time.monotonic,
+    is_superseded: Callable[[], bool] | None = None,
+) -> list[SourceResult]:
+    """Execute up to 10 bounded source queries as one async batch (T044).
+
+    ``client`` is any object exposing an ``async def query_batch(requests)``
+    coroutine (the real ``azure.monitor.query.aio.LogsQueryClient`` or a test
+    fake) so this module never needs to import ``azure.monitor.query``.
+    """
+    if len(queries) > MAX_SOURCES_PER_BATCH:
+        raise ValueError(
+            f"cannot batch more than {MAX_SOURCES_PER_BATCH} telemetry sources "
+            "per Observe request"
+        )
+    if not queries:
+        return []
+
+    requests = [
+        _BatchRequestSpec(
+            id=query.source_id,
+            workspace_id=query.workspace_id,
+            query=query.query,
+            timespan=query.timespan,
+            server_timeout_seconds=source_timeout_seconds,
+        )
+        for query in queries
+    ]
+
+    start = clock()
+    try:
+        responses = await asyncio.wait_for(
+            client.query_batch(requests), timeout=request_deadline_seconds
+        )
+    except asyncio.TimeoutError:
+        duration_ms = int((clock() - start) * 1000)
+        return [
+            SourceResult(
+                source_id=query.source_id,
+                status="timeout",
+                reason="Observe request deadline exceeded before this source responded",
+                duration_ms=duration_ms,
+            )
+            for query in queries
+        ]
+
+    duration_ms = int((clock() - start) * 1000)
+
+    if is_superseded is not None and is_superseded():
+        raise SupersededRequestError(
+            "a newer Observe query request superseded this in-flight batch"
+        )
+
+    if len(responses) != len(queries):
+        raise ValueError(
+            "query_batch response count did not match the number of requested sources"
+        )
+
+    results: list[SourceResult] = []
+    for query, item in zip(queries, responses):
+        status, tables, reason = _classify_batch_item(item)
+        results.append(
+            SourceResult(
+                source_id=query.source_id,
+                status=status,
+                tables=tables,
+                reason=reason,
+                duration_ms=duration_ms,
+            )
+        )
+    return results

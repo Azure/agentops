@@ -133,6 +133,7 @@ Install optional extras as needed: `[agent]` for Doctor/Cockpit and `[mcp]` for 
 - `agentops mcp serve` - start the MCP server.
 - `agentops doctor [--evidence-pack]` - run readiness checks.
 - `agentops cockpit` - open the local Cockpit.
+- `agentops cockpit deploy` - preview or deploy the authenticated hosted Cockpit.
 - `agentops agent serve` - serve Doctor as a Copilot Extension.
 
 ## AgentOps Cockpit
@@ -140,6 +141,10 @@ Install optional extras as needed: `[agent]` for Doctor/Cockpit and `[mcp]` for 
 `agentops cockpit` opens a localhost command center for the current workspace.
 It combines eval history, Doctor findings, workflow status, and links to the
 matching Foundry and Azure Monitor views.
+
+`agentops cockpit deploy --preview` plans an authenticated Azure App Service
+Cockpit for the workspace's current Foundry project. Wider Observe scopes require
+explicit ARM resource IDs. See [Deploy the hosted Cockpit](docs/deploy-hosted-cockpit.md).
 
 Cockpit sections, in display order:
 

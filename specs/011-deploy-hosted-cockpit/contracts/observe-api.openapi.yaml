@@ -1,0 +1,464 @@
+openapi: 3.1.0
+info:
+  title: AgentOps Observe API
+  version: 1.0.0
+  description: Read-only API shared by local and hosted Cockpit modes.
+servers:
+  - url: /
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Process liveness only.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    const: ok
+  /api/runtime:
+    get:
+      operationId: getRuntime
+      responses:
+        "200":
+          description: Runtime mode and configured read boundary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeContext"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/auth/context:
+    get:
+      operationId: getAuthContext
+      responses:
+        "200":
+          description: Validated hosted user context without token values.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenant_id, user_id]
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  user_id:
+                    type: string
+                    format: uuid
+                  display_name:
+                    type: [string, "null"]
+                  groups:
+                    type: array
+                    items:
+                      type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/observe/discovery:
+    get:
+      operationId: discoverObserveResources
+      parameters:
+        - in: query
+          name: refresh
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Readable inventory plus partial discovery failures.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscoveryResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/observe/query:
+    post:
+      operationId: queryObserveView
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ObserveQueryRequest"
+      responses:
+        "200":
+          description: Full or partial normalized view result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ObserveResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: Filter is invalid or outside the configured scope.
+  /api/observe/agent-detail:
+    post:
+      operationId: getObservedAgentDetail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDetailRequest"
+      responses:
+        "200":
+          description: Bounded agent trends and supported product links.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDetailResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Agent key was not found in the current inventory.
+        "422":
+          description: Filter is invalid or outside the configured scope.
+  /api/observe/trace-content:
+    post:
+      operationId: getTraceContent
+      description: >
+        Uses only the authenticated user's OBO credential. Responses are
+        non-cacheable and never fall back to legacy telemetry content fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TraceContentRequest"
+      responses:
+        "200":
+          description: Authorized content or protected/unavailable state.
+          headers:
+            Cache-Control:
+              schema:
+                const: no-store
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TraceContentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: Source or correlation key is outside current scope.
+components:
+  securitySchemes:
+    easyAuth:
+      type: openIdConnect
+      openIdConnectUrl: /.auth/.well-known/openid-configuration
+  responses:
+    Unauthorized:
+      description: Microsoft Entra authentication is required.
+    Forbidden:
+      description: Tenant, group, or delegated authorization denied access.
+  schemas:
+    RuntimeContext:
+      type: object
+      required: [mode, scope, local_history_available]
+      properties:
+        mode:
+          enum: [local, hosted]
+        scope:
+          oneOf:
+            - $ref: "./observe-scope.schema.json"
+            - type: object
+              maxProperties: 0
+              description: Empty only in local mode without a hosted Observe scope.
+        local_history_available:
+          type: boolean
+    DiscoveryResponse:
+      type: object
+      required:
+        - foundry_resources
+        - projects
+        - telemetry_sources
+        - partial_failures
+        - discovered_at
+        - expires_at
+      properties:
+        foundry_resources:
+          type: array
+          items:
+            type: object
+        projects:
+          type: array
+          items:
+            type: object
+        telemetry_sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/TelemetrySource"
+        partial_failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceFailure"
+        discovered_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    TelemetrySource:
+      type: object
+      required: [source_id, resource_id, project_resource_ids, state]
+      properties:
+        source_id:
+          type: string
+        resource_id:
+          type: string
+        workspace_id:
+          type: [string, "null"]
+        foundry_resource_id:
+          type: [string, "null"]
+        project_resource_ids:
+          type: array
+          items:
+            type: string
+        state:
+          enum: [available, inaccessible, not_configured, not_found, error]
+        reason:
+          type: [string, "null"]
+        last_query_duration_ms:
+          type: [integer, "null"]
+          minimum: 0
+    ObserveQueryRequest:
+      type: object
+      additionalProperties: false
+      required: [view, filters]
+      properties:
+        view:
+          enum: [overview, agents, models, coverage]
+        filters:
+          $ref: "#/components/schemas/ObserveFilters"
+        refresh:
+          type: boolean
+          default: false
+    AgentDetailRequest:
+      type: object
+      additionalProperties: false
+      required: [agent_key, filters]
+      properties:
+        agent_key:
+          type: string
+          minLength: 1
+        filters:
+          $ref: "#/components/schemas/ObserveFilters"
+        refresh:
+          type: boolean
+          default: false
+    ObserveFilters:
+      type: object
+      additionalProperties: false
+      required: [start, end]
+      properties:
+        foundry_resource_id:
+          type: [string, "null"]
+        project_resource_id:
+          type: [string, "null"]
+        agent_id:
+          type: [string, "null"]
+        model:
+          type: [string, "null"]
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+    ObserveResponse:
+      type: object
+      additionalProperties: false
+      required:
+        [view, data, trends, portal_links, coverage, partial_failures, diagnostics,
+         refreshed_at, cache_status]
+      properties:
+        view:
+          enum: [overview, agents, models, coverage]
+        data:
+          oneOf:
+            - type: object
+            - type: array
+              items: {}
+        coverage:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoverageResult"
+        partial_failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuerySourceFailure"
+        diagnostics:
+          $ref: "#/components/schemas/QueryDiagnostics"
+        refreshed_at:
+          type: string
+          format: date-time
+        cache_status:
+          enum: [hit, miss, bypass]
+    AgentDetailResponse:
+      type: object
+      additionalProperties: false
+      required:
+        [view, data, coverage, partial_failures, diagnostics, refreshed_at, cache_status]
+      properties:
+        view:
+          const: agents
+        data:
+          type: array
+          items:
+            type: object
+        trends:
+          type: array
+          items:
+            type: object
+        portal_links:
+          type: object
+          additionalProperties:
+            type: string
+        coverage:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoverageResult"
+        partial_failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuerySourceFailure"
+        diagnostics:
+          $ref: "#/components/schemas/QueryDiagnostics"
+        refreshed_at:
+          type: string
+          format: date-time
+        cache_status:
+          enum: [hit, miss, bypass]
+    CoverageResult:
+      type: object
+      required: [source_id, dimension, state, reason, next_action, refreshed_at]
+      properties:
+        source_id:
+          type: string
+        dimension:
+          type: string
+        state:
+          enum:
+            - available
+            - inaccessible
+            - not_configured
+            - no_data
+            - not_reported
+            - partial
+            - error
+            - protected_or_unavailable
+        reason:
+          type: string
+        next_action:
+          type: string
+        refreshed_at:
+          type: string
+          format: date-time
+    QueryDiagnostics:
+      type: object
+      required:
+        - started_at
+        - completed_at
+        - duration_ms
+        - source_count
+        - successful_sources
+        - partial_sources
+        - failed_sources
+        - cache_status
+      properties:
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          minimum: 0
+        source_count:
+          type: integer
+          minimum: 0
+          maximum: 10
+        successful_sources:
+          type: integer
+          minimum: 0
+        partial_sources:
+          type: integer
+          minimum: 0
+        failed_sources:
+          type: integer
+          minimum: 0
+        cache_status:
+          enum: [hit, miss, bypass]
+    SourceFailure:
+      type: object
+      additionalProperties: false
+      required: [source, reason]
+      properties:
+        source:
+          type: string
+        reason:
+          type: string
+    QuerySourceFailure:
+      type: object
+      additionalProperties: false
+      required: [source_id, status, reason, next_action]
+      properties:
+        source_id:
+          type: string
+        status:
+          enum: [success, partial, timeout, inaccessible, error]
+        reason:
+          type: string
+        next_action:
+          type: string
+    TraceContentRequest:
+      type: object
+      additionalProperties: false
+      required: [source_resource_id, trace_id]
+      properties:
+        source_resource_id:
+          type: string
+        trace_id:
+          type: string
+        span_id:
+          type: [string, "null"]
+    TraceContentResponse:
+      type: object
+      required:
+        - trace_id
+        - source_resource_id
+        - protection_state
+      properties:
+        trace_id:
+          type: string
+        span_id:
+          type: [string, "null"]
+        source_resource_id:
+          type: string
+        protection_state:
+          enum: [available, protected_or_unavailable, not_configured]
+        input_messages: {}
+        output_messages: {}
+        system_instructions: {}
+        tool_content: {}
+        evaluation_explanation: {}
+security:
+  - easyAuth: []

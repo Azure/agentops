@@ -14,7 +14,7 @@ from html import escape as html_escape
 from pathlib import Path
 from textwrap import wrap
 from collections.abc import Sequence
-from typing import Annotated, Any, Optional, TYPE_CHECKING
+from typing import Annotated, Any, cast, Optional, TYPE_CHECKING
 
 import typer
 
@@ -79,6 +79,14 @@ redteam_app = typer.Typer(
         "for the manual."
     )
 )
+cockpit_app = typer.Typer(
+    help=(
+        "Open the local Cockpit or deploy an authenticated hosted Cockpit. "
+        "Use `agentops cockpit deploy --help` for deployment options."
+    ),
+    invoke_without_command=True,
+    no_args_is_help=False,
+)
 app.add_typer(eval_app, name="eval")
 app.add_typer(report_app, name="report")
 app.add_typer(workflow_app, name="workflow")
@@ -90,6 +98,7 @@ app.add_typer(doctor_app, name="doctor")
 app.add_typer(init_app, name="init")
 app.add_typer(assert_app, name="assert")
 app.add_typer(redteam_app, name="redteam")
+app.add_typer(cockpit_app, name="cockpit")
 
 log = get_logger(__name__)
 DEFAULT_REPORT_INPUT = Path(".agentops/results/latest/results.json")
@@ -922,9 +931,9 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "It brings your project, Foundry, and Azure Monitor into one "
             "view — so you can see what's wired up, what's missing, and "
             "where to click when you need to dig deeper.",
-            "Read-only and local. Binds to `127.0.0.1` by default so you "
-            "can keep it open during reviews and pipeline work without "
-            "touching anything in the cloud.",
+            "The no-subcommand form is read-only and local. Use "
+            "`agentops cockpit deploy` for a preview-first authenticated "
+            "App Service shared by a team.",
         ),
         how_it_works=(
             "Runs pre-flight checks unless `--no-preflight` is used.",
@@ -945,6 +954,42 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         ),
         examples=("agentops cockpit", "agentops cockpit --port 8091", "agentops cockpit --no-preflight", "agentops cockpit explain"),
         see_also=("agentops explain doctor", "agentops explain eval run", "agentops explain workflow generate"),
+    ),
+    ("cockpit", "deploy"): ExplainPage(
+        title="Deploy the hosted Cockpit",
+        command="agentops cockpit deploy",
+        synopsis=(
+            "agentops cockpit deploy [--workspace PATH] [--preview] [--scope projects|foundry|resource-group|subscription]",
+            "agentops explain cockpit deploy",
+        ),
+        summary=(
+            "Previews and deploys an authenticated, read-only AgentOps Cockpit to Azure App Service.",
+            "The default Observe boundary is the current workspace Foundry project. Wider boundaries require explicit ARM resource IDs and a refreshed preview.",
+        ),
+        how_it_works=(
+            "Resolves the workspace project, Azure and azd context, existing single-tenant application registration, and linked telemetry.",
+            "Prints the exact App Service, UAMI, authentication, non-secret settings, Reader, Log Analytics Reader, and federated-credential plan before mutation.",
+            "Runs azd provision and deploy, configures one exact federated credential, verifies health, and journals resumable state under `.agentops/deploy/cockpit/`.",
+        ),
+        inputs=(
+            "Existing AgentOps workspace and Foundry project, or explicit Observe scope ARM IDs",
+            "Authenticated Azure CLI and Azure Developer CLI context",
+            "Existing single-tenant application client ID and workforce tenant ID",
+        ),
+        outputs=(
+            "Stable hosted Cockpit and Azure resource URLs",
+            "Effective versioned Observe scope and exact planned resource IDs",
+            "Deployment health or actionable preserved-state recovery guidance",
+        ),
+        examples=(
+            "agentops cockpit deploy --workspace . --preview",
+            "agentops cockpit deploy --workspace .",
+            "agentops cockpit deploy --scope resource-group --scope-resource-id /subscriptions/.../resourceGroups/rg --preview",
+        ),
+        see_also=(
+            "agentops explain cockpit",
+            "https://aka.ms/agentops-accelerator",
+        ),
     ),
     ("assert",): ExplainPage(
         title="ASSERT runner",
@@ -5900,8 +5945,236 @@ def cmd_agent_register(
     typer.echo(f"{_cli_label('Entra portal')}: {blueprint.portal_url}")
 
 
-@app.command("cockpit")
+def _render_cockpit_deployment_preview(plan: Any) -> None:
+    preview = plan.preview
+    typer.echo(_cli_heading("Hosted Cockpit deployment preview"))
+    typer.echo(f"{_cli_label('App name')}: {preview.selection.app_name}")
+    typer.echo(
+        f"{_cli_label('Observe scope')}: "
+        f"{preview.selection.scope.model_dump_json()}"
+    )
+    typer.echo(f"{_cli_label('Bundle')}: {_cli_path(plan.bundle_dir)}")
+    typer.echo(f"{_cli_label('Resources')}:")
+    for resource in preview.resources:
+        typer.echo(
+            f"  {resource.change_type:>9}  {resource.resource_type:<31} "
+            f"{resource.resource_id}"
+        )
+    typer.echo(f"{_cli_label('Role assignments')}:")
+    for assignment in preview.role_assignments:
+        typer.echo(
+            f"  {assignment.role:<20} {assignment.scope_resource_id} "
+            f"(principal {assignment.principal_id})"
+        )
+    credential = preview.federated_credential
+    typer.echo(
+        f"{_cli_label('Federated credential')}: {credential.action} "
+        f"{credential.name} -> {credential.subject}"
+    )
+    for warning in dict.fromkeys([*plan.scope_warnings, *preview.warnings]):
+        typer.echo(f"{_cli_warn('Warning')}: {warning}", err=True)
+
+
+@cockpit_app.command("explain")
+def cmd_cockpit_explain(
+    no_pager: Annotated[
+        bool, typer.Option("--no-pager", help="Print directly to stdout.")
+    ] = False,
+    fmt: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            "-f",
+            help="Output format: text (default), markdown, or html.",
+        ),
+    ] = "text",
+    out: Annotated[
+        Optional[Path],
+        typer.Option("--out", "-o", help="Write the explanation to PATH."),
+    ] = None,
+    open_browser: Annotated[
+        bool,
+        typer.Option(
+            "--open",
+            help="When --format html, open the rendered file in the default browser.",
+        ),
+    ] = False,
+) -> None:
+    """Long-form manual for the local AgentOps Cockpit."""
+    _emit_registered_explain(
+        ("cockpit",),
+        no_pager=no_pager,
+        format_=fmt,
+        out=out,
+        open_browser=open_browser,
+    )
+
+
+@cockpit_app.command("deploy")
+def cmd_cockpit_deploy(
+    workspace: Annotated[
+        Path,
+        typer.Option(
+            "--workspace",
+            "-w",
+            help="AgentOps workspace whose Foundry project is the default scope.",
+        ),
+    ] = Path("."),
+    scope: Annotated[
+        str,
+        typer.Option(
+            "--scope",
+            help="Observe scope: projects, foundry, resource-group, or subscription.",
+        ),
+    ] = "projects",
+    project_ids: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--project-id",
+            help="Foundry project ARM ID. Repeat to select multiple projects.",
+        ),
+    ] = None,
+    scope_resource_id: Annotated[
+        Optional[str],
+        typer.Option(
+            "--scope-resource-id",
+            help="Canonical ARM ID for a non-project Observe scope.",
+        ),
+    ] = None,
+    subscription: Annotated[
+        Optional[str],
+        typer.Option("--subscription", help="Azure subscription ID for deployment."),
+    ] = None,
+    resource_group: Annotated[
+        Optional[str],
+        typer.Option(
+            "--resource-group",
+            help="Deployment resource group; defaults to the selected project scope.",
+        ),
+    ] = None,
+    location: Annotated[
+        Optional[str],
+        typer.Option("--location", help="Azure location for hosted resources."),
+    ] = None,
+    tenant_id: Annotated[
+        Optional[str],
+        typer.Option("--tenant-id", help="Microsoft Entra tenant ID."),
+    ] = None,
+    client_id: Annotated[
+        Optional[str],
+        typer.Option("--client-id", help="Existing app registration client ID."),
+    ] = None,
+    allowed_group: Annotated[
+        Optional[str],
+        typer.Option(
+            "--allowed-group",
+            help="Optional Entra group object ID allowed to open the hosted Cockpit.",
+        ),
+    ] = None,
+    name: Annotated[
+        Optional[str],
+        typer.Option("--name", help="Stable hosted Cockpit deployment name."),
+    ] = None,
+    preview_only: Annotated[
+        bool,
+        typer.Option("--preview", help="Print the plan without mutating Azure."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option(
+            "--yes",
+            help="Deploy non-interactively; requires every selection input explicitly.",
+        ),
+    ] = False,
+) -> None:
+    """Preview or deploy an authenticated hosted Cockpit to Azure App Service."""
+    from agentops.services.cockpit_deployment import (
+        CockpitDeploymentError,
+        DeploymentRequest,
+        execute_deployment,
+        prepare_deployment,
+    )
+    from agentops.core.observe import ScopeMode
+
+    scope_mode = cast(ScopeMode, scope.strip().lower().replace("-", "_"))
+    if scope_mode not in {"projects", "foundry", "resource_group", "subscription"}:
+        typer.echo(
+            f"{_cli_error('Error')}: --scope must be projects, foundry, "
+            "resource-group, or subscription.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if client_id is None and not yes:
+        client_id = typer.prompt("Existing app registration client ID")
+    if scope_mode == "subscription" and resource_group is None and not yes:
+        resource_group = typer.prompt("Resource group for the hosted Cockpit")
+
+    request = DeploymentRequest(
+        workspace=workspace.resolve(),
+        scope_mode=scope_mode,
+        project_ids=tuple(project_ids or ()),
+        scope_resource_id=scope_resource_id,
+        subscription_id=subscription,
+        resource_group=resource_group,
+        location=location,
+        tenant_id=tenant_id,
+        client_id=client_id,
+        allowed_group_id=allowed_group,
+        name=name,
+        non_interactive=yes,
+    )
+    try:
+        plan = prepare_deployment(request)
+        _render_cockpit_deployment_preview(plan)
+        if preview_only:
+            typer.echo(f"{_cli_label('Result')}: preview only; Azure was not mutated.")
+            return
+
+        interactive_confirmed = False
+        if not yes:
+            interactive_confirmed = typer.confirm(
+                "Deploy exactly this previewed plan?", default=False
+            )
+            if not interactive_confirmed:
+                typer.echo("Deployment cancelled; Azure was not mutated.")
+                return
+
+        deployed = execute_deployment(
+            plan,
+            yes=yes,
+            interactive_confirmed=interactive_confirmed,
+        )
+    except CockpitDeploymentError as exc:
+        typer.echo(
+            f"{_cli_error('Deployment failed')} during {exc.stage}: {exc}",
+            err=True,
+        )
+        if exc.remediation:
+            typer.echo(f"{_cli_label('Next action')}: {exc.remediation}", err=True)
+        if exc.mutation_occurred:
+            typer.echo(
+                f"{_cli_warn('Azure resources were preserved')}; rerun the command "
+                "to reconcile and resume.",
+                err=True,
+            )
+        raise typer.Exit(code=1) from exc
+    except ValueError as exc:
+        typer.echo(f"{_cli_error('Deployment failed')}: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(f"{_cli_heading('Hosted Cockpit deployed')}: {_cli_path(deployed.app_url)}")
+    typer.echo(f"{_cli_label('Health')}: {deployed.health}")
+    typer.echo(f"{_cli_label('Web app')}: {deployed.web_app_resource_id}")
+    typer.echo(f"{_cli_label('Managed identity')}: {deployed.managed_identity_resource_id}")
+    typer.echo(f"{_cli_label('Azure portal')}: {_cli_path(deployed.portal_url)}")
+    typer.echo(f"{_cli_label('Observe scope')}: {deployed.scope.model_dump_json()}")
+    typer.echo(f"{_cli_label('Version')}: {deployed.deployed_version}")
+
+
+@cockpit_app.callback(invoke_without_command=True)
 def cmd_cockpit(
+    ctx: typer.Context,
     host: Annotated[
         str, typer.Option("--host", help="Bind host (default: 127.0.0.1).")
     ] = "127.0.0.1",
@@ -5923,10 +6196,9 @@ def cmd_cockpit(
             help="Skip the pre-flight connectivity checks.",
         ),
     ] = False,
-    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
 ) -> None:
     """Open the local AgentOps cockpit."""
-    if _maybe_explain_leaf(("cockpit",), explain):
+    if ctx.invoked_subcommand is not None:
         return
 
     try:
@@ -5959,7 +6231,7 @@ def cmd_cockpit(
             )
             raise typer.Exit(code=1)
 
-    fastapi_app = create_cockpit_app(workspace=workspace)
+    fastapi_app = create_cockpit_app(workspace=workspace, mode="local")
     url = f"http://{host}:{port}"
 
     # Friendly port-conflict handling. Without this the user gets a raw

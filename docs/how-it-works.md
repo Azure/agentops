@@ -74,6 +74,7 @@ src/
     │   └── trace_promotion.py # Trace export → dataset candidates
     │
     ├── agent/                 # Doctor, Cockpit, and agent server
+    │   └── observe/           # Hosted/local discovery, bounded queries, OBO, and UI
     ├── mcp/                   # `agentops mcp serve` Model Context Protocol server
     │
     ├── utils/                 # Shared helpers (yaml load, logging, colors)
@@ -101,6 +102,35 @@ src/
 | Add a CLI command | `cli/app.py` + a service/pipeline helper |
 | Add a starter template | `templates/` + update `pyproject.toml` package-data |
 | Add a coding agent skill | `templates/skills/<name>/SKILL.md` + sync script |
+| Change hosted Cockpit deployment | `services/cockpit_deployment.py` + `templates/cockpit-hosted/` |
+| Change Observe normalization | `agent/observe/` + pure contracts in `core/observe.py` |
+
+## Hosted Cockpit and Observe flow
+
+`agentops cockpit` remains local and reads workspace history. The explicit
+`agentops cockpit deploy` service resolves the current workspace project,
+validates an existing single-tenant app registration, renders an azd/Bicep and
+RBAC/federation preview, then deploys only after confirmation.
+
+```mermaid
+flowchart LR
+    W["Local workspace project"] --> P["Deployment preview"]
+    P --> A["Linux App Service + UAMI"]
+    A --> EA["Easy Auth tenant/group boundary"]
+    A --> S["Versioned Observe scope"]
+    S --> D["ARG + Foundry connection discovery"]
+    D --> Q["Bounded Azure Monitor queries"]
+    Q --> N["Normalized attributed Observe views"]
+    EA --> OBO["Per-user OBO"]
+    OBO --> C["Explicit protected trace content"]
+```
+
+The hosted runtime is read-only. Aggregate discovery and query submission use a
+dedicated UAMI with only `Reader` and `Log Analytics Reader`. Explicit protected
+trace content uses the signed-in user's delegated permission through OBO and is
+excluded from shared caches. `/healthz` is the only anonymous route and returns
+liveness only. Wider Observe scope is represented by canonical ARM IDs in one
+versioned setting, not by parallel subscription/resource-group variables.
 
 ## Request Flow (eval run)
 
@@ -268,6 +298,7 @@ flowchart LR
 | `agentops doctor [--evidence-pack]` | Run the AgentOps Doctor and optionally write release evidence |
 | `agentops doctor explain` | Long-form Doctor manual |
 | `agentops cockpit` | Local read-only Cockpit UI (FastAPI) that links out to Foundry |
+| `agentops cockpit deploy` | Preview or deploy the authenticated hosted Cockpit and explicit Observe scope |
 | `agentops workflow analyze` | Inspect a repo and recommend CI/CD stages/deploy mode before generation |
 | `agentops workflow generate` | Generate CI/CD workflows for GitHub Actions or Azure DevOps |
 | `agentops skills install` | (Re)install coding-agent skills (Copilot or Claude) |

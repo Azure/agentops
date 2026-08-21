@@ -20,13 +20,20 @@ import os
 import re
 import shutil
 import subprocess
+from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Literal, Optional, Tuple, cast
 from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange
+from agentops.core.observe import (
+    AgentDetailRequest,
+    ObserveQueryRequest,
+    ObserveScope,
+    TraceContentRequest,
+)
 from agentops.utils.yaml import load_yaml
 
 
@@ -62,6 +69,38 @@ _QUALITY_METRICS: List[Tuple[str, str, str]] = [
     ("relevance", "Relevance", "/5"),
     ("avg_latency_seconds", "Latency", "s"),
 ]
+
+
+@dataclass(frozen=True)
+class CockpitRuntimeConfiguration:
+    """Runtime mode and hosted Observe scope loaded from app settings."""
+
+    mode: Literal["local", "hosted"]
+    observe_scope: Optional[Dict[str, Any]]
+
+
+def load_cockpit_runtime_configuration() -> CockpitRuntimeConfiguration:
+    """Load explicit local/hosted mode without changing local defaults."""
+    mode = os.getenv("AGENTOPS_COCKPIT_MODE", "local").strip().lower()
+    if mode not in {"local", "hosted"}:
+        raise ValueError("AGENTOPS_COCKPIT_MODE must be local or hosted.")
+    if mode == "local":
+        return CockpitRuntimeConfiguration(mode="local", observe_scope=None)
+
+    encoded_scope = os.getenv("AGENTOPS_OBSERVE_SCOPE", "").strip()
+    if not encoded_scope:
+        raise ValueError(
+            "AGENTOPS_OBSERVE_SCOPE is required when AGENTOPS_COCKPIT_MODE=hosted."
+        )
+    try:
+        raw_scope = json.loads(encoded_scope)
+    except json.JSONDecodeError as exc:
+        raise ValueError("AGENTOPS_OBSERVE_SCOPE must contain valid JSON.") from exc
+    scope = ObserveScope.model_validate(raw_scope)
+    return CockpitRuntimeConfiguration(
+        mode="hosted",
+        observe_scope=scope.model_dump(mode="json"),
+    )
 
 
 def build_cockpit_payload(
@@ -4055,6 +4094,10 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     transition: background 0.15s ease, border-color 0.15s ease,
                 color 0.15s ease;
   }}
+  header .observe-link {{
+    color: var(--info); font-size: 13px; font-weight: 600; text-decoration: none;
+  }}
+  header .observe-link:hover {{ text-decoration: underline; }}
   header .powered-by:hover {{
     background: rgba(56, 189, 248, 0.10);
     color: var(--text);
@@ -4822,6 +4865,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
       <div class="subtitle" title="{workspace}">{workspace_display}</div>
     </div>
   </div>
+  <a class="observe-link" href="/observe">Open Observe</a>
 </header>
 
 {status_cards_section}
@@ -4898,10 +4942,17 @@ openHashSection();
 # ---------------------------------------------------------------------------
 
 
-def create_app(workspace: Path):
-    """Return a FastAPI app rooted at *workspace*."""
+def create_app(
+    workspace: Path | None,
+    *,
+    mode: Literal["local", "hosted"] | None = None,
+    observe_scope: Optional[Dict[str, Any]] = None,
+    observe_service: Any = None,
+    auth_context_resolver: Any = None,
+):
+    """Return a local or hosted FastAPI Cockpit application."""
     try:
-        from fastapi import FastAPI, Query
+        from fastapi import Depends, FastAPI, Header, HTTPException, Query
         from fastapi.responses import HTMLResponse, JSONResponse
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
@@ -4909,20 +4960,160 @@ def create_app(workspace: Path):
             "Install with: pip install 'agentops-accelerator[agent]'"
         ) from exc
 
-    app = FastAPI(title="AgentOps Cockpit", docs_url=None, redoc_url=None)
+    configured = load_cockpit_runtime_configuration()
+    effective_mode = mode or configured.mode
+    if effective_mode not in {"local", "hosted"}:
+        raise ValueError("Cockpit mode must be local or hosted.")
+    if effective_mode == "local":
+        if workspace is None:
+            raise ValueError("Local Cockpit mode requires a workspace.")
+        workspace = workspace.resolve()
+        scope_payload = observe_scope or configured.observe_scope
+        if scope_payload is None:
+            from agentops.services.cockpit_deployment import WorkspaceProjectResolver
+
+            project_ids = WorkspaceProjectResolver().discover_projects(workspace)
+            if project_ids:
+                scope_payload = {
+                    "version": 1,
+                    "mode": "projects",
+                    "project_resource_ids": project_ids,
+                }
+        effective_scope = (
+            ObserveScope.model_validate(scope_payload).model_dump(mode="json")
+            if scope_payload is not None
+            else None
+        )
+        if observe_service is None and effective_scope is not None:
+            from agentops.agent.observe.facade import create_observe_facade
+
+            observe_service = create_observe_facade(scope=effective_scope)
+    else:
+        scope_payload = observe_scope or configured.observe_scope
+        if scope_payload is None:
+            raise ValueError("Hosted Cockpit mode requires an Observe scope.")
+        effective_scope = ObserveScope.model_validate(scope_payload).model_dump(
+            mode="json"
+        )
+        if auth_context_resolver is None:
+            from agentops.agent.observe.principal import build_easy_auth_resolver
+
+            auth_context_resolver = build_easy_auth_resolver()
+        if observe_service is None:
+            from agentops.agent.observe.facade import create_observe_facade
+
+            observe_service = create_observe_facade(scope=effective_scope)
+
+    app = FastAPI(
+        title="AgentOps Cockpit",
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+
+    def _default_auth_context(headers: Any) -> Dict[str, Any]:
+        principal = headers.get("x-ms-client-principal")
+        if not principal:
+            raise PermissionError("Microsoft Entra authentication is required.")
+        return {"tenant_id": None, "user_id": None, "groups": []}
+
+    def _authorize(
+        principal: Optional[str] = Header(None, alias="X-MS-CLIENT-PRINCIPAL"),
+        principal_id: Optional[str] = Header(
+            None, alias="X-MS-CLIENT-PRINCIPAL-ID"
+        ),
+        principal_name: Optional[str] = Header(
+            None, alias="X-MS-CLIENT-PRINCIPAL-NAME"
+        ),
+        access_token: Optional[str] = Header(
+            None, alias="X-MS-TOKEN-AAD-ACCESS-TOKEN"
+        ),
+    ) -> Dict[str, Any]:
+        if effective_mode == "local":
+            return {}
+        resolver = auth_context_resolver or _default_auth_context
+        headers = {
+            "x-ms-client-principal": principal,
+            "x-ms-client-principal-id": principal_id,
+            "x-ms-client-principal-name": principal_name,
+            "x-ms-token-aad-access-token": access_token,
+        }
+        try:
+            context = resolver(headers)
+        except PermissionError as exc:
+            status_code = getattr(exc, "http_status", 401)
+            if status_code not in {401, 403}:
+                status_code = 401
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        if not isinstance(context, dict):
+            model_dump = getattr(context, "model_dump", None)
+            if callable(model_dump):
+                context = model_dump(mode="json")
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Hosted authentication context is invalid.",
+                )
+        return context
+
+    async def _service_call(name: str, **kwargs: Any) -> Any:
+        import inspect
+
+        method = getattr(observe_service, name, None)
+        if not callable(method):
+            raise HTTPException(
+                status_code=503,
+                detail="Observe service is not configured.",
+            )
+        try:
+            result = method(**kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+        except ValueError as exc:
+            from agentops.agent.observe.auth import MissingUserAssertionError
+
+            status_code = 403 if isinstance(exc, MissingUserAssertionError) else 422
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        model_dump = getattr(result, "model_dump", None)
+        return model_dump(mode="json") if callable(model_dump) else result
+
+    def _render_observe_shell():
+        from agentops.agent.observe.ui import render_observe_page
+
+        scope_label = None
+        if effective_scope:
+            scope_mode = str(effective_scope.get("mode", "configured"))
+            if scope_mode == "projects":
+                resource_count = len(effective_scope.get("project_resource_ids", []))
+                scope_label = f"Projects ({resource_count})"
+            else:
+                scope_label = scope_mode.replace("_", " ").title()
+        return HTMLResponse(render_observe_page(scope_label=scope_label))
 
     @app.get("/", response_class=HTMLResponse)
     def _index(
         partial: Optional[str] = Query(None, alias="_partial"),
-    ) -> HTMLResponse:
+        _user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        if effective_mode == "hosted":
+            return _render_observe_shell()
         # Return a tiny shell immediately, then hydrate the local cockpit.
         if not partial:
             return HTMLResponse(_render_loading_shell())
+        assert workspace is not None
         payload = build_cockpit_payload(workspace)
         return HTMLResponse(render_cockpit_html(payload))
 
+    @app.get("/observe", response_class=HTMLResponse)
+    def _observe(
+        _user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        return _render_observe_shell()
+
     @app.get("/favicon.ico")
-    def _favicon():
+    def _favicon(
+        _user_context: Dict[str, Any] = Depends(_authorize),
+    ):
         from fastapi.responses import Response
         try:
             data = _pkg_files("agentops.templates").joinpath("icon.png").read_bytes()
@@ -4930,22 +5121,120 @@ def create_app(workspace: Path):
             return Response(status_code=404)
         return Response(content=data, media_type="image/png")
 
-    @app.get("/api/history")
-    def _api_history(limit: Optional[int] = None) -> JSONResponse:
-        records = load_analysis_history(workspace, limit=limit)
-        return JSONResponse([r.to_dict() for r in records])
+    if effective_mode == "local":
 
-    @app.get("/api/eval-runs")
-    def _api_eval_runs(limit: int = 24) -> JSONResponse:
-        return JSONResponse(_load_eval_runs(workspace, limit=limit))
+        @app.get("/api/history")
+        def _api_history(limit: Optional[int] = None):
+            assert workspace is not None
+            records = load_analysis_history(workspace, limit=limit)
+            return JSONResponse([r.to_dict() for r in records])
 
-    @app.get("/api/runs/{run_id}/report", response_class=HTMLResponse)
-    def _api_run_report(run_id: str) -> HTMLResponse:
-        return HTMLResponse(_render_run_report_html(workspace, run_id))
+        @app.get("/api/eval-runs")
+        def _api_eval_runs(limit: int = 24):
+            assert workspace is not None
+            return JSONResponse(_load_eval_runs(workspace, limit=limit))
+
+        @app.get("/api/runs/{run_id}/report", response_class=HTMLResponse)
+        def _api_run_report(run_id: str):
+            assert workspace is not None
+            return HTMLResponse(_render_run_report_html(workspace, run_id))
 
     @app.get("/api/telemetry")
-    def _api_telemetry() -> JSONResponse:
+    def _api_telemetry(
+        _user_context: Dict[str, Any] = Depends(_authorize),
+    ):
         return JSONResponse(_telemetry_status())
+
+    @app.get("/api/runtime")
+    def _api_runtime(
+        _user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        return JSONResponse(
+            {
+                "mode": effective_mode,
+                "scope": effective_scope or {},
+                "local_history_available": effective_mode == "local",
+            }
+        )
+
+    @app.get("/api/auth/context")
+    def _api_auth_context(
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        safe_context = {
+            key: value
+            for key, value in user_context.items()
+            if "token" not in key.lower() and "assertion" not in key.lower()
+        }
+        return JSONResponse(safe_context)
+
+    @app.get("/api/observe/discovery")
+    async def _api_observe_discovery(
+        refresh: bool = False,
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        return JSONResponse(
+            await _service_call(
+                "discover",
+                refresh=refresh,
+                user_context=user_context,
+            )
+        )
+
+    @app.post("/api/observe/query")
+    async def _api_observe_query(
+        payload: ObserveQueryRequest,
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        filters = payload.filters
+        if effective_scope is not None:
+            filters.validate_scope(ObserveScope.model_validate(effective_scope))
+        return JSONResponse(
+            await _service_call(
+                "query",
+                view=payload.view,
+                filters=filters.model_dump(mode="json"),
+                refresh=payload.refresh,
+                user_context=user_context,
+            )
+        )
+
+    @app.post("/api/observe/agent-detail")
+    async def _api_observe_agent_detail(
+        payload: AgentDetailRequest,
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        filters = payload.filters
+        if effective_scope is not None:
+            filters.validate_scope(ObserveScope.model_validate(effective_scope))
+        result = await _service_call(
+            "agent_detail",
+            agent_key=payload.agent_key,
+            filters=filters.model_dump(mode="json"),
+            refresh=payload.refresh,
+            user_context=user_context,
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Agent key was not found in the current filter window.",
+            )
+        return JSONResponse(result)
+
+    @app.post("/api/observe/trace-content")
+    async def _api_observe_trace_content(
+        payload: TraceContentRequest,
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        response = JSONResponse(
+            await _service_call(
+                "trace_content",
+                request=payload.model_dump(mode="json"),
+                user_context=user_context,
+            )
+        )
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.get("/healthz")
     def _healthz() -> Dict[str, str]:
