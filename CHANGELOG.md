@@ -6,6 +6,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Added
+- **The Cockpit can be deployed as an authenticated, read-only Azure App
+  Service.** `agentops cockpit deploy` defaults to the current workspace
+  Foundry project, requires an infrastructure/RBAC/federation preview before
+  mutation, reuses an existing single-tenant app registration, and preserves a
+  recovery journal for safe reruns after partial failures.
+- **Observe can aggregate multiple Foundry resources and projects with truthful
+  source attribution and coverage.** Shared filters drive Overview, Agents,
+  Models and usage, and Telemetry coverage views while bounded queries preserve
+  partial results and distinguish missing evidence from numeric zero.
 - **Evaluations can load JSONL datasets directly from Azure Blob Storage and
   ADLS Gen2.** The existing scalar `dataset` setting accepts canonical Blob and
   DFS HTTPS object URLs. AgentOps resolves one read-only snapshot of up to
@@ -13,6 +22,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   while preserving the original source URI in reports and lineage.
 
 ### Security
+- **Aggregate telemetry and protected generative-AI content use separate
+  identities.** The hosted UAMI receives only Reader and Log Analytics Reader;
+  explicit `AppGenAIContent` reads use the signed-in user's delegated Azure
+  Monitor permission through OBO, return `no-store`, and never enter shared
+  caches, URLs, browser persistence, telemetry, diagnostics, or deployment
+  artifacts.
 - **Remote datasets use only the Azure identity already running AgentOps.**
   Local runs reuse `az login`; automated runs reuse their federated, workload,
   managed, or service-principal identity. SAS URLs, dataset-specific tokens,

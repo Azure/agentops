@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "webAppName": {
+      "value": "${WEB_APP_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "tags": {
+      "value": {
+        "azd-env-name": "${AZURE_ENV_NAME}"
+      }
+    },
+    "appServicePlanSkuName": {
+      "value": "${AGENTOPS_COCKPIT_SKU=B1}"
+    },
+    "tenantId": {
+      "value": "${AZURE_TENANT_ID}"
+    },
+    "applicationClientId": {
+      "value": "${AGENTOPS_APPLICATION_CLIENT_ID}"
+    },
+    "allowedGroupObjectId": {
+      "value": "${AGENTOPS_ALLOWED_GROUP_OBJECT_ID=}"
+    },
+    "agentopsObserveScope": {
+      "value": "${AGENTOPS_OBSERVE_SCOPE=}"
+    },
+    "agentopsVersion": {
+      "value": "${AGENTOPS_VERSION=}"
+    },
+    "grantReaderOnResourceGroup": {
+      "value": false
+    },
+    "foundryAccountNames": {
+      "value": []
+    },
+    "foundryProjectRefs": {
+      "value": []
+    },
+    "logAnalyticsWorkspaceNames": {
+      "value": []
+    }
+  }
+}
