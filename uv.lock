@@ -49,6 +49,8 @@ mcp = [
 dev = [
     { name = "azure-ai-evaluation" },
     { name = "azure-mgmt-authorization" },
+    { name = "fastapi" },
+    { name = "httpx" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -91,6 +93,8 @@ provides-extras = ["mcp", "agent"]
 dev = [
     { name = "azure-ai-evaluation", specifier = ">=1.0,<2.0" },
     { name = "azure-mgmt-authorization", specifier = ">=4.0,<5.0" },
+    { name = "fastapi", specifier = ">=0.110,<1.0" },
+    { name = "httpx", specifier = ">=0.27,<1.0" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pre-commit", specifier = ">=4.0" },
     { name = "pytest", specifier = ">=8.0" },

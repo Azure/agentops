@@ -35,6 +35,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   rejected. The identity needs `Storage Blob Data Reader` and any applicable
   ADLS path ACLs.
 
+### Fixed
+- **Developer installs include the hosted Cockpit test dependencies.** The
+  standard development environment can collect and run the FastAPI integration
+  tests used by CI.
+
 ## [0.9.0] - 2026-08-14
 
 ### Changed
