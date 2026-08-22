@@ -22,6 +22,69 @@ AgentOps connects to Application Insights through
 AgentOps first tries to auto-discover the project's App Insights resource and
 falls back to that connection string when discovery is not available.
 
+## Multi-project Observe
+
+Observe can aggregate multiple Foundry resources and projects without hiding
+where a value came from. The local workspace project is the default. An
+operator may explicitly select project ARM resource IDs or widen the boundary
+to one Foundry account, resource group, or subscription. The hosted application
+stores that choice as one versioned `AGENTOPS_OBSERVE_SCOPE` setting; it does
+not infer "all projects in the deployment resource group."
+
+Discovery resolves each project's credential-free connection metadata to
+Application Insights and its backing Log Analytics workspace. Shared workspaces
+are queried once while retaining every Foundry/project origin. Observe limits a
+request to ten telemetry sources, applies filters before aggregation, and keeps
+successful source results when another source is denied, throttled, or times
+out.
+
+The four views share the same explicit filter state:
+
+- **Overview** shows bounded aggregate activity, latency, errors, and observed
+  token usage.
+- **Agents** attributes observed activity to standard `gen_ai.*` identifiers,
+  with documented external-agent fallback semantics.
+- **Models and usage** shows model/provider attribution and observed tokens,
+  not billing or quota.
+- **Telemetry coverage** explains readable, empty, denied, unconfigured,
+  unattributed, protected, timed-out, and partial sources.
+
+The default range is 24 hours. Draft filters do not query until **Apply** is
+selected. Applied filters are bookmarkable in the URL, refresh every five
+minutes, and may be refreshed manually. Raw trace content is never part of that
+URL or browser persistence.
+
+### Truthful source and dimension states
+
+Observe does not turn missing evidence into numeric zero. Every response carries
+source attribution, refresh time, query duration, source counts, partial
+failures, and dimension coverage. "Last seen" means observed activity in the
+selected range, not deployment or lifecycle status.
+
+| State | Meaning |
+|---|---|
+| Available | The source/dimension was readable and reported values. |
+| No data | The source was readable and had no matching rows in the selected range. |
+| Not configured | No linked telemetry source was found. |
+| Inaccessible | The active identity could not read the source. |
+| Not reported | Rows existed but the requested semantic dimension was absent. |
+| Partial | Some bounded sources succeeded and others did not. |
+| Error / timed out | The source failed or exceeded its query budget. |
+| Protected or unavailable | Protected content could not be proven readable, including ambiguous zero-row results. |
+
+### Aggregate access versus trace content
+
+The shared UAMI reads discovery and aggregate telemetry with `Reader` and
+`Log Analytics Reader`. It never receives `Privileged Monitoring Data Reader`.
+Raw `AppGenAIContent` loads only after an explicit trace-detail action and uses
+the signed-in user's delegated Azure Monitor permission through OBO, correlated
+by source scope, `TraceId`, and `SpanId`. There is no legacy-field fallback.
+
+Trace-content responses use `Cache-Control: no-store`; raw values never enter
+shared caches, URLs, browser storage, telemetry, diagnostics, or deployment
+artifacts. See [Operate](operate.md#shared-hosted-cockpit-and-protected-content)
+and [Deploy the hosted Cockpit](deploy-hosted-cockpit.md).
+
 !!! info "Telemetry from CI runs"
     Generated eval and Doctor workflows install OpenTelemetry support.
     Eval runs emit `agentops.eval.*` spans and scheduled Doctor runs emit

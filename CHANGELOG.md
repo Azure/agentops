@@ -5,6 +5,39 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-21
+
+### Added
+- **The Cockpit can be deployed as an authenticated, read-only Azure App
+  Service.** `agentops cockpit deploy` defaults to the current workspace
+  Foundry project, requires an infrastructure/RBAC/federation preview before
+  mutation, reuses an existing single-tenant app registration, and preserves a
+  recovery journal for safe reruns after partial failures.
+- **Observe can aggregate multiple Foundry resources and projects with truthful
+  source attribution and coverage.** Shared filters drive Overview, Agents,
+  Models and usage, and Telemetry coverage views while bounded queries preserve
+  partial results and distinguish missing evidence from numeric zero.
+
+### Security
+- **Aggregate telemetry and protected generative-AI content use separate
+  identities.** The hosted UAMI receives only Reader and Log Analytics Reader;
+  explicit `AppGenAIContent` reads use the signed-in user's delegated Azure
+  Monitor permission through OBO, return `no-store`, and never enter shared
+  caches, URLs, browser persistence, telemetry, diagnostics, or deployment
+  artifacts.
+
+### Fixed
+- **Hosted Cockpit deployment preview now works with Windows Azure CLI shims
+  and the live App Service name API.** Command execution resolves wrappers such
+  as `az.cmd`, and hostname checks use the active subscription's documented
+  `Site` availability contract before any Azure mutation.
+- **Hosted Cockpit delegated consent now targets the Log Analytics API.**
+  Deployment preflight resolves the `Data.Read` scope from the correct resource
+  application, allowing tenant administrators to grant the required permission.
+- **Developer installs include the hosted Cockpit test dependencies.** The
+  standard development environment can collect and run the FastAPI integration
+  tests used by CI.
+
 ## [0.10.0] - 2026-08-19
 
 ### Added
