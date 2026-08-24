@@ -317,6 +317,10 @@ async def test_logs_query_adapter_falls_back_when_batch_response_cannot_be_decod
     caplog: pytest.LogCaptureFixture,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    class FakeLogsBatchQuery:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
     class FakeCredential:
         async def get_token(self, scope):
             assert scope == "https://api.loganalytics.io/.default"
@@ -340,6 +344,11 @@ async def test_logs_query_adapter_falls_back_when_batch_response_cannot_be_decod
 
     monkeypatch.setattr(
         "agentops.agent.observe.adapters._query_workspace_rest", fake_rest
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "azure.monitor.query",
+        SimpleNamespace(LogsBatchQuery=FakeLogsBatchQuery),
     )
     adapter = _LogsQueryAdapter(credential=FakeCredential())
     adapter._client = FakeClient()
