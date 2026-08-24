@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-24
+
 ### Added
 - **The Cockpit Models view exposes bounded granular token usage without
   overstating telemetry coverage.** Model rows show normalized cache-read,
