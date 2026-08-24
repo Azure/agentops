@@ -17,18 +17,22 @@ from typing import Any, Sequence
 import pytest
 
 from agentops.agent.observe.cache import ObserveCache, SensitiveValueError
-from agentops.agent.observe.queries import SourceResult
+from agentops.agent.observe.queries import MAX_ROWS_PER_QUERY, SourceResult
 from agentops.agent.observe.service import (
     CACHE_TTL_SECONDS,
     ObserveResult,
     ObserveService,
     PartialFailure,
-    agent_source_kind,
+    _result_bounds,
+    _source_attribution_coverage,
+    classify_runtime,
     classify_discovery_coverage,
     classify_protected_content_coverage,
     classify_query_coverage,
     normalize_agent_row,
     normalize_model_row,
+    normalize_run_row,
+    normalize_tool_row,
     safe_failure_reason,
     token_reporting_state,
 )
@@ -87,10 +91,15 @@ def _shared_source() -> TelemetrySource:
     )
 
 
-def _inventory(sources: Sequence[TelemetrySource]) -> ResourceInventory:
+def _inventory(
+    sources: Sequence[TelemetrySource],
+    *,
+    projects: list[dict[str, Any]] | None = None,
+) -> ResourceInventory:
     now = datetime(2024, 1, 1, tzinfo=timezone.utc)
     return ResourceInventory(
         scope=_scope(),
+        projects=projects or [],
         telemetry_sources=list(sources),
         discovered_at=now,
         expires_at=now + timedelta(minutes=5),
@@ -163,10 +172,39 @@ def _service(
 # ---------------------------------------------------------------------------
 
 
-def test_agent_source_kind_prefers_foundry_id_over_name() -> None:
-    assert agent_source_kind(agent_id="agent-1", agent_name="ignored") == "foundry"
-    assert agent_source_kind(agent_id=None, agent_name="custom-bot") == "external"
-    assert agent_source_kind(agent_id=None, agent_name=None) == "unknown"
+@pytest.mark.parametrize(
+    ("agent_id", "agent_name", "provider_name", "agents", "expected"),
+    [
+        ("hosted-id", None, None, [{"id": "hosted-id", "kind": "hosted"}], "foundry_hosted"),
+        ("prompt-id", None, None, [{"id": "prompt-id", "kind": "prompt"}], "foundry_prompt"),
+        (None, "registered", None, [{"name": "registered", "kind": "custom"}], "external_registered"),
+        (None, "external", None, [], "external_unregistered"),
+        (None, None, "copilot_studio", [], "copilot_studio"),
+        ("unknown-id", None, None, [], "unknown"),
+        (None, None, None, [], "unknown"),
+    ],
+)
+def test_classify_runtime_uses_only_explicit_telemetry_and_inventory_evidence(
+    agent_id: str | None,
+    agent_name: str | None,
+    provider_name: str | None,
+    agents: list[dict[str, str]],
+    expected: str,
+) -> None:
+    inventory = _inventory([_source()], projects=[{"properties": {"agents": agents}}])
+    assert (
+        classify_runtime(
+            agent_id=agent_id,
+            agent_name=agent_name,
+            provider_name=provider_name,
+            inventory=inventory,
+        )
+        == expected
+    )
+
+
+def test_classify_runtime_does_not_preserve_retired_foundry_label_without_evidence() -> None:
+    assert classify_runtime(agent_id="previously-foundry", agent_name=None) == "unknown"
 
 
 def test_token_reporting_state_distinguishes_absence_from_zero() -> None:
@@ -191,7 +229,8 @@ def test_normalize_agent_row_attributes_project_and_foundry_resource() -> None:
     }
     agent = normalize_agent_row(row, source=source)
     assert agent.key == "agent-1"
-    assert agent.source_kind == "foundry"
+    assert agent.source_id == source.source_id
+    assert agent.source_kind == "unknown"
     assert agent.project_resource_id == _PROJECT_ID
     assert agent.foundry_resource_id == source.foundry_resource_id
     assert agent.invocations == 10
@@ -210,7 +249,7 @@ def test_normalize_agent_row_classifies_external_agent_by_name_only() -> None:
         "last_seen": datetime(2024, 1, 1, tzinfo=timezone.utc),
     }
     agent = normalize_agent_row(row, source=source)
-    assert agent.source_kind == "external"
+    assert agent.source_kind == "external_unregistered"
 
 
 def test_normalize_agent_row_requires_last_seen_timestamp() -> None:
@@ -319,6 +358,127 @@ def test_shared_workspace_missing_project_is_not_assigned_to_first_project() -> 
     assert agent.project_resource_id is None
 
 
+def test_normalize_agent_rows_from_distinct_sources_remain_distinguishable() -> None:
+    row = {
+        "agent_key": "agent-1",
+        "agent_id": "agent-1",
+        "invocations": 1,
+        "failures": 0,
+        "last_seen": datetime(2024, 1, 1, tzinfo=timezone.utc),
+    }
+    first = normalize_agent_row(row, source=_source("src-a"))
+    second = normalize_agent_row(row, source=_source("src-b"))
+
+    assert (first.key, first.source_id) == ("agent-1", "src-a")
+    assert (second.key, second.source_id) == ("agent-1", "src-b")
+
+
+def test_normalize_tool_row_preserves_source_and_omits_token_attribution() -> None:
+    source = _source()
+    tool = normalize_tool_row(
+        {
+            "tool_name": "search",
+            "agent_key": "agent-1",
+            "agent_id": "agent-1",
+            "invocations": 4,
+            "failures": 1,
+            "p95_latency_ms": None,
+            "last_seen": datetime(2024, 1, 1, 12, tzinfo=timezone.utc),
+        },
+        source=source,
+    )
+
+    assert tool.source_id == source.source_id
+    assert tool.tool_name == "search"
+    assert tool.p95_latency_ms is None
+    assert not hasattr(tool, "input_tokens")
+    assert not hasattr(tool, "output_tokens")
+
+
+def test_normalize_tool_row_rejects_missing_tool_name_instead_of_placeholder() -> None:
+    with pytest.raises(ValueError, match="tool_name"):
+        normalize_tool_row(
+            {
+                "agent_key": "agent-1",
+                "last_seen": datetime(2024, 1, 1, tzinfo=timezone.utc),
+            },
+            source=_source(),
+        )
+
+
+def test_normalize_run_row_uses_settling_margin_and_sticky_failure() -> None:
+    window_end = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    base_row = {
+        "run_key": "conversation-1",
+        "run_key_kind": "conversation",
+        "agent_key": "agent-1",
+        "started_at": datetime(2024, 1, 1, 23, tzinfo=timezone.utc),
+        "last_activity_at": window_end - timedelta(seconds=60),
+        "duration_ms": 1_000.0,
+        "turns": 2,
+        "failed_turns": 0,
+        "tool_invocations": 1,
+        "tool_failures": 0,
+        "input_tokens": None,
+        "output_tokens": 0,
+    }
+
+    in_progress = normalize_run_row(base_row, source=_source(), window_end=window_end)
+    failed = normalize_run_row(
+        {
+            **base_row,
+            "last_activity_at": window_end - timedelta(minutes=10),
+            "failed_turns": 1,
+        },
+        source=_source(),
+        window_end=window_end,
+    )
+
+    assert in_progress.status == "in_progress"
+    assert in_progress.input_tokens is None
+    assert in_progress.output_tokens == 0
+    assert failed.status == "failed"
+
+
+def test_result_bounds_only_uses_complete_per_source_totals() -> None:
+    shown = [
+        SourceResult(
+            source_id="src-a",
+            status="success",
+            tables=[{"total_in_scope": MAX_ROWS_PER_QUERY + 1}] * MAX_ROWS_PER_QUERY,
+        )
+    ]
+    bounded = _result_bounds(shown, rows_shown=MAX_ROWS_PER_QUERY)
+    unknown = _result_bounds(
+        [SourceResult(source_id="src-a", status="success", tables=[{}])],
+        rows_shown=1,
+    )
+
+    assert bounded.rows_total_in_scope == MAX_ROWS_PER_QUERY + 1
+    assert bounded.truncated is True
+    assert unknown.rows_total_in_scope is None
+    assert unknown.truncated is False
+
+
+def test_result_bounds_combines_truncated_multi_source_totals() -> None:
+    first = SourceResult(
+        source_id="src-a",
+        status="success",
+        tables=[{"total_in_scope": 600}] * MAX_ROWS_PER_QUERY,
+    )
+    second = SourceResult(
+        source_id="src-b",
+        status="success",
+        tables=[{"total_in_scope": 10}] * 10,
+    )
+
+    bounds = _result_bounds([first, second], rows_shown=MAX_ROWS_PER_QUERY)
+
+    assert bounds.rows_total_in_scope == 610
+    assert bounds.rows_shown == MAX_ROWS_PER_QUERY
+    assert bounds.truncated is True
+
+
 # ---------------------------------------------------------------------------
 # T056/T059/T060: deterministic coverage classification, safe reasons.
 # ---------------------------------------------------------------------------
@@ -392,6 +552,54 @@ def test_classify_query_coverage_unreported_dimension_is_not_reported() -> None:
         refreshed_at=refreshed_at,
     )
     assert result.state == "not_reported"
+
+
+@pytest.mark.parametrize(
+    ("source_state", "dimension", "expected_state"),
+    [
+        ("inaccessible", "tool_attribution", "inaccessible"),
+        ("not_configured", "tool_attribution", "not_configured"),
+        ("inaccessible", "run_correlation", "inaccessible"),
+        ("not_configured", "run_correlation", "not_configured"),
+    ],
+)
+def test_new_attribution_coverage_explains_unavailable_sources(
+    source_state: str, dimension: str, expected_state: str
+) -> None:
+    result = _source_attribution_coverage(
+        _source(state=source_state),
+        dimension=dimension,  # type: ignore[arg-type]
+        refreshed_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+    assert result.state == expected_state
+    assert result.reason
+    assert result.next_action
+
+
+@pytest.mark.parametrize("dimension", ["tool_attribution", "run_correlation"])
+@pytest.mark.parametrize(
+    ("status", "row_count", "reported", "expected_state"),
+    [
+        ("success", 0, True, "no_data"),
+        ("success", 1, False, "not_reported"),
+        ("partial", 1, True, "partial"),
+    ],
+)
+def test_new_attribution_coverage_distinguishes_data_gaps(
+    dimension: str, status: str, row_count: int, reported: bool, expected_state: str
+) -> None:
+    result = classify_query_coverage(
+        source_id="src-1",
+        dimension=dimension,  # type: ignore[arg-type]
+        status=status,  # type: ignore[arg-type]
+        row_count=row_count,
+        reported=reported,
+        refreshed_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+    assert result.state == expected_state
+    if expected_state != "available":
+        assert result.reason
+        assert result.next_action
 
 
 @pytest.mark.parametrize(
@@ -480,7 +688,7 @@ async def test_query_view_normalizes_rows_and_reports_source_attribution() -> No
     assert len(result.data) == 1
     agent = result.data[0]
     assert agent.key == "agent-1"
-    assert agent.source_kind == "foundry"
+    assert agent.source_kind == "unknown"
     assert agent.project_resource_id == _PROJECT_ID
     assert query.calls[0][1] == "agents"
     dimensions = {c.dimension for c in result.coverage}
@@ -488,6 +696,133 @@ async def test_query_view_normalizes_rows_and_reports_source_attribution() -> No
     assert "telemetry_connection" in dimensions
     assert "agent_attribution" in dimensions
     assert "token_usage" in dimensions
+
+
+@pytest.mark.asyncio
+async def test_query_view_tools_normalizes_rows_and_explains_unattributed_activity() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    result = SourceResult(
+        source_id="src-1",
+        status="success",
+        tables=[
+            {
+                "tool_name": "search",
+                "agent_key": "agent-1",
+                "agent_id": "agent-1",
+                "last_seen": datetime(2024, 1, 1, 8, tzinfo=timezone.utc),
+                "invocations": 4,
+                "failures": 0,
+                "total_in_scope": 2,
+            },
+            {
+                "agent_key": "agent-1",
+                "last_seen": datetime(2024, 1, 1, 8, tzinfo=timezone.utc),
+                "total_in_scope": 2,
+            },
+        ],
+    )
+    service, _discovery, query = _service(inventory=inventory, results=[result], clock=clock)
+
+    observed = await service.query_view(_scope(), _filters(), view="tools")
+
+    assert query.calls[0][1] == "tools"
+    assert [(tool.tool_name, tool.source_id) for tool in observed.data] == [("search", "src-1")]
+    assert observed.bounds is not None
+    assert observed.bounds.rows_shown == 1
+    assert observed.bounds.rows_total_in_scope is None
+    assert observed.bounds.truncated is False
+    coverage = [item for item in observed.coverage if item.dimension == "tool_attribution"]
+    assert any(item.state == "error" and item.reason and item.next_action for item in coverage)
+
+
+@pytest.mark.asyncio
+async def test_query_view_tools_reports_execute_tool_rows_without_names() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    result = SourceResult(
+        source_id="src-1",
+        status="success",
+        tables=[
+            {
+                "total_in_scope": 0,
+                "unattributed_count": 3,
+                "_metadata_only": True,
+            }
+        ],
+    )
+    service, _discovery, _query = _service(
+        inventory=inventory, results=[result], clock=clock
+    )
+
+    observed = await service.query_view(_scope(), _filters(), view="tools")
+
+    assert observed.data == []
+    assert observed.bounds is not None
+    assert observed.bounds.rows_shown == 0
+    assert observed.bounds.rows_total_in_scope == 0
+    coverage = [item for item in observed.coverage if item.dimension == "tool_attribution"]
+    assert coverage[-1].state == "not_reported"
+    assert coverage[-1].reason
+    assert coverage[-1].next_action
+
+
+@pytest.mark.asyncio
+async def test_query_view_runs_normalizes_window_scoped_status_and_coverage() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    run = {
+        "run_key": "trace-1",
+        "run_key_kind": "trace",
+        "agent_key": "agent-1",
+        "started_at": datetime(2024, 1, 1, 8, tzinfo=timezone.utc),
+        "last_activity_at": datetime(2024, 1, 1, 12, tzinfo=timezone.utc),
+        "turns": 1,
+        "failed_turns": 0,
+        "tool_invocations": 0,
+        "tool_failures": 0,
+        "input_tokens": None,
+        "output_tokens": None,
+        "total_in_scope": 1,
+    }
+    service, _discovery, query = _service(
+        inventory=inventory,
+        results=[SourceResult(source_id="src-1", status="success", tables=[run])],
+        clock=clock,
+    )
+
+    observed = await service.query_view(_scope(), _filters(), view="runs")
+
+    assert query.calls[0][1] == "runs"
+    assert observed.data[0].status == "succeeded"
+    assert observed.data[0].run_key_kind == "trace"
+    assert observed.data[0].input_tokens is None
+    assert observed.bounds is not None
+    assert observed.bounds.rows_total_in_scope == 1
+    run_coverage = [item for item in observed.coverage if item.dimension == "run_correlation"]
+    assert run_coverage[-1].state == "available"
+    assert run_coverage[-1].reason
+    assert run_coverage[-1].next_action
+
+
+@pytest.mark.asyncio
+async def test_query_view_caches_bounds_and_keeps_them_stable_on_cache_hits() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    result = _agent_rows_result()
+    result = SourceResult(
+        source_id=result.source_id,
+        status=result.status,
+        tables=[{**result.tables[0], "total_in_scope": 1}],
+    )
+    service, _discovery, _query = _service(inventory=inventory, results=[result], clock=clock)
+
+    first = await service.query_view(_scope(), _filters(), view="agents")
+    second = await service.query_view(_scope(), _filters(), view="agents")
+
+    assert first.bounds is not None
+    assert second.bounds == first.bounds
+    assert second.bounds.rows_total_in_scope == 1
 
 
 @pytest.mark.asyncio

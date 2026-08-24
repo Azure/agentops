@@ -15,15 +15,19 @@ import builtins
 import sys
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from typing import Literal
 
 import pytest
 
 from agentops.agent.observe.adapters import (
     AzureDiscoveryClient,
     AzureQueryClient,
+    _VIEW_QUERY_BUILDERS,
     _ApplicationInsightsAdapter,
+    _LogsQueryAdapter,
     _default_project_connections,
     _flatten_logs_query_response,
+    _flatten_logs_rest_payload,
     _flatten_logs_table,
     _project_endpoint_from_arm_id,
     _ResourceGraphAdapter,
@@ -231,6 +235,19 @@ def test_flatten_logs_table_accepts_plain_string_columns() -> None:
     assert _flatten_logs_table(table) == [{"a": 1, "b": 2}]
 
 
+def test_flatten_logs_table_preserves_total_in_scope_without_fabricating_it() -> None:
+    totals = SimpleNamespace(columns=["agent_key", "total_in_scope"], rows=[["agent-1", 12]])
+    no_totals = SimpleNamespace(columns=["agent_key"], rows=[["agent-2"]])
+
+    assert _flatten_logs_table(totals) == [{"agent_key": "agent-1", "total_in_scope": 12}]
+    assert _flatten_logs_table(no_totals) == [{"agent_key": "agent-2"}]
+
+
+def test_view_query_builders_register_tools_and_runs() -> None:
+    assert _VIEW_QUERY_BUILDERS["tools"].__name__ == "build_tools_query"
+    assert _VIEW_QUERY_BUILDERS["runs"].__name__ == "build_runs_query"
+
+
 def test_flatten_logs_query_response_success_has_no_error() -> None:
     response = SimpleNamespace(
         tables=[SimpleNamespace(columns=["a"], rows=[[1]])],
@@ -268,6 +285,83 @@ def test_flatten_logs_query_response_partial_flattens_partial_data() -> None:
     assert item.partial_error.code == "PartialError"
     assert item.partial_data == [{"a": 1}]
     assert item.tables == [{"a": 1}]
+
+
+def test_flatten_logs_rest_payload_converts_datetime_columns() -> None:
+    item = _flatten_logs_rest_payload(
+        {
+            "tables": [
+                {
+                    "columns": [
+                        {"name": "last_seen", "type": "datetime"},
+                        {"name": "invocations", "type": "long"},
+                    ],
+                    "rows": [["2026-04-01T12:30:45.1234567Z", 3]],
+                }
+            ]
+        }
+    )
+
+    assert item.tables == [
+        {
+            "last_seen": datetime(
+                2026, 4, 1, 12, 30, 45, 123456, tzinfo=timezone.utc
+            ),
+            "invocations": 3,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_logs_query_adapter_falls_back_when_batch_response_cannot_be_decoded(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeCredential:
+        async def get_token(self, scope):
+            assert scope == "https://api.loganalytics.io/.default"
+            return SimpleNamespace(token="access-token")
+
+    class FakeClient:
+        async def query_batch(self, batch, *, headers):
+            assert headers == {"Accept-Encoding": "identity"}
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid byte")
+
+    rest_calls: list[dict[str, object]] = []
+
+    def fake_rest(**kwargs):
+        rest_calls.append(kwargs)
+        return SimpleNamespace(
+            error=None,
+            partial_error=None,
+            tables=[{"value": "ok"}],
+            status="SUCCESS",
+        )
+
+    monkeypatch.setattr(
+        "agentops.agent.observe.adapters._query_workspace_rest", fake_rest
+    )
+    adapter = _LogsQueryAdapter(credential=FakeCredential())
+    adapter._client = FakeClient()
+    request = SimpleNamespace(
+        workspace_id="workspace-1",
+        query="AppDependencies | take 1",
+        timespan=timedelta(days=1),
+        server_timeout_seconds=45,
+    )
+
+    result = await adapter.query_batch([request])
+
+    assert result[0].tables == [{"value": "ok"}]
+    assert rest_calls == [
+        {
+            "workspace_id": "workspace-1",
+            "query": "AppDependencies | take 1",
+            "access_token": "access-token",
+            "timeout_seconds": 45,
+        }
+    ]
+    assert "through the Logs REST endpoint" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +429,25 @@ async def test_azure_query_client_skips_sources_without_workspace_id() -> None:
     assert len(fake_logs_client.batches) == 1
     assert len(fake_logs_client.batches[0]) == 1
     assert len(results) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("view", "expected_query_fragment"),
+    [("tools", "gen_ai.tool.name"), ("runs", "run_key_kind")],
+)
+async def test_azure_query_client_dispatches_tools_and_runs_to_registered_builders(
+    view: Literal["tools", "runs"], expected_query_fragment: str
+) -> None:
+    client = AzureQueryClient(credential="fake-credential")
+    fake_logs_client = _FakeLogsClient()
+    client._logs_client = fake_logs_client
+
+    await client.query([_make_source("source-1")], _make_filters(), view=view)
+
+    (request,) = fake_logs_client.batches[0]
+    assert expected_query_fragment in request.query
+    assert "total_in_scope" in request.query
 
 
 @pytest.mark.asyncio
