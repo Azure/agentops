@@ -903,6 +903,7 @@ def render_runs_table(
     rows = []
     for run in runs:
         agent = _get(run, "agent_name") or _get(run, "agent_id") or _get(run, "agent_key") or "Not reported"
+        started_at = _coerce_datetime(_get(run, "started_at"))
         rows.append(
             "<tr>"
             f"<td>{html_escape(_get(run, 'run_key') or 'Not reported')}</td>"
@@ -910,7 +911,7 @@ def render_runs_table(
             f"<td>{html_escape(agent)}</td>"
             f"<td>{html_escape(_get(run, 'source_id') or 'Not reported')}</td>"
             f"<td>{_render_source_kind_badge(_get(run, 'source_kind'))}</td>"
-            f"<td>{html_escape(_format_iso(_coerce_datetime(_get(run, 'started_at'))) if _coerce_datetime(_get(run, 'started_at')) else 'Not reported')}</td>"
+            f"<td>{html_escape(_format_iso(started_at) if started_at else 'Not reported')}</td>"
             f"<td>{_render_maybe_missing(_get(run, 'duration_ms'), suffix=' ms')}</td>"
             f"<td>{html_escape(_get(run, 'status') or 'Not reported')}</td>"
             f"<td>{_render_maybe_missing(_get(run, 'turns'))}</td>"

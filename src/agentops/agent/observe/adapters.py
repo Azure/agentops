@@ -382,7 +382,9 @@ class _LogsQueryAdapter:
         )
         flattened: list[_FlattenedBatchItem] = []
         for response in responses:
-            if isinstance(response, Exception):
+            if isinstance(response, BaseException):
+                if not isinstance(response, Exception):
+                    raise response
                 flattened.append(_FlattenedBatchItem(error=response))
             else:
                 flattened.append(response)
