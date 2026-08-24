@@ -17,12 +17,19 @@ aggregates are ever passed to :meth:`ObserveCache.set`.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Literal, Mapping, Protocol, Sequence
 
 from agentops.agent.observe.cache import ObserveCache
-from agentops.agent.observe.queries import MAX_ROWS_PER_QUERY, SourceResult, SourceStatus
+from agentops.agent.observe.queries import (
+    MAX_ROWS_PER_QUERY,
+    TOKEN_CLASS_ALIASES,
+    TOKEN_CLASS_ALIAS_NAMES,
+    SourceResult,
+    SourceStatus,
+)
 from agentops.core.observe import (
     CoverageResult,
     CoverageState,
@@ -283,6 +290,68 @@ def token_reporting_state(
     return "reported" if input_tokens is not None or output_tokens is not None else "not_reported"
 
 
+@dataclass(frozen=True)
+class TokenClassInventory:
+    state: Literal["reported", "partial", "not_reported"]
+    reported_classes: tuple[str, ...]
+    missing_classes: tuple[str, ...]
+    partially_reported_classes: tuple[str, ...] = ()
+
+
+_TOKEN_CLASS_FIELDS = (
+    ("cache-read", "cache_read_tokens"),
+    ("cache-write", "cache_write_tokens"),
+    ("reasoning", "reasoning_tokens"),
+)
+
+
+def token_class_inventory(rows: Sequence[ModelUsage]) -> TokenClassInventory:
+    """Summarize normalized class reporting across rows that carry token data."""
+    qualifying_rows = [
+        row
+        for row in rows
+        if any(
+            value is not None
+            for value in (
+                row.input_tokens,
+                row.output_tokens,
+                row.cache_read_tokens,
+                row.cache_write_tokens,
+                row.reasoning_tokens,
+            )
+        )
+        or bool(row.additional_token_classes)
+    ]
+    reported_classes = tuple(
+        label
+        for label, field in _TOKEN_CLASS_FIELDS
+        if any(getattr(row, field) is not None for row in qualifying_rows)
+    )
+    missing_classes = tuple(
+        label for label, _field in _TOKEN_CLASS_FIELDS if label not in reported_classes
+    )
+    partially_reported_names = {
+        label
+        for row in qualifying_rows
+        for label in row.partially_reported_token_classes
+    }
+    partially_reported_classes = tuple(
+        label for label, _field in _TOKEN_CLASS_FIELDS if label in partially_reported_names
+    )
+    if not reported_classes:
+        state: Literal["reported", "partial", "not_reported"] = "not_reported"
+    elif missing_classes or partially_reported_classes:
+        state = "partial"
+    else:
+        state = "reported"
+    return TokenClassInventory(
+        state=state,
+        reported_classes=reported_classes,
+        missing_classes=missing_classes,
+        partially_reported_classes=partially_reported_classes,
+    )
+
+
 def _project_resource_id_for_row(
     row: Mapping[str, Any], *, source: TelemetrySource
 ) -> str | None:
@@ -458,6 +527,71 @@ def normalize_run_row(
 def normalize_model_row(row: Mapping[str, Any], *, source: TelemetrySource) -> ModelUsage:
     """Normalize one ``build_models_query`` result row into a :class:`ModelUsage`."""
     project_resource_id = _project_resource_id_for_row(row, source=source)
+    raw_classes = row.get("extra_token_classes")
+    if isinstance(raw_classes, Mapping):
+        candidates = dict(raw_classes)
+    elif isinstance(raw_classes, str) and raw_classes.strip():
+        try:
+            decoded_classes = json.loads(raw_classes)
+        except json.JSONDecodeError as exc:
+            raise ValueError("extra_token_classes must be a JSON object") from exc
+        if not isinstance(decoded_classes, Mapping):
+            raise ValueError("extra_token_classes must be a JSON object")
+        candidates = dict(decoded_classes)
+    else:
+        candidates = {}
+
+    def token_count(value: Any) -> int | None:
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        if number < 0 or not number.is_integer():
+            return None
+        return int(number)
+
+    normalized: dict[str, int | None] = {}
+    for token_class, aliases in TOKEN_CLASS_ALIASES.items():
+        value = token_count(row.get(f"{token_class}_tokens"))
+        if value is None:
+            value = next(
+                (
+                    parsed
+                    for alias in aliases
+                    if (parsed := token_count(candidates.get(alias))) is not None
+                ),
+                None,
+            )
+        normalized[token_class] = value
+        for alias in aliases:
+            candidates.pop(alias, None)
+
+    additional_candidates = {
+        name: parsed
+        for name, value in candidates.items()
+        if isinstance(name, str)
+        and name.startswith("gen_ai.usage.")
+        and name not in TOKEN_CLASS_ALIAS_NAMES
+        and name not in {"gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens"}
+        and (parsed := token_count(value)) is not None
+    }
+    ordered_additional = dict(sorted(additional_candidates.items()))
+    additional_token_classes = dict(list(ordered_additional.items())[:5])
+    token_class_values = tuple(normalized[name] for name in TOKEN_CLASS_ALIASES)
+    reported_classes = sum(value is not None for value in token_class_values)
+
+    def is_true(value: Any) -> bool:
+        return value is True or (
+            isinstance(value, str) and value.strip().lower() == "true"
+        )
+
+    partially_reported_token_classes = tuple(
+        label
+        for label, field in _TOKEN_CLASS_FIELDS
+        if is_true(row.get(f"{field}_partial"))
+    )
     return ModelUsage(
         project_resource_id=project_resource_id,
         agent_id=row.get("agent_id") or None,
@@ -468,6 +602,16 @@ def normalize_model_row(row: Mapping[str, Any], *, source: TelemetrySource) -> M
         p95_latency_ms=row.get("p95_latency_ms"),
         input_tokens=row.get("input_tokens"),
         output_tokens=row.get("output_tokens"),
+        cache_read_tokens=token_class_values[0],
+        cache_write_tokens=token_class_values[1],
+        reasoning_tokens=token_class_values[2],
+        additional_token_classes=additional_token_classes,
+        additional_token_classes_truncated=len(ordered_additional) > 5,
+        partially_reported_token_classes=partially_reported_token_classes,
+        token_classes_partial=(
+            bool(partially_reported_token_classes)
+            or 0 < reported_classes < len(token_class_values)
+        ),
         last_seen=row.get("last_seen"),
     )
 
@@ -577,7 +721,7 @@ def classify_query_coverage(
     ],
     status: SourceStatus,
     row_count: int,
-    reported: bool = True,
+    reported: bool | Literal["reported", "partial", "not_reported"] | TokenClassInventory = True,
     reason: str | None = None,
     refreshed_at: datetime,
 ) -> CoverageResult:
@@ -590,15 +734,42 @@ def classify_query_coverage(
     since :data:`~agentops.core.observe.CoverageState` has no dedicated
     state for either.
     """
+    inventory = reported if isinstance(reported, TokenClassInventory) else None
+    if inventory is not None:
+        reporting_state = inventory.state
+    elif reported == "partial":
+        reporting_state = "partial"
+    elif reported in (False, "not_reported"):
+        reporting_state = "not_reported"
+    else:
+        reporting_state = "reported"
+
     if status == "success":
         if row_count == 0:
             state: CoverageState = "no_data"
             default_reason = "No matching telemetry rows were found in this window."
             next_action = "Widen the time range or confirm the workload was active."
-        elif not reported:
+        elif reporting_state == "not_reported":
             state = "not_reported"
             default_reason = "Telemetry rows exist but do not report this dimension."
             next_action = "Confirm the workload emits the expected gen_ai.* attributes."
+        elif reporting_state == "partial":
+            state = "partial"
+            reported_names = ", ".join(inventory.reported_classes) if inventory else "some"
+            missing_names = ", ".join(inventory.missing_classes) if inventory else "some"
+            partial_names = (
+                ", ".join(inventory.partially_reported_classes) if inventory else ""
+            )
+            reason_parts = [f"Reported granular token classes: {reported_names}."]
+            action_parts: list[str] = []
+            if partial_names:
+                reason_parts.append(f"Intermittently reported: {partial_names}.")
+                action_parts.append(f"emit {partial_names} consistently")
+            if missing_names:
+                reason_parts.append(f"Not reported: {missing_names}.")
+                action_parts.append(f"emit {missing_names} under gen_ai.usage.*")
+            default_reason = " ".join(reason_parts)
+            next_action = "Configure instrumentation to " + " and ".join(action_parts) + "."
         else:
             state = "available"
             default_reason = "Telemetry rows were returned for this window."
@@ -1065,9 +1236,12 @@ class ObserveService:
                 if source is None:
                     continue
                 rows = list(result.tables or [])
+                source_models: list[ModelUsage] = []
                 for row in rows:
                     try:
-                        models.append(normalize_model_row(row, source=source))
+                        model_usage = normalize_model_row(row, source=source)
+                        models.append(model_usage)
+                        source_models.append(model_usage)
                     except ValueError as exc:
                         coverage.append(
                             CoverageResult(
@@ -1089,6 +1263,17 @@ class ObserveService:
                         dimension="model_attribution",
                         status=result.status,
                         row_count=len(rows),
+                        reason=result.reason,
+                        refreshed_at=refreshed_at,
+                    )
+                )
+                coverage.append(
+                    classify_query_coverage(
+                        source_id=result.source_id,
+                        dimension="token_usage",
+                        status=result.status,
+                        row_count=len(rows),
+                        reported=token_class_inventory(source_models),
                         reason=result.reason,
                         refreshed_at=refreshed_at,
                     )

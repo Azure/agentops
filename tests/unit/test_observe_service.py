@@ -23,6 +23,7 @@ from agentops.agent.observe.service import (
     ObserveResult,
     ObserveService,
     PartialFailure,
+    TokenClassInventory,
     _result_bounds,
     _source_attribution_coverage,
     classify_runtime,
@@ -34,9 +35,11 @@ from agentops.agent.observe.service import (
     normalize_run_row,
     normalize_tool_row,
     safe_failure_reason,
+    token_class_inventory,
     token_reporting_state,
 )
 from agentops.core.observe import (
+    ModelUsage,
     ObserveFilterState,
     ObserveScope,
     ResourceInventory,
@@ -213,6 +216,17 @@ def test_token_reporting_state_distinguishes_absence_from_zero() -> None:
     assert token_reporting_state(input_tokens=None, output_tokens=5) == "reported"
 
 
+def test_model_usage_new_token_class_fields_have_backward_compatible_defaults() -> None:
+    usage = ModelUsage(requests=1, failures=0)
+    assert usage.cache_read_tokens is None
+    assert usage.cache_write_tokens is None
+    assert usage.reasoning_tokens is None
+    assert usage.additional_token_classes == {}
+    assert usage.additional_token_classes_truncated is False
+    assert usage.partially_reported_token_classes == ()
+    assert usage.token_classes_partial is False
+
+
 def test_normalize_agent_row_attributes_project_and_foundry_resource() -> None:
     source = _source()
     row = {
@@ -275,6 +289,156 @@ def test_normalize_model_row_reads_deployment_and_tokens() -> None:
     assert usage.project_resource_id == _PROJECT_ID
     assert usage.requests == 5
     assert usage.failures == 1
+
+
+@pytest.mark.parametrize(
+    ("row", "expected", "partial"),
+    [
+        (
+            {
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 12,
+                "reasoning_tokens": 3,
+            },
+            (0, 12, 3),
+            False,
+        ),
+        (
+            {"cache_read_tokens": 9, "reasoning_tokens": 4},
+            (9, None, 4),
+            True,
+        ),
+        ({}, (None, None, None), False),
+    ],
+)
+def test_normalize_model_row_preserves_token_class_absence_and_zero(
+    row: dict[str, Any], expected: tuple[int | None, ...], partial: bool
+) -> None:
+    usage = normalize_model_row({"requests": 1, "failures": 0, **row}, source=_source())
+    assert (
+        usage.cache_read_tokens,
+        usage.cache_write_tokens,
+        usage.reasoning_tokens,
+    ) == expected
+    assert usage.token_classes_partial is partial
+
+
+def test_normalize_model_row_preserves_intermittently_reported_classes() -> None:
+    usage = normalize_model_row(
+        {
+            "requests": 3,
+            "failures": 0,
+            "input_tokens": 30,
+            "output_tokens": 12,
+            "cache_read_tokens": 7,
+            "cache_write_tokens": 5,
+            "reasoning_tokens": 9,
+            "cache_read_tokens_partial": True,
+            "cache_write_tokens_partial": False,
+            "reasoning_tokens_partial": "true",
+        },
+        source=_source(),
+    )
+
+    assert usage.partially_reported_token_classes == ("cache-read", "reasoning")
+    assert usage.token_classes_partial is True
+
+
+@pytest.mark.parametrize(
+    ("attribute", "expected_field"),
+    [
+        ("gen_ai.usage.cache_write.input_tokens", "cache_write_tokens"),
+        ("gen_ai.usage.cache_creation.input_tokens", "cache_write_tokens"),
+        ("gen_ai.usage.reasoning.output_tokens", "reasoning_tokens"),
+        ("gen_ai.usage.reasoning_tokens", "reasoning_tokens"),
+    ],
+)
+def test_normalize_model_row_maps_distinct_aliases_to_one_class(
+    attribute: str, expected_field: str
+) -> None:
+    usage = normalize_model_row(
+        {
+            "requests": 1,
+            "failures": 0,
+            "extra_token_classes": {attribute: 17},
+        },
+        source=_source(),
+    )
+    assert getattr(usage, expected_field) == 17
+    assert usage.additional_token_classes == {}
+
+
+def test_normalize_model_row_uses_first_present_alias_without_double_counting() -> None:
+    usage = normalize_model_row(
+        {
+            "requests": 1,
+            "failures": 0,
+            "extra_token_classes": {
+                "gen_ai.usage.cache_write.input_tokens": 100,
+                "gen_ai.usage.cache_creation.input_tokens": 100,
+            },
+        },
+        source=_source(),
+    )
+    assert usage.cache_write_tokens == 100
+    assert usage.additional_token_classes == {}
+
+
+def test_normalize_model_row_parses_log_analytics_dynamic_json() -> None:
+    usage = normalize_model_row(
+        {
+            "requests": 2,
+            "failures": 0,
+            "extra_token_classes": (
+                '{"gen_ai.usage.audio.input_tokens":2,'
+                '"gen_ai.usage.audio.output_tokens":3}'
+            ),
+        },
+        source=_source(),
+    )
+    assert usage.additional_token_classes == {
+        "gen_ai.usage.audio.input_tokens": 2,
+        "gen_ai.usage.audio.output_tokens": 3,
+    }
+
+
+def test_normalize_model_row_retains_only_eligible_additional_classes() -> None:
+    usage = normalize_model_row(
+        {
+            "requests": 1,
+            "failures": 0,
+            "extra_token_classes": {
+                "gen_ai.usage.audio_tokens": 8,
+                "gen_ai.usage.negative_tokens": -1,
+                "gen_ai.usage.text_tokens": "invalid",
+                "other.usage.image_tokens": 9,
+            },
+        },
+        source=_source(),
+    )
+    assert usage.additional_token_classes == {"gen_ai.usage.audio_tokens": 8}
+    assert usage.cache_read_tokens is None
+    assert usage.cache_write_tokens is None
+    assert usage.reasoning_tokens is None
+
+
+def test_normalize_model_row_caps_sorted_additional_classes_and_marks_truncation() -> None:
+    attributes = {
+        f"gen_ai.usage.custom_{suffix}_tokens": value
+        for value, suffix in enumerate(("g", "f", "e", "d", "c", "b", "a"), start=1)
+    }
+    usage = normalize_model_row(
+        {"requests": 1, "failures": 0, "extra_token_classes": attributes},
+        source=_source(),
+    )
+    assert list(usage.additional_token_classes) == [
+        "gen_ai.usage.custom_a_tokens",
+        "gen_ai.usage.custom_b_tokens",
+        "gen_ai.usage.custom_c_tokens",
+        "gen_ai.usage.custom_d_tokens",
+        "gen_ai.usage.custom_e_tokens",
+    ]
+    assert usage.additional_token_classes_truncated is True
 
 
 def test_shared_workspace_rows_preserve_their_canonical_project_attribution() -> None:
@@ -554,6 +718,152 @@ def test_classify_query_coverage_unreported_dimension_is_not_reported() -> None:
     assert result.state == "not_reported"
 
 
+def test_token_class_inventory_skips_tokenless_rows_and_reports_missing_classes() -> None:
+    tokenless = ModelUsage(requests=1, failures=0)
+    cache_only = ModelUsage(
+        requests=1,
+        failures=0,
+        input_tokens=10,
+        output_tokens=2,
+        cache_read_tokens=4,
+        token_classes_partial=True,
+    )
+    inventory = token_class_inventory([tokenless, cache_only])
+    assert inventory.state == "partial"
+    assert inventory.reported_classes == ("cache-read",)
+    assert inventory.missing_classes == ("cache-write", "reasoning")
+
+
+def test_token_class_inventory_preserves_intermittent_reporting_across_rows() -> None:
+    inventory = token_class_inventory(
+        [
+            ModelUsage(
+                requests=3,
+                failures=0,
+                input_tokens=30,
+                cache_read_tokens=7,
+                cache_write_tokens=5,
+                reasoning_tokens=9,
+                partially_reported_token_classes=("cache-read",),
+                token_classes_partial=True,
+            ),
+            ModelUsage(
+                requests=1,
+                failures=0,
+                input_tokens=10,
+                cache_read_tokens=2,
+                cache_write_tokens=1,
+                reasoning_tokens=3,
+            ),
+        ]
+    )
+
+    assert inventory.state == "partial"
+    assert inventory.reported_classes == ("cache-read", "cache-write", "reasoning")
+    assert inventory.missing_classes == ()
+    assert inventory.partially_reported_classes == ("cache-read",)
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        ([], "not_reported"),
+        ([ModelUsage(requests=1, failures=0, input_tokens=1)], "not_reported"),
+        (
+            [
+                ModelUsage(
+                    requests=1,
+                    failures=0,
+                    input_tokens=1,
+                    cache_read_tokens=1,
+                )
+            ],
+            "partial",
+        ),
+        (
+            [
+                ModelUsage(
+                    requests=1,
+                    failures=0,
+                    input_tokens=1,
+                    cache_read_tokens=1,
+                    cache_write_tokens=2,
+                    reasoning_tokens=3,
+                )
+            ],
+            "reported",
+        ),
+    ],
+)
+def test_token_class_inventory_has_three_deterministic_states(
+    rows: list[ModelUsage], expected: str
+) -> None:
+    assert token_class_inventory(rows).state == expected
+
+
+def test_classify_query_coverage_partial_inventory_names_present_and_missing_classes() -> None:
+    result = classify_query_coverage(
+        source_id="src-1",
+        dimension="token_usage",
+        status="success",
+        row_count=1,
+        reported=TokenClassInventory(
+            state="partial",
+            reported_classes=("cache-read",),
+            missing_classes=("cache-write", "reasoning"),
+        ),
+        refreshed_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+    assert result.state == "partial"
+    assert "cache-read" in result.reason
+    assert "cache-write" in result.reason
+    assert "reasoning" in result.reason
+    assert "cache-write" in result.next_action
+    text = f"{result.reason} {result.next_action}".lower()
+    for forbidden in ("cost", "price", "rate", "spend", "charge", "billing"):
+        assert forbidden not in text.split()
+    assert "src-1" not in text
+    assert "union appdependencies" not in text
+
+
+def test_classify_query_coverage_names_intermittently_reported_classes() -> None:
+    result = classify_query_coverage(
+        source_id="src-1",
+        dimension="token_usage",
+        status="success",
+        row_count=1,
+        reported=TokenClassInventory(
+            state="partial",
+            reported_classes=("cache-read", "cache-write", "reasoning"),
+            missing_classes=(),
+            partially_reported_classes=("cache-read",),
+        ),
+        refreshed_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+
+    assert result.state == "partial"
+    assert "cache-read" in result.reason
+    assert "cache-read" in result.next_action
+    assert "consistently" in result.next_action
+
+
+def test_query_failure_precedes_partial_token_inventory() -> None:
+    result = classify_query_coverage(
+        source_id="src-1",
+        dimension="token_usage",
+        status="timeout",
+        row_count=1,
+        reported=TokenClassInventory(
+            state="partial",
+            reported_classes=("cache-read",),
+            missing_classes=("cache-write", "reasoning"),
+        ),
+        refreshed_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+    )
+    assert result.state == "error"
+    assert "time budget" in result.reason
+
+
 @pytest.mark.parametrize(
     ("source_state", "dimension", "expected_state"),
     [
@@ -823,6 +1133,43 @@ async def test_query_view_caches_bounds_and_keeps_them_stable_on_cache_hits() ->
     assert first.bounds is not None
     assert second.bounds == first.bounds
     assert second.bounds.rows_total_in_scope == 1
+
+
+@pytest.mark.asyncio
+async def test_models_view_emits_token_usage_coverage_without_changing_agents_entry() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    model_result = SourceResult(
+        source_id="src-1",
+        status="success",
+        tables=[
+            {
+                "model": "gpt-4o",
+                "requests": 1,
+                "failures": 0,
+                "input_tokens": 10,
+                "output_tokens": 2,
+                "cache_read_tokens": 4,
+            }
+        ],
+    )
+    models_service, _, _ = _service(
+        inventory=inventory, results=[model_result], clock=clock
+    )
+    models_result = await models_service.query_view(_scope(), _filters(), view="models")
+    models_coverage = {
+        item.dimension: item for item in models_result.coverage if item.source_id == "src-1"
+    }
+    assert models_coverage["token_usage"].state == "partial"
+
+    agents_service, _, _ = _service(
+        inventory=inventory, results=[_agent_rows_result()], clock=clock
+    )
+    agents_result = await agents_service.query_view(_scope(), _filters(), view="agents")
+    agents_coverage = {
+        item.dimension: item for item in agents_result.coverage if item.source_id == "src-1"
+    }
+    assert agents_coverage["token_usage"].state == "available"
 
 
 @pytest.mark.asyncio

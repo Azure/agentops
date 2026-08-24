@@ -570,6 +570,106 @@ def test_render_models_usage_table_zero_failures_is_distinct_from_missing() -> N
     assert "0%" in html
 
 
+def test_render_models_usage_table_renders_each_token_class_and_partial_state() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                cache_read_tokens=0,
+                cache_write_tokens=None,
+                reasoning_tokens=12,
+                token_classes_partial=True,
+            )
+        ]
+    )
+    assert "Cache read" in html
+    assert "Cache write" in html
+    assert "Reasoning" in html
+    assert "Partial class coverage" in html
+    assert "metric-zero" in html
+    assert "Not reported" in html
+    assert "(observed usage, not billing data)" in html
+
+
+def test_render_models_usage_table_marks_intermittent_class_reporting() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                cache_read_tokens=8,
+                cache_write_tokens=4,
+                reasoning_tokens=2,
+                partially_reported_token_classes=("cache-read",),
+                token_classes_partial=True,
+            )
+        ]
+    )
+
+    assert "Cache read" in html
+    assert ">8<" in html
+    assert "Partial class coverage" in html
+
+
+def test_script_models_renderer_mirrors_token_class_fields_and_labels() -> None:
+    script = ui._OBSERVE_SCRIPT
+    for field in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
+        assert f"entry.{field}" in script
+    for label in ("Cache read", "Cache write", "Reasoning", "Partial class coverage"):
+        assert label in script
+
+
+def test_models_renderers_show_additional_classes_and_truncation() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                additional_token_classes={"gen_ai.usage.audio_tokens": 7},
+                additional_token_classes_truncated=True,
+            )
+        ]
+    )
+    assert "gen_ai.usage.audio_tokens" in html
+    assert ">7<" in html
+    assert "Additional classes truncated" in html
+
+    script = ui._OBSERVE_SCRIPT
+    assert "entry.additional_token_classes" in script
+    assert "entry.additional_token_classes_truncated" in script
+    assert "Additional classes truncated" in script
+
+
+def test_existing_token_totals_are_byte_identical_across_existing_surfaces() -> None:
+    expected = (
+        '<span class="observe-token-totals">'
+        '<span class="observe-token-in">In: '
+        '<span class="observe-metric metric-value">1,000</span></span> '
+        '<span class="observe-token-out">Out: '
+        '<span class="observe-metric metric-value">2,000</span></span>'
+        '<span class="observe-hint"> (observed usage, not billing data)</span>'
+        "</span>"
+    )
+    assert ui._render_token_totals(1000, 2000) == expected
+    assert expected in ui.render_agents_table([_agent(input_tokens=1000, output_tokens=2000)])
+    assert expected in ui.render_models_usage_table([_usage(input_tokens=1000, output_tokens=2000)])
+
+
+def test_models_row_with_only_totals_adds_no_partial_indicator() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                input_tokens=1000,
+                output_tokens=2000,
+                cache_read_tokens=None,
+                cache_write_tokens=None,
+                reasoning_tokens=None,
+                token_classes_partial=False,
+            )
+        ]
+    )
+    assert "In: " in html
+    assert "Out: " in html
+    assert html.count("Not reported") == 3
+    assert "Partial class coverage" not in html
+    assert "(observed usage, not billing data)" in html
+
+
 # ---------------------------------------------------------------------------
 # Trend chart (T052/T053: bounded, non-color distinction, exact tooltips)
 # ---------------------------------------------------------------------------
