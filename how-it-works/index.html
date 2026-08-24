@@ -1811,6 +1811,25 @@ trace content uses the signed-in user's delegated permission through OBO and is
 excluded from shared caches. <code>/healthz</code> is the only anonymous route and returns
 liveness only. Wider Observe scope is represented by canonical ARM IDs in one
 versioned setting, not by parallel subscription/resource-group variables.</p>
+<h3 id="granular-token-usage-in-models">Granular token usage in Models<a class="headerlink" href="#granular-token-usage-in-models" title="Permanent link">&para;</a></h3>
+<p>The Cockpit <strong>Models</strong> view keeps the observed input and output totals and also
+normalizes three granular token classes when source telemetry emits them:
+<strong>Cache read</strong>, <strong>Cache write</strong>, and <strong>Reasoning</strong>. These values are observed
+usage, not billing data, and AgentOps never derives a missing class from another
+total. A class that was not emitted renders as <strong>Not reported</strong>; an explicitly
+reported <code>0</code> renders as zero.</p>
+<p>Reporting can be incomplete within a row or across the rows aggregated for a
+telemetry source. An affected model row shows <strong>Partial class coverage</strong>, while
+the coverage panel marks the source's <code>token_usage</code> dimension as <strong>partial</strong> and
+identifies the classes that were reported and those that were not. This keeps a
+partially reported aggregate from looking complete without treating missing
+telemetry as zero.</p>
+<p>Eligible, unmapped <code>gen_ai.usage.*</code> token attributes remain visible under their
+source names. Each row retains at most five, selected deterministically by
+source attribute name in ascending order. If more are present, the row shows
+<strong>Additional classes truncated</strong>; this signal distinguishes omitted classes
+from attributes that source telemetry never reported. Passthrough attributes
+do not change normalized values or token-usage coverage.</p>
 <h2 id="request-flow-eval-run">Request Flow (eval run)<a class="headerlink" href="#request-flow-eval-run" title="Permanent link">&para;</a></h2>
 <p>For an unfamiliar repo, run <code>agentops eval analyze</code> first. It is a read-only
 triage step: it inspects <code>agentops.yaml</code>, dataset columns, and local project
