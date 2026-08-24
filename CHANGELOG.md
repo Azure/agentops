@@ -5,6 +5,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: Observe replaces coarse agent `source_kind` values with refined
+  runtime attribution.**
+
+  | Old value | New value(s) |
+  | --- | --- |
+  | `foundry` | `foundry_hosted` or `foundry_prompt` |
+  | `external` | `external_registered` or `external_unregistered` |
+  | — | `copilot_studio` (new) |
+  | `unknown` | `unknown` |
+
+  There is no dual-emission window, so consumers must accept the new values in
+  this release.
+
 ## [0.11.0] - 2026-08-21
 
 ### Added

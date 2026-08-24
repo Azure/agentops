@@ -6,10 +6,11 @@ the shared, non-sensitive :class:`~agentops.agent.observe.cache.ObserveCache`
 into one identity/scope/filter-keyed Observe response.
 
 Normalizes raw query rows into the versioned contracts in
-:mod:`agentops.core.observe` (:class:`ObservedAgent`, :class:`ModelUsage`,
-:class:`CoverageResult`) and classifies coverage deterministically: it never
-infers ``available`` from the mere absence of an error, and never treats an
-empty result or an all-null reportable field as a failure. Raw
+:mod:`agentops.core.observe` (:class:`ObservedAgent`, :class:`ObservedTool`,
+:class:`ObservedRun`, :class:`ModelUsage`, :class:`CoverageResult`) and
+classifies coverage deterministically: it never infers ``available`` from
+the mere absence of an error, and never treats an empty result or an
+all-null reportable field as a failure. Raw
 generative-AI content never reaches the shared cache -- only normalized
 aggregates are ever passed to :meth:`ObserveCache.set`.
 """
@@ -17,11 +18,11 @@ aggregates are ever passed to :meth:`ObserveCache.set`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal, Mapping, Protocol, Sequence
 
 from agentops.agent.observe.cache import ObserveCache
-from agentops.agent.observe.queries import SourceResult, SourceStatus
+from agentops.agent.observe.queries import MAX_ROWS_PER_QUERY, SourceResult, SourceStatus
 from agentops.core.observe import (
     CoverageResult,
     CoverageState,
@@ -29,8 +30,12 @@ from agentops.core.observe import (
     ObserveFilterState,
     ObserveScope,
     ObservedAgent,
+    ObservedRun,
+    ObservedTool,
     QueryDiagnostics,
+    ResultBounds,
     ResourceInventory,
+    RuntimeKind,
     TelemetrySource,
     canonical_arm_id,
 )
@@ -38,7 +43,7 @@ from agentops.core.observe import (
 #: Identity/scope/filter cache entries stay fresh for two minutes (T046).
 CACHE_TTL_SECONDS = 120.0
 
-View = Literal["overview", "agents", "models"]
+View = Literal["overview", "agents", "models", "tools", "runs"]
 
 
 class Clock(Protocol):
@@ -102,6 +107,7 @@ class ObserveResult:
     coverage: list[CoverageResult]
     diagnostics: QueryDiagnostics
     partial_failures: list[PartialFailure]
+    bounds: ResultBounds | None
     refreshed_at: datetime
     cache_status: Literal["hit", "miss", "bypass"]
 
@@ -115,6 +121,8 @@ class _CachedView:
     being persisted alongside the cached value. ``partial_failures``, like
     ``diagnostics`` and ``coverage``, describes the underlying query
     execution itself, so it is cached and served as-is on a cache hit.
+    ``bounds`` is similarly cached because it describes the query result,
+    rather than the request that reads it.
     """
 
     view: View
@@ -122,6 +130,7 @@ class _CachedView:
     coverage: list[CoverageResult]
     diagnostics: QueryDiagnostics
     partial_failures: list[PartialFailure]
+    bounds: ResultBounds | None
     refreshed_at: datetime
     """When the underlying data was produced; stable across cache hits."""
 
@@ -131,20 +140,139 @@ class _CachedView:
 # ---------------------------------------------------------------------------
 
 
-def agent_source_kind(
-    *, agent_id: str | None, agent_name: str | None
-) -> Literal["foundry", "external", "unknown"]:
-    """Classify an agent row using OTel ``gen_ai`` semantic conventions.
+_COPILOT_STUDIO_PROVIDERS = frozenset(
+    {
+        "copilot studio",
+        "copilot_studio",
+        "microsoft copilot studio",
+        "power virtual agents",
+        "power_virtual_agents",
+    }
+)
 
-    Foundry Agent Service always reports ``gen_ai.agent.id``. Externally
-    instrumented workloads (LangGraph, custom agents, ...) commonly report
-    only ``gen_ai.agent.name``. Neither present means the row cannot be
-    attributed to any agent at all.
+_HOSTED_AGENT_KINDS = frozenset({"hosted", "container", "foundry_hosted"})
+_PROMPT_AGENT_KINDS = frozenset({"prompt", "foundry_prompt"})
+
+
+def _normalized_runtime_value(value: Any) -> str | None:
+    """Return a normalized, non-empty metadata value without coercing objects."""
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower().replace("-", "_")
+    return normalized or None
+
+
+def _is_copilot_studio_provider(provider_name: Any, system: Any) -> bool:
+    values = (_normalized_runtime_value(provider_name), _normalized_runtime_value(system))
+    return any(
+        value is not None and value.replace("_", " ") in _COPILOT_STUDIO_PROVIDERS
+        for value in values
+    )
+
+
+def _inventory_agent_records(inventory: ResourceInventory | None) -> list[Mapping[str, Any]]:
+    """Return explicit agent records exposed by discovery, if any.
+
+    Discovery does not manufacture an agent registry. This helper only reads
+    explicit ``agents``/``agent_definitions`` collections already returned by
+    the control plane, so a missing record cannot accidentally become a
+    hosted-or-prompt guess.
     """
+    if inventory is None:
+        return []
+
+    records: list[Mapping[str, Any]] = []
+    for resource in [*inventory.projects, *inventory.foundry_resources]:
+        if not isinstance(resource, Mapping):
+            continue
+        containers: list[Any] = [resource]
+        properties = resource.get("properties")
+        if isinstance(properties, Mapping):
+            containers.append(properties)
+        for container in containers:
+            if not isinstance(container, Mapping):
+                continue
+            for key in ("agents", "agent_definitions", "agentDefinitions"):
+                candidates = container.get(key)
+                if isinstance(candidates, Mapping):
+                    candidates = list(candidates.values())
+                if isinstance(candidates, Sequence) and not isinstance(
+                    candidates, (str, bytes, bytearray)
+                ):
+                    records.extend(item for item in candidates if isinstance(item, Mapping))
+    return records
+
+
+def _inventory_agent_kind(
+    inventory: ResourceInventory | None,
+    *,
+    agent_id: str | None = None,
+    agent_name: str | None = None,
+) -> RuntimeKind | None:
+    """Resolve one exact agent identity to an explicit control-plane kind."""
+    if not agent_id and not agent_name:
+        return None
+
+    matches: set[RuntimeKind] = set()
+    for record in _matching_inventory_agents(
+        inventory, agent_id=agent_id, agent_name=agent_name
+    ):
+        kind = _normalized_runtime_value(
+            record.get("runtime_kind", record.get("kind", record.get("type")))
+        )
+        if kind in _HOSTED_AGENT_KINDS:
+            matches.add("foundry_hosted")
+        elif kind in _PROMPT_AGENT_KINDS:
+            matches.add("foundry_prompt")
+
+    return matches.pop() if len(matches) == 1 else None
+
+
+def _matching_inventory_agents(
+    inventory: ResourceInventory | None,
+    *,
+    agent_id: str | None = None,
+    agent_name: str | None = None,
+) -> list[Mapping[str, Any]]:
+    """Return records that explicitly match a supplied telemetry identity."""
+    matches: list[Mapping[str, Any]] = []
+    for record in _inventory_agent_records(inventory):
+        record_id = record.get("agent_id", record.get("id"))
+        record_name = record.get("agent_name", record.get("name"))
+        matches_id = agent_id is not None and record_id == agent_id
+        matches_name = agent_name is not None and record_name == agent_name
+        if matches_id or matches_name:
+            matches.append(record)
+    return matches
+
+
+def classify_runtime(
+    *,
+    agent_id: str | None,
+    agent_name: str | None,
+    provider_name: Any = None,
+    system: Any = None,
+    inventory: ResourceInventory | None = None,
+) -> RuntimeKind:
+    """Classify from explicit telemetry and control-plane evidence only.
+
+    A managed identifier alone proves neither the Foundry runtime shape nor
+    an inventory match. Conflicting or incomplete evidence therefore remains
+    ``unknown`` instead of preserving the retired coarse classification.
+    """
+    if _is_copilot_studio_provider(provider_name, system):
+        return "copilot_studio"
+
     if agent_id:
-        return "foundry"
+        return _inventory_agent_kind(inventory, agent_id=agent_id) or "unknown"
+
     if agent_name:
-        return "external"
+        return (
+            "external_registered"
+            if _matching_inventory_agents(inventory, agent_name=agent_name)
+            else "external_unregistered"
+        )
+
     return "unknown"
 
 
@@ -175,7 +303,12 @@ def _project_resource_id_for_row(
     return project_resource_id
 
 
-def normalize_agent_row(row: Mapping[str, Any], *, source: TelemetrySource) -> ObservedAgent:
+def normalize_agent_row(
+    row: Mapping[str, Any],
+    *,
+    source: TelemetrySource,
+    inventory: ResourceInventory | None = None,
+) -> ObservedAgent:
     """Normalize one ``build_agents_query`` result row into an :class:`ObservedAgent`."""
     agent_key = str(row.get("agent_key") or "unknown")
     last_seen = row.get("last_seen")
@@ -186,11 +319,18 @@ def normalize_agent_row(row: Mapping[str, Any], *, source: TelemetrySource) -> O
     project_resource_id = _project_resource_id_for_row(row, source=source)
     return ObservedAgent(
         key=agent_key,
+        source_id=source.source_id,
         agent_id=agent_id,
         agent_name=agent_name,
         project_resource_id=project_resource_id,
         foundry_resource_id=source.foundry_resource_id,
-        source_kind=agent_source_kind(agent_id=agent_id, agent_name=agent_name),
+        source_kind=classify_runtime(
+            agent_id=agent_id,
+            agent_name=agent_name,
+            provider_name=row.get("provider_name", row.get("gen_ai.provider.name")),
+            system=row.get("system", row.get("gen_ai.system")),
+            inventory=inventory,
+        ),
         model=row.get("model") or None,
         last_seen=last_seen,
         invocations=int(row.get("invocations") or 0),
@@ -198,6 +338,120 @@ def normalize_agent_row(row: Mapping[str, Any], *, source: TelemetrySource) -> O
         p95_latency_ms=row.get("p95_latency_ms"),
         input_tokens=row.get("input_tokens"),
         output_tokens=row.get("output_tokens"),
+    )
+
+
+def _required_datetime(row: Mapping[str, Any], *, field: str, row_label: str) -> datetime:
+    value = row.get(field)
+    if not isinstance(value, datetime):
+        raise ValueError(f"{row_label} row is missing a {field} timestamp")
+    return value
+
+
+def _required_text(row: Mapping[str, Any], *, field: str, row_label: str) -> str:
+    value = row.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{row_label} row is missing a {field}")
+    return value
+
+
+def _nullable_int(row: Mapping[str, Any], *, field: str) -> int | None:
+    value = row.get(field)
+    return None if value is None else int(value)
+
+
+def _row_runtime(
+    row: Mapping[str, Any],
+    *,
+    agent_id: str | None,
+    agent_name: str | None,
+    inventory: ResourceInventory | None,
+) -> RuntimeKind:
+    return classify_runtime(
+        agent_id=agent_id,
+        agent_name=agent_name,
+        provider_name=row.get("provider_name", row.get("gen_ai.provider.name")),
+        system=row.get("system", row.get("gen_ai.system")),
+        inventory=inventory,
+    )
+
+
+def normalize_tool_row(
+    row: Mapping[str, Any],
+    *,
+    source: TelemetrySource,
+    inventory: ResourceInventory | None = None,
+) -> ObservedTool:
+    """Normalize one bounded tools aggregate without synthesizing token data."""
+    tool_name = _required_text(row, field="tool_name", row_label="tool")
+    agent_key = _required_text(row, field="agent_key", row_label="tool")
+    agent_id = row.get("agent_id") or None
+    agent_name = row.get("agent_name") or None
+    return ObservedTool(
+        source_id=source.source_id,
+        tool_name=tool_name,
+        agent_key=agent_key,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        project_resource_id=_project_resource_id_for_row(row, source=source),
+        foundry_resource_id=source.foundry_resource_id,
+        source_kind=_row_runtime(
+            row, agent_id=agent_id, agent_name=agent_name, inventory=inventory
+        ),
+        last_seen=_required_datetime(row, field="last_seen", row_label="tool"),
+        invocations=int(row.get("invocations") or 0),
+        failures=int(row.get("failures") or 0),
+        p95_latency_ms=row.get("p95_latency_ms"),
+    )
+
+
+def normalize_run_row(
+    row: Mapping[str, Any],
+    *,
+    source: TelemetrySource,
+    window_end: datetime,
+    inventory: ResourceInventory | None = None,
+    settling_margin: timedelta = timedelta(seconds=CACHE_TTL_SECONDS),
+) -> ObservedRun:
+    """Normalize one run and derive a sticky, window-scoped status."""
+    run_key = _required_text(row, field="run_key", row_label="run")
+    run_key_kind = _required_text(row, field="run_key_kind", row_label="run")
+    agent_key = _required_text(row, field="agent_key", row_label="run")
+    started_at = _required_datetime(row, field="started_at", row_label="run")
+    last_activity_at = _required_datetime(row, field="last_activity_at", row_label="run")
+    failed_turns = int(row.get("failed_turns") or 0)
+    tool_failures = int(row.get("tool_failures") or 0)
+    if failed_turns > 0 or tool_failures > 0:
+        status = "failed"
+    elif last_activity_at >= window_end - settling_margin:
+        status = "in_progress"
+    else:
+        status = "succeeded"
+
+    agent_id = row.get("agent_id") or None
+    agent_name = row.get("agent_name") or None
+    return ObservedRun(
+        source_id=source.source_id,
+        run_key=run_key,
+        run_key_kind=run_key_kind,
+        agent_key=agent_key,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        project_resource_id=_project_resource_id_for_row(row, source=source),
+        foundry_resource_id=source.foundry_resource_id,
+        source_kind=_row_runtime(
+            row, agent_id=agent_id, agent_name=agent_name, inventory=inventory
+        ),
+        started_at=started_at,
+        last_activity_at=last_activity_at,
+        duration_ms=row.get("duration_ms"),
+        status=status,
+        turns=int(row.get("turns") or 0),
+        failed_turns=failed_turns,
+        tool_invocations=int(row.get("tool_invocations") or 0),
+        tool_failures=tool_failures,
+        input_tokens=_nullable_int(row, field="input_tokens"),
+        output_tokens=_nullable_int(row, field="output_tokens"),
     )
 
 
@@ -314,7 +568,12 @@ def classify_query_coverage(
     *,
     source_id: str,
     dimension: Literal[
-        "recent_traces", "agent_attribution", "model_attribution", "token_usage"
+        "recent_traces",
+        "agent_attribution",
+        "model_attribution",
+        "token_usage",
+        "tool_attribution",
+        "run_correlation",
     ],
     status: SourceStatus,
     row_count: int,
@@ -356,6 +615,130 @@ def classify_query_coverage(
         next_action=next_action,
         refreshed_at=refreshed_at,
     )
+
+
+def _attribution_coverage(
+    *,
+    source_id: str,
+    dimension: Literal["tool_attribution", "run_correlation"],
+    status: SourceStatus,
+    rows: Sequence[Mapping[str, Any]],
+    attributed_rows: int,
+    reason: str | None,
+    refreshed_at: datetime,
+) -> CoverageResult:
+    """Explain missing tool/run identity without treating it as a zero."""
+    coverage = classify_query_coverage(
+        source_id=source_id,
+        dimension=dimension,
+        status=status,
+        row_count=len(rows),
+        reported=attributed_rows > 0,
+        reason=reason,
+        refreshed_at=refreshed_at,
+    )
+    if coverage.state != "not_reported":
+        return coverage
+
+    if dimension == "tool_attribution":
+        default_reason = "Telemetry rows exist but do not include a usable tool name."
+        next_action = "Confirm tool invocations emit the gen_ai.tool.name attribute."
+    else:
+        default_reason = (
+            "Telemetry rows do not include a conversation-level run correlation."
+        )
+        next_action = (
+            "Emit gen_ai.conversation.id or ensure trace correlation is preserved "
+            "for agent turns."
+        )
+    return CoverageResult(
+        source_id=source_id,
+        dimension=dimension,
+        state="not_reported",
+        reason=safe_failure_reason(reason, default=default_reason),
+        next_action=next_action,
+        refreshed_at=refreshed_at,
+    )
+
+
+def _source_attribution_coverage(
+    source: TelemetrySource,
+    *,
+    dimension: Literal["tool_attribution", "run_correlation"],
+    refreshed_at: datetime,
+) -> CoverageResult:
+    """Expose a source's discovery failure on each affected view dimension."""
+    state, default_reason, next_action = _DISCOVERY_COVERAGE[source.state]
+    return CoverageResult(
+        source_id=source.source_id,
+        dimension=dimension,
+        state=state,
+        reason=safe_failure_reason(source.reason, default=default_reason),
+        next_action=next_action,
+        refreshed_at=refreshed_at,
+    )
+
+
+def _source_total_in_scope(rows: Sequence[Mapping[str, Any]]) -> int | None:
+    """Read one source's advertised aggregate total without inventing a value."""
+    totals: set[int] = set()
+    for row in rows:
+        total = row.get("total_in_scope")
+        if isinstance(total, bool) or not isinstance(total, int) or total < 0:
+            return None
+        totals.add(total)
+    if len(totals) != 1:
+        return None
+    return totals.pop()
+
+
+def _result_bounds(results: Sequence[SourceResult], *, rows_shown: int) -> ResultBounds:
+    """Combine per-source query totals; an absent or partial total stays unknown."""
+    total_in_scope = 0
+    for result in results:
+        if result.status != "success":
+            return ResultBounds(rows_shown=rows_shown, rows_total_in_scope=None)
+        all_rows = list(result.tables or [])
+        rows = [
+            row for row in all_rows if row.get("_metadata_only") is not True
+        ]
+        source_total = _source_total_in_scope(all_rows)
+        if source_total is None or source_total < len(rows):
+            return ResultBounds(rows_shown=rows_shown, rows_total_in_scope=None)
+        total_in_scope += source_total
+
+    if total_in_scope < rows_shown:
+        return ResultBounds(rows_shown=rows_shown, rows_total_in_scope=None)
+    if total_in_scope > rows_shown:
+        if rows_shown != MAX_ROWS_PER_QUERY:
+            return ResultBounds(rows_shown=rows_shown, rows_total_in_scope=None)
+        return ResultBounds(
+            rows_shown=rows_shown,
+            rows_total_in_scope=total_in_scope,
+            truncated=True,
+        )
+    return ResultBounds(
+        rows_shown=rows_shown,
+        rows_total_in_scope=total_in_scope,
+    )
+
+
+def _bound_view_data(view: View, data: Sequence[Any]) -> list[Any]:
+    """Apply the response-wide row bound after merging per-source query results."""
+    order_fields = {
+        "agents": "invocations",
+        "models": "requests",
+        "tools": "invocations",
+        "runs": "last_activity_at",
+    }
+    order_field = order_fields.get(view)
+    if order_field is None:
+        return list(data)
+    return sorted(
+        data,
+        key=lambda item: getattr(item, order_field),
+        reverse=True,
+    )[:MAX_ROWS_PER_QUERY]
 
 
 def _build_partial_failures(results: Sequence[SourceResult]) -> list[PartialFailure]:
@@ -446,8 +829,8 @@ class ObserveService:
     the cache read, but a freshly normalized response is always re-cached
     afterwards. Only normalized :class:`ObservedAgent`/:class:`ModelUsage`/
     :class:`CoverageResult`/:class:`QueryDiagnostics` values are ever
-    cached -- raw per-row query results and any ``GenerativeAIContent``
-    never reach ``cache``.
+    cached -- raw per-row query results and any ``GenerativeAIContent`` never
+    reach ``cache``.
     """
 
     def __init__(
@@ -498,6 +881,7 @@ class ObserveService:
                 coverage=cached.coverage,
                 diagnostics=cached.diagnostics,
                 partial_failures=cached.partial_failures,
+                bounds=cached.bounds,
                 refreshed_at=cached.refreshed_at,
                 cache_status="hit",
             )
@@ -515,9 +899,21 @@ class ObserveService:
 
         coverage = self._discovery_coverage(inventory.telemetry_sources, refreshed_at=completed_at)
         data, query_coverage = self._normalize_view(
-            view, source_results, available_sources, refreshed_at=completed_at
+            view,
+            source_results,
+            inventory.telemetry_sources,
+            inventory=inventory,
+            window_end=filters.end,
+            refreshed_at=completed_at,
         )
+        if view in ("agents", "models", "tools", "runs"):
+            data = _bound_view_data(view, data)
         coverage.extend(query_coverage)
+        bounds = (
+            _result_bounds(source_results, rows_shown=len(data))
+            if view in ("agents", "models", "tools", "runs")
+            else None
+        )
 
         diagnostics = self._build_diagnostics(
             source_results,
@@ -535,6 +931,7 @@ class ObserveService:
                 coverage=coverage,
                 diagnostics=diagnostics,
                 partial_failures=partial_failures,
+                bounds=bounds,
                 refreshed_at=completed_at,
             ),
         )
@@ -544,6 +941,7 @@ class ObserveService:
             coverage=coverage,
             diagnostics=diagnostics,
             partial_failures=partial_failures,
+            bounds=bounds,
             refreshed_at=completed_at,
             cache_status="bypass" if refresh else "miss",
         )
@@ -569,6 +967,7 @@ class ObserveService:
             coverage=result.coverage,
             diagnostics=result.diagnostics,
             partial_failures=result.partial_failures,
+            bounds=None,
             refreshed_at=result.refreshed_at,
             cache_status=result.cache_status,
         )
@@ -596,6 +995,8 @@ class ObserveService:
         results: Sequence[SourceResult],
         sources: Sequence[TelemetrySource],
         *,
+        inventory: ResourceInventory,
+        window_end: datetime,
         refreshed_at: datetime,
     ) -> tuple[Any, list[CoverageResult]]:
         sources_by_id = {source.source_id: source for source in sources}
@@ -610,7 +1011,7 @@ class ObserveService:
                 rows = list(result.tables or [])
                 for row in rows:
                     try:
-                        agents.append(normalize_agent_row(row, source=source))
+                        agents.append(normalize_agent_row(row, source=source, inventory=inventory))
                     except ValueError as exc:
                         coverage.append(
                             CoverageResult(
@@ -693,6 +1094,139 @@ class ObserveService:
                     )
                 )
             return models, coverage
+
+        if view == "tools":
+            tools: list[ObservedTool] = []
+            for source in sources:
+                if source.state != "available":
+                    coverage.append(
+                        _source_attribution_coverage(
+                            source,
+                            dimension="tool_attribution",
+                            refreshed_at=refreshed_at,
+                        )
+                    )
+            for result in results:
+                source = sources_by_id.get(result.source_id)
+                if source is None:
+                    continue
+                raw_rows = list(result.tables or [])
+                unattributed_count = max(
+                    (
+                        int(row.get("unattributed_count") or 0)
+                        for row in raw_rows
+                        if not isinstance(row.get("unattributed_count"), bool)
+                    ),
+                    default=0,
+                )
+                rows = [
+                    row for row in raw_rows if row.get("_metadata_only") is not True
+                ]
+                attributed_rows = 0
+                for row in rows:
+                    try:
+                        tools.append(normalize_tool_row(row, source=source, inventory=inventory))
+                        attributed_rows += 1
+                    except ValueError as exc:
+                        coverage.append(
+                            CoverageResult(
+                                source_id=result.source_id,
+                                dimension="tool_attribution",
+                                state="error",
+                                reason=safe_failure_reason(
+                                    str(exc), default="One or more tool rows were malformed."
+                                ),
+                                next_action=(
+                                    "Verify tool telemetry emits a non-empty tool name and "
+                                    "well-formed gen_ai.* attributes."
+                                ),
+                                refreshed_at=refreshed_at,
+                            )
+                        )
+                if result.status == "success" and unattributed_count > 0 and attributed_rows > 0:
+                    coverage.append(
+                        CoverageResult(
+                            source_id=result.source_id,
+                            dimension="tool_attribution",
+                            state="partial",
+                            reason=(
+                                "Some execute-tool telemetry did not include a usable tool name."
+                            ),
+                            next_action=(
+                                "Confirm every tool invocation emits the gen_ai.tool.name attribute."
+                            ),
+                            refreshed_at=refreshed_at,
+                        )
+                    )
+                else:
+                    coverage.append(
+                        _attribution_coverage(
+                            source_id=result.source_id,
+                            dimension="tool_attribution",
+                            status=result.status,
+                            rows=rows if unattributed_count == 0 else [{}],
+                            attributed_rows=attributed_rows,
+                            reason=result.reason,
+                            refreshed_at=refreshed_at,
+                        )
+                    )
+            return tools, coverage
+
+        if view == "runs":
+            runs: list[ObservedRun] = []
+            for source in sources:
+                if source.state != "available":
+                    coverage.append(
+                        _source_attribution_coverage(
+                            source,
+                            dimension="run_correlation",
+                            refreshed_at=refreshed_at,
+                        )
+                    )
+            for result in results:
+                source = sources_by_id.get(result.source_id)
+                if source is None:
+                    continue
+                rows = list(result.tables or [])
+                attributed_rows = 0
+                for row in rows:
+                    try:
+                        run = normalize_run_row(
+                            row,
+                            source=source,
+                            window_end=window_end,
+                            inventory=inventory,
+                        )
+                        runs.append(run)
+                        attributed_rows += 1
+                    except ValueError as exc:
+                        coverage.append(
+                            CoverageResult(
+                                source_id=result.source_id,
+                                dimension="run_correlation",
+                                state="error",
+                                reason=safe_failure_reason(
+                                    str(exc), default="One or more run rows were malformed."
+                                ),
+                                next_action=(
+                                    "Verify agent turns retain a conversation or trace "
+                                    "correlation identifier."
+                                ),
+                                refreshed_at=refreshed_at,
+                            )
+                        )
+                coverage.append(
+                    _attribution_coverage(
+                        source_id=result.source_id,
+                        dimension="run_correlation",
+                        status=result.status,
+                        rows=rows,
+                        attributed_rows=attributed_rows,
+                        reason=result.reason,
+                        refreshed_at=refreshed_at,
+                    )
+                )
+            return runs, coverage
 
         # "overview": aggregate totals only, never inferring a zero as failure.
         totals = {"invocations": 0, "failures": 0}

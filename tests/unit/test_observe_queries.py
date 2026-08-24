@@ -11,6 +11,7 @@ import pytest
 
 from agentops.agent.observe.queries import (
     DEFAULT_LOOKBACK_HOURS,
+    MAX_ROWS_PER_QUERY,
     MAX_SOURCES_PER_BATCH,
     SOURCE_TIMEOUT_SECONDS,
     SourceQuery,
@@ -20,7 +21,9 @@ from agentops.agent.observe.queries import (
     build_appgenai_content_query,
     build_models_query,
     build_overview_query,
+    build_runs_query,
     build_trends_query,
+    build_tools_query,
     build_usage_query,
     classify_appgenai_content_result,
     default_lookback_window,
@@ -66,9 +69,14 @@ def test_agents_query_applies_dimension_filters_and_bounds_rows() -> None:
     )
     query = build_agents_query(filters)
     assert "gen_ai.project.id" in query
+    assert "gen_ai.azure_ai_project.id" in query
     assert "agent-1" in query
     assert "gpt-4o" in query
-    assert "| top 500 by invocations desc" in query
+    assert f"| take {MAX_ROWS_PER_QUERY}" in query
+    assert "let total_in_scope = toscalar(agg | count);" in query
+    assert "| extend total_in_scope = total_in_scope" in query
+    assert 'Properties["gen_ai.provider.name"]' in query
+    assert 'Properties["gen_ai.system"]' in query
     # Dimension filters must appear before the summarize (early filters).
     assert query.index("gen_ai.agent.id") < query.index("summarize")
 
@@ -94,15 +102,35 @@ def test_agent_and_model_queries_preserve_project_for_shared_workspace() -> None
     agents_query = build_agents_query(_filters(), scope_source=source)
     models_query = build_models_query(_filters(), scope_source=source)
 
-    assert 'project_resource_id = tostring(Properties["gen_ai.project.id"])' in agents_query
-    assert "by project_resource_id, agent_key, agent_id, agent_name, model" in agents_query
+    assert "project_resource_id = tostring(coalesce(" in agents_query
+    assert 'Properties["gen_ai.azure_ai_project.id"]' in agents_query
+    assert "by project_resource_id, agent_key" in agents_query
+    assert "agent_id = take_anyif(agent_id, isnotempty(agent_id))" in agents_query
+    assert "model = take_anyif(model, isnotempty(model))" in agents_query
+    assert (
+        "by project_resource_id, agent_key, agent_id, agent_name"
+        not in agents_query
+    )
     assert "by project_resource_id, model, deployment" in models_query
 
 
 def test_models_query_summarizes_by_model_and_deployment() -> None:
     query = build_models_query(_filters())
     assert "by project_resource_id, model, deployment" in query
-    assert "| top 500 by requests desc" in query
+    assert "| sort by requests desc" in query
+    assert f"| take {MAX_ROWS_PER_QUERY}" in query
+    assert "total_in_scope" in query
+
+
+@pytest.mark.parametrize("builder", [build_agents_query, build_models_query])
+def test_bounded_aggregate_queries_count_scope_then_take_max_rows(builder) -> None:
+    query = builder(_filters())
+
+    assert query.startswith("let agg = union AppDependencies, AppRequests")
+    assert "let total_in_scope = toscalar(agg | count);" in query
+    assert query.index("let total_in_scope") < query.index("\nagg\n")
+    assert f"| take {MAX_ROWS_PER_QUERY}" in query
+    assert "| extend total_in_scope = total_in_scope" in query
 
 
 def test_usage_query_summarizes_tokens_by_agent_and_model() -> None:
@@ -130,9 +158,49 @@ def test_agent_detail_query_requires_agent_key() -> None:
 
 
 def test_kql_string_filters_are_escaped_against_injection() -> None:
-    filters = _filters(agent_id="o'brien")
+    filters = _filters(agent_id="o\\'brien")
     query = build_agents_query(filters)
-    assert "o''brien" in query
+    assert "o\\\\\\'brien" in query
+
+
+def test_tool_filter_kql_metacharacters_remain_inside_the_string_literal() -> None:
+    query = build_tools_query(_filters(tool_name="a' | take 1 //"))
+
+    assert "tool_name == 'a\\' | take 1 //'" in query
+
+
+def test_tools_query_uses_tool_metadata_without_reading_tool_content() -> None:
+    query = build_tools_query(_filters(tool_name="lookup'o''ticket"))
+
+    assert query.startswith("let base = union AppDependencies, AppRequests")
+    assert 'Properties["gen_ai.tool.name"]' in query
+    assert 'Properties["gen_ai.operation.name"]' in query
+    assert "| where isnotempty(tool_name)" in query
+    assert "unattributed_count" in query
+    assert "_metadata_only = true" in query
+    assert "lookup\\'o\\'\\'ticket" in query
+    assert "AppGenAIContent" not in query
+    assert "gen_ai.tool.message" not in query
+    assert "provider_name, system, tool_name" in query
+    assert "| sort by invocations desc" in query
+    assert f"| take {MAX_ROWS_PER_QUERY}" in query
+
+
+def test_runs_query_prefers_conversation_then_foundry_thread_before_trace() -> None:
+    query = build_runs_query(_filters(run_key="run'o''key"))
+
+    assert 'Properties["gen_ai.conversation.id"]' in query
+    assert 'Properties["gen_ai.thread.id"]' in query
+    assert query.index("conversation_id") < query.index("foundry_thread_id") < query.index(
+        "tostring(OperationId)"
+    )
+    assert '"conversation", "trace"' in query
+    assert "run\\'o\\'\\'key" in query
+    assert "| sort by last_activity_at desc" in query
+    assert "turns = dcount(OperationId)" in query
+    assert "provider_name, system, run_key, run_key_kind" in query
+    assert "input_token_reports = countif(isnotnull(input_tokens))" in query
+    assert "iff(input_token_reports == 0, long(null), input_tokens)" in query
 
 
 # ---------------------------------------------------------------------------

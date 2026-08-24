@@ -25,9 +25,12 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import json
+import logging
 import time
+import urllib.request
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable, Iterator, Sequence, TypeVar
+from typing import Any, Callable, Iterable, Iterator, Mapping, Sequence, TypeVar
 
 from agentops.agent.observe.discovery import build_resource_inventory, subscription_ids_for_scope
 from agentops.agent.observe.queries import (
@@ -40,10 +43,14 @@ from agentops.agent.observe.queries import (
     build_agents_query,
     build_models_query,
     build_overview_query,
+    build_runs_query,
+    build_tools_query,
     execute_source_batch,
 )
 from agentops.agent.observe.service import View
 from agentops.core.observe import ObserveFilterState, ObserveScope, ResourceInventory, TelemetrySource
+
+logger = logging.getLogger(__name__)
 
 _T = TypeVar("_T")
 
@@ -51,6 +58,8 @@ _VIEW_QUERY_BUILDERS: dict[View, Callable[..., str]] = {
     "overview": build_overview_query,
     "agents": build_agents_query,
     "models": build_models_query,
+    "tools": build_tools_query,
+    "runs": build_runs_query,
 }
 
 
@@ -259,7 +268,11 @@ class _FlattenedBatchItem:
 
 
 def _flatten_logs_table(table: Any) -> list[dict[str, Any]]:
-    """Flatten one ``LogsTable``-shaped object (``.columns``/``.rows``) into dict rows."""
+    """Flatten one ``LogsTable``-shaped object (``.columns``/``.rows``) into dict rows.
+
+    Aggregate metadata such as ``total_in_scope`` is preserved verbatim for
+    the service layer to calculate bounds; absent metadata is never invented.
+    """
     raw_columns = getattr(table, "columns", None) or []
     column_names = [
         column if isinstance(column, str) else str(getattr(column, "name", column)) for column in raw_columns
@@ -289,6 +302,44 @@ def _flatten_logs_query_response(response: Any) -> _FlattenedBatchItem:
     return _FlattenedBatchItem(tables=_flatten_tables(tables), status=getattr(response, "status", None))
 
 
+def _query_workspace_rest(
+    *,
+    workspace_id: str,
+    query: str,
+    access_token: str,
+    timeout_seconds: int,
+) -> _FlattenedBatchItem:
+    """Execute one Logs query when the SDK cannot decode the service response."""
+    request = urllib.request.Request(
+        f"https://api.loganalytics.io/v1/workspaces/{workspace_id}/query",
+        data=json.dumps({"query": query}).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+
+    return _flatten_logs_rest_payload(payload)
+
+
+def _flatten_logs_rest_payload(payload: Mapping[str, Any]) -> _FlattenedBatchItem:
+    """Match the Azure SDK's Python value types for a Logs REST response."""
+    rows: list[dict[str, Any]] = []
+    for table in payload.get("tables", []):
+        columns = table.get("columns", [])
+        for values in table.get("rows", []):
+            row: dict[str, Any] = {}
+            for column, value in zip(columns, values):
+                if column.get("type") == "datetime" and isinstance(value, str):
+                    value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                row[column["name"]] = value
+            rows.append(row)
+    return _FlattenedBatchItem(tables=rows, status="SUCCESS")
+
+
 class _LogsQueryAdapter:
     """Adapts ``azure.monitor.query.aio.LogsQueryClient.query_batch`` to
     ``queries.py``'s ``client.query_batch(requests)`` duck type, flattening
@@ -306,6 +357,39 @@ class _LogsQueryAdapter:
             self._client = LogsQueryClient(self._credential)
         return self._client
 
+    async def _query_individually(
+        self, requests: Sequence[Any]
+    ) -> list[_FlattenedBatchItem]:
+        try:
+            token = await self._credential.get_token(
+                "https://api.loganalytics.io/.default"
+            )
+        except Exception as error:
+            return [_FlattenedBatchItem(error=error) for _ in requests]
+
+        responses = await asyncio.gather(
+            *(
+                asyncio.to_thread(
+                    _query_workspace_rest,
+                    workspace_id=request.workspace_id,
+                    query=request.query,
+                    access_token=token.token,
+                    timeout_seconds=request.server_timeout_seconds,
+                )
+                for request in requests
+            ),
+            return_exceptions=True,
+        )
+        flattened: list[_FlattenedBatchItem] = []
+        for response in responses:
+            if isinstance(response, BaseException):
+                if not isinstance(response, Exception):
+                    raise response
+                flattened.append(_FlattenedBatchItem(error=response))
+            else:
+                flattened.append(response)
+        return flattened
+
     async def query_batch(self, requests: Sequence[Any]) -> list[_FlattenedBatchItem]:
         from azure.monitor.query import LogsBatchQuery  # lazy Azure import
 
@@ -318,7 +402,16 @@ class _LogsQueryAdapter:
             )
             for request in requests
         ]
-        responses = await self._client_instance().query_batch(batch)
+        try:
+            responses = await self._client_instance().query_batch(
+                batch, headers={"Accept-Encoding": "identity"}
+            )
+        except UnicodeDecodeError:
+            logger.warning(
+                "Azure Monitor batch response could not be decoded; "
+                "retrying Observe queries individually through the Logs REST endpoint"
+            )
+            return await self._query_individually(requests)
         return [_flatten_logs_query_response(response) for response in responses]
 
     async def aclose(self) -> None:

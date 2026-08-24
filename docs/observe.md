@@ -38,21 +38,66 @@ request to ten telemetry sources, applies filters before aggregation, and keeps
 successful source results when another source is denied, throttled, or times
 out.
 
-The four views share the same explicit filter state:
+The six views share the same explicit filter state:
 
 - **Overview** shows bounded aggregate activity, latency, errors, and observed
   token usage.
-- **Agents** attributes observed activity to standard `gen_ai.*` identifiers,
-  with documented external-agent fallback semantics.
+- **Agents** attributes observed activity to standard `gen_ai.*` identifiers.
+  Every row includes its `source_id`, so the same agent observed through two
+  telemetry sources remains distinguishable.
 - **Models and usage** shows model/provider attribution and observed tokens,
   not billing or quota.
+- **Tools** lists each observed tool by telemetry source, agent, and tool name,
+  with invocation and failure counts, last-seen time, and p95 latency. Missing
+  latency is shown as not measured, never as zero; tool token fields are
+  intentionally not reported.
+- **Runs** lists correlated agent executions by telemetry source and agent,
+  with the correlation key and kind (`conversation` or `trace`), range-scoped
+  start and duration, status, turns, failed turns, tool invocations, tool
+  failures, and observed input/output token totals. Missing token totals are
+  shown as not available, never as zero.
 - **Telemetry coverage** explains readable, empty, denied, unconfigured,
   unattributed, protected, timed-out, and partial sources.
 
 The default range is 24 hours. Draft filters do not query until **Apply** is
 selected. Applied filters are bookmarkable in the URL, refresh every five
 minutes, and may be refreshed manually. Raw trace content is never part of that
-URL or browser persistence.
+URL or browser persistence. Alongside the existing agent, model, and time-range
+filters, **Tools** accepts `tool_name` and **Runs** accepts `run_key`. Both only
+narrow results; blank values are rejected, and values are escaped before they
+reach telemetry queries.
+
+### Runtime attribution and source identity
+
+`source_kind` now identifies the runtime more precisely. The accepted values
+are `foundry_hosted`, `foundry_prompt`, `external_registered`,
+`external_unregistered`, `copilot_studio`, and `unknown`. `unknown` means the
+available telemetry cannot classify the runtime; it is an expected attribution
+outcome, not an error.
+
+This replaces the former `foundry`, `external`, and `unknown` contract. The
+mapping is not one-to-one:
+
+| Old value | New value(s) | Notes |
+|---|---|---|
+| `foundry` | `foundry_hosted` or `foundry_prompt` | Split by runtime. |
+| `external` | `external_registered` or `external_unregistered` | Split by project registration. |
+| — | `copilot_studio` | New classification with no predecessor. |
+| `unknown` | `unknown` | Unchanged fallback when telemetry is insufficient. |
+
+The old and new values are not emitted together. Consumers must update to the
+refined values. `source_id` is also present on Agents, Tools, and Runs rows;
+it identifies the telemetry source that produced the row and prevents rows from
+different sources from being treated as one observation.
+
+### Runs are scoped to the selected window
+
+Runs describe only activity observed in the selected time range. If a run began
+before the range, its reported start, duration, turns, failed turns, and status
+cover only the in-window activity and it is not marked as truncated at the
+leading edge. A failure before the range is therefore not visible and an
+otherwise settled row can report `succeeded`. The `in_progress` status instead
+covers the trailing edge: activity near the range end may still be settling.
 
 ### Truthful source and dimension states
 

@@ -91,7 +91,7 @@ def test_observe_discovery_and_all_views() -> None:
     )
     assert discovery.status_code == 200
 
-    for view in ("overview", "agents", "models", "coverage"):
+    for view in ("overview", "agents", "models", "coverage", "tools", "runs"):
         response = client.post(
             "/api/observe/query",
             headers=headers,
