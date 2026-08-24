@@ -14,6 +14,7 @@ from agentops.agent.observe.queries import (
     MAX_ROWS_PER_QUERY,
     MAX_SOURCES_PER_BATCH,
     SOURCE_TIMEOUT_SECONDS,
+    TOKEN_CLASS_ALIASES,
     SourceQuery,
     SupersededRequestError,
     build_agent_detail_query,
@@ -126,11 +127,87 @@ def test_models_query_summarizes_by_model_and_deployment() -> None:
 def test_bounded_aggregate_queries_count_scope_then_take_max_rows(builder) -> None:
     query = builder(_filters())
 
-    assert query.startswith("let agg = union AppDependencies, AppRequests")
+    assert "let agg =" in query
     assert "let total_in_scope = toscalar(agg | count);" in query
     assert query.index("let total_in_scope") < query.index("\nagg\n")
     assert f"| take {MAX_ROWS_PER_QUERY}" in query
     assert "| extend total_in_scope = total_in_scope" in query
+
+
+def test_token_class_aliases_are_unique_and_limited_to_usage_attributes() -> None:
+    assert set(TOKEN_CLASS_ALIASES) == {"cache_read", "cache_write", "reasoning"}
+    aliases = [alias for values in TOKEN_CLASS_ALIASES.values() for alias in values]
+    assert all(alias.startswith("gen_ai.usage.") for alias in aliases)
+    assert len(aliases) == len(set(aliases))
+
+
+def test_models_query_projects_and_sums_normalized_token_classes() -> None:
+    query = build_models_query(_filters())
+    for token_class, aliases in TOKEN_CLASS_ALIASES.items():
+        assert f"| extend {token_class}_tokens = toint(coalesce(" in query
+        for alias in aliases:
+            assert f'Properties["{alias}"]' in query
+        assert f"{token_class}_tokens = sum({token_class}_tokens)" in query
+    assert "by project_resource_id, model, deployment" in query
+
+
+def test_models_query_preserves_missing_and_intermittent_class_reporting() -> None:
+    query = build_models_query(_filters())
+    assert "token_reporting_records = countif(" in query
+    for token_class in TOKEN_CLASS_ALIASES:
+        reporting_records = f"{token_class}_reporting_records"
+        assert f"{reporting_records} = countif(isnotnull({token_class}_tokens))" in query
+        assert (
+            f"{token_class}_tokens = iff({reporting_records} > 0, "
+            f"{token_class}_tokens, long(null))"
+        ) in query
+        assert (
+            f"{token_class}_tokens_partial = {reporting_records} > 0 and "
+            f"{reporting_records} < token_reporting_records"
+        ) in query
+
+
+def test_models_query_projects_unmapped_usage_attributes_in_one_bounded_query() -> None:
+    query = build_models_query(_filters())
+    assert "materialize(" in query
+    assert "bag_keys(Properties)" in query
+    assert 'token_class_name startswith "gen_ai.usage."' in query
+    assert "TOKEN_CLASS_ALIAS_NAMES" not in query
+    for aliases in TOKEN_CLASS_ALIASES.values():
+        for alias in aliases:
+            assert f'"{alias}"' in query
+    assert "token_class_value >= 0" in query
+    assert "make_bag(pack(token_class_name, token_class_value))" in query
+    assert "extra_token_classes" in query
+    assert "join kind=leftouter" in query
+    assert query.count("union AppDependencies, AppRequests") == 1
+    assert query.count("by project_resource_id, model, deployment") >= 2
+    assert "| sort by requests desc" in query
+    assert f"| take {MAX_ROWS_PER_QUERY}" in query
+    assert "| extend total_in_scope = total_in_scope" in query
+
+
+def test_granular_classes_do_not_change_agents_or_combined_usage_queries() -> None:
+    for query in (build_agents_query(_filters()), build_usage_query(_filters())):
+        assert "cache_read_tokens" not in query
+        assert "cache_write_tokens" not in query
+        assert "reasoning_tokens" not in query
+        assert "extra_token_classes" not in query
+        assert "bag_keys(Properties)" not in query
+
+
+def test_models_query_does_not_filter_by_runtime_or_model_family() -> None:
+    query = build_models_query(_filters())
+    for forbidden in (
+        "runtime_type",
+        "agent_type",
+        "vendor",
+        "Microsoft",
+        "OpenAI",
+        "Anthropic",
+    ):
+        assert forbidden not in query
+    assert "| where provider_name" not in query
 
 
 def test_usage_query_summarizes_tokens_by_agent_and_model() -> None:

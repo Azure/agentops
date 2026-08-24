@@ -38,6 +38,25 @@ _PROJECT_RESOURCE_ID = (
     'Properties["gen_ai.azure_ai_project.id"]))'
 )
 
+TOKEN_CLASS_ALIASES: dict[str, tuple[str, ...]] = {
+    "cache_read": (
+        "gen_ai.usage.cache_read.input_tokens",
+        "gen_ai.usage.cache_read_input_tokens",
+    ),
+    "cache_write": (
+        "gen_ai.usage.cache_write.input_tokens",
+        "gen_ai.usage.cache_creation.input_tokens",
+        "gen_ai.usage.cache_creation_input_tokens",
+    ),
+    "reasoning": (
+        "gen_ai.usage.reasoning.output_tokens",
+        "gen_ai.usage.reasoning_tokens",
+    ),
+}
+TOKEN_CLASS_ALIAS_NAMES = frozenset(
+    alias for aliases in TOKEN_CLASS_ALIASES.values() for alias in aliases
+)
+
 _EVENT_NAME_TO_FIELD = {
     "gen_ai.system.message": "system_instructions",
     "gen_ai.user.message": "input_messages",
@@ -166,6 +185,14 @@ def _bounded_aggregate(aggregate_lines: Sequence[str], *, order_by: str) -> str:
     )
 
 
+def _token_class_extend_clauses() -> list[str]:
+    clauses: list[str] = []
+    for token_class, aliases in TOKEN_CLASS_ALIASES.items():
+        arguments = ", ".join(f'Properties["{alias}"]' for alias in aliases)
+        clauses.append(f"| extend {token_class}_tokens = toint(coalesce({arguments}))")
+    return clauses
+
+
 def build_overview_query(
     filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
 ) -> str:
@@ -212,21 +239,87 @@ def build_models_query(
     filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
 ) -> str:
     """Bounded per-model/deployment usage summary query."""
-    aggregate_lines = [
+    event_lines = [
         _TELEMETRY_TABLES,
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
         '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
+        *_token_class_extend_clauses(),
+    ]
+    summary_lines = [
         "| summarize requests = count(), "
         "failures = countif(Success == false), "
         "p95_latency_ms = percentile(DurationMs, 95), "
         "input_tokens = sum(input_tokens), "
         "output_tokens = sum(output_tokens), "
+        "token_reporting_records = countif("
+        "isnotnull(input_tokens) or isnotnull(output_tokens) or "
+        "isnotnull(cache_read_tokens) or isnotnull(cache_write_tokens) or "
+        "isnotnull(reasoning_tokens)), "
+        "cache_read_tokens = sum(cache_read_tokens), "
+        "cache_read_reporting_records = countif(isnotnull(cache_read_tokens)), "
+        "cache_write_tokens = sum(cache_write_tokens), "
+        "cache_write_reporting_records = countif(isnotnull(cache_write_tokens)), "
+        "reasoning_tokens = sum(reasoning_tokens), "
+        "reasoning_reporting_records = countif(isnotnull(reasoning_tokens)), "
         "last_seen = max(TimeGenerated) "
         "by project_resource_id, model, deployment",
+        "| extend "
+        "cache_read_tokens = iff(cache_read_reporting_records > 0, "
+        "cache_read_tokens, long(null)), "
+        "cache_write_tokens = iff(cache_write_reporting_records > 0, "
+        "cache_write_tokens, long(null)), "
+        "reasoning_tokens = iff(reasoning_reporting_records > 0, "
+        "reasoning_tokens, long(null))",
+        "| extend "
+        "cache_read_tokens_partial = cache_read_reporting_records > 0 and "
+        "cache_read_reporting_records < token_reporting_records, "
+        "cache_write_tokens_partial = cache_write_reporting_records > 0 and "
+        "cache_write_reporting_records < token_reporting_records, "
+        "reasoning_tokens_partial = reasoning_reporting_records > 0 and "
+        "reasoning_reporting_records < token_reporting_records",
+        "| project-away token_reporting_records, cache_read_reporting_records, "
+        "cache_write_reporting_records, reasoning_reporting_records",
     ]
-    return _bounded_aggregate(aggregate_lines, order_by="requests")
+    excluded_names = (
+        "gen_ai.usage.input_tokens",
+        "gen_ai.usage.output_tokens",
+        *sorted(TOKEN_CLASS_ALIAS_NAMES),
+    )
+    excluded = ", ".join(f'"{name}"' for name in excluded_names)
+    return "\n".join(
+        [
+        "let model_events = materialize(",
+        *event_lines,
+        ");",
+        "let model_summary = model_events",
+        *summary_lines,
+        ";",
+        "let extra_class_summary = model_events",
+        "| mv-expand token_class_name = bag_keys(Properties)",
+        "| extend token_class_name = tostring(token_class_name)",
+        '| where token_class_name startswith "gen_ai.usage."',
+        f"| where token_class_name !in ({excluded})",
+        "| extend token_class_value = todouble(Properties[token_class_name])",
+        "| where isnotnull(token_class_value) and token_class_value >= 0",
+        "| summarize token_class_value = sum(token_class_value) "
+        "by project_resource_id, model, deployment, token_class_name",
+        "| summarize extra_token_classes = "
+        "make_bag(pack(token_class_name, token_class_value)) "
+        "by project_resource_id, model, deployment;",
+        "let agg = model_summary",
+        "| join kind=leftouter extra_class_summary "
+        "on project_resource_id, model, deployment",
+        "| project-away project_resource_id1, model1, deployment1",
+        ";",
+        "let total_in_scope = toscalar(agg | count);",
+        "agg",
+        "| sort by requests desc",
+        f"| take {MAX_ROWS_PER_QUERY}",
+        "| extend total_in_scope = total_in_scope",
+        ]
+    )
 
 
 def build_tools_query(

@@ -5,6 +5,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **The Cockpit Models view exposes bounded granular token usage without
+  overstating telemetry coverage.** Model rows show normalized cache-read,
+  cache-write, and reasoning classes, preserve explicit zero versus missing
+  values, and flag partial reporting both on affected rows and in the coverage
+  panel. Up to five additional `gen_ai.usage.*` classes are retained in sorted
+  order under their source names, with a visible signal when more were
+  truncated.
+
 ### Changed
 - **Breaking: Observe replaces coarse agent `source_kind` values with refined
   runtime attribution.**

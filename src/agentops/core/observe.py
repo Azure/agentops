@@ -434,7 +434,25 @@ class ModelUsage(ContractModel):
     p95_latency_ms: float | None = Field(default=None, ge=0)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
+    cache_read_tokens: int | None = Field(default=None, ge=0)
+    cache_write_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
+    additional_token_classes: dict[str, int] = Field(default_factory=dict)
+    additional_token_classes_truncated: bool = False
+    partially_reported_token_classes: tuple[
+        Literal["cache-read", "cache-write", "reasoning"], ...
+    ] = ()
+    token_classes_partial: bool = False
     last_seen: datetime | None = None
+
+    @field_validator("additional_token_classes")
+    @classmethod
+    def _validate_additional_token_classes(cls, value: dict[str, int]) -> dict[str, int]:
+        if len(value) > 5:
+            raise ValueError("additional_token_classes cannot contain more than five entries")
+        if any(count < 0 for count in value.values()):
+            raise ValueError("additional_token_classes values must be non-negative")
+        return value
 
 
 class ObservedTool(ContractModel):

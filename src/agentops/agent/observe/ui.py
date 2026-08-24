@@ -429,6 +429,52 @@ def _render_token_totals(
     )
 
 
+def _render_model_token_usage(entry: Any) -> str:
+    classes = (
+        ("Cache read", "cache_read_tokens"),
+        ("Cache write", "cache_write_tokens"),
+        ("Reasoning", "reasoning_tokens"),
+    )
+    class_html = "".join(
+        '<span class="observe-token-class">'
+        f'<span class="observe-token-class-label">{html_escape(label)}: </span>'
+        f"{_render_maybe_missing(_get(entry, field))}"
+        "</span>"
+        for label, field in classes
+    )
+    partial = ""
+    if _get(entry, "token_classes_partial", False):
+        partial = (
+            '<span class="observe-token-classes-partial">'
+            "Partial class coverage"
+            "</span>"
+        )
+    additional = _get(entry, "additional_token_classes", {}) or {}
+    additional_html = "".join(
+        '<span class="observe-token-class observe-token-class-additional">'
+        f'<span class="observe-token-class-label">{html_escape(name)}: </span>'
+        f"{_render_maybe_missing(value)}"
+        "</span>"
+        for name, value in additional.items()
+    )
+    truncated = ""
+    if _get(entry, "additional_token_classes_truncated", False):
+        truncated = (
+            '<span class="observe-token-classes-truncated">'
+            "Additional classes truncated"
+            "</span>"
+        )
+    return (
+        _render_token_totals(_get(entry, "input_tokens"), _get(entry, "output_tokens"))
+        + '<span class="observe-token-classes">'
+        + class_html
+        + additional_html
+        + partial
+        + truncated
+        + "</span>"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Chart rendering (T052 / FR-035)
 # ---------------------------------------------------------------------------
@@ -977,7 +1023,7 @@ def render_models_usage_table(
             f"<td>{_render_maybe_missing(_get(entry, 'requests'))}</td>"
             f"<td>{_render_failure_rate(_get(entry, 'requests'), _get(entry, 'failures'))}</td>"
             f"<td>{_render_maybe_missing(_get(entry, 'p95_latency_ms'), suffix=' ms')}</td>"
-            f"<td>{_render_token_totals(_get(entry, 'input_tokens'), _get(entry, 'output_tokens'))}</td>"
+            f"<td>{_render_model_token_usage(entry)}</td>"
             f"<td>{render_last_seen(_get(entry, 'last_seen'))}</td>"
             "</tr>"
         )
@@ -1631,6 +1677,41 @@ _OBSERVE_SCRIPT = """
     return wrap;
   }
 
+  function renderModelTokenUsage(entry) {
+    entry = entry || {};
+    var wrap = makeEl("span", "observe-model-token-usage");
+    wrap.appendChild(renderTokenTotals(entry.input_tokens, entry.output_tokens));
+    var classes = makeEl("span", "observe-token-classes");
+    [
+      ["Cache read", entry.cache_read_tokens],
+      ["Cache write", entry.cache_write_tokens],
+      ["Reasoning", entry.reasoning_tokens]
+    ].forEach(function (item) {
+      var tokenClass = makeEl("span", "observe-token-class");
+      tokenClass.appendChild(makeEl("span", "observe-token-class-label", item[0] + ": "));
+      tokenClass.appendChild(renderMaybeMissing(item[1]));
+      classes.appendChild(tokenClass);
+    });
+    Object.keys(entry.additional_token_classes || {}).forEach(function (name) {
+      var tokenClass = makeEl("span", "observe-token-class observe-token-class-additional");
+      tokenClass.appendChild(makeEl("span", "observe-token-class-label", name + ": "));
+      tokenClass.appendChild(renderMaybeMissing(entry.additional_token_classes[name]));
+      classes.appendChild(tokenClass);
+    });
+    if (entry.token_classes_partial) {
+      classes.appendChild(
+        makeEl("span", "observe-token-classes-partial", "Partial class coverage")
+      );
+    }
+    if (entry.additional_token_classes_truncated) {
+      classes.appendChild(
+        makeEl("span", "observe-token-classes-truncated", "Additional classes truncated")
+      );
+    }
+    wrap.appendChild(classes);
+    return wrap;
+  }
+
   // Mirrors `render_last_seen`: always appends the observed-telemetry-only
   // disclaimer (FR-034).
   function renderLastSeenJs(value) {
@@ -2199,7 +2280,7 @@ _OBSERVE_SCRIPT = """
         renderMaybeMissing(entry.requests),
         renderFailureRate(entry.requests, entry.failures),
         renderMaybeMissing(entry.p95_latency_ms, { suffix: " ms" }),
-        renderTokenTotals(entry.input_tokens, entry.output_tokens),
+        renderModelTokenUsage(entry),
         renderLastSeenJs(entry.last_seen),
       ];
     });

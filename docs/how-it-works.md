@@ -132,6 +132,29 @@ excluded from shared caches. `/healthz` is the only anonymous route and returns
 liveness only. Wider Observe scope is represented by canonical ARM IDs in one
 versioned setting, not by parallel subscription/resource-group variables.
 
+### Granular token usage in Models
+
+The Cockpit **Models** view keeps the observed input and output totals and also
+normalizes three granular token classes when source telemetry emits them:
+**Cache read**, **Cache write**, and **Reasoning**. These values are observed
+usage, not billing data, and AgentOps never derives a missing class from another
+total. A class that was not emitted renders as **Not reported**; an explicitly
+reported `0` renders as zero.
+
+Reporting can be incomplete within a row or across the rows aggregated for a
+telemetry source. An affected model row shows **Partial class coverage**, while
+the coverage panel marks the source's `token_usage` dimension as **partial** and
+identifies the classes that were reported and those that were not. This keeps a
+partially reported aggregate from looking complete without treating missing
+telemetry as zero.
+
+Eligible, unmapped `gen_ai.usage.*` token attributes remain visible under their
+source names. Each row retains at most five, selected deterministically by
+source attribute name in ascending order. If more are present, the row shows
+**Additional classes truncated**; this signal distinguishes omitted classes
+from attributes that source telemetry never reported. Passthrough attributes
+do not change normalized values or token-usage coverage.
+
 ## Request Flow (eval run)
 
 For an unfamiliar repo, run `agentops eval analyze` first. It is a read-only
