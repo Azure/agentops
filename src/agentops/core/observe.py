@@ -12,6 +12,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 ScopeMode = Literal["projects", "foundry", "resource_group", "subscription"]
+RuntimeKind = Literal[
+    "foundry_hosted",
+    "foundry_prompt",
+    "external_registered",
+    "external_unregistered",
+    "copilot_studio",
+    "unknown",
+]
 CoverageState = Literal[
     "available",
     "inaccessible",
@@ -22,6 +30,9 @@ CoverageState = Literal[
     "error",
     "protected_or_unavailable",
 ]
+
+# This mirrors the bounded Observe query contract without coupling core to agent code.
+MAX_ROWS_PER_QUERY = 500
 
 _SUBSCRIPTION_RE = re.compile(r"^/subscriptions/[^/]+$", re.IGNORECASE)
 _RESOURCE_GROUP_RE = re.compile(
@@ -312,6 +323,8 @@ class ObserveFilterState(ContractModel):
     project_resource_id: str | None = None
     agent_id: str | None = None
     model: str | None = None
+    tool_name: str | None = None
+    run_key: str | None = None
     start: datetime
     end: datetime
 
@@ -321,6 +334,18 @@ class ObserveFilterState(ContractModel):
     _canonicalize_project_filter = field_validator(
         "project_resource_id", mode="before"
     )(lambda value: canonical_arm_id(value) if isinstance(value, str) else value)
+
+    @field_validator("tool_name", "run_key")
+    @classmethod
+    def _trim_narrowing_filter(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("Observe narrowing filters must not be empty")
+        if len(value) > 256:
+            raise ValueError("Observe narrowing filters must be at most 256 characters")
+        return value
 
     @model_validator(mode="after")
     def _ordered_range(self) -> "ObserveFilterState":
@@ -335,7 +360,7 @@ class ObserveFilterState(ContractModel):
 
 
 class ObserveQueryRequest(ContractModel):
-    view: Literal["overview", "agents", "models", "coverage"]
+    view: Literal["overview", "agents", "models", "coverage", "tools", "runs"]
     filters: ObserveFilterState
     refresh: bool = False
 
@@ -377,12 +402,13 @@ class QueryDiagnostics(ContractModel):
 
 
 class ObservedAgent(ContractModel):
+    source_id: str = Field(min_length=1)
     key: str
     agent_id: str | None = None
     agent_name: str | None = None
     project_resource_id: str | None = None
     foundry_resource_id: str | None = None
-    source_kind: Literal["foundry", "external", "unknown"]
+    source_kind: RuntimeKind
     model: str | None = None
     last_seen: datetime
     invocations: int = Field(ge=0)
@@ -408,7 +434,101 @@ class ModelUsage(ContractModel):
     p95_latency_ms: float | None = Field(default=None, ge=0)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
+    cache_read_tokens: int | None = Field(default=None, ge=0)
+    cache_write_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
+    additional_token_classes: dict[str, int] = Field(default_factory=dict)
+    additional_token_classes_truncated: bool = False
+    partially_reported_token_classes: tuple[
+        Literal["cache-read", "cache-write", "reasoning"], ...
+    ] = ()
+    token_classes_partial: bool = False
     last_seen: datetime | None = None
+
+    @field_validator("additional_token_classes")
+    @classmethod
+    def _validate_additional_token_classes(cls, value: dict[str, int]) -> dict[str, int]:
+        if len(value) > 5:
+            raise ValueError("additional_token_classes cannot contain more than five entries")
+        if any(count < 0 for count in value.values()):
+            raise ValueError("additional_token_classes values must be non-negative")
+        return value
+
+
+class ObservedTool(ContractModel):
+    source_id: str = Field(min_length=1)
+    tool_name: str = Field(min_length=1)
+    agent_key: str = Field(min_length=1)
+    agent_id: str | None = None
+    agent_name: str | None = None
+    project_resource_id: str | None = None
+    foundry_resource_id: str | None = None
+    source_kind: RuntimeKind
+    last_seen: datetime
+    invocations: int = Field(ge=0)
+    failures: int = Field(ge=0)
+    p95_latency_ms: float | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _failures_not_greater_than_invocations(self) -> "ObservedTool":
+        if self.failures > self.invocations:
+            raise ValueError("failures cannot exceed invocations")
+        return self
+
+
+class ObservedRun(ContractModel):
+    source_id: str = Field(min_length=1)
+    run_key: str = Field(min_length=1)
+    run_key_kind: Literal["conversation", "trace"]
+    agent_key: str = Field(min_length=1)
+    agent_id: str | None = None
+    agent_name: str | None = None
+    project_resource_id: str | None = None
+    foundry_resource_id: str | None = None
+    source_kind: RuntimeKind
+    started_at: datetime
+    last_activity_at: datetime
+    duration_ms: float | None = Field(default=None, ge=0)
+    status: Literal["succeeded", "failed", "in_progress"]
+    turns: int = Field(ge=1)
+    failed_turns: int = Field(ge=0)
+    tool_invocations: int = Field(ge=0)
+    tool_failures: int = Field(ge=0)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_run(self) -> "ObservedRun":
+        if self.last_activity_at < self.started_at:
+            raise ValueError("last_activity_at cannot precede started_at")
+        if self.failed_turns > self.turns:
+            raise ValueError("failed_turns cannot exceed turns")
+        if self.tool_failures > self.tool_invocations:
+            raise ValueError("tool_failures cannot exceed tool_invocations")
+        if self.status == "succeeded" and (
+            self.failed_turns > 0 or self.tool_failures > 0
+        ):
+            raise ValueError("succeeded runs cannot contain failures")
+        return self
+
+
+class ResultBounds(ContractModel):
+    rows_shown: int = Field(ge=0)
+    rows_total_in_scope: int | None = Field(default=None, ge=0)
+    truncated: bool = False
+
+    @model_validator(mode="after")
+    def _validate_bounds(self) -> "ResultBounds":
+        if (
+            self.rows_total_in_scope is not None
+            and self.rows_total_in_scope < self.rows_shown
+        ):
+            raise ValueError("rows_total_in_scope cannot be less than rows_shown")
+        if self.truncated and self.rows_shown != MAX_ROWS_PER_QUERY:
+            raise ValueError(
+                "truncated results must show exactly MAX_ROWS_PER_QUERY rows"
+            )
+        return self
 
 
 class CoverageResult(ContractModel):
@@ -422,6 +542,8 @@ class CoverageResult(ContractModel):
         "token_usage",
         "trace_correlation",
         "protected_content",
+        "tool_attribution",
+        "run_correlation",
     ]
     state: CoverageState
     reason: str

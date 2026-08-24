@@ -5,6 +5,31 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-24
+
+### Added
+- **The Cockpit Models view exposes bounded granular token usage without
+  overstating telemetry coverage.** Model rows show normalized cache-read,
+  cache-write, and reasoning classes, preserve explicit zero versus missing
+  values, and flag partial reporting both on affected rows and in the coverage
+  panel. Up to five additional `gen_ai.usage.*` classes are retained in sorted
+  order under their source names, with a visible signal when more were
+  truncated.
+
+### Changed
+- **Breaking: Observe replaces coarse agent `source_kind` values with refined
+  runtime attribution.**
+
+  | Old value | New value(s) |
+  | --- | --- |
+  | `foundry` | `foundry_hosted` or `foundry_prompt` |
+  | `external` | `external_registered` or `external_unregistered` |
+  | — | `copilot_studio` (new) |
+  | `unknown` | `unknown` |
+
+  There is no dual-emission window, so consumers must accept the new values in
+  this release.
+
 ## [0.11.0] - 2026-08-21
 
 ### Added

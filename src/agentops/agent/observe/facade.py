@@ -122,10 +122,8 @@ def _serialize_data(data: Any) -> Any:
     """Serialize :attr:`ObserveResult.data`, whose shape depends on ``view``.
 
     ``"overview"`` yields a plain ``dict`` of aggregate totals (see
-    ``ObserveService._normalize_view``); ``"agents"``/``"models"`` yield a
-    list of pydantic :class:`~agentops.core.observe.ObservedAgent`/
-    :class:`~agentops.core.observe.ModelUsage` values. Both must round-trip
-    to JSON-safe plain Python.
+    ``ObserveService._normalize_view``); row-bearing views yield lists of
+    Pydantic contract values. Both must round-trip to JSON-safe plain Python.
     """
     if isinstance(data, Mapping):
         return dict(data)
@@ -158,6 +156,7 @@ def _serialize_observe_result(result: ObserveResult, *, view_override: str | Non
         "coverage": [item.model_dump(mode="json") for item in result.coverage],
         "diagnostics": result.diagnostics.model_dump(mode="json"),
         "partial_failures": [asdict(item) for item in result.partial_failures],
+        "bounds": result.bounds.model_dump(mode="json") if result.bounds is not None else None,
         "refreshed_at": result.refreshed_at.isoformat(),
         "cache_status": result.cache_status,
     }
@@ -301,7 +300,7 @@ class ObserveFacade:
         """Return one normalized, coverage-annotated Observe view.
 
         ``view="coverage"`` has no native entry in ``ObserveService.View``
-        (``Literal["overview", "agents", "models"]``) or
+        (``Literal["overview", "agents", "models", "tools", "runs"]``) or
         ``adapters._VIEW_QUERY_BUILDERS`` -- it is bridged here by running
         the *bounded, native* ``"overview"`` query (the same source batch,
         KQL builders, and 10-source/timeout/deadline handling as a real

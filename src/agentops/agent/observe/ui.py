@@ -3,9 +3,9 @@
 This module renders the Observe navigation surface described in
 ``specs/011-deploy-hosted-cockpit`` (User Story 2 "Explore Aggregated
 Telemetry Without Manual Correlation" and User Story 3 "Diagnose Missing and
-Partial Telemetry"): an Overview cards grid, an Agents table, a Models/usage
-table, a Telemetry coverage/troubleshooting view, and agent/trace detail
-shells, all wired to a single shared filter bar.
+Partial Telemetry"): Overview cards, Agents, Models/usage, Tools, Runs, and
+Telemetry coverage/troubleshooting views, plus agent/trace detail shells, all
+wired to a single shared filter bar.
 
 Design constraints carried over from the spec/plan (see FR-022..FR-053):
 
@@ -60,13 +60,15 @@ from typing import Any, Mapping, Optional, Sequence
 # ---------------------------------------------------------------------------
 
 #: Views exposed by the Observe navigation, in display order.
-OBSERVE_VIEWS: tuple[str, ...] = ("overview", "agents", "usage", "coverage")
+OBSERVE_VIEWS: tuple[str, ...] = ("overview", "agents", "usage", "tools", "runs", "coverage")
 
 #: Human-readable labels for each view, used by the nav and page title.
 OBSERVE_VIEW_LABELS: dict[str, str] = {
     "overview": "Overview",
     "agents": "Agents",
     "usage": "Models and usage",
+    "tools": "Tools",
+    "runs": "Runs",
     "coverage": "Telemetry coverage",
 }
 
@@ -81,6 +83,8 @@ OBSERVE_VIEW_WIRE_NAMES: dict[str, str] = {
     "overview": "overview",
     "agents": "agents",
     "usage": "models",
+    "tools": "tools",
+    "runs": "runs",
     "coverage": "coverage",
 }
 
@@ -93,6 +97,8 @@ OBSERVE_FILTER_QUERY_KEYS: tuple[str, ...] = (
     "project_resource_id",
     "agent_id",
     "model",
+    "tool_name",
+    "run_key",
     "start",
     "end",
 )
@@ -132,6 +138,8 @@ COVERAGE_DIMENSION_LABELS: dict[str, str] = {
     "agent_attribution": "Agent attribution",
     "model_attribution": "Model attribution",
     "token_usage": "Token usage",
+    "tool_attribution": "Tool attribution",
+    "run_correlation": "Run correlation",
     "trace_correlation": "Trace correlation",
     "protected_content": "Protected content",
 }
@@ -183,6 +191,8 @@ __all__ = [
     "render_overview_cards",
     "render_agents_table",
     "render_models_usage_table",
+    "render_tools_table",
+    "render_runs_table",
     "render_coverage_table",
     "render_diagnostics_banner",
     "render_coverage_view",
@@ -397,20 +407,71 @@ def _render_failure_rate(invocations: Any, failures: Any) -> str:
     return _render_maybe_missing(round(rate, 1), suffix="%")
 
 
-def _render_token_totals(input_tokens: Any, output_tokens: Any) -> str:
+def _render_token_totals(
+    input_tokens: Any,
+    output_tokens: Any,
+    *,
+    missing_text: str = "Not reported",
+) -> str:
     """Render token totals with the required "observed usage" disclaimer.
 
     Token counts are observed usage signals, not billing data; every render
     of a token total must say so explicitly (FR-036).
     """
-    input_html = _render_maybe_missing(input_tokens)
-    output_html = _render_maybe_missing(output_tokens)
+    input_html = _render_maybe_missing(input_tokens, missing_text=missing_text)
+    output_html = _render_maybe_missing(output_tokens, missing_text=missing_text)
     return (
         '<span class="observe-token-totals">'
         f'<span class="observe-token-in">In: {input_html}</span> '
         f'<span class="observe-token-out">Out: {output_html}</span>'
         '<span class="observe-hint"> (observed usage, not billing data)</span>'
         "</span>"
+    )
+
+
+def _render_model_token_usage(entry: Any) -> str:
+    classes = (
+        ("Cache read", "cache_read_tokens"),
+        ("Cache write", "cache_write_tokens"),
+        ("Reasoning", "reasoning_tokens"),
+    )
+    class_html = "".join(
+        '<span class="observe-token-class">'
+        f'<span class="observe-token-class-label">{html_escape(label)}: </span>'
+        f"{_render_maybe_missing(_get(entry, field))}"
+        "</span>"
+        for label, field in classes
+    )
+    partial = ""
+    if _get(entry, "token_classes_partial", False):
+        partial = (
+            '<span class="observe-token-classes-partial">'
+            "Partial class coverage"
+            "</span>"
+        )
+    additional = _get(entry, "additional_token_classes", {}) or {}
+    additional_html = "".join(
+        '<span class="observe-token-class observe-token-class-additional">'
+        f'<span class="observe-token-class-label">{html_escape(name)}: </span>'
+        f"{_render_maybe_missing(value)}"
+        "</span>"
+        for name, value in additional.items()
+    )
+    truncated = ""
+    if _get(entry, "additional_token_classes_truncated", False):
+        truncated = (
+            '<span class="observe-token-classes-truncated">'
+            "Additional classes truncated"
+            "</span>"
+        )
+    return (
+        _render_token_totals(_get(entry, "input_tokens"), _get(entry, "output_tokens"))
+        + '<span class="observe-token-classes">'
+        + class_html
+        + additional_html
+        + partial
+        + truncated
+        + "</span>"
     )
 
 
@@ -638,6 +699,14 @@ def render_filter_bar(scope_label: Optional[str] = None) -> str:
       <input type="text" id="observe-filter-model" name="model"
              data-draft-filter="model" placeholder="All" autocomplete="off" />
     </label>
+    <label for="observe-filter-tool_name">Tool
+      <input type="text" id="observe-filter-tool_name" name="tool_name"
+             data-draft-filter="tool_name" placeholder="All" autocomplete="off" />
+    </label>
+    <label for="observe-filter-run_key">Run key
+      <input type="text" id="observe-filter-run_key" name="run_key"
+             data-draft-filter="run_key" placeholder="All" autocomplete="off" />
+    </label>
     <label for="observe-filter-start">Start
       <input type="datetime-local" id="observe-filter-start" name="start"
              data-draft-filter="start" />
@@ -722,8 +791,16 @@ def render_overview_cards(
 
 def _render_source_kind_badge(source_kind: Any) -> str:
     kind = source_kind or "unknown"
-    tone = {"foundry": "ok", "external": "warn", "unknown": "muted"}.get(kind, "muted")
-    return _render_badge(str(kind).title(), tone, extra_class="observe-source-kind-badge")
+    tone = {
+        "foundry_hosted": "ok",
+        "foundry_prompt": "ok",
+        "external_registered": "warn",
+        "external_unregistered": "warn",
+        "copilot_studio": "warn",
+        "unknown": "muted",
+    }.get(kind, "muted")
+    label = str(kind).replace("_", " ").title()
+    return _render_badge(label, tone, extra_class="observe-source-kind-badge")
 
 
 def _render_identity_availability(agent_id: Any) -> str:
@@ -757,6 +834,7 @@ def render_agents_table(
             "<tr>"
             f"<td>{html_escape(name)} {_render_source_kind_badge(_get(agent, 'source_kind'))} "
             f"{_render_identity_availability(_get(agent, 'agent_id'))}</td>"
+            f"<td>{html_escape(_get(agent, 'source_id') or 'Not reported')}</td>"
             f"<td>{html_escape(_get(agent, 'model') or 'Not reported')}</td>"
             f"<td>{render_last_seen(_get(agent, 'last_seen'))}</td>"
             f"<td>{_render_maybe_missing(_get(agent, 'invocations'))}</td>"
@@ -772,11 +850,139 @@ def render_agents_table(
   <thead>
     <tr>
       <th scope="col">Agent</th>
+      <th scope="col">Source</th>
       <th scope="col">Model</th>
       <th scope="col">Last seen</th>
       <th scope="col">Invocations</th>
       <th scope="col">Failure rate</th>
       <th scope="col">p95 latency</th>
+      <th scope="col">Tokens</th>
+    </tr>
+  </thead>
+  <tbody>{"".join(rows)}</tbody>
+</table>
+""".strip()
+
+
+# ---------------------------------------------------------------------------
+# Tools and runs tables
+# ---------------------------------------------------------------------------
+
+
+def _render_bounds_notice(bounds: Any, *, rows_shown: int) -> str:
+    """Render bounded-result scope without inventing an unavailable total."""
+    total = _get(bounds, "rows_total_in_scope") if bounds is not None else None
+    if total is None:
+        text = f"Showing {rows_shown} rows; total unknown."
+    else:
+        text = f"Showing {rows_shown} of {total} rows in scope."
+    return f'<p class="observe-hint observe-bounds-notice">{html_escape(text)}</p>'
+
+
+def render_tools_table(
+    tools: Sequence[Any],
+    *,
+    diagnostics: Optional[Mapping[str, Any]] = None,
+    bounds: Any = None,
+) -> str:
+    """Render tool activity without attributing unavailable latency as zero."""
+    banner = render_diagnostics_banner(diagnostics) if diagnostics is not None else ""
+    notice = _render_bounds_notice(bounds, rows_shown=len(tools))
+    if not tools:
+        return (
+            f'{banner}{notice}<div class="observe-tools-view observe-empty-state">'
+            '<p class="observe-empty">No tool activity was found for the selected filters. '
+            'Tool attribution may not be reported; check Telemetry coverage for details.</p></div>'
+        )
+    rows = []
+    for tool in tools:
+        agent = _get(tool, "agent_name") or _get(tool, "agent_id") or _get(tool, "agent_key") or "Not reported"
+        rows.append(
+            "<tr>"
+            f"<td>{html_escape(_get(tool, 'tool_name') or 'Not reported')}</td>"
+            f"<td>{html_escape(agent)}</td>"
+            f"<td>{html_escape(_get(tool, 'source_id') or 'Not reported')}</td>"
+            f"<td>{_render_source_kind_badge(_get(tool, 'source_kind'))}</td>"
+            f"<td>{render_last_seen(_get(tool, 'last_seen'))}</td>"
+            f"<td>{_render_maybe_missing(_get(tool, 'invocations'))}</td>"
+            f"<td>{_render_maybe_missing(_get(tool, 'failures'))}</td>"
+            f"<td>{_render_maybe_missing(_get(tool, 'p95_latency_ms'), suffix=' ms', missing_text='Not measured')}</td>"
+            "</tr>"
+        )
+    return f"""
+{banner}
+{notice}
+<table class="observe-tools-table" aria-label="Tools observed in the selected range">
+  <caption class="visually-hidden">Tools observed in the selected range</caption>
+  <thead>
+    <tr>
+      <th scope="col">Tool</th>
+      <th scope="col">Agent</th>
+      <th scope="col">Source</th>
+      <th scope="col">Runtime</th>
+      <th scope="col">Last seen</th>
+      <th scope="col">Invocations</th>
+      <th scope="col">Failures</th>
+      <th scope="col">p95 latency</th>
+    </tr>
+  </thead>
+  <tbody>{"".join(rows)}</tbody>
+</table>
+""".strip()
+
+
+def render_runs_table(
+    runs: Sequence[Any],
+    *,
+    diagnostics: Optional[Mapping[str, Any]] = None,
+    bounds: Any = None,
+) -> str:
+    """Render range-scoped correlated executions and their observed token totals."""
+    banner = render_diagnostics_banner(diagnostics) if diagnostics is not None else ""
+    notice = _render_bounds_notice(bounds, rows_shown=len(runs))
+    if not runs:
+        return (
+            f'{banner}{notice}<div class="observe-runs-view observe-empty-state">'
+            '<p class="observe-empty">No runs could be correlated for the selected filters. '
+            'Run correlation may not be reported; check Telemetry coverage for details.</p></div>'
+        )
+    rows = []
+    for run in runs:
+        agent = _get(run, "agent_name") or _get(run, "agent_id") or _get(run, "agent_key") or "Not reported"
+        started_at = _coerce_datetime(_get(run, "started_at"))
+        rows.append(
+            "<tr>"
+            f"<td>{html_escape(_get(run, 'run_key') or 'Not reported')}</td>"
+            f"<td>{html_escape(_get(run, 'run_key_kind') or 'Not reported')}</td>"
+            f"<td>{html_escape(agent)}</td>"
+            f"<td>{html_escape(_get(run, 'source_id') or 'Not reported')}</td>"
+            f"<td>{_render_source_kind_badge(_get(run, 'source_kind'))}</td>"
+            f"<td>{html_escape(_format_iso(started_at) if started_at else 'Not reported')}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'duration_ms'), suffix=' ms')}</td>"
+            f"<td>{html_escape(_get(run, 'status') or 'Not reported')}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'turns'))}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'tool_invocations'))}</td>"
+            f"<td>{_render_token_totals(_get(run, 'input_tokens'), _get(run, 'output_tokens'), missing_text='Not available')}</td>"
+            "</tr>"
+        )
+    return f"""
+{banner}
+{notice}
+<p class="observe-hint">Start, duration, and turns describe activity within the selected range.</p>
+<table class="observe-runs-table" aria-label="Runs observed in the selected range">
+  <caption class="visually-hidden">Runs observed in the selected range; start, duration, and turns are range-scoped.</caption>
+  <thead>
+    <tr>
+      <th scope="col">Run key</th>
+      <th scope="col">Correlation</th>
+      <th scope="col">Agent</th>
+      <th scope="col">Source</th>
+      <th scope="col">Runtime</th>
+      <th scope="col">Started in range</th>
+      <th scope="col">Duration in range</th>
+      <th scope="col">Status</th>
+      <th scope="col">Turns in range</th>
+      <th scope="col">Tool invocations</th>
       <th scope="col">Tokens</th>
     </tr>
   </thead>
@@ -817,7 +1023,7 @@ def render_models_usage_table(
             f"<td>{_render_maybe_missing(_get(entry, 'requests'))}</td>"
             f"<td>{_render_failure_rate(_get(entry, 'requests'), _get(entry, 'failures'))}</td>"
             f"<td>{_render_maybe_missing(_get(entry, 'p95_latency_ms'), suffix=' ms')}</td>"
-            f"<td>{_render_token_totals(_get(entry, 'input_tokens'), _get(entry, 'output_tokens'))}</td>"
+            f"<td>{_render_model_token_usage(entry)}</td>"
             f"<td>{render_last_seen(_get(entry, 'last_seen'))}</td>"
             "</tr>"
         )
@@ -1243,7 +1449,8 @@ th, td { border-bottom: 1px solid var(--observe-border); padding: 0.5rem; text-a
 #
 # Safety guarantee enforced by this script (and pinned by tests):
 #   * Only OBSERVE_FILTER_QUERY_KEYS (foundry_resource_id, project_resource_id,
-#     agent_id, model, start, end) plus the active `view` are ever read from
+#     agent_id, model, tool_name, run_key, start, end) plus the active `view`
+#     are ever read from
 #     or written to the URL query string via history.replaceState.
 #   * Raw generative-AI content fields (input_messages, output_messages,
 #     system_instructions, tool_content, evaluation_explanation) are NEVER
@@ -1257,7 +1464,7 @@ _OBSERVE_SCRIPT = """
 (function () {
   "use strict";
 
-  var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", "model", "start", "end"];
+  var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", "model", "tool_name", "run_key", "start", "end"];
   var AUTO_REFRESH_MS = 300000; // five minutes
   var DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000; // trailing 24 hours
   // Mirrors MAX_TREND_POINTS in ui.py: even though the backend is expected
@@ -1268,7 +1475,7 @@ _OBSERVE_SCRIPT = """
   // Maps each internal view identifier to the `ObserveQuery.view` wire value
   // from contracts/observe-api.openapi.yaml (mirrors OBSERVE_VIEW_WIRE_NAMES
   // in ui.py -- the internal "usage" id is spelled "models" on the wire).
-  var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", coverage: "coverage" };
+  var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", tools: "tools", runs: "runs", coverage: "coverage" };
   // Best-effort, human-friendly labels for *documented* portal link keys
   // (mirrors _KNOWN_PORTAL_LABELS in ui.py). Any key not listed here still
   // renders (title-cased) rather than being dropped -- the "best-effort
@@ -1383,6 +1590,8 @@ _OBSERVE_SCRIPT = """
     agent_attribution: "Agent attribution",
     model_attribution: "Model attribution",
     token_usage: "Token usage",
+    tool_attribution: "Tool attribution",
+    run_correlation: "Run correlation",
     trace_correlation: "Trace correlation",
     protected_content: "Protected content",
   };
@@ -1455,16 +1664,51 @@ _OBSERVE_SCRIPT = """
 
   // Mirrors `_render_token_totals`: always appends the "observed usage, not
   // billing data" disclaimer (FR-036).
-  function renderTokenTotals(inputTokens, outputTokens) {
+  function renderTokenTotals(inputTokens, outputTokens, missingText) {
     var wrap = makeEl("span", "observe-token-totals");
     var inSpan = makeEl("span", "observe-token-in", "In: ");
-    inSpan.appendChild(renderMaybeMissing(inputTokens));
+    inSpan.appendChild(renderMaybeMissing(inputTokens, { missingText: missingText || "Not reported" }));
     var outSpan = makeEl("span", "observe-token-out", "Out: ");
-    outSpan.appendChild(renderMaybeMissing(outputTokens));
+    outSpan.appendChild(renderMaybeMissing(outputTokens, { missingText: missingText || "Not reported" }));
     wrap.appendChild(inSpan);
     wrap.appendChild(document.createTextNode(" "));
     wrap.appendChild(outSpan);
     wrap.appendChild(makeEl("span", "observe-hint", " (observed usage, not billing data)"));
+    return wrap;
+  }
+
+  function renderModelTokenUsage(entry) {
+    entry = entry || {};
+    var wrap = makeEl("span", "observe-model-token-usage");
+    wrap.appendChild(renderTokenTotals(entry.input_tokens, entry.output_tokens));
+    var classes = makeEl("span", "observe-token-classes");
+    [
+      ["Cache read", entry.cache_read_tokens],
+      ["Cache write", entry.cache_write_tokens],
+      ["Reasoning", entry.reasoning_tokens]
+    ].forEach(function (item) {
+      var tokenClass = makeEl("span", "observe-token-class");
+      tokenClass.appendChild(makeEl("span", "observe-token-class-label", item[0] + ": "));
+      tokenClass.appendChild(renderMaybeMissing(item[1]));
+      classes.appendChild(tokenClass);
+    });
+    Object.keys(entry.additional_token_classes || {}).forEach(function (name) {
+      var tokenClass = makeEl("span", "observe-token-class observe-token-class-additional");
+      tokenClass.appendChild(makeEl("span", "observe-token-class-label", name + ": "));
+      tokenClass.appendChild(renderMaybeMissing(entry.additional_token_classes[name]));
+      classes.appendChild(tokenClass);
+    });
+    if (entry.token_classes_partial) {
+      classes.appendChild(
+        makeEl("span", "observe-token-classes-partial", "Partial class coverage")
+      );
+    }
+    if (entry.additional_token_classes_truncated) {
+      classes.appendChild(
+        makeEl("span", "observe-token-classes-truncated", "Additional classes truncated")
+      );
+    }
+    wrap.appendChild(classes);
     return wrap;
   }
 
@@ -1524,9 +1768,18 @@ _OBSERVE_SCRIPT = """
 
   function renderSourceKindBadge(kind) {
     kind = kind || "unknown";
-    var tones = { foundry: "ok", external: "warn", unknown: "muted" };
+    var tones = {
+      foundry_hosted: "ok",
+      foundry_prompt: "ok",
+      external_registered: "warn",
+      external_unregistered: "warn",
+      copilot_studio: "warn",
+      unknown: "muted",
+    };
     var tone = tones[kind] || "muted";
-    var label = String(kind).charAt(0).toUpperCase() + String(kind).slice(1);
+    var label = String(kind).split("_").map(function (part) {
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    }).join(" ");
     return renderBadgeJs(label, tone, "observe-source-kind-badge");
   }
 
@@ -1657,6 +1910,26 @@ _OBSERVE_SCRIPT = """
     return [];
   }
 
+  function toolsFrom(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.tools)) return data.tools;
+    return [];
+  }
+
+  function runsFrom(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.runs)) return data.runs;
+    return [];
+  }
+
+  function boundsNoticeNode(bounds, rowsShown) {
+    var total = bounds && bounds.rows_total_in_scope;
+    var text = total === null || total === undefined
+      ? "Showing " + rowsShown + " rows; total unknown."
+      : "Showing " + rowsShown + " of " + total + " rows in scope.";
+    return makeEl("p", "observe-hint observe-bounds-notice", text);
+  }
+
   function renderOverview(data, diagnostics) {
     var banner = renderDiagnosticsBannerNode(diagnostics);
     var metrics = overviewMetricsFrom(data);
@@ -1703,6 +1976,7 @@ _OBSERVE_SCRIPT = """
       ];
       return [
         nameCell,
+        agent.source_id || "Not reported",
         agent.model || "Not reported",
         renderLastSeenJs(agent.last_seen),
         renderMaybeMissing(agent.invocations),
@@ -1715,7 +1989,7 @@ _OBSERVE_SCRIPT = """
     var table = buildDataTable(
       "observe-agents-table",
       "Agents observed in the selected range",
-      ["Agent", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens", "Details"],
+      ["Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens", "Details"],
       rows
     );
     setViewContent("agents", [banner, table]);
@@ -2006,7 +2280,7 @@ _OBSERVE_SCRIPT = """
         renderMaybeMissing(entry.requests),
         renderFailureRate(entry.requests, entry.failures),
         renderMaybeMissing(entry.p95_latency_ms, { suffix: " ms" }),
-        renderTokenTotals(entry.input_tokens, entry.output_tokens),
+        renderModelTokenUsage(entry),
         renderLastSeenJs(entry.last_seen),
       ];
     });
@@ -2017,6 +2291,78 @@ _OBSERVE_SCRIPT = """
       rows
     );
     setViewContent("usage", [banner, table]);
+  }
+
+  function renderTools(data, diagnostics, bounds) {
+    var banner = renderDiagnosticsBannerNode(diagnostics);
+    var tools = toolsFrom(data);
+    var notice = boundsNoticeNode(bounds, tools.length);
+    if (!tools.length) {
+      setViewContent("tools", [
+        banner,
+        notice,
+        emptyStateNode("No tool activity was found for the selected filters. Tool attribution may not be reported; check Telemetry coverage for details."),
+      ]);
+      return;
+    }
+    var rows = tools.map(function (tool) {
+      tool = tool || {};
+      return [
+        tool.tool_name || "Not reported",
+        tool.agent_name || tool.agent_id || tool.agent_key || "Not reported",
+        tool.source_id || "Not reported",
+        renderSourceKindBadge(tool.source_kind),
+        renderLastSeenJs(tool.last_seen),
+        renderMaybeMissing(tool.invocations),
+        renderMaybeMissing(tool.failures),
+        renderMaybeMissing(tool.p95_latency_ms, { suffix: " ms", missingText: "Not measured" }),
+      ];
+    });
+    var table = buildDataTable(
+      "observe-tools-table",
+      "Tools observed in the selected range",
+      ["Tool", "Agent", "Source", "Runtime", "Last seen", "Invocations", "Failures", "p95 latency"],
+      rows
+    );
+    setViewContent("tools", [banner, notice, table]);
+  }
+
+  function renderRuns(data, diagnostics, bounds) {
+    var banner = renderDiagnosticsBannerNode(diagnostics);
+    var runs = runsFrom(data);
+    var notice = boundsNoticeNode(bounds, runs.length);
+    if (!runs.length) {
+      setViewContent("runs", [
+        banner,
+        notice,
+        emptyStateNode("No runs could be correlated for the selected filters. Run correlation may not be reported; check Telemetry coverage for details."),
+      ]);
+      return;
+    }
+    var rows = runs.map(function (run) {
+      run = run || {};
+      return [
+        run.run_key || "Not reported",
+        run.run_key_kind || "Not reported",
+        run.agent_name || run.agent_id || run.agent_key || "Not reported",
+        run.source_id || "Not reported",
+        renderSourceKindBadge(run.source_kind),
+        run.started_at || "Not reported",
+        renderMaybeMissing(run.duration_ms, { suffix: " ms" }),
+        run.status || "Not reported",
+        renderMaybeMissing(run.turns),
+        renderMaybeMissing(run.tool_invocations),
+        renderTokenTotals(run.input_tokens, run.output_tokens, "Not available"),
+      ];
+    });
+    var hint = makeEl("p", "observe-hint", "Start, duration, and turns describe activity within the selected range.");
+    var table = buildDataTable(
+      "observe-runs-table",
+      "Runs observed in the selected range",
+      ["Run key", "Correlation", "Agent", "Source", "Runtime", "Started in range", "Duration in range", "Status", "Turns in range", "Tool invocations", "Tokens"],
+      rows
+    );
+    setViewContent("runs", [banner, notice, hint, table]);
   }
 
   function renderCoverage(coverage, diagnostics) {
@@ -2078,6 +2424,10 @@ _OBSERVE_SCRIPT = """
       renderAgents(body.data, body.diagnostics);
     } else if (view === "usage") {
       renderUsage(body.data, body.diagnostics);
+    } else if (view === "tools") {
+      renderTools(body.data, body.diagnostics, body.bounds);
+    } else if (view === "runs") {
+      renderRuns(body.data, body.diagnostics, body.bounds);
     } else if (view === "coverage") {
       renderCoverage(body.coverage, body.diagnostics);
     }
@@ -2105,6 +2455,8 @@ _OBSERVE_SCRIPT = """
         project_resource_id: appliedFilters.project_resource_id || null,
         agent_id: appliedFilters.agent_id || null,
         model: appliedFilters.model || null,
+        tool_name: appliedFilters.tool_name || null,
+        run_key: appliedFilters.run_key || null,
         start: appliedFilters.start,
         end: appliedFilters.end,
       },
@@ -2241,13 +2593,17 @@ def render_observe_page(
     overview_metrics: Sequence[Mapping[str, Any]] = (),
     agents: Sequence[Any] = (),
     usage: Sequence[Any] = (),
+    tools: Sequence[Any] = (),
+    runs: Sequence[Any] = (),
     coverage: Sequence[Any] = (),
     diagnostics: Optional[Mapping[str, Any]] = None,
+    tools_bounds: Any = None,
+    runs_bounds: Any = None,
 ) -> str:
     """Assemble the full Observe HTML document.
 
-    This wires together the nav, filter bar, and the four views (Overview,
-    Agents, Models/usage, Telemetry coverage) into one self-contained page
+    This wires together the nav, filter bar, and the six views (Overview,
+    Agents, Models/usage, Tools, Runs, Telemetry coverage) into one self-contained page
     with an inline stylesheet and inline behavior script -- no external
     assets are referenced.
     """
@@ -2256,6 +2612,8 @@ def render_observe_page(
     overview = render_overview_cards(overview_metrics, diagnostics=diagnostics)
     agents_html = render_agents_table(agents, diagnostics=diagnostics)
     usage_html = render_models_usage_table(usage, diagnostics=diagnostics)
+    tools_html = render_tools_table(tools, diagnostics=diagnostics, bounds=tools_bounds)
+    runs_html = render_runs_table(runs, diagnostics=diagnostics, bounds=runs_bounds)
     coverage_html = render_coverage_view(coverage, diagnostics)
 
     return f"""<!doctype html>
@@ -2289,6 +2647,14 @@ def render_observe_page(
   <section id="usage" aria-labelledby="usage-heading">
     <h2 id="usage-heading">Models and usage</h2>
     <div id="usage-content" data-observe-view-content="usage">{usage_html}</div>
+  </section>
+  <section id="tools" aria-labelledby="tools-heading">
+    <h2 id="tools-heading">Tools</h2>
+    <div id="tools-content" data-observe-view-content="tools">{tools_html}</div>
+  </section>
+  <section id="runs" aria-labelledby="runs-heading">
+    <h2 id="runs-heading">Runs</h2>
+    <div id="runs-content" data-observe-view-content="runs">{runs_html}</div>
   </section>
   <section id="coverage" aria-labelledby="coverage-heading">
     <h2 id="coverage-heading">Telemetry coverage</h2>

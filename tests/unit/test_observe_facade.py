@@ -276,6 +276,7 @@ async def test_query_overview_view_serializes_observe_result() -> None:
     assert result["view"] == "overview"
     assert result["cache_status"] == "miss"
     assert "diagnostics" in result and "coverage" in result
+    assert result["bounds"] is None
 
 
 @pytest.mark.asyncio
@@ -283,6 +284,82 @@ async def test_query_agents_view_normalizes_rows() -> None:
     fac = _make_facade(query_client=FakeQueryClient(rows=[_agent_row()]))
     result = await fac.query(view="agents", filters=_filters(), refresh=False, user_context={})
     assert result["data"][0]["key"] == "agent-1"
+    assert result["data"][0]["source_id"] == "source-1"
+
+
+@pytest.mark.asyncio
+async def test_query_tools_view_normalizes_rows_and_serializes_bounds() -> None:
+    row = {
+        "tool_name": "search",
+        "agent_key": "agent-1",
+        "agent_id": "agent-1",
+        "agent_name": "Agent One",
+        "last_seen": _NOW,
+        "invocations": 7,
+        "failures": 1,
+        "p95_latency_ms": None,
+        "total_in_scope": 1,
+    }
+    fac = _make_facade(query_client=FakeQueryClient(rows=[row]))
+
+    result = await fac.query(view="tools", filters=_filters(), refresh=False, user_context={})
+
+    assert result["view"] == "tools"
+    assert result["data"][0]["tool_name"] == "search"
+    assert result["data"][0]["source_id"] == "source-1"
+    assert result["data"][0]["p95_latency_ms"] is None
+    assert result["bounds"] == {
+        "rows_shown": 1,
+        "rows_total_in_scope": 1,
+        "truncated": False,
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_runs_view_preserves_mixed_correlation_kinds() -> None:
+    rows = [
+        {
+            "run_key": "conversation-1",
+            "run_key_kind": "conversation",
+            "agent_key": "agent-1",
+            "agent_id": "agent-1",
+            "agent_name": "Agent One",
+            "started_at": _NOW - timedelta(minutes=10),
+            "last_activity_at": _NOW - timedelta(minutes=5),
+            "duration_ms": 300_000.0,
+            "turns": 2,
+            "failed_turns": 0,
+            "tool_invocations": 1,
+            "tool_failures": 0,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "total_in_scope": 2,
+        },
+        {
+            "run_key": "trace-1",
+            "run_key_kind": "trace",
+            "agent_key": "agent-1",
+            "agent_id": "agent-1",
+            "agent_name": "Agent One",
+            "started_at": _NOW - timedelta(minutes=8),
+            "last_activity_at": _NOW - timedelta(minutes=4),
+            "duration_ms": 240_000.0,
+            "turns": 1,
+            "failed_turns": 1,
+            "tool_invocations": 1,
+            "tool_failures": 1,
+            "input_tokens": None,
+            "output_tokens": None,
+            "total_in_scope": 2,
+        },
+    ]
+    fac = _make_facade(query_client=FakeQueryClient(rows=rows))
+
+    result = await fac.query(view="runs", filters=_filters(), refresh=False, user_context={})
+
+    assert {item["run_key_kind"] for item in result["data"]} == {"conversation", "trace"}
+    assert all(item["source_id"] == "source-1" for item in result["data"])
+    assert result["bounds"]["rows_total_in_scope"] == 2
 
 
 @pytest.mark.asyncio

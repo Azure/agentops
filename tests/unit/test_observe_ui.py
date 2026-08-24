@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import pytest
 
 from agentops.agent.observe import ui
-from agentops.core.observe import CoverageResult, GenerativeAIContent, ModelUsage, ObservedAgent
+from agentops.core.observe import CoverageResult, GenerativeAIContent, ModelUsage
 
 
 def _dt(hour: int = 0) -> datetime:
@@ -39,20 +39,22 @@ def test_default_range_and_refresh_constants() -> None:
 
 
 def test_observe_views_and_labels_cover_all_required_surfaces() -> None:
-    assert ui.OBSERVE_VIEWS == ("overview", "agents", "usage", "coverage")
+    assert ui.OBSERVE_VIEWS == ("overview", "agents", "usage", "tools", "runs", "coverage")
     for view in ui.OBSERVE_VIEWS:
         assert view in ui.OBSERVE_VIEW_LABELS
 
 
 def test_observe_view_wire_names_map_internal_ids_to_openapi_view_enum() -> None:
     # contracts/observe-api.openapi.yaml spells the `ObserveQuery.view` enum
-    # as [overview, agents, models, coverage]; the internal "usage" id (used
+    # as [overview, agents, models, tools, runs, coverage]; the internal "usage" id (used
     # throughout DOM ids/CSS/labels) must be translated to "models" only when
     # building the outgoing wire payload.
     assert ui.OBSERVE_VIEW_WIRE_NAMES == {
         "overview": "overview",
         "agents": "agents",
         "usage": "models",
+        "tools": "tools",
+        "runs": "runs",
         "coverage": "coverage",
     }
     for view in ui.OBSERVE_VIEWS:
@@ -75,6 +77,8 @@ def test_filter_query_keys_exclude_raw_content_fields() -> None:
         "project_resource_id",
         "agent_id",
         "model",
+        "tool_name",
+        "run_key",
         "start",
         "end",
     )
@@ -140,7 +144,7 @@ def test_filter_bar_has_manual_refresh_control() -> None:
 
 def test_filter_bar_defaults_are_all_meaning_unfiltered() -> None:
     html = ui.render_filter_bar()
-    assert html.count('placeholder="All"') == 4  # foundry, project, agent, model
+    assert html.count('placeholder="All"') == 6  # foundry, project, agent, model, tool, run
 
 
 def test_filter_bar_renders_optional_scope_label() -> None:
@@ -293,14 +297,15 @@ def test_render_overview_cards_zero_value_is_distinct_from_missing() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _agent(**overrides: object) -> ObservedAgent:
+def _agent(**overrides: object) -> dict[str, object]:
     payload = dict(
         key="agent-a",
+        source_id="source-a",
         agent_id="agent-a",
         agent_name="Agent A",
         project_resource_id=PROJECT,
         foundry_resource_id=None,
-        source_kind="foundry",
+        source_kind="foundry_hosted",
         model="gpt-4o",
         last_seen=_dt(2),
         invocations=10,
@@ -310,7 +315,7 @@ def _agent(**overrides: object) -> ObservedAgent:
         output_tokens=200,
     )
     payload.update(overrides)
-    return ObservedAgent(**payload)
+    return payload
 
 
 def test_render_agents_table_empty_shows_no_data_found() -> None:
@@ -320,7 +325,7 @@ def test_render_agents_table_empty_shows_no_data_found() -> None:
 
 def test_render_agents_table_renders_expected_columns() -> None:
     html = ui.render_agents_table([_agent()])
-    for heading in ("Agent", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens"):
+    for heading in ("Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens"):
         assert f">{heading}<" in html
     assert "Agent A" in html
     assert "gpt-4o" in html
@@ -328,8 +333,9 @@ def test_render_agents_table_renders_expected_columns() -> None:
 
 def test_render_agents_table_shows_source_kind_and_identity_badges() -> None:
     html = ui.render_agents_table([_agent()])
-    assert "Foundry" in html
+    assert "Foundry Hosted" in html
     assert "Identity available" in html
+    assert "source-a" in html
 
 
 def test_render_agents_table_missing_agent_id_shows_identity_not_reported() -> None:
@@ -351,7 +357,8 @@ def test_render_agents_table_accepts_plain_mapping_too() -> None:
             {
                 "agent_name": "Mapping Agent",
                 "agent_id": "mapping-agent",
-                "source_kind": "external",
+                "source_kind": "external_registered",
+                "source_id": "source-mapping",
                 "model": "custom-model",
                 "last_seen": _dt(4),
                 "invocations": 5,
@@ -363,7 +370,7 @@ def test_render_agents_table_accepts_plain_mapping_too() -> None:
         ]
     )
     assert "Mapping Agent" in html
-    assert "External" in html
+    assert "External Registered" in html
 
 
 def test_render_agents_table_includes_diagnostics_banner_when_supplied() -> None:
@@ -380,6 +387,141 @@ def test_render_agents_table_includes_diagnostics_banner_when_supplied() -> None
     html = ui.render_agents_table([_agent()], diagnostics=diagnostics)
     assert "observe-diagnostics-banner" in html
     assert "Partial results" in html
+
+
+# ---------------------------------------------------------------------------
+# Tools and runs tables (T025/T026/T037/T042)
+# ---------------------------------------------------------------------------
+
+
+def _tool(**overrides: object) -> dict[str, object]:
+    payload = dict(
+        tool_name="search_documents",
+        agent_key="agent-a",
+        agent_id="agent-a",
+        agent_name="Agent A",
+        source_id="source-a",
+        source_kind="foundry_prompt",
+        last_seen=_dt(3),
+        invocations=10,
+        failures=1,
+        p95_latency_ms=35.0,
+    )
+    payload.update(overrides)
+    return payload
+
+
+def _run(**overrides: object) -> dict[str, object]:
+    payload = dict(
+        run_key="conversation-123",
+        run_key_kind="conversation",
+        agent_key="agent-a",
+        agent_id="agent-a",
+        agent_name="Agent A",
+        source_id="source-a",
+        source_kind="foundry_prompt",
+        started_at=_dt(1),
+        last_activity_at=_dt(2),
+        duration_ms=60_000.0,
+        status="succeeded",
+        turns=2,
+        failed_turns=0,
+        tool_invocations=1,
+        tool_failures=0,
+        input_tokens=100,
+        output_tokens=200,
+    )
+    payload.update(overrides)
+    return payload
+
+
+def test_render_tools_table_shows_source_latency_and_known_bounds() -> None:
+    html = ui.render_tools_table(
+        [_tool()],
+        bounds={"rows_shown": 1, "rows_total_in_scope": 3, "truncated": True},
+    )
+    for heading in ("Tool", "Agent", "Source", "Runtime", "Last seen", "Invocations", "Failures", "p95 latency"):
+        assert f">{heading}<" in html
+    assert "search_documents" in html
+    assert "source-a" in html
+    assert "Foundry Prompt" in html
+    assert "Showing 1 of 3 rows in scope." in html
+
+
+def test_render_tools_table_marks_absent_latency_not_measured_and_escapes_values() -> None:
+    html = ui.render_tools_table(
+        [_tool(tool_name='<tool "name">', source_id="<source>", p95_latency_ms=None)]
+    )
+    assert "Not measured" in html
+    assert "metric-missing" in html
+    assert "&lt;tool &quot;name&quot;&gt;" in html
+    assert "&lt;source&gt;" in html
+
+
+def test_render_tools_table_empty_is_explained_and_total_is_unknown() -> None:
+    html = ui.render_tools_table([], bounds={"rows_shown": 0, "rows_total_in_scope": None})
+    assert "Showing 0 rows; total unknown." in html
+    assert "No tool activity was found" in html
+    assert "Tool attribution may not be reported" in html
+
+
+def test_render_runs_table_shows_correlation_range_scope_source_and_tokens() -> None:
+    html = ui.render_runs_table(
+        [_run()],
+        bounds={"rows_shown": 1, "rows_total_in_scope": 4, "truncated": True},
+    )
+    for heading in (
+        "Run key",
+        "Correlation",
+        "Source",
+        "Started in range",
+        "Duration in range",
+        "Turns in range",
+        "Tool invocations",
+        "Tokens",
+    ):
+        assert f">{heading}<" in html
+    assert "conversation-123" in html
+    assert "conversation" in html
+    assert "source-a" in html
+    assert "activity within the selected range" in html
+    assert "Showing 1 of 4 rows in scope." in html
+
+
+def test_render_runs_table_marks_absent_tokens_not_available_and_escapes_values() -> None:
+    html = ui.render_runs_table(
+        [_run(run_key='<run "key">', source_id="<source>", input_tokens=None, output_tokens=None)]
+    )
+    assert "Not available" in html
+    assert "metric-missing" in html
+    assert "&lt;run &quot;key&quot;&gt;" in html
+    assert "&lt;source&gt;" in html
+
+
+def test_render_runs_table_empty_is_explained_and_total_is_unknown() -> None:
+    html = ui.render_runs_table([], bounds={"rows_shown": 0, "rows_total_in_scope": None})
+    assert "Showing 0 rows; total unknown." in html
+    assert "No runs could be correlated" in html
+    assert "Run correlation may not be reported" in html
+
+
+@pytest.mark.parametrize(
+    ("source_kind", "label", "tone"),
+    [
+        ("foundry_hosted", "Foundry Hosted", "ok"),
+        ("foundry_prompt", "Foundry Prompt", "ok"),
+        ("external_registered", "External Registered", "warn"),
+        ("external_unregistered", "External Unregistered", "warn"),
+        ("copilot_studio", "Copilot Studio", "warn"),
+        ("unknown", "Unknown", "muted"),
+    ],
+)
+def test_source_kind_badge_covers_all_refined_runtime_kinds(
+    source_kind: str, label: str, tone: str
+) -> None:
+    html = ui._render_source_kind_badge(source_kind)
+    assert label in html
+    assert f"observe-tone-{tone}" in html
 
 
 # ---------------------------------------------------------------------------
@@ -426,6 +568,106 @@ def test_render_models_usage_table_zero_failures_is_distinct_from_missing() -> N
     html = ui.render_models_usage_table([_usage(failures=0)])
     assert "metric-zero" in html
     assert "0%" in html
+
+
+def test_render_models_usage_table_renders_each_token_class_and_partial_state() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                cache_read_tokens=0,
+                cache_write_tokens=None,
+                reasoning_tokens=12,
+                token_classes_partial=True,
+            )
+        ]
+    )
+    assert "Cache read" in html
+    assert "Cache write" in html
+    assert "Reasoning" in html
+    assert "Partial class coverage" in html
+    assert "metric-zero" in html
+    assert "Not reported" in html
+    assert "(observed usage, not billing data)" in html
+
+
+def test_render_models_usage_table_marks_intermittent_class_reporting() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                cache_read_tokens=8,
+                cache_write_tokens=4,
+                reasoning_tokens=2,
+                partially_reported_token_classes=("cache-read",),
+                token_classes_partial=True,
+            )
+        ]
+    )
+
+    assert "Cache read" in html
+    assert ">8<" in html
+    assert "Partial class coverage" in html
+
+
+def test_script_models_renderer_mirrors_token_class_fields_and_labels() -> None:
+    script = ui._OBSERVE_SCRIPT
+    for field in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
+        assert f"entry.{field}" in script
+    for label in ("Cache read", "Cache write", "Reasoning", "Partial class coverage"):
+        assert label in script
+
+
+def test_models_renderers_show_additional_classes_and_truncation() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                additional_token_classes={"gen_ai.usage.audio_tokens": 7},
+                additional_token_classes_truncated=True,
+            )
+        ]
+    )
+    assert "gen_ai.usage.audio_tokens" in html
+    assert ">7<" in html
+    assert "Additional classes truncated" in html
+
+    script = ui._OBSERVE_SCRIPT
+    assert "entry.additional_token_classes" in script
+    assert "entry.additional_token_classes_truncated" in script
+    assert "Additional classes truncated" in script
+
+
+def test_existing_token_totals_are_byte_identical_across_existing_surfaces() -> None:
+    expected = (
+        '<span class="observe-token-totals">'
+        '<span class="observe-token-in">In: '
+        '<span class="observe-metric metric-value">1,000</span></span> '
+        '<span class="observe-token-out">Out: '
+        '<span class="observe-metric metric-value">2,000</span></span>'
+        '<span class="observe-hint"> (observed usage, not billing data)</span>'
+        "</span>"
+    )
+    assert ui._render_token_totals(1000, 2000) == expected
+    assert expected in ui.render_agents_table([_agent(input_tokens=1000, output_tokens=2000)])
+    assert expected in ui.render_models_usage_table([_usage(input_tokens=1000, output_tokens=2000)])
+
+
+def test_models_row_with_only_totals_adds_no_partial_indicator() -> None:
+    html = ui.render_models_usage_table(
+        [
+            _usage(
+                input_tokens=1000,
+                output_tokens=2000,
+                cache_read_tokens=None,
+                cache_write_tokens=None,
+                reasoning_tokens=None,
+                token_classes_partial=False,
+            )
+        ]
+    )
+    assert "In: " in html
+    assert "Out: " in html
+    assert html.count("Not reported") == 3
+    assert "Partial class coverage" not in html
+    assert "(observed usage, not billing data)" in html
 
 
 # ---------------------------------------------------------------------------
@@ -574,6 +816,8 @@ def test_coverage_table_all_dimensions_have_labels() -> None:
         "agent_attribution",
         "model_attribution",
         "token_usage",
+        "tool_attribution",
+        "run_correlation",
         "trace_correlation",
         "protected_content",
     ]
@@ -793,14 +1037,14 @@ def test_render_observe_page_has_no_external_asset_references() -> None:
     assert "cdn." not in html
 
 
-def test_render_observe_page_includes_all_four_views() -> None:
+def test_render_observe_page_includes_all_six_views() -> None:
     html = ui.render_observe_page(
         overview_metrics=[{"title": "Invocations", "value": 5}],
         agents=[_agent()],
         usage=[_usage()],
         coverage=[_coverage("available")],
     )
-    for section_id in ("overview", "agents", "usage", "coverage"):
+    for section_id in ("overview", "agents", "usage", "tools", "runs", "coverage"):
         assert f'<section id="{section_id}"' in html
 
 
@@ -896,7 +1140,7 @@ def test_script_queries_observe_query_endpoint_via_post_json_not_get_query_strin
 
 def test_script_observe_query_payload_matches_observe_query_schema() -> None:
     # ObserveQuery (contracts/observe-api.openapi.yaml): {view, filters:
-    # {foundry_resource_id?, project_resource_id?, agent_id?, model?,
+    # {foundry_resource_id?, project_resource_id?, agent_id?, model?, tool_name?, run_key?,
     # start (required), end (required)}, refresh?}.
     script = ui._OBSERVE_SCRIPT
     payload_block = script.split("var payload = {")[1].split("};")[0]
@@ -905,6 +1149,8 @@ def test_script_observe_query_payload_matches_observe_query_schema() -> None:
     assert "project_resource_id: appliedFilters.project_resource_id || null" in payload_block
     assert "agent_id: appliedFilters.agent_id || null" in payload_block
     assert "model: appliedFilters.model || null" in payload_block
+    assert "tool_name: appliedFilters.tool_name || null" in payload_block
+    assert "run_key: appliedFilters.run_key || null" in payload_block
     assert "start: appliedFilters.start" in payload_block
     assert "end: appliedFilters.end" in payload_block
     assert "refresh: manual === true" in payload_block
@@ -952,7 +1198,10 @@ def test_script_view_wire_names_translate_internal_usage_id_to_models() -> None:
     # Mirrors OBSERVE_VIEW_WIRE_NAMES: the wire `view` enum spells the
     # internal "usage" view as "models".
     script = ui._OBSERVE_SCRIPT
-    assert 'var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", coverage: "coverage" };' in script
+    assert (
+        'var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", '
+        'tools: "tools", runs: "runs", coverage: "coverage" };'
+    ) in script
 
 
 def test_regression_usage_view_id_and_label_unchanged_while_wire_payload_uses_models() -> None:
@@ -988,6 +1237,48 @@ def test_regression_usage_view_id_and_label_unchanged_while_wire_payload_uses_mo
     assert 'usage: "models"' in script
 
 
+def test_script_runtime_kind_tones_mirror_all_six_python_badges() -> None:
+    script = ui._OBSERVE_SCRIPT
+    tone_block = script.split("var tones = {")[1].split("};")[0]
+    expected_tones = {
+        "foundry_hosted": "ok",
+        "foundry_prompt": "ok",
+        "external_registered": "warn",
+        "external_unregistered": "warn",
+        "copilot_studio": "warn",
+        "unknown": "muted",
+    }
+    for kind, tone in expected_tones.items():
+        assert f"{kind}: \"{tone}\"" in tone_block
+    assert 'var tone = tones[kind] || "muted";' in script
+
+
+def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states() -> None:
+    script = ui._OBSERVE_SCRIPT
+    agents_block = script.split("function renderAgents(data, diagnostics) {")[1].split("\n  }\n")[0]
+    assert 'agent.source_id || "Not reported"' in agents_block
+    for function_name, source_field, empty_copy in (
+        (
+            "function renderTools(data, diagnostics, bounds)",
+            "tool.source_id || \"Not reported\"",
+            "No tool activity was found for the selected filters.",
+        ),
+        (
+            "function renderRuns(data, diagnostics, bounds)",
+            "run.source_id || \"Not reported\"",
+            "No runs could be correlated for the selected filters.",
+        ),
+    ):
+        block = script.split(function_name)[1].split("\n  }\n")[0]
+        assert source_field in block
+        assert "boundsNoticeNode(bounds" in block
+        assert empty_copy in block
+    assert 'missingText: "Not measured"' in script
+    assert 'renderTokenTotals(run.input_tokens, run.output_tokens, "Not available")' in script
+    assert "run.run_key_kind || \"Not reported\"" in script
+    assert "activity within the selected range" in script
+
+
 # ---------------------------------------------------------------------------
 # Functional page: parse fetch responses and render/update the active view
 # (overview cards, agents, models/usage, coverage, diagnostics banner,
@@ -1017,6 +1308,8 @@ def test_script_defines_response_parsing_and_render_dispatch_functions() -> None
         "function renderOverview(data, diagnostics)",
         "function renderAgents(data, diagnostics)",
         "function renderUsage(data, diagnostics)",
+        "function renderTools(data, diagnostics, bounds)",
+        "function renderRuns(data, diagnostics, bounds)",
         "function renderCoverage(coverage, diagnostics)",
         "function internalViewFromWire(view)",
         "function renderDiagnosticsBannerNode(diagnostics)",
@@ -1066,6 +1359,8 @@ def test_script_render_dispatch_routes_each_view_to_its_own_renderer_and_field()
     assert "renderOverview(body.data, body.diagnostics);" in dispatch_block
     assert "renderAgents(body.data, body.diagnostics);" in dispatch_block
     assert "renderUsage(body.data, body.diagnostics);" in dispatch_block
+    assert "renderTools(body.data, body.diagnostics, body.bounds);" in dispatch_block
+    assert "renderRuns(body.data, body.diagnostics, body.bounds);" in dispatch_block
     # Coverage row detail is a top-level `ObserveResponse.coverage` array in
     # the OpenAPI contract, not `data` -- the dispatcher must read the
     # correct field for that view.
@@ -1115,7 +1410,7 @@ def test_script_diagnostics_banner_reflects_partial_results_and_is_rebuilt_per_v
     assert '"Cache"' in banner_fn
     # Every per-view renderer rebuilds its own diagnostics banner from the
     # latest response instead of relying on a single shared/global element.
-    for fn_name in ("renderOverview", "renderAgents", "renderUsage", "renderCoverage"):
+    for fn_name in ("renderOverview", "renderAgents", "renderUsage", "renderTools", "renderRuns", "renderCoverage"):
         fn_block = script.split(f"function {fn_name}(")[1].split("\n  }\n")[0]
         assert "renderDiagnosticsBannerNode(diagnostics)" in fn_block
 
