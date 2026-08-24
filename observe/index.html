@@ -1418,21 +1418,84 @@ are queried once while retaining every Foundry/project origin. Observe limits a
 request to ten telemetry sources, applies filters before aggregation, and keeps
 successful source results when another source is denied, throttled, or times
 out.</p>
-<p>The four views share the same explicit filter state:</p>
+<p>The six views share the same explicit filter state:</p>
 <ul>
 <li><strong>Overview</strong> shows bounded aggregate activity, latency, errors, and observed
   token usage.</li>
-<li><strong>Agents</strong> attributes observed activity to standard <code>gen_ai.*</code> identifiers,
-  with documented external-agent fallback semantics.</li>
+<li><strong>Agents</strong> attributes observed activity to standard <code>gen_ai.*</code> identifiers.
+  Every row includes its <code>source_id</code>, so the same agent observed through two
+  telemetry sources remains distinguishable.</li>
 <li><strong>Models and usage</strong> shows model/provider attribution and observed tokens,
   not billing or quota.</li>
+<li><strong>Tools</strong> lists each observed tool by telemetry source, agent, and tool name,
+  with invocation and failure counts, last-seen time, and p95 latency. Missing
+  latency is shown as not measured, never as zero; tool token fields are
+  intentionally not reported.</li>
+<li><strong>Runs</strong> lists correlated agent executions by telemetry source and agent,
+  with the correlation key and kind (<code>conversation</code> or <code>trace</code>), range-scoped
+  start and duration, status, turns, failed turns, tool invocations, tool
+  failures, and observed input/output token totals. Missing token totals are
+  shown as not available, never as zero.</li>
 <li><strong>Telemetry coverage</strong> explains readable, empty, denied, unconfigured,
   unattributed, protected, timed-out, and partial sources.</li>
 </ul>
 <p>The default range is 24 hours. Draft filters do not query until <strong>Apply</strong> is
 selected. Applied filters are bookmarkable in the URL, refresh every five
 minutes, and may be refreshed manually. Raw trace content is never part of that
-URL or browser persistence.</p>
+URL or browser persistence. Alongside the existing agent, model, and time-range
+filters, <strong>Tools</strong> accepts <code>tool_name</code> and <strong>Runs</strong> accepts <code>run_key</code>. Both only
+narrow results; blank values are rejected, and values are escaped before they
+reach telemetry queries.</p>
+<h3 id="runtime-attribution-and-source-identity">Runtime attribution and source identity<a class="headerlink" href="#runtime-attribution-and-source-identity" title="Permanent link">&para;</a></h3>
+<p><code>source_kind</code> now identifies the runtime more precisely. The accepted values
+are <code>foundry_hosted</code>, <code>foundry_prompt</code>, <code>external_registered</code>,
+<code>external_unregistered</code>, <code>copilot_studio</code>, and <code>unknown</code>. <code>unknown</code> means the
+available telemetry cannot classify the runtime; it is an expected attribution
+outcome, not an error.</p>
+<p>This replaces the former <code>foundry</code>, <code>external</code>, and <code>unknown</code> contract. The
+mapping is not one-to-one:</p>
+<table>
+<thead>
+<tr>
+<th>Old value</th>
+<th>New value(s)</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>foundry</code></td>
+<td><code>foundry_hosted</code> or <code>foundry_prompt</code></td>
+<td>Split by runtime.</td>
+</tr>
+<tr>
+<td><code>external</code></td>
+<td><code>external_registered</code> or <code>external_unregistered</code></td>
+<td>Split by project registration.</td>
+</tr>
+<tr>
+<td>—</td>
+<td><code>copilot_studio</code></td>
+<td>New classification with no predecessor.</td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td><code>unknown</code></td>
+<td>Unchanged fallback when telemetry is insufficient.</td>
+</tr>
+</tbody>
+</table>
+<p>The old and new values are not emitted together. Consumers must update to the
+refined values. <code>source_id</code> is also present on Agents, Tools, and Runs rows;
+it identifies the telemetry source that produced the row and prevents rows from
+different sources from being treated as one observation.</p>
+<h3 id="runs-are-scoped-to-the-selected-window">Runs are scoped to the selected window<a class="headerlink" href="#runs-are-scoped-to-the-selected-window" title="Permanent link">&para;</a></h3>
+<p>Runs describe only activity observed in the selected time range. If a run began
+before the range, its reported start, duration, turns, failed turns, and status
+cover only the in-window activity and it is not marked as truncated at the
+leading edge. A failure before the range is therefore not visible and an
+otherwise settled row can report <code>succeeded</code>. The <code>in_progress</code> status instead
+covers the trailing edge: activity near the range end may still be settling.</p>
 <h3 id="truthful-source-and-dimension-states">Truthful source and dimension states<a class="headerlink" href="#truthful-source-and-dimension-states" title="Permanent link">&para;</a></h3>
 <p>Observe does not turn missing evidence into numeric zero. Every response carries
 source attribution, refresh time, query duration, source counts, partial
