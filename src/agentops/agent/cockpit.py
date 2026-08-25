@@ -4962,7 +4962,7 @@ def create_app(
         ) from exc
 
     cost_model_result = load_cost_model(os.getenv("AGENTOPS_COST_MODEL"))
-    cost_periods: tuple[dict[str, str], ...] = ()
+    cost_periods: tuple[dict[str, str | tuple[str, ...]], ...] = ()
     cost_components: tuple[dict[str, str], ...] = ()
     if cost_model_result.state == "valid" and cost_model_result.model is not None:
         model = cost_model_result.model

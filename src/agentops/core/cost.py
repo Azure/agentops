@@ -7,7 +7,7 @@ import json
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 from pydantic import (
     BaseModel,
@@ -219,7 +219,10 @@ def _utc_datetime(value: datetime) -> datetime:
 def _validate_currency_precision(
     value: Decimal, minor_units: int, *, field_name: str
 ) -> None:
-    fractional_digits = max(0, -value.as_tuple().exponent)
+    exponent = value.as_tuple().exponent
+    if not isinstance(exponent, int):
+        raise ValueError(f"{field_name} must be finite")
+    fractional_digits = max(0, -exponent)
     if fractional_digits > minor_units:
         raise ValueError(
             f"{field_name} exceeds currency_minor_units precision ({minor_units})"
@@ -828,7 +831,7 @@ def cost_model_fingerprint(model: CostModel) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _safe_error_location(error: dict[str, Any]) -> str:
+def _safe_error_location(error: Mapping[str, Any]) -> str:
     parts: list[str] = []
     for part in error.get("loc", ()):
         if isinstance(part, int):
