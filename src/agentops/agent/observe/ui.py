@@ -116,6 +116,18 @@ COST_FILTER_QUERY_KEYS: tuple[str, ...] = (
     "cost_agent_key",
 )
 
+#: URL state for the opt-in department surface.  The department value is an
+#: opaque server-issued token; labels, IDs, user keys, and mapping values are
+#: deliberately not accepted as URL state.
+ATTRIBUTION_FILTER_QUERY_KEYS: tuple[str, ...] = (
+    "department_filter_token",
+    "user_filter_token",
+    "attribution_group_by",
+    "attribution_metric",
+    "attribution_cost_period_id",
+    "attribution_cost_component_id",
+)
+
 COST_DISCLAIMER = (
     "Operational cost allocation from declared billed totals and observed usage; "
     "not an invoice or billing-accurate charge."
@@ -145,6 +157,7 @@ MAX_TREND_POINTS: int = 60
 COVERAGE_STATE_LABELS: dict[str, dict[str, str]] = {
     "available": {"label": "Available", "tone": "ok"},
     "partial": {"label": "Partial", "tone": "warn"},
+    "ambiguous": {"label": "Ambiguous", "tone": "warn"},
     "no_data": {"label": "No data found", "tone": "muted"},
     "not_reported": {"label": "Not reported", "tone": "muted"},
     "not_configured": {"label": "Not configured", "tone": "muted"},
@@ -166,6 +179,7 @@ COVERAGE_DIMENSION_LABELS: dict[str, str] = {
     "trace_correlation": "Trace correlation",
     "protected_content": "Protected content",
     "cost_attribution": "Cost attribution",
+    "user_attribution": "User attribution",
 }
 
 #: Copy for each ``GenerativeAIContent.protection_state`` value.
@@ -200,6 +214,7 @@ __all__ = [
     "OBSERVE_VIEW_WIRE_NAMES",
     "OBSERVE_FILTER_QUERY_KEYS",
     "COST_FILTER_QUERY_KEYS",
+    "ATTRIBUTION_FILTER_QUERY_KEYS",
     "COST_DISCLAIMER",
     "COST_BREAKDOWN_WARNING",
     "DEFAULT_RANGE_HOURS",
@@ -219,6 +234,8 @@ __all__ = [
     "render_agents_table",
     "render_cost_controls",
     "render_cost_view",
+    "render_attribution_controls",
+    "render_department_view",
     "render_models_usage_table",
     "render_tools_table",
     "render_runs_table",
@@ -676,12 +693,23 @@ def render_trend_chart(
 # ---------------------------------------------------------------------------
 
 
-def render_observe_nav(active_view: str = "overview", *, cost_enabled: bool = False) -> str:
+def render_observe_nav(
+    active_view: str = "overview",
+    *,
+    cost_enabled: bool = False,
+    attribution_enabled: bool = False,
+) -> str:
     """Render the Observe navigation as an accessible list of same-page links."""
     items = []
-    views = OBSERVE_VIEWS + (("cost",) if cost_enabled else ())
+    views = OBSERVE_VIEWS
+    if attribution_enabled:
+        views += ("departments",)
+    if cost_enabled:
+        views += ("cost",)
     for view in views:
-        label = "Cost" if view == "cost" else OBSERVE_VIEW_LABELS[view]
+        label = {"cost": "Cost", "departments": "Departments"}.get(
+            view, OBSERVE_VIEW_LABELS.get(view, view.title())
+        )
         current = ' aria-current="page"' if view == active_view else ""
         items.append(
             f'<li><a href="#{view}" data-observe-nav-link="{view}" class="observe-nav-link"'
@@ -895,6 +923,335 @@ def render_agents_table(
 
 
 # ---------------------------------------------------------------------------
+# Department attribution (issue #444 T029)
+# ---------------------------------------------------------------------------
+
+
+_ATTRIBUTION_COST_UNAVAILABLE = (
+    "Cost attribution is unavailable. Configure a valid cost model and allocatable cost "
+    "before selecting Cost."
+)
+
+
+def render_attribution_controls(
+    attribution: Any = None,
+    *,
+    cost_available: bool = False,
+    period_options: Sequence[Any] = (),
+    component_options: Sequence[Any] = (),
+) -> str:
+    """Render opt-in department and delegated-user attribution selectors.
+
+    These controls are emitted only by :func:`render_observe_page` when
+    attribution is explicitly enabled. Department selection itself is carried
+    only by a server-issued opaque URL token.
+    """
+
+    selected_metric = str(_get(attribution, "metric") or "usage")
+    selected_group = str(_get(attribution, "group_by") or "department")
+    summary = _get(attribution, "summary", {}) or {}
+    selected_period = _get(summary, "period_id")
+    selected_component = _get(summary, "component_id")
+    if not period_options and selected_period:
+        period_options = ({"id": selected_period, "label": selected_period},)
+    if not component_options and selected_component:
+        component_options = ({"id": selected_component, "label": selected_component},)
+    cost_option = (
+        '<option value="cost" selected>Cost</option>'
+        if selected_metric == "cost" and cost_available
+        else '<option value="cost">Cost</option>'
+        if cost_available
+        else '<option value="cost" disabled>Cost</option>'
+    )
+    usage_selected = " selected" if selected_metric != "cost" else ""
+    cost_fields = ""
+    if cost_available:
+        cost_fields = f"""
+    <label for="observe-attribution-cost-period">Cost period
+      <select id="observe-attribution-cost-period" data-attribution-filter="cost_period_id">
+        {_cost_options(period_options, id_key="id", selected=selected_period, all_label="Select period")}
+      </select>
+    </label>
+    <label for="observe-attribution-cost-component">Cost component
+      <select id="observe-attribution-cost-component" data-attribution-filter="cost_component_id">
+        {_cost_options(component_options, id_key="id", selected=selected_component, all_label="Select component")}
+      </select>
+    </label>"""
+    unavailable = (
+        ""
+        if cost_available
+        else f'<p class="observe-hint observe-attribution-cost-unavailable">{_ATTRIBUTION_COST_UNAVAILABLE}</p>'
+    )
+    return f"""
+<form class="observe-attribution-filter-bar" id="observe-attribution-filter-form"
+      aria-label="Department attribution selectors">
+  <div class="observe-filter-fields">
+    <label for="observe-attribution-metric">Measure
+      <select id="observe-attribution-metric" data-attribution-filter="metric">
+        <option value="usage"{usage_selected}>Usage</option>
+        {cost_option}
+      </select>
+    </label>
+    <label for="observe-attribution-group">Attribution level
+      <select id="observe-attribution-group" data-attribution-filter="group_by">
+        <option value="department"{" selected" if selected_group != "user" else ""}>Departments</option>
+        <option value="user"{" selected" if selected_group == "user" else ""}>Users in selected department</option>
+      </select>
+    </label>
+    {cost_fields}
+  </div>
+  {unavailable}
+  <div class="observe-filter-actions">
+    <button type="submit" id="observe-apply-attribution-filters" class="observe-apply-button">
+      Apply attribution selectors
+    </button>
+  </div>
+</form>
+""".strip()
+
+
+def _render_attribution_usage(usage: Any) -> str:
+    return (
+        '<dl class="observe-attribution-usage">'
+        f"<div><dt>Invocations</dt><dd>{_render_maybe_missing(_get(usage, 'invocations'))}</dd></div>"
+        f"<div><dt>Input tokens</dt><dd>{_render_maybe_missing(_get(usage, 'input_tokens'))}</dd></div>"
+        f"<div><dt>Output tokens</dt><dd>{_render_maybe_missing(_get(usage, 'output_tokens'))}</dd></div>"
+        f"<div><dt>Tool invocations</dt><dd>{_render_maybe_missing(_get(usage, 'tool_invocations'))}</dd></div>"
+        f"<div><dt>Active session</dt><dd>{_render_maybe_missing(_get(usage, 'active_session_seconds'), suffix=' s')}</dd></div>"
+        "</dl>"
+    )
+
+
+def _render_attribution_summary(summary: Any, *, group_by: str = "department") -> str:
+    metric = str(_get(summary, "metric") or "usage")
+    users = _render_maybe_missing(_get(summary, "distinct_users"))
+    omitted = _render_maybe_missing(_get(summary, "omitted_users"))
+    level = "User" if group_by == "user" else "Department"
+    if metric == "cost":
+        currency = _get(summary, "currency")
+        return f"""
+<section class="observe-attribution-summary" aria-labelledby="department-summary-heading">
+  <h3 id="department-summary-heading">{level} cost summary</h3>
+  <dl>
+    <div><dt>Declared total</dt><dd>{_cost_declared_amount(_get(summary, "declared_total"), currency)}</dd></div>
+    <div><dt>Attributed cost</dt><dd>{_cost_amount(_get(summary, "attributed_amount"), currency)}</dd></div>
+    <div><dt>Unmapped cost</dt><dd>{_cost_amount(_get(summary, "unattributed_amount"), currency)}</dd></div>
+    <div><dt>Unallocated cost</dt><dd>{_cost_amount(_get(summary, "unallocated_amount"), currency)}</dd></div>
+    <div><dt>Distinct users</dt><dd>{users}</dd></div>
+    <div><dt>Omitted users</dt><dd>{omitted}</dd></div>
+  </dl>
+  <h4>Unmapped usage</h4>{_render_attribution_usage(_get(summary, "unattributed_usage", {}) or {})}
+</section>""".strip()
+    unattributed = _get(summary, "unattributed", {}) or {}
+    return f"""
+<section class="observe-attribution-summary" aria-labelledby="department-summary-heading">
+  <h3 id="department-summary-heading">{level} usage summary</h3>
+  <div class="observe-attribution-summary-columns">
+    <div><h4>Total usage</h4>{_render_attribution_usage(_get(summary, "total", {}) or {})}</div>
+    <div><h4>Attributed usage</h4>{_render_attribution_usage(_get(summary, "attributed", {}) or {})}</div>
+    <div><h4>Unmapped usage</h4>{_render_attribution_usage(unattributed)}</div>
+  </div>
+  <p><strong>Distinct users:</strong> {users} <strong>Omitted users:</strong> {omitted}</p>
+</section>""".strip()
+
+
+def _render_attribution_partial_failures(partial_failures: Sequence[Any]) -> str:
+    if not partial_failures:
+        return ""
+    items = "".join(
+        "<li>"
+        f"<strong>{html_escape(_get(item, 'source_id') or 'Not reported')}</strong> "
+        f"({html_escape(_cost_label(_get(item, 'status')))}) — "
+        f"{html_escape(_get(item, 'reason') or 'No reason reported.')} "
+        f"<strong>Next action:</strong> "
+        f"{html_escape(_get(item, 'next_action') or 'No follow-up action reported.')}"
+        "</li>"
+        for item in partial_failures
+    )
+    return (
+        '<section class="observe-attribution-partial-failures" '
+        'aria-labelledby="observe-attribution-partial-failures-title">'
+        '<h3 id="observe-attribution-partial-failures-title">Partial source failures</h3>'
+        "<p>Successful source evidence remains visible; totals may be incomplete.</p>"
+        f"<ul>{items}</ul></section>"
+    )
+
+
+def _render_attribution_coverage(
+    coverage: Sequence[Any], *, group_by: str
+) -> str:
+    if not coverage:
+        return ""
+    rendered_rows = []
+    for entry in coverage:
+        state = str(_get(entry, "state") or "error")
+        copy = COVERAGE_STATE_LABELS.get(state, COVERAGE_STATE_LABELS["error"])
+        metric = str(_get(entry, "metric") or "usage").title()
+        component = _get(entry, "component_id")
+        measure = f"{metric} / {component}" if component else metric
+        counts = (
+            ("Eligible", _get(entry, "eligible_records")),
+            ("Identified", _get(entry, "identified_records")),
+            ("Mapped", _get(entry, "mapped_records")),
+            ("Unattributed", _get(entry, "unattributed_records")),
+            ("Ambiguous", _get(entry, "ambiguous_records")),
+            ("Returned", _get(entry, "returned_records")),
+        )
+        count_text = "; ".join(
+            f"{label}: {_render_maybe_missing(value)}" for label, value in counts
+        )
+        rendered_rows.append(
+            "<tr>"
+            f"<td>{html_escape(_get(entry, 'source_id') or 'Not reported')}</td>"
+            f"<td>{html_escape(measure)}</td>"
+            f"<td>{_render_badge(copy['label'], copy['tone'], extra_class=f'observe-coverage-state-{html_escape(state)}')}</td>"
+            f"<td>{count_text}</td>"
+            f"<td>{html_escape(_get(entry, 'reason') or 'Not reported')}</td>"
+            f"<td>{html_escape(_get(entry, 'next_action') or 'Not reported')}</td>"
+            "</tr>"
+        )
+    level = "User" if group_by == "user" else "Department"
+    return (
+        '<section class="observe-attribution-coverage" '
+        'aria-labelledby="observe-attribution-coverage-title">'
+        f'<h3 id="observe-attribution-coverage-title">{level} attribution coverage</h3>'
+        "<p>Missing, inaccessible, ambiguous, or protected identity evidence is not zero usage.</p>"
+        '<table aria-label="Attribution coverage by source and measure">'
+        "<thead><tr><th>Source</th><th>Measure / component</th><th>State</th>"
+        "<th>Record counts</th><th>Reason</th><th>Next action</th></tr></thead>"
+        f"<tbody>{''.join(rendered_rows)}</tbody></table></section>"
+    )
+
+
+def render_department_view(
+    attribution: Any,
+    *,
+    diagnostics: Optional[Mapping[str, Any]] = None,
+    coverage: Sequence[Any] = (),
+    partial_failures: Sequence[Any] = (),
+    bounds: Any = None,
+) -> str:
+    """Render department or protected user attribution and exact reconciliation."""
+
+    if attribution is None:
+        return (
+            '<div class="observe-department-view">'
+            f"{render_diagnostics_banner(diagnostics or {})}"
+            '<p class="observe-empty">Attribution data was not returned. '
+            "This is missing or protected evidence, not zero usage.</p>"
+            f"{_render_attribution_coverage(coverage, group_by='department')}"
+            f"{_render_attribution_partial_failures(partial_failures)}"
+            "</div>"
+        )
+    metric = str(_get(attribution, "metric") or "usage")
+    group_by = str(_get(attribution, "group_by") or "department")
+    rows = _get(attribution, "rows", ()) or ()
+    rendered_rows: list[str] = []
+    user_rank = 0
+    for row in rows:
+        kind = str(_get(row, "kind") or "")
+        if group_by == "department" and kind != "department":
+            continue
+        if group_by == "user" and kind not in {"user", "other_users"}:
+            continue
+        if kind == "user":
+            user_rank += 1
+        token = _get(row, "filter_token")
+        if kind == "user":
+            raw_identity = html_escape(_get(row, "raw_identity") or "Identity not reported")
+            user_key = html_escape(_get(row, "user_key") or "Pseudonym not reported")
+            label = f"{raw_identity}<br><code>{user_key}</code>"
+        elif kind == "other_users":
+            label = "Other users"
+        else:
+            label = html_escape(_get(row, "department_label") or "Department")
+        if token:
+            query = {
+                "view": "departments",
+                "attribution_metric": metric,
+                "attribution_group_by": "user",
+            }
+            if kind == "user":
+                query["user_filter_token"] = str(token)
+            else:
+                query["department_filter_token"] = str(token)
+            summary = _get(attribution, "summary", {}) or {}
+            if metric == "cost":
+                if _get(summary, "period_id"):
+                    query["attribution_cost_period_id"] = str(_get(summary, "period_id"))
+                if _get(summary, "component_id"):
+                    query["attribution_cost_component_id"] = str(
+                        _get(summary, "component_id")
+                    )
+            href = "?" + urlencode(query)
+            label = f'<a class="observe-attribution-link" href="{html_escape(href)}">{label}</a>'
+        usage = _get(row, "usage", {}) or {}
+        if metric == "cost":
+            cost = _get(row, "cost")
+            measure = (
+                _cost_amount(_get(cost, "amount"), _get(cost, "currency"))
+                if cost is not None
+                else f'<span class="metric-missing">Cost unavailable for this {kind.replace("_", " ")}</span>'
+            )
+        else:
+            measure = _render_maybe_missing(_get(usage, "invocations"), suffix=" invocations")
+        rendered_rows.append(
+            "<tr>"
+            f"<th scope=\"row\">{label}</th>"
+            f"<td>{html_escape(f'Rank {user_rank}' if kind == 'user' else _get(row, 'member_count') or 'Omitted users')}</td>"
+            f"<td>{measure}</td>"
+            f"<td>{_render_maybe_missing(_get(usage, 'input_tokens'))}</td>"
+            f"<td>{_render_maybe_missing(_get(usage, 'output_tokens'))}</td>"
+            "</tr>"
+        )
+    table = (
+        f'<p class="observe-empty">No {group_by} attribution data found. This is not reported usage, not zero usage.</p>'
+        if not rendered_rows
+        else (
+            f'<table class="observe-department-table" aria-label="{html_escape(group_by.title())} attribution">'
+            f"<thead><tr><th scope=\"col\">{'Eligible principal' if group_by == 'user' else 'Department'}</th>"
+            f"<th scope=\"col\">{'Rank context' if group_by == 'user' else 'Members'}</th>"
+            f"<th scope=\"col\">{'Allocated cost' if metric == 'cost' else 'Usage'}</th>"
+            "<th scope=\"col\">Input tokens</th><th scope=\"col\">Output tokens</th></tr></thead>"
+            f"<tbody>{''.join(rendered_rows)}</tbody></table>"
+        )
+    )
+    banner = render_diagnostics_banner(diagnostics or {})
+    summary = _render_attribution_summary(
+        _get(attribution, "summary", {}) or {}, group_by=group_by
+    )
+    coverage_html = _render_attribution_coverage(coverage, group_by=group_by)
+    failures_html = _render_attribution_partial_failures(partial_failures)
+    bounds_html = _render_bounds_notice(bounds, rows_shown=len(rendered_rows)) if bounds else ""
+    if bounds and bool(_get(bounds, "truncated")):
+        bounds_html += (
+            '<p class="observe-hint observe-attribution-truncated">'
+            "Results are truncated to the highest-ranked users plus Other users."
+            "</p>"
+        )
+    ranking_html = (
+        '<p class="observe-hint observe-attribution-ranking">'
+        f"Users are ranked by {'allocated cost' if metric == 'cost' else 'invocations'}; "
+        "ties are ordered by pseudonymous key. Other users preserves omitted totals."
+        "</p>"
+        if group_by == "user"
+        else ""
+    )
+    selected_html = (
+        '<p class="observe-protected-context"><strong>Selected eligible principal:</strong> '
+        "This delegated, private view contains only the selected principal context.</p>"
+        if group_by == "user"
+        and str(_get(attribution, "access_boundary") or "") == "delegated"
+        and len([row for row in rows if _get(row, "kind") == "user"]) == 1
+        else ""
+    )
+    return (
+        '<div class="observe-department-view">'
+        f"{banner}{selected_html}{summary}{ranking_html}{table}{bounds_html}{coverage_html}{failures_html}"
+        "</div>"
+    )
+
+
 # Cost allocation (spec 013 T021)
 # ---------------------------------------------------------------------------
 
@@ -2015,6 +2372,12 @@ _OBSERVE_STYLES = """
 .observe-filter-fields label { display: flex; flex-direction: column; font-size: 0.85rem; gap: 0.25rem; }
 .observe-filter-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
 .observe-cost-filter-bar { border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+.observe-attribution-filter-bar { border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+.observe-attribution-summary { background: var(--observe-card-bg); border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+.observe-attribution-summary-columns, .observe-attribution-usage { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
+.observe-attribution-usage div { min-width: 8rem; }
+.observe-attribution-usage dt { font-weight: 600; }
+.observe-attribution-usage dd { margin: 0; }
 .observe-cost-period, .observe-cost-precision-notes { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
 .observe-cost-period div { display: flex; gap: 0.35rem; }
 .observe-cost-period dt { font-weight: 600; }
@@ -2074,8 +2437,10 @@ _OBSERVE_SCRIPT = """
 
   var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", "model", "tool_name", "run_key", "start", "end"];
   var COST_FILTER_KEYS = ["cost_period_id", "cost_component_id", "cost_breakdown", "cost_agent_key"];
+  var ATTRIBUTION_FILTER_KEYS = ["department_filter_token", "user_filter_token", "attribution_group_by", "attribution_metric", "attribution_cost_period_id", "attribution_cost_component_id"];
   var COST_DISCLAIMER = "Operational cost allocation from declared billed totals and observed usage; not an invoice or billing-accurate charge.";
   var COST_BREAKDOWN_WARNING = "Agent, tool, and run breakdowns are alternative reconciliations of the same billed pools; do not add them together.";
+  var ATTRIBUTION_COST_UNAVAILABLE = "Cost attribution is unavailable. Configure a valid cost model and allocatable cost before selecting Cost.";
   var AUTO_REFRESH_MS = 300000; // five minutes
   var DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000; // trailing 24 hours
   // Mirrors MAX_TREND_POINTS in ui.py: even though the backend is expected
@@ -2133,6 +2498,16 @@ _OBSERVE_SCRIPT = """
       });
       applied.cost_breakdown = applied.cost_breakdown || "agents";
     }
+    if (document.getElementById("departments")) {
+      ATTRIBUTION_FILTER_KEYS.forEach(function (key) {
+        var value = params.get(key);
+        if (value) {
+          applied[key] = value;
+        }
+      });
+      applied.attribution_metric = applied.attribution_metric || "usage";
+      applied.attribution_group_by = applied.attribution_group_by || "department";
+    }
     currentView = params.get("view") || "overview";
     if (currentView === "cost" && !document.getElementById("cost")) {
       currentView = "overview";
@@ -2155,6 +2530,13 @@ _OBSERVE_SCRIPT = """
     });
     if (document.getElementById("cost")) {
       COST_FILTER_KEYS.forEach(function (key) {
+        if (appliedFilters[key]) {
+          params.set(key, appliedFilters[key]);
+        }
+      });
+    }
+    if (document.getElementById("departments")) {
+      ATTRIBUTION_FILTER_KEYS.forEach(function (key) {
         if (appliedFilters[key]) {
           params.set(key, appliedFilters[key]);
         }
@@ -2242,11 +2624,13 @@ _OBSERVE_SCRIPT = """
   var COVERAGE_STATE_LABELS = {
     available: { label: "Available", tone: "ok" },
     partial: { label: "Partial", tone: "warn" },
+    ambiguous: { label: "Ambiguous", tone: "warn" },
     no_data: { label: "No data found", tone: "muted" },
     not_reported: { label: "Not reported", tone: "muted" },
     not_configured: { label: "Not configured", tone: "muted" },
     inaccessible: { label: "Inaccessible", tone: "crit" },
     protected_or_unavailable: { label: "Protected or unavailable", tone: "warn" },
+    ambiguous: { label: "Ambiguous", tone: "warn" },
     error: { label: "Error", tone: "crit" },
   };
 
@@ -2263,6 +2647,7 @@ _OBSERVE_SCRIPT = """
     trace_correlation: "Trace correlation",
     protected_content: "Protected content",
     cost_attribution: "Cost attribution",
+    user_attribution: "User attribution",
   };
 
   function clearChildren(node) {
@@ -3668,6 +4053,269 @@ _OBSERVE_SCRIPT = """
     setViewContent("coverage", [banner, table]);
   }
 
+  function renderAttributionControlsFromData(data) {
+    var form = document.getElementById("observe-attribution-filter-form");
+    if (!form || !data) return;
+    var metric = form.querySelector('[data-attribution-filter="metric"]');
+    if (metric) metric.value = data.metric || appliedFilters.attribution_metric || "usage";
+    var group = form.querySelector('[data-attribution-filter="group_by"]');
+    if (group) group.value = data.group_by || appliedFilters.attribution_group_by || "department";
+    var summary = data.summary || {};
+    var period = form.querySelector('[data-attribution-filter="cost_period_id"]');
+    var component = form.querySelector('[data-attribution-filter="cost_component_id"]');
+    if (period && summary.period_id) {
+      ensureSelectOption(period, String(summary.period_id), String(summary.period_id));
+      period.value = String(summary.period_id);
+    }
+    if (component && summary.component_id) {
+      ensureSelectOption(component, String(summary.component_id), String(summary.component_id));
+      component.value = String(summary.component_id);
+    }
+  }
+
+  function attributionUsageNode(title, usage) {
+    usage = usage || {};
+    var section = makeEl("div", "observe-attribution-usage-group");
+    section.appendChild(makeEl("h4", null, title));
+    var dl = makeEl("dl", "observe-attribution-usage");
+    [
+      ["Invocations", usage.invocations, ""],
+      ["Input tokens", usage.input_tokens, ""],
+      ["Output tokens", usage.output_tokens, ""],
+      ["Tool invocations", usage.tool_invocations, ""],
+      ["Active session", usage.active_session_seconds, " s"],
+    ].forEach(function (item) {
+      var div = document.createElement("div");
+      div.appendChild(makeEl("dt", null, item[0]));
+      var dd = document.createElement("dd");
+      dd.appendChild(renderMaybeMissing(item[1], { suffix: item[2] }));
+      div.appendChild(dd);
+      dl.appendChild(div);
+    });
+    section.appendChild(dl);
+    return section;
+  }
+
+  function renderAttributionSummary(summary, groupBy) {
+    summary = summary || {};
+    var section = makeEl("section", "observe-attribution-summary");
+    section.appendChild(makeEl(
+      "h3", null,
+      (groupBy === "user" ? "User" : "Department") +
+        (summary.metric === "cost" ? " cost summary" : " usage summary")
+    ));
+    if (summary.metric === "cost") {
+      var values = [
+        ["Declared total", summary.declared_total],
+        ["Attributed cost", summary.attributed_amount],
+        ["Unmapped cost", summary.unattributed_amount],
+        ["Unallocated cost", summary.unallocated_amount],
+      ];
+      var dl = document.createElement("dl");
+      values.forEach(function (item) {
+        var div = document.createElement("div");
+        div.appendChild(makeEl("dt", null, item[0]));
+        var dd = document.createElement("dd");
+        dd.appendChild(renderCostAmountNode(item[1], summary.currency));
+        div.appendChild(dd);
+        dl.appendChild(div);
+      });
+      section.appendChild(dl);
+      section.appendChild(attributionUsageNode("Unmapped usage", summary.unattributed_usage));
+    } else {
+      var columns = makeEl("div", "observe-attribution-summary-columns");
+      columns.appendChild(attributionUsageNode("Total usage", summary.total));
+      columns.appendChild(attributionUsageNode("Attributed usage", summary.attributed));
+      columns.appendChild(attributionUsageNode("Unmapped usage", summary.unattributed));
+      section.appendChild(columns);
+    }
+    var counts = makeEl("p");
+    counts.appendChild(makeEl("strong", null, "Distinct users: "));
+    counts.appendChild(renderMaybeMissing(summary.distinct_users));
+    counts.appendChild(document.createTextNode(" "));
+    counts.appendChild(makeEl("strong", null, "Omitted users: "));
+    counts.appendChild(renderMaybeMissing(summary.omitted_users));
+    section.appendChild(counts);
+    return section;
+  }
+
+  function renderAttributionCoverage(coverage, groupBy) {
+    coverage = coverage || [];
+    if (!coverage.length) return null;
+    var rows = coverage.map(function (entry) {
+      var state = entry.state || "error";
+      var copy = COVERAGE_STATE_LABELS[state] || COVERAGE_STATE_LABELS.error;
+      var measure = String(entry.metric || "usage");
+      if (entry.component_id) measure += " / " + String(entry.component_id);
+      var counts = [
+        ["Eligible", entry.eligible_records],
+        ["Identified", entry.identified_records],
+        ["Mapped", entry.mapped_records],
+        ["Unattributed", entry.unattributed_records],
+        ["Ambiguous", entry.ambiguous_records],
+        ["Returned", entry.returned_records],
+      ].map(function (item) {
+        return item[0] + ": " +
+          (item[1] === null || item[1] === undefined ? "Not reported" : String(item[1]));
+      }).join("; ");
+      return [
+        entry.source_id || "Not reported",
+        measure,
+        renderBadgeJs(copy.label, copy.tone, "observe-coverage-state-" + state),
+        counts,
+        entry.reason || "Not reported",
+        entry.next_action || "Not reported",
+      ];
+    });
+    var section = makeEl("section", "observe-attribution-coverage");
+    section.appendChild(makeEl(
+      "h3",
+      null,
+      (groupBy === "user" ? "User" : "Department") + " attribution coverage"
+    ));
+    section.appendChild(makeEl(
+      "p",
+      null,
+      "Missing, inaccessible, ambiguous, or protected identity evidence is not zero usage."
+    ));
+    section.appendChild(buildDataTable(
+      "observe-attribution-coverage",
+      "Attribution coverage by source and measure",
+      ["Source", "Measure / component", "State", "Record counts", "Reason", "Next action"],
+      rows
+    ));
+    return section;
+  }
+
+  function renderAttributionPartialFailuresNode(partialFailures) {
+    partialFailures = Array.isArray(partialFailures) ? partialFailures : [];
+    if (!partialFailures.length) return null;
+    var section = makeEl("section", "observe-attribution-partial-failures");
+    section.appendChild(makeEl("h3", null, "Partial source failures"));
+    section.appendChild(makeEl(
+      "p",
+      null,
+      "Successful source evidence remains visible; totals may be incomplete."
+    ));
+    var list = document.createElement("ul");
+    partialFailures.forEach(function (failure) {
+      failure = failure || {};
+      list.appendChild(makeEl(
+        "li",
+        null,
+        String(failure.source_id || "Not reported") + " (" + costLabel(failure.status) +
+          ") \u2014 " + String(failure.reason || "No reason reported.") +
+          " Next action: " + String(failure.next_action || "No follow-up action reported.")
+      ));
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function renderDepartmentAttribution(data, diagnostics, coverage, partialFailures, bounds) {
+    data = data || {};
+    renderAttributionControlsFromData(data);
+    var metric = data.metric || "usage";
+    var groupBy = data.group_by || "department";
+    var rows = (data.rows || []).filter(function (row) {
+      return groupBy === "user"
+        ? row.kind === "user" || row.kind === "other_users"
+        : row.kind === "department";
+    });
+    var userRank = 0;
+    var tableRows = rows.map(function (row) {
+      var label;
+      if (row.kind === "user") userRank += 1;
+      if (row.filter_token) {
+        label = makeEl(
+          "a",
+          "observe-attribution-link",
+          row.kind === "user" ? (row.raw_identity || "Identity not reported") : (row.department_label || "Department")
+        );
+        if (row.kind === "user") {
+          label.appendChild(document.createElement("br"));
+          label.appendChild(makeEl("code", null, row.user_key || "Pseudonym not reported"));
+        }
+        var params = new URLSearchParams();
+        FILTER_KEYS.forEach(function (key) {
+          if (appliedFilters[key]) params.set(key, appliedFilters[key]);
+        });
+        params.set("view", "departments");
+        params.set("attribution_metric", metric);
+        params.set("attribution_group_by", "user");
+        if (row.kind === "user") {
+          params.set("user_filter_token", String(row.filter_token));
+          if (appliedFilters.department_filter_token) {
+            params.set("department_filter_token", appliedFilters.department_filter_token);
+          }
+        } else {
+          params.set("department_filter_token", String(row.filter_token));
+        }
+        if (metric === "cost") {
+          var summary = data.summary || {};
+          if (summary.period_id) params.set("attribution_cost_period_id", String(summary.period_id));
+          if (summary.component_id) params.set("attribution_cost_component_id", String(summary.component_id));
+        }
+        label.href = window.location.pathname + "?" + params.toString();
+      } else {
+        label = makeEl(
+          "span",
+          null,
+          row.kind === "other_users" ? "Other users" : (row.department_label || "Department")
+        );
+      }
+      var usage = row.usage || {};
+      var measure;
+      if (metric === "cost") {
+        measure = row.cost
+          ? renderCostAmountNode(row.cost.amount, row.cost.currency)
+          : makeEl("span", "metric-missing", "Cost unavailable for this " + String(row.kind || "group").replace("_", " "));
+      } else {
+        measure = renderMaybeMissing(usage.invocations, { suffix: " invocations" });
+      }
+      return [
+        label,
+        row.kind === "user"
+          ? makeEl("span", null, "Rank " + String(userRank))
+          : renderMaybeMissing(row.member_count),
+        measure,
+        renderMaybeMissing(usage.input_tokens),
+        renderMaybeMissing(usage.output_tokens),
+      ];
+    });
+    var table = tableRows.length ? buildDataTable(
+      "observe-department-table",
+      groupBy === "user" ? "User attribution" : "Department attribution",
+      [groupBy === "user" ? "Eligible principal" : "Department", groupBy === "user" ? "Rank context" : "Members", metric === "cost" ? "Allocated cost" : "Usage", "Input tokens", "Output tokens"],
+      tableRows
+    ) : emptyStateNode("No " + groupBy + " attribution data found. This is not reported usage, not zero usage.");
+    var content = [
+      renderDiagnosticsJs(diagnostics || {}),
+    ];
+    if (groupBy === "user" && data.access_boundary === "delegated" &&
+        rows.filter(function (row) { return row.kind === "user"; }).length === 1) {
+      content.push(makeEl(
+        "p",
+        "observe-protected-context",
+        "Selected eligible principal: This delegated, private view contains only the selected principal context."
+      ));
+    }
+    content.push(
+      renderAttributionSummary(data.summary, groupBy),
+      groupBy === "user" ? makeEl(
+        "p",
+        "observe-hint observe-attribution-ranking",
+        "Users are ranked by " + (metric === "cost" ? "allocated cost" : "invocations") +
+          "; ties are ordered by pseudonymous key. Other users preserves omitted totals."
+      ) : null,
+      table,
+      renderCostBoundsNode(bounds),
+      renderAttributionCoverage(coverage, groupBy),
+      renderAttributionPartialFailuresNode(partialFailures || []),
+    );
+    setViewContent("departments", content);
+  }
+
   // Maps a wire `view` value (contracts/observe-api.openapi.yaml) back to
   // the internal view id used for DOM ids/CSS classes (the inverse of
   // VIEW_WIRE_NAMES; only "models" differs from its internal id "usage").
@@ -3709,6 +4357,14 @@ _OBSERVE_SCRIPT = """
         body.partial_failures,
         body.bounds
       );
+    } else if (view === "departments") {
+      renderDepartmentAttribution(
+        body.data,
+        body.diagnostics,
+        body.coverage,
+        body.partial_failures,
+        body.bounds
+      );
     } else if (view === "coverage") {
       renderCoverage(body.coverage, body.diagnostics);
     }
@@ -3725,6 +4381,56 @@ _OBSERVE_SCRIPT = """
       },
       refresh: manual === true,
     };
+  }
+
+  function buildAttributionPayload(manual) {
+    var metric = appliedFilters.attribution_metric || "usage";
+    return {
+      metric: metric,
+      group_by: appliedFilters.attribution_group_by || "department",
+      filters: {
+        foundry_resource_id: appliedFilters.foundry_resource_id || null,
+        project_resource_id: appliedFilters.project_resource_id || null,
+        agent_id: appliedFilters.agent_id || null,
+        model: appliedFilters.model || null,
+        tool_name: appliedFilters.tool_name || null,
+        run_key: appliedFilters.run_key || null,
+        start: appliedFilters.start,
+        end: appliedFilters.end,
+        department_filter_token: appliedFilters.department_filter_token || null,
+        user_filter_token: appliedFilters.user_filter_token || null,
+        cost_period_id: metric === "cost" ? (appliedFilters.attribution_cost_period_id || null) : null,
+        cost_component_id: metric === "cost" ? (appliedFilters.attribution_cost_component_id || null) : null,
+      },
+      refresh: manual === true,
+    };
+  }
+
+  function fetchAttributionData(payload, controller, myToken) {
+    return fetch("/api/observe/attribution", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+      .then(function (response) {
+        if (myToken !== requestToken) return null;
+        if (!response.ok) {
+          setRefreshStatus("Refresh failed");
+          return null;
+        }
+        return response.json().then(function (body) {
+          if (myToken !== requestToken) return null;
+          renderObserveResponse(body);
+          setRefreshStatus("Refreshed " + new Date().toISOString());
+          return body;
+        });
+      })
+      .catch(function (error) {
+        if (error && error.name === "AbortError") return null;
+        if (myToken === requestToken) setRefreshStatus("Refresh failed");
+        return null;
+      });
   }
 
   function fetchObserveData(manual) {
@@ -3757,6 +4463,9 @@ _OBSERVE_SCRIPT = """
       refresh: manual === true,
     };
     payload = currentView === "cost" ? buildCostPayload(manual) : payload;
+    if (currentView === "departments") {
+      return fetchAttributionData(buildAttributionPayload(manual), controller, myToken);
+    }
 
     return fetch("/api/observe/query", {
       method: "POST",
@@ -3843,12 +4552,28 @@ _OBSERVE_SCRIPT = """
           cost_breakdown: appliedFilters.cost_breakdown || "",
           cost_agent_key: appliedFilters.cost_agent_key || "",
         } : null;
+        var preservedAttributionFilters = document.getElementById("observe-attribution-filter-form") ? {
+          department_filter_token: appliedFilters.department_filter_token || "",
+          user_filter_token: appliedFilters.user_filter_token || "",
+          attribution_group_by: appliedFilters.attribution_group_by || "department",
+          attribution_metric: appliedFilters.attribution_metric || "usage",
+          attribution_cost_period_id: appliedFilters.attribution_cost_period_id || "",
+          attribution_cost_component_id: appliedFilters.attribution_cost_component_id || "",
+        } : null;
         appliedFilters = draftFilters;
         if (preservedCostFilters) {
           appliedFilters.cost_period_id = preservedCostFilters.cost_period_id;
           appliedFilters.cost_component_id = preservedCostFilters.cost_component_id;
           appliedFilters.cost_breakdown = preservedCostFilters.cost_breakdown;
           appliedFilters.cost_agent_key = preservedCostFilters.cost_agent_key;
+        }
+        if (preservedAttributionFilters) {
+          appliedFilters.department_filter_token = preservedAttributionFilters.department_filter_token;
+          appliedFilters.user_filter_token = preservedAttributionFilters.user_filter_token;
+          appliedFilters.attribution_group_by = preservedAttributionFilters.attribution_group_by;
+          appliedFilters.attribution_metric = preservedAttributionFilters.attribution_metric;
+          appliedFilters.attribution_cost_period_id = preservedAttributionFilters.attribution_cost_period_id;
+          appliedFilters.attribution_cost_component_id = preservedAttributionFilters.attribution_cost_component_id;
         }
         syncUrl();
         fetchObserveData(true);
@@ -3881,6 +4606,33 @@ _OBSERVE_SCRIPT = """
           appliedFilters[key] = costDraft[key];
         });
         currentView = "cost";
+        syncUrl();
+        fetchObserveData(true);
+      });
+    }
+    var attributionForm = document.getElementById("observe-attribution-filter-form");
+    if (attributionForm) {
+      var attributionFields = {
+        attribution_metric: attributionForm.querySelector('[data-attribution-filter="metric"]'),
+        attribution_group_by: attributionForm.querySelector('[data-attribution-filter="group_by"]'),
+        attribution_cost_period_id: attributionForm.querySelector('[data-attribution-filter="cost_period_id"]'),
+        attribution_cost_component_id: attributionForm.querySelector('[data-attribution-filter="cost_component_id"]'),
+      };
+      Object.keys(attributionFields).forEach(function (key) {
+        var field = attributionFields[key];
+        if (field && appliedFilters[key]) field.value = appliedFilters[key];
+      });
+      attributionForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        Object.keys(attributionFields).forEach(function (key) {
+          var field = attributionFields[key];
+          appliedFilters[key] = field && field.value ? field.value : "";
+        });
+        if (appliedFilters.attribution_group_by !== "user") {
+          appliedFilters.user_filter_token = "";
+          appliedFilters.department_filter_token = "";
+        }
+        currentView = "departments";
         syncUrl();
         fetchObserveData(true);
       });
@@ -3945,17 +4697,31 @@ def render_observe_page(
     cost_coverage: Sequence[Any] = (),
     cost_partial_failures: Sequence[Any] = (),
     cost_bounds: Any = None,
+    attribution_enabled: bool = False,
+    department_attribution: Any = None,
+    attribution_cost_available: bool = False,
+    attribution_cost_periods: Sequence[Any] = (),
+    attribution_cost_components: Sequence[Any] = (),
+    attribution_coverage: Sequence[Any] = (),
+    attribution_partial_failures: Sequence[Any] = (),
+    attribution_bounds: Any = None,
 ) -> str:
     """Assemble the full Observe HTML document.
 
-    Cost is additive and opt-in: when ``cost_enabled`` is false its navigation,
-    controls, and section are omitted. This preserves the existing six-view
-    surface for absent cost configuration.
+    Cost and attribution are independently additive and opt-in. Their
+    navigation, controls, and sections are absent unless explicitly enabled.
+    This preserves the existing six-view surface by default.
     """
-    effective_active_view = (
-        active_view if cost_enabled or active_view != "cost" else "overview"
+    effective_active_view = active_view
+    if active_view == "cost" and not cost_enabled:
+        effective_active_view = "overview"
+    if active_view == "departments" and not attribution_enabled:
+        effective_active_view = "overview"
+    nav = render_observe_nav(
+        effective_active_view,
+        cost_enabled=cost_enabled,
+        attribution_enabled=attribution_enabled,
     )
-    nav = render_observe_nav(effective_active_view, cost_enabled=cost_enabled)
     filters = render_filter_bar(scope_label)
     overview = render_overview_cards(overview_metrics, diagnostics=diagnostics)
     agents_html = render_agents_table(agents, diagnostics=diagnostics)
@@ -3983,6 +4749,33 @@ def render_observe_page(
     <h2 id="cost-heading">Cost</h2>
     {cost_controls}
     <div id="cost-content" data-observe-view-content="cost">{cost_html}</div>
+  </section>"""
+    attribution_section = ""
+    if attribution_enabled:
+        cost_available = bool(
+            attribution_cost_available
+            or attribution_cost_periods
+            or attribution_cost_components
+            or _get(department_attribution, "metric") == "cost"
+        )
+        attribution_controls = render_attribution_controls(
+            department_attribution,
+            cost_available=cost_available,
+            period_options=attribution_cost_periods,
+            component_options=attribution_cost_components,
+        )
+        attribution_html = render_department_view(
+            department_attribution,
+            diagnostics=diagnostics,
+            coverage=attribution_coverage,
+            partial_failures=attribution_partial_failures,
+            bounds=attribution_bounds,
+        )
+        attribution_section = f"""
+  <section id="departments" aria-labelledby="departments-heading">
+    <h2 id="departments-heading">Departments</h2>
+    {attribution_controls}
+    <div id="departments-content" data-observe-view-content="departments">{attribution_html}</div>
   </section>"""
 
     return f"""<!doctype html>
@@ -4025,6 +4818,7 @@ def render_observe_page(
     <h2 id="runs-heading">Runs</h2>
     <div id="runs-content" data-observe-view-content="runs">{runs_html}</div>
   </section>
+  {attribution_section}
   {cost_section}
   <section id="coverage" aria-labelledby="coverage-heading">
     <h2 id="coverage-heading">Telemetry coverage</h2>

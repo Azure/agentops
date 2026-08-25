@@ -5,10 +5,12 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from decimal import Decimal
+from hashlib import sha256
 
 import pytest
 
 from agentops.agent.observe.cost_allocation import allocate_cost_period
+from agentops.core.attribution import AttributionResolution
 from agentops.core.cost import CostPeriod, CostUsageObservation
 
 
@@ -22,6 +24,9 @@ PROJECT = (
     "projects/project-a"
 )
 CALCULATED_AT = datetime(2026, 9, 2, tzinfo=timezone.utc)
+USER_A = f"usr1.g1.{'a' * 64}"
+USER_B = f"usr1.g1.{'b' * 64}"
+USER_C = f"usr1.g1.{'c' * 64}"
 
 
 def _component(**changes: object) -> dict[str, object]:
@@ -82,6 +87,28 @@ def _amounts(result: object) -> dict[str, Decimal]:
     return {row.consumer_key: row.amount for row in result.rows}
 
 
+def _resolution(
+    user_key: str,
+    department_id: str | None = None,
+    department_label: str | None = None,
+) -> AttributionResolution:
+    return AttributionResolution(
+        user_key=user_key,
+        department_id=department_id,
+        department_label=department_label,
+        source="explicit_user" if department_id is not None else "unmapped",
+        reason=(
+            "An explicit pseudonymous-user mapping was applied."
+            if department_id is not None
+            else "No explicit mapping applies."
+        ),
+    )
+
+
+def _user_key(index: int) -> str:
+    return f"usr1.g1.{sha256(str(index).encode()).hexdigest()}"
+
+
 def test_weighted_tokens_allocate_by_agent_and_usage_match_narrows() -> None:
     observations = [
         _observation("agent-a", input_tokens=100, output_tokens=0),
@@ -114,9 +141,7 @@ def test_weighted_tokens_allocate_by_agent_and_usage_match_narrows() -> None:
     assert result.components[0].declared_total == Decimal("100.00")
     assert result.components[0].attributed_amount == Decimal("100.00")
     assert result.components[0].unallocated_amount == Decimal("0.00")
-    assert result.latest_observed_at == datetime(
-        2026, 8, 24, 12, tzinfo=timezone.utc
-    )
+    assert result.latest_observed_at == datetime(2026, 8, 24, 12, tzinfo=timezone.utc)
 
 
 def test_total_tokens_and_largest_remainder_use_consumer_key_tie_break() -> None:
@@ -147,7 +172,9 @@ def test_total_tokens_and_largest_remainder_use_consumer_key_tie_break() -> None
         "agent-c": Decimal("0.00"),
     }
     assert _amounts(second) == _amounts(first)
-    adjustment = {row.consumer_key: row.rounding_adjustment_minor_units for row in first.rows}
+    adjustment = {
+        row.consumer_key: row.rounding_adjustment_minor_units for row in first.rows
+    }
     assert adjustment == {"agent-a": 1, "agent-b": 0, "agent-c": 0}
     assert sum((row.amount for row in first.rows), Decimal(0)) == Decimal("0.01")
 
@@ -166,12 +193,8 @@ def test_total_tokens_and_largest_remainder_use_consumer_key_tie_break() -> None
                 usage_match={"tool_names": ["product_search"]},
             ),
             [
-                _observation(
-                    "agent-a", tool_name="product_search", tool_invocations=1
-                ),
-                _observation(
-                    "agent-b", tool_name="product_search", tool_invocations=2
-                ),
+                _observation("agent-a", tool_name="product_search", tool_invocations=1),
+                _observation("agent-b", tool_name="product_search", tool_invocations=2),
             ],
             {"agent-a": Decimal("10.00"), "agent-b": Decimal("20.00")},
         ),
@@ -317,9 +340,7 @@ def test_weighted_tokens_fall_back_only_when_required_dimension_is_missing() -> 
         ),
     ]
 
-    result = allocate_cost_period(
-        _period(), observations, calculated_at=CALCULATED_AT
-    )
+    result = allocate_cost_period(_period(), observations, calculated_at=CALCULATED_AT)
 
     assert _amounts(result) == {
         "agent-a": Decimal("50.00"),
@@ -400,13 +421,19 @@ def test_mixed_currencies_reconcile_separately() -> None:
         calculated_at=CALCULATED_AT,
     )
 
-    assert {(item.currency, item.declared_total) for item in result.currency_subtotals} == {
+    assert {
+        (item.currency, item.declared_total) for item in result.currency_subtotals
+    } == {
         ("USD", Decimal("12.00")),
         ("EUR", Decimal("7.50")),
     }
     assert len(result.components) == 2
     assert sum(
-        (summary.declared_total for summary in result.components if summary.currency == "USD"),
+        (
+            summary.declared_total
+            for summary in result.components
+            if summary.currency == "USD"
+        ),
         Decimal(0),
     ) == Decimal("12.00")
 
@@ -469,6 +496,163 @@ def test_component_and_agent_filters_apply_after_full_allocation() -> None:
         )
 
 
+def test_department_allocation_requires_one_selected_component() -> None:
+    observations = [_observation("shared-agent", user_key=USER_A, input_tokens=1)]
+    resolutions = [_resolution(USER_A, "engineering", "Engineering")]
+
+    with pytest.raises(
+        ValueError,
+        match="department cost allocation requires exactly one selected component",
+    ):
+        allocate_cost_period(
+            _period(),
+            observations,
+            calculated_at=CALCULATED_AT,
+            department_resolutions=resolutions,
+        )
+
+
+def test_department_consumers_preserve_unattributed_share_and_declared_total() -> None:
+    component = _component(
+        billed_total="10.01",
+        allocation_key="total_tokens",
+        fallback_key=None,
+        token_weights=None,
+    )
+    result = allocate_cost_period(
+        _period(component),
+        [
+            _observation("shared-agent", user_key=USER_A, input_tokens=1),
+            _observation("shared-agent", user_key=USER_B, input_tokens=2),
+            _observation("shared-agent", user_key=USER_C, input_tokens=3),
+            _observation("shared-agent", input_tokens=4),
+        ],
+        calculated_at=CALCULATED_AT,
+        component_id="model-prod",
+        department_resolutions=[
+            _resolution(USER_A, "engineering", "Engineering"),
+            _resolution(USER_B, "engineering", "Engineering"),
+            _resolution(USER_C),
+        ],
+    )
+
+    assert _amounts(result) == {
+        "__unattributed_department__": Decimal("7.01"),
+        "engineering": Decimal("3.00"),
+    }
+    engineering = next(row for row in result.rows if row.consumer_kind == "department")
+    unattributed = next(
+        row for row in result.rows if row.consumer_kind == "unattributed"
+    )
+    assert engineering.usage_numerator == Decimal("3")
+    assert engineering.agent_key == "shared-agent"
+    assert unattributed.usage_numerator == Decimal("7")
+    assert unattributed.agent_key == "shared-agent"
+    assert all(row.usage_denominator == Decimal("10") for row in result.rows)
+    summary = result.components[0]
+    assert summary.attributed_amount == Decimal("3.00")
+    assert summary.unattributed_amount == Decimal("7.01")
+    assert (
+        summary.attributed_amount
+        + summary.unattributed_amount
+        + summary.unallocated_amount
+        == summary.declared_total
+        == Decimal("10.01")
+    )
+
+
+def test_department_filter_runs_after_full_period_component_allocation() -> None:
+    component = _component(
+        billed_total="0.05",
+        allocation_key="total_tokens",
+        fallback_key=None,
+        token_weights=None,
+    )
+    observations = [
+        _observation("shared-agent", user_key=USER_A, input_tokens=1),
+        _observation("shared-agent", user_key=USER_B, input_tokens=1),
+        _observation("shared-agent", user_key=USER_C, input_tokens=1),
+    ]
+    resolutions = [
+        _resolution(USER_A, "engineering", "Engineering"),
+        _resolution(USER_B, "sales", "Sales"),
+        _resolution(USER_C),
+    ]
+    full = allocate_cost_period(
+        _period(component),
+        observations,
+        calculated_at=CALCULATED_AT,
+        component_id="model-prod",
+        department_resolutions=resolutions,
+    )
+    filtered = allocate_cost_period(
+        _period(component),
+        observations,
+        calculated_at=CALCULATED_AT,
+        component_id="model-prod",
+        department_resolutions=resolutions,
+        department_id="sales",
+    )
+
+    assert _amounts(full) == {
+        "__unattributed_department__": Decimal("0.02"),
+        "engineering": Decimal("0.02"),
+        "sales": Decimal("0.01"),
+    }
+    full_sales = next(row for row in full.rows if row.consumer_key == "sales")
+    assert _amounts(filtered) == {
+        "sales": full_sales.amount,
+        "__unattributed_department__": Decimal("0.02"),
+    }
+    assert (
+        filtered.rows[0].usage_denominator
+        == full_sales.usage_denominator
+        == Decimal("3")
+    )
+    assert (
+        filtered.rows[0].usage_numerator == full_sales.usage_numerator == Decimal("1")
+    )
+    summary = filtered.components[0]
+    assert summary.declared_total == Decimal("0.05")
+    assert summary.attributed_amount == Decimal("0.03")
+    assert summary.unattributed_amount == Decimal("0.02")
+    assert summary.omitted_allocated_amount == Decimal("0.02")
+    assert summary.rows_total == 3
+    assert summary.rows_shown == 2
+
+
+def test_agent_identity_is_not_a_department_resolution_fallback() -> None:
+    component = _component(
+        allocation_key="total_tokens",
+        fallback_key=None,
+        token_weights=None,
+    )
+    result = allocate_cost_period(
+        _period(component),
+        [_observation(USER_A, input_tokens=1)],
+        calculated_at=CALCULATED_AT,
+        component_id="model-prod",
+        department_resolutions=[
+            _resolution(USER_A, "engineering", "Engineering"),
+        ],
+    )
+
+    assert _amounts(result) == {
+        "__unattributed_department__": Decimal("100.00"),
+    }
+    assert result.rows[0].consumer_kind == "unattributed"
+    assert result.rows[0].agent_key == USER_A
+
+
+def test_cost_usage_observation_user_key_is_optional_and_strict() -> None:
+    assert _observation("agent-a").user_key is None
+    assert _observation("agent-a", user_key=USER_A).user_key == USER_A
+
+    for invalid in ("usr1.g1.short", f"usr1.g0.{'a' * 64}", 123):
+        with pytest.raises(ValueError):
+            _observation("agent-a", user_key=invalid)
+
+
 def test_tool_and_run_breakdowns_are_alternative_views_of_the_same_pool() -> None:
     component = _component(
         allocation_key="total_tokens",
@@ -525,9 +709,7 @@ def test_tool_and_run_breakdowns_are_alternative_views_of_the_same_pool() -> Non
     ):
         assert view.breakdown == breakdown
         assert view.components[0].declared_total == Decimal("100.00")
-        assert sum((row.amount for row in view.rows), Decimal(0)) == Decimal(
-            "100.00"
-        )
+        assert sum((row.amount for row in view.rows), Decimal(0)) == Decimal("100.00")
         assert view.currency_subtotals[0].declared_total == Decimal("100.00")
     assert "not an invoice" in agents.disclaimer
 
@@ -736,10 +918,9 @@ def test_alternative_rows_retain_agent_grain_for_post_allocation_filtering(
 
     assert len(full.rows) == 2
     assert {row.agent_key for row in full.rows} == {"agent-a", "agent-b"}
-    assert {
-        getattr(row, identity_field)
-        for row in full.rows
-    } == {"search" if breakdown == "tools" else "shared-run"}
+    assert {getattr(row, identity_field) for row in full.rows} == {
+        "search" if breakdown == "tools" else "shared-run"
+    }
     assert len(filtered.rows) == 1
     assert filtered.rows[0].agent_key == "agent-a"
     assert filtered.rows[0].amount == Decimal("25.00")
@@ -850,7 +1031,9 @@ def test_fallback_and_partial_coverage_evidence_use_confidence_precedence() -> N
     assert partial.components[0].next_action
 
 
-def test_mixed_telemetry_availability_allocates_only_observed_usage_with_low_confidence() -> None:
+def test_mixed_telemetry_availability_allocates_only_observed_usage_with_low_confidence() -> (
+    None
+):
     component = _component(
         allocation_key="total_tokens",
         fallback_key=None,
@@ -965,8 +1148,7 @@ def test_row_bound_preserves_omitted_allocated_amount_and_reconciliation() -> No
         token_weights=None,
     )
     observations = [
-        _observation(f"agent-{index:03d}", input_tokens=1)
-        for index in range(501)
+        _observation(f"agent-{index:03d}", input_tokens=1) for index in range(501)
     ]
 
     result = allocate_cost_period(
@@ -989,3 +1171,60 @@ def test_row_bound_preserves_omitted_allocated_amount_and_reconciliation() -> No
         + summary.unallocated_amount
         == summary.declared_total
     )
+
+
+def test_user_cost_allocation_folds_after_exact_minor_unit_allocation() -> None:
+    keys = [_user_key(index) for index in range(501)]
+    observations = [
+        _observation("shared-agent", user_key=key, input_tokens=1) for key in keys
+    ]
+
+    result = allocate_cost_period(
+        _period(
+            _component(
+                billed_total="501.00",
+                allocation_key="total_tokens",
+                fallback_key=None,
+                token_weights=None,
+            )
+        ),
+        observations,
+        calculated_at=CALCULATED_AT,
+        component_id="model-prod",
+        user_resolutions=[_resolution(key) for key in keys],
+    )
+
+    assert len(result.rows) == 500
+    assert sum(row.consumer_kind == "user" for row in result.rows) == 499
+    other = next(row for row in result.rows if row.consumer_kind == "other_users")
+    assert other.usage_numerator == Decimal(2)
+    assert other.amount == Decimal("2.00")
+    assert sum((row.amount for row in result.rows), Decimal(0)) == Decimal("501.00")
+    assert result.components[0].attributed_amount == Decimal("501.00")
+    assert result.components[0].omitted_allocated_amount == Decimal("0.00")
+
+
+def test_user_cost_filter_preserves_full_pool_amount_and_denominator() -> None:
+    observations = [
+        _observation("shared-agent", user_key=USER_A, input_tokens=1),
+        _observation("shared-agent", user_key=USER_B, input_tokens=3),
+    ]
+    resolutions = [_resolution(USER_A), _resolution(USER_B)]
+    kwargs = {
+        "calculated_at": CALCULATED_AT,
+        "component_id": "model-prod",
+        "user_resolutions": resolutions,
+    }
+    unfiltered = allocate_cost_period(_period(), observations, **kwargs)
+    selected = next(row for row in unfiltered.rows if row.consumer_key == USER_A)
+
+    filtered = allocate_cost_period(_period(), observations, user_key=USER_A, **kwargs)
+
+    assert [(row.consumer_key, row.amount) for row in filtered.rows] == [
+        (USER_A, selected.amount)
+    ]
+    assert filtered.rows[0].usage_denominator == selected.usage_denominator
+    summary = filtered.components[0]
+    assert summary.declared_total == Decimal("100.00")
+    assert summary.attributed_amount == Decimal("100.00")
+    assert summary.omitted_allocated_amount == Decimal("75.00")

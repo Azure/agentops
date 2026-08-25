@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_FLOOR
 from hashlib import sha256
 from typing import Sequence
 
+from agentops.core.attribution import AttributionResolution
 from agentops.core.cost import (
     AllocationKey,
     CostAllocationRow,
@@ -37,6 +38,9 @@ _UNATTRIBUTED_KEYS: dict[CostBreakdown, str] = {
     "tools": "__unattributed_tool__",
     "runs": "__unattributed_run__",
 }
+_UNATTRIBUTED_DEPARTMENT_KEY = "__unattributed_department__"
+_UNATTRIBUTED_USER_KEY = "__unattributed_user__"
+_OTHER_USERS_KEY = "__other_users__"
 
 
 @dataclass(frozen=True)
@@ -194,6 +198,9 @@ def _group_usage(
     observations: Sequence[CostUsageObservation],
     values: Sequence[Decimal | None],
     breakdown: CostBreakdown,
+    *,
+    department_resolutions: dict[str, AttributionResolution] | None = None,
+    user_resolutions: dict[str, AttributionResolution] | None = None,
 ) -> list[_ConsumerUsage]:
     grouped: dict[
         tuple[str | None, str | None],
@@ -202,11 +209,36 @@ def _group_usage(
     for observation, value in zip(observations, values, strict=True):
         if value is None or value <= 0:
             continue
-        identity = _identity(observation, breakdown)
+        if department_resolutions is None and user_resolutions is None:
+            identity = _identity(observation, breakdown)
+        elif user_resolutions is not None:
+            identity = (
+                observation.user_key
+                if observation.user_key in user_resolutions
+                else None
+            )
+        else:
+            resolution = (
+                department_resolutions.get(observation.user_key)
+                if observation.user_key is not None
+                else None
+            )
+            identity = (
+                resolution.department_id
+                if resolution is not None
+                and resolution.source in {"explicit_user", "principal_group"}
+                else None
+            )
         unattributed = identity is None
         # Tool and run views retain agent provenance so an agent drill-down can
         # hide rows only after the complete billed pool has been allocated.
-        agent_scope = observation.agent_key if breakdown != "agents" else None
+        agent_scope = (
+            observation.agent_key
+            if department_resolutions is None
+            and user_resolutions is None
+            and breakdown != "agents"
+            else None
+        )
         group_key = (identity, agent_scope)
         current = grouped.get(group_key)
         if current is None:
@@ -220,11 +252,23 @@ def _group_usage(
 
     base_counts: dict[str, int] = {}
     for identity, _ in grouped:
-        base = identity or _UNATTRIBUTED_KEYS[breakdown]
+        base = identity or (
+            _UNATTRIBUTED_USER_KEY
+            if user_resolutions is not None
+            else _UNATTRIBUTED_DEPARTMENT_KEY
+            if department_resolutions is not None
+            else _UNATTRIBUTED_KEYS[breakdown]
+        )
         base_counts[base] = base_counts.get(base, 0) + 1
 
     def consumer_key(identity: str | None, agent_scope: str | None) -> str:
-        base = identity or _UNATTRIBUTED_KEYS[breakdown]
+        base = identity or (
+            _UNATTRIBUTED_USER_KEY
+            if user_resolutions is not None
+            else _UNATTRIBUTED_DEPARTMENT_KEY
+            if department_resolutions is not None
+            else _UNATTRIBUTED_KEYS[breakdown]
+        )
         if base_counts[base] == 1:
             return base
         scope = agent_scope or _UNATTRIBUTED_KEYS["agents"]
@@ -325,9 +369,7 @@ def _coverage(
         return (
             "low",
             "partial",
-            "Allocation is based on observed usage, but "
-            + " and ".join(reasons)
-            + ".",
+            "Allocation is based on observed usage, but " + " and ".join(reasons) + ".",
             "Complete telemetry coverage and consumer attribution.",
         )
     if fallback_used:
@@ -378,11 +420,11 @@ def _allocate_component(
     *,
     breakdown: CostBreakdown,
     calculated_at: datetime,
+    department_resolutions: dict[str, AttributionResolution] | None = None,
+    user_resolutions: dict[str, AttributionResolution] | None = None,
 ) -> _ComponentAllocation:
     matched = tuple(
-        observation
-        for observation in observations
-        if _matches(component, observation)
+        observation for observation in observations if _matches(component, observation)
     )
     applied_key, measure, fallback_used = _select_measure(component, matched)
     denominator = sum(
@@ -390,7 +432,13 @@ def _allocate_component(
         Decimal(0),
     )
     consumers = (
-        _group_usage(matched, measure.values, breakdown)
+        _group_usage(
+            matched,
+            measure.values,
+            breakdown,
+            department_resolutions=department_resolutions,
+            user_resolutions=user_resolutions,
+        )
         if applied_key is not None
         else []
     )
@@ -447,11 +495,23 @@ def _allocate_component(
     for consumer in consumers:
         items = consumer.observations
         identity_fields: dict[str, str | None]
-        if breakdown == "agents":
+        if user_resolutions is not None:
             identity_fields = {
-                "agent_key": None
-                if consumer.unattributed
-                else consumer.consumer_key,
+                "agent_key": _single_value(items, "agent_key"),
+                "tool_name": _single_value(items, "tool_name"),
+                "run_key": _single_value(items, "run_key"),
+            }
+            consumer_kind = "unattributed" if consumer.unattributed else "user"
+        elif department_resolutions is not None:
+            identity_fields = {
+                "agent_key": _single_value(items, "agent_key"),
+                "tool_name": _single_value(items, "tool_name"),
+                "run_key": _single_value(items, "run_key"),
+            }
+            consumer_kind = "unattributed" if consumer.unattributed else "department"
+        elif breakdown == "agents":
+            identity_fields = {
+                "agent_key": None if consumer.unattributed else consumer.consumer_key,
                 "tool_name": _single_value(items, "tool_name"),
                 "run_key": _single_value(items, "run_key"),
             }
@@ -555,8 +615,54 @@ def allocate_cost_period(
     calculated_at: datetime,
     component_id: str | None = None,
     cost_agent_key: str | None = None,
+    department_resolutions: Sequence[AttributionResolution] | None = None,
+    department_id: str | None = None,
+    user_resolutions: Sequence[AttributionResolution] | None = None,
+    user_key: str | None = None,
+    fold_users: bool = True,
 ) -> CostViewData:
-    """Allocate one configured period without mutating inputs or inferring usage."""
+    """Allocate one configured period without mutating inputs or inferring usage.
+
+    Department allocation consumes already resolved pseudonymous-user mappings.
+    It allocates the complete selected component before applying a department
+    filter, so filtering cannot change a row amount or its denominator.
+    """
+    if department_resolutions is not None and user_resolutions is not None:
+        raise ValueError("department and user cost attribution are mutually exclusive")
+    resolution_by_user: dict[str, AttributionResolution] | None = None
+    attribution_resolutions = (
+        department_resolutions
+        if department_resolutions is not None
+        else user_resolutions
+    )
+    if attribution_resolutions is not None:
+        attribution_name = (
+            "department" if department_resolutions is not None else "user"
+        )
+        if component_id is None:
+            raise ValueError(
+                f"{attribution_name} cost allocation requires exactly one selected component"
+            )
+        if breakdown != "agents":
+            raise ValueError(
+                f"{attribution_name} cost allocation does not accept a cost breakdown"
+            )
+        if cost_agent_key is not None:
+            raise ValueError(
+                f"{attribution_name} cost allocation does not accept an agent filter"
+            )
+        resolution_by_user = {}
+        for resolution in attribution_resolutions:
+            if resolution.user_key in resolution_by_user:
+                raise ValueError(
+                    f"{attribution_name} resolutions must contain unique user keys"
+                )
+            resolution_by_user[resolution.user_key] = resolution
+    elif department_id is not None:
+        raise ValueError("department_id requires department_resolutions")
+    elif user_key is not None:
+        raise ValueError("user_key requires user_resolutions")
+
     components = list(period.components)
     if component_id is not None:
         components = [
@@ -572,13 +678,55 @@ def allocate_cost_period(
             observations,
             breakdown=breakdown,
             calculated_at=calculated_at,
+            department_resolutions=(
+                resolution_by_user if department_resolutions is not None else None
+            ),
+            user_resolutions=(
+                resolution_by_user if user_resolutions is not None else None
+            ),
         )
         for component in components
     ]
     all_rows = [row for allocation in allocations for row in allocation.rows]
-    all_rows.sort(
-        key=lambda row: (-row.amount, row.component_id, row.consumer_key)
-    )
+    all_rows.sort(key=lambda row: (-row.amount, row.component_id, row.consumer_key))
+
+    if fold_users and user_resolutions is not None and user_key is None:
+        user_rows = [row for row in all_rows if row.consumer_kind == "user"]
+        if len(user_rows) > MAX_COST_ROWS:
+            retained = user_rows[: MAX_COST_ROWS - 1]
+            hidden = user_rows[MAX_COST_ROWS - 1 :]
+            template = hidden[0]
+            other = template.model_copy(
+                update={
+                    "consumer_kind": "other_users",
+                    "consumer_key": _OTHER_USERS_KEY,
+                    "source_resource_id": None,
+                    "project_resource_id": None,
+                    "agent_key": None,
+                    "tool_name": None,
+                    "run_key": None,
+                    "amount": sum((row.amount for row in hidden), Decimal(0)),
+                    "usage_numerator": sum(
+                        (row.usage_numerator for row in hidden), Decimal(0)
+                    ),
+                    "rounding_adjustment_minor_units": sum(
+                        row.rounding_adjustment_minor_units for row in hidden
+                    ),
+                    "latest_observed_at": max(
+                        (
+                            row.latest_observed_at
+                            for row in hidden
+                            if row.latest_observed_at is not None
+                        ),
+                        default=None,
+                    ),
+                }
+            )
+            all_rows = [
+                *retained,
+                other,
+                *(row for row in all_rows if row.consumer_kind != "user"),
+            ]
 
     displayed = all_rows
     filtered_rows: set[int] = set()
@@ -589,20 +737,41 @@ def allocate_cost_period(
                 filtered_rows.add(id(row))
             else:
                 displayed.append(row)
-    omitted_by_bound = displayed[MAX_COST_ROWS:]
-    displayed = displayed[:MAX_COST_ROWS]
+    if department_id is not None:
+        filtered = []
+        for row in displayed:
+            if row.consumer_kind == "department" and row.consumer_key != department_id:
+                filtered_rows.add(id(row))
+            else:
+                filtered.append(row)
+        displayed = filtered
+    if user_key is not None:
+        filtered = []
+        for row in displayed:
+            if row.consumer_kind == "user" and row.consumer_key != user_key:
+                filtered_rows.add(id(row))
+            else:
+                filtered.append(row)
+        displayed = filtered
+    preserve_unbounded_users = (
+        not fold_users and user_resolutions is not None and user_key is None
+    )
+    omitted_by_bound = [] if preserve_unbounded_users else displayed[MAX_COST_ROWS:]
+    if not preserve_unbounded_users:
+        displayed = displayed[:MAX_COST_ROWS]
     omitted_ids = filtered_rows | {id(row) for row in omitted_by_bound}
 
     summaries: list[CostComponentSummary] = []
     for allocation in allocations:
         component_rows = allocation.rows
-        shown = [row for row in displayed if row.component_id == allocation.component.id]
+        shown = [
+            row for row in displayed if row.component_id == allocation.component.id
+        ]
         omitted_amount = sum(
             (
                 row.amount
                 for row in component_rows
-                if id(row) in omitted_ids
-                and row.consumer_kind != "unattributed"
+                if id(row) in omitted_ids and row.consumer_kind != "unattributed"
             ),
             _minor_amount(0, allocation.component.currency_minor_units),
         )
@@ -629,19 +798,19 @@ def allocate_cost_period(
             )
         )
 
-    return CostViewData(
-        period=CostPeriodRef(
+    payload = {
+        "period": CostPeriodRef(
             id=period.id,
             starts_at=period.starts_at,
             ends_at=period.ends_at,
         ),
-        breakdown=breakdown,
-        component_filter=component_id,
-        components=summaries,
-        rows=displayed,
-        currency_subtotals=_currency_subtotals(summaries),
-        calculated_at=calculated_at,
-        latest_observed_at=max(
+        "breakdown": breakdown,
+        "component_filter": component_id,
+        "components": summaries,
+        "rows": displayed,
+        "currency_subtotals": _currency_subtotals(summaries),
+        "calculated_at": calculated_at,
+        "latest_observed_at": max(
             (
                 allocation.latest_observed_at
                 for allocation in allocations
@@ -649,4 +818,9 @@ def allocate_cost_period(
             ),
             default=None,
         ),
+    }
+    return (
+        CostViewData.model_construct(**payload)
+        if preserve_unbounded_users
+        else CostViewData(**payload)
     )

@@ -129,6 +129,331 @@ def test_render_observe_nav_only_adds_cost_when_enabled() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Department attribution (issue #444 T018/T029)
+# ---------------------------------------------------------------------------
+
+
+def _department_data(*, metric: str = "usage", cost: object = None) -> dict[str, object]:
+    usage = {
+        "invocations": 12,
+        "input_tokens": 120,
+        "output_tokens": 60,
+        "tool_invocations": 3,
+        "active_session_seconds": "45.5",
+    }
+    row = {
+        "kind": "department",
+        "department_id": "engineering-internal",
+        "department_label": 'Engineering <Core>',
+        "filter_token": "dep1.g7.opaque_token-only",
+        "member_count": 4,
+        "usage": usage,
+        "cost": cost,
+        "mapping_state": "mapped",
+    }
+    if metric == "cost":
+        summary: dict[str, object] = {
+            "metric": "cost",
+            "period_id": "august",
+            "component_id": "ptu",
+            "declared_total": "100.00",
+            "attributed_amount": "75.00",
+            "unattributed_amount": "20.00",
+            "unallocated_amount": "5.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_key": "weighted_tokens",
+            "confidence": "high",
+            "total_usage": usage,
+            "attributed_usage": usage,
+            "unattributed_usage": {**usage, "invocations": 2},
+            "distinct_users": 5,
+            "omitted_users": 0,
+        }
+    else:
+        summary = {
+            "metric": "usage",
+            "total": usage,
+            "attributed": usage,
+            "unattributed": {**usage, "invocations": 2, "input_tokens": None},
+            "distinct_users": 5,
+            "omitted_users": 0,
+        }
+    return {
+        "metric": metric,
+        "group_by": "department",
+        "access_boundary": "aggregate",
+        "rows": [row],
+        "summary": summary,
+        "primary_measure": "allocated_amount" if metric == "cost" else "invocations",
+        "calculated_at": "2026-08-25T12:00:00Z",
+        "latest_observed_at": "2026-08-25T11:59:00Z",
+    }
+
+
+def _user_data(*, selected: bool = False, truncated: bool = False) -> dict[str, object]:
+    usage = {
+        "invocations": 8,
+        "input_tokens": 80,
+        "output_tokens": 40,
+        "tool_invocations": 2,
+        "active_session_seconds": "30",
+    }
+    rows: list[dict[str, object]] = [
+        {
+            "kind": "user",
+            "user_key": "usr1.g7." + "a" * 64,
+            "raw_identity": "synthetic-alex@example.test",
+            "filter_token": "usr-token.opaque-only",
+            "department_id": "engineering-internal",
+            "department_label": "Engineering",
+            "usage": usage,
+            "cost": None,
+            "mapping_state": "mapped",
+        }
+    ]
+    if truncated:
+        rows.append(
+            {
+                "kind": "other_users",
+                "member_count": 2,
+                "usage": {**usage, "invocations": 3},
+                "cost": None,
+                "mapping_state": "not_applicable",
+            }
+        )
+    return {
+        "metric": "usage",
+        "group_by": "user",
+        "access_boundary": "delegated",
+        "rows": rows,
+        "summary": {
+            "metric": "usage",
+            "total": {**usage, "invocations": 10},
+            "attributed": {**usage, "invocations": 10},
+            "unattributed": {**usage, "invocations": 0},
+            "distinct_users": 3 if truncated else 1,
+            "omitted_users": 2 if truncated else 0,
+        },
+        "primary_measure": "invocations",
+        "calculated_at": "2026-08-25T12:00:00Z",
+        "latest_observed_at": "2026-08-25T11:59:00Z",
+    }
+
+
+def test_department_surface_is_strictly_opt_in() -> None:
+    default_html = ui.render_observe_page()
+    assert 'data-observe-nav-link="departments"' not in default_html
+    assert 'id="departments"' not in default_html
+    assert 'id="observe-attribution-filter-form"' not in default_html
+
+    enabled_html = ui.render_observe_page(
+        attribution_enabled=True,
+        department_attribution=_department_data(),
+    )
+    assert 'data-observe-nav-link="departments"' in enabled_html
+    assert '<section id="departments"' in enabled_html
+    assert 'data-observe-view-content="departments"' in enabled_html
+
+
+def test_department_controls_offer_usage_and_available_cost_selectors() -> None:
+    html = ui.render_attribution_controls(
+        _department_data(),
+        cost_available=True,
+        period_options=["august"],
+        component_options=["ptu"],
+    )
+    assert 'data-attribution-filter="metric"' in html
+    assert '<option value="usage" selected>Usage</option>' in html
+    assert '<option value="cost">Cost</option>' in html
+    assert 'data-attribution-filter="cost_period_id"' in html
+    assert 'data-attribution-filter="cost_component_id"' in html
+    assert 'id="observe-apply-attribution-filters"' in html
+
+
+def test_department_controls_explain_unavailable_cost() -> None:
+    html = ui.render_attribution_controls(_department_data(), cost_available=False)
+    assert '<option value="cost" disabled>Cost</option>' in html
+    assert "Cost attribution is unavailable" in html
+    assert "valid cost model and allocatable cost" in html
+
+
+def test_department_usage_renders_opaque_link_and_unmapped_summary() -> None:
+    html = ui.render_department_view(_department_data())
+    assert "Engineering &lt;Core&gt;" in html
+    assert "dep1.g7.opaque_token-only" in html
+    assert "department_filter_token=dep1.g7.opaque_token-only" in html
+    assert "engineering-internal" not in html
+    assert "Unmapped usage" in html
+    assert "2 invocations" in html
+    assert "Not reported" in html
+
+
+def test_department_cost_renders_reconciliation_and_unavailable_row_explanation() -> None:
+    unavailable = _department_data(metric="cost", cost=None)
+    html = ui.render_department_view(unavailable)
+    assert "Declared total" in html
+    assert "100.00 USD" in html
+    assert "Unmapped cost" in html
+    assert "20.00 USD" in html
+    assert "Unallocated cost" in html
+    assert "5.00 USD" in html
+    assert "Cost unavailable for this department" in html
+
+
+def test_department_script_has_endpoint_url_safety_and_server_parity() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert '"department_filter_token", "user_filter_token", "attribution_group_by"' in script
+    assert 'fetch("/api/observe/attribution"' in script
+    assert 'group_by: appliedFilters.attribution_group_by || "department"' in script
+    assert "function renderDepartmentAttribution(data, diagnostics, coverage, partialFailures, bounds)" in script
+    assert "function renderAttributionSummary(summary, groupBy)" in script
+    assert "function renderAttributionControlsFromData(data)" in script
+    assert "Cost attribution is unavailable" in script
+    assert "Unmapped usage" in script
+    assert "Unmapped cost" in script
+    assert "innerHTML" not in script
+    for forbidden in ("raw_identity", "user_key", "department_id", "department_label", "group_id"):
+        url_block = script.split("function syncUrl() {")[1].split("\n  }\n")[0]
+        assert forbidden not in url_block
+
+
+def test_user_drilldown_renders_delegated_principal_ranking_and_opaque_selector() -> None:
+    html = ui.render_department_view(_user_data(selected=True))
+    assert 'aria-label="User attribution"' in html
+    assert "Selected eligible principal" in html
+    assert "synthetic-alex@example.test" in html
+    assert "usr1.g7." + "a" * 64 in html
+    assert "Rank 1" in html
+    assert "ties are ordered by pseudonymous key" in html
+    assert "user_filter_token=usr-token.opaque-only" in html
+    assert "synthetic-alex%40example.test" not in html
+    assert "engineering-internal" not in html
+
+
+def test_user_drilldown_explains_bounds_other_users_and_partial_failures() -> None:
+    html = ui.render_department_view(
+        _user_data(truncated=True),
+        bounds={"rows_shown": 2, "rows_total_in_scope": 3, "truncated": True},
+        partial_failures=[
+            {
+                "source_id": "source-safe",
+                "status": "timeout",
+                "reason": "Identity query timed out.",
+                "next_action": "Retry after restoring access.",
+            }
+        ],
+    )
+    assert "Other users" in html
+    assert "Showing 2 of 3 rows in scope" in html
+    assert "Results are truncated to the highest-ranked users plus Other users" in html
+    assert "Partial source failures" in html
+    assert "Successful source evidence remains visible" in html
+    assert "Identity query timed out" in html
+
+
+def test_user_selector_and_script_preserve_only_opaque_user_state() -> None:
+    controls = ui.render_attribution_controls(_user_data())
+    assert 'data-attribution-filter="group_by"' in controls
+    assert '<option value="user" selected>Users in selected department</option>' in controls
+    script = ui._OBSERVE_SCRIPT
+    assert 'group_by: appliedFilters.attribution_group_by || "department"' in script
+    assert "user_filter_token: appliedFilters.user_filter_token || null" in script
+    assert "localStorage.setItem" not in script
+    assert "sessionStorage.setItem" not in script
+    sync_url = script.split("function syncUrl() {")[1].split("\n  }\n")[0]
+    for forbidden in ("raw_identity", "user_key", "department_label", "group_id"):
+        assert forbidden not in sync_url
+
+
+@pytest.mark.parametrize(
+    ("state", "label"),
+    [
+        ("available", "Available"),
+        ("partial", "Partial"),
+        ("not_reported", "Not reported"),
+        ("ambiguous", "Ambiguous"),
+        ("inaccessible", "Inaccessible"),
+        ("protected_or_unavailable", "Protected or unavailable"),
+        ("error", "Error"),
+    ],
+)
+def test_attribution_coverage_renders_actionable_states_and_missing_counts(
+    state: str, label: str
+) -> None:
+    coverage = [
+        {
+            "source_id": f"source-{state}",
+            "dimension": "user_attribution",
+            "state": state,
+            "reason": f"Reason for {state}.",
+            "next_action": f"Action for {state}.",
+            "metric": "cost",
+            "attribution_level": "user",
+            "component_id": "ptu-component",
+            "eligible_records": None if state == "inaccessible" else 10,
+            "identified_records": None if state == "inaccessible" else 8,
+            "mapped_records": None if state == "inaccessible" else 7,
+            "unattributed_records": None if state == "inaccessible" else 2,
+            "ambiguous_records": None if state == "inaccessible" else 1,
+            "returned_records": None if state == "inaccessible" else 8,
+        }
+    ]
+    html = ui.render_department_view(_user_data(), coverage=coverage)
+    assert label in html
+    assert "Cost / ptu-component" in html
+    assert f"Reason for {state}" in html
+    assert f"Action for {state}" in html
+    assert "is not zero usage" in html
+    if state == "inaccessible":
+        assert html.count("Not reported") >= 6
+
+
+def test_attribution_missing_data_preserves_coverage_and_partial_failures() -> None:
+    html = ui.render_department_view(
+        None,
+        coverage=[
+            {
+                "source_id": "source-protected",
+                "state": "protected_or_unavailable",
+                "metric": "usage",
+                "reason": "Delegated access is unavailable.",
+                "next_action": "Sign in again.",
+            }
+        ],
+        partial_failures=[
+            {
+                "source_id": "source-timeout",
+                "status": "timeout",
+                "reason": "The source timed out.",
+                "next_action": "Retry later.",
+            }
+        ],
+    )
+    assert "missing or protected evidence, not zero usage" in html
+    assert "Protected or unavailable" in html
+    assert "Delegated access is unavailable" in html
+    assert "Partial source failures" in html
+    assert "The source timed out" in html
+
+
+def test_attribution_coverage_javascript_matches_server_fields_and_language() -> None:
+    script = ui._OBSERVE_SCRIPT
+    for field in (
+        "component_id",
+        "eligible_records",
+        "identified_records",
+        "mapped_records",
+        "unattributed_records",
+        "ambiguous_records",
+        "returned_records",
+    ):
+        assert f"entry.{field}" in script
+    assert '"Missing, inaccessible, ambiguous, or protected identity evidence is not zero usage."' in script
+    assert "function renderAttributionPartialFailuresNode(partialFailures)" in script
+
+
+# ---------------------------------------------------------------------------
 # Filter bar (T050/T051)
 # ---------------------------------------------------------------------------
 

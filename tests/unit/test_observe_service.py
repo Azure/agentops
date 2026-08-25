@@ -25,6 +25,7 @@ from agentops.agent.observe.service import (
     ObserveService,
     PartialFailure,
     TokenClassInventory,
+    _merge_user_attribution_coverage,
     _result_bounds,
     _source_attribution_coverage,
     classify_runtime,
@@ -40,13 +41,27 @@ from agentops.agent.observe.service import (
     token_class_inventory,
     token_reporting_state,
 )
-from agentops.core.cost import CostModel, CostPeriod, CostUsageObservation
+from agentops.agent.observe.attribution import (
+    SingletonAttributionError,
+    classify_department_cardinality,
+    resolve_department,
+)
+from agentops.agent.observe.adapters import AggregateDepartmentUsageRow
+from agentops.core.attribution import (
+    AttributionConfiguration,
+    AttributionUsage,
+    derive_pseudonymous_user_key,
+    issue_user_filter_token,
+)
+from agentops.core.cost import CostComponent, CostModel, CostPeriod, CostUsageObservation
 from agentops.core.observe import (
+    AttributionQueryRequest,
     ModelUsage,
     ObserveFilterState,
     ObserveScope,
     ResourceInventory,
     TelemetrySource,
+    UserAttributionCoverage,
 )
 
 _PROJECT_ID = (
@@ -140,9 +155,16 @@ class FakeQueryClient:
     results: list[SourceResult]
     results_by_view: dict[str, list[SourceResult]] | None = None
     calls: list[tuple[Any, ...]] = field(default_factory=list, init=False)
+    attribution_configs: list[AttributionConfiguration] = field(
+        default_factory=list, init=False
+    )
 
     async def query(
-        self, sources: Sequence[TelemetrySource], filters: ObserveFilterState, *, view: str
+        self,
+        sources: Sequence[TelemetrySource],
+        filters: ObserveFilterState,
+        *,
+        view: str,
     ) -> list[SourceResult]:
         self.calls.append(
             (
@@ -154,6 +176,56 @@ class FakeQueryClient:
         )
         if self.results_by_view is not None:
             return self.results_by_view.get(view, [])
+        return self.results
+
+    async def query_department_usage(
+        self,
+        sources: Sequence[TelemetrySource],
+        filters: ObserveFilterState,
+        *,
+        config: AttributionConfiguration,
+        tenant_id: str,
+        department_id: str | None = None,
+        principal_user_keys: Sequence[str] = (),
+        cost_component: CostComponent | None = None,
+    ) -> list[SourceResult]:
+        self.attribution_configs.append(config)
+        self.calls.append(
+            (
+                tuple(source.source_id for source in sources),
+                "attribution",
+                department_id,
+                tenant_id,
+                filters.start,
+                filters.end,
+                tuple(principal_user_keys),
+            )
+        )
+        return self.results
+
+    async def query_user_usage(
+        self,
+        sources: Sequence[TelemetrySource],
+        filters: ObserveFilterState,
+        *,
+        config: AttributionConfiguration,
+        tenant_id: str,
+        department_id: str | None = None,
+        selected_user_key: str | None = None,
+        cost_component: CostComponent | None = None,
+    ) -> list[SourceResult]:
+        self.attribution_configs.append(config)
+        self.calls.append(
+            (
+                tuple(source.source_id for source in sources),
+                "user_attribution",
+                department_id,
+                selected_user_key,
+                tenant_id,
+                filters.start,
+                filters.end,
+            )
+        )
         return self.results
 
 
@@ -192,9 +264,27 @@ def _service(
 @pytest.mark.parametrize(
     ("agent_id", "agent_name", "provider_name", "agents", "expected"),
     [
-        ("hosted-id", None, None, [{"id": "hosted-id", "kind": "hosted"}], "foundry_hosted"),
-        ("prompt-id", None, None, [{"id": "prompt-id", "kind": "prompt"}], "foundry_prompt"),
-        (None, "registered", None, [{"name": "registered", "kind": "custom"}], "external_registered"),
+        (
+            "hosted-id",
+            None,
+            None,
+            [{"id": "hosted-id", "kind": "hosted"}],
+            "foundry_hosted",
+        ),
+        (
+            "prompt-id",
+            None,
+            None,
+            [{"id": "prompt-id", "kind": "prompt"}],
+            "foundry_prompt",
+        ),
+        (
+            None,
+            "registered",
+            None,
+            [{"name": "registered", "kind": "custom"}],
+            "external_registered",
+        ),
         (None, "external", None, [], "external_unregistered"),
         (None, None, "copilot_studio", [], "copilot_studio"),
         ("unknown-id", None, None, [], "unknown"),
@@ -220,13 +310,17 @@ def test_classify_runtime_uses_only_explicit_telemetry_and_inventory_evidence(
     )
 
 
-def test_classify_runtime_does_not_preserve_retired_foundry_label_without_evidence() -> None:
+def test_classify_runtime_does_not_preserve_retired_foundry_label_without_evidence() -> (
+    None
+):
     assert classify_runtime(agent_id="previously-foundry", agent_name=None) == "unknown"
 
 
 def test_token_reporting_state_distinguishes_absence_from_zero() -> None:
     assert token_reporting_state(input_tokens=0, output_tokens=0) == "reported"
-    assert token_reporting_state(input_tokens=None, output_tokens=None) == "not_reported"
+    assert (
+        token_reporting_state(input_tokens=None, output_tokens=None) == "not_reported"
+    )
     assert token_reporting_state(input_tokens=None, output_tokens=5) == "reported"
 
 
@@ -436,7 +530,9 @@ def test_normalize_model_row_retains_only_eligible_additional_classes() -> None:
     assert usage.reasoning_tokens is None
 
 
-def test_normalize_model_row_caps_sorted_additional_classes_and_marks_truncation() -> None:
+def test_normalize_model_row_caps_sorted_additional_classes_and_marks_truncation() -> (
+    None
+):
     attributes = {
         f"gen_ai.usage.custom_{suffix}_tokens": value
         for value, suffix in enumerate(("g", "f", "e", "d", "c", "b", "a"), start=1)
@@ -787,7 +883,9 @@ def test_classify_query_coverage_unreported_dimension_is_not_reported() -> None:
     assert result.state == "not_reported"
 
 
-def test_token_class_inventory_skips_tokenless_rows_and_reports_missing_classes() -> None:
+def test_token_class_inventory_skips_tokenless_rows_and_reports_missing_classes() -> (
+    None
+):
     tokenless = ModelUsage(requests=1, failures=0)
     cache_only = ModelUsage(
         requests=1,
@@ -870,7 +968,9 @@ def test_token_class_inventory_has_three_deterministic_states(
     assert token_class_inventory(rows).state == expected
 
 
-def test_classify_query_coverage_partial_inventory_names_present_and_missing_classes() -> None:
+def test_classify_query_coverage_partial_inventory_names_present_and_missing_classes() -> (
+    None
+):
     result = classify_query_coverage(
         source_id="src-1",
         dimension="token_usage",
@@ -1194,7 +1294,9 @@ def _cost_results_by_view() -> dict[str, list[SourceResult]]:
                         "run_key_kind": "trace",
                         "agent_key": "agent-a",
                         "started_at": datetime(2024, 1, 20, tzinfo=timezone.utc),
-                        "last_activity_at": datetime(2024, 1, 20, 0, 0, 1, tzinfo=timezone.utc),
+                        "last_activity_at": datetime(
+                            2024, 1, 20, 0, 0, 1, tzinfo=timezone.utc
+                        ),
                         "duration_ms": 1_000,
                         "turns": 1,
                         "failed_turns": 0,
@@ -1214,7 +1316,9 @@ def _cost_results_by_view() -> dict[str, list[SourceResult]]:
                         "run_key_kind": "trace",
                         "agent_key": "agent-a",
                         "started_at": datetime(2024, 1, 21, tzinfo=timezone.utc),
-                        "last_activity_at": datetime(2024, 1, 21, 0, 0, 3, tzinfo=timezone.utc),
+                        "last_activity_at": datetime(
+                            2024, 1, 21, 0, 0, 3, tzinfo=timezone.utc
+                        ),
                         "duration_ms": 3_000,
                         "turns": 1,
                         "failed_turns": 0,
@@ -1234,7 +1338,9 @@ def _cost_results_by_view() -> dict[str, list[SourceResult]]:
                         "run_key_kind": "trace",
                         "agent_key": "agent-b",
                         "started_at": datetime(2024, 1, 22, tzinfo=timezone.utc),
-                        "last_activity_at": datetime(2024, 1, 22, 0, 0, 4, tzinfo=timezone.utc),
+                        "last_activity_at": datetime(
+                            2024, 1, 22, 0, 0, 4, tzinfo=timezone.utc
+                        ),
                         "duration_ms": 4_000,
                         "turns": 1,
                         "failed_turns": 0,
@@ -1256,7 +1362,9 @@ def _cost_results_by_view() -> dict[str, list[SourceResult]]:
 
 
 @pytest.mark.asyncio
-async def test_query_cost_collects_each_required_view_once_and_uses_period_boundaries() -> None:
+async def test_query_cost_collects_each_required_view_once_and_uses_period_boundaries() -> (
+    None
+):
     clock = FakeDatetimeClock(
         datetime(2024, 2, 11, tzinfo=timezone.utc), step=timedelta(milliseconds=10)
     )
@@ -1337,8 +1445,12 @@ async def test_query_cost_cache_identity_includes_model_fingerprint() -> None:
 
 
 @pytest.mark.asyncio
-async def test_query_cost_propagates_partial_failures_diagnostics_and_cost_coverage() -> None:
-    period = _cost_period(components=[_cost_period().components[2].model_dump(mode="json")])
+async def test_query_cost_propagates_partial_failures_diagnostics_and_cost_coverage() -> (
+    None
+):
+    period = _cost_period(
+        components=[_cost_period().components[2].model_dump(mode="json")]
+    )
     partial = _cost_results_by_view()["tools"][0]
     partial = SourceResult(
         source_id=partial.source_id,
@@ -1431,16 +1543,20 @@ async def test_query_cost_keeps_omitted_amounts_when_agent_rows_are_bounded() ->
         "model-total-secondary",
     }
     assert all(summary.rows_total == 501 for summary in result.data.components)
-    assert sum(summary.rows_shown for summary in result.data.components) == MAX_ROWS_PER_QUERY
+    assert (
+        sum(summary.rows_shown for summary in result.data.components)
+        == MAX_ROWS_PER_QUERY
+    )
     assert all(
-        summary.omitted_allocated_amount > 0
-        for summary in result.data.components
+        summary.omitted_allocated_amount > 0 for summary in result.data.components
     )
     assert len(result.data.rows) == MAX_ROWS_PER_QUERY
 
 
 @pytest.mark.asyncio
-async def test_query_cost_alternate_breakdowns_clip_runs_and_query_each_view_once() -> None:
+async def test_query_cost_alternate_breakdowns_clip_runs_and_query_each_view_once() -> (
+    None
+):
     source_id = _source().foundry_resource_id or _source().resource_id
     period = _cost_period(
         components=[
@@ -1528,9 +1644,9 @@ async def test_query_cost_alternate_breakdowns_clip_runs_and_query_each_view_onc
         cost_model_fingerprint="a" * 64,
     )
 
-    assert {view: [call[1] for call in query.calls].count(view) for view in {"runs"}} == {
-        "runs": 1
-    }
+    assert {
+        view: [call[1] for call in query.calls].count(view) for view in {"runs"}
+    } == {"runs": 1}
     assert {row.run_key for row in result.data.rows} == {"crossing"}
     compute = next(row for row in result.data.rows if row.component_id == "compute")
     assert compute.usage_numerator == Decimal(24 * 60 * 60)
@@ -1538,7 +1654,9 @@ async def test_query_cost_alternate_breakdowns_clip_runs_and_query_each_view_onc
 
 
 @pytest.mark.asyncio
-async def test_query_cost_tool_breakdown_uses_tool_identity_without_duplicate_query() -> None:
+async def test_query_cost_tool_breakdown_uses_tool_identity_without_duplicate_query() -> (
+    None
+):
     source_id = _source().foundry_resource_id or _source().resource_id
     period = _cost_period(
         components=[
@@ -1739,7 +1857,13 @@ async def test_query_cost_classifies_unavailable_period_states(
         ]
     )
     results = (
-        {"runs": [SourceResult(source_id=source.source_id, status="success", tables=tables)]}
+        {
+            "runs": [
+                SourceResult(
+                    source_id=source.source_id, status="success", tables=tables
+                )
+            ]
+        }
         if source.state == "available"
         else {}
     )
@@ -1882,7 +2006,9 @@ async def test_query_cost_classifies_missing_partial_and_unattributed_keys() -> 
 
 
 @pytest.mark.asyncio
-async def test_query_cost_reports_unmatched_capability_without_inferred_billing_type() -> None:
+async def test_query_cost_reports_unmatched_capability_without_inferred_billing_type() -> (
+    None
+):
     source_id = _source().foundry_resource_id or _source().resource_id
     period = _cost_period(
         components=[
@@ -2061,7 +2187,9 @@ async def test_query_view_normalizes_rows_and_reports_source_attribution() -> No
 
 
 @pytest.mark.asyncio
-async def test_query_view_tools_normalizes_rows_and_explains_unattributed_activity() -> None:
+async def test_query_view_tools_normalizes_rows_and_explains_unattributed_activity() -> (
+    None
+):
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory([_source()])
     result = SourceResult(
@@ -2084,18 +2212,26 @@ async def test_query_view_tools_normalizes_rows_and_explains_unattributed_activi
             },
         ],
     )
-    service, _discovery, query = _service(inventory=inventory, results=[result], clock=clock)
+    service, _discovery, query = _service(
+        inventory=inventory, results=[result], clock=clock
+    )
 
     observed = await service.query_view(_scope(), _filters(), view="tools")
 
     assert query.calls[0][1] == "tools"
-    assert [(tool.tool_name, tool.source_id) for tool in observed.data] == [("search", "src-1")]
+    assert [(tool.tool_name, tool.source_id) for tool in observed.data] == [
+        ("search", "src-1")
+    ]
     assert observed.bounds is not None
     assert observed.bounds.rows_shown == 1
     assert observed.bounds.rows_total_in_scope is None
     assert observed.bounds.truncated is False
-    coverage = [item for item in observed.coverage if item.dimension == "tool_attribution"]
-    assert any(item.state == "error" and item.reason and item.next_action for item in coverage)
+    coverage = [
+        item for item in observed.coverage if item.dimension == "tool_attribution"
+    ]
+    assert any(
+        item.state == "error" and item.reason and item.next_action for item in coverage
+    )
 
 
 @pytest.mark.asyncio
@@ -2123,7 +2259,9 @@ async def test_query_view_tools_reports_execute_tool_rows_without_names() -> Non
     assert observed.bounds is not None
     assert observed.bounds.rows_shown == 0
     assert observed.bounds.rows_total_in_scope == 0
-    coverage = [item for item in observed.coverage if item.dimension == "tool_attribution"]
+    coverage = [
+        item for item in observed.coverage if item.dimension == "tool_attribution"
+    ]
     assert coverage[-1].state == "not_reported"
     assert coverage[-1].reason
     assert coverage[-1].next_action
@@ -2161,7 +2299,9 @@ async def test_query_view_runs_normalizes_window_scoped_status_and_coverage() ->
     assert observed.data[0].input_tokens is None
     assert observed.bounds is not None
     assert observed.bounds.rows_total_in_scope == 1
-    run_coverage = [item for item in observed.coverage if item.dimension == "run_correlation"]
+    run_coverage = [
+        item for item in observed.coverage if item.dimension == "run_correlation"
+    ]
     assert run_coverage[-1].state == "available"
     assert run_coverage[-1].reason
     assert run_coverage[-1].next_action
@@ -2177,7 +2317,9 @@ async def test_query_view_caches_bounds_and_keeps_them_stable_on_cache_hits() ->
         status=result.status,
         tables=[{**result.tables[0], "total_in_scope": 1}],
     )
-    service, _discovery, _query = _service(inventory=inventory, results=[result], clock=clock)
+    service, _discovery, _query = _service(
+        inventory=inventory, results=[result], clock=clock
+    )
 
     first = await service.query_view(_scope(), _filters(), view="agents")
     second = await service.query_view(_scope(), _filters(), view="agents")
@@ -2188,7 +2330,9 @@ async def test_query_view_caches_bounds_and_keeps_them_stable_on_cache_hits() ->
 
 
 @pytest.mark.asyncio
-async def test_models_view_emits_token_usage_coverage_without_changing_agents_entry() -> None:
+async def test_models_view_emits_token_usage_coverage_without_changing_agents_entry() -> (
+    None
+):
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory([_source()])
     model_result = SourceResult(
@@ -2210,7 +2354,9 @@ async def test_models_view_emits_token_usage_coverage_without_changing_agents_en
     )
     models_result = await models_service.query_view(_scope(), _filters(), view="models")
     models_coverage = {
-        item.dimension: item for item in models_result.coverage if item.source_id == "src-1"
+        item.dimension: item
+        for item in models_result.coverage
+        if item.source_id == "src-1"
     }
     assert models_coverage["token_usage"].state == "partial"
 
@@ -2219,14 +2365,20 @@ async def test_models_view_emits_token_usage_coverage_without_changing_agents_en
     )
     agents_result = await agents_service.query_view(_scope(), _filters(), view="agents")
     agents_coverage = {
-        item.dimension: item for item in agents_result.coverage if item.source_id == "src-1"
+        item.dimension: item
+        for item in agents_result.coverage
+        if item.source_id == "src-1"
     }
     assert agents_coverage["token_usage"].state == "available"
 
 
 @pytest.mark.asyncio
-async def test_query_view_caches_for_two_minutes_and_serves_hits_without_requerying() -> None:
-    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc), step=timedelta(seconds=1))
+async def test_query_view_caches_for_two_minutes_and_serves_hits_without_requerying() -> (
+    None
+):
+    clock = FakeDatetimeClock(
+        datetime(2024, 1, 1, tzinfo=timezone.utc), step=timedelta(seconds=1)
+    )
     inventory = _inventory([_source()])
     service, discovery, query = _service(
         inventory=inventory, results=[_agent_rows_result()], clock=clock
@@ -2245,14 +2397,18 @@ async def test_query_view_caches_for_two_minutes_and_serves_hits_without_requery
 
 @pytest.mark.asyncio
 async def test_query_view_refresh_bypasses_cache_and_requeries() -> None:
-    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc), step=timedelta(seconds=1))
+    clock = FakeDatetimeClock(
+        datetime(2024, 1, 1, tzinfo=timezone.utc), step=timedelta(seconds=1)
+    )
     inventory = _inventory([_source()])
     service, discovery, query = _service(
         inventory=inventory, results=[_agent_rows_result()], clock=clock
     )
 
     await service.query_view(_scope(), _filters(), view="agents")
-    refreshed = await service.query_view(_scope(), _filters(), view="agents", refresh=True)
+    refreshed = await service.query_view(
+        _scope(), _filters(), view="agents", refresh=True
+    )
 
     assert refreshed.cache_status == "bypass"
     assert len(query.calls) == 2
@@ -2263,7 +2419,9 @@ async def test_query_view_refresh_bypasses_cache_and_requeries() -> None:
 async def test_query_view_expires_after_ttl() -> None:
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     cache = ObserveCache(ttl_seconds=CACHE_TTL_SECONDS, clock=lambda: cache_clock.now)
-    cache_clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))  # placeholder
+    cache_clock = FakeDatetimeClock(
+        datetime(2024, 1, 1, tzinfo=timezone.utc)
+    )  # placeholder
     inventory = _inventory([_source()])
 
     # Use a simple monotonic float clock for the cache's own TTL bookkeeping.
@@ -2341,7 +2499,10 @@ async def test_query_view_rejects_filters_outside_scope() -> None:
 async def test_query_view_only_queries_available_sources() -> None:
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory(
-        [_source("src-available", state="available"), _source("src-blocked", state="inaccessible")]
+        [
+            _source("src-available", state="available"),
+            _source("src-blocked", state="inaccessible"),
+        ]
     )
     service, _discovery, query = _service(
         inventory=inventory, results=[_agent_rows_result("src-available")], clock=clock
@@ -2363,7 +2524,9 @@ async def test_query_view_malformed_row_is_reported_as_error_not_a_crash() -> No
         status="success",
         tables=[{"agent_key": "agent-1", "invocations": 1, "failures": 0}],
     )
-    service, _discovery, _query = _service(inventory=inventory, results=[malformed], clock=clock)
+    service, _discovery, _query = _service(
+        inventory=inventory, results=[malformed], clock=clock
+    )
 
     result = await service.query_view(_scope(), _filters(), view="agents")
 
@@ -2379,7 +2542,9 @@ async def test_query_view_malformed_row_is_reported_as_error_not_a_crash() -> No
 
 
 @pytest.mark.asyncio
-async def test_query_view_partial_failures_is_empty_when_every_source_succeeds() -> None:
+async def test_query_view_partial_failures_is_empty_when_every_source_succeeds() -> (
+    None
+):
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory([_source()])
     service, _discovery, _query = _service(
@@ -2392,10 +2557,17 @@ async def test_query_view_partial_failures_is_empty_when_every_source_succeeds()
 
 
 @pytest.mark.asyncio
-async def test_query_view_partial_failures_summarizes_non_success_sources_safely() -> None:
+async def test_query_view_partial_failures_summarizes_non_success_sources_safely() -> (
+    None
+):
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory(
-        [_source("src-timeout"), _source("src-throttled"), _source("src-error"), _source("src-ok")]
+        [
+            _source("src-timeout"),
+            _source("src-throttled"),
+            _source("src-error"),
+            _source("src-ok"),
+        ]
     )
     results = [
         SourceResult(
@@ -2411,7 +2583,9 @@ async def test_query_view_partial_failures_summarizes_non_success_sources_safely
         ),
         _agent_rows_result("src-ok"),
     ]
-    service, _discovery, _query = _service(inventory=inventory, results=results, clock=clock)
+    service, _discovery, _query = _service(
+        inventory=inventory, results=results, clock=clock
+    )
 
     result = await service.query_view(_scope(), _filters(), view="agents")
 
@@ -2445,7 +2619,9 @@ async def test_query_view_partial_failures_propagate_through_cache_hit() -> None
         _agent_rows_result("src-1"),
         SourceResult(source_id="src-2", status="error", reason="boom"),
     ]
-    service, _discovery, query = _service(inventory=inventory, results=results, clock=clock)
+    service, _discovery, query = _service(
+        inventory=inventory, results=results, clock=clock
+    )
 
     first = await service.query_view(_scope(), _filters(), view="agents")
     second = await service.query_view(_scope(), _filters(), view="agents")
@@ -2532,7 +2708,9 @@ async def test_agent_detail_propagates_partial_failures_from_underlying_query() 
         _agent_rows_result("src-1"),
         SourceResult(source_id="src-2", status="timeout", reason="deadline exceeded"),
     ]
-    service, _discovery, _query = _service(inventory=inventory, results=results, clock=clock)
+    service, _discovery, _query = _service(
+        inventory=inventory, results=results, clock=clock
+    )
 
     detail = await service.agent_detail(_scope(), _filters(), agent_key="agent-1")
 
@@ -2560,8 +2738,1042 @@ async def test_query_view_result_never_carries_raw_content_fields() -> None:
         inventory=inventory, results=[_agent_rows_result()], clock=clock
     )
 
-    result: ObserveResult = await service.query_view(_scope(), _filters(), view="agents")
+    result: ObserveResult = await service.query_view(
+        _scope(), _filters(), view="agents"
+    )
 
     for agent in result.data:
         assert not hasattr(agent, "input_messages")
         assert not hasattr(agent, "tool_content")
+
+
+# ---------------------------------------------------------------------------
+# Issue #444 / T014: department attribution service composition.
+# ---------------------------------------------------------------------------
+
+
+def _attribution_config() -> AttributionConfiguration:
+    return AttributionConfiguration.model_validate(
+        {
+            "version": 1,
+            "enabled": True,
+            "deployment_namespace": "11111111-2222-4333-8444-555555555555",
+            "generation": 1,
+            "departments": [
+                {
+                    "id": "engineering",
+                    "label": "Engineering",
+                    "user_keys": [f"usr1.g1.{1:064x}"],
+                    "group_ids": ["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"],
+                },
+                {
+                    "id": "finance",
+                    "label": "Finance",
+                    "user_keys": [f"usr1.g1.{2:064x}"],
+                    "group_ids": ["bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"],
+                },
+            ],
+        }
+    )
+
+
+def _principal_context() -> dict[str, Any]:
+    return {
+        "tenant_id": "11111111-1111-1111-1111-111111111111",
+        "user_id": "alice@example.test",
+        "groups": [],
+    }
+
+
+def test_department_resolution_uses_explicit_mapping_before_principal_groups() -> None:
+    resolution = resolve_department(
+        user_key=f"usr1.g1.{1:064x}",
+        raw_identity="alice@example.test",
+        config=_attribution_config(),
+        principal_user_id="alice@example.test",
+        principal_user_name=None,
+        principal_group_ids=["bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"],
+    )
+
+    assert (resolution.source, resolution.department_id) == (
+        "explicit_user",
+        "engineering",
+    )
+
+
+def test_department_resolution_applies_groups_only_to_exact_principal_identity() -> (
+    None
+):
+    config = _attribution_config()
+    key = f"usr1.g1.{3:064x}"
+
+    exact = resolve_department(
+        user_key=key,
+        raw_identity="Alice@Example.test",
+        config=config,
+        principal_user_id=None,
+        principal_user_name="Alice@Example.test",
+        principal_group_ids=["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"],
+    )
+    different_case = resolve_department(
+        user_key=key,
+        raw_identity="alice@example.test",
+        config=config,
+        principal_user_id=None,
+        principal_user_name="Alice@Example.test",
+        principal_group_ids=["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"],
+    )
+    ambiguous = resolve_department(
+        user_key=key,
+        raw_identity="Alice@Example.test",
+        config=config,
+        principal_user_id=None,
+        principal_user_name="Alice@Example.test",
+        principal_group_ids=[
+            "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+            "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+        ],
+    )
+
+    assert (exact.source, exact.department_id) == ("principal_group", "engineering")
+    assert different_case.source == "unmapped"
+    assert ambiguous.source == "ambiguous"
+
+
+@pytest.mark.asyncio
+async def test_query_attribution_passes_only_exact_principal_group_keys_to_query() -> (
+    None
+):
+    config = _attribution_config()
+    clock = FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc))
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=[])],
+        clock=clock,
+    )
+    principal = {
+        **_principal_context(),
+        "user_id": "principal-object-id",
+        "user_name": "Alice@Example.test",
+        "groups": ["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"],
+    }
+
+    await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="usage", group_by="department", filters=_filters()
+        ),
+        config=config,
+        principal_context=principal,
+    )
+
+    passed_config = query.attribution_configs[0]
+    engineering = next(
+        item for item in passed_config.departments if item.id == "engineering"
+    )
+    exact_key = derive_pseudonymous_user_key(
+        deployment_namespace=config.deployment_namespace,
+        generation=config.generation,
+        tenant_id=principal["tenant_id"],
+        raw_identity="Alice@Example.test",
+    )
+    different_case_key = derive_pseudonymous_user_key(
+        deployment_namespace=config.deployment_namespace,
+        generation=config.generation,
+        tenant_id=principal["tenant_id"],
+        raw_identity="alice@example.test",
+    )
+    assert exact_key in engineering.user_keys
+    assert different_case_key not in engineering.user_keys
+
+
+def test_department_cardinality_is_conservative_for_singletons() -> None:
+    assert classify_department_cardinality(
+        [{"department_id": "engineering", "member_count": 2}]
+    )
+    assert not classify_department_cardinality(
+        [{"department_id": "engineering", "member_count": 1}]
+    )
+    assert not classify_department_cardinality(
+        [{"department_id": None, "member_count": 1}]
+    )
+    assert not classify_department_cardinality(
+        [{"department_id": "engineering", "member_count": -1}]
+    )
+
+
+def test_department_cardinality_does_not_sum_overlapping_source_counts() -> None:
+    duplicate_without_identities = [
+        {"department_id": "engineering", "member_count": 1},
+        {"department_id": "engineering", "member_count": 1},
+    ]
+    assert not classify_department_cardinality(duplicate_without_identities)
+    assert classify_department_cardinality(
+        [{"department_id": "engineering", "member_count": 2}]
+    )
+
+
+def test_department_cardinality_merges_global_identities_and_principal_aliases() -> None:
+    alice_object = f"usr1.g1.{'a' * 64}"
+    alice_upn = f"usr1.g1.{'b' * 64}"
+    bob = f"usr1.g1.{'c' * 64}"
+    assert not classify_department_cardinality(
+        [
+            {
+                "department_id": "engineering",
+                "member_count": 1,
+                "member_user_keys": [alice_object],
+            },
+            {
+                "department_id": "engineering",
+                "member_count": 1,
+                "member_user_keys": [alice_upn],
+            },
+        ],
+        principal_aliases=[alice_object, alice_upn],
+    )
+    assert classify_department_cardinality(
+        [
+            {
+                "department_id": "engineering",
+                "member_count": 1,
+                "member_user_keys": [alice_object],
+            },
+            {
+                "department_id": "engineering",
+                "member_count": 1,
+                "member_user_keys": [bob],
+            },
+        ],
+        principal_aliases=[alice_object, alice_upn],
+    )
+
+
+@pytest.mark.asyncio
+async def test_user_attribution_ranks_ties_by_key_and_folds_only_above_500() -> None:
+    config = _attribution_config()
+    tenant = _principal_context()["tenant_id"]
+    source_rows = []
+    for index in range(501):
+        identity = f"user-{index:03d}@example.test"
+        source_rows.append(
+            {
+                "row_kind": "user",
+                "user_key": derive_pseudonymous_user_key(
+                    deployment_namespace=config.deployment_namespace,
+                    generation=config.generation,
+                    tenant_id=tenant,
+                    raw_identity=identity,
+                ),
+                "raw_identity": identity,
+                "invocations": 1,
+                "input_tokens": None,
+                "output_tokens": None,
+                "tool_invocations": None,
+                "active_session_seconds": None,
+            }
+        )
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=source_rows)],
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(metric="usage", group_by="user", filters=_filters()),
+        config=config,
+        principal_context=_principal_context(),
+        access_boundary="delegated",
+    )
+
+    assert len(result.data.rows) == 500
+    assert result.data.rows[-1].kind == "other_users"
+    assert result.data.rows[-1].member_count == 2
+    assert result.data.summary.distinct_users == 501
+    assert result.data.summary.omitted_users == 2
+    assert result.data.summary.total.invocations == 501
+    keys = [row.user_key for row in result.data.rows[:-1]]
+    assert keys == sorted(keys)
+
+
+@pytest.mark.asyncio
+async def test_user_attribution_merges_overlapping_sources_before_global_limit() -> None:
+    config = _attribution_config()
+    tenant = _principal_context()["tenant_id"]
+
+    def row(index: int) -> dict[str, Any]:
+        identity = f"overlap-{index:03d}@example.test"
+        return {
+            "row_kind": "user",
+            "user_key": derive_pseudonymous_user_key(
+                deployment_namespace=config.deployment_namespace,
+                generation=config.generation,
+                tenant_id=tenant,
+                raw_identity=identity,
+            ),
+            "raw_identity": identity,
+            "invocations": 1,
+        }
+
+    first = [row(index) for index in range(250)]
+    second = [row(0), *(row(index) for index in range(250, 500))]
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source("src-1"), _source("src-2")]),
+        results=[
+            SourceResult(source_id="src-1", status="success", tables=first),
+            SourceResult(source_id="src-2", status="success", tables=second),
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(metric="usage", group_by="user", filters=_filters()),
+        config=config,
+        principal_context=_principal_context(),
+        access_boundary="delegated",
+    )
+
+    assert len(result.data.rows) == 500
+    assert all(row.kind == "user" for row in result.data.rows)
+    assert result.data.summary.distinct_users == 500
+    assert result.data.summary.omitted_users == 0
+    assert result.data.summary.total.invocations == 501
+
+
+@pytest.mark.asyncio
+async def test_selected_user_isolated_with_principal_bound_token() -> None:
+    config = _attribution_config()
+    principal = _principal_context()
+    identities = ("alice@example.test", "bob@example.test")
+    rows = []
+    for identity in identities:
+        key = derive_pseudonymous_user_key(
+            deployment_namespace=config.deployment_namespace,
+            generation=config.generation,
+            tenant_id=principal["tenant_id"],
+            raw_identity=identity,
+        )
+        rows.append(
+            {
+                "row_kind": "user",
+                "user_key": key,
+                "raw_identity": identity,
+                "invocations": 3,
+            }
+        )
+    selected = rows[1]["user_key"]
+    token = issue_user_filter_token(
+        selected,
+        config=config,
+        scope=_scope(),
+        tenant_id=principal["tenant_id"],
+        principal_id=principal["user_id"],
+    )
+    filters = _filters().model_copy(update={"user_filter_token": token})
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=rows)],
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(metric="usage", group_by="user", filters=filters),
+        config=config,
+        principal_context=principal,
+        access_boundary="delegated",
+    )
+
+    assert [row.user_key for row in result.data.rows] == [selected]
+    assert result.data.summary.total.invocations == 3
+    assert query.calls[-1][3] == selected
+
+
+@pytest.mark.asyncio
+async def test_query_attribution_merges_sources_reconciles_and_preserves_failures() -> (
+    None
+):
+    clock = FakeDatetimeClock(
+        datetime(2024, 1, 2, tzinfo=timezone.utc), timedelta(milliseconds=5)
+    )
+    inventory = _inventory(
+        [
+            _source("src-1"),
+            _source("src-2"),
+            _source("src-3", state="inaccessible", reason="denied"),
+        ]
+    )
+    results = [
+        SourceResult(
+            source_id="src-1",
+            status="success",
+            tables=[
+                AggregateDepartmentUsageRow(
+                    source_id="src-1",
+                    source_resource_id=_source("src-1").resource_id,
+                    department_id="engineering",
+                    department_label="Engineering",
+                    mapping_state="mapped",
+                    member_count=2,
+                    usage=AttributionUsage(
+                        invocations=4,
+                        input_tokens=40,
+                        output_tokens=None,
+                        tool_invocations=1,
+                        active_session_seconds=Decimal("2.5"),
+                    ),
+                    eligible_records=5,
+                    identified_records=4,
+                    mapped_records=4,
+                    unattributed_records=1,
+                    ambiguous_records=0,
+                    returned_records=2,
+                ),
+                AggregateDepartmentUsageRow(
+                    source_id="src-1",
+                    source_resource_id=_source("src-1").resource_id,
+                    department_id=None,
+                    department_label=None,
+                    mapping_state="unmapped",
+                    member_count=0,
+                    usage=AttributionUsage(
+                        invocations=1,
+                        input_tokens=None,
+                        output_tokens=3,
+                        tool_invocations=None,
+                        active_session_seconds=None,
+                    ),
+                    eligible_records=5,
+                    identified_records=4,
+                    mapped_records=4,
+                    unattributed_records=1,
+                    ambiguous_records=0,
+                    returned_records=2,
+                ),
+            ],
+        ),
+        SourceResult(
+            source_id="src-2",
+            status="partial",
+            reason="source timed out after returning partial rows",
+            tables=[
+                AggregateDepartmentUsageRow(
+                    source_id="src-2",
+                    source_resource_id=_source("src-2").resource_id,
+                    department_id="engineering",
+                    department_label="Engineering",
+                    mapping_state="mapped",
+                    member_count=3,
+                    usage=AttributionUsage(
+                        invocations=2,
+                        input_tokens=20,
+                        output_tokens=7,
+                        tool_invocations=None,
+                        active_session_seconds=Decimal("1.5"),
+                    ),
+                    eligible_records=2,
+                    identified_records=2,
+                    mapped_records=2,
+                    unattributed_records=0,
+                    ambiguous_records=0,
+                    returned_records=1,
+                )
+            ],
+        ),
+    ]
+    service, _discovery, query = _service(
+        inventory=inventory, results=results, clock=clock
+    )
+
+    response = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="usage", group_by="department", filters=_filters()
+        ),
+        config=_attribution_config(),
+        principal_context=_principal_context(),
+    )
+
+    assert len(query.calls) == 1
+    assert query.calls[0][1:6] == (
+        "attribution",
+        None,
+        "11111111-1111-1111-1111-111111111111",
+        _filters().start,
+        _filters().end,
+    )
+    assert len(query.calls[0][6]) == 1
+    assert len(response.data.rows) == 1
+    row = response.data.rows[0]
+    assert row.department_id == "engineering"
+    assert row.usage.invocations == 6
+    assert row.usage.input_tokens == 60
+    assert row.usage.output_tokens == 7
+    assert row.usage.active_session_seconds == Decimal("4.0")
+    assert response.data.summary.total.invocations == 7
+    assert response.data.summary.attributed.invocations == 6
+    assert response.data.summary.unattributed.invocations == 1
+    assert response.data.summary.total.tool_invocations == 1
+    src_one_coverage = next(
+        item for item in response.coverage if item.source_id == "src-1"
+    )
+    assert src_one_coverage.dimension == "user_attribution"
+    assert src_one_coverage.state == "partial"
+    assert (
+        src_one_coverage.eligible_records,
+        src_one_coverage.identified_records,
+        src_one_coverage.mapped_records,
+        src_one_coverage.unattributed_records,
+        src_one_coverage.ambiguous_records,
+        src_one_coverage.returned_records,
+    ) == (5, 4, 4, 1, 0, 2)
+    assert {failure.source_id for failure in response.partial_failures} == {
+        "src-2",
+        "src-3",
+    }
+    assert all(
+        "source timed out" not in failure.reason
+        and "denied" not in failure.reason
+        for failure in response.partial_failures
+    )
+    assert {item.source_id for item in response.coverage} == {
+        "src-1",
+        "src-2",
+        "src-3",
+    }
+    inaccessible = next(item for item in response.coverage if item.source_id == "src-3")
+    assert inaccessible.state == "inaccessible"
+    assert inaccessible.eligible_records is None
+
+
+def test_merge_user_attribution_coverage_keeps_usage_and_cost_independent() -> None:
+    refreshed_at = datetime(2024, 1, 2, tzinfo=timezone.utc)
+
+    def coverage(metric: str, *, component_id: str | None = None):
+        return UserAttributionCoverage(
+            source_id="src-1",
+            dimension="user_attribution",
+            state="available",
+            reason="covered",
+            next_action="none",
+            refreshed_at=refreshed_at,
+            metric=metric,
+            attribution_level="department",
+            component_id=component_id,
+            eligible_records=1,
+            identified_records=1,
+            mapped_records=1,
+            unattributed_records=0,
+            ambiguous_records=0,
+            returned_records=1,
+        )
+
+    merged = _merge_user_attribution_coverage(
+        [coverage("usage")],
+        [coverage("cost", component_id="model.ptu")],
+    )
+
+    assert [(item.source_id, item.metric, item.component_id) for item in merged] == [
+        ("src-1", "usage", None),
+        ("src-1", "cost", "model.ptu"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_query_attribution_missing_counters_is_error_not_success_zero_grouping() -> (
+    None
+):
+    clock = FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc))
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=[])],
+        clock=clock,
+    )
+
+    response = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="usage", group_by="department", filters=_filters()
+        ),
+        config=_attribution_config(),
+        principal_context=_principal_context(),
+    )
+
+    assert response.data.rows == []
+    assert response.coverage[0].state == "error"
+    assert response.coverage[0].eligible_records is None
+    assert "did not return attribution counters" in response.coverage[0].reason
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("counters", "expected_state"),
+    [
+        ((0, 0, 0, 0, 0, 0), "no_data"),
+        ((4, 0, 0, 4, 0, 0), "not_reported"),
+        ((4, 4, 0, 4, 4, 1), "ambiguous"),
+        ((4, 3, 2, 2, 0, 2), "partial"),
+        ((4, 4, 4, 0, 0, 1), "available"),
+    ],
+)
+async def test_query_attribution_classifies_reported_coverage_counters(
+    counters: tuple[int, int, int, int, int, int],
+    expected_state: str,
+) -> None:
+    fields = (
+        "eligible_records",
+        "identified_records",
+        "mapped_records",
+        "unattributed_records",
+        "ambiguous_records",
+        "returned_records",
+    )
+    metadata = dict(zip(fields, counters, strict=True))
+    metadata.update(
+        {
+            "department_id": None,
+            "department_label": None,
+            "mapping_state": "unmapped",
+            "member_count": 0,
+            "invocations": 0,
+            "metadata_only": True,
+        }
+    )
+    clock = FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc))
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=[metadata])],
+        clock=clock,
+    )
+
+    response = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="usage", group_by="department", filters=_filters()
+        ),
+        config=_attribution_config(),
+        principal_context=_principal_context(),
+    )
+
+    assert response.coverage[0].state == expected_state
+    assert tuple(getattr(response.coverage[0], field) for field in fields) == counters
+
+
+@pytest.mark.asyncio
+async def test_query_attribution_resolves_department_filter_before_one_bounded_query() -> (
+    None
+):
+    from agentops.core.attribution import issue_department_filter_token
+
+    config = _attribution_config()
+    token = issue_department_filter_token("finance", config=config, scope=_scope())
+    clock = FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc))
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=[])],
+        clock=clock,
+    )
+
+    await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="usage",
+            group_by="department",
+            filters=_filters(department_filter_token=token),
+        ),
+        config=config,
+        principal_context=_principal_context(),
+    )
+
+    assert len(query.calls) == 1
+    assert query.calls[0][2] == "finance"
+
+
+@pytest.mark.asyncio
+async def test_query_attribution_rejects_aggregate_singleton_result() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc))
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {
+                        "department_id": "engineering",
+                        "department_label": "Engineering",
+                        "mapping_state": "mapped",
+                        "member_count": 1,
+                        "invocations": 1,
+                    }
+                ],
+            )
+        ],
+        clock=clock,
+    )
+
+    with pytest.raises(SingletonAttributionError):
+        await service.query_attribution(
+            _scope(),
+            AttributionQueryRequest(
+                metric="usage", group_by="department", filters=_filters()
+            ),
+            config=_attribution_config(),
+            principal_context=_principal_context(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_query_attribution_counts_principal_alias_once_across_sources() -> None:
+    rows = []
+    for source_id in ("src-1", "src-2"):
+        rows.append(
+            SourceResult(
+                source_id=source_id,
+                status="success",
+                tables=[
+                    {
+                        "department_id": "engineering",
+                        "department_label": "Engineering",
+                        "mapping_state": "mapped",
+                        "member_count": 1,
+                        "principal_member_present": 1,
+                        "invocations": 1,
+                    }
+                ],
+            )
+        )
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source("src-1"), _source("src-2")]),
+        results=rows,
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+
+    with pytest.raises(SingletonAttributionError):
+        await service.query_attribution(
+            _scope(),
+            AttributionQueryRequest(
+                metric="usage", group_by="department", filters=_filters()
+            ),
+            config=_attribution_config(),
+            principal_context=_principal_context(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_group_claim_overage_reports_fixed_partial_coverage() -> None:
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {
+                        "department_id": "engineering",
+                        "department_label": "Engineering",
+                        "mapping_state": "mapped",
+                        "member_count": 2,
+                        "invocations": 2,
+                        "eligible_records": 2,
+                        "identified_records": 2,
+                        "mapped_records": 2,
+                        "unattributed_records": 0,
+                        "ambiguous_records": 0,
+                        "returned_records": 1,
+                    }
+                ],
+            )
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+    principal = {**_principal_context(), "groups_overage": True}
+
+    result = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="usage", group_by="department", filters=_filters()
+        ),
+        config=_attribution_config(),
+        principal_context=principal,
+    )
+
+    assert result.coverage[0].state == "partial"
+    assert "group overage" in result.coverage[0].reason
+    assert "explicit user mappings" in result.coverage[0].next_action
+    assert query.calls[0][6]
+
+
+@pytest.mark.asyncio
+async def test_query_attribution_allows_delegated_singleton_and_bypasses_cache() -> (
+    None
+):
+    clock = FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc))
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {
+                        "department_id": "engineering",
+                        "department_label": "Engineering",
+                        "mapping_state": "mapped",
+                        "member_count": 1,
+                        "invocations": 1,
+                    }
+                ],
+            )
+        ],
+        clock=clock,
+    )
+
+    response = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="usage", group_by="department", filters=_filters()
+        ),
+        config=_attribution_config(),
+        principal_context={"tenant_id": _principal_context()["tenant_id"]},
+        access_boundary="delegated",
+    )
+
+    assert len(query.calls) == 1
+    assert response.data.access_boundary == "delegated"
+    assert response.data.rows[0].member_count == 1
+    assert response.cache_status == "bypass"
+    assert response.diagnostics.cache_status == "bypass"
+
+
+def _attribution_cost_period(*, billed_total: str = "100.00") -> CostPeriod:
+    source_resource_id = _source().foundry_resource_id or _source().resource_id
+    return _cost_period(
+        components=[
+            {
+                "id": "attributed-model",
+                "type": "standard_model",
+                "billing_boundary": {
+                    "kind": "resource",
+                    "value": source_resource_id,
+                },
+                "billed_source": "Declared attributed model total",
+                "billed_total": billed_total,
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "total_tokens",
+                "usage_match": {
+                    "source_resource_ids": [source_resource_id],
+                    "deployments": ["gpt-prod"],
+                },
+            }
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_cost_attribution_matches_actual_telemetry_dimensions() -> None:
+    config = _attribution_config()
+    tenant = _principal_context()["tenant_id"]
+
+    def row(identity: str, deployment: str, tokens: int) -> dict[str, Any]:
+        return {
+            "row_kind": "user",
+            "user_key": derive_pseudonymous_user_key(
+                deployment_namespace=config.deployment_namespace,
+                generation=config.generation,
+                tenant_id=tenant,
+                raw_identity=identity,
+            ),
+            "raw_identity": identity,
+            "source_resource_id": _source().foundry_resource_id
+            or _source().resource_id,
+            "deployment": deployment,
+            "invocations": 1,
+            "input_tokens": tokens,
+            "output_tokens": 0,
+        }
+
+    period = _attribution_cost_period()
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    row("matched@example.test", "gpt-prod", 10),
+                    row("different@example.test", "gpt-dev", 90),
+                ],
+            )
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="cost",
+            group_by="user",
+            filters=_filters(
+                cost_period_id=period.id,
+                cost_component_id="attributed-model",
+            ),
+        ),
+        config=config,
+        cost_model=_cost_model(period),
+        principal_context=_principal_context(),
+        access_boundary="delegated",
+    )
+
+    assert [row.raw_identity for row in result.data.rows] == ["matched@example.test"]
+    assert result.data.rows[0].cost.amount == Decimal("100.00")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("user_count", "expected_rows", "omitted_users"),
+    [(499, 499, 0), (500, 500, 0), (501, 500, 2)],
+)
+async def test_user_cost_allocates_full_population_before_ranking_and_folding(
+    user_count: int,
+    expected_rows: int,
+    omitted_users: int,
+) -> None:
+    config = _attribution_config()
+    tenant = _principal_context()["tenant_id"]
+    source_resource_id = _source().foundry_resource_id or _source().resource_id
+    source_rows = []
+    keys_by_identity: dict[str, str] = {}
+    for index in range(user_count):
+        identity = f"cost-user-{index:03d}@example.test"
+        key = derive_pseudonymous_user_key(
+            deployment_namespace=config.deployment_namespace,
+            generation=config.generation,
+            tenant_id=tenant,
+            raw_identity=identity,
+        )
+        keys_by_identity[identity] = key
+        source_rows.append(
+            {
+                "row_kind": "user",
+                "user_key": key,
+                "raw_identity": identity,
+                "source_resource_id": source_resource_id,
+                "deployment": "gpt-prod",
+                "invocations": 10_000 if index == 0 else 1,
+                "input_tokens": index + 1,
+                "output_tokens": 0,
+            }
+        )
+    period = _attribution_cost_period(billed_total="1000000.00")
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            SourceResult(source_id="src-1", status="success", tables=source_rows)
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="cost",
+            group_by="user",
+            filters=_filters(
+                cost_period_id=period.id,
+                cost_component_id="attributed-model",
+            ),
+        ),
+        config=config,
+        cost_model=_cost_model(period),
+        principal_context=_principal_context(),
+        access_boundary="delegated",
+    )
+
+    assert len(result.data.rows) == expected_rows
+    if omitted_users:
+        assert result.data.rows[-1].kind == "other_users"
+        assert result.data.rows[-1].member_count == omitted_users
+    else:
+        assert all(row.kind == "user" for row in result.data.rows)
+    visible_keys = {
+        row.user_key for row in result.data.rows if row.kind == "user"
+    }
+    if user_count == 501:
+        assert keys_by_identity["cost-user-500@example.test"] in visible_keys
+        assert keys_by_identity["cost-user-000@example.test"] not in visible_keys
+    assert result.data.summary.distinct_users == user_count
+    assert result.data.summary.omitted_users == omitted_users
+    assert (
+        sum((row.cost.amount for row in result.data.rows), Decimal(0))
+        == result.data.summary.attributed_amount
+    )
+
+
+@pytest.mark.asyncio
+async def test_user_cost_filter_is_applied_after_full_population_allocation() -> None:
+    config = _attribution_config()
+    principal = _principal_context()
+    tenant = principal["tenant_id"]
+    source_resource_id = _source().foundry_resource_id or _source().resource_id
+    rows = []
+    selected_key = ""
+    for index in range(501):
+        identity = f"filtered-cost-user-{index:03d}@example.test"
+        key = derive_pseudonymous_user_key(
+            deployment_namespace=config.deployment_namespace,
+            generation=config.generation,
+            tenant_id=tenant,
+            raw_identity=identity,
+        )
+        if index == 0:
+            selected_key = key
+        rows.append(
+            {
+                "row_kind": "user",
+                "user_key": key,
+                "raw_identity": identity,
+                "source_resource_id": source_resource_id,
+                "deployment": "gpt-prod",
+                "invocations": 1,
+                "input_tokens": index + 1,
+                "output_tokens": 0,
+            }
+        )
+    token = issue_user_filter_token(
+        selected_key,
+        config=config,
+        scope=_scope(),
+        tenant_id=tenant,
+        principal_id=principal["user_id"],
+    )
+    period = _attribution_cost_period(billed_total="1000000.00")
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=rows)],
+        clock=FakeDatetimeClock(datetime(2024, 1, 2, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_attribution(
+        _scope(),
+        AttributionQueryRequest(
+            metric="cost",
+            group_by="user",
+            filters=_filters(
+                cost_period_id=period.id,
+                cost_component_id="attributed-model",
+                user_filter_token=token,
+            ),
+        ),
+        config=config,
+        cost_model=_cost_model(period),
+        principal_context=principal,
+        access_boundary="delegated",
+    )
+
+    assert [row.user_key for row in result.data.rows] == [selected_key]
+    assert result.data.rows[0].cost.usage_denominator == Decimal("125751")

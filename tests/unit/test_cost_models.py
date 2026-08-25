@@ -8,9 +8,10 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
+from typing import get_args
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
@@ -18,6 +19,7 @@ from agentops.core.cost import (
     BillingBoundary,
     CostAllocationRow,
     CostComponentSummary,
+    CostConsumerKind,
     CostModel,
     CostModelLoadResult,
     CostPeriodRef,
@@ -41,6 +43,24 @@ from fixtures.cost import (
 
 def _component(payload: dict) -> dict:
     return payload["periods"][0]["components"][0]
+
+
+def test_cost_consumer_kinds_add_attribution_without_removing_existing_kinds() -> None:
+    kinds = set(get_args(CostConsumerKind))
+    assert kinds == {
+        "agent",
+        "tool",
+        "run",
+        "department",
+        "user",
+        "other_users",
+        "unattributed",
+    }
+    adapter = TypeAdapter(CostConsumerKind)
+    for kind in kinds:
+        assert adapter.validate_python(kind) == kind
+    with pytest.raises(ValidationError):
+        adapter.validate_python("anonymous_user")
 
 
 def test_valid_model_normalizes_selectors_and_arm_ids() -> None:

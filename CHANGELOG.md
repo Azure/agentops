@@ -12,12 +12,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   method/confidence/provenance, separate currencies, and truthful unattributed,
   unallocated, omitted, missing, and partial states. Agent, tool, and run
   breakdowns are alternative views of the same pools, not additive.
+- **Observe can attribute usage and existing allocated cost to users and
+  departments.** Opt-in mappings use eligible authenticated telemetry identities,
+  delegated individual views, explicit coverage states, bounded results, and
+  rotation-safe opaque filters.
 
 ### Security
 - **Cost allocation adds no billing or write access.** AgentOps never calls a
   billing API, infers prices or credits, or expands the hosted Cockpit's existing
   `Reader` and `Log Analytics Reader` roles. The deployment preview propagates
   only a validated, bounded, non-secret cost model when configured.
+- **Attribution preserves the existing least-privilege deployment boundary.**
+  Raw identities, mappings, user rows, group IDs, and filter tokens stay out of
+  Doctor and release evidence; individual access reuses delegated Azure Monitor
+  permissions without adding Graph, directory, secret, or write access.
 
 ## [0.12.0] - 2026-08-24
 

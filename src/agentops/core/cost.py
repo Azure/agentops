@@ -15,6 +15,7 @@ from pydantic import (
     Field,
     StrictBool,
     StrictInt,
+    StrictStr,
     ValidationError,
     field_validator,
     field_serializer,
@@ -54,11 +55,20 @@ BillingBoundaryKind = Literal[
     "resource", "subscription", "account", "pool", "custom"
 ]
 CostBreakdown = Literal["agents", "tools", "runs"]
-CostConsumerKind = Literal["agent", "tool", "run", "unattributed"]
+CostConsumerKind = Literal[
+    "agent",
+    "tool",
+    "run",
+    "department",
+    "user",
+    "other_users",
+    "unattributed",
+]
 CostConfidence = Literal["high", "medium", "low", "unavailable"]
 CostModelState = Literal["absent", "valid", "invalid"]
 
 _IDENTIFIER_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
+_PSEUDONYMOUS_USER_KEY_PATTERN = r"^usr1\.g[1-9][0-9]*\.[0-9a-f]{64}$"
 _NON_NEGATIVE_DECIMAL_RE = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")
 _POSITIVE_DECIMAL_RE = re.compile(
     r"^(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)$"
@@ -509,6 +519,11 @@ class CostUsageObservation(CostContract):
     source_resource_id: str
     project_resource_id: str | None = None
     agent_key: str | None = Field(default=None, min_length=1, max_length=512)
+    user_key: StrictStr | None = Field(
+        default=None,
+        pattern=_PSEUDONYMOUS_USER_KEY_PATTERN,
+        repr=False,
+    )
     tool_name: str | None = Field(default=None, min_length=1, max_length=512)
     run_key: str | None = Field(default=None, min_length=1, max_length=512)
     runtime_kind: RuntimeKind

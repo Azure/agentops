@@ -10,6 +10,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from agentops.core.attribution import AttributionViewData
+
 
 ScopeMode = Literal["projects", "foundry", "resource_group", "subscription"]
 ObserveView = Literal[
@@ -39,6 +41,7 @@ CoverageState = Literal[
     "no_data",
     "not_reported",
     "partial",
+    "ambiguous",
     "error",
     "protected_or_unavailable",
 ]
@@ -343,6 +346,8 @@ class ObserveFilterState(ContractModel):
     cost_breakdown: CostBreakdown | None = None
     cost_component_id: str | None = None
     cost_agent_key: str | None = None
+    user_filter_token: str | None = None
+    department_filter_token: str | None = None
     start: datetime
     end: datetime
 
@@ -390,6 +395,18 @@ class ObserveFilterState(ContractModel):
             raise ValueError("cost_agent_key must not be empty")
         if len(value) > 512:
             raise ValueError("cost_agent_key must be at most 512 characters")
+        return value
+
+    @field_validator("user_filter_token", "department_filter_token")
+    @classmethod
+    def _validate_attribution_token(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value or len(value) > 1024:
+            raise ValueError("attribution filter tokens must contain 1-1024 characters")
+        if re.fullmatch(r"[A-Za-z0-9._~-]+", value) is None:
+            raise ValueError("attribution filter tokens must be URL-safe opaque values")
         return value
 
     @model_validator(mode="after")
@@ -570,7 +587,7 @@ class ObservedRun(ContractModel):
 
 
 class ResultBounds(ContractModel):
-    rows_shown: int = Field(ge=0)
+    rows_shown: int = Field(ge=0, le=MAX_ROWS_PER_QUERY)
     rows_total_in_scope: int | None = Field(default=None, ge=0)
     truncated: bool = False
 
@@ -589,7 +606,7 @@ class ResultBounds(ContractModel):
 
 
 class CoverageResult(ContractModel):
-    source_id: str
+    source_id: str = Field(min_length=1)
     dimension: Literal[
         "resource_access",
         "telemetry_connection",
@@ -602,6 +619,7 @@ class CoverageResult(ContractModel):
         "tool_attribution",
         "run_correlation",
         "cost_attribution",
+        "user_attribution",
     ]
     state: CoverageState
     reason: str
@@ -610,6 +628,110 @@ class CoverageResult(ContractModel):
     component_id: str | None = None
     cost_breakdown: CostBreakdown | None = None
     allocation_key: AllocationKey | None = None
+    metric: Literal["usage", "cost"] | None = None
+    attribution_level: Literal["department", "user"] | None = None
+    eligible_records: int | None = Field(default=None, ge=0)
+    identified_records: int | None = Field(default=None, ge=0)
+    mapped_records: int | None = Field(default=None, ge=0)
+    unattributed_records: int | None = Field(default=None, ge=0)
+    ambiguous_records: int | None = Field(default=None, ge=0)
+    returned_records: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_attribution_details(self) -> "CoverageResult":
+        detail_fields = {
+            "metric",
+            "attribution_level",
+            "eligible_records",
+            "identified_records",
+            "mapped_records",
+            "unattributed_records",
+            "ambiguous_records",
+            "returned_records",
+        }
+        if self.dimension == "user_attribution":
+            if not detail_fields.issubset(self.model_fields_set):
+                raise ValueError(
+                    "user_attribution coverage requires attribution detail fields"
+                )
+            if self.metric is None or self.attribution_level is None:
+                raise ValueError(
+                    "user_attribution coverage requires metric and attribution_level"
+                )
+        elif any(getattr(self, field) is not None for field in detail_fields):
+            raise ValueError(
+                "attribution detail fields are valid only for user_attribution"
+            )
+        return self
+
+
+class UserAttributionCoverage(CoverageResult):
+    """Strict per-source coverage for the attribution endpoint."""
+
+    dimension: Literal["user_attribution"]
+    metric: Literal["usage", "cost"]
+    attribution_level: Literal["department", "user"]
+    eligible_records: int | None = Field(ge=0)
+    identified_records: int | None = Field(ge=0)
+    mapped_records: int | None = Field(ge=0)
+    unattributed_records: int | None = Field(ge=0)
+    ambiguous_records: int | None = Field(ge=0)
+    returned_records: int | None = Field(ge=0)
+
+
+class QuerySourceFailure(ContractModel):
+    source_id: str = Field(min_length=1)
+    status: Literal["success", "partial", "timeout", "inaccessible", "error"]
+    reason: str = Field(min_length=1)
+    next_action: str = Field(min_length=1)
+
+
+class AttributionQueryRequest(ContractModel):
+    metric: Literal["usage", "cost"]
+    group_by: Literal["department", "user"]
+    filters: ObserveFilterState
+    refresh: bool = False
+
+    @model_validator(mode="after")
+    def _require_cost_pool(self) -> "AttributionQueryRequest":
+        if self.metric == "cost" and (
+            self.filters.cost_period_id is None
+            or self.filters.cost_component_id is None
+        ):
+            raise ValueError(
+                "cost attribution requires cost_period_id and cost_component_id"
+            )
+        return self
+
+
+class AttributionResponse(ContractModel):
+    data: AttributionViewData
+    coverage: list[UserAttributionCoverage]
+    partial_failures: list[QuerySourceFailure]
+    diagnostics: QueryDiagnostics
+    refreshed_at: datetime
+    cache_status: Literal["hit", "miss", "bypass"]
+    bounds: ResultBounds
+
+    @model_validator(mode="after")
+    def _validate_response(self) -> "AttributionResponse":
+        if self.cache_status != self.diagnostics.cache_status:
+            raise ValueError("response and diagnostics cache_status must match")
+        if self.data.access_boundary == "delegated" and self.cache_status != "bypass":
+            raise ValueError("delegated attribution responses must bypass caches")
+        if self.bounds.rows_shown != len(self.data.rows):
+            raise ValueError("bounds rows_shown must match returned row count")
+        if self.bounds.truncated:
+            other = [row for row in self.data.rows if row.kind == "other_users"]
+            if self.data.group_by != "user" or len(other) != 1:
+                raise ValueError(
+                    "truncated user attribution requires exactly one Other users row"
+                )
+            if other[0].member_count != self.data.summary.omitted_users:
+                raise ValueError(
+                    "Other users member_count must match summary omitted_users"
+                )
+        return self
 
 
 class GenerativeAIContent(ContractModel):

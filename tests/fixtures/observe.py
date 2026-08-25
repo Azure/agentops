@@ -15,6 +15,13 @@ OBSERVE_FIXTURE_PROJECT = (
     "resourcegroups/rg/providers/microsoft.cognitiveservices/accounts/foundry/"
     "projects/project-a"
 )
+ATTRIBUTION_FIXTURE_TENANT = "22222222-2222-2222-2222-222222222222"
+ATTRIBUTION_FIXTURE_NAMESPACE = "33333333-3333-4333-8333-333333333333"
+ATTRIBUTION_FIXTURE_PRINCIPAL = "alex@example.test"
+ATTRIBUTION_FIXTURE_GROUPS = (
+    "44444444-4444-4444-8444-444444444444",
+    "55555555-5555-4555-8555-555555555555",
+)
 
 
 def _fixture_index(index: int) -> int:
@@ -114,6 +121,145 @@ def make_run_usage_row(index: int = 0, **overrides: Any) -> dict[str, Any]:
     }
     row.update(overrides)
     return row
+
+
+def make_attribution_user_key(index: int = 0, *, generation: int = 1) -> str:
+    """Return a syntactically valid deterministic pseudonymous fixture key."""
+    if index < 0:
+        raise ValueError("fixture index must be non-negative")
+    return f"usr1.g{generation}.{index + 1:064x}"
+
+
+def make_attribution_identity_row(
+    index: int = 0,
+    *,
+    alias_state: str = "authenticated",
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Return telemetry-shaped identity evidence without production user data."""
+    identity = (
+        ATTRIBUTION_FIXTURE_PRINCIPAL
+        if index == 0
+        else f"synthetic-user-{index + 1}@example.test"
+    )
+    row: dict[str, Any] = {
+        "UserAuthenticatedId": identity,
+        "Properties": {"enduser.id": identity},
+        "invocations": index + 1,
+        "input_tokens": (index + 1) * 10,
+        "output_tokens": (index + 1) * 5,
+        "tool_invocations": index % 3,
+    }
+    if alias_state == "missing":
+        row["UserAuthenticatedId"] = ""
+        row["Properties"] = {}
+    elif alias_state == "column_only":
+        row["Properties"] = {}
+    elif alias_state == "property_only":
+        row["UserAuthenticatedId"] = ""
+    elif alias_state == "conflicting":
+        row["Properties"] = {"enduser.id": f"conflict-{index + 1}@example.test"}
+    elif alias_state != "authenticated":
+        raise ValueError(f"unsupported alias_state: {alias_state}")
+    row.update(overrides)
+    return row
+
+
+def make_attribution_config_payload(
+    *,
+    empty: bool = False,
+    singleton: bool = False,
+    generation: int = 1,
+) -> dict[str, Any]:
+    """Return a bounded attribution config for bootstrap and mapping tests."""
+    departments: list[dict[str, Any]] = []
+    if not empty:
+        departments = [
+            {
+                "id": "engineering",
+                "label": "Engineering",
+                "user_keys": [
+                    make_attribution_user_key(0, generation=generation),
+                    *(
+                        []
+                        if singleton
+                        else [make_attribution_user_key(1, generation=generation)]
+                    ),
+                ],
+                "group_ids": [ATTRIBUTION_FIXTURE_GROUPS[0]],
+            },
+            {
+                "id": "finance",
+                "label": "Finance",
+                "user_keys": [make_attribution_user_key(2, generation=generation)],
+                "group_ids": [ATTRIBUTION_FIXTURE_GROUPS[1]],
+            },
+        ]
+    return {
+        "version": 1,
+        "enabled": True,
+        "deployment_namespace": ATTRIBUTION_FIXTURE_NAMESPACE,
+        "generation": generation,
+        "departments": departments,
+    }
+
+
+def make_attribution_principal(
+    *,
+    group_overage: bool = False,
+    groups: tuple[str, ...] = ATTRIBUTION_FIXTURE_GROUPS[:1],
+) -> dict[str, Any]:
+    """Return a validated-principal-shaped fixture with explicit overage state."""
+    return {
+        "tenant_id": ATTRIBUTION_FIXTURE_TENANT,
+        "user_id": ATTRIBUTION_FIXTURE_PRINCIPAL,
+        "user_name": ATTRIBUTION_FIXTURE_PRINCIPAL,
+        "groups": [] if group_overage else list(groups),
+        "groups_overage": group_overage,
+        "access_token": "redacted-user-assertion",
+    }
+
+
+def make_attribution_result_row(
+    index: int = 0,
+    *,
+    department_id: str | None = "engineering",
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Return one normalized synthetic attribution row."""
+    row: dict[str, Any] = {
+        "user_key": make_attribution_user_key(index),
+        "raw_identity": (
+            ATTRIBUTION_FIXTURE_PRINCIPAL
+            if index == 0
+            else f"synthetic-user-{index + 1}@example.test"
+        ),
+        "department_id": department_id,
+        "department_label": (
+            department_id.replace("-", " ").title() if department_id else None
+        ),
+        "invocations": index + 1,
+        "input_tokens": (index + 1) * 10,
+        "output_tokens": (index + 1) * 5,
+        "tool_invocations": index % 3,
+    }
+    row.update(overrides)
+    return row
+
+
+def make_high_cardinality_attribution_rows(
+    count: int = 501,
+) -> list[dict[str, Any]]:
+    """Return enough deterministic rows to exercise the 499-plus-Other bound."""
+    if count < 0:
+        raise ValueError("count must be non-negative")
+    return [
+        make_attribution_result_row(
+            index,
+            department_id="engineering" if index % 2 == 0 else "finance",
+        )
+        for index in range(count)
+    ]
 
 
 @dataclass

@@ -28,9 +28,11 @@ from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange
+from agentops.core.attribution import load_attribution_config
 from agentops.core.cost import MAX_COST_COMPONENTS, MAX_COST_PERIODS, load_cost_model
 from agentops.core.observe import (
     AgentDetailRequest,
+    AttributionQueryRequest,
     ObserveQueryRequest,
     ObserveScope,
     TraceContentRequest,
@@ -4954,6 +4956,8 @@ def create_app(
     """Return a local or hosted FastAPI Cockpit application."""
     try:
         from fastapi import Depends, FastAPI, Header, HTTPException, Query
+        from fastapi.exception_handlers import request_validation_exception_handler
+        from fastapi.exceptions import RequestValidationError
         from fastapi.responses import HTMLResponse, JSONResponse
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
@@ -4961,6 +4965,9 @@ def create_app(
             "Install with: pip install 'agentops-accelerator[agent]'"
         ) from exc
 
+    attribution_config_result = load_attribution_config(
+        os.getenv("AGENTOPS_ATTRIBUTION_CONFIG")
+    )
     cost_model_result = load_cost_model(os.getenv("AGENTOPS_COST_MODEL"))
     cost_periods: tuple[dict[str, str | tuple[str, ...]], ...] = ()
     cost_components: tuple[dict[str, str], ...] = ()
@@ -5012,6 +5019,7 @@ def create_app(
             observe_service = create_observe_facade(
                 scope=effective_scope,
                 cost_model_result=cost_model_result,
+                attribution_config_result=attribution_config_result,
             )
     else:
         scope_payload = observe_scope or configured.observe_scope
@@ -5030,6 +5038,7 @@ def create_app(
             observe_service = create_observe_facade(
                 scope=effective_scope,
                 cost_model_result=cost_model_result,
+                attribution_config_result=attribution_config_result,
             )
 
     app = FastAPI(
@@ -5038,6 +5047,56 @@ def create_app(
         redoc_url=None,
         openapi_url=None,
     )
+    app.state.attribution_state = attribution_config_result.state
+    app.state.attribution_enabled = attribution_config_result.state == "valid"
+
+    attribution_selector_fields = {
+        "user_filter_token",
+        "department_filter_token",
+    }
+
+    def _has_attribution_selector(body: Any) -> bool:
+        if not isinstance(body, dict):
+            return False
+        filters = body.get("filters")
+        return isinstance(filters, dict) and any(
+            filters.get(field) is not None for field in attribution_selector_fields
+        )
+
+    def _attribution_problem(
+        *,
+        status_code: int,
+        code: str,
+        message: str,
+        next_action: str,
+        private: bool,
+    ):
+        return JSONResponse(
+            {
+                "code": code,
+                "message": message,
+                "next_action": next_action,
+            },
+            status_code=status_code,
+            headers=(
+                {"Cache-Control": "private, no-store"} if private else None
+            ),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _attribution_validation_error(request: Any, exc: Any):
+        if (
+            request.url.path == "/api/observe/attribution"
+            and _has_attribution_selector(exc.body)
+        ):
+            return _attribution_problem(
+                status_code=422,
+                code="attribution_request_invalid",
+                message="The attribution request is invalid.",
+                next_action="Correct the attribution request and retry.",
+                private=True,
+            )
+        return await request_validation_exception_handler(request, exc)
 
     def _default_auth_context(headers: Any) -> Dict[str, Any]:
         principal = headers.get("x-ms-client-principal")
@@ -5100,8 +5159,57 @@ def create_app(
         except ValueError as exc:
             from agentops.agent.observe.auth import MissingUserAssertionError
 
-            status_code = 403 if isinstance(exc, MissingUserAssertionError) else 422
-            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+            if isinstance(exc, MissingUserAssertionError):
+                detail: str | dict[str, str] = {
+                    "code": "attribution_delegated_access_unavailable",
+                    "message": "Delegated Azure Monitor access is unavailable for this request.",
+                    "next_action": "Sign in again and verify direct read access to the selected telemetry scope.",
+                }
+                status_code = 403
+            elif isinstance(getattr(exc, "code", None), str):
+                detail = {
+                    "code": exc.code,
+                    "message": str(exc),
+                    "next_action": getattr(
+                        exc,
+                        "next_action",
+                        "Correct the attribution request and retry.",
+                    ),
+                }
+                status_code = getattr(exc, "status_code", 422)
+            else:
+                detail = str(exc)
+                status_code = 422
+            headers = (
+                {"Cache-Control": "private, no-store"}
+                if getattr(exc, "private", False)
+                else None
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail=detail,
+                headers=headers,
+            ) from exc
+        except Exception as exc:
+            if not isinstance(getattr(exc, "code", None), str):
+                raise
+            raise HTTPException(
+                status_code=getattr(exc, "status_code", 503),
+                detail={
+                    "code": exc.code,
+                    "message": str(exc),
+                    "next_action": getattr(
+                        exc,
+                        "next_action",
+                        "Retry the attribution query.",
+                    ),
+                },
+                headers=(
+                    {"Cache-Control": "private, no-store"}
+                    if getattr(exc, "private", False)
+                    else None
+                ),
+            ) from exc
         model_dump = getattr(result, "model_dump", None)
         return model_dump(mode="json") if callable(model_dump) else result
 
@@ -5122,6 +5230,10 @@ def create_app(
                 cost_enabled=cost_model_result.state == "valid",
                 cost_periods=cost_periods,
                 cost_components=cost_components,
+                attribution_enabled=attribution_config_result.state == "valid",
+                attribution_cost_available=cost_model_result.state == "valid",
+                attribution_cost_periods=cost_periods,
+                attribution_cost_components=cost_components,
             )
         )
 
@@ -5189,6 +5301,10 @@ def create_app(
                 "mode": effective_mode,
                 "scope": effective_scope or {},
                 "local_history_available": effective_mode == "local",
+                "attribution": {
+                    "state": attribution_config_result.state,
+                    "enabled": attribution_config_result.state == "valid",
+                },
             }
         )
 
@@ -5196,12 +5312,12 @@ def create_app(
     def _api_auth_context(
         user_context: Dict[str, Any] = Depends(_authorize),
     ):
-        safe_context = {
-            key: value
-            for key, value in user_context.items()
-            if "token" not in key.lower() and "assertion" not in key.lower()
-        }
-        return JSONResponse(safe_context)
+        return JSONResponse(
+            {
+                "authenticated": True,
+                "tenant_authorized": bool(user_context.get("tenant_id")),
+            }
+        )
 
     @app.get("/api/observe/discovery")
     async def _api_observe_discovery(
@@ -5253,6 +5369,83 @@ def create_app(
                 user_context=user_context,
             )
         )
+
+    @app.post("/api/observe/attribution")
+    async def _api_observe_attribution(
+        payload: AttributionQueryRequest,
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        protected_request = (
+            payload.group_by == "user"
+            or payload.filters.user_filter_token is not None
+            or payload.filters.department_filter_token is not None
+        )
+        if attribution_config_result.state in {"absent", "disabled"}:
+            return _attribution_problem(
+                status_code=409,
+                code="attribution_not_enabled",
+                message="Attribution is unavailable because it is not enabled.",
+                next_action="Configure AGENTOPS_ATTRIBUTION_CONFIG and restart Cockpit.",
+                private=protected_request,
+            )
+        if attribution_config_result.state == "invalid":
+            return _attribution_problem(
+                status_code=503,
+                code=(
+                    attribution_config_result.error_code
+                    or "attribution_config_invalid"
+                ),
+                message=(
+                    attribution_config_result.message
+                    or "Attribution configuration is invalid."
+                ),
+                next_action="Correct AGENTOPS_ATTRIBUTION_CONFIG and restart Cockpit.",
+                private=protected_request,
+            )
+        filters = payload.filters
+        if effective_scope is not None:
+            filters.validate_scope(ObserveScope.model_validate(effective_scope))
+        delegated_request = (
+            payload.group_by == "user"
+            or payload.filters.user_filter_token is not None
+        )
+        try:
+            result = await _service_call(
+                "attribution",
+                request=payload.model_dump(mode="json"),
+                user_context=user_context,
+            )
+        except HTTPException as exc:
+            private_failure = protected_request or (
+                exc.headers or {}
+            ).get("Cache-Control") == "private, no-store"
+            detail = (
+                exc.detail
+                if isinstance(exc.detail, dict)
+                else {
+                    "code": (
+                        "attribution_delegated_access_unavailable"
+                        if exc.status_code == 403
+                        else "attribution_request_invalid"
+                    ),
+                    "message": str(exc.detail),
+                    "next_action": "Correct the attribution request and retry.",
+                }
+            )
+            if not private_failure:
+                return JSONResponse(detail, status_code=exc.status_code)
+            return JSONResponse(
+                detail,
+                status_code=exc.status_code,
+                headers={"Cache-Control": "private, no-store"},
+            )
+        response = JSONResponse(result)
+        if (
+            delegated_request
+            or result.get("data", {}).get("access_boundary") == "delegated"
+        ):
+            response.headers["Cache-Control"] = "private, no-store"
+        return response
 
     @app.post("/api/observe/agent-detail")
     async def _api_observe_agent_detail(

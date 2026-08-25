@@ -47,7 +47,91 @@ _SECRET_PATTERNS = (
         ),
         r"\1\2<redacted>",
     ),
+    (
+        re.compile(r"\busr1\.g[1-9][0-9]*\.[0-9a-f]{64}\b", re.IGNORECASE),
+        "<redacted-attribution-user>",
+    ),
+    (
+        re.compile(r"\bat1~[A-Za-z0-9._~-]+", re.IGNORECASE),
+        "<redacted-attribution-filter>",
+    ),
+    (
+        re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE),
+        "<redacted-user-identity>",
+    ),
 )
+
+_ATTRIBUTION_PRIVATE_KEYS = {
+    "agentops_attribution_config",
+    "attribution_config",
+    "department_filter_token",
+    "departments",
+    "filter_token",
+    "filter_tokens",
+    "group_claims",
+    "group_id",
+    "group_ids",
+    "mapping",
+    "mapping_values",
+    "mappings",
+    "pseudonymous_key",
+    "pseudonymous_user_key",
+    "raw_identities",
+    "raw_identity",
+    "user_filter_token",
+    "user_key",
+    "user_keys",
+    "user_rows",
+    "users",
+}
+
+_ATTRIBUTION_AGGREGATE_FIELDS = {
+    "ambiguous_records",
+    "attributed_records",
+    "department_count",
+    "duration_ms",
+    "eligible_records",
+    "enabled",
+    "entry_count",
+    "failed_sources",
+    "fingerprint",
+    "generation",
+    "group_by",
+    "group_id_count",
+    "partial_sources",
+    "request_duration_ms",
+    "source_count",
+    "state",
+    "status",
+    "successful_sources",
+    "unattributed_records",
+    "user_key_count",
+}
+_ATTRIBUTION_AGGREGATE_CONTAINERS = {
+    "counts",
+    "coverage_counts",
+    "source_state_counts",
+}
+_ATTRIBUTION_STATES = {
+    "absent",
+    "ambiguous",
+    "available",
+    "disabled",
+    "enabled",
+    "error",
+    "inaccessible",
+    "invalid",
+    "not_reported",
+    "not_run",
+    "ok",
+    "partial",
+    "protected_or_unavailable",
+    "ready",
+    "ready_with_warnings",
+    "blocked",
+    "unknown",
+    "valid",
+}
 
 
 def build_release_evidence(
@@ -129,6 +213,7 @@ def write_release_evidence(
 
     root = workspace.resolve()
     payload = evidence or build_release_evidence(root, analysis=analysis)
+    payload = ReleaseEvidence.model_validate(_redact_obj(payload.model_dump()))
     target_dir = out_dir or (root / ".agentops" / "release" / "latest")
     if not target_dir.is_absolute():
         target_dir = root / target_dir
@@ -145,6 +230,7 @@ def write_release_evidence(
 def render_release_evidence_markdown(evidence: ReleaseEvidence) -> str:
     """Render a concise release-evidence report for PRs and reviews."""
 
+    evidence = ReleaseEvidence.model_validate(_redact_obj(evidence.model_dump()))
     icon = {"ready": "✅", "ready_with_warnings": "⚠️", "blocked": "❌"}[evidence.status]
     lines = [
         "# AgentOps Release Evidence",
@@ -981,10 +1067,99 @@ def _redact_text(text: str) -> str:
 
 
 def _redact_obj(value: Any) -> Any:
+    """Remove personal attribution data while retaining readiness summaries."""
+
     if isinstance(value, str):
         return _redact_text(value)
     if isinstance(value, list):
-        return [_redact_obj(item) for item in value]
+        return [
+            _redact_obj(item)
+            for item in value
+            if not (
+                isinstance(item, dict)
+                and (
+                    item.get("kind") == "user"
+                    or any(
+                        _normalized_key(key)
+                        in {"raw_identity", "user_key", "pseudonymous_user_key"}
+                        for key in item
+                    )
+                )
+            )
+        ]
     if isinstance(value, dict):
-        return {key: _redact_obj(item) for key, item in value.items()}
+        sanitized: dict[Any, Any] = {}
+        for key, item in value.items():
+            normalized = _normalized_key(key)
+            if normalized in _ATTRIBUTION_PRIVATE_KEYS:
+                continue
+            if normalized in {"attribution", "user_attribution"}:
+                sanitized[key] = _allowlisted_attribution_summary(item)
+            else:
+                sanitized[key] = _redact_obj(item)
+        if (
+            value.get("group_by") == "user"
+            and isinstance(value.get("rows"), list)
+        ):
+            sanitized.pop("rows", None)
+        return sanitized
     return value
+
+
+def _allowlisted_attribution_summary(value: Any) -> dict[str, Any]:
+    """Project attribution diagnostics onto the FR-040 aggregate-only contract."""
+
+    if not isinstance(value, dict):
+        return {}
+    summary: dict[str, Any] = {}
+    for key, item in value.items():
+        normalized = _normalized_key(key)
+        if normalized in _ATTRIBUTION_AGGREGATE_CONTAINERS:
+            if isinstance(item, dict):
+                counts = {
+                    str(count_key): count
+                    for count_key, count in item.items()
+                    if (
+                        _normalized_key(count_key) in _ATTRIBUTION_STATES
+                        and type(count) is int
+                        and count >= 0
+                    )
+                }
+                if counts:
+                    summary[str(key)] = counts
+            continue
+        if normalized not in _ATTRIBUTION_AGGREGATE_FIELDS:
+            continue
+        if normalized == "enabled" and type(item) is bool:
+            summary[str(key)] = item
+        elif normalized in {
+            "generation",
+            "entry_count",
+            "department_count",
+            "user_key_count",
+            "group_id_count",
+            "eligible_records",
+            "attributed_records",
+            "unattributed_records",
+            "ambiguous_records",
+            "source_count",
+            "successful_sources",
+            "partial_sources",
+            "failed_sources",
+            "duration_ms",
+            "request_duration_ms",
+        }:
+            if type(item) is int and item >= 0:
+                summary[str(key)] = item
+        elif normalized == "fingerprint":
+            if isinstance(item, str) and re.fullmatch(r"[0-9a-f]{64}", item):
+                summary[str(key)] = item
+        elif normalized == "group_by" and item in {"department", "user"}:
+            summary[str(key)] = item
+        elif normalized in {"state", "status"} and item in _ATTRIBUTION_STATES:
+            summary[str(key)] = item
+    return summary
+
+
+def _normalized_key(key: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", str(key).lower()).strip("_")
