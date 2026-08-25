@@ -51,6 +51,10 @@ def config_with_principal_group_mappings(
     principal_group_ids: Sequence[str] = (),
 ) -> AttributionConfiguration:
     """Add group-derived keys only for the exact signed-in principal identities."""
+    if config.deployment_namespace is None or config.generation is None:
+        raise ValueError("principal group mappings require enabled attribution")
+    deployment_namespace = config.deployment_namespace
+    generation = config.generation
     additions: dict[str, list[str]] = {}
     identities = {
         value.strip()
@@ -59,8 +63,8 @@ def config_with_principal_group_mappings(
     }
     for identity in identities:
         user_key = derive_pseudonymous_user_key(
-            deployment_namespace=config.deployment_namespace,
-            generation=config.generation,
+            deployment_namespace=deployment_namespace,
+            generation=generation,
             tenant_id=tenant_id,
             raw_identity=identity,
         )

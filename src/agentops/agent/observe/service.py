@@ -2327,6 +2327,9 @@ class ObserveService:
             _cost_component=component,
             _unbounded_users=request.group_by == "user",
         )
+        usage_summary = usage_response.data.summary
+        if not isinstance(usage_summary, UsageAttributionSummary):
+            raise TypeError("cost allocation requires usage attribution")
 
         resolutions: list[AttributionResolution] = []
         observations: list[CostUsageObservation] = []
@@ -2409,7 +2412,7 @@ class ObserveService:
             usage_by_key[key] = row.usage
             row_by_key[key] = row
             add_observation(key, row.usage)
-        add_observation(None, usage_response.data.summary.unattributed)
+        add_observation(None, usage_summary.unattributed)
 
         # The attribution query has already matched each source row against the
         # selected component using telemetry dimensions.  Allocation therefore
@@ -2635,10 +2638,10 @@ class ObserveService:
             currency_minor_units=component_summary.currency_minor_units,
             allocation_key=component_summary.applied_key or component_summary.preferred_key,
             confidence=component_summary.confidence,
-            total_usage=usage_response.data.summary.total,
-            attributed_usage=usage_response.data.summary.attributed,
-            unattributed_usage=usage_response.data.summary.unattributed,
-            distinct_users=usage_response.data.summary.distinct_users,
+            total_usage=usage_summary.total,
+            attributed_usage=usage_summary.attributed,
+            unattributed_usage=usage_summary.unattributed,
+            distinct_users=usage_summary.distinct_users,
             omitted_users=(
                 sum(
                     row.member_count
@@ -2660,17 +2663,20 @@ class ObserveService:
             latest_observed_at=usage_response.data.latest_observed_at,
         )
         selection_applied = selected_user is not None or selected_department is not None
+        rows_total_in_scope = usage_response.bounds.rows_total_in_scope
+        if rows_total_in_scope is None:
+            rows_total_in_scope = len(result_rows)
         bounds_total = (
             len(result_rows)
             if selection_applied
-            else usage_response.bounds.rows_total_in_scope
+            else rows_total_in_scope
         )
         bounds = ResultBounds(
                 rows_shown=len(result_rows),
                 rows_total_in_scope=bounds_total,
                 truncated=(
                     not selection_applied
-                    and len(result_rows) < usage_response.bounds.rows_total_in_scope
+                    and len(result_rows) < rows_total_in_scope
                 ),
             )
         # ``usage_response`` is intentionally an internal unbounded projection
@@ -2984,58 +2990,75 @@ class ObserveService:
             failed_sources=failed,
             cache_status="bypass",
         )
-        view_payload = {
-            "metric": "usage",
-            "group_by": "user",
-            "access_boundary": "delegated",
-            "rows": rows,
-            "summary": UsageAttributionSummary(
-                metric="usage",
-                total=total_usage,
-                attributed=attributed_usage,
-                unattributed=unattributed_usage,
-                distinct_users=total_distinct_users + other_count,
-                omitted_users=omitted,
-            ),
-            "primary_measure": "invocations",
-            "calculated_at": completed_at,
-        }
-        view = (
-            AttributionViewData.model_construct(**view_payload)
-            if unbounded
-            else AttributionViewData(**view_payload)
+        summary = UsageAttributionSummary(
+            metric="usage",
+            total=total_usage,
+            attributed=attributed_usage,
+            unattributed=unattributed_usage,
+            distinct_users=total_distinct_users + other_count,
+            omitted_users=omitted,
         )
-        response_payload = {
-            "data": view,
-            "coverage": _apply_group_overage_coverage(
-                _merge_user_attribution_coverage(coverage),
-                config=config,
-                overage=bool(
-                    principal_context.get("groups_overage")
-                    or principal_context.get("group_claims_overage")
-                ),
-            ),
-            "partial_failures": failures,
-            "diagnostics": diagnostics,
-            "refreshed_at": completed_at,
-            "cache_status": "bypass",
-            "bounds": (
-                ResultBounds.model_construct(
-                    rows_shown=len(rows),
-                    rows_total_in_scope=total_distinct_users + other_count,
-                    truncated=False,
-                )
-                if unbounded
-                else ResultBounds(
-                    rows_shown=len(rows),
-                    rows_total_in_scope=total_distinct_users + other_count,
-                )
-            ),
-        }
-        return (
-            AttributionResponse.model_construct(**response_payload)
+        view = (
+            AttributionViewData.model_construct(
+                metric="usage",
+                group_by="user",
+                access_boundary="delegated",
+                rows=rows,
+                summary=summary,
+                primary_measure="invocations",
+                calculated_at=completed_at,
+            )
             if unbounded
-            else AttributionResponse(**response_payload)
+            else AttributionViewData(
+                metric="usage",
+                group_by="user",
+                access_boundary="delegated",
+                rows=rows,
+                summary=summary,
+                primary_measure="invocations",
+                calculated_at=completed_at,
+            )
+        )
+        response_coverage = _apply_group_overage_coverage(
+            _merge_user_attribution_coverage(coverage),
+            config=config,
+            overage=bool(
+                principal_context.get("groups_overage")
+                or principal_context.get("group_claims_overage")
+            ),
+        )
+        bounds = (
+            ResultBounds.model_construct(
+                rows_shown=len(rows),
+                rows_total_in_scope=total_distinct_users + other_count,
+                truncated=False,
+            )
+            if unbounded
+            else ResultBounds(
+                rows_shown=len(rows),
+                rows_total_in_scope=total_distinct_users + other_count,
+            )
+        )
+        return (
+            AttributionResponse.model_construct(
+                data=view,
+                coverage=response_coverage,
+                partial_failures=failures,
+                diagnostics=diagnostics,
+                refreshed_at=completed_at,
+                cache_status="bypass",
+                bounds=bounds,
+            )
+            if unbounded
+            else AttributionResponse(
+                data=view,
+                coverage=response_coverage,
+                partial_failures=failures,
+                diagnostics=diagnostics,
+                refreshed_at=completed_at,
+                cache_status="bypass",
+                bounds=bounds,
+            )
         )
 
     async def query_cost(

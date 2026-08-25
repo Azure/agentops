@@ -218,6 +218,7 @@ def _group_usage(
                 else None
             )
         else:
+            assert department_resolutions is not None
             resolution = (
                 department_resolutions.get(observation.user_key)
                 if observation.user_key is not None
@@ -798,29 +799,40 @@ def allocate_cost_period(
             )
         )
 
-    payload = {
-        "period": CostPeriodRef(
-            id=period.id,
-            starts_at=period.starts_at,
-            ends_at=period.ends_at,
+    period_ref = CostPeriodRef(
+        id=period.id,
+        starts_at=period.starts_at,
+        ends_at=period.ends_at,
+    )
+    currency_subtotals = _currency_subtotals(summaries)
+    latest_observed_at = max(
+        (
+            allocation.latest_observed_at
+            for allocation in allocations
+            if allocation.latest_observed_at is not None
         ),
-        "breakdown": breakdown,
-        "component_filter": component_id,
-        "components": summaries,
-        "rows": displayed,
-        "currency_subtotals": _currency_subtotals(summaries),
-        "calculated_at": calculated_at,
-        "latest_observed_at": max(
-            (
-                allocation.latest_observed_at
-                for allocation in allocations
-                if allocation.latest_observed_at is not None
-            ),
-            default=None,
-        ),
-    }
+        default=None,
+    )
     return (
-        CostViewData.model_construct(**payload)
+        CostViewData.model_construct(
+            period=period_ref,
+            breakdown=breakdown,
+            component_filter=component_id,
+            components=summaries,
+            rows=displayed,
+            currency_subtotals=currency_subtotals,
+            calculated_at=calculated_at,
+            latest_observed_at=latest_observed_at,
+        )
         if preserve_unbounded_users
-        else CostViewData(**payload)
+        else CostViewData(
+            period=period_ref,
+            breakdown=breakdown,
+            component_filter=component_id,
+            components=summaries,
+            rows=displayed,
+            currency_subtotals=currency_subtotals,
+            calculated_at=calculated_at,
+            latest_observed_at=latest_observed_at,
+        )
     )

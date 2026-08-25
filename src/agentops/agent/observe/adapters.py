@@ -470,12 +470,12 @@ def _normalize_attribution_counters(
             )
         if not present:
             continue
-        counter_sets.append(
-            {
-                field: int(_non_negative_int(value, field=field))
-                for field, value in values.items()
-            }
-        )
+        counters: dict[str, int] = {}
+        for field, value in values.items():
+            parsed = _non_negative_int(value, field=field)
+            assert parsed is not None
+            counters[field] = parsed
+        counter_sets.append(counters)
 
     if not counter_sets:
         return None

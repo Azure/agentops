@@ -5166,9 +5166,9 @@ def create_app(
                     "next_action": "Sign in again and verify direct read access to the selected telemetry scope.",
                 }
                 status_code = 403
-            elif isinstance(getattr(exc, "code", None), str):
+            elif isinstance(error_code := getattr(exc, "code", None), str):
                 detail = {
-                    "code": exc.code,
+                    "code": error_code,
                     "message": str(exc),
                     "next_action": getattr(
                         exc,
@@ -5191,12 +5191,13 @@ def create_app(
                 headers=headers,
             ) from exc
         except Exception as exc:
-            if not isinstance(getattr(exc, "code", None), str):
+            error_code = getattr(exc, "code", None)
+            if not isinstance(error_code, str):
                 raise
             raise HTTPException(
                 status_code=getattr(exc, "status_code", 503),
                 detail={
-                    "code": exc.code,
+                    "code": error_code,
                     "message": str(exc),
                     "next_action": getattr(
                         exc,

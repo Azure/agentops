@@ -843,7 +843,11 @@ class AttributionViewData(AttributionContract):
                 raise ValueError("department grouping accepts only department rows")
             if (
                 self.access_boundary == "aggregate"
-                and any(row.member_count == 1 for row in self.rows)
+                and any(
+                    isinstance(row, DepartmentAttributionRow)
+                    and row.member_count == 1
+                    for row in self.rows
+                )
             ):
                 raise ValueError("singleton departments require delegated access")
         for row in self.rows:
