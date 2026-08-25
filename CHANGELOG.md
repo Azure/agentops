@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-25
+
 ### Added
 - **The Cockpit can allocate operator-declared billed totals across observed
   agents, tools, and runs.** The optional `AGENTOPS_COST_MODEL` configuration
