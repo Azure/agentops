@@ -252,6 +252,116 @@ shared caches, URLs, browser storage, telemetry, diagnostics, or deployment
 artifacts. See [Operate](operate.md#shared-hosted-cockpit-and-protected-content)
 and [Deploy the hosted Cockpit](deploy-hosted-cockpit.md).
 
+## Enable user and department attribution
+
+Attribution is opt-in. Set `AGENTOPS_ATTRIBUTION_CONFIG` on the Cockpit
+deployment and restart it. An enabled version 1 configuration requires a stable,
+random deployment namespace, a generation of at least `1`, and up to 100
+department definitions. Each definition maps deployment-scoped pseudonymous
+user keys or group object IDs to one department. The setting is non-secret but
+privacy-sensitive; keep its value out of source control, logs, tickets, and
+release artifacts. Deployment preview shows only its enabled state, generation,
+fingerprint, department-definition count, user-key entry count, and group-ID
+entry count.
+
+Bootstrap mappings from the protected **Users** view:
+
+1. Sign in as an operator who can read the selected telemetry scope directly.
+2. Open **Users** using the delegated view and copy only the generated
+   `usr1.g<generation>.<sha256>` key into the appropriate department definition.
+3. Alternatively, configure a group object ID already present in the signed-in
+   principal's validated claims. Group mapping applies only to that exact
+   principal; AgentOps does not query Microsoft Graph or enrich identities.
+4. Preview the deployment, review the widened delegated-data warning, confirm,
+   and restart Cockpit.
+
+Only non-empty `UserAuthenticatedId` and OpenTelemetry `enduser.id` values are
+eligible identity sources. `UserId`, `enduser.pseudo.id`, session, device,
+browser, network, prompt, and behavioral values are never identity fallbacks.
+Conflicting eligible aliases are ambiguous and remain unattributed.
+
+### Access, coverage, and privacy boundary
+
+Department aggregates that cannot identify a singleton may use the deployment
+identity and shared aggregate cache. Every individual view, user filter, and
+singleton-department result uses a fresh signed-in-user OBO credential, bypasses
+shared caches, and returns `Cache-Control: private, no-store`. Missing delegated
+access or direct Log Analytics RBAC fails closed without retrying as the
+deployment identity. Enabling attribution adds no role, Graph permission,
+directory read, write capability, or secret; the deployment identity retains
+only `Reader` and `Log Analytics Reader`, while delegated requests reuse Azure
+Monitor `Data.Read`.
+
+Coverage is reported per source and measure. It distinguishes available,
+partial, not reported, inaccessible/protected, ambiguous, and error states.
+Unmapped and ambiguous consumption remains in unattributed totals, and a failed
+source does not erase successful aggregate evidence from another source. Cost
+attribution appears only when an existing declared cost allocation is available;
+it does not change billed totals, allocation denominators, or reconciliation.
+If the signed-in token reports group-claim overage while group mappings are
+configured, attribution performs no Microsoft Graph or directory lookup.
+Coverage is marked **partial** with fixed guidance to use explicit user mappings
+or sign in with group claims within the supported token limit.
+
+Pseudonymous keys and opaque filters are deterministic, linkable personal data,
+not anonymous data. A namespace limits cross-deployment correlation but is not a
+secret and does not prevent guessing low-entropy identities. Raw identities are
+shown only in the current delegated Users response. Mapping values, raw
+identities, user rows, group IDs, and filter tokens are excluded from shared
+caches, application logs, Doctor output, deployment journals, and release
+evidence. Aggregate readiness status, coverage states, generation, configuration
+fingerprint, and non-identifying counts remain available.
+
+### Rotate or disable attribution
+
+Rotation is explicit, never time-based: generate a fresh random namespace,
+increment `generation`, rebuild all user mappings from the protected Users view,
+preview and confirm the deployment, then restart Cockpit. Existing keys and
+bookmarked filters fail closed after rotation; there is no grace period or
+previous-generation lookup.
+
+To disable attribution, remove `AGENTOPS_ATTRIBUTION_CONFIG` or deploy a valid
+configuration with `enabled: false`, then restart Cockpit. Attribution routes,
+controls, filters, and coverage disappear while the existing Observe views and
+aggregate access remain unchanged. Correct an invalid setting or remove it;
+invalid attribution configuration does not take unrelated Cockpit diagnostics
+offline.
+
+### Attribution acceptance protocols
+
+Use synthetic identities and a fixed dataset for both protocols. Do not export
+the view.
+
+For the SC-005 operator check, recruit at least ten representative operators
+who have not seen the answer. Give every participant the same unfiltered
+department Usage view and these instructions only: identify the
+highest-consuming department, apply its department filter, copy the resulting
+URL, open that URL in a new private window while signed in, and confirm the same
+department and time range. Start one stopwatch when the unfiltered view is
+shown and stop it after the restored view is confirmed. Record participant ID,
+start/end timestamps, selected department correctness, restored-filter
+correctness, elapsed seconds, and pass/fail in the acceptance record. A
+participant passes only when both answers are correct and elapsed time is at
+most 120 seconds. SC-005 passes when at least 90% pass; retain the aggregate
+record, not identities or copied URLs.
+
+For SC-006, the standard offline scope is one project, representative coverage
+for three telemetry sources, 200 synthetic users, and the maximum 100
+departments. Run 20 Usage and 20 Cost display samples after one warm-up and
+record each elapsed duration from receipt of the bounded aggregate response
+through completed HTML rendering. Compute p95 by nearest rank (the 19th sorted
+sample of 20) separately for Usage and Cost. Both p95 values must be at most
+five seconds. The repository acceptance test uses deterministic synthetic
+responses and requires no Azure access:
+
+```powershell
+python -m pytest tests/unit/test_attribution_performance_acceptance.py -q
+```
+
+This controlled check detects application-side display regressions. Before a
+release, repeat the same 20-sample protocol in the target connected environment
+to include discovery, Azure Monitor query, network, and browser costs.
+
 !!! info "Telemetry from CI runs"
     Generated eval and Doctor workflows install OpenTelemetry support.
     Eval runs emit `agentops.eval.*` spans and scheduled Doctor runs emit

@@ -52,7 +52,7 @@ ENV_APPLICATION_CLIENT_ID = "AGENTOPS_APPLICATION_CLIENT_ID"
 ENV_UAMI_CLIENT_ID = "AGENTOPS_UAMI_CLIENT_ID"
 ENV_ALLOWED_GROUP_OBJECT_ID = "AGENTOPS_ALLOWED_GROUP_OBJECT_ID"
 
-#: Key the resolver's output context dict uses for the raw user access
+#: Key the resolver's output context mapping uses for the raw user access
 #: token. This is intentionally distinct from the inbound Easy Auth header
 #: name so ``ObserveFacade.trace_content`` (the only consumer) does not need
 #: to know the Easy Auth header convention. The Cockpit's own
@@ -197,15 +197,63 @@ class EasyAuthPrincipal:
     user_id: str
     user_name: Optional[str]
     groups: tuple[str, ...]
+    group_claims_overage: bool = False
 
     def safe_context(self) -> dict[str, Any]:
-        """Return a plain, token-free dict safe to log or return to clients."""
+        """Return the internal token-free auth context.
+
+        The result still contains protected identity and group identifiers. It
+        is for authorization and attribution only, not logging or responses.
+        """
         return {
             "tenant_id": self.tenant_id,
             "user_id": self.user_id,
             "user_name": self.user_name,
             "groups": list(self.groups),
+            "group_claims_overage": self.group_claims_overage,
         }
+
+
+class _RedactedAuthContext(dict[str, Any]):
+    """Auth context with protected values redacted from text representations."""
+
+    def __repr__(self) -> str:
+        protected_keys = {"user_id", "user_name", "groups"}
+        redacted = {
+            key: (
+                "<redacted>"
+                if (
+                    key.lower() in protected_keys
+                    or "token" in key.lower()
+                    or "assertion" in key.lower()
+                )
+                else value
+            )
+            for key, value in self.items()
+        }
+        return repr(redacted)
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+
+def validated_groups_for_identity(
+    principal: EasyAuthPrincipal, telemetry_identity: Optional[str]
+) -> tuple[str, ...]:
+    """Return group claims only for an exact current-principal identity match.
+
+    Both the stable object ID and the validated display/user name are eligible
+    aliases because either can be the supported identity emitted by telemetry.
+    Matching is deliberately byte-for-byte: group claims must never classify a
+    different telemetry user through normalization or fuzzy matching.
+    """
+    if not isinstance(telemetry_identity, str) or not telemetry_identity:
+        return ()
+    if telemetry_identity not in {principal.user_id, principal.user_name}:
+        return ()
+    if principal.group_claims_overage:
+        return ()
+    return principal.groups
 
 
 def _decode_principal_header(raw: str) -> dict[str, Any]:
@@ -317,11 +365,14 @@ def parse_easy_auth_principal(
     user_name = user_name_values[0] if user_name_values else header_user_name
 
     groups = tuple(dict.fromkeys(_claim_values(claims, _GROUP_CLAIM_TYPES)))
+    group_claims_overage = any(
+        value.strip().lower() == "true"
+        for value in _claim_values(claims, _HAS_GROUPS_OVERAGE_TYPES)
+    )
 
     if config.allowed_group_object_id:
         if not groups:
-            overage_values = _claim_values(claims, _HAS_GROUPS_OVERAGE_TYPES)
-            if overage_values and overage_values[0].strip().lower() == "true":
+            if group_claims_overage:
                 raise GroupClaimsOverageError(
                     "Microsoft Entra omitted the groups claim because the "
                     "signed-in user belongs to too many groups (overage); "
@@ -346,6 +397,7 @@ def parse_easy_auth_principal(
         user_id=str(user_id),
         user_name=str(user_name) if user_name else None,
         groups=groups,
+        group_claims_overage=group_claims_overage,
     )
 
 
@@ -366,7 +418,7 @@ def build_easy_auth_resolver(
 
     def resolver(headers: Mapping[str, Any]) -> dict[str, Any]:
         principal = parse_easy_auth_principal(headers, config=resolved_config)
-        context = principal.safe_context()
+        context = _RedactedAuthContext(principal.safe_context())
         access_token = headers.get(_HEADER_ACCESS_TOKEN)
         if access_token:
             context[ACCESS_TOKEN_CONTEXT_KEY] = access_token

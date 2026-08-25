@@ -77,6 +77,7 @@ PROHIBITED_ROLE_DEFINITION_IDS = (
 )
 
 EXPECTED_APP_SETTING_NAMES = {
+    "AGENTOPS_ATTRIBUTION_CONFIG",
     "AGENTOPS_COCKPIT_MODE",
     "AGENTOPS_COST_MODEL",
     "AGENTOPS_OBSERVE_SCOPE",
@@ -239,6 +240,19 @@ class TestBicepAppSettingsAreSecretless:
         block = _appsettings_block(bicep_text)
         assert "empty(agentopsCostModel) ? []" in block
 
+    def test_attribution_setting_is_conditionally_omitted_when_empty(
+        self, bicep_text: str
+    ) -> None:
+        block = _appsettings_block(bicep_text)
+        assert "empty(agentopsAttributionConfig) ? []" in block
+        assert "name: 'AGENTOPS_ATTRIBUTION_CONFIG'" in block
+
+    def test_attribution_parameter_is_secure(self, bicep_text: str) -> None:
+        assert re.search(
+            r"@secure\(\)\s*param\s+agentopsAttributionConfig\s+string",
+            bicep_text,
+        )
+
     def test_no_secret_or_connection_string_style_values_anywhere(
         self, bicep_text: str
     ) -> None:
@@ -374,6 +388,14 @@ class TestParametersJson:
         assert (
             parameters_json["parameters"]["agentopsCostModel"]["value"]
             == "${AGENTOPS_COST_MODEL=}"
+        )
+
+    def test_attribution_parameter_is_optional_and_disabled_by_default(
+        self, parameters_json: dict
+    ) -> None:
+        assert (
+            parameters_json["parameters"]["agentopsAttributionConfig"]["value"]
+            == "${AGENTOPS_ATTRIBUTION_CONFIG=}"
         )
 
 

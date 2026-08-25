@@ -9,15 +9,20 @@ these tests never need real Azure SDK packages or ``sys.modules`` faking.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping, Sequence
 
 import pytest
 
 from agentops.agent.observe import facade as facade_module
+from agentops.agent.observe.attribution import SingletonAttributionError
+from agentops.agent.observe.auth import MissingUserAssertionError
 from agentops.agent.observe.cache import ObserveCache
 from agentops.agent.observe.facade import (
+    AttributionCacheError,
     MAX_TREND_POINTS,
+    ProtectedAttributionError,
     ObserveFacade,
     _build_trend_series,
     create_observe_facade,
@@ -31,7 +36,17 @@ from agentops.core.cost import (
     CostViewData,
     load_cost_model,
 )
+from agentops.core.attribution import (
+    AttributionConfigurationLoadResult,
+    AttributionUsage,
+    AttributionViewData,
+    DepartmentAttributionRow,
+    UsageAttributionSummary,
+    load_attribution_config,
+)
 from agentops.core.observe import (
+    AttributionQueryRequest,
+    AttributionResponse,
     CoverageResult,
     ObserveScope,
     QueryDiagnostics,
@@ -40,6 +55,7 @@ from agentops.core.observe import (
     TelemetrySource,
 )
 from fixtures.cost import mixed_currency_cost_model_payload, valid_cost_model_payload
+from fixtures.observe import make_attribution_config_payload, make_attribution_user_key
 
 _PROJECT_ID = (
     "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg1"
@@ -102,6 +118,7 @@ class FakeQueryClient:
         self.rows = list(rows)
         self.detail_results = detail_results
         self.query_calls: list[str] = []
+        self.attribution_filters: list[Any] = []
         self.detail_calls = 0
         self.closed = False
 
@@ -118,6 +135,32 @@ class FakeQueryClient:
             return list(self.detail_results)
         return [
             SourceResult(source_id=source.source_id, status="success", tables=[], duration_ms=1)
+            for source in sources
+        ]
+
+    async def query_department_usage(self, sources, filters, **kwargs):
+        self.query_calls.append("department_attribution")
+        self.attribution_filters.append(filters)
+        return [
+            SourceResult(
+                source_id=source.source_id,
+                status="success",
+                tables=self.rows,
+                duration_ms=1,
+            )
+            for source in sources
+        ]
+
+    async def query_user_usage(self, sources, filters, **kwargs):
+        self.query_calls.append("user_attribution")
+        self.attribution_filters.append(filters)
+        return [
+            SourceResult(
+                source_id=source.source_id,
+                status="success",
+                tables=self.rows,
+                duration_ms=1,
+            )
             for source in sources
         ]
 
@@ -185,6 +228,7 @@ def _make_facade(
     cache: ObserveCache | None = None,
     obo_factory: Any | None = None,
     cost_model: CostModelLoadResult | None = None,
+    attribution_config: AttributionConfigurationLoadResult | None = None,
 ) -> ObserveFacade:
     return ObserveFacade(
         scope=_scope(),
@@ -199,11 +243,99 @@ def _make_facade(
         credential_factory=lambda *, client_id: FakeCredential(),
         obo_factory=obo_factory or (lambda **kwargs: FakeCredential()),
         cost_model_result=cost_model,
+        attribution_config_result=attribution_config,
     )
 
 
 def _valid_cost_model() -> CostModelLoadResult:
-    return load_cost_model(json.dumps(valid_cost_model_payload()))
+    payload = valid_cost_model_payload()
+    component = payload["periods"][0]["components"][0]
+    component["billing_boundary"]["value"] = _FOUNDRY_ID
+    component["usage_match"]["source_resource_ids"] = [_FOUNDRY_ID]
+    return load_cost_model(json.dumps(payload))
+
+
+def _valid_attribution_config() -> AttributionConfigurationLoadResult:
+    return load_attribution_config(json.dumps(make_attribution_config_payload()))
+
+
+def _attribution_cost_request(group_by: str) -> dict[str, Any]:
+    return {
+        "metric": "cost",
+        "group_by": group_by,
+        "filters": {
+            "start": "2026-08-10T00:00:00Z",
+            "end": "2026-08-11T00:00:00Z",
+            "cost_period_id": "2026-08",
+            "cost_component_id": "gpt-ptu-prod",
+        },
+    }
+
+
+def _attribution_response(
+    *,
+    member_count: int = 2,
+    access_boundary: str = "aggregate",
+    cache_status: str = "miss",
+) -> AttributionResponse:
+    usage = AttributionUsage(
+        invocations=2,
+        input_tokens=None,
+        output_tokens=None,
+        tool_invocations=None,
+        active_session_seconds=None,
+    )
+    unattributed = AttributionUsage(
+        invocations=0,
+        input_tokens=None,
+        output_tokens=None,
+        tool_invocations=None,
+        active_session_seconds=None,
+    )
+    return AttributionResponse(
+        data=AttributionViewData(
+            metric="usage",
+            group_by="department",
+            access_boundary=access_boundary,
+            rows=[
+                DepartmentAttributionRow(
+                    kind="department",
+                    department_id="engineering",
+                    department_label="Engineering",
+                    filter_token="at1~department",
+                    member_count=member_count,
+                    usage=usage,
+                    cost=None,
+                    mapping_state="mapped",
+                )
+            ],
+            summary=UsageAttributionSummary(
+                metric="usage",
+                total=usage,
+                attributed=usage,
+                unattributed=unattributed,
+                distinct_users=member_count,
+                omitted_users=0,
+            ),
+            primary_measure="invocations",
+            calculated_at=_NOW,
+        ),
+        coverage=[],
+        partial_failures=[],
+        diagnostics=QueryDiagnostics(
+            started_at=_NOW,
+            completed_at=_NOW,
+            duration_ms=0,
+            source_count=1,
+            successful_sources=1,
+            partial_sources=0,
+            failed_sources=0,
+            cache_status=cache_status,
+        ),
+        refreshed_at=_NOW,
+        cache_status=cache_status,
+        bounds=ResultBounds(rows_shown=1, rows_total_in_scope=1),
+    )
 
 
 def _mixed_cost_model() -> CostModelLoadResult:
@@ -1252,6 +1384,464 @@ def test_build_trend_series_ignores_failed_sources_and_bounds_points() -> None:
     assert trends
     for trend in trends:
         assert len(trend["series"][0]["points"]) <= MAX_TREND_POINTS
+
+
+# ---------------------------------------------------------------------------
+# attribution: safe aggregate cache and singleton escalation
+# ---------------------------------------------------------------------------
+
+
+class _FakeAttributionService:
+    def __init__(
+        self,
+        response: AttributionResponse | Exception,
+    ) -> None:
+        self.response = response
+        self.calls: list[dict[str, Any]] = []
+
+    async def query_attribution(self, scope, request, **kwargs):
+        self.calls.append({"scope": scope, "request": request, **kwargs})
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
+
+@pytest.mark.asyncio
+async def test_safe_department_attribution_uses_fingerprint_cache() -> None:
+    service = _FakeAttributionService(_attribution_response())
+    facade = _make_facade(attribution_config=_valid_attribution_config())
+    facade._service = service
+    request = {
+        "metric": "usage",
+        "group_by": "department",
+        "filters": {
+            "start": "2026-08-01T00:00:00Z",
+            "end": "2026-09-01T00:00:00Z",
+        },
+    }
+
+    first = await facade.attribution(request=request, user_context={})
+    second = await facade.attribution(request=request, user_context={})
+
+    assert first["cache_status"] == "miss"
+    assert second["cache_status"] == "hit"
+    assert len(service.calls) == 1
+    assert service.calls[0]["principal_context"]["tenant_id"] == "tenant-1"
+    cache_keys = list(facade._cache._entries)
+    assert len(cache_keys) == 1
+    assert "Engineering" not in repr(cache_keys[0])
+    assert "at1~department" not in repr(cache_keys[0])
+
+
+@pytest.mark.asyncio
+async def test_selected_department_bypasses_shared_cache_without_key_derivative() -> None:
+    service = _FakeAttributionService(_attribution_response())
+    facade = _make_facade(attribution_config=_valid_attribution_config())
+    facade._service = service
+    request = {
+        "metric": "usage",
+        "group_by": "department",
+        "filters": {
+            "start": "2026-08-01T00:00:00Z",
+            "end": "2026-09-01T00:00:00Z",
+            "department_filter_token": "at1~protected-selector",
+        },
+    }
+
+    await facade.attribution(request=request, user_context={})
+    await facade.attribution(request=request, user_context={})
+
+    assert len(service.calls) == 2
+    assert facade._cache._entries == {}
+    assert "protected-selector" not in repr(facade._attribution_cache_key(
+        AttributionQueryRequest.model_validate(request)
+    ))
+
+
+class _FailingAttributionCache:
+    def __init__(self, *, fail_on: str) -> None:
+        self.fail_on = fail_on
+
+    def get(self, _key, *, bypass=False):
+        if self.fail_on == "get":
+            raise RuntimeError("cache backend details")
+        return None
+
+    def set(self, _key, _value):
+        if self.fail_on == "set":
+            raise RuntimeError("cache backend details")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_on", ["get", "set"])
+async def test_attribution_cache_failures_are_stable_and_fail_closed(
+    fail_on: str,
+) -> None:
+    service = _FakeAttributionService(_attribution_response())
+    facade = _make_facade(attribution_config=_valid_attribution_config())
+    facade._service = service
+    facade._cache = _FailingAttributionCache(fail_on=fail_on)
+
+    with pytest.raises(AttributionCacheError) as raised:
+        await facade.attribution(
+            request={
+                "metric": "usage",
+                "group_by": "department",
+                "filters": {
+                    "start": "2026-08-01T00:00:00Z",
+                    "end": "2026-09-01T00:00:00Z",
+                },
+            },
+            user_context={},
+        )
+
+    assert raised.value.code == "attribution_cache_unavailable"
+    assert "backend details" not in str(raised.value)
+    assert len(service.calls) == (0 if fail_on == "get" else 1)
+
+
+@pytest.mark.asyncio
+async def test_singleton_department_discards_aggregate_and_reruns_delegated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _FakeAttributionService(
+        SingletonAttributionError("delegated access required")
+    )
+    facade = _make_facade(attribution_config=_valid_attribution_config())
+    facade._service = service
+    delegated = _attribution_response(
+        member_count=1,
+        access_boundary="delegated",
+        cache_status="bypass",
+    )
+    reruns: list[dict[str, Any]] = []
+
+    async def _rerun(request, *, config, user_context):
+        reruns.append(
+            {
+                "request": request,
+                "config": config,
+                "user_context": user_context,
+            }
+        )
+        return delegated
+
+    monkeypatch.setattr(facade, "_query_attribution_delegated", _rerun)
+    result = await facade.attribution(
+        request={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": {
+                "start": "2026-08-01T00:00:00Z",
+                "end": "2026-09-01T00:00:00Z",
+            },
+        },
+        user_context={"access_token": "assertion"},
+    )
+
+    assert result["data"]["access_boundary"] == "delegated"
+    assert result["cache_status"] == "bypass"
+    assert len(service.calls) == 1
+    assert len(reruns) == 1
+    assert facade._cache._entries == {}
+
+
+@pytest.mark.asyncio
+async def test_singleton_delegated_failure_remains_private(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = _FakeAttributionService(
+        SingletonAttributionError("delegated access required")
+    )
+    facade = _make_facade(attribution_config=_valid_attribution_config())
+    facade._service = service
+
+    async def _fail(*_args, **_kwargs):
+        raise RuntimeError("provider-specific delegated details")
+
+    monkeypatch.setattr(facade, "_query_attribution_delegated", _fail)
+    with pytest.raises(ProtectedAttributionError) as raised:
+        await facade.attribution(
+            request={
+                "metric": "usage",
+                "group_by": "department",
+                "filters": {
+                    "start": "2026-08-01T00:00:00Z",
+                    "end": "2026-09-01T00:00:00Z",
+                },
+            },
+            user_context={"access_token": "assertion"},
+        )
+
+    assert raised.value.private is True
+    assert "provider-specific" not in str(raised.value)
+
+
+@pytest.mark.asyncio
+async def test_user_attribution_uses_fresh_obo_and_bypasses_shared_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    facade = _make_facade(attribution_config=_valid_attribution_config())
+    aggregate_service = _FakeAttributionService(_attribution_response())
+    facade._service = aggregate_service
+    obo_credentials: list[object] = []
+    delegated_clients: list[Any] = []
+
+    def _build_delegated(**kwargs):
+        credential = object()
+        obo_credentials.append(credential)
+        assert kwargs["user_assertion"] == "assertion"
+        return credential
+
+    class _DelegatedQueryClient:
+        def __init__(self, *, credential, clock):
+            self.credential = credential
+            self.closed = False
+            delegated_clients.append(self)
+
+        async def aclose(self):
+            self.closed = True
+
+    class _DelegatedService:
+        def __init__(self, *, cache, runtime, **kwargs):
+            assert runtime.mode == "delegated"
+            assert cache.get(("protected",)) is None
+
+        async def query_attribution(self, scope, request, **kwargs):
+            assert kwargs["access_boundary"] == "delegated"
+            return _attribution_response(
+                access_boundary="delegated",
+                cache_status="bypass",
+            )
+
+    monkeypatch.setattr(
+        facade_module,
+        "build_delegated_monitor_credential",
+        _build_delegated,
+    )
+    monkeypatch.setattr(facade_module, "AzureQueryClient", _DelegatedQueryClient)
+    monkeypatch.setattr(facade_module, "ObserveService", _DelegatedService)
+    request = {
+        "metric": "usage",
+        "group_by": "user",
+        "filters": {
+            "start": "2026-08-01T00:00:00Z",
+            "end": "2026-09-01T00:00:00Z",
+            "department_filter_token": "at1~department",
+        },
+    }
+
+    first = await facade.attribution(
+        request=request,
+        user_context={"access_token": "assertion"},
+    )
+    second = await facade.attribution(
+        request=request,
+        user_context={"access_token": "assertion"},
+    )
+
+    assert first["cache_status"] == second["cache_status"] == "bypass"
+    assert len(obo_credentials) == 2
+    assert [client.credential for client in delegated_clients] == obo_credentials
+    assert all(client.closed for client in delegated_clients)
+    assert aggregate_service.calls == []
+    assert facade._cache._entries == {}
+
+
+@pytest.mark.asyncio
+async def test_real_facade_service_department_cost_allocates_full_period_before_filter() -> None:
+    query = FakeQueryClient(
+        rows=[
+            {
+                "department_id": "engineering",
+                "department_label": "Engineering",
+                "mapping_state": "mapped",
+                "member_count": 2,
+                "invocations": 3,
+                "input_tokens": 3,
+                "output_tokens": 0,
+                "tool_invocations": None,
+                "active_session_seconds": None,
+                "deployment": "gpt-prod",
+                "eligible_records": 5,
+                "identified_records": 4,
+                "mapped_records": 4,
+                "unattributed_records": 1,
+                "ambiguous_records": 0,
+                "returned_records": 3,
+            },
+            {
+                "department_id": "finance",
+                "department_label": "Finance",
+                "mapping_state": "mapped",
+                "member_count": 2,
+                "invocations": 1,
+                "input_tokens": 1,
+                "output_tokens": 0,
+                "tool_invocations": None,
+                "active_session_seconds": None,
+                "deployment": "gpt-prod",
+                "eligible_records": 5,
+                "identified_records": 4,
+                "mapped_records": 4,
+                "unattributed_records": 1,
+                "ambiguous_records": 0,
+                "returned_records": 3,
+            },
+            {
+                "department_id": None,
+                "department_label": None,
+                "mapping_state": "unmapped",
+                "member_count": 2,
+                "invocations": 1,
+                "input_tokens": 1,
+                "output_tokens": 0,
+                "tool_invocations": None,
+                "active_session_seconds": None,
+                "deployment": "gpt-prod",
+                "eligible_records": 5,
+                "identified_records": 4,
+                "mapped_records": 4,
+                "unattributed_records": 1,
+                "ambiguous_records": 0,
+                "returned_records": 3,
+            },
+        ]
+    )
+    facade = _make_facade(
+        query_client=query,
+        cost_model=_valid_cost_model(),
+        attribution_config=_valid_attribution_config(),
+    )
+    request = _attribution_cost_request("department")
+
+    full = await facade.attribution(request=request, user_context={})
+    engineering_token = next(
+        row["filter_token"]
+        for row in full["data"]["rows"]
+        if row["department_id"] == "engineering"
+    )
+    filtered_request = deepcopy(request)
+    filtered_request["filters"]["department_filter_token"] = engineering_token
+    filtered = await facade.attribution(request=filtered_request, user_context={})
+
+    full_engineering = next(
+        row for row in full["data"]["rows"] if row["department_id"] == "engineering"
+    )
+    assert [row["department_id"] for row in filtered["data"]["rows"]] == [
+        "engineering"
+    ]
+    assert filtered["data"]["rows"][0]["cost"] == full_engineering["cost"]
+    assert filtered["data"]["rows"][0]["cost"]["usage_denominator"] == "5"
+    summary = filtered["data"]["summary"]
+    assert summary["declared_total"] == "12000.00"
+    assert summary["attributed_amount"] == "9600.00"
+    assert summary["unattributed_amount"] == "2400.00"
+    assert summary["unallocated_amount"] == "0.00"
+    assert summary["currency"] == "USD"
+    assert summary["currency_minor_units"] == 2
+    assert all(item["metric"] == "cost" for item in filtered["coverage"])
+    assert query.query_calls == ["department_attribution", "department_attribution"]
+    assert all(
+        filters.start.isoformat() == "2026-08-01T00:00:00+00:00"
+        and filters.end.isoformat() == "2026-09-01T00:00:00+00:00"
+        and filters.department_filter_token is None
+        for filters in query.attribution_filters
+    )
+
+
+@pytest.mark.asyncio
+async def test_real_facade_service_user_cost_is_delegated_and_reconciled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_rows = [
+        {
+            "row_kind": "user",
+            "user_key": make_attribution_user_key(0),
+            "raw_identity": "alex@example.test",
+            "distinct_users": 1,
+            "invocations": 1,
+            "input_tokens": 1,
+            "output_tokens": 0,
+            "tool_invocations": None,
+            "active_session_seconds": None,
+            "deployment": "gpt-prod",
+        },
+        {
+            "row_kind": "user",
+            "user_key": make_attribution_user_key(1),
+            "raw_identity": "synthetic-user-2@example.test",
+            "distinct_users": 1,
+            "invocations": 3,
+            "input_tokens": 3,
+            "output_tokens": 0,
+            "tool_invocations": None,
+            "active_session_seconds": None,
+            "deployment": "gpt-prod",
+        },
+    ]
+    delegated_clients: list[FakeQueryClient] = []
+
+    class _DelegatedCostQueryClient(FakeQueryClient):
+        def __init__(self, *, credential, clock):
+            super().__init__(rows=user_rows)
+            delegated_clients.append(self)
+
+    monkeypatch.setattr(facade_module, "AzureQueryClient", _DelegatedCostQueryClient)
+    facade = _make_facade(
+        cost_model=_valid_cost_model(),
+        attribution_config=_valid_attribution_config(),
+    )
+
+    result = await facade.attribution(
+        request=_attribution_cost_request("user"),
+        user_context={
+            "tenant_id": "22222222-2222-2222-2222-222222222222",
+            "user_id": "alex@example.test",
+            "access_token": "assertion",
+        },
+    )
+
+    assert result["data"]["access_boundary"] == "delegated"
+    assert result["cache_status"] == "bypass"
+    assert [row["cost"]["amount"] for row in result["data"]["rows"]] == [
+        "9000.00",
+        "3000.00",
+    ]
+    assert all(
+        row["cost"]["usage_denominator"] == "4" for row in result["data"]["rows"]
+    )
+    assert result["data"]["summary"]["declared_total"] == "12000.00"
+    assert result["data"]["summary"]["attributed_amount"] == "12000.00"
+    assert result["data"]["summary"]["unattributed_amount"] == "0.00"
+    assert all(item["metric"] == "cost" for item in result["coverage"])
+    assert len(delegated_clients) == 1
+    assert delegated_clients[0].closed
+    assert facade._cache._entries == {}
+
+
+@pytest.mark.asyncio
+async def test_user_attribution_missing_assertion_never_retries_aggregate() -> None:
+    facade = _make_facade(attribution_config=_valid_attribution_config())
+    aggregate_service = _FakeAttributionService(_attribution_response())
+    facade._service = aggregate_service
+
+    with pytest.raises(MissingUserAssertionError):
+        await facade.attribution(
+            request={
+                "metric": "usage",
+                "group_by": "user",
+                "filters": {
+                    "start": "2026-08-01T00:00:00Z",
+                    "end": "2026-09-01T00:00:00Z",
+                    "department_filter_token": "at1~department",
+                },
+            },
+            user_context={},
+        )
+
+    assert aggregate_service.calls == []
+    assert facade._cache._entries == {}
 
 
 # ---------------------------------------------------------------------------

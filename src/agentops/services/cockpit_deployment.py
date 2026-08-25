@@ -50,6 +50,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Protocol, Sequence
 
+from agentops.core.attribution import load_attribution_config
 from agentops.core.cost import load_cost_model
 from agentops.core.observe import (
     DeploymentFailure,
@@ -479,6 +480,7 @@ ALLOWED_RESOURCE_TYPES = frozenset(
 
 ALLOWED_SETTINGS_KEYS = frozenset(
     {
+        "AGENTOPS_ATTRIBUTION_CONFIG",
         "AGENTOPS_COCKPIT_MODE",
         "AGENTOPS_COST_MODEL",
         "AGENTOPS_OBSERVE_SCOPE",
@@ -496,6 +498,9 @@ ALLOWED_SETTINGS_KEYS = frozenset(
         "AGENTOPS_ALLOWED_GROUP_OBJECT_ID",
     }
 )
+
+_ATTRIBUTION_CONFIG_KEY = "AGENTOPS_ATTRIBUTION_CONFIG"
+_ATTRIBUTION_REDACTION_PREFIX = "***REDACTED***"
 
 DEPLOY_STATE_DIRNAME = Path(".agentops") / "deploy" / "cockpit"
 JOURNAL_FILENAME = "deployment-state.json"
@@ -1397,6 +1402,21 @@ def build_application_settings(
             )
         settings["AGENTOPS_COST_MODEL"] = raw_cost_model
 
+    raw_attribution = os.getenv(_ATTRIBUTION_CONFIG_KEY)
+    if raw_attribution is not None:
+        attribution_result = load_attribution_config(raw_attribution)
+        if attribution_result.state == "invalid":
+            raise CockpitDeploymentError(
+                attribution_result.message
+                or "AGENTOPS_ATTRIBUTION_CONFIG contains an invalid configuration.",
+                stage="build_preview",
+                remediation=(
+                    "Correct or remove AGENTOPS_ATTRIBUTION_CONFIG before "
+                    "previewing the hosted Cockpit deployment."
+                ),
+            )
+        settings[_ATTRIBUTION_CONFIG_KEY] = raw_attribution
+
     unexpected = set(settings) - ALLOWED_SETTINGS_KEYS
     if unexpected:
         raise CockpitDeploymentError(
@@ -1405,6 +1425,46 @@ def build_application_settings(
             remediation="Remove the non-allowlisted setting(s) from the deployment plan.",
         )
     return settings
+
+
+def _attribution_preview_metadata(raw: str) -> str:
+    result = load_attribution_config(raw)
+    if result.state == "invalid":
+        raise CockpitDeploymentError(
+            result.message or "AGENTOPS_ATTRIBUTION_CONFIG is invalid.",
+            stage="build_preview",
+            remediation="Correct or remove AGENTOPS_ATTRIBUTION_CONFIG and re-run.",
+        )
+    state = "enabled" if result.state == "valid" else result.state
+    config = result.config
+    generation = config.generation if config is not None else None
+    departments = config.departments if config is not None else []
+    user_key_count = sum(len(item.user_keys) for item in departments)
+    group_id_count = sum(len(item.group_ids) for item in departments)
+    return (
+        f"{_ATTRIBUTION_REDACTION_PREFIX} "
+        f"(state={state}; generation={generation}; fingerprint={result.fingerprint}; "
+        f"departments={len(departments)}; user_keys={user_key_count}; "
+        f"group_ids={group_id_count})"
+    )
+
+
+def _materialize_attribution_setting(settings: dict[str, str]) -> dict[str, str]:
+    """Replace redacted preview metadata with the validated current env value."""
+    values = dict(settings)
+    preview_value = values.get(_ATTRIBUTION_CONFIG_KEY)
+    if not preview_value or not preview_value.startswith(_ATTRIBUTION_REDACTION_PREFIX):
+        return values
+
+    raw = os.getenv(_ATTRIBUTION_CONFIG_KEY)
+    if raw is None or _attribution_preview_metadata(raw) != preview_value:
+        raise CockpitDeploymentError(
+            "AGENTOPS_ATTRIBUTION_CONFIG changed or disappeared after preview.",
+            stage="deploy",
+            remediation="Re-run the deployment preview and confirm the current configuration.",
+        )
+    values[_ATTRIBUTION_CONFIG_KEY] = raw
+    return values
 
 
 def _azd_env_values(
@@ -1426,7 +1486,7 @@ def _azd_env_values(
     the Bicep parameters file additionally expects, and never removes or
     renames a key ``application_settings`` already produced.
     """
-    values = dict(application_settings)
+    values = _materialize_attribution_setting(application_settings)
     values.update(
         {
             "AZURE_SUBSCRIPTION_ID": str(selection.subscription_id),
@@ -1498,6 +1558,16 @@ def build_preview(
             "Subscription-wide scope grants Reader across every resource in "
             "the subscription; confirm this is intentional before continuing."
         )
+    raw_attribution = application_settings.get(_ATTRIBUTION_CONFIG_KEY)
+    attribution_result = (
+        load_attribution_config(raw_attribution) if raw_attribution is not None else None
+    )
+    if attribution_result is not None and attribution_result.state == "valid":
+        warnings.append(
+            "Department attribution widens the delegated-data boundary: protected "
+            "user and singleton-department views use the signed-in operator's "
+            "delegated Azure Monitor access. Normal deployment confirmation is required."
+        )
 
     for entry in azd_preview.resources:
         resource_type = entry.get("resource_type")
@@ -1516,14 +1586,24 @@ def build_preview(
             "before confirming."
         )
 
+    preview_settings = dict(application_settings)
+    sanitized_infrastructure_preview = dict(azd_preview.raw)
+    if raw_attribution is not None:
+        preview_settings[_ATTRIBUTION_CONFIG_KEY] = _attribution_preview_metadata(
+            raw_attribution
+        )
+        sanitized_infrastructure_preview = _redact_attribution_value(
+            sanitized_infrastructure_preview, raw_attribution
+        )
+
     return DeploymentPreview(
         selection=selection,
         resources=resources,
         role_assignments=role_assignments,
         federated_credential=federated_credential,
-        application_settings=application_settings,
+        application_settings=preview_settings,
         warnings=warnings,
-        infrastructure_preview=dict(azd_preview.raw),
+        infrastructure_preview=sanitized_infrastructure_preview,
     )
 
 
@@ -2138,8 +2218,9 @@ def run_cli(
             ),
         ) from exc
     except subprocess.TimeoutExpired as exc:
+        safe_command = redact_secrets(" ".join(command))
         raise CockpitDeploymentError(
-            f"'{' '.join(command)}' timed out after {timeout} seconds.",
+            f"'{safe_command}' timed out after {timeout} seconds.",
             stage="cli_invocation",
             remediation=(
                 "Re-run once you have confirmed whether the underlying "
@@ -2155,7 +2236,8 @@ _SECRET_JSON_KEY_RE = re.compile(
     r"([^\"]*)(\")"
 )
 _SECRET_ENV_LINE_RE = re.compile(
-    r"(?im)^([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|KEY|CREDENTIAL)[A-Z0-9_]*\s*=\s*)(.+)$"
+    r"(?im)^([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|KEY|CREDENTIAL|ATTRIBUTION_CONFIG)"
+    r"[A-Z0-9_]*\s*=\s*)(.+)$"
 )
 
 
@@ -2171,8 +2253,100 @@ def redact_secrets(text: str) -> str:
     if not text:
         return text
     redacted = _SECRET_JSON_KEY_RE.sub(r"\1***REDACTED***\3", text)
+    redacted = re.sub(
+        r'(?i)("AGENTOPS_ATTRIBUTION_CONFIG"\s*:\s*")([^"]*)(")',
+        r"\1***REDACTED***\3",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?im)(AGENTOPS_ATTRIBUTION_CONFIG(?:\s*=\s*|\s+)).+$",
+        r"\1***REDACTED***",
+        redacted,
+    )
     redacted = _SECRET_ENV_LINE_RE.sub(lambda m: f"{m.group(1)}***REDACTED***", redacted)
     return redacted
+
+
+def _attribution_sensitive_strings(raw: str) -> set[str]:
+    sensitive_values = {raw}
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return sensitive_values
+
+    def _collect(value: Any) -> None:
+        if isinstance(value, dict):
+            for item in value.values():
+                _collect(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                _collect(item)
+        elif isinstance(value, str) and value:
+            sensitive_values.add(value)
+
+    _collect(payload)
+    return sensitive_values
+
+
+def _redact_attribution_value(
+    value: Any, raw: str, sensitive_values: set[str] | None = None
+) -> Any:
+    """Recursively remove attribution configuration text from preview metadata."""
+    sensitive_values = sensitive_values or _attribution_sensitive_strings(raw)
+    if isinstance(value, dict):
+        return {
+            key: (
+                _ATTRIBUTION_REDACTION_PREFIX
+                if str(key).upper() == _ATTRIBUTION_CONFIG_KEY
+                else _redact_attribution_value(item, raw, sensitive_values)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_attribution_value(item, raw, sensitive_values) for item in value]
+    if isinstance(value, tuple):
+        return tuple(
+            _redact_attribution_value(item, raw, sensitive_values) for item in value
+        )
+    if isinstance(value, str):
+        redacted = value
+        for sensitive in sorted(sensitive_values, key=len, reverse=True):
+            redacted = redacted.replace(sensitive, _ATTRIBUTION_REDACTION_PREFIX)
+        return redacted
+    return value
+
+
+def _redact_deployment_output(text: str, env_values: dict[str, str]) -> str:
+    raw = env_values.get(_ATTRIBUTION_CONFIG_KEY)
+    if not raw:
+        return redact_secrets(text)
+
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        parsed = None
+    else:
+        sanitized = _redact_attribution_value(parsed, raw)
+        return redact_secrets(json.dumps(sanitized, ensure_ascii=False))
+
+    # CLI failures are not guaranteed to be JSON. Cover both the literal
+    # configuration and JSON-string escaped forms before applying the generic
+    # key/line redactor, which cannot safely parse nested escaped quotes.
+    sensitive_values = _attribution_sensitive_strings(raw)
+    escaped_values = set(sensitive_values)
+    for _ in range(3):
+        values = tuple(escaped_values)
+        for ensure_ascii in (False, True):
+            escaped_values.update(
+                json.dumps(value, ensure_ascii=ensure_ascii)[1:-1]
+                for value in values
+                if value
+            )
+
+    redacted = text
+    for value in sorted(escaped_values, key=len, reverse=True):
+        redacted = redacted.replace(value, _ATTRIBUTION_REDACTION_PREFIX)
+    return redact_secrets(redacted)
 
 
 def _parse_json_output(stdout: str, *, stage: str) -> Any:
@@ -2854,10 +3028,10 @@ class AzCliDeploymentStateInspector:
             for item in settings_entries
             if isinstance(item, dict) and item.get("name")
         }
-        if any(
-            live_settings.get(key) != value
-            for key, value in preview.application_settings.items()
-        ):
+        expected_settings = _materialize_attribution_setting(
+            preview.application_settings
+        )
+        if _application_settings_drifted(live_settings, expected_settings):
             differences.append("App Service application settings drifted")
 
         auth_code, auth_stdout, _auth_stderr = run_cli(
@@ -2892,6 +3066,21 @@ class AzCliDeploymentStateInspector:
             differences.append("App Service authsettingsV2 drifted")
 
         return DriftInspection(tuple(differences))
+
+
+def _application_settings_drifted(
+    live_settings: dict[str, str], expected_settings: dict[str, str]
+) -> bool:
+    return (
+        any(
+            live_settings.get(key) != value
+            for key, value in expected_settings.items()
+        )
+        or (
+            _ATTRIBUTION_CONFIG_KEY not in expected_settings
+            and _ATTRIBUTION_CONFIG_KEY in live_settings
+        )
+    )
 
 
 _ARM_ID_SUB_RG_RE = re.compile(
@@ -3130,6 +3319,12 @@ class AzdCliCommandRunner:
                 cwd=bundle_dir,
                 timeout=self._timeout,
             )
+        if _ATTRIBUTION_CONFIG_KEY not in env_values:
+            run_cli(
+                ["azd", "env", "unset", _ATTRIBUTION_CONFIG_KEY],
+                cwd=bundle_dir,
+                timeout=self._timeout,
+            )
         for key, value in env_values.items():
             run_cli(
                 ["azd", "env", "set", key, value], cwd=bundle_dir, timeout=self._timeout
@@ -3146,7 +3341,9 @@ class AzdCliCommandRunner:
         if code != 0:
             raise CockpitDeploymentError(
                 "azd provision --preview failed: "
-                + redact_secrets(stderr.strip() or stdout.strip() or "unknown error"),
+                + _redact_deployment_output(
+                    stderr.strip() or stdout.strip() or "unknown error", env_values
+                ),
                 stage="preview",
                 remediation=(
                     "Inspect the azd/Bicep output above, fix the reported "
@@ -3172,7 +3369,9 @@ class AzdCliCommandRunner:
         code, stdout, stderr = run_cli(
             ["azd", "provision"], cwd=bundle_dir, env=env_values, timeout=self._timeout
         )
-        message = redact_secrets((stderr or stdout or "").strip())
+        message = _redact_deployment_output(
+            (stderr or stdout or "").strip(), env_values
+        )
         return AzdCommandResult(success=code == 0, message=message)
 
     def deploy(self, bundle_dir: Path, env_values: dict[str, str]) -> AzdCommandResult:
@@ -3180,7 +3379,9 @@ class AzdCliCommandRunner:
         code, stdout, stderr = run_cli(
             ["azd", "deploy"], cwd=bundle_dir, env=env_values, timeout=self._timeout
         )
-        message = redact_secrets((stderr or stdout or "").strip())
+        message = _redact_deployment_output(
+            (stderr or stdout or "").strip(), env_values
+        )
         return AzdCommandResult(success=code == 0, message=message)
 
 

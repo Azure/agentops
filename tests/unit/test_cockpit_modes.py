@@ -19,6 +19,7 @@ from fixtures.cost import (
     valid_cost_model_payload,
     valid_multi_period_cost_model_payload,
 )
+from fixtures.observe import make_attribution_config_payload
 
 
 _SCOPE = {
@@ -178,9 +179,15 @@ def test_cost_model_startup_states_have_local_hosted_parity(
     injected_states: list[str] = []
     rendered_states: list[bool] = []
 
-    def _factory(*, scope: Any, cost_model_result: Any) -> _ObserveService:
+    def _factory(
+        *,
+        scope: Any,
+        cost_model_result: Any,
+        attribution_config_result: Any = None,
+    ) -> _ObserveService:
         assert scope["mode"] == "projects"
         injected_states.append(cost_model_result.state)
+        assert attribution_config_result.state == "absent"
         return _ObserveService()
 
     def _render(
@@ -189,6 +196,7 @@ def test_cost_model_startup_states_have_local_hosted_parity(
         cost_enabled: bool = False,
         cost_periods: Any = (),
         cost_components: Any = (),
+        **_kwargs: Any,
     ) -> str:
         rendered_states.append(cost_enabled)
         if cost_enabled:
@@ -269,6 +277,7 @@ def test_valid_multi_period_startup_exposes_components_for_each_period(
         cost_enabled: bool = False,
         cost_periods: Any = (),
         cost_components: Any = (),
+        **_kwargs: Any,
     ) -> str:
         assert scope_label == "Projects (1)"
         assert cost_enabled is True
@@ -321,9 +330,15 @@ def test_cost_model_changes_require_restart_and_removal_disables_new_apps(
 ) -> None:
     services: list[_ObserveService] = []
 
-    def _factory(*, scope: Any, cost_model_result: Any) -> _ObserveService:
+    def _factory(
+        *,
+        scope: Any,
+        cost_model_result: Any,
+        attribution_config_result: Any = None,
+    ) -> _ObserveService:
         service = _ObserveService()
         service.cost_model_state = cost_model_result.state
+        assert attribution_config_result.state == "absent"
         services.append(service)
         return service
 
@@ -369,3 +384,88 @@ def test_cost_model_changes_require_restart_and_removal_disables_new_apps(
         "absent",
         "valid",
     ]
+
+
+@pytest.mark.parametrize("mode", ["local", "hosted"])
+@pytest.mark.parametrize(
+    ("raw_config", "expected_state", "expected_enabled"),
+    [
+        (None, "absent", False),
+        (
+            json.dumps(
+                {
+                    "version": 1,
+                    "enabled": False,
+                    "deployment_namespace": None,
+                    "generation": None,
+                    "departments": [],
+                }
+            ),
+            "disabled",
+            False,
+        ),
+        (
+            json.dumps(make_attribution_config_payload(empty=True)),
+            "valid",
+            True,
+        ),
+        (
+            json.dumps(make_attribution_config_payload()),
+            "valid",
+            True,
+        ),
+        ('{"enabled": true, "secret": "must-not-leak"}', "invalid", False),
+    ],
+)
+def test_attribution_configuration_startup_states_are_mode_independent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mode: str,
+    raw_config: str | None,
+    expected_state: str,
+    expected_enabled: bool,
+) -> None:
+    injected_results: list[Any] = []
+
+    def _factory(
+        *,
+        scope: Any,
+        cost_model_result: Any,
+        attribution_config_result: Any,
+    ) -> _ObserveService:
+        assert scope["mode"] == "projects"
+        injected_results.append(attribution_config_result)
+        return _ObserveService()
+
+    monkeypatch.setattr(facade_module, "create_observe_facade", _factory)
+    if raw_config is None:
+        monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
+    else:
+        monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw_config)
+
+    client = TestClient(
+        create_app(
+            tmp_path if mode == "local" else None,
+            mode=mode,  # type: ignore[arg-type]
+            observe_scope=_SCOPE,
+            auth_context_resolver=_Auth() if mode == "hosted" else None,
+        )
+    )
+    headers = {"x-ms-client-principal": "allowed"} if mode == "hosted" else {}
+
+    assert len(injected_results) == 1
+    assert injected_results[0].state == expected_state
+    assert client.app.state.attribution_state == expected_state
+    assert client.app.state.attribution_enabled is expected_enabled
+    assert "must-not-leak" not in repr(injected_results[0])
+    runtime = client.get("/api/runtime", headers=headers)
+    assert runtime.json()["attribution"] == {
+        "state": expected_state,
+        "enabled": expected_enabled,
+    }
+    assert client.get("/observe", headers=headers).status_code == 200
+    assert client.post(
+        "/api/observe/query",
+        headers=headers,
+        json={"view": "overview", "filters": _FILTERS},
+    ).status_code == 200

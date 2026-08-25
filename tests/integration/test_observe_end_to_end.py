@@ -15,16 +15,35 @@ from agentops.agent import cockpit as cockpit_module
 from agentops.agent.cockpit import create_app
 from agentops.agent.observe.cost_allocation import allocate_cost_period
 from agentops.agent.observe import facade as facade_module
+from agentops.agent.observe.cache import ObserveCache
+from agentops.agent.observe.queries import SourceResult
+from agentops.agent.observe.service import ObserveService
 from agentops.agent.observe.ui import render_models_usage_table
+from agentops.core.attribution import (
+    AttributionTokenValidationError,
+    load_attribution_config,
+)
 from agentops.core.cost import (
     CostUsageObservation,
     load_cost_model as load_cost_model_contract,
+)
+from agentops.core.observe import (
+    AttributionQueryRequest,
+    ObserveScope,
+    ResourceInventory,
+    TelemetrySource,
 )
 from fixtures.cost import (
     FOUNDRY_RESOURCE_ID,
     mixed_currency_cost_model_payload,
     valid_cost_model_payload,
     valid_multi_period_cost_model_payload,
+)
+from fixtures.observe import (
+    ATTRIBUTION_FIXTURE_GROUPS,
+    ATTRIBUTION_FIXTURE_PRINCIPAL,
+    make_attribution_config_payload,
+    make_attribution_user_key,
 )
 
 
@@ -33,6 +52,85 @@ class _Auth:
         if headers.get("x-ms-client-principal") != "allowed":
             raise PermissionError("authentication required")
         return {"tenant_id": "tenant", "user_id": "user", "groups": []}
+
+
+class _AttributionAuth:
+    def __call__(self, headers: Any) -> dict[str, Any]:
+        if headers.get("x-ms-client-principal") != "allowed":
+            raise PermissionError("authentication required")
+        return {
+            "tenant_id": "22222222-2222-2222-2222-222222222222",
+            "user_id": ATTRIBUTION_FIXTURE_PRINCIPAL,
+            "user_name": ATTRIBUTION_FIXTURE_PRINCIPAL,
+            "groups": [ATTRIBUTION_FIXTURE_GROUPS[0]],
+            "groups_overage": False,
+            "access_token": "redacted-user-assertion",
+        }
+
+
+class _AttributionDiscovery:
+    def __init__(self, scope: ObserveScope) -> None:
+        self.inventory = ResourceInventory(
+            scope=scope,
+            telemetry_sources=[
+                TelemetrySource(
+                    source_id="synthetic-source",
+                    resource_id=(
+                        "/subscriptions/sub/resourceGroups/rg/providers/"
+                        "Microsoft.OperationalInsights/workspaces/law"
+                    ),
+                    workspace_id="synthetic-workspace",
+                    foundry_resource_id=FOUNDRY_RESOURCE_ID,
+                    project_resource_ids=list(scope.project_resource_ids),
+                    state="available",
+                )
+            ],
+            discovered_at=datetime(2026, 8, 25, tzinfo=timezone.utc),
+            expires_at=datetime(2026, 8, 25, 1, tzinfo=timezone.utc),
+        )
+
+    async def discover(self, _scope: ObserveScope) -> ResourceInventory:
+        return self.inventory
+
+
+class _AttributionQuery:
+    def __init__(self, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+        self.calls: list[dict[str, Any]] = []
+
+    async def query_user_usage(self, sources, filters, **kwargs):
+        self.calls.append({"sources": sources, "filters": filters, **kwargs})
+        return [
+            SourceResult(
+                source_id=source.source_id,
+                status="success",
+                tables=deepcopy(self.rows),
+                duration_ms=1,
+            )
+            for source in sources
+        ]
+
+
+def _production_attribution_service(
+    rows: list[dict[str, Any]],
+) -> tuple[ObserveService, ObserveScope, _AttributionQuery]:
+    scope = ObserveScope(
+        mode="projects",
+        project_resource_ids=[FOUNDRY_RESOURCE_ID + "/projects/project-a"],
+    )
+    query = _AttributionQuery(rows)
+    service = ObserveService(
+        discovery_client=_AttributionDiscovery(scope),
+        query_client=query,
+        runtime=type(
+            "Runtime",
+            (),
+            {"mode": "hosted", "credential_identity": "synthetic-delegated"},
+        )(),
+        clock=lambda: datetime(2026, 8, 25, tzinfo=timezone.utc),
+        cache=ObserveCache(ttl_seconds=60),
+    )
+    return service, scope, query
 
 
 class _Service:
@@ -125,6 +223,180 @@ class _CostFacade(_Service):
                 "cache_status": "miss",
             },
             "refreshed_at": "2026-08-21T00:00:00Z",
+        }
+
+
+class _AttributionFacade(_Service):
+    def __init__(
+        self,
+        *,
+        coverage: list[dict[str, Any]] | None = None,
+        partial_failures: list[dict[str, Any]] | None = None,
+    ) -> None:
+        super().__init__()
+        self.attribution_requests: list[dict[str, Any]] = []
+        self.user_contexts: list[dict[str, Any]] = []
+        self.coverage = coverage
+        self.partial_failures = partial_failures
+
+    def attribution(
+        self,
+        *,
+        request: dict[str, Any],
+        user_context: dict[str, Any] | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        self.attribution_requests.append(deepcopy(request))
+        self.user_contexts.append(deepcopy(user_context or {}))
+        metric = request["metric"]
+        group_by = request["group_by"]
+        department_token = request["filters"].get("department_filter_token")
+        user_token = request["filters"].get("user_filter_token")
+        usage = {
+            "invocations": 10,
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "tool_invocations": 2,
+            "active_session_seconds": None,
+        }
+        rows = [
+            {
+                "kind": "department",
+                "department_id": "engineering",
+                "department_label": "Engineering",
+                "filter_token": "at1~d~g1~config~scope~engineering",
+                "member_count": 2,
+                "usage": {**usage, "invocations": 7},
+                "cost": (
+                    {
+                        "period_id": "2026-08",
+                        "component_id": "gpt-ptu-prod",
+                        "amount": "70.00",
+                        "currency": "USD",
+                        "currency_minor_units": 2,
+                        "usage_numerator": "7",
+                        "usage_denominator": "10",
+                        "allocation_key": "weighted_tokens",
+                        "confidence": "high",
+                    }
+                    if metric == "cost"
+                    else None
+                ),
+                "mapping_state": "mapped",
+            },
+            {
+                "kind": "department",
+                "department_id": "finance",
+                "department_label": "Finance",
+                "filter_token": "at1~d~g1~config~scope~finance",
+                "member_count": 2,
+                "usage": {**usage, "invocations": 3},
+                "cost": (
+                    {
+                        "period_id": "2026-08",
+                        "component_id": "gpt-ptu-prod",
+                        "amount": "20.00",
+                        "currency": "USD",
+                        "currency_minor_units": 2,
+                        "usage_numerator": "3",
+                        "usage_denominator": "10",
+                        "allocation_key": "weighted_tokens",
+                        "confidence": "high",
+                    }
+                    if metric == "cost"
+                    else None
+                ),
+                "mapping_state": "mapped",
+            },
+        ]
+        if group_by == "user":
+            rows = [
+                {
+                    "kind": "user",
+                    "user_key": make_attribution_user_key(0),
+                    "raw_identity": ATTRIBUTION_FIXTURE_PRINCIPAL,
+                    "filter_token": "opaque-user-token-a",
+                    "department_id": "engineering",
+                    "department_label": "Engineering",
+                    "usage": {**usage, "invocations": 5},
+                    "cost": (
+                        {
+                            "period_id": "2026-08",
+                            "component_id": "gpt-ptu-prod",
+                            "amount": "50.00",
+                            "currency": "USD",
+                            "currency_minor_units": 2,
+                            "usage_numerator": "5",
+                            "usage_denominator": "10",
+                            "allocation_key": "weighted_tokens",
+                            "confidence": "high",
+                        }
+                        if metric == "cost"
+                        else None
+                    ),
+                    "mapping_state": "mapped",
+                },
+                {
+                    "kind": "user",
+                    "user_key": make_attribution_user_key(1),
+                    "raw_identity": "synthetic-user-2@example.test",
+                    "filter_token": "opaque-user-token-b",
+                    "department_id": "engineering",
+                    "department_label": "Engineering",
+                    "usage": {**usage, "invocations": 5},
+                    "cost": (
+                        {
+                            "period_id": "2026-08",
+                            "component_id": "gpt-ptu-prod",
+                            "amount": "40.00",
+                            "currency": "USD",
+                            "currency_minor_units": 2,
+                            "usage_numerator": "5",
+                            "usage_denominator": "10",
+                            "allocation_key": "weighted_tokens",
+                            "confidence": "high",
+                        }
+                        if metric == "cost"
+                        else None
+                    ),
+                    "mapping_state": "mapped",
+                },
+            ]
+            if user_token:
+                rows = [row for row in rows if row["filter_token"] == user_token]
+        if department_token:
+            rows = [row for row in rows if row.get("department_id") == "engineering"]
+        summary = (
+            {
+                "metric": "cost",
+                "declared_total": "100.00",
+                "attributed_amount": "90.00",
+                "unattributed_amount": "10.00",
+                "unallocated_amount": "0.00",
+            }
+            if metric == "cost"
+            else {
+                "metric": "usage",
+                "total": {**usage, "invocations": 12},
+                "attributed": usage,
+                "unattributed": {**usage, "invocations": 2},
+            }
+        )
+        return {
+            "data": {
+                "metric": metric,
+                "group_by": group_by,
+                "access_boundary": "delegated" if group_by == "user" else "aggregate",
+                "rows": rows,
+                "summary": summary,
+            },
+            "coverage": self.coverage
+            if self.coverage is not None
+            else [{"source_id": "source-a", "state": "partial"}],
+            "partial_failures": self.partial_failures
+            if self.partial_failures is not None
+            else [{"source_id": "source-b", "status": "timeout"}],
+            "cache_status": "miss",
         }
 
 
@@ -475,8 +747,14 @@ def test_valid_cost_model_startup_opens_agent_allocation_once(
         load_calls.append(raw)
         return load_cost_model_contract(raw)
 
-    def _create_facade(*, scope: Any, cost_model_result: Any) -> _CostFacade:
+    def _create_facade(
+        *,
+        scope: Any,
+        cost_model_result: Any,
+        attribution_config_result: Any = None,
+    ) -> _CostFacade:
         assert scope["mode"] == "projects"
+        assert attribution_config_result.state == "absent"
         injected_results.append(cost_model_result)
         return _CostFacade(cost_model_result)
 
@@ -486,6 +764,7 @@ def test_valid_cost_model_startup_opens_agent_allocation_once(
         cost_enabled: bool = False,
         cost_periods: Any = (),
         cost_components: Any = (),
+        **_kwargs: Any,
     ) -> str:
         render_states.append(cost_enabled)
         assert [period["id"] for period in cost_periods] == ["2026-08"]
@@ -863,6 +1142,7 @@ def test_unavailable_cost_isolated_from_other_observe_routes(
         cost_enabled: bool = False,
         cost_periods: Any = (),
         cost_components: Any = (),
+        **_kwargs: Any,
     ) -> str:
         render_states.append(cost_enabled)
         assert cost_periods == ()
@@ -933,3 +1213,461 @@ def test_unavailable_cost_isolated_from_other_observe_routes(
     assert service.query_calls == 6
     assert load_calls == [raw_model]
     assert render_states == [False]
+
+
+def test_department_attribution_end_to_end_preserves_disabled_parity_and_totals(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    scope = {
+        "version": 1,
+        "mode": "projects",
+        "project_resource_ids": [FOUNDRY_RESOURCE_ID + "/projects/project-a"],
+    }
+    service = _AttributionFacade()
+    filters = {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-09-01T00:00:00Z",
+    }
+    monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
+    disabled = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope=scope,
+            observe_service=service,
+        )
+    )
+    baseline = disabled.post(
+        "/api/observe/query",
+        json={"view": "overview", "filters": filters},
+    )
+    assert baseline.status_code == 200
+    assert disabled.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": filters,
+        },
+    ).status_code == 409
+
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    enabled = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope=scope,
+            observe_service=service,
+        )
+    )
+    assert enabled.post(
+        "/api/observe/query",
+        json={"view": "overview", "filters": filters},
+    ).json() == baseline.json()
+
+    usage = enabled.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": filters,
+        },
+    )
+    assert usage.status_code == 200
+    usage_payload = usage.json()
+    summary = usage_payload["data"]["summary"]
+    assert (
+        summary["attributed"]["invocations"]
+        + summary["unattributed"]["invocations"]
+        == summary["total"]["invocations"]
+    )
+    assert usage_payload["coverage"][0]["state"] == "partial"
+    assert usage_payload["partial_failures"][0]["status"] == "timeout"
+
+    token = usage_payload["data"]["rows"][0]["filter_token"]
+    filtered = enabled.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": {**filters, "department_filter_token": token},
+        },
+    ).json()
+    assert [row["department_id"] for row in filtered["data"]["rows"]] == [
+        "engineering"
+    ]
+    assert filtered["data"]["summary"] == summary
+
+    cost = enabled.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "cost",
+            "group_by": "department",
+            "filters": {
+                **filters,
+                "cost_period_id": "2026-08",
+                "cost_component_id": "gpt-ptu-prod",
+            },
+        },
+    )
+    assert cost.status_code == 200
+    cost_summary = cost.json()["data"]["summary"]
+    assert (
+        Decimal(cost_summary["attributed_amount"])
+        + Decimal(cost_summary["unattributed_amount"])
+        + Decimal(cost_summary["unallocated_amount"])
+        == Decimal(cost_summary["declared_total"])
+    )
+
+
+def test_user_attribution_fixture_conserves_totals_maps_exact_principal_and_is_private(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    facade = _AttributionFacade()
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="hosted",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [FOUNDRY_RESOURCE_ID + "/projects/project-a"],
+            },
+            observe_service=facade,
+            auth_context_resolver=_AttributionAuth(),
+        )
+    )
+    headers = {"x-ms-client-principal": "allowed"}
+    filters = {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-09-01T00:00:00Z",
+        "department_filter_token": "opaque-department-token",
+    }
+
+    usage = client.post(
+        "/api/observe/attribution",
+        headers=headers,
+        json={"metric": "usage", "group_by": "user", "filters": filters},
+    )
+    assert usage.status_code == 200
+    assert usage.headers["cache-control"] == "private, no-store"
+    payload = usage.json()
+    rows = payload["data"]["rows"]
+    assert [row["user_key"] for row in rows] == sorted(
+        row["user_key"] for row in rows
+    )
+    assert sum(row["usage"]["invocations"] for row in rows) == 10
+    summary = payload["data"]["summary"]
+    assert (
+        summary["attributed"]["invocations"]
+        + summary["unattributed"]["invocations"]
+        == summary["total"]["invocations"]
+    )
+    assert rows[0]["raw_identity"] == ATTRIBUTION_FIXTURE_PRINCIPAL
+    assert rows[0]["department_id"] == "engineering"
+    assert facade.user_contexts[-1]["groups"] == [ATTRIBUTION_FIXTURE_GROUPS[0]]
+
+    selector = rows[0]["filter_token"]
+    selected = client.post(
+        "/api/observe/attribution",
+        headers=headers,
+        json={
+            "metric": "usage",
+            "group_by": "user",
+            "filters": {**filters, "user_filter_token": selector},
+        },
+    )
+    assert selected.status_code == 200
+    assert [row["user_key"] for row in selected.json()["data"]["rows"]] == [
+        make_attribution_user_key(0)
+    ]
+    serialized_request = json.dumps(facade.attribution_requests[-1])
+    assert selector in serialized_request
+    assert ATTRIBUTION_FIXTURE_PRINCIPAL not in serialized_request
+    assert ATTRIBUTION_FIXTURE_GROUPS[0] not in serialized_request
+
+    cost = client.post(
+        "/api/observe/attribution",
+        headers=headers,
+        json={
+            "metric": "cost",
+            "group_by": "user",
+            "filters": {
+                **filters,
+                "cost_period_id": "2026-08",
+                "cost_component_id": "gpt-ptu-prod",
+            },
+        },
+    )
+    assert cost.status_code == 200
+    cost_payload = cost.json()
+    assert sum(Decimal(row["cost"]["amount"]) for row in cost_payload["data"]["rows"]) == Decimal(
+        cost_payload["data"]["summary"]["attributed_amount"]
+    )
+    cost_summary = cost_payload["data"]["summary"]
+    assert (
+        Decimal(cost_summary["attributed_amount"])
+        + Decimal(cost_summary["unattributed_amount"])
+        + Decimal(cost_summary["unallocated_amount"])
+        == Decimal(cost_summary["declared_total"])
+    )
+
+
+def test_attribution_coverage_preserves_multi_source_states_without_identity_leakage(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    states = [
+        "available",
+        "partial",
+        "not_reported",
+        "ambiguous",
+        "inaccessible",
+        "protected_or_unavailable",
+        "error",
+    ]
+    coverage = [
+        {
+            "source_id": f"source-{state}",
+            "dimension": "user_attribution",
+            "state": state,
+            "reason": f"Safe reason for {state}.",
+            "next_action": f"Safe action for {state}.",
+            "refreshed_at": "2026-08-25T12:00:00Z",
+            "metric": "usage",
+            "attribution_level": "department",
+            "component_id": None,
+            "eligible_records": None if state == "inaccessible" else 10,
+            "identified_records": None if state == "inaccessible" else 8,
+            "mapped_records": None if state == "inaccessible" else 7,
+            "unattributed_records": None if state == "inaccessible" else 2,
+            "ambiguous_records": None if state == "inaccessible" else 1,
+            "returned_records": None if state == "inaccessible" else 8,
+        }
+        for state in states
+    ]
+    coverage.append(
+        {
+            **coverage[1],
+            "source_id": "source-cost-partial",
+            "metric": "cost",
+            "component_id": "gpt-ptu-prod",
+        }
+    )
+    partial_failures = [
+        {
+            "source_id": "source-timeout",
+            "status": "timeout",
+            "reason": "Safe timeout reason.",
+            "next_action": "Retry the source.",
+        }
+    ]
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="hosted",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [FOUNDRY_RESOURCE_ID + "/projects/project-a"],
+            },
+            observe_service=_AttributionFacade(
+                coverage=coverage, partial_failures=partial_failures
+            ),
+            auth_context_resolver=_AttributionAuth(),
+        )
+    )
+    response = client.post(
+        "/api/observe/attribution",
+        headers={"x-ms-client-principal": "allowed"},
+        json={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": {
+                "start": "2026-08-01T00:00:00Z",
+                "end": "2026-09-01T00:00:00Z",
+            },
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert [entry["state"] for entry in payload["coverage"][:7]] == states
+    assert payload["coverage"][-1]["metric"] == "cost"
+    assert payload["coverage"][-1]["component_id"] == "gpt-ptu-prod"
+    assert payload["coverage"][4]["eligible_records"] is None
+    assert payload["data"]["rows"]
+    assert payload["partial_failures"] == partial_failures
+    coverage_json = json.dumps(
+        {"coverage": payload["coverage"], "partial_failures": payload["partial_failures"]}
+    )
+    assert ATTRIBUTION_FIXTURE_PRINCIPAL not in coverage_json
+    assert ATTRIBUTION_FIXTURE_GROUPS[0] not in coverage_json
+    assert "opaque-user-token" not in coverage_json
+
+
+@pytest.mark.asyncio
+async def test_production_attribution_tokens_survive_restart_but_reject_copy_and_rotation() -> None:
+    rows = [
+        {
+            "row_kind": "user",
+            "user_key": make_attribution_user_key(0),
+            "raw_identity": ATTRIBUTION_FIXTURE_PRINCIPAL,
+            "rank": 1,
+            "distinct_users": 1,
+            "invocations": 4,
+            "input_tokens": 40,
+            "output_tokens": 20,
+            "tool_invocations": 1,
+            "active_session_seconds": None,
+        }
+    ]
+    config = load_attribution_config(json.dumps(make_attribution_config_payload())).config
+    assert config is not None
+    service, scope, _query = _production_attribution_service(rows)
+    principal = {
+        "tenant_id": "22222222-2222-2222-2222-222222222222",
+        "user_id": ATTRIBUTION_FIXTURE_PRINCIPAL,
+        "user_name": ATTRIBUTION_FIXTURE_PRINCIPAL,
+        "groups": [ATTRIBUTION_FIXTURE_GROUPS[0]],
+    }
+    request = AttributionQueryRequest(
+        metric="usage",
+        group_by="user",
+        filters={
+            "start": "2026-08-01T00:00:00Z",
+            "end": "2026-09-01T00:00:00Z",
+        },
+    )
+    initial = await service.query_attribution(
+        scope,
+        request,
+        config=config,
+        principal_context=principal,
+        access_boundary="delegated",
+    )
+    token = initial.data.rows[0].filter_token
+    assert token
+
+    restarted, restarted_scope, restarted_query = _production_attribution_service(rows)
+    selected = await restarted.query_attribution(
+        restarted_scope,
+        request.model_copy(
+            update={
+                "filters": request.filters.model_copy(
+                    update={"user_filter_token": token}
+                )
+            }
+        ),
+        config=config,
+        principal_context=principal,
+        access_boundary="delegated",
+    )
+    assert len(selected.data.rows) == 1
+    assert restarted_query.calls[-1]["selected_user_key"] == make_attribution_user_key(0)
+
+    with pytest.raises(AttributionTokenValidationError) as copied:
+        await restarted.query_attribution(
+            restarted_scope,
+            request.model_copy(
+                update={
+                    "filters": request.filters.model_copy(
+                        update={"user_filter_token": token}
+                    )
+                }
+            ),
+            config=config,
+            principal_context={**principal, "user_id": "copied-token-user@example.test"},
+            access_boundary="delegated",
+        )
+    assert copied.value.code == "attribution_token_principal_changed"
+    assert "authorized account" in copied.value.next_action
+
+    rotated = load_attribution_config(
+        json.dumps(make_attribution_config_payload(generation=2))
+    ).config
+    assert rotated is not None
+    with pytest.raises(AttributionTokenValidationError) as stale:
+        await restarted.query_attribution(
+            restarted_scope,
+            request.model_copy(
+                update={
+                    "filters": request.filters.model_copy(
+                        update={"user_filter_token": token}
+                    )
+                }
+            ),
+            config=rotated,
+            principal_context=principal,
+            access_boundary="delegated",
+        )
+    assert stale.value.code == "attribution_token_generation_changed"
+    assert "rotation" in stale.value.next_action
+
+
+@pytest.mark.asyncio
+async def test_production_user_attribution_bounds_502_users_to_499_plus_other() -> None:
+    rows = [
+        {
+            "row_kind": "user",
+            "user_key": make_attribution_user_key(index),
+            "raw_identity": f"synthetic-user-{index:03d}@example.test",
+            "rank": index + 1,
+            "distinct_users": 1,
+            "invocations": 10 if index < 2 else 1,
+            "input_tokens": index + 1,
+            "output_tokens": index + 1,
+            "tool_invocations": 0,
+            "active_session_seconds": None,
+        }
+        for index in range(502)
+    ]
+    config = load_attribution_config(json.dumps(make_attribution_config_payload())).config
+    assert config is not None
+    service, scope, _query = _production_attribution_service(rows)
+    result = await service.query_attribution(
+        scope,
+        AttributionQueryRequest(
+            metric="usage",
+            group_by="user",
+            filters={
+                "start": "2026-08-01T00:00:00Z",
+                "end": "2026-09-01T00:00:00Z",
+            },
+        ),
+        config=config,
+        principal_context={
+            "tenant_id": "22222222-2222-2222-2222-222222222222",
+            "user_id": ATTRIBUTION_FIXTURE_PRINCIPAL,
+            "groups": [],
+        },
+        access_boundary="delegated",
+    )
+    assert len(result.data.rows) == 500
+    assert sum(row.kind == "user" for row in result.data.rows) == 499
+    other = result.data.rows[-1]
+    assert other.kind == "other_users"
+    assert other.member_count == 3
+    assert result.data.summary.distinct_users == 502
+    assert result.data.summary.omitted_users == 3
+    assert result.data.summary.attributed.invocations == sum(
+        row["invocations"] for row in rows
+    )
+    tied = [
+        row.user_key
+        for row in result.data.rows
+        if row.kind == "user" and row.usage.invocations == 10
+    ]
+    assert tied == sorted(tied)

@@ -30,6 +30,7 @@ dist/
 
 # AgentOps local runtime artifacts
 .agentops
+.env*
 .agentops/results/
 .agentops/.resolved/
 .azure/

@@ -75,6 +75,10 @@ param agentopsObserveScope string = ''
 @description('Optional operator-declared billed-cost allocation model, recorded as a non-secret app setting. This value contains no credentials and grants no billing access.')
 param agentopsCostModel string = ''
 
+@description('Optional privacy-sensitive department attribution configuration. Empty keeps attribution disabled.')
+@secure()
+param agentopsAttributionConfig string = ''
+
 @description('agentops-accelerator package version installed on the Web App, recorded as a non-secret app setting for diagnostics.')
 param agentopsVersion string = ''
 
@@ -177,6 +181,11 @@ resource webApp 'Microsoft.Web/sites@2023-01-01' = {
         {
           name: 'AGENTOPS_COST_MODEL'
           value: agentopsCostModel
+        }
+      ], empty(agentopsAttributionConfig) ? [] : [
+        {
+          name: 'AGENTOPS_ATTRIBUTION_CONFIG'
+          value: agentopsAttributionConfig
         }
       ])
     }

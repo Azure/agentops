@@ -28,6 +28,7 @@ actually used.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import asdict, dataclass, replace
@@ -44,6 +45,7 @@ from agentops.agent.observe.auth import (
     build_delegated_monitor_credential,
 )
 from agentops.agent.observe.cache import ObserveCache
+from agentops.agent.observe.attribution import SingletonAttributionError
 from agentops.agent.observe.principal import (
     ACCESS_TOKEN_CONTEXT_KEY,
     ENV_APPLICATION_CLIENT_ID,
@@ -59,8 +61,14 @@ from agentops.agent.observe.queries import (
 )
 from agentops.agent.observe.service import CACHE_TTL_SECONDS, ObserveResult, ObserveService, View
 from agentops.agent.observe.ui import build_azure_resource_portal_url
+from agentops.core.attribution import (
+    AttributionConfigurationLoadResult,
+    observe_scope_fingerprint,
+)
 from agentops.core.cost import CostModelLoadResult, CostViewData
 from agentops.core.observe import (
+    AttributionQueryRequest,
+    AttributionResponse,
     GenerativeAIContent,
     ObservedAgent,
     ObserveFilterState,
@@ -98,6 +106,31 @@ _TREND_METRICS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+class AttributionCacheError(RuntimeError):
+    """Stable fail-closed error for attribution cache infrastructure failures."""
+
+    code = "attribution_cache_unavailable"
+    next_action = "Retry after the Cockpit cache is available."
+    status_code = 503
+    private = False
+
+
+class ProtectedAttributionError(RuntimeError):
+    """Preserve no-store handling after an aggregate result becomes protected."""
+
+    private = True
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__("Delegated attribution could not be completed.")
+        self.code = getattr(error, "code", "attribution_delegated_query_failed")
+        self.next_action = getattr(
+            error,
+            "next_action",
+            "Verify delegated access and retry the attribution query.",
+        )
+        self.status_code = getattr(error, "status_code", 503)
+
+
 @dataclass(frozen=True)
 class _AggregateRuntimeContext:
     """``RuntimeContext`` for the shared, aggregate (UAMI) reads.
@@ -117,6 +150,29 @@ class _AggregateRuntimeContext:
     @property
     def credential_identity(self) -> str:
         return self.uami_client_id
+
+
+@dataclass(frozen=True)
+class _DelegatedRuntimeContext:
+    """Per-request runtime identity used only with a non-persistent cache."""
+
+    @property
+    def mode(self) -> str:
+        return "delegated"
+
+    @property
+    def credential_identity(self) -> str:
+        return "current-request"
+
+
+class _BypassObserveCache:
+    """ObserveCache-compatible sink for protected per-request operations."""
+
+    def get(self, _key: Any, *, bypass: bool = False) -> None:
+        return None
+
+    def set(self, _key: Any, _value: Any) -> None:
+        return None
 
 
 def _serialize_data(data: Any) -> Any:
@@ -254,6 +310,7 @@ class ObserveFacade:
         obo_factory: ObeFactory | None = None,
         aggregate_credential: TokenCredential | None = None,
         cost_model_result: CostModelLoadResult | None = None,
+        attribution_config_result: AttributionConfigurationLoadResult | None = None,
     ) -> None:
         self._scope = scope
         self._tenant_id = tenant_id
@@ -267,6 +324,11 @@ class ObserveFacade:
             cost_model_result
             if cost_model_result is not None
             else CostModelLoadResult(state="absent")
+        )
+        self._attribution_config_result = (
+            attribution_config_result
+            if attribution_config_result is not None
+            else AttributionConfigurationLoadResult(state="absent")
         )
 
         credential = aggregate_credential or build_aggregate_credential(
@@ -350,6 +412,164 @@ class ObserveFacade:
             self._scope, filter_state, view=native_view, refresh=refresh
         )
         return _serialize_observe_result(result)
+
+    async def attribution(
+        self,
+        *,
+        request: Mapping[str, Any],
+        user_context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return one attribution view using the startup-validated configuration."""
+        config = self._attribution_config_result.config
+        if self._attribution_config_result.state != "valid" or config is None:
+            raise ValueError("Attribution is not enabled with a valid configuration.")
+        payload = AttributionQueryRequest.model_validate(request)
+        context = dict(user_context or {})
+        context.setdefault("tenant_id", self._tenant_id)
+        cost_model = None
+        if payload.metric == "cost":
+            loaded_cost = self._cost_model_result
+            if loaded_cost.state != "valid" or loaded_cost.model is None:
+                raise ValueError(
+                    "Cost attribution requires a valid configured cost model."
+                )
+            cost_model = loaded_cost.model
+
+        delegated = (
+            payload.group_by == "user"
+            or payload.filters.user_filter_token is not None
+        )
+        if delegated:
+            delegated_kwargs = (
+                {"cost_model": cost_model} if cost_model is not None else {}
+            )
+            result = await self._query_attribution_delegated(
+                payload,
+                config=config,
+                user_context=context,
+                **delegated_kwargs,
+            )
+            return result.model_dump(mode="json")
+
+        cache_key = self._attribution_cache_key(payload)
+        use_shared_cache = not (
+            payload.filters.department_filter_token
+            or payload.filters.user_filter_token
+            or context.get("groups")
+            or context.get("group_ids")
+            or context.get("group_claims_overage")
+            or context.get("groups_overage")
+        )
+        try:
+            cached = (
+                self._cache.get(cache_key, bypass=payload.refresh)
+                if use_shared_cache
+                else None
+            )
+        except Exception as exc:
+            raise AttributionCacheError("Attribution cache lookup failed.") from exc
+        if isinstance(cached, AttributionResponse):
+            result = cached.model_copy(
+                update={
+                    "cache_status": "hit",
+                    "diagnostics": cached.diagnostics.model_copy(
+                        update={"cache_status": "hit"}
+                    ),
+                }
+            )
+            return result.model_dump(mode="json")
+
+        try:
+            result = await self._service.query_attribution(
+                self._scope,
+                payload,
+                config=config,
+                cost_model=cost_model,
+                principal_context=context,
+            )
+        except SingletonAttributionError:
+            delegated_kwargs = (
+                {"cost_model": cost_model} if cost_model is not None else {}
+            )
+            try:
+                result = await self._query_attribution_delegated(
+                    payload,
+                    config=config,
+                    user_context=context,
+                    **delegated_kwargs,
+                )
+            except Exception as exc:
+                raise ProtectedAttributionError(exc) from exc
+        else:
+            if use_shared_cache and result.data.access_boundary == "aggregate":
+                try:
+                    self._cache.set(cache_key, result)
+                except Exception as exc:
+                    raise AttributionCacheError(
+                        "Attribution cache storage failed."
+                    ) from exc
+        return result.model_dump(mode="json")
+
+    def _attribution_cache_key(
+        self,
+        request: AttributionQueryRequest,
+    ) -> tuple[str, ...]:
+        filters = request.filters.model_dump(mode="json")
+        filters.pop("department_filter_token", None)
+        filters.pop("user_filter_token", None)
+        return (
+            "attribution",
+            self._attribution_config_result.fingerprint or "",
+            (
+                self._cost_model_result.fingerprint or ""
+                if request.metric == "cost"
+                else ""
+            ),
+            observe_scope_fingerprint(self._scope),
+            request.metric,
+            request.group_by,
+            json.dumps(filters, sort_keys=True, separators=(",", ":")),
+        )
+
+    async def _query_attribution_delegated(
+        self,
+        request: AttributionQueryRequest,
+        *,
+        config: Any,
+        cost_model: Any = None,
+        user_context: Mapping[str, Any],
+    ) -> AttributionResponse:
+        user_assertion = user_context.get(ACCESS_TOKEN_CONTEXT_KEY) or ""
+        credential = build_delegated_monitor_credential(
+            tenant_id=self._tenant_id,
+            client_id=self._application_client_id,
+            uami_client_id=self._uami_client_id,
+            user_assertion=user_assertion,
+            credential_factory=self._credential_factory,
+            obo_factory=self._obo_factory,
+        )
+        query_client = AzureQueryClient(
+            credential=credential,
+            clock=self._monotonic_clock,
+        )
+        service = ObserveService(
+            discovery_client=self._discovery_client,
+            query_client=query_client,
+            runtime=_DelegatedRuntimeContext(),
+            clock=self._clock,
+            cache=cast(ObserveCache[Any, Any], _BypassObserveCache()),
+        )
+        try:
+            return await service.query_attribution(
+                self._scope,
+                request,
+                config=config,
+                cost_model=cost_model,
+                principal_context=user_context,
+                access_boundary="delegated",
+            )
+        finally:
+            await query_client.aclose()
 
     async def _query_cost(
         self,
@@ -575,6 +795,7 @@ def create_observe_facade(
     credential_factory: CredentialFactory | None = None,
     obo_factory: ObeFactory | None = None,
     cost_model_result: CostModelLoadResult | None = None,
+    attribution_config_result: AttributionConfigurationLoadResult | None = None,
 ) -> ObserveFacade:
     """Build the single ``ObserveFacade`` ``create_app(observe_service=...)`` needs.
 
@@ -619,4 +840,5 @@ def create_observe_facade(
         credential_factory=credential_factory,
         obo_factory=obo_factory,
         cost_model_result=cost_model_result,
+        attribution_config_result=attribution_config_result,
     )
