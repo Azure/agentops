@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import unquote
 
+import pytest
+
 from agentops.agent.cockpit import (
     build_cockpit_payload,
     render_cockpit_html,
@@ -15,6 +17,7 @@ from agentops.agent.cockpit import (
 from agentops.agent.findings import Category, Finding, Severity
 from agentops.agent.history import append_analysis, build_record
 from agentops.agent.time_range import TimeRange
+from fixtures.observe import make_attribution_config_payload
 
 
 # Tests run against a wide time range so the cockpit filter does not
@@ -1278,3 +1281,585 @@ def test_foundry_project_card_compacts_endpoint_and_exposes_copy(tmp_path, monke
         in html
     )
     assert "copy-btn" in html
+
+
+class _CostIsolationObserveService:
+    async def query(
+        self,
+        *,
+        view,
+        filters,
+        refresh=False,
+        user_context=None,
+    ):
+        return {
+            "view": view,
+            "filters": filters,
+            "refresh": refresh,
+            "marker": "unchanged",
+        }
+
+
+class _AttributionObserveService(_CostIsolationObserveService):
+    def __init__(
+        self,
+        *,
+        attribution_result: dict | None = None,
+        attribution_error: ValueError | None = None,
+    ) -> None:
+        self.attribution_calls: list[dict] = []
+        self.attribution_result = attribution_result
+        self.attribution_error = attribution_error
+
+    async def attribution(self, *, request, user_context=None):
+        self.attribution_calls.append(
+            {"request": request, "user_context": user_context}
+        )
+        if self.attribution_error is not None:
+            raise self.attribution_error
+        if self.attribution_result is not None:
+            return self.attribution_result
+        return {
+            "marker": "safe-aggregate",
+            "rows": [],
+            "raw_identity": None,
+        }
+
+
+_OBSERVE_FILTERS = {
+    "start": "2026-08-01T00:00:00Z",
+    "end": "2026-09-01T00:00:00Z",
+}
+
+
+@pytest.mark.parametrize(
+    ("raw_model", "expected_reason"),
+    [
+        (None, "not configured"),
+        ('{"version":', "invalid"),
+    ],
+)
+def test_cost_configuration_failure_isolated_from_all_other_observe_views(
+    monkeypatch,
+    tmp_path: Path,
+    raw_model: str | None,
+    expected_reason: str,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    if raw_model is None:
+        monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("AGENTOPS_COST_MODEL", raw_model)
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=_CostIsolationObserveService(),
+        )
+    )
+
+    for view in ("overview", "agents", "models", "tools", "runs", "coverage"):
+        response = client.post(
+            "/api/observe/query",
+            json={"view": view, "filters": _OBSERVE_FILTERS},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "view": view,
+            "filters": {
+                **_OBSERVE_FILTERS,
+                "foundry_resource_id": None,
+                "project_resource_id": None,
+                "agent_id": None,
+                "model": None,
+                "tool_name": None,
+                "run_key": None,
+                "cost_period_id": None,
+                "cost_breakdown": None,
+                "cost_component_id": None,
+                "cost_agent_key": None,
+                "user_filter_token": None,
+                "department_filter_token": None,
+            },
+            "refresh": False,
+            "marker": "unchanged",
+        }
+
+    cost = client.post(
+        "/api/observe/query",
+        json={
+            "view": "cost",
+            "filters": {**_OBSERVE_FILTERS, "cost_period_id": "2026-08"},
+        },
+    )
+    assert cost.status_code == 422
+    assert expected_reason in cost.json()["detail"]
+
+
+def test_hosted_authentication_precedes_cost_configuration_gating(
+    monkeypatch,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    def _reject(_headers):
+        raise PermissionError("Authentication required.")
+
+    monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
+    client = TestClient(
+        create_app(
+            None,
+            mode="hosted",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=_CostIsolationObserveService(),
+            auth_context_resolver=_reject,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/query",
+        json={
+            "view": "cost",
+            "filters": {**_OBSERVE_FILTERS, "cost_period_id": "2026-08"},
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Authentication required."
+    assert "AGENTOPS_COST_MODEL" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("raw_config", "expected_status", "expected_code"),
+    [
+        (None, 409, "attribution_not_enabled"),
+        (
+            json.dumps(
+                {
+                    "version": 1,
+                    "enabled": False,
+                    "deployment_namespace": None,
+                    "generation": None,
+                    "departments": [],
+                }
+            ),
+            409,
+            "attribution_not_enabled",
+        ),
+        (
+            '{"enabled": true, "secret": "do-not-echo"}',
+            503,
+            "attribution_config_secret_field",
+        ),
+    ],
+)
+def test_attribution_route_fails_closed_without_affecting_existing_views(
+    monkeypatch,
+    tmp_path: Path,
+    raw_config: str | None,
+    expected_status: int,
+    expected_code: str,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    if raw_config is None:
+        monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
+    else:
+        monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw_config)
+    service = _AttributionObserveService()
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": _OBSERVE_FILTERS,
+        },
+    )
+
+    assert response.status_code == expected_status
+    assert set(response.json()) == {"code", "message", "next_action"}
+    assert response.json()["code"] == expected_code
+    assert "do-not-echo" not in response.text
+    assert service.attribution_calls == []
+    assert client.post(
+        "/api/observe/query",
+        json={"view": "overview", "filters": _OBSERVE_FILTERS},
+    ).status_code == 200
+
+
+def test_attribution_route_validates_and_dispatches_safe_aggregate_request(
+    monkeypatch,
+    tmp_path: Path,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    service = _AttributionObserveService()
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+    payload = {
+        "metric": "usage",
+        "group_by": "department",
+        "filters": _OBSERVE_FILTERS,
+    }
+
+    response = client.post("/api/observe/attribution", json=payload)
+
+    assert response.status_code == 200
+    assert response.json()["marker"] == "safe-aggregate"
+    assert response.json()["raw_identity"] is None
+    assert len(service.attribution_calls) == 1
+    assert service.attribution_calls[0]["request"]["metric"] == "usage"
+    assert service.attribution_calls[0]["request"]["group_by"] == "department"
+
+    strict = client.post(
+        "/api/observe/attribution",
+        json={**payload, "unexpected": True},
+    )
+    assert strict.status_code == 422
+    assert len(service.attribution_calls) == 1
+
+    missing_cost_selector = client.post(
+        "/api/observe/attribution",
+        json={**payload, "metric": "cost"},
+    )
+    assert missing_cost_selector.status_code == 422
+    assert len(service.attribution_calls) == 1
+
+
+@pytest.mark.parametrize(
+    "selector_field",
+    ["user_filter_token", "department_filter_token"],
+)
+def test_attribution_validation_redacts_protected_selectors(
+    monkeypatch,
+    tmp_path: Path,
+    selector_field: str,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    service = _AttributionObserveService()
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+    raw_token = "raw secret selector value"
+
+    response = client.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": {
+                **_OBSERVE_FILTERS,
+                selector_field: raw_token,
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert response.json() == {
+        "code": "attribution_request_invalid",
+        "message": "The attribution request is invalid.",
+        "next_action": "Correct the attribution request and retry.",
+    }
+    assert raw_token not in response.text
+    assert "input" not in response.json()
+    assert service.attribution_calls == []
+
+
+@pytest.mark.parametrize(
+    ("raw_config", "expected_status"),
+    [
+        (None, 409),
+        ('{"enabled": true, "token": "raw-config-token"}', 503),
+    ],
+)
+def test_attribution_state_errors_preserve_private_selector_cache_policy(
+    monkeypatch,
+    tmp_path: Path,
+    raw_config: str | None,
+    expected_status: int,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    if raw_config is None:
+        monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
+    else:
+        monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw_config)
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=_AttributionObserveService(),
+        )
+    )
+    raw_token = "opaque-protected-selector"
+
+    response = client.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "department",
+            "filters": {
+                **_OBSERVE_FILTERS,
+                "department_filter_token": raw_token,
+            },
+        },
+    )
+
+    assert response.status_code == expected_status
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert set(response.json()) == {"code", "message", "next_action"}
+    assert raw_token not in response.text
+    assert "raw-config-token" not in response.text
+
+
+def test_delegated_attribution_responses_are_private_and_never_cached(
+    monkeypatch,
+    tmp_path: Path,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    service = _AttributionObserveService(
+        attribution_result={
+            "data": {
+                "access_boundary": "delegated",
+                "rows": [{"kind": "user", "raw_identity": "alice@example.test"}],
+            }
+        }
+    )
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "user",
+            "filters": {
+                **_OBSERVE_FILTERS,
+                "department_filter_token": "at1~department",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["Cache-Control"] == "private, no-store"
+
+
+def test_delegated_attribution_failures_are_private_and_redacted(
+    monkeypatch,
+    tmp_path: Path,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+    from agentops.core.attribution import AttributionTokenValidationError
+
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    service = _AttributionObserveService(
+        attribution_error=AttributionTokenValidationError(
+            "invalid_token",
+            "The attribution selector is invalid or no longer current.",
+        )
+    )
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "user",
+            "filters": {
+                **_OBSERVE_FILTERS,
+                "department_filter_token": "copied-secret-token",
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert response.json() == {
+        "code": "invalid_token",
+        "message": "The attribution selector is invalid or no longer current.",
+        "next_action": "Select the attribution filter again.",
+    }
+    assert "copied-secret-token" not in response.text
+
+
+def test_missing_delegated_assertion_is_private_and_never_retried(
+    monkeypatch,
+    tmp_path: Path,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+    from agentops.agent.observe.auth import MissingUserAssertionError
+
+    monkeypatch.setenv(
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+        json.dumps(make_attribution_config_payload()),
+    )
+    service = _AttributionObserveService(
+        attribution_error=MissingUserAssertionError(
+            "Delegated Azure Monitor access is unavailable for this request."
+        )
+    )
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/attribution",
+        json={
+            "metric": "usage",
+            "group_by": "user",
+            "filters": {
+                **_OBSERVE_FILTERS,
+                "department_filter_token": "at1~department",
+            },
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.headers["Cache-Control"] == "private, no-store"
+    assert response.json() == {
+        "code": "attribution_delegated_access_unavailable",
+        "message": "Delegated Azure Monitor access is unavailable for this request.",
+        "next_action": (
+            "Sign in again and verify direct read access to the selected telemetry scope."
+        ),
+    }
+    assert len(service.attribution_calls) == 1

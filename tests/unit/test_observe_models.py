@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import get_args
 from uuid import uuid4
 
 import pytest
@@ -10,6 +11,8 @@ from pydantic import ValidationError
 
 from agentops.core.observe import (
     AgentDetailRequest,
+    AttributionQueryRequest,
+    AttributionResponse,
     CoverageResult,
     DeploymentJournal,
     GenerativeAIContent,
@@ -17,12 +20,29 @@ from agentops.core.observe import (
     ObserveFilterState,
     ObserveQueryRequest,
     ObserveScope,
+    ObserveView,
     ObservedAgent,
     ObservedRun,
     ObservedTool,
     ResultBounds,
     RoleAssignmentPlan,
     TraceContentRequest,
+    UserAttributionCoverage,
+)
+from agentops.core.attribution import (
+    AttributionUsage,
+    AttributionViewData,
+    OtherUsersAttributionRow,
+    UsageAttributionSummary,
+    UserAttributionRow,
+    derive_pseudonymous_user_key,
+)
+from fixtures.observe import (
+    OBSERVE_FIXTURE_ROW_LIMIT,
+    make_agent_usage_row,
+    make_model_usage_row,
+    make_run_usage_row,
+    make_tool_usage_row,
 )
 
 
@@ -31,6 +51,26 @@ PROJECT = (
     "resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/foundry/"
     "projects/project-a"
 )
+
+
+def test_observe_usage_fixtures_are_bounded_and_cost_ready() -> None:
+    agent = make_agent_usage_row()
+    model = make_model_usage_row()
+    tool = make_tool_usage_row()
+    run = make_run_usage_row()
+
+    assert agent["agent_key"] == model["agent_id"] == tool["agent_key"]
+    assert model["cache_read_tokens"] > 0
+    assert model["cache_write_tokens"] > 0
+    assert model["reasoning_tokens"] > 0
+    assert tool["operation_name"] == "execute_tool"
+    assert run["duration_ms"] > 0
+    assert run["operation_name"] == "credit.consume"
+    assert run["credits"] == "1.5"
+    assert run["credit_events"] == 1
+
+    with pytest.raises(ValueError, match="fixture index"):
+        make_run_usage_row(OBSERVE_FIXTURE_ROW_LIMIT)
 
 
 def test_project_scope_canonicalizes_and_contains_project() -> None:
@@ -83,6 +123,10 @@ def test_filter_range_must_be_ordered_and_inside_scope() -> None:
 
     filters = ObserveFilterState(
         project_resource_id=PROJECT,
+        cost_period_id="2026-08",
+        cost_breakdown="agents",
+        cost_component_id="model.ptu",
+        cost_agent_key="agent-a",
         start=now - timedelta(hours=1),
         end=now,
     )
@@ -120,6 +164,90 @@ def test_narrowing_filters_are_trimmed_and_length_bounded() -> None:
             )
 
 
+def test_cost_filters_are_optional_trimmed_and_identifier_only() -> None:
+    now = datetime.now(timezone.utc)
+    filters = ObserveFilterState(
+        cost_period_id="  2026-08  ",
+        cost_breakdown="runs",
+        cost_component_id="  model.ptu_1  ",
+        cost_agent_key="  agent-a  ",
+        start=now - timedelta(hours=1),
+        end=now,
+    )
+
+    assert filters.cost_period_id == "2026-08"
+    assert filters.cost_breakdown == "runs"
+    assert filters.cost_component_id == "model.ptu_1"
+    assert filters.cost_agent_key == "agent-a"
+
+    defaults = ObserveFilterState(
+        start=now - timedelta(hours=1),
+        end=now,
+    )
+    assert defaults.cost_period_id is None
+    assert defaults.cost_breakdown is None
+    assert defaults.cost_component_id is None
+    assert defaults.cost_agent_key is None
+
+
+@pytest.mark.parametrize("field", ["cost_period_id", "cost_component_id"])
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", "-leading", "contains space", "contains/slash", "x" * 65],
+)
+def test_cost_identifier_filters_reject_malformed_values(field: str, value: str) -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        ObserveFilterState(
+            **{field: value},
+            start=now - timedelta(hours=1),
+            end=now,
+        )
+
+
+@pytest.mark.parametrize("value", ["", "   ", "x" * 513])
+def test_cost_agent_key_is_length_bounded(value: str) -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        ObserveFilterState(
+            cost_agent_key=value,
+            start=now - timedelta(hours=1),
+            end=now,
+        )
+
+
+def test_cost_breakdown_rejects_unknown_values() -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        ObserveFilterState(
+            cost_breakdown="models",
+            start=now - timedelta(hours=1),
+            end=now,
+        )
+
+
+def test_attribution_filter_tokens_are_nullable_trimmed_and_url_safe() -> None:
+    now = datetime.now(timezone.utc)
+    defaults = ObserveFilterState(start=now - timedelta(hours=1), end=now)
+    assert defaults.user_filter_token is None
+    assert defaults.department_filter_token is None
+
+    filters = ObserveFilterState(
+        user_filter_token="  at1~u~value  ",
+        department_filter_token="at1~d~value",
+        start=now - timedelta(hours=1),
+        end=now,
+    )
+    assert filters.user_filter_token == "at1~u~value"
+    for value in ("", "contains space", "contains/slash", "x" * 1025):
+        with pytest.raises(ValidationError):
+            ObserveFilterState(
+                user_filter_token=value,
+                start=now - timedelta(hours=1),
+                end=now,
+            )
+
+
 def test_result_bounds_enforce_total_and_truncation_invariants() -> None:
     assert ResultBounds(rows_shown=0).rows_total_in_scope is None
     assert ResultBounds(rows_shown=500, rows_total_in_scope=501, truncated=True)
@@ -130,6 +258,8 @@ def test_result_bounds_enforce_total_and_truncation_invariants() -> None:
         ResultBounds(rows_shown=499, truncated=True)
     with pytest.raises(ValidationError):
         ResultBounds(rows_shown=1, unexpected=True)
+    with pytest.raises(ValidationError):
+        ResultBounds(rows_shown=501)
 
 
 def test_observe_api_requests_are_strict_and_canonical() -> None:
@@ -147,6 +277,8 @@ def test_observe_api_requests_are_strict_and_canonical() -> None:
     )
 
     assert query.refresh is False
+    assert "cost" in get_args(ObserveView)
+    assert ObserveQueryRequest(view="cost", filters=filters).view == "cost"
     assert ObserveQueryRequest(view="tools", filters=filters).view == "tools"
     assert ObserveQueryRequest(view="runs", filters=filters).view == "runs"
     assert detail.refresh is True
@@ -222,6 +354,376 @@ def test_new_coverage_dimensions_are_accepted(dimension: str) -> None:
     assert result.dimension == dimension
 
 
+def test_user_attribution_coverage_requires_strict_nullable_details() -> None:
+    now = datetime.now(timezone.utc)
+    result = CoverageResult(
+        source_id="source",
+        dimension="user_attribution",
+        state="ambiguous",
+        reason="Supported identity aliases conflict.",
+        next_action="Correct identity instrumentation.",
+        refreshed_at=now,
+        metric="usage",
+        attribution_level="department",
+        eligible_records=10,
+        identified_records=8,
+        mapped_records=5,
+        unattributed_records=5,
+        ambiguous_records=2,
+        returned_records=3,
+    )
+    assert result.state == "ambiguous"
+    assert result.ambiguous_records == 2
+
+    inaccessible = UserAttributionCoverage(
+        source_id="source",
+        dimension="user_attribution",
+        state="inaccessible",
+        reason="The source cannot be read.",
+        next_action="Verify delegated access.",
+        refreshed_at=now,
+        metric="cost",
+        attribution_level="user",
+        component_id="model.ptu",
+        eligible_records=None,
+        identified_records=None,
+        mapped_records=None,
+        unattributed_records=None,
+        ambiguous_records=None,
+        returned_records=None,
+    )
+    assert inaccessible.eligible_records is None
+    with pytest.raises(ValidationError):
+        CoverageResult(
+            source_id="source",
+            dimension="user_attribution",
+            state="partial",
+            reason="Partial.",
+            next_action="Fix instrumentation.",
+            refreshed_at=now,
+        )
+    with pytest.raises(ValidationError):
+        CoverageResult.model_validate(result.model_dump() | {"unexpected": True})
+
+
+def test_attribution_request_and_response_envelopes_are_strict_and_bounded() -> None:
+    now = datetime.now(timezone.utc)
+    filters = ObserveFilterState(
+        start=now - timedelta(hours=1),
+        end=now,
+    )
+    assert AttributionQueryRequest(
+        metric="usage", group_by="user", filters=filters
+    ).refresh is False
+    with pytest.raises(ValidationError, match="cost_period_id"):
+        AttributionQueryRequest(metric="cost", group_by="department", filters=filters)
+
+    usage = AttributionUsage(
+        invocations=2,
+        input_tokens=None,
+        output_tokens=0,
+        tool_invocations=None,
+        active_session_seconds=None,
+    )
+    zero_usage = AttributionUsage(
+        invocations=0,
+        input_tokens=None,
+        output_tokens=0,
+        tool_invocations=None,
+        active_session_seconds=None,
+    )
+    key = derive_pseudonymous_user_key(
+        deployment_namespace=uuid4(),
+        generation=1,
+        tenant_id=uuid4(),
+        raw_identity="alice@example.com",
+    )
+    rows = [
+        UserAttributionRow(
+            kind="user",
+            user_key=key,
+            filter_token="opaque",
+            raw_identity="alice@example.com",
+            usage=usage,
+            cost=None,
+            mapping_state="unmapped",
+        )
+    ]
+    data = AttributionViewData(
+        metric="usage",
+        group_by="user",
+        access_boundary="delegated",
+        rows=rows,
+        summary=UsageAttributionSummary(
+            metric="usage",
+            total=usage,
+            attributed=usage,
+            unattributed=zero_usage,
+            distinct_users=1,
+            omitted_users=0,
+        ),
+        primary_measure="invocations",
+        calculated_at=now,
+    )
+    diagnostics = {
+        "started_at": now,
+        "completed_at": now,
+        "duration_ms": 0,
+        "source_count": 1,
+        "successful_sources": 1,
+        "partial_sources": 0,
+        "failed_sources": 0,
+        "cache_status": "bypass",
+    }
+    response = AttributionResponse(
+        data=data,
+        coverage=[],
+        partial_failures=[],
+        diagnostics=diagnostics,
+        refreshed_at=now,
+        cache_status="bypass",
+        bounds=ResultBounds(rows_shown=1, rows_total_in_scope=1),
+    )
+    assert response.data.rows[0].kind == "user"
+    with pytest.raises(ValidationError):
+        AttributionResponse(
+            data=data,
+            coverage=[],
+            partial_failures=[],
+            diagnostics=diagnostics,
+            refreshed_at=now,
+            cache_status="bypass",
+            bounds=ResultBounds(rows_shown=1),
+            unexpected=True,
+        )
+
+    other = OtherUsersAttributionRow(
+        kind="other_users",
+        member_count=2,
+        usage=usage,
+        cost=None,
+        mapping_state="not_applicable",
+    )
+    with pytest.raises(ValidationError):
+        AttributionViewData(
+            **(data.model_dump() | {"rows": rows * 500 + [other]})
+        )
+    with pytest.raises(ValidationError, match="reconcile"):
+        UsageAttributionSummary(
+            metric="usage",
+            total=usage,
+            attributed=usage,
+            unattributed=usage,
+            distinct_users=1,
+            omitted_users=0,
+        )
+
+
+def test_user_view_contract_enforces_primary_ranking_and_key_ties() -> None:
+    now = datetime.now(timezone.utc)
+    namespace = uuid4()
+    tenant = uuid4()
+    keys = sorted(
+        derive_pseudonymous_user_key(
+            deployment_namespace=namespace,
+            generation=1,
+            tenant_id=tenant,
+            raw_identity=identity,
+        )
+        for identity in ("alice@example.com", "bob@example.com")
+    )
+    usage = AttributionUsage(
+        invocations=2,
+        input_tokens=None,
+        output_tokens=None,
+        tool_invocations=None,
+        active_session_seconds=None,
+    )
+    rows = [
+        UserAttributionRow(
+            kind="user",
+            user_key=key,
+            filter_token=f"opaque-{index}",
+            raw_identity=f"user-{index}@example.com",
+            usage=usage,
+            cost=None,
+            mapping_state="unmapped",
+        )
+        for index, key in enumerate(keys)
+    ]
+    zero = AttributionUsage(
+        invocations=0,
+        input_tokens=None,
+        output_tokens=None,
+        tool_invocations=None,
+        active_session_seconds=None,
+    )
+    summary = UsageAttributionSummary(
+        metric="usage",
+        total=AttributionUsage(
+            invocations=4,
+            input_tokens=None,
+            output_tokens=None,
+            tool_invocations=None,
+            active_session_seconds=None,
+        ),
+        attributed=AttributionUsage(
+            invocations=4,
+            input_tokens=None,
+            output_tokens=None,
+            tool_invocations=None,
+            active_session_seconds=None,
+        ),
+        unattributed=zero,
+        distinct_users=2,
+        omitted_users=0,
+    )
+    AttributionViewData(
+        metric="usage",
+        group_by="user",
+        access_boundary="delegated",
+        rows=rows,
+        summary=summary,
+        primary_measure="invocations",
+        calculated_at=now,
+    )
+    with pytest.raises(ValidationError, match="ranked"):
+        AttributionViewData(
+            metric="usage",
+            group_by="user",
+            access_boundary="delegated",
+            rows=list(reversed(rows)),
+            summary=summary,
+            primary_measure="invocations",
+            calculated_at=now,
+        )
+
+
+def test_selected_user_response_is_private_safe_and_has_no_positive_minimum() -> None:
+    now = datetime.now(timezone.utc)
+    key = derive_pseudonymous_user_key(
+        deployment_namespace=uuid4(),
+        generation=1,
+        tenant_id=uuid4(),
+        raw_identity="selected@example.com",
+    )
+    zero = AttributionUsage(
+        invocations=0,
+        input_tokens=0,
+        output_tokens=None,
+        tool_invocations=None,
+        active_session_seconds=None,
+    )
+    row = UserAttributionRow(
+        kind="user",
+        user_key=key,
+        filter_token="opaque-selector",
+        raw_identity="selected@example.com",
+        usage=zero,
+        cost=None,
+        mapping_state="unmapped",
+    )
+    summary = UsageAttributionSummary(
+        metric="usage",
+        total=zero,
+        attributed=zero,
+        unattributed=zero,
+        distinct_users=1,
+        omitted_users=0,
+    )
+    data = AttributionViewData(
+        metric="usage",
+        group_by="user",
+        access_boundary="delegated",
+        rows=[row],
+        summary=summary,
+        primary_measure="invocations",
+        calculated_at=now,
+    )
+
+    assert "selected@example.com" not in repr(data)
+    assert key not in repr(data)
+    assert "opaque-selector" not in repr(data)
+    assert data.model_dump(mode="json")["rows"][0]["raw_identity"] == "selected@example.com"
+    with pytest.raises(ValidationError, match="delegated"):
+        AttributionViewData(
+            **(data.model_dump() | {"access_boundary": "aggregate"})
+        )
+
+    empty_summary = UsageAttributionSummary(
+        metric="usage",
+        total=zero,
+        attributed=zero,
+        unattributed=zero,
+        distinct_users=0,
+        omitted_users=0,
+    )
+    assert AttributionViewData(
+        metric="usage",
+        group_by="user",
+        access_boundary="delegated",
+        rows=[],
+        summary=empty_summary,
+        primary_measure="invocations",
+        calculated_at=now,
+    ).rows == []
+
+
+@pytest.mark.parametrize(
+    "allocation_key",
+    [
+        "weighted_tokens",
+        "total_tokens",
+        "tool_invocations",
+        "active_session_seconds",
+        "credits",
+        "credit_events",
+    ],
+)
+def test_cost_coverage_preserves_allocation_context(allocation_key: str) -> None:
+    result = CoverageResult(
+        source_id="source",
+        dimension="cost_attribution",
+        state="partial",
+        reason="The allocation denominator is incomplete.",
+        next_action="Enable the configured allocation telemetry.",
+        refreshed_at=datetime.now(timezone.utc),
+        component_id="model.ptu",
+        cost_breakdown="agents",
+        allocation_key=allocation_key,
+    )
+
+    assert result.dimension == "cost_attribution"
+    assert result.component_id == "model.ptu"
+    assert result.cost_breakdown == "agents"
+    assert result.allocation_key == allocation_key
+
+
+def test_non_cost_coverage_keeps_cost_context_optional() -> None:
+    result = CoverageResult(
+        source_id="source",
+        dimension="token_usage",
+        state="available",
+        reason="Token usage is reported.",
+        next_action="No action required.",
+        refreshed_at=datetime.now(timezone.utc),
+    )
+    assert result.component_id is None
+    assert result.cost_breakdown is None
+    assert result.allocation_key is None
+
+    with pytest.raises(ValidationError):
+        CoverageResult(
+            source_id="source",
+            dimension="cost_attribution",
+            state="partial",
+            reason="The allocation denominator is incomplete.",
+            next_action="Enable the configured allocation telemetry.",
+            refreshed_at=datetime.now(timezone.utc),
+            allocation_key="requests",
+        )
+
+
 def test_observed_tool_requires_source_and_omits_token_fields() -> None:
     now = datetime.now(timezone.utc)
     fields = {
@@ -265,7 +767,32 @@ def test_observed_run_validates_counters_times_and_success() -> None:
     run = ObservedRun(**fields)
     assert run.input_tokens is None
     assert run.output_tokens is None
-    assert ObservedRun(**(fields | {"input_tokens": 0, "output_tokens": 0})).input_tokens == 0
+    assert run.cache_read_tokens is None
+    assert run.cache_write_tokens is None
+    assert run.reasoning_tokens is None
+    assert run.credits is None
+    assert run.credit_events is None
+
+    zero_usage = ObservedRun(
+        **(
+            fields
+            | {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "reasoning_tokens": 0,
+                "credits": "0",
+                "credit_events": 0,
+            }
+        )
+    )
+    assert zero_usage.input_tokens == 0
+    assert zero_usage.cache_read_tokens == 0
+    assert zero_usage.cache_write_tokens == 0
+    assert zero_usage.reasoning_tokens == 0
+    assert zero_usage.credits == "0"
+    assert zero_usage.credit_events == 0
 
     invalid_fields = (
         {"source_id": ""},
@@ -274,6 +801,11 @@ def test_observed_run_validates_counters_times_and_success() -> None:
         {"tool_failures": 2},
         {"last_activity_at": now - timedelta(minutes=2)},
         {"failed_turns": 1},
+        {"cache_read_tokens": -1},
+        {"cache_write_tokens": -1},
+        {"reasoning_tokens": -1},
+        {"credits": "-1"},
+        {"credit_events": -1},
     )
     for changes in invalid_fields:
         with pytest.raises(ValidationError):

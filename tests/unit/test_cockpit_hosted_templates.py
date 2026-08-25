@@ -77,7 +77,9 @@ PROHIBITED_ROLE_DEFINITION_IDS = (
 )
 
 EXPECTED_APP_SETTING_NAMES = {
+    "AGENTOPS_ATTRIBUTION_CONFIG",
     "AGENTOPS_COCKPIT_MODE",
+    "AGENTOPS_COST_MODEL",
     "AGENTOPS_OBSERVE_SCOPE",
     "AGENTOPS_TENANT_ID",
     "AGENTOPS_APPLICATION_CLIENT_ID",
@@ -137,22 +139,9 @@ def pyproject_text() -> str:
 
 
 def _appsettings_block(bicep_text: str) -> str:
-    start = bicep_text.index("appSettings: [")
-    # Find the matching closing bracket for this appSettings array by simple
-    # bracket-depth scanning (siteConfig is otherwise plain, so this is safe
-    # and avoids depending on a Bicep/ARM parser).
-    depth = 0
-    i = bicep_text.index("[", start)
-    block_start = i
-    for idx in range(i, len(bicep_text)):
-        char = bicep_text[idx]
-        if char == "[":
-            depth += 1
-        elif char == "]":
-            depth -= 1
-            if depth == 0:
-                return bicep_text[block_start : idx + 1]
-    raise AssertionError("appSettings array is not properly closed in main.bicep")
+    start = bicep_text.index("appSettings:")
+    end = bicep_text.index("\n      ])", start)
+    return bicep_text[start:end]
 
 
 class TestTemplateFilesExist:
@@ -244,6 +233,25 @@ class TestBicepAppSettingsAreSecretless:
                 assert fragment not in upper, (
                     f"app setting name '{name}' looks like a secret/credential holder"
                 )
+
+    def test_cost_model_setting_is_conditionally_omitted_when_empty(
+        self, bicep_text: str
+    ) -> None:
+        block = _appsettings_block(bicep_text)
+        assert "empty(agentopsCostModel) ? []" in block
+
+    def test_attribution_setting_is_conditionally_omitted_when_empty(
+        self, bicep_text: str
+    ) -> None:
+        block = _appsettings_block(bicep_text)
+        assert "empty(agentopsAttributionConfig) ? []" in block
+        assert "name: 'AGENTOPS_ATTRIBUTION_CONFIG'" in block
+
+    def test_attribution_parameter_is_secure(self, bicep_text: str) -> None:
+        assert re.search(
+            r"@secure\(\)\s*param\s+agentopsAttributionConfig\s+string",
+            bicep_text,
+        )
 
     def test_no_secret_or_connection_string_style_values_anywhere(
         self, bicep_text: str
@@ -372,6 +380,22 @@ class TestParametersJson:
         assert (
             parameters_json["parameters"]["grantReaderOnResourceGroup"]["value"]
             is False
+        )
+
+    def test_cost_model_parameter_is_optional_and_non_secret(
+        self, parameters_json: dict
+    ) -> None:
+        assert (
+            parameters_json["parameters"]["agentopsCostModel"]["value"]
+            == "${AGENTOPS_COST_MODEL=}"
+        )
+
+    def test_attribution_parameter_is_optional_and_disabled_by_default(
+        self, parameters_json: dict
+    ) -> None:
+        assert (
+            parameters_json["parameters"]["agentopsAttributionConfig"]["value"]
+            == "${AGENTOPS_ATTRIBUTION_CONFIG=}"
         )
 
 

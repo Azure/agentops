@@ -72,6 +72,13 @@ param allowedGroupObjectId string = ''
 @description('Versioned identifier describing what this Cockpit deployment observes (FR-064 scope descriptor), recorded as a non-secret app setting.')
 param agentopsObserveScope string = ''
 
+@description('Optional operator-declared billed-cost allocation model, recorded as a non-secret app setting. This value contains no credentials and grants no billing access.')
+param agentopsCostModel string = ''
+
+@description('Optional privacy-sensitive department attribution configuration. Empty keeps attribution disabled.')
+@secure()
+param agentopsAttributionConfig string = ''
+
 @description('agentops-accelerator package version installed on the Web App, recorded as a non-secret app setting for diagnostics.')
 param agentopsVersion string = ''
 
@@ -133,7 +140,7 @@ resource webApp 'Microsoft.Web/sites@2023-01-01' = {
       appCommandLine: 'gunicorn --bind=0.0.0.0 --timeout 600 -k uvicorn.workers.UvicornWorker main:app'
       // FR-060: only non-secret settings — no secrets, certificates, tokens,
       // connection strings, or credentials are ever placed here.
-      appSettings: [
+      appSettings: concat([
         {
           name: 'AGENTOPS_COCKPIT_MODE'
           value: 'hosted'
@@ -170,7 +177,17 @@ resource webApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'WEBSITES_PORT'
           value: '8000'
         }
-      ]
+      ], empty(agentopsCostModel) ? [] : [
+        {
+          name: 'AGENTOPS_COST_MODEL'
+          value: agentopsCostModel
+        }
+      ], empty(agentopsAttributionConfig) ? [] : [
+        {
+          name: 'AGENTOPS_ATTRIBUTION_CONFIG'
+          value: agentopsAttributionConfig
+        }
+      ])
     }
   }
 }

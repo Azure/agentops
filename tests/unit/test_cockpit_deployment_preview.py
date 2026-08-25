@@ -19,6 +19,7 @@ Covers (issue #433, Phase 3, tasks T018-T020):
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,6 +27,7 @@ from types import SimpleNamespace
 import pytest
 
 from agentops.core.observe import DeploymentSelection, ObserveScope, RoleAssignmentPlan
+from fixtures.cost import valid_cost_model_payload
 from agentops.services.cockpit_deployment import (
     ALLOWED_SETTINGS_KEYS,
     AzCliAppRegistrationClient,
@@ -63,6 +65,12 @@ SP_OBJECT_ID = "55555555-5555-5555-5555-555555555555"
 GROUP_ID = "66666666-6666-6666-6666-666666666666"
 RESOURCE_GROUP = "rg-agentops"
 LOCATION = "eastus"
+
+
+@pytest.fixture(autouse=True)
+def _clear_cost_model_environment(monkeypatch):
+    monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
+    monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
 APP_NAME = "agentops-cockpit-test"
 
 PROJECT_ID = (
@@ -324,6 +332,81 @@ def test_build_application_settings_includes_allowed_group_when_set():
     # ``allowedGroupObjectId`` app setting (no ``AGENTOPS_ALLOWED_GROUP_ID``
     # alias).
     assert settings["AGENTOPS_ALLOWED_GROUP_OBJECT_ID"] == GROUP_ID
+
+
+def test_build_application_settings_includes_valid_optional_cost_model(monkeypatch):
+    raw = json.dumps(valid_cost_model_payload(), separators=(",", ":"))
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", raw)
+
+    settings = build_application_settings(_selection(), uami_client_id="uami-client-id")
+
+    assert settings["AGENTOPS_COST_MODEL"] == raw
+    assert "AGENTOPS_COST_MODEL" in ALLOWED_SETTINGS_KEYS
+
+
+def _attribution_config(*, enabled: bool = True, with_mapping: bool = False) -> str:
+    departments = (
+        [
+            {
+                "id": "engineering",
+                "label": "Engineering",
+                "user_keys": ["usr1.g1." + "a" * 64],
+                "group_ids": ["aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"],
+            }
+        ]
+        if with_mapping
+        else []
+    )
+    return json.dumps(
+        {
+            "version": 1,
+            "enabled": enabled,
+            "deployment_namespace": (
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" if enabled else None
+            ),
+            "generation": 1 if enabled else None,
+            "departments": departments,
+        },
+        separators=(",", ":"),
+    )
+
+
+def test_build_application_settings_validates_optional_attribution_config(monkeypatch):
+    raw = _attribution_config()
+    monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw)
+
+    settings = build_application_settings(_selection(), uami_client_id="uami-client-id")
+
+    assert settings["AGENTOPS_ATTRIBUTION_CONFIG"] == raw
+    assert "AGENTOPS_ATTRIBUTION_CONFIG" in ALLOWED_SETTINGS_KEYS
+
+
+def test_build_application_settings_rejects_invalid_attribution_without_echoing_value(
+    monkeypatch,
+):
+    raw = '{"version":1,"enabled":true,"raw_identity":"alice@example.com"}'
+    monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw)
+
+    with pytest.raises(CockpitDeploymentError) as excinfo:
+        build_application_settings(_selection(), uami_client_id="uami-client-id")
+
+    assert raw not in str(excinfo.value)
+    assert "alice@example.com" not in str(excinfo.value)
+    assert excinfo.value.stage == "build_preview"
+
+
+def test_build_application_settings_rejects_invalid_or_secret_shaped_cost_model(
+    monkeypatch,
+):
+    payload = valid_cost_model_payload()
+    payload["client_secret"] = "must-not-be-deployed"
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", json.dumps(payload))
+
+    with pytest.raises(CockpitDeploymentError, match="secret-shaped") as excinfo:
+        build_application_settings(_selection(), uami_client_id="uami-client-id")
+
+    assert "must-not-be-deployed" not in str(excinfo.value)
+    assert excinfo.value.stage == "build_preview"
 
 
 def test_build_application_settings_never_contains_secret_shaped_keys():
@@ -652,6 +735,86 @@ def test_build_preview_env_values_satisfy_every_main_parameters_json_placeholder
     assert preview is not None
 
 
+def test_build_preview_passes_optional_cost_model_to_azd_unchanged(monkeypatch):
+    raw = json.dumps(valid_cost_model_payload(), separators=(",", ":"))
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", raw)
+
+    preview, *_, azd_runner = _build()
+
+    assert preview.application_settings["AGENTOPS_COST_MODEL"] == raw
+    assert azd_runner.preview_calls[0][1]["AGENTOPS_COST_MODEL"] == raw
+
+
+def test_build_preview_redacts_attribution_metadata_but_propagates_raw_to_azd(monkeypatch):
+    raw = _attribution_config(with_mapping=True)
+    monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw)
+
+    preview, *_, azd_runner = _build(
+        azd_raw={
+            "environment": {"AGENTOPS_ATTRIBUTION_CONFIG": raw},
+            "message": f"setting AGENTOPS_ATTRIBUTION_CONFIG={raw}",
+        }
+    )
+
+    metadata = preview.application_settings["AGENTOPS_ATTRIBUTION_CONFIG"]
+    assert raw not in metadata
+    assert "redacted" in metadata.lower()
+    assert "enabled" in metadata.lower()
+    assert "generation=1" in metadata
+    assert "departments=1" in metadata
+    assert "user_keys=1" in metadata
+    assert "group_ids=1" in metadata
+    assert "Engineering" not in metadata
+    assert "usr1.g1." not in metadata
+    assert azd_runner.preview_calls[0][1]["AGENTOPS_ATTRIBUTION_CONFIG"] == raw
+    deploy_env = cockpit_deployment._azd_env_values(
+        preview.selection, preview.application_settings
+    )
+    assert deploy_env["AGENTOPS_ATTRIBUTION_CONFIG"] == raw
+    assert raw not in json.dumps(preview.model_dump(mode="json"))
+
+
+def test_build_preview_warns_about_delegated_data_boundary_when_attribution_enabled(
+    monkeypatch,
+):
+    monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", _attribution_config())
+
+    preview, *_ = _build()
+
+    assert any(
+        "delegated" in warning.lower() and "data" in warning.lower()
+        for warning in preview.warnings
+    )
+    assert not blocking_reasons(preview)
+
+
+def test_attribution_does_not_change_planned_resources_or_role_assignments(monkeypatch):
+    baseline, *_ = _build()
+    monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", _attribution_config())
+
+    enabled, *_ = _build()
+
+    assert enabled.resources == baseline.resources
+    assert enabled.role_assignments == baseline.role_assignments
+
+
+def test_attribution_setting_is_absent_when_not_configured():
+    preview, *_, azd_runner = _build()
+
+    assert "AGENTOPS_ATTRIBUTION_CONFIG" not in preview.application_settings
+    assert "AGENTOPS_ATTRIBUTION_CONFIG" not in azd_runner.preview_calls[0][1]
+
+
+def test_drift_detects_unexpected_live_attribution_setting():
+    assert cockpit_deployment._application_settings_drifted(
+        {
+            "AGENTOPS_COCKPIT_MODE": "hosted",
+            "AGENTOPS_ATTRIBUTION_CONFIG": _attribution_config(),
+        },
+        {"AGENTOPS_COCKPIT_MODE": "hosted"},
+    )
+
+
 def test_blocking_reasons_returns_empty_list_when_no_warnings_are_blocked():
     preview, *_ = _build()
     assert blocking_reasons(preview) == []
@@ -724,6 +887,26 @@ def test_validate_confirmation_blocked_preview_takes_precedence_over_missing_yes
 
     with pytest.raises(PreviewBlockedError):
         validate_confirmation(preview, yes=False, explicit_inputs_complete=False)
+
+
+def test_enabled_attribution_uses_standard_confirmation_and_decline_handling(monkeypatch):
+    monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", _attribution_config())
+    preview, *_ = _build()
+
+    with pytest.raises(ConfirmationRequiredError):
+        validate_confirmation(
+            preview,
+            yes=False,
+            explicit_inputs_complete=True,
+            interactive_confirmed=False,
+        )
+
+    validate_confirmation(
+        preview,
+        yes=False,
+        explicit_inputs_complete=True,
+        interactive_confirmed=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1198,6 +1381,31 @@ def test_azd_cli_command_runner_preview_normalizes_changes(monkeypatch, tmp_path
     assert any(call[:3] == ["azd", "env", "set"] for call in calls)
 
 
+def test_azd_cli_command_runner_clears_stale_attribution_when_omitted(
+    monkeypatch, tmp_path
+):
+    calls: list[list[str]] = []
+
+    def _run_cli(args, *, cwd=None, env=None, timeout=300.0):
+        calls.append(list(args))
+        if args[:2] == ["azd", "env"]:
+            return 0, "", ""
+        if args[:3] == ["azd", "provision", "--preview"]:
+            return 0, '{"changes":[]}', ""
+        raise AssertionError(f"unexpected run_cli invocation: {args}")
+
+    monkeypatch.setattr(cockpit_deployment, "run_cli", _run_cli)
+
+    AzdCliCommandRunner().preview(tmp_path, {"AZURE_ENV_NAME": "env1"})
+
+    assert [
+        "azd",
+        "env",
+        "unset",
+        "AGENTOPS_ATTRIBUTION_CONFIG",
+    ] in calls
+
+
 def test_azd_cli_command_runner_preview_raises_on_failure(monkeypatch, tmp_path):
     def _run_cli(args, *, cwd=None, env=None, timeout=300.0):
         if args[:2] == ["azd", "env"]:
@@ -1213,6 +1421,79 @@ def test_azd_cli_command_runner_preview_raises_on_failure(monkeypatch, tmp_path)
         runner.preview(tmp_path, {"AZURE_ENV_NAME": "env1"})
 
     assert excinfo.value.stage == "preview"
+
+
+def test_azd_cli_command_runner_never_echoes_attribution_config_on_failure(
+    monkeypatch, tmp_path
+):
+    raw = _attribution_config()
+
+    def _run_cli(args, *, cwd=None, env=None, timeout=300.0):
+        if args[:2] == ["azd", "env"]:
+            return 0, "", ""
+        if args[:3] == ["azd", "provision", "--preview"]:
+            return 1, "", f"invalid deployment input: {raw}"
+        raise AssertionError(f"unexpected run_cli invocation: {args}")
+
+    monkeypatch.setattr(cockpit_deployment, "run_cli", _run_cli)
+
+    with pytest.raises(CockpitDeploymentError) as excinfo:
+        AzdCliCommandRunner().preview(
+            tmp_path,
+            {
+                "AZURE_ENV_NAME": "env1",
+                "AGENTOPS_ATTRIBUTION_CONFIG": raw,
+            },
+        )
+
+    assert raw not in str(excinfo.value)
+    assert "***REDACTED***" in str(excinfo.value)
+
+
+def test_redact_deployment_output_removes_json_escaped_attribution_values():
+    raw = _attribution_config(with_mapping=True)
+    output = json.dumps(
+        {
+            "environment": {"AGENTOPS_ATTRIBUTION_CONFIG": raw},
+            "message": f"deployment input was {raw}",
+            "department": "Engineering",
+            "group": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+            "user": "usr1.g1." + "a" * 64,
+        }
+    )
+
+    redacted = cockpit_deployment._redact_deployment_output(
+        output, {"AGENTOPS_ATTRIBUTION_CONFIG": raw}
+    )
+
+    for sensitive in (
+        raw,
+        "Engineering",
+        "engineering",
+        "usr1.g1.",
+        "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    ):
+        assert sensitive not in redacted
+    assert "***REDACTED***" in redacted
+
+
+def test_redact_deployment_output_fallback_removes_escaped_attribution_values():
+    raw = _attribution_config(with_mapping=True)
+    escaped = json.dumps(raw)[1:-1]
+    output = f"azd failed: config={escaped} trailing non-json output"
+
+    redacted = cockpit_deployment._redact_deployment_output(
+        output, {"AGENTOPS_ATTRIBUTION_CONFIG": raw}
+    )
+
+    for sensitive in (
+        "Engineering",
+        "engineering",
+        "usr1.g1.",
+        "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    ):
+        assert sensitive not in redacted
+    assert "***REDACTED***" in redacted
 
 
 def test_azd_cli_command_runner_provision_and_deploy_report_success(monkeypatch, tmp_path):

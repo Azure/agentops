@@ -21,6 +21,7 @@ from agentops.agent.observe.principal import (
     TenantMismatchError,
     build_easy_auth_resolver,
     parse_easy_auth_principal,
+    validated_groups_for_identity,
 )
 
 _TENANT_ID = "11111111-1111-1111-1111-111111111111"
@@ -85,6 +86,7 @@ def test_parse_valid_principal_returns_safe_context() -> None:
         "user_id": _USER_OID,
         "user_name": "Ada Lovelace",
         "groups": [],
+        "group_claims_overage": False,
     }
 
 
@@ -189,6 +191,58 @@ def test_group_membership_required_and_satisfied() -> None:
     assert _GROUP_ID in principal.groups
 
 
+def test_validated_groups_apply_only_to_exact_signed_in_principal() -> None:
+    groups = (_GROUP_ID, "55555555-5555-5555-5555-555555555555")
+    headers = {
+        "x-ms-client-principal": _encode_principal(_base_claims(groups=list(groups)))
+    }
+    principal = parse_easy_auth_principal(headers, config=_config())
+
+    assert validated_groups_for_identity(principal, _USER_OID) == groups
+    assert validated_groups_for_identity(principal, "Ada Lovelace") == groups
+    assert validated_groups_for_identity(principal, f"{_USER_OID}0") == ()
+    assert validated_groups_for_identity(principal, "ada lovelace") == ()
+    assert validated_groups_for_identity(principal, f" {_USER_OID}") == ()
+
+
+def test_validated_groups_never_apply_to_another_telemetry_user() -> None:
+    principal = parse_easy_auth_principal(
+        {
+            "x-ms-client-principal": _encode_principal(
+                _base_claims(groups=[_GROUP_ID])
+            )
+        },
+        config=_config(),
+    )
+
+    assert validated_groups_for_identity(principal, "different-user") == ()
+    assert validated_groups_for_identity(principal, None) == ()
+    assert validated_groups_for_identity(principal, "") == ()
+
+
+def test_multiple_validated_group_claims_are_preserved_in_claim_order() -> None:
+    groups = [_GROUP_ID, "55555555-5555-5555-5555-555555555555", _GROUP_ID]
+    principal = parse_easy_auth_principal(
+        {"x-ms-client-principal": _encode_principal(_base_claims(groups=groups))},
+        config=_config(),
+    )
+
+    assert principal.groups == tuple(groups[:2])
+    assert validated_groups_for_identity(principal, _USER_OID) == tuple(groups[:2])
+
+
+def test_missing_group_claims_are_explicitly_not_overage() -> None:
+    principal = parse_easy_auth_principal(
+        {"x-ms-client-principal": _encode_principal(_base_claims())},
+        config=_config(),
+    )
+
+    assert principal.groups == ()
+    assert principal.group_claims_overage is False
+    assert validated_groups_for_identity(principal, _USER_OID) == ()
+    assert principal.safe_context()["group_claims_overage"] is False
+
+
 def test_group_membership_matches_case_insensitively() -> None:
     headers = {
         "x-ms-client-principal": _encode_principal(_base_claims(groups=[_GROUP_ID.upper()]))
@@ -209,6 +263,33 @@ def test_group_overage_raises_distinct_actionable_error() -> None:
     headers = {"x-ms-client-principal": _encode_principal(claims)}
     with pytest.raises(GroupClaimsOverageError, match="overage"):
         parse_easy_auth_principal(headers, config=_config(allowed_group=_GROUP_ID))
+
+
+def test_group_overage_context_is_preserved_without_directory_lookup() -> None:
+    claims = _base_claims()
+    claims.append({"typ": "hasgroups", "val": "true"})
+    principal = parse_easy_auth_principal(
+        {"x-ms-client-principal": _encode_principal(claims)},
+        config=_config(),
+    )
+
+    assert principal.groups == ()
+    assert principal.group_claims_overage is True
+    assert principal.safe_context()["group_claims_overage"] is True
+    assert validated_groups_for_identity(principal, _USER_OID) == ()
+
+
+def test_overage_prevents_using_even_partially_present_group_claims() -> None:
+    claims = _base_claims(groups=[_GROUP_ID])
+    claims.append({"typ": "hasgroups", "val": "true"})
+    principal = parse_easy_auth_principal(
+        {"x-ms-client-principal": _encode_principal(claims)},
+        config=_config(),
+    )
+
+    assert principal.groups == (_GROUP_ID,)
+    assert principal.group_claims_overage is True
+    assert validated_groups_for_identity(principal, _USER_OID) == ()
 
 
 @pytest.mark.parametrize(
@@ -241,9 +322,9 @@ def test_authentication_and_authorization_bases_are_distinct_and_both_permission
     assert EasyAuthorizationError.http_status == 403
 
 
-
+def test_resolver_preserves_claim_context_and_redacts_access_token_from_repr() -> None:
     headers = {
-        "x-ms-client-principal": _encode_principal(_base_claims()),
+        "x-ms-client-principal": _encode_principal(_base_claims(groups=[_GROUP_ID])),
         "x-ms-token-aad-access-token": "raw-jwt-value",
     }
     resolver = build_easy_auth_resolver(_config())
@@ -252,6 +333,14 @@ def test_authentication_and_authorization_bases_are_distinct_and_both_permission
     assert isinstance(context, dict)
     assert context[ACCESS_TOKEN_CONTEXT_KEY] == "raw-jwt-value"
     assert context["tenant_id"] == _TENANT_ID
+    assert context["groups"] == [_GROUP_ID]
+    assert context["group_claims_overage"] is False
+    for rendered in (repr(context), str(context)):
+        assert "raw-jwt-value" not in rendered
+        assert _USER_OID not in rendered
+        assert "Ada Lovelace" not in rendered
+        assert _GROUP_ID not in rendered
+        assert rendered.count("<redacted>") == 4
     # The diagnostic /api/auth/context route redacts any key containing
     # "token"/"assertion"; confirm the chosen key name would be caught by
     # that case-insensitive substring filter.

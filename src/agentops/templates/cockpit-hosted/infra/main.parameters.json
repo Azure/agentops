@@ -28,6 +28,12 @@
     "agentopsObserveScope": {
       "value": "${AGENTOPS_OBSERVE_SCOPE=}"
     },
+    "agentopsCostModel": {
+      "value": "${AGENTOPS_COST_MODEL=}"
+    },
+    "agentopsAttributionConfig": {
+      "value": "${AGENTOPS_ATTRIBUTION_CONFIG=}"
+    },
     "agentopsVersion": {
       "value": "${AGENTOPS_VERSION=}"
     },

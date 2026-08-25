@@ -1,0 +1,769 @@
+openapi: 3.1.0
+info:
+  title: AgentOps Observe API - user and department attribution additions
+  version: 1.3.0
+  description: |
+    Additive delta for spec 001 relative to the authoritative Observe API in
+    spec 011 and the tools/runs and billed-cost deltas in specs 012 and 013.
+
+    The new endpoint is a read-only projection over telemetry and declared cost
+    already available inside the configured Observe scope. It introduces no
+    resource, role, directory permission, secret, or write operation.
+
+    Only UserAuthenticatedId and documented OpenTelemetry enduser.id evidence
+    is eligible. Pseudonymization occurs inside KQL before aggregate rows leave
+    Azure Monitor. User rows and every result narrowed to one person require the
+    caller's delegated credential, bypass shared caches, and return
+    `Cache-Control: private, no-store`. Missing delegated access never falls
+    back to the deployment identity.
+servers:
+  - url: /
+
+paths:
+  /api/observe/attribution:
+    post:
+      operationId: queryObserveAttribution
+      summary: Query privacy-safe user or department usage or cost attribution.
+      description: |
+        ADDITIVE endpoint. Attribution must be explicitly enabled through valid
+        AGENTOPS_ATTRIBUTION_CONFIG.
+
+        `group_by: user`, a user filter, or a department result containing one
+        active user is an individual-level view. Department cardinality is
+        classified before caching; if any returned department is a singleton,
+        the aggregate result is discarded and the complete request is rerun
+        with the caller's delegated credential.
+
+        Cost requests allocate the complete configured component and period
+        before applying attribution filters or folding user rows. Filtering
+        never changes denominators, precision, or allocated amounts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttributionQueryRequest"
+      responses:
+        "200":
+          description: |
+            Full or partial normalized attribution result. Individual-level
+            results MUST carry `Cache-Control: private, no-store`; aggregate
+            department results retain existing Observe cache semantics.
+          headers:
+            Cache-Control:
+              description: |
+                Exactly `private, no-store` for delegated/individual results.
+                Safe department-only aggregates may use the existing response
+                cache policy.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttributionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: Attribution is absent or explicitly disabled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+        "422":
+          description: |
+            A request selector or opaque token is malformed, stale, ambiguous,
+            outside the current Observe scope/configuration, or bound to a
+            different principal. Validation fails before any attribution query
+            and never retries without the selector.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+        "503":
+          description: |
+            AGENTOPS_ATTRIBUTION_CONFIG is present but invalid. Existing
+            non-attribution Observe operations remain available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProblemDetail"
+
+components:
+  securitySchemes:
+    easyAuth:
+      type: openIdConnect
+      openIdConnectUrl: /.auth/.well-known/openid-configuration
+
+  responses:
+    Unauthorized:
+      description: Microsoft Entra authentication is required.
+    Forbidden:
+      description: Tenant, group, or delegated authorization denied access.
+
+  schemas:
+    AttributionQueryRequest:
+      type: object
+      additionalProperties: false
+      required: [metric, group_by, filters]
+      properties:
+        metric:
+          type: string
+          enum: [usage, cost]
+        group_by:
+          type: string
+          enum: [department, user]
+        filters:
+          $ref: "#/components/schemas/ObserveFiltersWithAttribution"
+        refresh:
+          description: |
+            Existing refresh behavior for safe aggregate department requests.
+            Protected requests always bypass the shared Observe cache.
+          type: boolean
+          default: false
+      allOf:
+        - if:
+            properties:
+              metric:
+                const: cost
+            required: [metric]
+          then:
+            properties:
+              filters:
+                required: [cost_period_id, cost_component_id]
+                properties:
+                  cost_period_id:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                    pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+                  cost_component_id:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                    pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+
+    ObserveFiltersWithAttribution:
+      description: |
+        Complete merged shape of ObserveFilterState after this additive change.
+        `user_filter_token` and `department_filter_token` are the only fields
+        introduced by this feature. They are opaque, URL-safe, stateless values;
+        clients MUST NOT parse or replace them with raw identity, user name,
+        department label, or group ID.
+
+        Both tokens may be supplied and compose with all other filters by logical
+        AND after independent fail-closed validation. A valid combination with
+        no matching activity returns a no-data result; no selector is dropped.
+      type: object
+      additionalProperties: false
+      required: [start, end]
+      properties:
+        foundry_resource_id:
+          type: [string, "null"]
+          default: null
+        project_resource_id:
+          type: [string, "null"]
+          default: null
+        agent_id:
+          type: [string, "null"]
+          default: null
+        model:
+          type: [string, "null"]
+          default: null
+        tool_name:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 256
+          default: null
+        run_key:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 256
+          default: null
+        cost_period_id:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 64
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          default: null
+        cost_breakdown:
+          type: [string, "null"]
+          enum: [agents, tools, runs, null]
+          default: null
+        cost_component_id:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 64
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          default: null
+        cost_agent_key:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 512
+          default: null
+        user_filter_token:
+          description: |
+            Opaque current-generation selector bound to the current principal,
+            semantic attribution configuration, and Observe scope.
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 1024
+          pattern: "^[A-Za-z0-9._~-]+$"
+          default: null
+        department_filter_token:
+          description: |
+            Opaque current-generation selector bound to the semantic attribution
+            configuration and Observe scope.
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 1024
+          pattern: "^[A-Za-z0-9._~-]+$"
+          default: null
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+
+    AttributionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+        - coverage
+        - partial_failures
+        - diagnostics
+        - refreshed_at
+        - cache_status
+        - bounds
+      properties:
+        data:
+          $ref: "#/components/schemas/AttributionViewData"
+        coverage:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserAttributionCoverage"
+        partial_failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuerySourceFailure"
+        diagnostics:
+          $ref: "#/components/schemas/QueryDiagnostics"
+        refreshed_at:
+          type: string
+          format: date-time
+        cache_status:
+          description: Always `bypass` when access_boundary is `delegated`.
+          type: string
+          enum: [hit, miss, bypass]
+        bounds:
+          $ref: "#/components/schemas/ResultBounds"
+
+    AttributionViewData:
+      type: object
+      additionalProperties: false
+      required:
+        - metric
+        - group_by
+        - access_boundary
+        - rows
+        - summary
+        - primary_measure
+        - calculated_at
+      properties:
+        metric:
+          type: string
+          enum: [usage, cost]
+        group_by:
+          type: string
+          enum: [department, user]
+        access_boundary:
+          description: Actual credential path used for this complete response.
+          type: string
+          enum: [aggregate, delegated]
+        rows:
+          type: array
+          maxItems: 500
+          items:
+            $ref: "#/components/schemas/AttributionRow"
+        summary:
+          oneOf:
+            - $ref: "#/components/schemas/UsageAttributionSummary"
+            - $ref: "#/components/schemas/CostAttributionSummary"
+        primary_measure:
+          type: string
+          enum: [invocations, allocated_amount]
+        calculated_at:
+          type: string
+          format: date-time
+        latest_observed_at:
+          type: [string, "null"]
+          format: date-time
+          default: null
+
+    AttributionRow:
+      oneOf:
+        - $ref: "#/components/schemas/DepartmentAttributionRow"
+        - $ref: "#/components/schemas/UserAttributionRow"
+        - $ref: "#/components/schemas/OtherUsersAttributionRow"
+
+    DepartmentAttributionRow:
+      description: |
+        One mapped department. `member_count: 1` requires the delegated access
+        boundary for the complete response even though raw identity is omitted.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - department_id
+        - department_label
+        - filter_token
+        - member_count
+        - usage
+        - cost
+        - mapping_state
+      properties:
+        kind:
+          const: department
+        department_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        department_label:
+          type: string
+          minLength: 1
+          maxLength: 128
+        filter_token:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        member_count:
+          type: integer
+          minimum: 1
+        usage:
+          $ref: "#/components/schemas/AttributionUsage"
+        cost:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionCost"
+            - type: "null"
+        mapping_state:
+          const: mapped
+
+    UserAttributionRow:
+      description: |
+        One identified telemetry user. This row can appear only in a delegated,
+        private/no-store response. `raw_identity` is transient telemetry evidence
+        used to bootstrap mappings; it is excluded from URLs, configuration,
+        shared caches, logs, Doctor output, and release evidence.
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - user_key
+        - filter_token
+        - raw_identity
+        - usage
+        - cost
+        - mapping_state
+      properties:
+        kind:
+          const: user
+        user_key:
+          $ref: "#/components/schemas/PseudonymousUserKey"
+        filter_token:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        raw_identity:
+          type: string
+          minLength: 1
+          maxLength: 1024
+        department_id:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 64
+          default: null
+        department_label:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 128
+          default: null
+        usage:
+          $ref: "#/components/schemas/AttributionUsage"
+        cost:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionCost"
+            - type: "null"
+        mapping_state:
+          type: string
+          enum: [mapped, unmapped, ambiguous]
+
+    OtherUsersAttributionRow:
+      description: |
+        Exact aggregate of every identified user omitted after retaining the top
+        499. It has no user key, raw identity, mapping, or drill-down token.
+      type: object
+      additionalProperties: false
+      required: [kind, member_count, usage, cost, mapping_state]
+      properties:
+        kind:
+          const: other_users
+        member_count:
+          type: integer
+          minimum: 1
+        usage:
+          $ref: "#/components/schemas/AttributionUsage"
+        cost:
+          oneOf:
+            - $ref: "#/components/schemas/AttributionCost"
+            - type: "null"
+        mapping_state:
+          const: not_applicable
+
+    AttributionUsage:
+      type: object
+      additionalProperties: false
+      required:
+        - invocations
+        - input_tokens
+        - output_tokens
+        - tool_invocations
+        - active_session_seconds
+      properties:
+        invocations:
+          type: integer
+          minimum: 0
+        input_tokens:
+          type: [integer, "null"]
+          minimum: 0
+        output_tokens:
+          type: [integer, "null"]
+          minimum: 0
+        tool_invocations:
+          type: [integer, "null"]
+          minimum: 0
+        active_session_seconds:
+          oneOf:
+            - $ref: "#/components/schemas/DecimalString"
+            - type: "null"
+
+    AttributionCost:
+      description: One already allocated user/department amount.
+      type: object
+      additionalProperties: false
+      required:
+        - period_id
+        - component_id
+        - amount
+        - currency
+        - currency_minor_units
+        - usage_numerator
+        - usage_denominator
+        - allocation_key
+        - confidence
+      properties:
+        period_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        component_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+        amount:
+          $ref: "#/components/schemas/DecimalString"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        currency_minor_units:
+          type: integer
+          minimum: 0
+          maximum: 6
+        usage_numerator:
+          $ref: "#/components/schemas/DecimalString"
+        usage_denominator:
+          $ref: "#/components/schemas/DecimalString"
+        allocation_key:
+          $ref: "#/components/schemas/AllocationKey"
+        confidence:
+          $ref: "#/components/schemas/CostConfidence"
+
+    UsageAttributionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - metric
+        - total
+        - attributed
+        - unattributed
+        - distinct_users
+        - omitted_users
+      properties:
+        metric:
+          const: usage
+        total:
+          $ref: "#/components/schemas/AttributionUsage"
+        attributed:
+          $ref: "#/components/schemas/AttributionUsage"
+        unattributed:
+          $ref: "#/components/schemas/AttributionUsage"
+        distinct_users:
+          type: [integer, "null"]
+          minimum: 0
+        omitted_users:
+          type: integer
+          minimum: 0
+
+    CostAttributionSummary:
+      description: |
+        Reuses the selected component's declared-total allocation. Declared total
+        equals attributed plus unattributed plus unallocated amounts at the
+        configured minor-unit precision.
+      type: object
+      additionalProperties: false
+      required:
+        - metric
+        - period_id
+        - component_id
+        - declared_total
+        - attributed_amount
+        - unattributed_amount
+        - unallocated_amount
+        - currency
+        - currency_minor_units
+        - allocation_key
+        - confidence
+        - total_usage
+        - attributed_usage
+        - unattributed_usage
+        - distinct_users
+        - omitted_users
+      properties:
+        metric:
+          const: cost
+        period_id:
+          type: string
+        component_id:
+          type: string
+        declared_total:
+          $ref: "#/components/schemas/DecimalString"
+        attributed_amount:
+          $ref: "#/components/schemas/DecimalString"
+        unattributed_amount:
+          $ref: "#/components/schemas/DecimalString"
+        unallocated_amount:
+          $ref: "#/components/schemas/DecimalString"
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        currency_minor_units:
+          type: integer
+          minimum: 0
+          maximum: 6
+        allocation_key:
+          $ref: "#/components/schemas/AllocationKey"
+        confidence:
+          $ref: "#/components/schemas/CostConfidence"
+        total_usage:
+          $ref: "#/components/schemas/AttributionUsage"
+        attributed_usage:
+          $ref: "#/components/schemas/AttributionUsage"
+        unattributed_usage:
+          $ref: "#/components/schemas/AttributionUsage"
+        distinct_users:
+          type: [integer, "null"]
+          minimum: 0
+        omitted_users:
+          type: integer
+          minimum: 0
+
+    ResultBounds:
+      description: |
+        Existing bounds contract. If more than 500 identified users are in scope,
+        `rows_shown` is exactly 500 (top 499 plus Other users), `truncated` is
+        true, and `rows_total_in_scope` is the distinct identified-user count.
+        Unattributed consumption is not counted as a user row.
+      type: object
+      additionalProperties: false
+      required: [rows_shown, rows_total_in_scope, truncated]
+      properties:
+        rows_shown:
+          type: integer
+          minimum: 0
+          maximum: 500
+        rows_total_in_scope:
+          type: [integer, "null"]
+          minimum: 0
+        truncated:
+          type: boolean
+
+    UserAttributionCoverage:
+      description: |
+        Additive `user_attribution` coverage dimension. Counts are null rather
+        than zero when the source could not be read. Coverage is emitted per
+        source and independently for usage and cost.
+      type: object
+      additionalProperties: false
+      required:
+        - source_id
+        - dimension
+        - state
+        - reason
+        - next_action
+        - refreshed_at
+        - metric
+        - attribution_level
+        - eligible_records
+        - identified_records
+        - mapped_records
+        - unattributed_records
+        - ambiguous_records
+        - returned_records
+      properties:
+        source_id:
+          type: string
+          minLength: 1
+        dimension:
+          const: user_attribution
+        state:
+          type: string
+          enum:
+            - available
+            - inaccessible
+            - not_configured
+            - no_data
+            - not_reported
+            - partial
+            - ambiguous
+            - error
+            - protected_or_unavailable
+        reason:
+          type: string
+        next_action:
+          type: string
+        refreshed_at:
+          type: string
+          format: date-time
+        metric:
+          type: string
+          enum: [usage, cost]
+        attribution_level:
+          type: string
+          enum: [department, user]
+        component_id:
+          type: [string, "null"]
+          default: null
+        eligible_records:
+          type: [integer, "null"]
+          minimum: 0
+        identified_records:
+          type: [integer, "null"]
+          minimum: 0
+        mapped_records:
+          type: [integer, "null"]
+          minimum: 0
+        unattributed_records:
+          type: [integer, "null"]
+          minimum: 0
+        ambiguous_records:
+          type: [integer, "null"]
+          minimum: 0
+        returned_records:
+          type: [integer, "null"]
+          minimum: 0
+
+    QueryDiagnostics:
+      type: object
+      additionalProperties: false
+      required:
+        - started_at
+        - completed_at
+        - duration_ms
+        - source_count
+        - successful_sources
+        - partial_sources
+        - failed_sources
+        - cache_status
+      properties:
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          minimum: 0
+        source_count:
+          type: integer
+          minimum: 0
+          maximum: 10
+        successful_sources:
+          type: integer
+          minimum: 0
+        partial_sources:
+          type: integer
+          minimum: 0
+        failed_sources:
+          type: integer
+          minimum: 0
+        cache_status:
+          type: string
+          enum: [hit, miss, bypass]
+
+    QuerySourceFailure:
+      type: object
+      additionalProperties: false
+      required: [source_id, status, reason, next_action]
+      properties:
+        source_id:
+          type: string
+        status:
+          type: string
+          enum: [success, partial, timeout, inaccessible, error]
+        reason:
+          type: string
+        next_action:
+          type: string
+
+    PseudonymousUserKey:
+      type: string
+      pattern: "^usr1\\.g[1-9][0-9]*\\.[0-9a-f]{64}$"
+
+    AllocationKey:
+      type: string
+      enum:
+        - weighted_tokens
+        - total_tokens
+        - tool_invocations
+        - active_session_seconds
+        - credits
+        - credit_events
+
+    CostConfidence:
+      type: string
+      enum: [high, medium, low, unavailable]
+
+    DecimalString:
+      type: string
+      pattern: "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+
+    ProblemDetail:
+      type: object
+      additionalProperties: false
+      required: [code, message, next_action]
+      properties:
+        code:
+          description: Stable, non-identifying error classification.
+          type: string
+        message:
+          description: Safe error text without token or mapping contents.
+          type: string
+        next_action:
+          description: Corrective action that does not reveal protected-resource existence.
+          type: string
+
+security:
+  - easyAuth: []

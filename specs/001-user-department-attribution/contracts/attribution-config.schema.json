@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Azure/agentops/specs/001-user-department-attribution/contracts/attribution-config.schema.json",
+  "title": "AgentOps Attribution Configuration",
+  "description": "Strict, versioned configuration supplied through AGENTOPS_ATTRIBUTION_CONFIG.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "enabled",
+    "deployment_namespace",
+    "generation",
+    "departments"
+  ],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "Attribution configuration contract version."
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Explicit operator consent to enable attribution."
+    },
+    "deployment_namespace": {
+      "description": "Random deployment-specific UUID retained until explicit pseudonym rotation.",
+      "oneOf": [
+        {
+          "type": "string",
+          "format": "uuid"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "generation": {
+      "description": "Positive pseudonym generation incremented on explicit rotation.",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "departments": {
+      "type": "array",
+      "description": "Operator-declared department mappings. An empty array supports mapping bootstrap.",
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/department"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enabled": {
+            "const": true
+          }
+        },
+        "required": [
+          "enabled"
+        ]
+      },
+      "then": {
+        "properties": {
+          "deployment_namespace": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generation": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "department": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "user_keys",
+        "group_ids"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._~-]{0,63}$",
+          "description": "Stable, non-identifying department slug."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^\\S(?:[\\s\\S]{0,126}\\S)?$",
+          "description": "Trimmed display label."
+        },
+        "user_keys": {
+          "type": "array",
+          "maxItems": 500,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/pseudonymousUserKey"
+          }
+        },
+        "group_ids": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": "Microsoft Entra group object IDs used only for the signed-in principal."
+        }
+      },
+      "anyOf": [
+        {
+          "properties": {
+            "user_keys": {
+              "minItems": 1
+            }
+          }
+        },
+        {
+          "properties": {
+            "group_ids": {
+              "minItems": 1
+            }
+          }
+        }
+      ]
+    },
+    "pseudonymousUserKey": {
+      "type": "string",
+      "pattern": "^usr1\\.g[1-9][0-9]*\\.[0-9a-f]{64}$",
+      "description": "Versioned deployment-scoped pseudonymous user key."
+    }
+  },
+  "$comment": "Application validation also enforces a 64 KiB encoded JSON limit; unique department IDs; no user key or group ID assigned to multiple departments; at most 500 user keys and 100 group IDs across all departments; and a generation prefix on every user key equal to the top-level generation. These global/cross-field constraints are intentionally model-level because JSON Schema cannot express them portably."
+}

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 import pytest
 
 from agentops.agent.observe import ui
+from agentops.core.cost import CostPeriodRef
 from agentops.core.observe import CoverageResult, GenerativeAIContent, ModelUsage
 
 
@@ -114,6 +115,342 @@ def test_render_observe_nav_renders_every_view_once() -> None:
     html = ui.render_observe_nav()
     for view in ui.OBSERVE_VIEWS:
         assert html.count(f'data-observe-nav-link="{view}"') == 1
+    assert 'data-observe-nav-link="cost"' not in html
+
+
+def test_render_observe_nav_only_adds_cost_when_enabled() -> None:
+    html = ui.render_observe_nav("cost", cost_enabled=True)
+    assert html.count('data-observe-nav-link="cost"') == 1
+    assert (
+        'data-observe-nav-link="cost" class="observe-nav-link" aria-current="page"'
+        in html
+    )
+    assert ">Cost<" in html
+
+
+# ---------------------------------------------------------------------------
+# Department attribution (issue #444 T018/T029)
+# ---------------------------------------------------------------------------
+
+
+def _department_data(*, metric: str = "usage", cost: object = None) -> dict[str, object]:
+    usage = {
+        "invocations": 12,
+        "input_tokens": 120,
+        "output_tokens": 60,
+        "tool_invocations": 3,
+        "active_session_seconds": "45.5",
+    }
+    row = {
+        "kind": "department",
+        "department_id": "engineering-internal",
+        "department_label": 'Engineering <Core>',
+        "filter_token": "dep1.g7.opaque_token-only",
+        "member_count": 4,
+        "usage": usage,
+        "cost": cost,
+        "mapping_state": "mapped",
+    }
+    if metric == "cost":
+        summary: dict[str, object] = {
+            "metric": "cost",
+            "period_id": "august",
+            "component_id": "ptu",
+            "declared_total": "100.00",
+            "attributed_amount": "75.00",
+            "unattributed_amount": "20.00",
+            "unallocated_amount": "5.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_key": "weighted_tokens",
+            "confidence": "high",
+            "total_usage": usage,
+            "attributed_usage": usage,
+            "unattributed_usage": {**usage, "invocations": 2},
+            "distinct_users": 5,
+            "omitted_users": 0,
+        }
+    else:
+        summary = {
+            "metric": "usage",
+            "total": usage,
+            "attributed": usage,
+            "unattributed": {**usage, "invocations": 2, "input_tokens": None},
+            "distinct_users": 5,
+            "omitted_users": 0,
+        }
+    return {
+        "metric": metric,
+        "group_by": "department",
+        "access_boundary": "aggregate",
+        "rows": [row],
+        "summary": summary,
+        "primary_measure": "allocated_amount" if metric == "cost" else "invocations",
+        "calculated_at": "2026-08-25T12:00:00Z",
+        "latest_observed_at": "2026-08-25T11:59:00Z",
+    }
+
+
+def _user_data(*, selected: bool = False, truncated: bool = False) -> dict[str, object]:
+    usage = {
+        "invocations": 8,
+        "input_tokens": 80,
+        "output_tokens": 40,
+        "tool_invocations": 2,
+        "active_session_seconds": "30",
+    }
+    rows: list[dict[str, object]] = [
+        {
+            "kind": "user",
+            "user_key": "usr1.g7." + "a" * 64,
+            "raw_identity": "synthetic-alex@example.test",
+            "filter_token": "usr-token.opaque-only",
+            "department_id": "engineering-internal",
+            "department_label": "Engineering",
+            "usage": usage,
+            "cost": None,
+            "mapping_state": "mapped",
+        }
+    ]
+    if truncated:
+        rows.append(
+            {
+                "kind": "other_users",
+                "member_count": 2,
+                "usage": {**usage, "invocations": 3},
+                "cost": None,
+                "mapping_state": "not_applicable",
+            }
+        )
+    return {
+        "metric": "usage",
+        "group_by": "user",
+        "access_boundary": "delegated",
+        "rows": rows,
+        "summary": {
+            "metric": "usage",
+            "total": {**usage, "invocations": 10},
+            "attributed": {**usage, "invocations": 10},
+            "unattributed": {**usage, "invocations": 0},
+            "distinct_users": 3 if truncated else 1,
+            "omitted_users": 2 if truncated else 0,
+        },
+        "primary_measure": "invocations",
+        "calculated_at": "2026-08-25T12:00:00Z",
+        "latest_observed_at": "2026-08-25T11:59:00Z",
+    }
+
+
+def test_department_surface_is_strictly_opt_in() -> None:
+    default_html = ui.render_observe_page()
+    assert 'data-observe-nav-link="departments"' not in default_html
+    assert 'id="departments"' not in default_html
+    assert 'id="observe-attribution-filter-form"' not in default_html
+
+    enabled_html = ui.render_observe_page(
+        attribution_enabled=True,
+        department_attribution=_department_data(),
+    )
+    assert 'data-observe-nav-link="departments"' in enabled_html
+    assert '<section id="departments"' in enabled_html
+    assert 'data-observe-view-content="departments"' in enabled_html
+
+
+def test_department_controls_offer_usage_and_available_cost_selectors() -> None:
+    html = ui.render_attribution_controls(
+        _department_data(),
+        cost_available=True,
+        period_options=["august"],
+        component_options=["ptu"],
+    )
+    assert 'data-attribution-filter="metric"' in html
+    assert '<option value="usage" selected>Usage</option>' in html
+    assert '<option value="cost">Cost</option>' in html
+    assert 'data-attribution-filter="cost_period_id"' in html
+    assert 'data-attribution-filter="cost_component_id"' in html
+    assert 'id="observe-apply-attribution-filters"' in html
+
+
+def test_department_controls_explain_unavailable_cost() -> None:
+    html = ui.render_attribution_controls(_department_data(), cost_available=False)
+    assert '<option value="cost" disabled>Cost</option>' in html
+    assert "Cost attribution is unavailable" in html
+    assert "valid cost model and allocatable cost" in html
+
+
+def test_department_usage_renders_opaque_link_and_unmapped_summary() -> None:
+    html = ui.render_department_view(_department_data())
+    assert "Engineering &lt;Core&gt;" in html
+    assert "dep1.g7.opaque_token-only" in html
+    assert "department_filter_token=dep1.g7.opaque_token-only" in html
+    assert "engineering-internal" not in html
+    assert "Unmapped usage" in html
+    assert "2 invocations" in html
+    assert "Not reported" in html
+
+
+def test_department_cost_renders_reconciliation_and_unavailable_row_explanation() -> None:
+    unavailable = _department_data(metric="cost", cost=None)
+    html = ui.render_department_view(unavailable)
+    assert "Declared total" in html
+    assert "100.00 USD" in html
+    assert "Unmapped cost" in html
+    assert "20.00 USD" in html
+    assert "Unallocated cost" in html
+    assert "5.00 USD" in html
+    assert "Cost unavailable for this department" in html
+
+
+def test_department_script_has_endpoint_url_safety_and_server_parity() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert '"department_filter_token", "user_filter_token", "attribution_group_by"' in script
+    assert 'fetch("/api/observe/attribution"' in script
+    assert 'group_by: appliedFilters.attribution_group_by || "department"' in script
+    assert "function renderDepartmentAttribution(data, diagnostics, coverage, partialFailures, bounds)" in script
+    assert "function renderAttributionSummary(summary, groupBy)" in script
+    assert "function renderAttributionControlsFromData(data)" in script
+    assert "Cost attribution is unavailable" in script
+    assert "Unmapped usage" in script
+    assert "Unmapped cost" in script
+    assert "innerHTML" not in script
+    for forbidden in ("raw_identity", "user_key", "department_id", "department_label", "group_id"):
+        url_block = script.split("function syncUrl() {")[1].split("\n  }\n")[0]
+        assert forbidden not in url_block
+
+
+def test_user_drilldown_renders_delegated_principal_ranking_and_opaque_selector() -> None:
+    html = ui.render_department_view(_user_data(selected=True))
+    assert 'aria-label="User attribution"' in html
+    assert "Selected eligible principal" in html
+    assert "synthetic-alex@example.test" in html
+    assert "usr1.g7." + "a" * 64 in html
+    assert "Rank 1" in html
+    assert "ties are ordered by pseudonymous key" in html
+    assert "user_filter_token=usr-token.opaque-only" in html
+    assert "synthetic-alex%40example.test" not in html
+    assert "engineering-internal" not in html
+
+
+def test_user_drilldown_explains_bounds_other_users_and_partial_failures() -> None:
+    html = ui.render_department_view(
+        _user_data(truncated=True),
+        bounds={"rows_shown": 2, "rows_total_in_scope": 3, "truncated": True},
+        partial_failures=[
+            {
+                "source_id": "source-safe",
+                "status": "timeout",
+                "reason": "Identity query timed out.",
+                "next_action": "Retry after restoring access.",
+            }
+        ],
+    )
+    assert "Other users" in html
+    assert "Showing 2 of 3 rows in scope" in html
+    assert "Results are truncated to the highest-ranked users plus Other users" in html
+    assert "Partial source failures" in html
+    assert "Successful source evidence remains visible" in html
+    assert "Identity query timed out" in html
+
+
+def test_user_selector_and_script_preserve_only_opaque_user_state() -> None:
+    controls = ui.render_attribution_controls(_user_data())
+    assert 'data-attribution-filter="group_by"' in controls
+    assert '<option value="user" selected>Users in selected department</option>' in controls
+    script = ui._OBSERVE_SCRIPT
+    assert 'group_by: appliedFilters.attribution_group_by || "department"' in script
+    assert "user_filter_token: appliedFilters.user_filter_token || null" in script
+    assert "localStorage.setItem" not in script
+    assert "sessionStorage.setItem" not in script
+    sync_url = script.split("function syncUrl() {")[1].split("\n  }\n")[0]
+    for forbidden in ("raw_identity", "user_key", "department_label", "group_id"):
+        assert forbidden not in sync_url
+
+
+@pytest.mark.parametrize(
+    ("state", "label"),
+    [
+        ("available", "Available"),
+        ("partial", "Partial"),
+        ("not_reported", "Not reported"),
+        ("ambiguous", "Ambiguous"),
+        ("inaccessible", "Inaccessible"),
+        ("protected_or_unavailable", "Protected or unavailable"),
+        ("error", "Error"),
+    ],
+)
+def test_attribution_coverage_renders_actionable_states_and_missing_counts(
+    state: str, label: str
+) -> None:
+    coverage = [
+        {
+            "source_id": f"source-{state}",
+            "dimension": "user_attribution",
+            "state": state,
+            "reason": f"Reason for {state}.",
+            "next_action": f"Action for {state}.",
+            "metric": "cost",
+            "attribution_level": "user",
+            "component_id": "ptu-component",
+            "eligible_records": None if state == "inaccessible" else 10,
+            "identified_records": None if state == "inaccessible" else 8,
+            "mapped_records": None if state == "inaccessible" else 7,
+            "unattributed_records": None if state == "inaccessible" else 2,
+            "ambiguous_records": None if state == "inaccessible" else 1,
+            "returned_records": None if state == "inaccessible" else 8,
+        }
+    ]
+    html = ui.render_department_view(_user_data(), coverage=coverage)
+    assert label in html
+    assert "Cost / ptu-component" in html
+    assert f"Reason for {state}" in html
+    assert f"Action for {state}" in html
+    assert "is not zero usage" in html
+    if state == "inaccessible":
+        assert html.count("Not reported") >= 6
+
+
+def test_attribution_missing_data_preserves_coverage_and_partial_failures() -> None:
+    html = ui.render_department_view(
+        None,
+        coverage=[
+            {
+                "source_id": "source-protected",
+                "state": "protected_or_unavailable",
+                "metric": "usage",
+                "reason": "Delegated access is unavailable.",
+                "next_action": "Sign in again.",
+            }
+        ],
+        partial_failures=[
+            {
+                "source_id": "source-timeout",
+                "status": "timeout",
+                "reason": "The source timed out.",
+                "next_action": "Retry later.",
+            }
+        ],
+    )
+    assert "missing or protected evidence, not zero usage" in html
+    assert "Protected or unavailable" in html
+    assert "Delegated access is unavailable" in html
+    assert "Partial source failures" in html
+    assert "The source timed out" in html
+
+
+def test_attribution_coverage_javascript_matches_server_fields_and_language() -> None:
+    script = ui._OBSERVE_SCRIPT
+    for field in (
+        "component_id",
+        "eligible_records",
+        "identified_records",
+        "mapped_records",
+        "unattributed_records",
+        "ambiguous_records",
+        "returned_records",
+    ):
+        assert f"entry.{field}" in script
+    assert '"Missing, inaccessible, ambiguous, or protected identity evidence is not zero usage."' in script
+    assert "function renderAttributionPartialFailuresNode(partialFailures)" in script
 
 
 # ---------------------------------------------------------------------------
@@ -387,6 +724,608 @@ def test_render_agents_table_includes_diagnostics_banner_when_supplied() -> None
     html = ui.render_agents_table([_agent()], diagnostics=diagnostics)
     assert "observe-diagnostics-banner" in html
     assert "Partial results" in html
+
+
+# ---------------------------------------------------------------------------
+# Cost allocation (spec 013 T013/T021)
+# ---------------------------------------------------------------------------
+
+
+def _cost_data(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "period": {
+            "id": 'august<"period">',
+            "starts_at": "2026-08-01T00:00:00Z",
+            "ends_at": "2026-09-01T00:00:00Z",
+        },
+        "breakdown": "agents",
+        "component_filter": None,
+        "components": [
+            {
+                "component_id": 'ptu<"pool">',
+                "component_type": "provisioned_throughput",
+                "billing_boundary": {
+                    "kind": "resource",
+                    "value": "<resource>",
+                    "label": 'Primary "PTU"',
+                },
+                "billed_source": 'operator<"declared">',
+                "allocation_model": "commitment",
+                "preferred_key": "weighted_tokens",
+                "applied_key": "weighted_tokens",
+                "declared_total": "1000.00",
+                "attributed_amount": "900.00",
+                "unattributed_amount": "50.00",
+                "unallocated_amount": "50.00",
+                "omitted_allocated_amount": "0.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "rows_shown": 2,
+                "rows_total": 2,
+                "confidence": "high",
+                "coverage_state": "available",
+                "coverage_reason": "Complete period telemetry",
+                "next_action": None,
+            },
+            {
+                "component_id": "credits",
+                "component_type": "credit_payg",
+                "billing_boundary": {"kind": "account", "value": "acct"},
+                "billed_source": "operator",
+                "allocation_model": "metered",
+                "preferred_key": "credits",
+                "applied_key": "credit_events",
+                "declared_total": "25.000",
+                "attributed_amount": "25.000",
+                "unattributed_amount": "0.000",
+                "unallocated_amount": "0.000",
+                "omitted_allocated_amount": "0.000",
+                "currency": "EUR",
+                "currency_minor_units": 3,
+                "rows_shown": 1,
+                "rows_total": 1,
+                "confidence": "medium",
+                "coverage_state": "partial",
+                "coverage_reason": "Preferred usage was not reported",
+                "next_action": "Enable direct credit telemetry",
+            },
+        ],
+        "rows": [
+            {
+                "component_id": 'ptu<"pool">',
+                "component_type": "provisioned_throughput",
+                "billing_boundary": {"kind": "resource", "value": "<resource>"},
+                "billed_source": 'operator<"declared">',
+                "allocation_model": "commitment",
+                "preferred_key": "weighted_tokens",
+                "applied_key": "weighted_tokens",
+                "fallback_used": False,
+                "breakdown": "agents",
+                "consumer_kind": "agent",
+                "consumer_key": 'agent<"a">',
+                "agent_key": 'agent<"a">',
+                "amount": "600.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "usage_numerator": "60",
+                "usage_denominator": "100",
+                "usage_unit": "weighted_tokens",
+                "rounding_adjustment_minor_units": 0,
+                "confidence": "high",
+                "coverage_state": "available",
+                "coverage_reason": None,
+                "calculated_at": "2026-08-24T20:00:00Z",
+                "latest_observed_at": "2026-08-24T19:59:00Z",
+            },
+            {
+                "component_id": "credits",
+                "component_type": "credit_payg",
+                "billing_boundary": {"kind": "account", "value": "acct"},
+                "billed_source": "operator",
+                "allocation_model": "metered",
+                "preferred_key": "credits",
+                "applied_key": "credit_events",
+                "fallback_used": True,
+                "breakdown": "agents",
+                "consumer_kind": "agent",
+                "consumer_key": "agent-b",
+                "agent_key": "agent-b",
+                "amount": "25.000",
+                "currency": "EUR",
+                "currency_minor_units": 3,
+                "usage_numerator": "1",
+                "usage_denominator": "4",
+                "usage_unit": "credit_events",
+                "rounding_adjustment_minor_units": 0,
+                "confidence": "medium",
+                "coverage_state": "partial",
+                "coverage_reason": "Used explicit fallback",
+                "calculated_at": "2026-08-24T20:00:00Z",
+                "latest_observed_at": "2026-08-24T19:58:00Z",
+            },
+        ],
+        "currency_subtotals": [
+            {
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "declared_total": "1000.00",
+                "attributed_amount": "900.00",
+                "unattributed_amount": "50.00",
+                "unallocated_amount": "50.00",
+            },
+            {
+                "currency": "EUR",
+                "currency_minor_units": 3,
+                "declared_total": "25.000",
+                "attributed_amount": "25.000",
+                "unattributed_amount": "0.000",
+                "unallocated_amount": "0.000",
+            },
+        ],
+        "calculated_at": "2026-08-24T20:00:00Z",
+        "latest_observed_at": "2026-08-24T19:59:00Z",
+        "disclaimer": (
+            "Operational cost allocation from declared billed totals and observed usage; "
+            "not an invoice or billing-accurate charge."
+        ),
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_cost_controls_render_period_component_breakdown_and_agent_selectors() -> None:
+    html = ui.render_cost_controls(
+        _cost_data(),
+        period_options=[
+            {
+                "id": "august",
+                "label": 'August <"2026">',
+                "component_ids": ("ptu", "search"),
+            }
+        ],
+        component_options=[{"id": "ptu", "label": 'PTU <"pool">'}],
+        agent_options=[{"key": "agent-a", "label": 'Agent <"A">'}],
+    )
+    for key in ui.COST_FILTER_QUERY_KEYS:
+        assert f'data-cost-filter="{key}"' in html
+    for label in ("Period", "Component", "Breakdown", "Agent"):
+        assert f">{label}" in html
+    assert "Agents" in html
+    assert 'August &lt;&quot;2026&quot;&gt;' in html
+    assert 'data-cost-component-ids="ptu,search"' in html
+    assert 'PTU &lt;&quot;pool&quot;&gt;' in html
+    assert 'Agent &lt;&quot;A&quot;&gt;' in html
+    assert 'id="observe-apply-cost-filters"' in html
+
+
+def test_render_cost_view_shows_exact_agent_allocations_and_usage_shares() -> None:
+    html = ui.render_cost_view(_cost_data())
+    for heading in ("Agent", "Component", "Amount", "Usage share", "Method", "Source"):
+        assert f">{heading}<" in html
+    assert 'agent&lt;&quot;a&quot;&gt;' in html
+    assert 'ptu&lt;&quot;pool&quot;&gt;' in html
+    assert "600.00 USD" in html
+    assert "60 / 100 weighted tokens" in html
+    assert "Observed usage: 60 / 100 weighted tokens" in html
+    assert "25.000 EUR" in html
+    assert "1 / 4 credit events" in html
+    assert "Commitment" in html
+    assert "Metered" in html
+    assert "observe-cost-method-commitment" in html
+    assert "observe-cost-method-metered" in html
+    assert "observe-cost-confidence-high" in html
+    assert "observe-cost-confidence-medium" in html
+    assert 'operator&lt;&quot;declared&quot;&gt;' in html
+    assert "<resource>" not in html
+
+
+def test_render_cost_view_keeps_currency_precision_and_exact_component_summaries() -> None:
+    html = ui.render_cost_view(_cost_data())
+    assert html.count('class="observe-cost-subtotal-row"') == 2
+    assert "1000.00 USD" in html
+    assert "25.000 EUR" in html
+    assert "Currency precision: 2 minor units" in html
+    assert "Currency precision: 3 minor units" in html
+    for heading in (
+        "Declared",
+        "Attributed",
+        "Unattributed",
+        "Unallocated",
+        "Omitted allocated",
+        "Rows",
+    ):
+        assert f">{heading}<" in html
+    assert "900.00 USD" in html
+    assert "50.00 USD" in html
+    assert "2 / 2" in html
+    assert "Preferred usage was not reported" in html
+    assert "Enable direct credit telemetry" in html
+
+
+def test_render_cost_view_includes_fixed_operational_allocation_disclaimer() -> None:
+    html = ui.render_cost_view(_cost_data())
+    assert ui.COST_DISCLAIMER in html
+    assert "not an invoice or billing-accurate charge" in html
+
+
+def test_cost_view_is_absent_by_default_and_rendered_when_enabled() -> None:
+    default_html = ui.render_observe_page()
+    assert 'data-observe-nav-link="cost"' not in default_html
+    assert '<section id="cost"' not in default_html
+
+    enabled_html = ui.render_observe_page(cost_enabled=True, cost=_cost_data())
+    assert 'data-observe-nav-link="cost"' in enabled_html
+    assert '<section id="cost"' in enabled_html
+    assert 'id="cost-content" data-observe-view-content="cost"' in enabled_html
+    assert "600.00 USD" in enabled_html
+
+
+def test_script_cost_renderer_matches_server_fields_and_safe_dom_construction() -> None:
+    script = ui._OBSERVE_SCRIPT
+    for name in (
+        "function renderCost(data, diagnostics, coverage, partialFailures, bounds)",
+        "function renderCostControlsFromData(data)",
+        "function renderCostAmountNode(amount, currency)",
+        "function renderCostUsageShareNode(row)",
+        "function buildCostPayload(manual)",
+    ):
+        assert name in script
+    for field in (
+        "currency_subtotals",
+        "declared_total",
+        "attributed_amount",
+        "unattributed_amount",
+        "unallocated_amount",
+        "omitted_allocated_amount",
+        "usage_numerator",
+        "usage_denominator",
+        "usage_unit",
+    ):
+        assert field in script
+    assert ui.COST_DISCLAIMER in script
+    assert "innerHTML" not in script
+
+
+def test_script_cost_payload_sends_only_cost_selectors() -> None:
+    script = ui._OBSERVE_SCRIPT
+    block = script.split("function buildCostPayload(manual) {")[1].split("\n  }\n")[0]
+    for key in ui.COST_FILTER_QUERY_KEYS:
+        assert f"{key}:" in block
+    for shared in ui.OBSERVE_FILTER_QUERY_KEYS:
+        assert f"{shared}:" not in block
+    assert 'view: "cost"' in block
+    assert "refresh: manual === true" in block
+    fetch_block = script.split("function fetchObserveData(manual) {")[1].split(
+        "\n  }\n\n  function scheduleAutoRefresh"
+    )[0]
+    assert 'currentView === "cost" ? buildCostPayload(manual)' in fetch_block
+
+
+def test_script_cost_selectors_round_trip_url_without_changing_shared_keys() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert (
+        'var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", '
+        '"model", "tool_name", "run_key", "start", "end"];'
+    ) in script
+    assert (
+        'var COST_FILTER_KEYS = ["cost_period_id", "cost_component_id", '
+        '"cost_breakdown", "cost_agent_key"];'
+    ) in script
+    assert 'document.getElementById("observe-cost-filter-form")' in script
+    assert "readCostDraftFromForm(costForm)" in script
+    assert "populateCostFormFromApplied(costForm)" in script
+    assert "function replaceCostSelectOptions(select, values, allLabel)" in script
+    assert "function resetCostSelectorsForPeriod(form)" in script
+    assert 'costPeriodField.addEventListener("change"' in script
+    reset_block = script.split("function resetCostSelectorsForPeriod(form) {")[1].split(
+        "\n  }\n"
+    )[0]
+    assert 'data-cost-filter="cost_period_id"' in reset_block
+    assert 'data-cost-filter="cost_component_id"' in reset_block
+    assert 'appliedFilters.cost_component_id = ""' in reset_block
+    assert "resetCostAgentSelector(form)" in reset_block
+    agent_reset_block = script.split("function resetCostAgentSelector(form) {")[1].split(
+        "\n  }\n"
+    )[0]
+    assert 'data-cost-filter="cost_agent_key"' in agent_reset_block
+    assert 'appliedFilters.cost_agent_key = ""' in agent_reset_block
+    shared_submit = script.split('form.addEventListener("submit"')[1].split(
+        "\n      });"
+    )[0]
+    assert "preservedCostFilters" in shared_submit
+    for key in ui.COST_FILTER_QUERY_KEYS:
+        assert f"{key}: appliedFilters.{key}" in shared_submit
+
+
+def test_clean_url_cost_uses_first_typed_server_period_for_initial_request() -> None:
+    first_period = CostPeriodRef(
+        id="period-first",
+        starts_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        ends_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+    )
+    second_period = CostPeriodRef(
+        id="period-second",
+        starts_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        ends_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+    html = ui.render_observe_page(
+        cost_enabled=True,
+        cost_periods=[first_period, second_period],
+    )
+    assert '<option value="period-first" selected>period-first</option>' in html
+    assert '<option value="period-second">period-second</option>' in html
+    assert "2026-08-01T00:00:00" not in html
+    assert "components&quot;" not in html
+
+    script = ui._OBSERVE_SCRIPT
+    initializer = script.split(
+        "function initializeCostPeriodFromServer(form) {"
+    )[1].split("\n  }\n")[0]
+    assert 'appliedFilters.cost_period_id' in initializer
+    assert '[data-cost-filter="cost_period_id"]' in initializer
+    assert "field.options" in initializer
+    assert "option.value" in initializer
+    assert "FILTER_KEYS" not in initializer
+    assert "JSON.stringify" not in initializer
+
+    init_block = script.split("function init() {")[1].split(
+        "\n    var refreshButton"
+    )[0]
+    assert init_block.index("initializeCostPeriodFromServer(costForm)") < init_block.index(
+        "populateCostFormFromApplied(costForm)"
+    )
+    payload = script.split("function buildCostPayload(manual) {")[1].split(
+        "\n  }\n"
+    )[0]
+    assert "cost_period_id: appliedFilters.cost_period_id || null" in payload
+    for shared in ui.OBSERVE_FILTER_QUERY_KEYS:
+        assert f"{shared}:" not in payload
+
+
+def test_cost_tool_and_run_grains_are_alternative_non_additive_reconciliations() -> None:
+    tool_rows = [
+        {
+            **dict(_cost_data()["rows"][0]),
+            "breakdown": "tools",
+            "consumer_kind": "tool",
+            "consumer_key": "agent-a::search_documents",
+            "agent_key": "agent-a",
+            "tool_name": "search_documents",
+        },
+        {
+            **dict(_cost_data()["rows"][1]),
+            "breakdown": "tools",
+            "consumer_kind": "unattributed",
+            "consumer_key": "__unattributed_tool__",
+            "agent_key": None,
+        },
+    ]
+    tool_html = ui.render_cost_view(_cost_data(breakdown="tools", rows=tool_rows))
+    assert ">Tool<" in tool_html
+    assert "search_documents" in tool_html
+    assert "agent-a::search_documents" not in tool_html
+    assert "Unattributed tool" in tool_html
+    assert ui.COST_BREAKDOWN_WARNING in tool_html
+    tool_controls = ui.render_cost_controls(_cost_data(breakdown="tools", rows=tool_rows))
+    assert '<option value="agent-a">agent-a</option>' in tool_controls
+
+    run_rows = [
+        {
+            **dict(_cost_data()["rows"][0]),
+            "breakdown": "runs",
+            "consumer_kind": "run",
+            "consumer_key": "agent-a::run-123",
+            "agent_key": "agent-a",
+            "run_key": "run-123",
+        },
+        {
+            **dict(_cost_data()["rows"][1]),
+            "breakdown": "runs",
+            "consumer_kind": "unattributed",
+            "consumer_key": "__unattributed_run__",
+            "agent_key": None,
+        },
+    ]
+    run_html = ui.render_cost_view(_cost_data(breakdown="runs", rows=run_rows))
+    assert ">Run<" in run_html
+    assert "run-123" in run_html
+    assert "agent-a::run-123" not in run_html
+    assert "Unattributed run" in run_html
+    assert ui.COST_BREAKDOWN_WARNING in run_html
+    script = ui._OBSERVE_SCRIPT
+    labeler = script.split("function costConsumerLabel(row, breakdown) {")[1].split(
+        "\n  }\n"
+    )[0]
+    assert "tools: row.tool_name" in labeler
+    assert "runs: row.run_key" in labeler
+
+
+def test_cost_agent_rows_link_to_tool_and_run_drilldowns_with_cost_selectors_only() -> None:
+    html = ui.render_cost_view(
+        _cost_data(component_filter='ptu<"pool">'),
+    )
+    assert "View tools" in html
+    assert "View runs" in html
+    assert "cost_breakdown=tools" in html
+    assert "cost_breakdown=runs" in html
+    assert "cost_agent_key=agent%3C%22a%22%3E" in html
+    assert "cost_period_id=august%3C%22period%22%3E" in html
+    assert "cost_component_id=ptu%3C%22pool%22%3E" in html
+    for shared in ui.OBSERVE_FILTER_QUERY_KEYS:
+        assert f"{shared}=" not in html
+    assert "operator%3C" not in html
+    assert "%7B" not in html
+
+
+def test_cost_rows_render_complete_auditable_provenance() -> None:
+    row = {
+        **dict(_cost_data()["rows"][0]),
+        "period_id": "period-2026-08",
+        "period_starts_at": "2026-08-01T00:00:00Z",
+        "period_ends_at": "2026-09-01T00:00:00Z",
+        "source_resource_id": '/subscriptions/sub/<source-"a">',
+        "project_resource_id": '/projects/project-<"a">',
+        "rounding_adjustment_minor_units": 1,
+    }
+    html = ui.render_cost_view(_cost_data(rows=[row]))
+    for label in (
+        "Period",
+        "Observation window",
+        "Billing boundary",
+        "Source resource",
+        "Project resource",
+        "Preferred key",
+        "Applied key",
+        "Fallback",
+        "Rounding adjustment",
+        "Confidence",
+        "Coverage",
+        "Calculated at",
+        "Latest observed",
+    ):
+        assert label in html
+    assert "period-2026-08" in html
+    assert "2026-08-01T00:00:00Z" in html
+    assert "2026-09-01T00:00:00Z" in html
+    assert "weighted tokens" in html
+    assert "1 minor unit" in html
+    assert "High" in html
+    assert "Available" in html
+    assert '&lt;source-&quot;a&quot;&gt;' in html
+    assert '&lt;&quot;a&quot;&gt;' in html
+    assert '<source-"a">' not in html
+
+
+def test_cost_row_labels_missing_allocation_usage_without_fabricating_zero() -> None:
+    row = {
+        **dict(_cost_data()["rows"][0]),
+        "usage_numerator": None,
+        "usage_denominator": None,
+        "usage_unit": None,
+    }
+    html = ui.render_cost_view(_cost_data(rows=[row]))
+    assert "Observed usage: Not reported" in html
+    assert "Observed usage: 0" not in html
+
+
+def test_cost_view_distinguishes_missing_zero_unallocated_and_truncated_amounts() -> None:
+    components = [
+        {
+            "component_id": "missing-total",
+            "component_type": "payg",
+            "billing_boundary": {"kind": "resource", "value": "resource-a"},
+            "billed_source": "operator",
+            "allocation_model": "metered",
+            "preferred_key": "tokens",
+            "applied_key": None,
+            "declared_total": None,
+            "attributed_amount": None,
+            "unattributed_amount": None,
+            "unallocated_amount": None,
+            "omitted_allocated_amount": None,
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "rows_shown": 0,
+            "rows_total": None,
+            "confidence": "unavailable",
+            "coverage_state": "not_configured",
+            "coverage_reason": "No billed total was configured.",
+            "next_action": "Configure an exact billed total.",
+        },
+        {
+            **dict(_cost_data()["components"][0]),
+            "component_id": "observed-zero",
+            "declared_total": "0.00",
+            "attributed_amount": "0.00",
+            "unattributed_amount": "0.00",
+            "unallocated_amount": "0.00",
+            "omitted_allocated_amount": "0.00",
+            "rows_shown": 100,
+            "rows_total": 120,
+            "coverage_state": "partial",
+            "coverage_reason": "Twenty allocation rows were omitted.",
+            "next_action": "Narrow the component or agent selector.",
+        },
+    ]
+    coverage = [
+        {
+            "dimension": "cost_attribution",
+            "state": "not_configured",
+            "reason": "No billed total was configured.",
+            "next_action": "Configure an exact billed total.",
+            "source_id": "missing-total",
+        }
+    ]
+    html = ui.render_cost_view(
+        _cost_data(
+            components=components,
+            rows=[],
+            currency_subtotals=[
+                {
+                    "currency": "USD",
+                    "currency_minor_units": 2,
+                    "declared_total": None,
+                    "attributed_amount": None,
+                    "unattributed_amount": None,
+                    "unallocated_amount": None,
+                }
+            ],
+        ),
+        coverage=coverage,
+        partial_failures=[
+            {
+                "source_id": 'workspace<"a">',
+                "status": "partial",
+                "reason": "The query returned partial data for this source.",
+                "next_action": "Retry later.",
+            }
+        ],
+        bounds={"rows_shown": 100, "rows_total_in_scope": 120, "truncated": True},
+    )
+    assert html.count("Missing configured billed total") >= 3
+    assert "Not reported" in html
+    assert "Observed zero" in html
+    assert "0.00 USD" in html
+    assert "Unallocated" in html
+    assert "Omitted allocated" in html
+    assert "Showing 100 of 120 rows in scope; results are truncated." in html
+    assert "100 / 120 (20 omitted)" in html
+    assert "Twenty allocation rows were omitted." in html
+    assert "Narrow the component or agent selector." in html
+    assert "Unavailable" in html
+    assert "Partial source failures" in html
+    assert 'workspace&lt;&quot;a&quot;&gt;' in html
+
+
+def test_script_cost_renderer_has_tool_run_provenance_and_incomplete_state_parity() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert "function renderCost(data, diagnostics, coverage, partialFailures, bounds)" in script
+    for field in (
+        "period_id",
+        "period_starts_at",
+        "period_ends_at",
+        "source_resource_id",
+        "project_resource_id",
+        "billing_boundary",
+        "preferred_key",
+        "applied_key",
+        "fallback_used",
+        "rounding_adjustment_minor_units",
+        "calculated_at",
+        "latest_observed_at",
+        "rows_total",
+        "coverage_reason",
+        "next_action",
+        "partialFailures",
+        "bounds",
+    ):
+        assert field in script
+    assert ui.COST_BREAKDOWN_WARNING in script
+    assert "Unattributed tool" in script
+    assert "Unattributed run" in script
+    assert "Missing configured billed total" in script
+    assert "Observed zero" in script
+    assert "innerHTML" not in script
 
 
 # ---------------------------------------------------------------------------

@@ -10,11 +10,15 @@ lightweight fakes and production code can inject the real async
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Literal, Mapping, Sequence
+from uuid import UUID
 
+from agentops.core.attribution import AttributionConfiguration
+from agentops.core.cost import CostComponent
 from agentops.core.observe import (
     MAX_ROWS_PER_QUERY,
     GenerativeAIContent,
@@ -100,6 +104,14 @@ def _time_window_clause(filters: ObserveFilterState) -> str:
     )
 
 
+def _period_time_window_clause(filters: ObserveFilterState) -> str:
+    """Return the exact inclusive-start, exclusive-end period predicate."""
+    return (
+        f"| where TimeGenerated >= datetime({_iso(filters.start)}) and "
+        f"TimeGenerated < datetime({_iso(filters.end)})"
+    )
+
+
 def _dimension_filters(
     filters: ObserveFilterState, scope_source: TelemetrySource | None = None
 ) -> list[str]:
@@ -124,7 +136,8 @@ def _dimension_filters(
         clauses.append(f"| where tolower({_PROJECT_RESOURCE_ID}) == '{value}'")
     elif scope_source and scope_source.project_resource_ids:
         values = ", ".join(
-            f"'{_kql_escape(project_id)}'" for project_id in scope_source.project_resource_ids
+            f"'{_kql_escape(project_id)}'"
+            for project_id in scope_source.project_resource_ids
         )
         clauses.append(f"| where tolower({_PROJECT_RESOURCE_ID}) in ({values})")
     if filters.agent_id:
@@ -161,6 +174,56 @@ def _agent_extend_clauses() -> list[str]:
         '| extend input_tokens = toint(Properties["gen_ai.usage.input_tokens"])',
         '| extend output_tokens = toint(Properties["gen_ai.usage.output_tokens"])',
     ]
+
+
+def _cost_component_filter_clauses(
+    component: CostComponent | None,
+    scope_source: TelemetrySource | None,
+) -> list[str]:
+    if component is None:
+        return []
+
+    match = component.usage_match
+    clauses: list[str] = []
+    source_resource_id = (
+        scope_source.foundry_resource_id or scope_source.resource_id
+        if scope_source is not None
+        else None
+    )
+    if match.source_resource_ids and (
+        source_resource_id is None
+        or source_resource_id not in match.source_resource_ids
+    ):
+        return ["| where false"]
+
+    dimension_matches = (
+        (match.project_resource_ids, "tolower(project_resource_id)"),
+        (match.agent_keys, "agent_key"),
+        (match.deployments, "deployment"),
+        (match.models, "model"),
+        (match.tool_names, "tool_name"),
+        (match.credit_event_operations, "operation_name"),
+    )
+    for allowed, expression in dimension_matches:
+        if not allowed:
+            continue
+        values = ", ".join(f"'{_kql_escape(value)}'" for value in sorted(allowed))
+        clauses.append(f"| where {expression} in ({values})")
+    return clauses
+
+
+_COST_DIMENSIONS = (
+    "project_resource_id",
+    "agent_key",
+    "agent_id",
+    "agent_name",
+    "provider_name",
+    "system",
+    "deployment",
+    "model",
+    "tool_name",
+    "operation_name",
+)
 
 
 def _bounded_aggregate(aggregate_lines: Sequence[str], *, order_by: str) -> str:
@@ -290,34 +353,34 @@ def build_models_query(
     excluded = ", ".join(f'"{name}"' for name in excluded_names)
     return "\n".join(
         [
-        "let model_events = materialize(",
-        *event_lines,
-        ");",
-        "let model_summary = model_events",
-        *summary_lines,
-        ";",
-        "let extra_class_summary = model_events",
-        "| mv-expand token_class_name = bag_keys(Properties)",
-        "| extend token_class_name = tostring(token_class_name)",
-        '| where token_class_name startswith "gen_ai.usage."',
-        f"| where token_class_name !in ({excluded})",
-        "| extend token_class_value = todouble(Properties[token_class_name])",
-        "| where isnotnull(token_class_value) and token_class_value >= 0",
-        "| summarize token_class_value = sum(token_class_value) "
-        "by project_resource_id, model, deployment, token_class_name",
-        "| summarize extra_token_classes = "
-        "make_bag(pack(token_class_name, token_class_value)) "
-        "by project_resource_id, model, deployment;",
-        "let agg = model_summary",
-        "| join kind=leftouter extra_class_summary "
-        "on project_resource_id, model, deployment",
-        "| project-away project_resource_id1, model1, deployment1",
-        ";",
-        "let total_in_scope = toscalar(agg | count);",
-        "agg",
-        "| sort by requests desc",
-        f"| take {MAX_ROWS_PER_QUERY}",
-        "| extend total_in_scope = total_in_scope",
+            "let model_events = materialize(",
+            *event_lines,
+            ");",
+            "let model_summary = model_events",
+            *summary_lines,
+            ";",
+            "let extra_class_summary = model_events",
+            "| mv-expand token_class_name = bag_keys(Properties)",
+            "| extend token_class_name = tostring(token_class_name)",
+            '| where token_class_name startswith "gen_ai.usage."',
+            f"| where token_class_name !in ({excluded})",
+            "| extend token_class_value = todouble(Properties[token_class_name])",
+            "| where isnotnull(token_class_value) and token_class_value >= 0",
+            "| summarize token_class_value = sum(token_class_value) "
+            "by project_resource_id, model, deployment, token_class_name",
+            "| summarize extra_token_classes = "
+            "make_bag(pack(token_class_name, token_class_value)) "
+            "by project_resource_id, model, deployment;",
+            "let agg = model_summary",
+            "| join kind=leftouter extra_class_summary "
+            "on project_resource_id, model, deployment",
+            "| project-away project_resource_id1, model1, deployment1",
+            ";",
+            "let total_in_scope = toscalar(agg | count);",
+            "agg",
+            "| sort by requests desc",
+            f"| take {MAX_ROWS_PER_QUERY}",
+            "| extend total_in_scope = total_in_scope",
         ]
     )
 
@@ -336,7 +399,9 @@ def build_tools_query(
     ]
     aggregate_lines = ["base", "| where isnotempty(tool_name)"]
     if filters.tool_name:
-        aggregate_lines.append(f"| where tool_name == '{_kql_escape(filters.tool_name)}'")
+        aggregate_lines.append(
+            f"| where tool_name == '{_kql_escape(filters.tool_name)}'"
+        )
     aggregate_lines.append(
         "| summarize invocations = count(), "
         "failures = countif(Success == false), "
@@ -382,15 +447,22 @@ def build_runs_query(
     """Build a bounded aggregate of conversation- or trace-correlated runs."""
     aggregate_lines = [
         _TELEMETRY_TABLES,
-        _time_window_clause(filters),
+        _period_time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
+        *_token_class_extend_clauses(),
         '| extend tool_name = tostring(Properties["gen_ai.tool.name"])',
+        '| extend operation_name = tostring(Properties["gen_ai.operation.name"])',
+        "| extend credit_event = iff(isnotempty(operation_name), 1, long(null))",
+        '| extend reported_credits = todecimal(Properties["gen_ai.usage.credits"])',
+        "| extend credits = iff("
+        "isnotnull(reported_credits) and reported_credits >= 0, "
+        "reported_credits, decimal(null))",
         '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"])',
         '| extend foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
         "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
         "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
-        '| extend run_key_kind = iff(isnotempty(conversation_id) or isnotempty(foundry_thread_id), '
+        "| extend run_key_kind = iff(isnotempty(conversation_id) or isnotempty(foundry_thread_id), "
         '"conversation", "trace")',
     ]
     if filters.run_key:
@@ -405,12 +477,33 @@ def build_runs_query(
             "tool_failures = countif(isnotempty(tool_name) and Success == false), "
             "input_tokens = sum(input_tokens), "
             "output_tokens = sum(output_tokens), "
+            "cache_read_tokens = sum(cache_read_tokens), "
+            "cache_write_tokens = sum(cache_write_tokens), "
+            "reasoning_tokens = sum(reasoning_tokens), "
+            "credits = sum(credits), "
+            "credit_events = sum(credit_event), "
             "input_token_reports = countif(isnotnull(input_tokens)), "
-            "output_token_reports = countif(isnotnull(output_tokens)) "
+            "output_token_reports = countif(isnotnull(output_tokens)), "
+            "cache_read_token_reports = countif(isnotnull(cache_read_tokens)), "
+            "cache_write_token_reports = countif(isnotnull(cache_write_tokens)), "
+            "reasoning_token_reports = countif(isnotnull(reasoning_tokens)), "
+            "credit_reports = countif(isnotnull(credits)), "
+            "credit_event_reports = countif(isnotnull(credit_event)) "
             "by project_resource_id, agent_key, agent_id, agent_name, provider_name, system, "
-            "run_key, run_key_kind",
+            "run_key, run_key_kind, operation_name",
             "| extend input_tokens = iff(input_token_reports == 0, long(null), input_tokens), "
-            "output_tokens = iff(output_token_reports == 0, long(null), output_tokens)",
+            "output_tokens = iff(output_token_reports == 0, long(null), output_tokens), "
+            "cache_read_tokens = iff(cache_read_token_reports == 0, long(null), "
+            "cache_read_tokens), "
+            "cache_write_tokens = iff(cache_write_token_reports == 0, long(null), "
+            "cache_write_tokens), "
+            "reasoning_tokens = iff(reasoning_token_reports == 0, long(null), "
+            "reasoning_tokens), "
+            "credits = iff(credit_reports == 0, decimal(null), credits), "
+            "credit_events = iff(credit_event_reports == 0, long(null), credit_events)",
+            "| project-away input_token_reports, output_token_reports, "
+            "cache_read_token_reports, cache_write_token_reports, "
+            "reasoning_token_reports, credit_reports, credit_event_reports",
             '| extend duration_ms = todouble(datetime_diff("millisecond", last_activity_at, started_at))',
         ]
     )
@@ -435,6 +528,214 @@ def build_usage_query(
     return "\n".join(lines)
 
 
+def _attribution_mapping_datatable(config: AttributionConfiguration) -> str:
+    """Render the validated explicit-user mapping as one bounded KQL table."""
+    rows = [
+        (
+            user_key,
+            department.id,
+            department.label,
+        )
+        for department in config.departments
+        for user_key in department.user_keys
+    ]
+    values = ",\n    ".join(
+        f"'{_kql_escape(user_key)}', "
+        f"'{_kql_escape(department_id)}', "
+        f"'{_kql_escape(department_label)}'"
+        for user_key, department_id, department_label in rows
+    )
+    body = f"[\n    {values}\n]" if values else "[]"
+    return (
+        "datatable(user_key:string, department_id:string, "
+        f"department_label:string) {body}"
+    )
+
+
+def build_department_usage_query(
+    filters: ObserveFilterState,
+    config: AttributionConfiguration,
+    *,
+    tenant_id: UUID | str,
+    department_id: str | None = None,
+    principal_user_keys: Sequence[str] = (),
+    scope_source: TelemetrySource | None = None,
+    cost_component: CostComponent | None = None,
+) -> str:
+    """Build a bounded privacy-safe department usage aggregate.
+
+    Identity exists only in the ``classified`` intermediate relation. The final
+    projection contains department aggregates and coverage counters, never an
+    identity value or pseudonymous user key.
+    """
+    if (
+        not config.enabled
+        or config.deployment_namespace is None
+        or config.generation is None
+    ):
+        raise ValueError("department attribution requires an enabled configuration")
+    tenant = str(UUID(str(tenant_id)))
+    namespace = str(config.deployment_namespace)
+    generation = config.generation
+    expected_prefix = f"usr1.g{generation}."
+    normalized_principal_keys = tuple(sorted(set(principal_user_keys)))
+    if any(
+        not re.fullmatch(r"usr1\.g[1-9][0-9]*\.[0-9a-f]{64}", key)
+        or not key.startswith(expected_prefix)
+        for key in normalized_principal_keys
+    ):
+        raise ValueError("principal_user_keys contains an invalid active-generation key")
+    principal_key_values = ", ".join(
+        f"'{_kql_escape(key)}'" for key in normalized_principal_keys
+    )
+
+    base_lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        *_agent_extend_clauses(),
+        '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
+        '| extend tool_name = tostring(Properties["gen_ai.tool.name"]), '
+        'operation_name = tostring(Properties["gen_ai.operation.name"])',
+        '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
+    ]
+    if filters.tool_name:
+        base_lines.append(f"| where tool_name == '{_kql_escape(filters.tool_name)}'")
+    if filters.run_key:
+        base_lines.append(f"| where run_key == '{_kql_escape(filters.run_key)}'")
+    base_lines.extend(_cost_component_filter_clauses(cost_component, scope_source))
+
+    canonical_prefix = _kql_escape(
+        f"agentops-attribution-v1|{namespace}|{generation}|{tenant}|"
+    )
+    classified_lines = [
+        "base",
+        '| extend authenticated_id = trim(@"[ \\t\\r\\n]+", tostring(UserAuthenticatedId)), '
+        'otel_enduser_id = trim(@"[ \\t\\r\\n]+", tostring(Properties["enduser.id"]))',
+        "| extend identity_state = case("
+        'isempty(authenticated_id) and isempty(otel_enduser_id), "not_reported", '
+        "isempty(authenticated_id) or isempty(otel_enduser_id) or "
+        'authenticated_id == otel_enduser_id, "identified", "ambiguous")',
+        "| extend effective_identity = iff("
+        'identity_state == "identified", '
+        "iff(isnotempty(authenticated_id), authenticated_id, otel_enduser_id), "
+        'tostring(""))',
+        "| extend user_key = iff("
+        'identity_state == "identified", '
+        f'strcat("usr1.g{generation}.", hash_sha256('
+        f'strcat("{canonical_prefix}", effective_identity))), tostring(""))',
+        (
+            f"| extend principal_member = user_key in ({principal_key_values})"
+            if principal_key_values
+            else "| extend principal_member = false"
+        ),
+        "| project-away authenticated_id, otel_enduser_id, effective_identity",
+        "| join kind=leftouter mapping on user_key",
+        "| project-away user_key1",
+        "| extend mapping_state = case("
+        'identity_state == "ambiguous", "ambiguous", '
+        'identity_state == "identified" and isnotempty(department_id), "mapped", '
+        '"unmapped")',
+    ]
+    if department_id is not None:
+        if not isinstance(department_id, str) or not department_id.strip():
+            raise ValueError("department_id must be a non-empty string")
+        classified_lines.append(
+            f"| where department_id == '{_kql_escape(department_id.strip())}'"
+        )
+
+    cost_group_fields = (
+        ", identity_state, " + ", ".join(_COST_DIMENSIONS)
+        if cost_component is not None
+        else ""
+    )
+    cost_metadata_fields = (
+        ", identity_state = 'not_reported', "
+        + ", ".join(f"{field} = ''" for field in _COST_DIMENSIONS)
+        if cost_component is not None
+        else ""
+    )
+    cost_projection_fields = (
+        ", identity_state, " + ", ".join(_COST_DIMENSIONS)
+        if cost_component is not None
+        else ""
+    )
+
+    return "\n".join(
+        [
+            f"let mapping = {_attribution_mapping_datatable(config)};",
+            f"let base = materialize({base_lines[0]}",
+            *base_lines[1:],
+            ");",
+            f"let classified = materialize({classified_lines[0]}",
+            *classified_lines[1:],
+            ");",
+            "let eligible_records = toscalar(classified | count);",
+            'let identified_records = toscalar(classified | where identity_state == "identified" | count);',
+            'let mapped_records = toscalar(classified | where mapping_state == "mapped" | count);',
+            'let unattributed_records = toscalar(classified | where mapping_state != "mapped" | count);',
+            'let ambiguous_records = toscalar(classified | where mapping_state == "ambiguous" | count);',
+            "let agg = classified",
+            "| summarize invocations = count(), "
+            "input_tokens = sum(input_tokens), "
+            "input_token_reports = countif(isnotnull(input_tokens)), "
+            "output_tokens = sum(output_tokens), "
+            "output_token_reports = countif(isnotnull(output_tokens)), "
+            "tool_invocations = countif(isnotempty(tool_name) or operation_name == "
+            '"execute_tool"), '
+            "tool_invocation_reports = countif(isnotempty(tool_name) or "
+            "isnotempty(operation_name)), "
+            "nonprincipal_member_count = dcountif("
+            "user_key, isnotempty(user_key) and not(principal_member)), "
+            "principal_member_present = max(toint(principal_member)) "
+            "by department_id, department_label, mapping_state"
+            f"{cost_group_fields}",
+            "| extend member_count = nonprincipal_member_count + principal_member_present",
+            "| extend input_tokens = iff(input_token_reports == 0, long(null), input_tokens), "
+            "output_tokens = iff(output_token_reports == 0, long(null), output_tokens), "
+            "tool_invocations = iff(tool_invocation_reports == 0, long(null), "
+            "tool_invocations), active_session_seconds = decimal(null)",
+            "| project-away input_token_reports, output_token_reports, "
+            "tool_invocation_reports;",
+            "let returned_records = toscalar(agg | count);",
+            "union",
+            "(",
+            "    agg",
+            "    | sort by invocations desc, department_id asc, mapping_state asc",
+            f"    | take {MAX_ROWS_PER_QUERY}",
+            "    | extend _metadata_only = false",
+            "),",
+            "(",
+            "    print department_id = '', department_label = '', "
+            'mapping_state = "unmapped", member_count = 0, '
+            "nonprincipal_member_count = 0, principal_member_present = 0, "
+            "invocations = 0, "
+            "input_tokens = long(null), output_tokens = long(null), "
+            "tool_invocations = long(null), active_session_seconds = decimal(null), "
+            f"_metadata_only = true{cost_metadata_fields}",
+            "    | where eligible_records == 0",
+            ")",
+            "| extend eligible_records = eligible_records, "
+            "identified_records = identified_records, mapped_records = mapped_records, "
+            "unattributed_records = unattributed_records, "
+            "ambiguous_records = ambiguous_records, returned_records = returned_records",
+            "| project department_id, department_label, mapping_state, member_count, "
+            "nonprincipal_member_count, principal_member_present, "
+            "invocations, input_tokens, output_tokens, tool_invocations, "
+            "active_session_seconds, eligible_records, identified_records, "
+            "mapped_records, unattributed_records, ambiguous_records, "
+            f"returned_records, _metadata_only{cost_projection_fields}",
+        ]
+    )
+
+
+# Backward-compatible descriptive alias for callers that spell out the boundary.
+build_aggregate_department_usage_query = build_department_usage_query
+
+
 def build_trends_query(
     filters: ObserveFilterState,
     *,
@@ -454,6 +755,140 @@ def build_trends_query(
         f"| take {MAX_ROWS_PER_QUERY}",
     ]
     return "\n".join(lines)
+
+
+def build_user_usage_query(
+    filters: ObserveFilterState,
+    config: AttributionConfiguration,
+    *,
+    tenant_id: UUID | str,
+    department_id: str | None = None,
+    selected_user_key: str | None = None,
+    scope_source: TelemetrySource | None = None,
+    cost_component: CostComponent | None = None,
+) -> str:
+    """Build the delegated-only exact per-source user attribution query.
+
+    Every identity predicate is expressed in terms of a pseudonymous key that
+    was computed by the caller. Raw telemetry identity is only projected after
+    filtering and is never interpolated into KQL. Ranking and ``Other users``
+    folding intentionally happen only after exact cross-source aggregation.
+    """
+    if (
+        not config.enabled
+        or config.deployment_namespace is None
+        or config.generation is None
+    ):
+        raise ValueError("user attribution requires an enabled configuration")
+    departments = {department.id: department for department in config.departments}
+    if department_id is not None and department_id not in departments:
+        raise ValueError("department_id is not allowlisted")
+    expected_prefix = f"usr1.g{config.generation}."
+    if selected_user_key is not None and (
+        not re.fullmatch(r"usr1\.g[1-9][0-9]*\.[0-9a-f]{64}", selected_user_key)
+        or not selected_user_key.startswith(expected_prefix)
+    ):
+        raise ValueError("selected_user_key is invalid for the active generation")
+
+    allowed_user_keys = (
+        tuple(sorted(departments[department_id].user_keys))
+        if department_id is not None
+        else None
+    )
+    tenant = str(UUID(str(tenant_id)))
+    canonical_prefix = _kql_escape(
+        f"agentops-attribution-v1|{config.deployment_namespace}|"
+        f"{config.generation}|{tenant}|"
+    )
+    base = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        *_agent_extend_clauses(),
+        '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
+        '| extend tool_name = tostring(Properties["gen_ai.tool.name"]), '
+        'operation_name = tostring(Properties["gen_ai.operation.name"])',
+        '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
+    ]
+    if filters.tool_name:
+        base.append(f"| where tool_name == '{_kql_escape(filters.tool_name)}'")
+    if filters.run_key:
+        base.append(f"| where run_key == '{_kql_escape(filters.run_key)}'")
+    base.extend(_cost_component_filter_clauses(cost_component, scope_source))
+    predicates: list[str] = []
+    if selected_user_key is not None:
+        predicates.append(f"user_key == '{_kql_escape(selected_user_key)}'")
+    if allowed_user_keys is not None:
+        if allowed_user_keys:
+            values = ", ".join(f"'{_kql_escape(value)}'" for value in allowed_user_keys)
+            predicates.append(f"user_key in ({values})")
+        else:
+            predicates.append("false")
+
+    cost_group_fields = (
+        ", " + ", ".join(_COST_DIMENSIONS) if cost_component is not None else ""
+    )
+    cost_projection_fields = (
+        ", " + ", ".join(_COST_DIMENSIONS) if cost_component is not None else ""
+    )
+
+    return "\n".join(
+        [
+            "let base =",
+            *base,
+            ";",
+            "let identity_rows = base",
+            '| extend authenticated_id = trim(@"[ \\t\\r\\n]+", tostring(UserAuthenticatedId)), '
+            'otel_enduser_id = trim(@"[ \\t\\r\\n]+", tostring(Properties["enduser.id"]))',
+            "| extend raw_identity = case(",
+            '    isempty(authenticated_id) and isempty(otel_enduser_id), "",',
+            "    isempty(authenticated_id), otel_enduser_id,",
+            "    isempty(otel_enduser_id), authenticated_id,",
+            "    authenticated_id == otel_enduser_id, authenticated_id,",
+            '    "")',
+            "| extend user_key = iff(isnotempty(raw_identity), "
+            f'strcat("usr1.g{config.generation}.", hash_sha256('
+            f'strcat("{canonical_prefix}", raw_identity))), tostring(""))',
+            "| project-away authenticated_id, otel_enduser_id",
+            *(["| where " + " and ".join(predicates)] if predicates else []),
+            ";",
+            "let identified = identity_rows",
+            "| where isnotempty(raw_identity) and isnotempty(user_key)",
+            "| summarize invocations=count(),",
+            "    input_tokens=sum(input_tokens), input_token_reports=countif(isnotnull(input_tokens)),",
+            "    output_tokens=sum(output_tokens), output_token_reports=countif(isnotnull(output_tokens)),",
+            "    tool_invocations=countif(isnotempty(tool_name) or operation_name == 'execute_tool'),",
+            "    tool_invocation_reports=countif(isnotempty(tool_name) or isnotempty(operation_name))",
+            f"  by user_key, raw_identity{cost_group_fields}",
+            "| extend input_tokens=iff(input_token_reports == 0, long(null), input_tokens),",
+            "    output_tokens=iff(output_token_reports == 0, long(null), output_tokens),",
+            "    tool_invocations=iff(tool_invocation_reports == 0, long(null), tool_invocations),",
+            "    active_session_seconds=decimal(null)",
+            "| extend row_kind='user', distinct_users=1;",
+            "let unattributed = identity_rows",
+            "| where isempty(raw_identity) or isempty(user_key)",
+            "| summarize invocations=count(), input_tokens=sum(input_tokens),",
+            "    input_token_reports=countif(isnotnull(input_tokens)),",
+            "    output_tokens=sum(output_tokens), output_token_reports=countif(isnotnull(output_tokens)),",
+            "    tool_invocations=countif(isnotempty(tool_name) or operation_name == 'execute_tool'),",
+            "    tool_invocation_reports=countif(isnotempty(tool_name) or isnotempty(operation_name))"
+            f" by {', '.join(_COST_DIMENSIONS)}"
+            if cost_component is not None
+            else "    tool_invocation_reports=countif(isnotempty(tool_name) or isnotempty(operation_name))",
+            "| extend input_tokens=iff(input_token_reports == 0, long(null), input_tokens),",
+            "    output_tokens=iff(output_token_reports == 0, long(null), output_tokens),",
+            "    tool_invocations=iff(tool_invocation_reports == 0, long(null), tool_invocations),",
+            "    active_session_seconds=decimal(null)",
+            "| extend row_kind='unattributed', user_key='', raw_identity='', distinct_users=0;",
+            "union identified, unattributed",
+            "| project row_kind, user_key, raw_identity,",
+            "    invocations, input_tokens, output_tokens, tool_invocations,",
+            f"    active_session_seconds, distinct_users{cost_projection_fields}",
+        ]
+    )
 
 
 def build_agent_detail_query(
