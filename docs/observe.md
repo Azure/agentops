@@ -38,7 +38,7 @@ request to ten telemetry sources, applies filters before aggregation, and keeps
 successful source results when another source is denied, throttled, or times
 out.
 
-The six views share the same explicit filter state:
+The standard six views share the same explicit filter state:
 
 - **Overview** shows bounded aggregate activity, latency, errors, and observed
   token usage.
@@ -59,6 +59,12 @@ The six views share the same explicit filter state:
 - **Telemetry coverage** explains readable, empty, denied, unconfigured,
   unattributed, protected, timed-out, and partial sources.
 
+When `AGENTOPS_COST_MODEL` contains a valid version 1 model, a seventh
+**Cost** view appears. Cost uses its configured period boundaries and component
+selectors instead of the shared Observe time, source, project, model, tool, and
+run filters. This prevents a display filter from silently changing an allocation
+denominator.
+
 The default range is 24 hours. Draft filters do not query until **Apply** is
 selected. Applied filters are bookmarkable in the URL, refresh every five
 minutes, and may be refreshed manually. Raw trace content is never part of that
@@ -66,6 +72,122 @@ URL or browser persistence. Alongside the existing agent, model, and time-range
 filters, **Tools** accepts `tool_name` and **Runs** accepts `run_key`. Both only
 narrow results; blank values are rejected, and values are escaped before they
 reach telemetry queries.
+
+## Allocate declared billed totals
+
+The Cost view is an operational allocation of totals supplied by an operator.
+AgentOps does not call Azure Cost Management, discover invoices, apply rate
+cards, or infer credits. Removing `AGENTOPS_COST_MODEL` hides Cost and leaves
+every other Observe view unchanged.
+
+Configure the model as bounded JSON before starting Cockpit:
+
+```powershell
+$env:AGENTOPS_COST_MODEL = @'
+{
+  "version": 1,
+  "periods": [{
+    "id": "2026-08",
+    "starts_at": "2026-08-01T00:00:00Z",
+    "ends_at": "2026-09-01T00:00:00Z",
+    "components": [{
+      "id": "gpt-ptu-prod",
+      "type": "provisioned_throughput",
+      "billing_boundary": {
+        "kind": "resource",
+        "value": "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/ai-prod/providers/Microsoft.CognitiveServices/accounts/foundry-prod"
+      },
+      "billed_source": "August provisioned-throughput commitment",
+      "billed_total": "12000.00",
+      "currency": "USD",
+      "currency_minor_units": 2,
+      "allocation_model": "commitment",
+      "allocation_key": "weighted_tokens",
+      "fallback_key": "total_tokens",
+      "token_weights": {
+        "input_tokens": "1",
+        "output_tokens": "4",
+        "cache_read_tokens": "0.25"
+      },
+      "usage_match": {
+        "deployments": ["gpt-prod"]
+      }
+    }]
+  }]
+}
+'@
+
+agentops cockpit
+```
+
+The value is read once at process startup, is limited to 32 KiB, and rejects
+unknown or secret-shaped fields. Restart Cockpit after changing or removing it.
+Malformed configuration disables only Cost and returns a non-sensitive
+validation error for direct Cost requests.
+
+### Component compatibility and evidence
+
+Each component declares one total, currency, precision, billing boundary, and
+compatible usage key:
+
+| Component | Preferred allocation evidence | Allowed fallback |
+|---|---|---|
+| Provisioned throughput | Weighted or total tokens | Total tokens when weighted is preferred |
+| Standard model | Weighted or total tokens | Total tokens when weighted is preferred |
+| Search, grounding, content safety, storage | Tool invocations | None |
+| Hosted or customer compute | Active session seconds | None |
+| Pay-as-you-go or prepaid credits | Directly reported credits or explicit configured credit events | Explicit configured credit events when credits are preferred |
+
+Weighted tokens use only configured weights and directly observed token classes.
+A missing class remains missing; it is never derived from another total. Direct
+credits take precedence over credit-event fallback, and credit events count only
+explicitly configured operation names. No event-to-credit rate is inferred.
+`usage_match` narrows eligible observations by declared source, project, agent,
+deployment, model, tool, or runtime values.
+
+Every amount retains its billed source and boundary, selected allocation method,
+observed numerator and denominator, observation window, source counts,
+calculation time, freshness, and confidence. Confidence is:
+
+- **high** when required telemetry is complete;
+- **medium** when an explicit fallback is used;
+- **low** when telemetry is partial;
+- **unavailable** when no usable denominator exists.
+
+### Exact reconciliation and truthful gaps
+
+AgentOps allocates with decimal arithmetic in integer currency minor units. A
+deterministic largest-remainder step uses the normalized consumer key to break
+ties. For every component and currency:
+
+```text
+attributed + unattributed + unallocated = declared billed total
+```
+
+Agent, tool, and run breakdowns are alternative reconciliations of the same
+billed pools; never add them together. Different currencies and minor-unit
+precisions remain separate. Applying `cost_agent_key` happens after allocation:
+hidden rows move to `omitted_allocated_amount` without changing denominators or
+the original component allocation.
+
+The UI and API keep these states distinct:
+
+- **Not configured**: no declared total exists; this is not zero spend.
+- **Observed zero**: telemetry explicitly reported zero.
+- **Unattributed**: usage exists but lacks the selected agent, tool, or run key.
+- **Unallocated**: a declared total has no usable observed denominator.
+- **Omitted**: bounded or filtered allocated rows are excluded from display but
+  remain in reconciliation summaries.
+- **Partial**: one or more telemetry sources failed or reported incomplete
+  dimensions; successful bounded results remain visible.
+
+The hosted deployment may propagate the model as the allowlisted, non-secret
+`AGENTOPS_COST_MODEL` App Service setting. It adds no Azure resource, identity,
+role assignment, billing permission, or write permission. Existing aggregate
+queries continue to use only `Reader` and `Log Analytics Reader`.
+
+> Operational cost allocation from declared billed totals and observed usage;
+> not an invoice or billing-accurate charge.
 
 ### Runtime attribution and source identity
 

@@ -5,6 +5,20 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **The Cockpit can allocate operator-declared billed totals across observed
+  agents, tools, and runs.** The optional `AGENTOPS_COST_MODEL` configuration
+  uses bounded read-only telemetry, exact minor-unit reconciliation, explicit
+  method/confidence/provenance, separate currencies, and truthful unattributed,
+  unallocated, omitted, missing, and partial states. Agent, tool, and run
+  breakdowns are alternative views of the same pools, not additive.
+
+### Security
+- **Cost allocation adds no billing or write access.** AgentOps never calls a
+  billing API, infers prices or credits, or expands the hosted Cockpit's existing
+  `Reader` and `Log Analytics Reader` roles. The deployment preview propagates
+  only a validated, bounded, non-secret cost model when configured.
+
 ## [0.12.0] - 2026-08-24
 
 ### Added

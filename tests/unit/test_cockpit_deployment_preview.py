@@ -19,6 +19,7 @@ Covers (issue #433, Phase 3, tasks T018-T020):
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,6 +27,7 @@ from types import SimpleNamespace
 import pytest
 
 from agentops.core.observe import DeploymentSelection, ObserveScope, RoleAssignmentPlan
+from fixtures.cost import valid_cost_model_payload
 from agentops.services.cockpit_deployment import (
     ALLOWED_SETTINGS_KEYS,
     AzCliAppRegistrationClient,
@@ -63,6 +65,11 @@ SP_OBJECT_ID = "55555555-5555-5555-5555-555555555555"
 GROUP_ID = "66666666-6666-6666-6666-666666666666"
 RESOURCE_GROUP = "rg-agentops"
 LOCATION = "eastus"
+
+
+@pytest.fixture(autouse=True)
+def _clear_cost_model_environment(monkeypatch):
+    monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
 APP_NAME = "agentops-cockpit-test"
 
 PROJECT_ID = (
@@ -324,6 +331,30 @@ def test_build_application_settings_includes_allowed_group_when_set():
     # ``allowedGroupObjectId`` app setting (no ``AGENTOPS_ALLOWED_GROUP_ID``
     # alias).
     assert settings["AGENTOPS_ALLOWED_GROUP_OBJECT_ID"] == GROUP_ID
+
+
+def test_build_application_settings_includes_valid_optional_cost_model(monkeypatch):
+    raw = json.dumps(valid_cost_model_payload(), separators=(",", ":"))
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", raw)
+
+    settings = build_application_settings(_selection(), uami_client_id="uami-client-id")
+
+    assert settings["AGENTOPS_COST_MODEL"] == raw
+    assert "AGENTOPS_COST_MODEL" in ALLOWED_SETTINGS_KEYS
+
+
+def test_build_application_settings_rejects_invalid_or_secret_shaped_cost_model(
+    monkeypatch,
+):
+    payload = valid_cost_model_payload()
+    payload["client_secret"] = "must-not-be-deployed"
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", json.dumps(payload))
+
+    with pytest.raises(CockpitDeploymentError, match="secret-shaped") as excinfo:
+        build_application_settings(_selection(), uami_client_id="uami-client-id")
+
+    assert "must-not-be-deployed" not in str(excinfo.value)
+    assert excinfo.value.stage == "build_preview"
 
 
 def test_build_application_settings_never_contains_secret_shaped_keys():
@@ -650,6 +681,16 @@ def test_build_preview_env_values_satisfy_every_main_parameters_json_placeholder
     # this default selection has no allowed-group restriction.
     assert "AGENTOPS_ALLOWED_GROUP_OBJECT_ID" not in env_values
     assert preview is not None
+
+
+def test_build_preview_passes_optional_cost_model_to_azd_unchanged(monkeypatch):
+    raw = json.dumps(valid_cost_model_payload(), separators=(",", ":"))
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", raw)
+
+    preview, *_, azd_runner = _build()
+
+    assert preview.application_settings["AGENTOPS_COST_MODEL"] == raw
+    assert azd_runner.preview_calls[0][1]["AGENTOPS_COST_MODEL"] == raw
 
 
 def test_blocking_reasons_returns_empty_list_when_no_warnings_are_blocked():

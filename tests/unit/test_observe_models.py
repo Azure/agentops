@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import get_args
 from uuid import uuid4
 
 import pytest
@@ -17,12 +18,20 @@ from agentops.core.observe import (
     ObserveFilterState,
     ObserveQueryRequest,
     ObserveScope,
+    ObserveView,
     ObservedAgent,
     ObservedRun,
     ObservedTool,
     ResultBounds,
     RoleAssignmentPlan,
     TraceContentRequest,
+)
+from fixtures.observe import (
+    OBSERVE_FIXTURE_ROW_LIMIT,
+    make_agent_usage_row,
+    make_model_usage_row,
+    make_run_usage_row,
+    make_tool_usage_row,
 )
 
 
@@ -31,6 +40,26 @@ PROJECT = (
     "resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/foundry/"
     "projects/project-a"
 )
+
+
+def test_observe_usage_fixtures_are_bounded_and_cost_ready() -> None:
+    agent = make_agent_usage_row()
+    model = make_model_usage_row()
+    tool = make_tool_usage_row()
+    run = make_run_usage_row()
+
+    assert agent["agent_key"] == model["agent_id"] == tool["agent_key"]
+    assert model["cache_read_tokens"] > 0
+    assert model["cache_write_tokens"] > 0
+    assert model["reasoning_tokens"] > 0
+    assert tool["operation_name"] == "execute_tool"
+    assert run["duration_ms"] > 0
+    assert run["operation_name"] == "credit.consume"
+    assert run["credits"] == "1.5"
+    assert run["credit_events"] == 1
+
+    with pytest.raises(ValueError, match="fixture index"):
+        make_run_usage_row(OBSERVE_FIXTURE_ROW_LIMIT)
 
 
 def test_project_scope_canonicalizes_and_contains_project() -> None:
@@ -83,6 +112,10 @@ def test_filter_range_must_be_ordered_and_inside_scope() -> None:
 
     filters = ObserveFilterState(
         project_resource_id=PROJECT,
+        cost_period_id="2026-08",
+        cost_breakdown="agents",
+        cost_component_id="model.ptu",
+        cost_agent_key="agent-a",
         start=now - timedelta(hours=1),
         end=now,
     )
@@ -120,6 +153,68 @@ def test_narrowing_filters_are_trimmed_and_length_bounded() -> None:
             )
 
 
+def test_cost_filters_are_optional_trimmed_and_identifier_only() -> None:
+    now = datetime.now(timezone.utc)
+    filters = ObserveFilterState(
+        cost_period_id="  2026-08  ",
+        cost_breakdown="runs",
+        cost_component_id="  model.ptu_1  ",
+        cost_agent_key="  agent-a  ",
+        start=now - timedelta(hours=1),
+        end=now,
+    )
+
+    assert filters.cost_period_id == "2026-08"
+    assert filters.cost_breakdown == "runs"
+    assert filters.cost_component_id == "model.ptu_1"
+    assert filters.cost_agent_key == "agent-a"
+
+    defaults = ObserveFilterState(
+        start=now - timedelta(hours=1),
+        end=now,
+    )
+    assert defaults.cost_period_id is None
+    assert defaults.cost_breakdown is None
+    assert defaults.cost_component_id is None
+    assert defaults.cost_agent_key is None
+
+
+@pytest.mark.parametrize("field", ["cost_period_id", "cost_component_id"])
+@pytest.mark.parametrize(
+    "value",
+    ["", "   ", "-leading", "contains space", "contains/slash", "x" * 65],
+)
+def test_cost_identifier_filters_reject_malformed_values(field: str, value: str) -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        ObserveFilterState(
+            **{field: value},
+            start=now - timedelta(hours=1),
+            end=now,
+        )
+
+
+@pytest.mark.parametrize("value", ["", "   ", "x" * 513])
+def test_cost_agent_key_is_length_bounded(value: str) -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        ObserveFilterState(
+            cost_agent_key=value,
+            start=now - timedelta(hours=1),
+            end=now,
+        )
+
+
+def test_cost_breakdown_rejects_unknown_values() -> None:
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        ObserveFilterState(
+            cost_breakdown="models",
+            start=now - timedelta(hours=1),
+            end=now,
+        )
+
+
 def test_result_bounds_enforce_total_and_truncation_invariants() -> None:
     assert ResultBounds(rows_shown=0).rows_total_in_scope is None
     assert ResultBounds(rows_shown=500, rows_total_in_scope=501, truncated=True)
@@ -147,6 +242,8 @@ def test_observe_api_requests_are_strict_and_canonical() -> None:
     )
 
     assert query.refresh is False
+    assert "cost" in get_args(ObserveView)
+    assert ObserveQueryRequest(view="cost", filters=filters).view == "cost"
     assert ObserveQueryRequest(view="tools", filters=filters).view == "tools"
     assert ObserveQueryRequest(view="runs", filters=filters).view == "runs"
     assert detail.refresh is True
@@ -222,6 +319,61 @@ def test_new_coverage_dimensions_are_accepted(dimension: str) -> None:
     assert result.dimension == dimension
 
 
+@pytest.mark.parametrize(
+    "allocation_key",
+    [
+        "weighted_tokens",
+        "total_tokens",
+        "tool_invocations",
+        "active_session_seconds",
+        "credits",
+        "credit_events",
+    ],
+)
+def test_cost_coverage_preserves_allocation_context(allocation_key: str) -> None:
+    result = CoverageResult(
+        source_id="source",
+        dimension="cost_attribution",
+        state="partial",
+        reason="The allocation denominator is incomplete.",
+        next_action="Enable the configured allocation telemetry.",
+        refreshed_at=datetime.now(timezone.utc),
+        component_id="model.ptu",
+        cost_breakdown="agents",
+        allocation_key=allocation_key,
+    )
+
+    assert result.dimension == "cost_attribution"
+    assert result.component_id == "model.ptu"
+    assert result.cost_breakdown == "agents"
+    assert result.allocation_key == allocation_key
+
+
+def test_non_cost_coverage_keeps_cost_context_optional() -> None:
+    result = CoverageResult(
+        source_id="source",
+        dimension="token_usage",
+        state="available",
+        reason="Token usage is reported.",
+        next_action="No action required.",
+        refreshed_at=datetime.now(timezone.utc),
+    )
+    assert result.component_id is None
+    assert result.cost_breakdown is None
+    assert result.allocation_key is None
+
+    with pytest.raises(ValidationError):
+        CoverageResult(
+            source_id="source",
+            dimension="cost_attribution",
+            state="partial",
+            reason="The allocation denominator is incomplete.",
+            next_action="Enable the configured allocation telemetry.",
+            refreshed_at=datetime.now(timezone.utc),
+            allocation_key="requests",
+        )
+
+
 def test_observed_tool_requires_source_and_omits_token_fields() -> None:
     now = datetime.now(timezone.utc)
     fields = {
@@ -265,7 +417,32 @@ def test_observed_run_validates_counters_times_and_success() -> None:
     run = ObservedRun(**fields)
     assert run.input_tokens is None
     assert run.output_tokens is None
-    assert ObservedRun(**(fields | {"input_tokens": 0, "output_tokens": 0})).input_tokens == 0
+    assert run.cache_read_tokens is None
+    assert run.cache_write_tokens is None
+    assert run.reasoning_tokens is None
+    assert run.credits is None
+    assert run.credit_events is None
+
+    zero_usage = ObservedRun(
+        **(
+            fields
+            | {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "reasoning_tokens": 0,
+                "credits": "0",
+                "credit_events": 0,
+            }
+        )
+    )
+    assert zero_usage.input_tokens == 0
+    assert zero_usage.cache_read_tokens == 0
+    assert zero_usage.cache_write_tokens == 0
+    assert zero_usage.reasoning_tokens == 0
+    assert zero_usage.credits == "0"
+    assert zero_usage.credit_events == 0
 
     invalid_fields = (
         {"source_id": ""},
@@ -274,6 +451,11 @@ def test_observed_run_validates_counters_times_and_success() -> None:
         {"tool_failures": 2},
         {"last_activity_at": now - timedelta(minutes=2)},
         {"failed_turns": 1},
+        {"cache_read_tokens": -1},
+        {"cache_write_tokens": -1},
+        {"reasoning_tokens": -1},
+        {"credits": "-1"},
+        {"credit_events": -1},
     )
     for changes in invalid_fields:
         with pytest.raises(ValidationError):

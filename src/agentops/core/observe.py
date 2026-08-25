@@ -12,6 +12,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 ScopeMode = Literal["projects", "foundry", "resource_group", "subscription"]
+ObserveView = Literal[
+    "overview", "agents", "models", "coverage", "tools", "runs", "cost"
+]
+CostBreakdown = Literal["agents", "tools", "runs"]
+AllocationKey = Literal[
+    "weighted_tokens",
+    "total_tokens",
+    "tool_invocations",
+    "active_session_seconds",
+    "credits",
+    "credit_events",
+]
 RuntimeKind = Literal[
     "foundry_hosted",
     "foundry_prompt",
@@ -48,6 +60,8 @@ _PROJECT_RE = re.compile(
     r"microsoft\.cognitiveservices/accounts/[^/]+/projects/[^/]+$",
     re.IGNORECASE,
 )
+_COST_IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_DECIMAL_STRING_RE = re.compile(r"^(0|[1-9][0-9]*)(\.[0-9]+)?$")
 
 
 def canonical_arm_id(value: str) -> str:
@@ -325,6 +339,10 @@ class ObserveFilterState(ContractModel):
     model: str | None = None
     tool_name: str | None = None
     run_key: str | None = None
+    cost_period_id: str | None = None
+    cost_breakdown: CostBreakdown | None = None
+    cost_component_id: str | None = None
+    cost_agent_key: str | None = None
     start: datetime
     end: datetime
 
@@ -347,6 +365,33 @@ class ObserveFilterState(ContractModel):
             raise ValueError("Observe narrowing filters must be at most 256 characters")
         return value
 
+    @field_validator("cost_period_id", "cost_component_id")
+    @classmethod
+    def _validate_cost_identifier(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if len(value) > 64:
+            raise ValueError("cost identifiers must be at most 64 characters")
+        if not _COST_IDENTIFIER_RE.fullmatch(value):
+            raise ValueError(
+                "cost identifiers must start with an alphanumeric character and "
+                "contain only letters, numbers, '.', '_', or '-'"
+            )
+        return value
+
+    @field_validator("cost_agent_key")
+    @classmethod
+    def _validate_cost_agent_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("cost_agent_key must not be empty")
+        if len(value) > 512:
+            raise ValueError("cost_agent_key must be at most 512 characters")
+        return value
+
     @model_validator(mode="after")
     def _ordered_range(self) -> "ObserveFilterState":
         if self.start >= self.end:
@@ -360,7 +405,7 @@ class ObserveFilterState(ContractModel):
 
 
 class ObserveQueryRequest(ContractModel):
-    view: Literal["overview", "agents", "models", "coverage", "tools", "runs"]
+    view: ObserveView
     filters: ObserveFilterState
     refresh: bool = False
 
@@ -496,6 +541,18 @@ class ObservedRun(ContractModel):
     tool_failures: int = Field(ge=0)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
+    cache_read_tokens: int | None = Field(default=None, ge=0)
+    cache_write_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
+    credits: str | None = None
+    credit_events: int | None = Field(default=None, ge=0)
+
+    @field_validator("credits")
+    @classmethod
+    def _validate_credits(cls, value: str | None) -> str | None:
+        if value is not None and not _DECIMAL_STRING_RE.fullmatch(value):
+            raise ValueError("credits must be a non-negative decimal string")
+        return value
 
     @model_validator(mode="after")
     def _validate_run(self) -> "ObservedRun":
@@ -544,11 +601,15 @@ class CoverageResult(ContractModel):
         "protected_content",
         "tool_attribution",
         "run_correlation",
+        "cost_attribution",
     ]
     state: CoverageState
     reason: str
     next_action: str
     refreshed_at: datetime
+    component_id: str | None = None
+    cost_breakdown: CostBreakdown | None = None
+    allocation_key: AllocationKey | None = None
 
 
 class GenerativeAIContent(ContractModel):
