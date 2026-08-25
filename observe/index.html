@@ -886,6 +886,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#enable-user-and-department-attribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Enable user and department attribution
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#opentelemetry-spans-and-semantic-conventions" class="md-nav__link">
     <span class="md-ellipsis">
       OpenTelemetry spans and semantic conventions
@@ -1335,6 +1344,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#enable-user-and-department-attribution" class="md-nav__link">
+    <span class="md-ellipsis">
+      Enable user and department attribution
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#opentelemetry-spans-and-semantic-conventions" class="md-nav__link">
     <span class="md-ellipsis">
       OpenTelemetry spans and semantic conventions
@@ -1706,6 +1724,99 @@ by source scope, <code>TraceId</code>, and <code>SpanId</code>. There is no lega
 shared caches, URLs, browser storage, telemetry, diagnostics, or deployment
 artifacts. See <a href="../operate/#shared-hosted-cockpit-and-protected-content">Operate</a>
 and <a href="../deploy-hosted-cockpit/">Deploy the hosted Cockpit</a>.</p>
+<h2 id="enable-user-and-department-attribution">Enable user and department attribution<a class="headerlink" href="#enable-user-and-department-attribution" title="Permanent link">&para;</a></h2>
+<p>Attribution is opt-in. Set <code>AGENTOPS_ATTRIBUTION_CONFIG</code> on the Cockpit
+deployment and restart it. An enabled version 1 configuration requires a stable,
+random deployment namespace, a generation of at least <code>1</code>, and up to 100
+department definitions. Each definition maps deployment-scoped pseudonymous
+user keys or group object IDs to one department. The setting is non-secret but
+privacy-sensitive; keep its value out of source control, logs, tickets, and
+release artifacts. Deployment preview shows only its enabled state, generation,
+fingerprint, department-definition count, user-key entry count, and group-ID
+entry count.</p>
+<p>Bootstrap mappings from the protected <strong>Users</strong> view:</p>
+<ol>
+<li>Sign in as an operator who can read the selected telemetry scope directly.</li>
+<li>Open <strong>Users</strong> using the delegated view and copy only the generated
+   <code>usr1.g&lt;generation&gt;.&lt;sha256&gt;</code> key into the appropriate department definition.</li>
+<li>Alternatively, configure a group object ID already present in the signed-in
+   principal's validated claims. Group mapping applies only to that exact
+   principal; AgentOps does not query Microsoft Graph or enrich identities.</li>
+<li>Preview the deployment, review the widened delegated-data warning, confirm,
+   and restart Cockpit.</li>
+</ol>
+<p>Only non-empty <code>UserAuthenticatedId</code> and OpenTelemetry <code>enduser.id</code> values are
+eligible identity sources. <code>UserId</code>, <code>enduser.pseudo.id</code>, session, device,
+browser, network, prompt, and behavioral values are never identity fallbacks.
+Conflicting eligible aliases are ambiguous and remain unattributed.</p>
+<h3 id="access-coverage-and-privacy-boundary">Access, coverage, and privacy boundary<a class="headerlink" href="#access-coverage-and-privacy-boundary" title="Permanent link">&para;</a></h3>
+<p>Department aggregates that cannot identify a singleton may use the deployment
+identity and shared aggregate cache. Every individual view, user filter, and
+singleton-department result uses a fresh signed-in-user OBO credential, bypasses
+shared caches, and returns <code>Cache-Control: private, no-store</code>. Missing delegated
+access or direct Log Analytics RBAC fails closed without retrying as the
+deployment identity. Enabling attribution adds no role, Graph permission,
+directory read, write capability, or secret; the deployment identity retains
+only <code>Reader</code> and <code>Log Analytics Reader</code>, while delegated requests reuse Azure
+Monitor <code>Data.Read</code>.</p>
+<p>Coverage is reported per source and measure. It distinguishes available,
+partial, not reported, inaccessible/protected, ambiguous, and error states.
+Unmapped and ambiguous consumption remains in unattributed totals, and a failed
+source does not erase successful aggregate evidence from another source. Cost
+attribution appears only when an existing declared cost allocation is available;
+it does not change billed totals, allocation denominators, or reconciliation.
+If the signed-in token reports group-claim overage while group mappings are
+configured, attribution performs no Microsoft Graph or directory lookup.
+Coverage is marked <strong>partial</strong> with fixed guidance to use explicit user mappings
+or sign in with group claims within the supported token limit.</p>
+<p>Pseudonymous keys and opaque filters are deterministic, linkable personal data,
+not anonymous data. A namespace limits cross-deployment correlation but is not a
+secret and does not prevent guessing low-entropy identities. Raw identities are
+shown only in the current delegated Users response. Mapping values, raw
+identities, user rows, group IDs, and filter tokens are excluded from shared
+caches, application logs, Doctor output, deployment journals, and release
+evidence. Aggregate readiness status, coverage states, generation, configuration
+fingerprint, and non-identifying counts remain available.</p>
+<h3 id="rotate-or-disable-attribution">Rotate or disable attribution<a class="headerlink" href="#rotate-or-disable-attribution" title="Permanent link">&para;</a></h3>
+<p>Rotation is explicit, never time-based: generate a fresh random namespace,
+increment <code>generation</code>, rebuild all user mappings from the protected Users view,
+preview and confirm the deployment, then restart Cockpit. Existing keys and
+bookmarked filters fail closed after rotation; there is no grace period or
+previous-generation lookup.</p>
+<p>To disable attribution, remove <code>AGENTOPS_ATTRIBUTION_CONFIG</code> or deploy a valid
+configuration with <code>enabled: false</code>, then restart Cockpit. Attribution routes,
+controls, filters, and coverage disappear while the existing Observe views and
+aggregate access remain unchanged. Correct an invalid setting or remove it;
+invalid attribution configuration does not take unrelated Cockpit diagnostics
+offline.</p>
+<h3 id="attribution-acceptance-protocols">Attribution acceptance protocols<a class="headerlink" href="#attribution-acceptance-protocols" title="Permanent link">&para;</a></h3>
+<p>Use synthetic identities and a fixed dataset for both protocols. Do not export
+the view.</p>
+<p>For the SC-005 operator check, recruit at least ten representative operators
+who have not seen the answer. Give every participant the same unfiltered
+department Usage view and these instructions only: identify the
+highest-consuming department, apply its department filter, copy the resulting
+URL, open that URL in a new private window while signed in, and confirm the same
+department and time range. Start one stopwatch when the unfiltered view is
+shown and stop it after the restored view is confirmed. Record participant ID,
+start/end timestamps, selected department correctness, restored-filter
+correctness, elapsed seconds, and pass/fail in the acceptance record. A
+participant passes only when both answers are correct and elapsed time is at
+most 120 seconds. SC-005 passes when at least 90% pass; retain the aggregate
+record, not identities or copied URLs.</p>
+<p>For SC-006, the standard offline scope is one project, representative coverage
+for three telemetry sources, 200 synthetic users, and the maximum 100
+departments. Run 20 Usage and 20 Cost display samples after one warm-up and
+record each elapsed duration from receipt of the bounded aggregate response
+through completed HTML rendering. Compute p95 by nearest rank (the 19th sorted
+sample of 20) separately for Usage and Cost. Both p95 values must be at most
+five seconds. The repository acceptance test uses deterministic synthetic
+responses and requires no Azure access:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">unit</span><span class="p">/</span><span class="n">test_attribution_performance_acceptance</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+</code></pre></div>
+<p>This controlled check detects application-side display regressions. Before a
+release, repeat the same 20-sample protocol in the target connected environment
+to include discovery, Azure Monitor query, network, and browser costs.</p>
 <div class="admonition info">
 <p class="admonition-title">Telemetry from CI runs</p>
 <p>Generated eval and Doctor workflows install OpenTelemetry support.
@@ -1760,17 +1871,17 @@ Application Insights resource to the project. If you own application code
 around the agent call, add client-side instrumentation to capture that custom
 logic as well.</p>
 <p>Install the Azure Monitor OpenTelemetry distribution:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>pip<span class="w"> </span>install<span class="w"> </span>azure-monitor-opentelemetry
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>pip<span class="w"> </span>install<span class="w"> </span>azure-monitor-opentelemetry
 </code></pre></div>
 <p>Set <code>APPLICATIONINSIGHTS_CONNECTION_STRING</code> in the process environment; using
 an application setting or secret reference is recommended in production. Then
 configure Azure Monitor once during application startup:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">azure.monitor.opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_azure_monitor</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.sdk.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resource</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">configure_azure_monitor</span><span class="p">(</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">resource</span><span class="o">=</span><span class="n">Resource</span><span class="o">.</span><span class="n">create</span><span class="p">({</span><span class="s2">"service.name"</span><span class="p">:</span> <span class="s2">"helpdesk-agent"</span><span class="p">}),</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">azure.monitor.opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">configure_azure_monitor</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.sdk.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resource</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">configure_azure_monitor</span><span class="p">(</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="n">resource</span><span class="o">=</span><span class="n">Resource</span><span class="o">.</span><span class="n">create</span><span class="p">({</span><span class="s2">"service.name"</span><span class="p">:</span> <span class="s2">"helpdesk-agent"</span><span class="p">}),</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="p">)</span>
 </code></pre></div>
 <p>Do not hardcode the connection string in source. After startup, run the agent
 and verify a new trace in <strong>Foundry &gt; Agents &gt; Traces</strong> or <strong>Application
@@ -1780,52 +1891,52 @@ for the complete connection, permissions, and verification flow.</p>
 <h2 id="instrument-a-custom-python-agent">Instrument a custom Python agent<a class="headerlink" href="#instrument-a-custom-python-agent" title="Permanent link">&para;</a></h2>
 <p>Once Azure Monitor is configured, application code can reuse the global tracer
 provider without depending on an agent framework:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.trace</span><span class="w"> </span><span class="kn">import</span> <span class="n">Status</span><span class="p">,</span> <span class="n">StatusCode</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">tracer</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">get_tracer</span><span class="p">(</span><span class="s2">"contoso.helpdesk.agent"</span><span class="p">)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">lookup_ticket</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">"Ticket </span><span class="si">{</span><span class="n">ticket_id</span><span class="si">}</span><span class="s2"> is queued for review."</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_agent</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">conversation_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="n">agent_attributes</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>        <span class="s2">"gen_ai.operation.name"</span><span class="p">:</span> <span class="s2">"invoke_agent"</span><span class="p">,</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>        <span class="s2">"gen_ai.agent.name"</span><span class="p">:</span> <span class="s2">"helpdesk-agent"</span><span class="p">,</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>        <span class="s2">"gen_ai.agent.id"</span><span class="p">:</span> <span class="s2">"helpdesk-agent-v1"</span><span class="p">,</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a>        <span class="s2">"gen_ai.conversation.id"</span><span class="p">:</span> <span class="n">conversation_id</span><span class="p">,</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="p">}</span>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>        <span class="s2">"invoke_agent helpdesk-agent"</span><span class="p">,</span>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>        <span class="n">attributes</span><span class="o">=</span><span class="n">agent_attributes</span><span class="p">,</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>        <span class="n">record_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a>        <span class="n">set_status_on_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">agent_span</span><span class="p">:</span>
-<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a>        <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a>            <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
-<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a>                <span class="s2">"execute_tool lookup_ticket"</span><span class="p">,</span>
-<a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a>                <span class="n">attributes</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a>                    <span class="s2">"gen_ai.operation.name"</span><span class="p">:</span> <span class="s2">"execute_tool"</span><span class="p">,</span>
-<a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a>                    <span class="s2">"gen_ai.tool.name"</span><span class="p">:</span> <span class="s2">"lookup_ticket"</span><span class="p">,</span>
-<a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a>                <span class="p">},</span>
-<a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a>                <span class="n">record_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a>                <span class="n">set_status_on_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
-<a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">tool_span</span><span class="p">:</span>
-<a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a>                <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a>                    <span class="n">ticket</span> <span class="o">=</span> <span class="n">lookup_ticket</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">)</span>
-<a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a>                    <span class="n">tool_span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">"error.type"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
-<a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a>                    <span class="n">tool_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">ERROR</span><span class="p">))</span>
-<a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a>                    <span class="k">raise</span>
-<a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a>
-<a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">OK</span><span class="p">))</span>
-<a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a>            <span class="k">return</span> <span class="sa">f</span><span class="s2">"Helpdesk response: </span><span class="si">{</span><span class="n">ticket</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
-<a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">"error.type"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
-<a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">ERROR</span><span class="p">))</span>
-<a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a>            <span class="k">raise</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry</span><span class="w"> </span><span class="kn">import</span> <span class="n">trace</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">opentelemetry.trace</span><span class="w"> </span><span class="kn">import</span> <span class="n">Status</span><span class="p">,</span> <span class="n">StatusCode</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">tracer</span> <span class="o">=</span> <span class="n">trace</span><span class="o">.</span><span class="n">get_tracer</span><span class="p">(</span><span class="s2">"contoso.helpdesk.agent"</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">def</span><span class="w"> </span><span class="nf">lookup_ticket</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="k">return</span> <span class="sa">f</span><span class="s2">"Ticket </span><span class="si">{</span><span class="n">ticket_id</span><span class="si">}</span><span class="s2"> is queued for review."</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
+<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="k">def</span><span class="w"> </span><span class="nf">run_agent</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">conversation_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">agent_attributes</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>        <span class="s2">"gen_ai.operation.name"</span><span class="p">:</span> <span class="s2">"invoke_agent"</span><span class="p">,</span>
+<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>        <span class="s2">"gen_ai.agent.name"</span><span class="p">:</span> <span class="s2">"helpdesk-agent"</span><span class="p">,</span>
+<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a>        <span class="s2">"gen_ai.agent.id"</span><span class="p">:</span> <span class="s2">"helpdesk-agent-v1"</span><span class="p">,</span>
+<a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a>        <span class="s2">"gen_ai.conversation.id"</span><span class="p">:</span> <span class="n">conversation_id</span><span class="p">,</span>
+<a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a>    <span class="p">}</span>
+<a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a>    <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
+<a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a>        <span class="s2">"invoke_agent helpdesk-agent"</span><span class="p">,</span>
+<a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a>        <span class="n">attributes</span><span class="o">=</span><span class="n">agent_attributes</span><span class="p">,</span>
+<a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a>        <span class="n">record_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a>        <span class="n">set_status_on_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">agent_span</span><span class="p">:</span>
+<a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a>        <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a>            <span class="k">with</span> <span class="n">tracer</span><span class="o">.</span><span class="n">start_as_current_span</span><span class="p">(</span>
+<a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a>                <span class="s2">"execute_tool lookup_ticket"</span><span class="p">,</span>
+<a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a>                <span class="n">attributes</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a>                    <span class="s2">"gen_ai.operation.name"</span><span class="p">:</span> <span class="s2">"execute_tool"</span><span class="p">,</span>
+<a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a>                    <span class="s2">"gen_ai.tool.name"</span><span class="p">:</span> <span class="s2">"lookup_ticket"</span><span class="p">,</span>
+<a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a>                <span class="p">},</span>
+<a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a>                <span class="n">record_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a>                <span class="n">set_status_on_exception</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a>            <span class="p">)</span> <span class="k">as</span> <span class="n">tool_span</span><span class="p">:</span>
+<a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a>                <span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a>                    <span class="n">ticket</span> <span class="o">=</span> <span class="n">lookup_ticket</span><span class="p">(</span><span class="n">ticket_id</span><span class="p">)</span>
+<a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a>                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a>                    <span class="n">tool_span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">"error.type"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+<a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a>                    <span class="n">tool_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">ERROR</span><span class="p">))</span>
+<a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a>                    <span class="k">raise</span>
+<a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a>
+<a id="__codelineno-5-41" name="__codelineno-5-41" href="#__codelineno-5-41"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">OK</span><span class="p">))</span>
+<a id="__codelineno-5-42" name="__codelineno-5-42" href="#__codelineno-5-42"></a>            <span class="k">return</span> <span class="sa">f</span><span class="s2">"Helpdesk response: </span><span class="si">{</span><span class="n">ticket</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-5-43" name="__codelineno-5-43" href="#__codelineno-5-43"></a>        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+<a id="__codelineno-5-44" name="__codelineno-5-44" href="#__codelineno-5-44"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_attribute</span><span class="p">(</span><span class="s2">"error.type"</span><span class="p">,</span> <span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="p">)</span>
+<a id="__codelineno-5-45" name="__codelineno-5-45" href="#__codelineno-5-45"></a>            <span class="n">agent_span</span><span class="o">.</span><span class="n">set_status</span><span class="p">(</span><span class="n">Status</span><span class="p">(</span><span class="n">StatusCode</span><span class="o">.</span><span class="n">ERROR</span><span class="p">))</span>
+<a id="__codelineno-5-46" name="__codelineno-5-46" href="#__codelineno-5-46"></a>            <span class="k">raise</span>
 </code></pre></div>
 <p>The span context managers preserve the parent/child relationship and finish
 each span with its measured duration automatically. The example disables
@@ -1854,7 +1965,7 @@ promoting, even when the candidate's eval scores pass.</p>
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can read telemetry and
 investigate production health.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>
 <p>The skills that map to observability are:</p>
 <table>
