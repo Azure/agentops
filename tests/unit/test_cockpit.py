@@ -8,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import unquote
 
+import pytest
+
 from agentops.agent.cockpit import (
     build_cockpit_payload,
     render_cockpit_html,
@@ -1278,3 +1280,140 @@ def test_foundry_project_card_compacts_endpoint_and_exposes_copy(tmp_path, monke
         in html
     )
     assert "copy-btn" in html
+
+
+class _CostIsolationObserveService:
+    async def query(
+        self,
+        *,
+        view,
+        filters,
+        refresh=False,
+        user_context=None,
+    ):
+        return {
+            "view": view,
+            "filters": filters,
+            "refresh": refresh,
+            "marker": "unchanged",
+        }
+
+
+_OBSERVE_FILTERS = {
+    "start": "2026-08-01T00:00:00Z",
+    "end": "2026-09-01T00:00:00Z",
+}
+
+
+@pytest.mark.parametrize(
+    ("raw_model", "expected_reason"),
+    [
+        (None, "not configured"),
+        ('{"version":', "invalid"),
+    ],
+)
+def test_cost_configuration_failure_isolated_from_all_other_observe_views(
+    monkeypatch,
+    tmp_path: Path,
+    raw_model: str | None,
+    expected_reason: str,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    if raw_model is None:
+        monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("AGENTOPS_COST_MODEL", raw_model)
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=_CostIsolationObserveService(),
+        )
+    )
+
+    for view in ("overview", "agents", "models", "tools", "runs", "coverage"):
+        response = client.post(
+            "/api/observe/query",
+            json={"view": view, "filters": _OBSERVE_FILTERS},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "view": view,
+            "filters": {
+                **_OBSERVE_FILTERS,
+                "foundry_resource_id": None,
+                "project_resource_id": None,
+                "agent_id": None,
+                "model": None,
+                "tool_name": None,
+                "run_key": None,
+                "cost_period_id": None,
+                "cost_breakdown": None,
+                "cost_component_id": None,
+                "cost_agent_key": None,
+            },
+            "refresh": False,
+            "marker": "unchanged",
+        }
+
+    cost = client.post(
+        "/api/observe/query",
+        json={
+            "view": "cost",
+            "filters": {**_OBSERVE_FILTERS, "cost_period_id": "2026-08"},
+        },
+    )
+    assert cost.status_code == 422
+    assert expected_reason in cost.json()["detail"]
+
+
+def test_hosted_authentication_precedes_cost_configuration_gating(
+    monkeypatch,
+):
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    def _reject(_headers):
+        raise PermissionError("Authentication required.")
+
+    monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
+    client = TestClient(
+        create_app(
+            None,
+            mode="hosted",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=_CostIsolationObserveService(),
+            auth_context_resolver=_reject,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/query",
+        json={
+            "view": "cost",
+            "filters": {**_OBSERVE_FILTERS, "cost_period_id": "2026-08"},
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Authentication required."
+    assert "AGENTOPS_COST_MODEL" not in response.text

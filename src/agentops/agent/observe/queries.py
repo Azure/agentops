@@ -100,6 +100,14 @@ def _time_window_clause(filters: ObserveFilterState) -> str:
     )
 
 
+def _period_time_window_clause(filters: ObserveFilterState) -> str:
+    """Return the exact inclusive-start, exclusive-end period predicate."""
+    return (
+        f"| where TimeGenerated >= datetime({_iso(filters.start)}) and "
+        f"TimeGenerated < datetime({_iso(filters.end)})"
+    )
+
+
 def _dimension_filters(
     filters: ObserveFilterState, scope_source: TelemetrySource | None = None
 ) -> list[str]:
@@ -382,10 +390,17 @@ def build_runs_query(
     """Build a bounded aggregate of conversation- or trace-correlated runs."""
     aggregate_lines = [
         _TELEMETRY_TABLES,
-        _time_window_clause(filters),
+        _period_time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
+        *_token_class_extend_clauses(),
         '| extend tool_name = tostring(Properties["gen_ai.tool.name"])',
+        '| extend operation_name = tostring(Properties["gen_ai.operation.name"])',
+        "| extend credit_event = iff(isnotempty(operation_name), 1, long(null))",
+        '| extend reported_credits = todecimal(Properties["gen_ai.usage.credits"])',
+        "| extend credits = iff("
+        "isnotnull(reported_credits) and reported_credits >= 0, "
+        "reported_credits, decimal(null))",
         '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"])',
         '| extend foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
         "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
@@ -405,12 +420,33 @@ def build_runs_query(
             "tool_failures = countif(isnotempty(tool_name) and Success == false), "
             "input_tokens = sum(input_tokens), "
             "output_tokens = sum(output_tokens), "
+            "cache_read_tokens = sum(cache_read_tokens), "
+            "cache_write_tokens = sum(cache_write_tokens), "
+            "reasoning_tokens = sum(reasoning_tokens), "
+            "credits = sum(credits), "
+            "credit_events = sum(credit_event), "
             "input_token_reports = countif(isnotnull(input_tokens)), "
-            "output_token_reports = countif(isnotnull(output_tokens)) "
+            "output_token_reports = countif(isnotnull(output_tokens)), "
+            "cache_read_token_reports = countif(isnotnull(cache_read_tokens)), "
+            "cache_write_token_reports = countif(isnotnull(cache_write_tokens)), "
+            "reasoning_token_reports = countif(isnotnull(reasoning_tokens)), "
+            "credit_reports = countif(isnotnull(credits)), "
+            "credit_event_reports = countif(isnotnull(credit_event)) "
             "by project_resource_id, agent_key, agent_id, agent_name, provider_name, system, "
-            "run_key, run_key_kind",
+            "run_key, run_key_kind, operation_name",
             "| extend input_tokens = iff(input_token_reports == 0, long(null), input_tokens), "
-            "output_tokens = iff(output_token_reports == 0, long(null), output_tokens)",
+            "output_tokens = iff(output_token_reports == 0, long(null), output_tokens), "
+            "cache_read_tokens = iff(cache_read_token_reports == 0, long(null), "
+            "cache_read_tokens), "
+            "cache_write_tokens = iff(cache_write_token_reports == 0, long(null), "
+            "cache_write_tokens), "
+            "reasoning_tokens = iff(reasoning_token_reports == 0, long(null), "
+            "reasoning_tokens), "
+            "credits = iff(credit_reports == 0, decimal(null), credits), "
+            "credit_events = iff(credit_event_reports == 0, long(null), credit_events)",
+            "| project-away input_token_reports, output_token_reports, "
+            "cache_read_token_reports, cache_write_token_reports, "
+            "reasoning_token_reports, credit_reports, credit_event_reports",
             '| extend duration_ms = todouble(datetime_diff("millisecond", last_activity_at, started_at))',
         ]
     )

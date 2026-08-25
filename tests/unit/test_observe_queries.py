@@ -280,6 +280,76 @@ def test_runs_query_prefers_conversation_then_foundry_thread_before_trace() -> N
     assert "iff(input_token_reports == 0, long(null), input_tokens)" in query
 
 
+def test_runs_query_projects_granular_tokens_with_reporting_counts() -> None:
+    query = build_runs_query(_filters())
+
+    for token_class, aliases in TOKEN_CLASS_ALIASES.items():
+        for alias in aliases:
+            assert f'Properties["{alias}"]' in query
+        assert f"{token_class}_tokens = sum({token_class}_tokens)" in query
+        reports = f"{token_class}_token_reports"
+        assert f"{reports} = countif(isnotnull({token_class}_tokens))" in query
+        assert (
+            f"{token_class}_tokens = iff({reports} == 0, long(null), "
+            f"{token_class}_tokens)"
+        ) in query
+
+
+def test_runs_query_projects_only_direct_non_negative_credit_signals() -> None:
+    query = build_runs_query(_filters())
+
+    assert 'Properties["gen_ai.operation.name"]' in query
+    assert 'Properties["gen_ai.usage.credits"]' in query
+    assert "reported_credits >= 0" in query
+    assert "credits = sum(credits)" in query
+    assert "credit_reports = countif(isnotnull(credits))" in query
+    assert "credits = iff(credit_reports == 0, decimal(null), credits)" in query
+    assert "credit_event = iff(isnotempty(operation_name), 1, long(null))" in query
+    assert "credit_events = sum(credit_event)" in query
+    assert "credit_event_reports = countif(isnotnull(credit_event))" in query
+    assert (
+        "credit_events = iff(credit_event_reports == 0, long(null), credit_events)"
+        in query
+    )
+    assert "run_key, run_key_kind, operation_name" in query
+
+    for inferred_signal in ("credit_rate", "token_rate", "message_rate"):
+        assert inferred_signal not in query
+
+
+def test_runs_query_uses_exact_period_boundaries_and_retains_bounds() -> None:
+    start = datetime(2024, 5, 1, 1, 2, 3, 456789, tzinfo=timezone.utc)
+    end = datetime(2024, 5, 2, 4, 5, 6, 789012, tzinfo=timezone.utc)
+    query = build_runs_query(_filters(start=start, end=end))
+
+    assert (
+        "TimeGenerated >= datetime(2024-05-01T01:02:03.456789Z) and "
+        "TimeGenerated < datetime(2024-05-02T04:05:06.789012Z)"
+    ) in query
+    assert "TimeGenerated between" not in query
+    assert "let total_in_scope = toscalar(agg | count);" in query
+    assert f"| take {MAX_ROWS_PER_QUERY}" in query
+    assert "| extend total_in_scope = total_in_scope" in query
+
+
+def test_runs_query_excludes_protected_content_and_payload_fields() -> None:
+    query = build_runs_query(_filters())
+
+    for forbidden in (
+        "AppGenAIContent",
+        "gen_ai.system.message",
+        "gen_ai.user.message",
+        "gen_ai.assistant.message",
+        "gen_ai.tool.message",
+        "input_messages",
+        "output_messages",
+        "system_instructions",
+        "tool_content",
+        "Content",
+    ):
+        assert forbidden not in query
+
+
 # ---------------------------------------------------------------------------
 # T048/T039: AppGenAIContent correlation-key queries, no legacy fallback.
 # ---------------------------------------------------------------------------

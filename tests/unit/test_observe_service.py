@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Sequence
 
 import pytest
@@ -29,6 +30,7 @@ from agentops.agent.observe.service import (
     classify_runtime,
     classify_discovery_coverage,
     classify_protected_content_coverage,
+    normalize_cost_run_observation,
     classify_query_coverage,
     normalize_agent_row,
     normalize_model_row,
@@ -38,6 +40,7 @@ from agentops.agent.observe.service import (
     token_class_inventory,
     token_reporting_state,
 )
+from agentops.core.cost import CostModel, CostPeriod, CostUsageObservation
 from agentops.core.observe import (
     ModelUsage,
     ObserveFilterState,
@@ -135,12 +138,22 @@ class FakeDiscoveryClient:
 @dataclass
 class FakeQueryClient:
     results: list[SourceResult]
+    results_by_view: dict[str, list[SourceResult]] | None = None
     calls: list[tuple[Any, ...]] = field(default_factory=list, init=False)
 
     async def query(
         self, sources: Sequence[TelemetrySource], filters: ObserveFilterState, *, view: str
     ) -> list[SourceResult]:
-        self.calls.append((tuple(source.source_id for source in sources), view))
+        self.calls.append(
+            (
+                tuple(source.source_id for source in sources),
+                view,
+                filters.start,
+                filters.end,
+            )
+        )
+        if self.results_by_view is not None:
+            return self.results_by_view.get(view, [])
         return self.results
 
 
@@ -157,9 +170,10 @@ def _service(
     clock: FakeDatetimeClock,
     cache: ObserveCache | None = None,
     runtime: FakeRuntime | None = None,
+    results_by_view: dict[str, list[SourceResult]] | None = None,
 ) -> tuple[ObserveService, FakeDiscoveryClient, FakeQueryClient]:
     discovery = FakeDiscoveryClient(inventory)
-    query = FakeQueryClient(results)
+    query = FakeQueryClient(results, results_by_view=results_by_view)
     service = ObserveService(
         discovery_client=discovery,
         query_client=query,
@@ -604,6 +618,61 @@ def test_normalize_run_row_uses_settling_margin_and_sticky_failure() -> None:
     assert failed.status == "failed"
 
 
+def test_normalize_cost_run_observation_preserves_null_zero_and_safe_fields() -> None:
+    observed = normalize_run_row(
+        {
+            "run_key": "trace-1",
+            "run_key_kind": "trace",
+            "agent_key": "agent-1",
+            "started_at": datetime(2024, 1, 1, 8, tzinfo=timezone.utc),
+            "last_activity_at": datetime(2024, 1, 1, 8, 0, 1, tzinfo=timezone.utc),
+            "duration_ms": 0,
+            "turns": 1,
+            "failed_turns": 0,
+            "tool_invocations": 0,
+            "tool_failures": 0,
+            "input_tokens": None,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": None,
+            "reasoning_tokens": 0,
+            "credits": "0",
+            "credit_events": 0,
+            "input_messages": ["must not be copied"],
+            "tool_content": {"secret": "must not be copied"},
+        },
+        source=_source(),
+        window_end=datetime(2024, 1, 2, tzinfo=timezone.utc),
+    )
+
+    usage = normalize_cost_run_observation(
+        observed,
+        source_resource_id=_source().foundry_resource_id or _source().resource_id,
+        coverage_complete=False,
+    )
+
+    assert usage == CostUsageObservation(
+        source_resource_id=_source().foundry_resource_id or _source().resource_id,
+        project_resource_id=_PROJECT_ID,
+        agent_key="agent-1",
+        run_key="trace-1",
+        runtime_kind="unknown",
+        input_tokens=None,
+        output_tokens=0,
+        cache_read_tokens=0,
+        cache_write_tokens=None,
+        reasoning_tokens=0,
+        tool_invocations=0,
+        active_session_seconds=Decimal("0"),
+        credits=Decimal("0"),
+        credit_events=0,
+        latest_observed_at=datetime(2024, 1, 1, 8, 0, 1, tzinfo=timezone.utc),
+        coverage_complete=False,
+    )
+    assert "input_messages" not in CostUsageObservation.model_fields
+    assert "tool_content" not in CostUsageObservation.model_fields
+
+
 def test_result_bounds_only_uses_complete_per_source_totals() -> None:
     shown = [
         SourceResult(
@@ -982,6 +1051,989 @@ def _agent_rows_result(source_id: str = "src-1") -> SourceResult:
             }
         ],
     )
+
+
+def _cost_period(*, components: list[dict[str, Any]] | None = None) -> CostPeriod:
+    source_resource_id = _source().foundry_resource_id or _source().resource_id
+    default_components: list[dict[str, Any]] = [
+        {
+            "id": "model-total",
+            "type": "standard_model",
+            "billing_boundary": {"kind": "resource", "value": source_resource_id},
+            "billed_source": "Declared model total",
+            "billed_total": "10.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_model": "metered",
+            "allocation_key": "total_tokens",
+            "usage_match": {"deployments": ["gpt-prod"]},
+        },
+        {
+            "id": "model-commitment",
+            "type": "provisioned_throughput",
+            "billing_boundary": {"kind": "resource", "value": source_resource_id},
+            "billed_source": "Declared throughput commitment",
+            "billed_total": "20.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_model": "commitment",
+            "allocation_key": "weighted_tokens",
+            "fallback_key": "total_tokens",
+            "token_weights": {"input_tokens": "1", "output_tokens": "1"},
+            "usage_match": {"source_resource_ids": [source_resource_id]},
+        },
+        {
+            "id": "search",
+            "type": "search",
+            "billing_boundary": {"kind": "resource", "value": source_resource_id},
+            "billed_source": "Declared search total",
+            "billed_total": "30.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_model": "metered",
+            "allocation_key": "tool_invocations",
+            "usage_match": {"tool_names": ["search"]},
+        },
+        {
+            "id": "compute",
+            "type": "hosted_compute",
+            "billing_boundary": {"kind": "resource", "value": source_resource_id},
+            "billed_source": "Declared compute total",
+            "billed_total": "40.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_model": "metered",
+            "allocation_key": "active_session_seconds",
+            "usage_match": {"source_resource_ids": [source_resource_id]},
+        },
+    ]
+    model = CostModel.model_validate(
+        {
+            "version": 1,
+            "periods": [
+                {
+                    "id": "period-1",
+                    "starts_at": "2024-01-10T00:00:00Z",
+                    "ends_at": "2024-02-10T00:00:00Z",
+                    "components": components or default_components,
+                }
+            ],
+        }
+    )
+    return model.periods[0]
+
+
+def _cost_model(period: CostPeriod) -> CostModel:
+    return CostModel(version=1, periods=[period])
+
+
+def _cost_results_by_view() -> dict[str, list[SourceResult]]:
+    last_seen = datetime(2024, 2, 1, tzinfo=timezone.utc)
+    return {
+        "models": [
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {
+                        "agent_id": "agent-a",
+                        "deployment": "gpt-prod",
+                        "model": "gpt-4o",
+                        "requests": 1,
+                        "failures": 0,
+                        "input_tokens": 10,
+                        "output_tokens": 10,
+                        "last_seen": last_seen,
+                        "total_in_scope": 2,
+                    },
+                    {
+                        "agent_id": "agent-b",
+                        "deployment": "gpt-prod",
+                        "model": "gpt-4o",
+                        "requests": 1,
+                        "failures": 0,
+                        "input_tokens": 5,
+                        "output_tokens": 5,
+                        "last_seen": last_seen,
+                        "total_in_scope": 2,
+                    },
+                ],
+            )
+        ],
+        "tools": [
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {
+                        "tool_name": "search",
+                        "agent_key": "agent-a",
+                        "invocations": 1,
+                        "failures": 0,
+                        "last_seen": last_seen,
+                        "total_in_scope": 2,
+                    },
+                    {
+                        "tool_name": "search",
+                        "agent_key": "agent-b",
+                        "invocations": 3,
+                        "failures": 0,
+                        "last_seen": last_seen,
+                        "total_in_scope": 2,
+                    },
+                ],
+            )
+        ],
+        "runs": [
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {
+                        "run_key": "run-a-1",
+                        "run_key_kind": "trace",
+                        "agent_key": "agent-a",
+                        "started_at": datetime(2024, 1, 20, tzinfo=timezone.utc),
+                        "last_activity_at": datetime(2024, 1, 20, 0, 0, 1, tzinfo=timezone.utc),
+                        "duration_ms": 1_000,
+                        "turns": 1,
+                        "failed_turns": 0,
+                        "tool_invocations": 0,
+                        "tool_failures": 0,
+                        "input_tokens": 1,
+                        "output_tokens": 2,
+                        "cache_read_tokens": 0,
+                        "cache_write_tokens": None,
+                        "reasoning_tokens": None,
+                        "credits": None,
+                        "credit_events": 0,
+                        "total_in_scope": 3,
+                    },
+                    {
+                        "run_key": "run-a-2",
+                        "run_key_kind": "trace",
+                        "agent_key": "agent-a",
+                        "started_at": datetime(2024, 1, 21, tzinfo=timezone.utc),
+                        "last_activity_at": datetime(2024, 1, 21, 0, 0, 3, tzinfo=timezone.utc),
+                        "duration_ms": 3_000,
+                        "turns": 1,
+                        "failed_turns": 0,
+                        "tool_invocations": 0,
+                        "tool_failures": 0,
+                        "input_tokens": 3,
+                        "output_tokens": 4,
+                        "cache_read_tokens": 0,
+                        "cache_write_tokens": None,
+                        "reasoning_tokens": None,
+                        "credits": "0",
+                        "credit_events": 0,
+                        "total_in_scope": 3,
+                    },
+                    {
+                        "run_key": "run-b",
+                        "run_key_kind": "trace",
+                        "agent_key": "agent-b",
+                        "started_at": datetime(2024, 1, 22, tzinfo=timezone.utc),
+                        "last_activity_at": datetime(2024, 1, 22, 0, 0, 4, tzinfo=timezone.utc),
+                        "duration_ms": 4_000,
+                        "turns": 1,
+                        "failed_turns": 0,
+                        "tool_invocations": 0,
+                        "tool_failures": 0,
+                        "input_tokens": 5,
+                        "output_tokens": 5,
+                        "cache_read_tokens": 0,
+                        "cache_write_tokens": None,
+                        "reasoning_tokens": None,
+                        "credits": None,
+                        "credit_events": 0,
+                        "total_in_scope": 3,
+                    },
+                ],
+            )
+        ],
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_cost_collects_each_required_view_once_and_uses_period_boundaries() -> None:
+    clock = FakeDatetimeClock(
+        datetime(2024, 2, 11, tzinfo=timezone.utc), step=timedelta(milliseconds=10)
+    )
+    period = _cost_period()
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[],
+        results_by_view=_cost_results_by_view(),
+        clock=clock,
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(
+            start=datetime(2020, 1, 1, tzinfo=timezone.utc),
+            end=datetime(2020, 1, 2, tzinfo=timezone.utc),
+            model="ignored-shared-filter",
+            cost_period_id=period.id,
+        ),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="a" * 64,
+    )
+
+    assert [call[1] for call in query.calls] == ["models", "runs", "tools"]
+    assert all(call[2:] == (period.starts_at, period.ends_at) for call in query.calls)
+    assert result.view == "cost"
+    assert result.data.breakdown == "agents"
+    assert {summary.component_id for summary in result.data.components} == {
+        component.id for component in period.components
+    }
+    assert all(
+        summary.declared_total
+        == summary.attributed_amount
+        + summary.unattributed_amount
+        + summary.unallocated_amount
+        for summary in result.data.components
+    )
+    weighted_rows = [
+        row for row in result.data.rows if row.component_id == "model-commitment"
+    ]
+    assert {row.agent_key for row in weighted_rows} == {"agent-a", "agent-b"}
+    assert len(weighted_rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_query_cost_cache_identity_includes_model_fingerprint() -> None:
+    period = _cost_period()
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[],
+        results_by_view=_cost_results_by_view(),
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    first = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="a" * 64,
+    )
+    hit = await service.query_cost(
+        _scope(),
+        _filters(model="ignored", cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="a" * 64,
+    )
+    changed = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="b" * 64,
+    )
+
+    assert first.cache_status == "miss"
+    assert hit.cache_status == "hit"
+    assert changed.cache_status == "miss"
+    assert len(query.calls) == 6
+
+
+@pytest.mark.asyncio
+async def test_query_cost_propagates_partial_failures_diagnostics_and_cost_coverage() -> None:
+    period = _cost_period(components=[_cost_period().components[2].model_dump(mode="json")])
+    partial = _cost_results_by_view()["tools"][0]
+    partial = SourceResult(
+        source_id=partial.source_id,
+        status="partial",
+        tables=partial.tables,
+        reason="One shard timed out.",
+    )
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[],
+        results_by_view={"tools": [partial]},
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="a" * 64,
+    )
+
+    assert [failure.source_id for failure in result.partial_failures] == ["src-1"]
+    assert result.diagnostics.partial_sources == 1
+    cost_coverage = [
+        item for item in result.coverage if item.dimension == "cost_attribution"
+    ]
+    assert len(cost_coverage) == 1
+    assert cost_coverage[0].component_id == "search"
+    assert cost_coverage[0].state == "partial"
+
+
+@pytest.mark.asyncio
+async def test_query_cost_keeps_omitted_amounts_when_agent_rows_are_bounded() -> None:
+    first_component = _cost_period().components[0].model_dump(mode="json")
+    second_component = {
+        **first_component,
+        "id": "model-total-secondary",
+        "billed_source": "Second declared model total",
+    }
+    period = _cost_period(components=[first_component, second_component])
+    first_rows = [
+        {
+            "agent_id": f"agent-{index:03d}",
+            "deployment": "gpt-prod",
+            "model": "gpt-4o",
+            "requests": 1,
+            "failures": 0,
+            "input_tokens": 1,
+            "output_tokens": 0,
+            "last_seen": datetime(2024, 2, 1, tzinfo=timezone.utc),
+            "total_in_scope": 300,
+        }
+        for index in range(300)
+    ]
+    second_rows = [
+        {
+            "agent_id": f"agent-{index:03d}",
+            "deployment": "gpt-prod",
+            "model": "gpt-4o",
+            "requests": 1,
+            "failures": 0,
+            "input_tokens": 1,
+            "output_tokens": 0,
+            "last_seen": datetime(2024, 2, 1, tzinfo=timezone.utc),
+            "total_in_scope": 201,
+        }
+        for index in range(300, 501)
+    ]
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source("src-1"), _source("src-2")]),
+        results=[],
+        results_by_view={
+            "models": [
+                SourceResult(source_id="src-1", status="success", tables=first_rows),
+                SourceResult(source_id="src-2", status="success", tables=second_rows),
+            ]
+        },
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="a" * 64,
+    )
+
+    assert {summary.component_id for summary in result.data.components} == {
+        "model-total",
+        "model-total-secondary",
+    }
+    assert all(summary.rows_total == 501 for summary in result.data.components)
+    assert sum(summary.rows_shown for summary in result.data.components) == MAX_ROWS_PER_QUERY
+    assert all(
+        summary.omitted_allocated_amount > 0
+        for summary in result.data.components
+    )
+    assert len(result.data.rows) == MAX_ROWS_PER_QUERY
+
+
+@pytest.mark.asyncio
+async def test_query_cost_alternate_breakdowns_clip_runs_and_query_each_view_once() -> None:
+    source_id = _source().foundry_resource_id or _source().resource_id
+    period = _cost_period(
+        components=[
+            {
+                "id": "compute",
+                "type": "hosted_compute",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Declared compute total",
+                "billed_total": "12.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "active_session_seconds",
+                "usage_match": {
+                    "source_resource_ids": [source_id],
+                    "runtime_kinds": ["external_unregistered"],
+                },
+            },
+            {
+                "id": "credits",
+                "type": "credit_payg",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Declared credit total",
+                "billed_total": "8.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "credits",
+                "usage_match": {"source_resource_ids": [source_id]},
+            },
+        ]
+    )
+    crossing = {
+        "run_key": "crossing",
+        "run_key_kind": "trace",
+        "agent_key": "agent-a",
+        "agent_name": "external-a",
+        "project_resource_id": _PROJECT_ID,
+        "started_at": period.starts_at - timedelta(days=1),
+        "last_activity_at": period.starts_at + timedelta(days=1),
+        "duration_ms": 2 * 24 * 60 * 60 * 1000,
+        "turns": 1,
+        "failed_turns": 0,
+        "tool_invocations": 0,
+        "tool_failures": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_tokens": None,
+        "cache_write_tokens": None,
+        "reasoning_tokens": None,
+        "credits": "2",
+        "credit_events": None,
+        "total_in_scope": 2,
+    }
+    outside = {
+        **crossing,
+        "run_key": "outside",
+        "started_at": period.starts_at - timedelta(days=3),
+        "last_activity_at": period.starts_at - timedelta(days=2),
+    }
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[],
+        results_by_view={
+            "models": [SourceResult(source_id="src-1", status="success", tables=[])],
+            "tools": [SourceResult(source_id="src-1", status="success", tables=[])],
+            "runs": [
+                SourceResult(
+                    source_id="src-1",
+                    status="success",
+                    tables=[crossing, outside],
+                )
+            ],
+        },
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(
+            cost_period_id=period.id,
+            cost_breakdown="runs",
+        ),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="a" * 64,
+    )
+
+    assert {view: [call[1] for call in query.calls].count(view) for view in {"runs"}} == {
+        "runs": 1
+    }
+    assert {row.run_key for row in result.data.rows} == {"crossing"}
+    compute = next(row for row in result.data.rows if row.component_id == "compute")
+    assert compute.usage_numerator == Decimal(24 * 60 * 60)
+    assert compute.project_resource_id == _PROJECT_ID.lower()
+
+
+@pytest.mark.asyncio
+async def test_query_cost_tool_breakdown_uses_tool_identity_without_duplicate_query() -> None:
+    source_id = _source().foundry_resource_id or _source().resource_id
+    period = _cost_period(
+        components=[
+            {
+                "id": "search-a",
+                "type": "search",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Search A",
+                "billed_total": "3.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "tool_invocations",
+                "usage_match": {"source_resource_ids": [source_id]},
+            },
+            {
+                "id": "search-b",
+                "type": "grounding",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Search B",
+                "billed_total": "7.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "tool_invocations",
+                "usage_match": {"source_resource_ids": [source_id]},
+            },
+        ]
+    )
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[],
+        results_by_view={
+            "tools": [
+                SourceResult(
+                    source_id="src-1",
+                    status="success",
+                    tables=[
+                        {
+                            "tool_name": "search",
+                            "agent_key": "agent-a",
+                            "project_resource_id": _PROJECT_ID,
+                            "invocations": 4,
+                            "failures": 0,
+                            "last_seen": period.starts_at + timedelta(hours=1),
+                            "total_in_scope": 1,
+                        },
+                        {
+                            "_metadata_only": True,
+                            "unattributed_count": 2,
+                            "total_in_scope": 1,
+                        },
+                    ],
+                )
+            ]
+        },
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id, cost_breakdown="tools"),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="a" * 64,
+    )
+
+    assert [call[1] for call in query.calls].count("tools") == 1
+    assert {row.tool_name for row in result.data.rows} == {"search", None}
+    assert any(row.consumer_kind == "unattributed" for row in result.data.rows)
+    assert {summary.component_id for summary in result.data.components} == {
+        "search-a",
+        "search-b",
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_cost_merges_partial_period_and_complete_row_provenance() -> None:
+    source = _source("src-readable")
+    unreadable = _source(
+        "src-inaccessible",
+        state="inaccessible",
+        reason="Workspace access was denied.",
+    )
+    source_id = source.foundry_resource_id or source.resource_id
+    period = _cost_period(
+        components=[
+            {
+                "id": "compute",
+                "type": "hosted_compute",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Compute statement",
+                "billed_total": "5.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "active_session_seconds",
+                "usage_match": {
+                    "source_resource_ids": [source_id],
+                    "runtime_kinds": ["external_unregistered"],
+                },
+            }
+        ]
+    )
+    service, _discovery, _query = _service(
+        inventory=_inventory([source, unreadable]),
+        results=[],
+        results_by_view={
+            "runs": [
+                SourceResult(
+                    source_id=source.source_id,
+                    status="success",
+                    tables=[
+                        {
+                            "run_key": "run-readable",
+                            "run_key_kind": "trace",
+                            "agent_key": "agent-a",
+                            "agent_name": "external-a",
+                            "project_resource_id": _PROJECT_ID,
+                            "started_at": period.starts_at + timedelta(hours=1),
+                            "last_activity_at": period.starts_at + timedelta(hours=2),
+                            "duration_ms": 3_600_000,
+                            "turns": 1,
+                            "failed_turns": 0,
+                            "tool_invocations": 0,
+                            "tool_failures": 0,
+                            "input_tokens": None,
+                            "output_tokens": None,
+                            "cache_read_tokens": None,
+                            "cache_write_tokens": None,
+                            "reasoning_tokens": None,
+                            "credits": None,
+                            "credit_events": None,
+                            "total_in_scope": 1,
+                        }
+                    ],
+                )
+            ]
+        },
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="b" * 64,
+    )
+
+    row = result.data.rows[0]
+    assert row.source_resource_id == source_id.lower()
+    assert row.project_resource_id == _PROJECT_ID.lower()
+    assert row.starts_at == period.starts_at
+    assert row.ends_at == period.ends_at
+    assert row.calculated_at == result.data.calculated_at
+    assert row.latest_observed_at == period.starts_at + timedelta(hours=2)
+    summary = result.data.components[0]
+    assert summary.confidence == "low"
+    assert summary.coverage_state == "partial"
+    component_coverage = next(
+        item
+        for item in result.coverage
+        if item.dimension == "cost_attribution" and item.component_id == "compute"
+    )
+    assert component_coverage.state == "partial"
+    assert component_coverage.next_action
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "tables", "expected_state"),
+    [
+        (_source(state="not_configured", reason="No workspace."), [], "not_configured"),
+        (_source(state="inaccessible", reason="Access denied."), [], "inaccessible"),
+        (_source(), [], "no_data"),
+        (_source(), [{"malformed": "run"}], "error"),
+    ],
+)
+async def test_query_cost_classifies_unavailable_period_states(
+    source: TelemetrySource,
+    tables: list[dict[str, Any]],
+    expected_state: str,
+) -> None:
+    source_id = source.foundry_resource_id or source.resource_id
+    period = _cost_period(
+        components=[
+            {
+                "id": "compute",
+                "type": "hosted_compute",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Compute statement",
+                "billed_total": "9.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "active_session_seconds",
+                "usage_match": {"source_resource_ids": [source_id]},
+            }
+        ]
+    )
+    results = (
+        {"runs": [SourceResult(source_id=source.source_id, status="success", tables=tables)]}
+        if source.state == "available"
+        else {}
+    )
+    service, _discovery, _query = _service(
+        inventory=_inventory([source]),
+        results=[],
+        results_by_view=results,
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="c" * 64,
+    )
+
+    summary = result.data.components[0]
+    assert summary.unallocated_amount == summary.declared_total
+    coverage = next(
+        item
+        for item in result.coverage
+        if item.dimension == "cost_attribution" and item.component_id == "compute"
+    )
+    assert coverage.state == expected_state
+    assert coverage.reason
+    assert coverage.next_action
+
+
+@pytest.mark.asyncio
+async def test_query_cost_classifies_missing_partial_and_unattributed_keys() -> None:
+    source_id = _source().foundry_resource_id or _source().resource_id
+    components = [
+        {
+            "id": "duration",
+            "type": "hosted_compute",
+            "billing_boundary": {"kind": "resource", "value": source_id},
+            "billed_source": "Duration",
+            "billed_total": "4.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_model": "metered",
+            "allocation_key": "active_session_seconds",
+            "usage_match": {"source_resource_ids": [source_id]},
+        },
+        {
+            "id": "weighted",
+            "type": "standard_model",
+            "billing_boundary": {"kind": "resource", "value": source_id},
+            "billed_source": "Weighted",
+            "billed_total": "6.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_model": "metered",
+            "allocation_key": "weighted_tokens",
+            "token_weights": {"cache_read_tokens": "1"},
+            "usage_match": {"source_resource_ids": [source_id]},
+        },
+        {
+            "id": "direct-credit",
+            "type": "credit_payg",
+            "billing_boundary": {"kind": "resource", "value": source_id},
+            "billed_source": "Credits",
+            "billed_total": "2.00",
+            "currency": "USD",
+            "currency_minor_units": 2,
+            "allocation_model": "metered",
+            "allocation_key": "credits",
+            "usage_match": {"source_resource_ids": [source_id]},
+        },
+    ]
+    period = _cost_period(components=components)
+    base = {
+        "run_key_kind": "trace",
+        "agent_key": "unknown",
+        "started_at": period.starts_at + timedelta(hours=1),
+        "last_activity_at": period.starts_at + timedelta(hours=2),
+        "turns": 1,
+        "failed_turns": 0,
+        "tool_invocations": 0,
+        "tool_failures": 0,
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "cache_write_tokens": None,
+        "reasoning_tokens": None,
+        "credits": None,
+        "credit_events": None,
+        "total_in_scope": 2,
+    }
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[],
+        results_by_view={
+            "runs": [
+                SourceResult(
+                    source_id="src-1",
+                    status="success",
+                    tables=[
+                        {
+                            **base,
+                            "run_key": "missing-duration",
+                            "duration_ms": 1_800_000,
+                            "cache_read_tokens": 2,
+                        },
+                        {
+                            **base,
+                            "run_key": "partial-weight",
+                            "agent_key": "agent-b",
+                            "duration_ms": 3_600_000,
+                            "cache_read_tokens": None,
+                        },
+                    ],
+                )
+            ]
+        },
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="d" * 64,
+    )
+
+    by_component = {item.component_id: item for item in result.data.components}
+    assert by_component["duration"].coverage_state == "partial"
+    assert by_component["duration"].unattributed_amount > 0
+    assert by_component["weighted"].coverage_state == "partial"
+    assert by_component["direct-credit"].coverage_state == "not_reported"
+    cost_coverage = {
+        item.component_id: item
+        for item in result.coverage
+        if item.dimension == "cost_attribution" and item.component_id
+    }
+    assert cost_coverage["duration"].state == "partial"
+    assert "identity" in cost_coverage["duration"].reason.lower()
+    assert cost_coverage["weighted"].state == "partial"
+    assert cost_coverage["direct-credit"].state == "not_reported"
+
+
+@pytest.mark.asyncio
+async def test_query_cost_reports_unmatched_capability_without_inferred_billing_type() -> None:
+    source_id = _source().foundry_resource_id or _source().resource_id
+    period = _cost_period(
+        components=[
+            {
+                "id": "search",
+                "type": "search",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Search",
+                "billed_total": "3.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "tool_invocations",
+                "usage_match": {"tool_names": ["search"]},
+            }
+        ]
+    )
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[],
+        results_by_view={
+            "models": [SourceResult(source_id="src-1", status="success", tables=[])],
+            "tools": [SourceResult(source_id="src-1", status="success", tables=[])],
+            "runs": [
+                SourceResult(
+                    source_id="src-1",
+                    status="success",
+                    tables=[
+                        {
+                            "run_key": "duration-only",
+                            "run_key_kind": "trace",
+                            "agent_key": "agent-a",
+                            "started_at": period.starts_at + timedelta(hours=1),
+                            "last_activity_at": period.starts_at + timedelta(hours=2),
+                            "duration_ms": 3_600_000,
+                            "turns": 1,
+                            "failed_turns": 0,
+                            "tool_invocations": 0,
+                            "tool_failures": 0,
+                            "input_tokens": None,
+                            "output_tokens": None,
+                            "cache_read_tokens": None,
+                            "cache_write_tokens": None,
+                            "reasoning_tokens": None,
+                            "credits": None,
+                            "credit_events": None,
+                            "total_in_scope": 1,
+                        }
+                    ],
+                )
+            ],
+        },
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="e" * 64,
+    )
+
+    assert sorted(call[1] for call in query.calls) == ["models", "runs", "tools"]
+    unmatched = [
+        item
+        for item in result.coverage
+        if item.dimension == "cost_attribution" and item.component_id is None
+    ]
+    duration = next(
+        item for item in unmatched if item.allocation_key == "active_session_seconds"
+    )
+    assert duration.state == "not_configured"
+    assert "billing" not in duration.reason.lower()
+    assert "compute" not in duration.reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_query_cost_retains_success_after_partial_source_failure() -> None:
+    first = _source("src-1")
+    second = _source("src-2")
+    source_id = first.foundry_resource_id or first.resource_id
+    period = _cost_period(
+        components=[
+            {
+                "id": "compute",
+                "type": "hosted_compute",
+                "billing_boundary": {"kind": "resource", "value": source_id},
+                "billed_source": "Compute",
+                "billed_total": "4.00",
+                "currency": "USD",
+                "currency_minor_units": 2,
+                "allocation_model": "metered",
+                "allocation_key": "active_session_seconds",
+                "usage_match": {"source_resource_ids": [source_id]},
+            }
+        ]
+    )
+    service, _discovery, _query = _service(
+        inventory=_inventory([first, second]),
+        results=[],
+        results_by_view={
+            "runs": [
+                SourceResult(
+                    source_id=first.source_id,
+                    status="success",
+                    tables=[
+                        {
+                            "run_key": "readable",
+                            "run_key_kind": "trace",
+                            "agent_key": "agent-a",
+                            "started_at": period.starts_at + timedelta(hours=1),
+                            "last_activity_at": period.starts_at + timedelta(hours=2),
+                            "duration_ms": 3_600_000,
+                            "turns": 1,
+                            "failed_turns": 0,
+                            "tool_invocations": 0,
+                            "tool_failures": 0,
+                            "input_tokens": None,
+                            "output_tokens": None,
+                            "cache_read_tokens": None,
+                            "cache_write_tokens": None,
+                            "reasoning_tokens": None,
+                            "credits": None,
+                            "credit_events": None,
+                            "total_in_scope": 1,
+                        }
+                    ],
+                ),
+                SourceResult(
+                    source_id=second.source_id,
+                    status="partial",
+                    tables=[],
+                    reason="One shard timed out.",
+                ),
+            ]
+        },
+        clock=FakeDatetimeClock(datetime(2024, 2, 11, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_cost(
+        _scope(),
+        _filters(cost_period_id=period.id),
+        cost_model=_cost_model(period),
+        cost_model_fingerprint="f" * 64,
+    )
+
+    assert result.data.rows
+    assert result.data.components[0].confidence == "low"
+    assert result.data.components[0].coverage_state == "partial"
+    assert result.partial_failures[0].source_id == second.source_id
+    assert result.diagnostics.partial_sources == 1
 
 
 @pytest.mark.asyncio

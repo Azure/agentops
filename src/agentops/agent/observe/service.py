@@ -17,18 +17,30 @@ aggregates are ever passed to :meth:`ObserveCache.set`.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Literal, Mapping, Protocol, Sequence
 
 from agentops.agent.observe.cache import ObserveCache
+from agentops.agent.observe.cost_allocation import allocate_cost_period
 from agentops.agent.observe.queries import (
     MAX_ROWS_PER_QUERY,
     TOKEN_CLASS_ALIASES,
     TOKEN_CLASS_ALIAS_NAMES,
     SourceResult,
     SourceStatus,
+)
+from agentops.core.cost import (
+    AllocationKey,
+    CostBreakdown,
+    CostComponent,
+    CostComponentSummary,
+    CostModel,
+    CostPeriod,
+    CostUsageObservation,
 )
 from agentops.core.observe import (
     CoverageResult,
@@ -50,7 +62,7 @@ from agentops.core.observe import (
 #: Identity/scope/filter cache entries stay fresh for two minutes (T046).
 CACHE_TTL_SECONDS = 120.0
 
-View = Literal["overview", "agents", "models", "tools", "runs"]
+View = Literal["overview", "agents", "models", "tools", "runs", "cost"]
 
 
 class Clock(Protocol):
@@ -499,28 +511,172 @@ def normalize_run_row(
 
     agent_id = row.get("agent_id") or None
     agent_name = row.get("agent_name") or None
-    return ObservedRun(
-        source_id=source.source_id,
-        run_key=run_key,
-        run_key_kind=run_key_kind,
-        agent_key=agent_key,
-        agent_id=agent_id,
-        agent_name=agent_name,
-        project_resource_id=_project_resource_id_for_row(row, source=source),
-        foundry_resource_id=source.foundry_resource_id,
-        source_kind=_row_runtime(
+    normalized: dict[str, Any] = {
+        "source_id": source.source_id,
+        "run_key": run_key,
+        "run_key_kind": run_key_kind,
+        "agent_key": agent_key,
+        "agent_id": agent_id,
+        "agent_name": agent_name,
+        "project_resource_id": _project_resource_id_for_row(row, source=source),
+        "foundry_resource_id": source.foundry_resource_id,
+        "source_kind": _row_runtime(
             row, agent_id=agent_id, agent_name=agent_name, inventory=inventory
         ),
-        started_at=started_at,
-        last_activity_at=last_activity_at,
-        duration_ms=row.get("duration_ms"),
-        status=status,
-        turns=int(row.get("turns") or 0),
-        failed_turns=failed_turns,
-        tool_invocations=int(row.get("tool_invocations") or 0),
-        tool_failures=tool_failures,
-        input_tokens=_nullable_int(row, field="input_tokens"),
-        output_tokens=_nullable_int(row, field="output_tokens"),
+        "started_at": started_at,
+        "last_activity_at": last_activity_at,
+        "duration_ms": row.get("duration_ms"),
+        "status": status,
+        "turns": int(row.get("turns") or 0),
+        "failed_turns": failed_turns,
+        "tool_invocations": int(row.get("tool_invocations") or 0),
+        "tool_failures": tool_failures,
+        "input_tokens": _nullable_int(row, field="input_tokens"),
+        "output_tokens": _nullable_int(row, field="output_tokens"),
+        "cache_read_tokens": _nullable_int(row, field="cache_read_tokens"),
+        "cache_write_tokens": _nullable_int(row, field="cache_write_tokens"),
+        "reasoning_tokens": _nullable_int(row, field="reasoning_tokens"),
+        "credits": None if row.get("credits") is None else str(row["credits"]),
+        "credit_events": _nullable_int(row, field="credit_events"),
+    }
+    # These fields are additive in the cost contract. Keeping this conditional
+    # lets the service remain compatible while the Observe contract rolls out.
+    for field in ("deployment", "model", "operation_name"):
+        if field in ObservedRun.model_fields:
+            normalized[field] = row.get(field) or None
+    return ObservedRun(
+        **normalized
+    )
+
+
+def normalize_cost_run_observation(
+    run: ObservedRun,
+    *,
+    source_resource_id: str,
+    coverage_complete: bool,
+    period: CostPeriod | None = None,
+) -> CostUsageObservation:
+    """Project a normalized run into metadata-only numeric cost usage."""
+    if period is None:
+        duration_seconds = (
+            None
+            if run.duration_ms is None
+            else Decimal(str(run.duration_ms)) / Decimal(1000)
+        )
+        latest_observed_at = run.last_activity_at
+    else:
+        clipped_start = max(run.started_at, period.starts_at)
+        clipped_end = min(run.last_activity_at, period.ends_at)
+        if clipped_end <= clipped_start:
+            raise ValueError("run has no activity inside the selected cost period")
+        duration_seconds = (
+            None
+            if run.duration_ms is None
+            else min(
+                Decimal(str(run.duration_ms)) / Decimal(1000),
+                Decimal(str((clipped_end - clipped_start).total_seconds())),
+            )
+        )
+        latest_observed_at = clipped_end
+    credits = None if run.credits is None else Decimal(run.credits)
+    return CostUsageObservation(
+        source_resource_id=source_resource_id,
+        project_resource_id=run.project_resource_id,
+        agent_key=_cost_identity(run.agent_key),
+        run_key=run.run_key,
+        runtime_kind=run.source_kind,
+        deployment=getattr(run, "deployment", None),
+        model=getattr(run, "model", None),
+        operation_name=getattr(run, "operation_name", None),
+        input_tokens=run.input_tokens,
+        output_tokens=run.output_tokens,
+        cache_read_tokens=run.cache_read_tokens,
+        cache_write_tokens=run.cache_write_tokens,
+        reasoning_tokens=run.reasoning_tokens,
+        tool_invocations=run.tool_invocations,
+        active_session_seconds=duration_seconds,
+        credits=credits,
+        credit_events=run.credit_events,
+        latest_observed_at=latest_observed_at,
+        coverage_complete=coverage_complete,
+    )
+
+
+def _cost_identity(value: str | None) -> str | None:
+    if value is None or not value.strip() or value.strip().lower() == "unknown":
+        return None
+    return value
+
+
+def _normalize_cost_model_observation(
+    usage: ModelUsage,
+    *,
+    source: TelemetrySource,
+    inventory: ResourceInventory,
+    coverage_complete: bool,
+) -> CostUsageObservation:
+    return CostUsageObservation(
+        source_resource_id=source.foundry_resource_id or source.resource_id,
+        project_resource_id=usage.project_resource_id,
+        agent_key=_cost_identity(usage.agent_id),
+        runtime_kind=classify_runtime(
+            agent_id=usage.agent_id,
+            agent_name=None,
+            inventory=inventory,
+        ),
+        deployment=usage.deployment,
+        model=usage.model,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        cache_write_tokens=usage.cache_write_tokens,
+        reasoning_tokens=usage.reasoning_tokens,
+        latest_observed_at=usage.last_seen,
+        coverage_complete=coverage_complete,
+    )
+
+
+def _normalize_cost_tool_observation(
+    tool: ObservedTool,
+    *,
+    source_resource_id: str,
+    coverage_complete: bool,
+) -> CostUsageObservation:
+    return CostUsageObservation(
+        source_resource_id=source_resource_id,
+        project_resource_id=tool.project_resource_id,
+        agent_key=_cost_identity(tool.agent_key),
+        tool_name=tool.tool_name,
+        runtime_kind=tool.source_kind,
+        tool_invocations=tool.invocations,
+        latest_observed_at=tool.last_seen,
+        coverage_complete=coverage_complete,
+    )
+
+
+def _normalize_unattributed_tool_observation(
+    row: Mapping[str, Any],
+    *,
+    source: TelemetrySource,
+    coverage_complete: bool,
+) -> CostUsageObservation | None:
+    raw_count = row.get("unattributed_count")
+    if row.get("_metadata_only") is not True or raw_count is None or int(raw_count) <= 0:
+        return None
+    project_resource_id = (
+        source.project_resource_ids[0]
+        if len(source.project_resource_ids) == 1
+        else None
+    )
+    return CostUsageObservation(
+        source_resource_id=source.foundry_resource_id or source.resource_id,
+        project_resource_id=project_resource_id,
+        agent_key=None,
+        tool_name=None,
+        runtime_kind="unknown",
+        tool_invocations=int(raw_count),
+        latest_observed_at=None,
+        coverage_complete=coverage_complete,
     )
 
 
@@ -992,6 +1148,288 @@ def _cache_key(
     return key
 
 
+def _cost_cache_key(
+    identity: str,
+    scope: ObserveScope,
+    *,
+    model_fingerprint: str,
+    period_id: str,
+    breakdown: CostBreakdown,
+    component_id: str | None,
+    cost_agent_key: str | None,
+) -> tuple[Any, ...]:
+    return (
+        identity,
+        "cost",
+        scope.model_dump_json(),
+        model_fingerprint,
+        period_id,
+        breakdown,
+        component_id,
+        cost_agent_key,
+    )
+
+
+def _cost_views_for_components(period: CostPeriod, component_id: str | None) -> tuple[str, ...]:
+    components = [
+        component
+        for component in period.components
+        if component_id is None or component.id == component_id
+    ]
+    if component_id is not None and not components:
+        raise ValueError(f"Unknown cost component ID: {component_id}")
+    # Cost coverage must also report observable capabilities that have no
+    # configured component. Collect each bounded metadata-only usage view once;
+    # allocation still selects only explicitly matched component observations.
+    return ("models", "runs", "tools")
+
+
+def _source_results_complete(
+    results: Sequence[SourceResult],
+    *,
+    expected_source_ids: set[str],
+) -> bool:
+    results_by_source = {result.source_id: result for result in results}
+    if set(results_by_source) != expected_source_ids:
+        return False
+    for result in results:
+        rows = [
+            row
+            for row in list(result.tables or [])
+            if row.get("_metadata_only") is not True
+        ]
+        totals = {
+            int(value)
+            for row in rows
+            if (value := row.get("total_in_scope")) is not None
+            and not isinstance(value, bool)
+        }
+        if result.status != "success":
+            return False
+        if totals and (len(totals) != 1 or next(iter(totals)) > len(rows)):
+            return False
+    return True
+
+
+def _dedupe_coverage(items: Sequence[CoverageResult]) -> list[CoverageResult]:
+    unique: list[CoverageResult] = []
+    seen: set[str] = set()
+    for item in items:
+        identity = item.model_dump_json()
+        if identity not in seen:
+            seen.add(identity)
+            unique.append(item)
+    return unique
+
+
+def _dedupe_partial_failures(
+    results: Sequence[SourceResult],
+) -> list[PartialFailure]:
+    status_rank = {"success": 0, "partial": 1, "throttled": 2, "timeout": 3, "error": 4}
+    worst_by_source: dict[str, SourceResult] = {}
+    for result in results:
+        current = worst_by_source.get(result.source_id)
+        if current is None or status_rank[result.status] > status_rank[current.status]:
+            worst_by_source[result.source_id] = result
+    return _build_partial_failures(list(worst_by_source.values()))
+
+
+def _cost_observation_matches(
+    component: CostComponent,
+    observation: CostUsageObservation,
+) -> bool:
+    match = component.usage_match
+    checks = (
+        (match.source_resource_ids, observation.source_resource_id),
+        (match.project_resource_ids, observation.project_resource_id),
+        (match.agent_keys, observation.agent_key),
+        (match.deployments, observation.deployment),
+        (match.models, observation.model),
+        (match.tool_names, observation.tool_name),
+        (match.runtime_kinds, observation.runtime_kind),
+    )
+    return all(not allowed or actual in allowed for allowed, actual in checks)
+
+
+def _cost_capabilities(
+    observation: CostUsageObservation,
+) -> set[AllocationKey]:
+    capabilities: set[AllocationKey] = set()
+    granular_tokens = (
+        observation.cache_read_tokens,
+        observation.cache_write_tokens,
+        observation.reasoning_tokens,
+    )
+    if any(value is not None for value in granular_tokens):
+        capabilities.add("weighted_tokens")
+    elif observation.input_tokens is not None or observation.output_tokens is not None:
+        capabilities.add("total_tokens")
+    if observation.tool_invocations is not None:
+        capabilities.add("tool_invocations")
+    if observation.active_session_seconds is not None:
+        capabilities.add("active_session_seconds")
+    if observation.credits is not None:
+        capabilities.add("credits")
+    if observation.credit_events is not None and observation.operation_name is not None:
+        capabilities.add("credit_events")
+    return capabilities
+
+
+def _component_view(component: CostComponent) -> str:
+    if component.allocation_key == "tool_invocations":
+        return "tools"
+    if component.allocation_key == "total_tokens":
+        return "models"
+    return "runs"
+
+
+def _cost_component_coverage(
+    *,
+    summary: CostComponentSummary,
+    component: CostComponent,
+    breakdown: CostBreakdown,
+    inventory: ResourceInventory,
+    results_by_view: Mapping[str, Sequence[SourceResult]],
+    normalization_error_views: set[str],
+    observations: Sequence[CostUsageObservation],
+    refreshed_at: datetime,
+) -> CoverageResult:
+    matching = [
+        observation
+        for observation in observations
+        if _cost_observation_matches(component, observation)
+    ]
+    relevant_results = results_by_view.get(_component_view(component), ())
+    expected_sources = {
+        source.source_id
+        for source in inventory.telemetry_sources
+        if source.state == "available"
+    }
+    has_query_failure = any(
+        result.status in {"timeout", "throttled", "error"}
+        for result in relevant_results
+    ) or bool(
+        expected_sources.difference(result.source_id for result in relevant_results)
+    )
+    unavailable_sources = [
+        source
+        for source in inventory.telemetry_sources
+        if source.state in {"inaccessible", "error"}
+    ]
+    unconfigured_sources = [
+        source
+        for source in inventory.telemetry_sources
+        if source.state in {"not_configured", "not_found"}
+    ]
+
+    state = summary.coverage_state
+    reason = summary.coverage_reason
+    next_action = summary.next_action or "No action needed."
+    if not matching and _component_view(component) in normalization_error_views:
+        state = "error"
+        reason = "One or more usage rows for this cost component were malformed."
+        next_action = "Correct the emitted usage attributes and retry."
+    elif not matching and unavailable_sources:
+        state = "inaccessible"
+        reason = "A required telemetry source is inaccessible for this cost component."
+        next_action = "Restore read access to the telemetry source and retry."
+    elif not matching and (
+        not inventory.telemetry_sources
+        or bool(unconfigured_sources)
+    ):
+        state = "not_configured"
+        reason = "Telemetry is not configured for this cost component."
+        next_action = "Configure a readable telemetry connection and retry."
+    elif not matching and has_query_failure:
+        state = "error"
+        reason = "The cost-component telemetry query did not complete."
+        next_action = "Retry after resolving the telemetry query failure."
+    elif state == "partial":
+        if any(
+            observation.agent_key is None
+            if breakdown == "agents"
+            else observation.tool_name is None
+            if breakdown == "tools"
+            else observation.run_key is None
+            for observation in matching
+        ):
+            reason = (
+                "Allocation is partial because some observed usage has no "
+                f"{breakdown[:-1]} identity."
+            )
+            next_action = "Add stable consumer identity telemetry and retry."
+        else:
+            reason = (
+                "Allocation-key or readable-period coverage is partial for "
+                "this component."
+            )
+            next_action = "Complete allocation-key and period telemetry coverage."
+
+    return CoverageResult(
+        source_id=f"cost:{component.id}",
+        dimension="cost_attribution",
+        state=state,
+        reason=reason,
+        next_action=next_action,
+        refreshed_at=refreshed_at,
+        component_id=component.id,
+        cost_breakdown=breakdown,
+        allocation_key=summary.applied_key or summary.preferred_key,
+    )
+
+
+def _unmatched_capability_coverage(
+    *,
+    period: CostPeriod,
+    observations: Sequence[CostUsageObservation],
+    breakdown: CostBreakdown,
+    refreshed_at: datetime,
+) -> list[CoverageResult]:
+    configured = list(period.components)
+    unmatched: dict[tuple[str, AllocationKey], CostUsageObservation] = {}
+    for observation in observations:
+        for capability in _cost_capabilities(observation):
+            if capability == "credit_events" and not any(
+                observation.operation_name
+                in component.usage_match.credit_event_operations
+                for component in configured
+            ):
+                continue
+            has_match = any(
+                capability in {component.allocation_key, component.fallback_key}
+                and _cost_observation_matches(component, observation)
+                for component in configured
+            )
+            if not has_match:
+                unmatched.setdefault(
+                    (observation.source_resource_id, capability),
+                    observation,
+                )
+    return [
+        CoverageResult(
+            source_id=f"cost:capability:{capability}:{index}",
+            dimension="cost_attribution",
+            state="not_configured",
+            reason=(
+                f"Observed allocation capability {capability!r} has no matching "
+                "configured cost component."
+            ),
+            next_action=(
+                "Add an explicit cost component and usage selector if this "
+                "capability belongs to a declared billed pool."
+            ),
+            refreshed_at=refreshed_at,
+            component_id=None,
+            cost_breakdown=breakdown,
+            allocation_key=capability,
+        )
+        for index, ((_source_id, capability), _observation) in enumerate(
+            sorted(unmatched.items()),
+            start=1,
+        )
+    ]
+
+
 class ObserveService:
     """Coordinates discovery, bounded querying, normalization, and caching.
 
@@ -1113,6 +1551,316 @@ class ObserveService:
             diagnostics=diagnostics,
             partial_failures=partial_failures,
             bounds=bounds,
+            refreshed_at=completed_at,
+            cache_status="bypass" if refresh else "miss",
+        )
+
+    async def query_cost(
+        self,
+        scope: ObserveScope,
+        filters: ObserveFilterState,
+        *,
+        cost_model: CostModel,
+        cost_model_fingerprint: str,
+        refresh: bool = False,
+    ) -> ObserveResult:
+        """Allocate one configured period from bounded metadata-only usage views."""
+        filters.validate_scope(scope)
+        if filters.cost_period_id is None:
+            raise ValueError("cost_period_id is required for the Cost view")
+        period = next(
+            (
+                candidate
+                for candidate in cost_model.periods
+                if candidate.id == filters.cost_period_id
+            ),
+            None,
+        )
+        if period is None:
+            raise ValueError(
+                f"unknown cost period {filters.cost_period_id!r}; "
+                "select a configured cost period"
+            )
+        if (
+            len(cost_model_fingerprint) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in cost_model_fingerprint
+            )
+        ):
+            raise ValueError(
+                "cost_model_fingerprint must be a lowercase SHA-256 digest"
+            )
+        selected_breakdown = filters.cost_breakdown or "agents"
+        selected_component = filters.cost_component_id
+        selected_agent = filters.cost_agent_key
+        required_views = _cost_views_for_components(period, selected_component)
+
+        identity = _identity_key(self._runtime)
+        key = _cost_cache_key(
+            identity,
+            scope,
+            model_fingerprint=cost_model_fingerprint,
+            period_id=period.id,
+            breakdown=selected_breakdown,
+            component_id=selected_component,
+            cost_agent_key=selected_agent,
+        )
+        cached = self._cache.get(key, bypass=refresh)
+        if cached is not None:
+            return ObserveResult(
+                view="cost",
+                data=cached.data,
+                coverage=cached.coverage,
+                diagnostics=cached.diagnostics,
+                partial_failures=cached.partial_failures,
+                bounds=cached.bounds,
+                refreshed_at=cached.refreshed_at,
+                cache_status="hit",
+            )
+
+        inventory = await self.get_inventory(scope, refresh=refresh)
+        available_sources = [
+            source
+            for source in inventory.telemetry_sources
+            if source.state == "available"
+        ]
+        sources_by_id = {source.source_id: source for source in available_sources}
+        period_filters = ObserveFilterState(
+            start=period.starts_at,
+            end=period.ends_at,
+        )
+        started_at = self._clock()
+        queried = await asyncio.gather(
+            *(
+                self._query_client.query(
+                    available_sources,
+                    period_filters,
+                    view=view,  # type: ignore[arg-type]
+                )
+                for view in required_views
+            )
+        )
+        completed_at = self._clock()
+        results_by_view = {
+            view: list(results) for view, results in zip(required_views, queried, strict=True)
+        }
+        all_results = [
+            result for results in results_by_view.values() for result in results
+        ]
+
+        coverage = self._discovery_coverage(
+            inventory.telemetry_sources, refreshed_at=completed_at
+        )
+        observations: list[CostUsageObservation] = []
+        normalization_error_views: set[str] = set()
+        expected_source_ids = set(sources_by_id)
+        for view in required_views:
+            source_results = results_by_view[view]
+            normalized, view_coverage = self._normalize_view(
+                view,  # type: ignore[arg-type]
+                source_results,
+                inventory.telemetry_sources,
+                inventory=inventory,
+                window_end=period.ends_at,
+                refreshed_at=completed_at,
+            )
+            coverage.extend(view_coverage)
+            if any(item.state == "error" for item in view_coverage):
+                normalization_error_views.add(view)
+            complete = _source_results_complete(
+                source_results,
+                expected_source_ids=expected_source_ids,
+            )
+            complete = (
+                complete
+                and view not in normalization_error_views
+                and all(
+                    source.state == "available"
+                    for source in inventory.telemetry_sources
+                )
+            )
+            if view == "models":
+                for result in source_results:
+                    source = sources_by_id.get(result.source_id)
+                    if source is None:
+                        continue
+                    for row in list(result.tables or []):
+                        try:
+                            usage = normalize_model_row(row, source=source)
+                        except ValueError:
+                            continue
+                        if usage.last_seen is not None and not (
+                            period.starts_at <= usage.last_seen < period.ends_at
+                        ):
+                            continue
+                        observations.append(
+                            _normalize_cost_model_observation(
+                                usage,
+                                source=source,
+                                inventory=inventory,
+                                coverage_complete=complete,
+                            )
+                        )
+            elif view == "tools":
+                for tool in normalized:
+                    if not (period.starts_at <= tool.last_seen < period.ends_at):
+                        continue
+                    source = sources_by_id.get(tool.source_id)
+                    if source is not None:
+                        observations.append(
+                            _normalize_cost_tool_observation(
+                                tool,
+                                source_resource_id=(
+                                    source.foundry_resource_id or source.resource_id
+                                ),
+                                coverage_complete=complete,
+                            )
+                        )
+                for result in source_results:
+                    source = sources_by_id.get(result.source_id)
+                    if source is None:
+                        continue
+                    for row in list(result.tables or []):
+                        observation = _normalize_unattributed_tool_observation(
+                            row,
+                            source=source,
+                            coverage_complete=complete,
+                        )
+                        if observation is not None:
+                            observations.append(observation)
+            else:
+                for run in normalized:
+                    if (
+                        run.last_activity_at <= period.starts_at
+                        or run.started_at >= period.ends_at
+                    ):
+                        continue
+                    source = sources_by_id.get(run.source_id)
+                    if source is not None:
+                        observations.append(
+                            normalize_cost_run_observation(
+                                run,
+                                source_resource_id=(
+                                    source.foundry_resource_id or source.resource_id
+                                ),
+                                coverage_complete=complete,
+                                period=period,
+                            )
+                        )
+
+        calculated = allocate_cost_period(
+            period,
+            observations,
+            breakdown=selected_breakdown,
+            calculated_at=completed_at,
+            component_id=selected_component,
+            cost_agent_key=selected_agent,
+        )
+        components_by_id = {
+            component.id: component for component in period.components
+        }
+        merged_summaries = []
+        component_coverage_by_id: dict[str, CoverageResult] = {}
+        for summary in calculated.components:
+            item = _cost_component_coverage(
+                summary=summary,
+                component=components_by_id[summary.component_id],
+                breakdown=selected_breakdown,
+                inventory=inventory,
+                results_by_view=results_by_view,
+                normalization_error_views=normalization_error_views,
+                observations=observations,
+                refreshed_at=completed_at,
+            )
+            component_coverage_by_id[summary.component_id] = item
+            coverage.append(item)
+            merged_summaries.append(
+                summary.model_copy(
+                    update={
+                        "coverage_state": item.state,
+                        "coverage_reason": item.reason,
+                        "next_action": (
+                            None
+                            if item.next_action == "No action needed."
+                            else item.next_action
+                        ),
+                    }
+                )
+            )
+        merged_rows = [
+            row.model_copy(
+                update={
+                    "coverage_state": component_coverage_by_id[
+                        row.component_id
+                    ].state,
+                    "coverage_reason": component_coverage_by_id[
+                        row.component_id
+                    ].reason,
+                }
+            )
+            for row in calculated.rows
+        ]
+        calculated = calculated.model_copy(
+            update={"components": merged_summaries, "rows": merged_rows}
+        )
+        coverage.extend(
+            _unmatched_capability_coverage(
+                period=period,
+                observations=observations,
+                breakdown=selected_breakdown,
+                refreshed_at=completed_at,
+            )
+        )
+        coverage = _dedupe_coverage(coverage)
+        partial_failures = _dedupe_partial_failures(all_results)
+        status_by_source = {
+            source_id: next(
+                (
+                    failure.status
+                    for failure in partial_failures
+                    if failure.source_id == source_id
+                ),
+                "success",
+            )
+            for source_id in expected_source_ids
+        }
+        partial_count = sum(status == "partial" for status in status_by_source.values())
+        failed_count = sum(
+            status in {"timeout", "throttled", "error"}
+            for status in status_by_source.values()
+        )
+        diagnostics = QueryDiagnostics(
+            started_at=started_at,
+            completed_at=completed_at,
+            duration_ms=max(
+                int((completed_at - started_at).total_seconds() * 1000), 0
+            ),
+            source_count=len(expected_source_ids),
+            successful_sources=max(
+                len(expected_source_ids) - partial_count - failed_count, 0
+            ),
+            partial_sources=partial_count,
+            failed_sources=failed_count,
+            cache_status="bypass" if refresh else "miss",
+        )
+        cached_view = _CachedView(
+            view="cost",
+            data=calculated,
+            coverage=coverage,
+            diagnostics=diagnostics,
+            partial_failures=partial_failures,
+            bounds=None,
+            refreshed_at=completed_at,
+        )
+        self._cache.set(key, cached_view)
+        return ObserveResult(
+            view="cost",
+            data=calculated,
+            coverage=coverage,
+            diagnostics=diagnostics,
+            partial_failures=partial_failures,
+            bounds=None,
             refreshed_at=completed_at,
             cache_status="bypass" if refresh else "miss",
         )

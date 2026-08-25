@@ -211,8 +211,9 @@ def test_hosted_mode_composes_default_auth_and_observe_factories(monkeypatch) ->
         calls["auth"] = True
         return _FakeAuth()
 
-    def build_facade(*, scope):
+    def build_facade(*, scope, cost_model_result):
         calls["scope"] = scope
+        calls["cost_model_state"] = cost_model_result.state
         return service
 
     monkeypatch.setattr(observe_principal, "build_easy_auth_resolver", build_resolver)
@@ -235,6 +236,7 @@ def test_hosted_mode_composes_default_auth_and_observe_factories(monkeypatch) ->
     assert response.status_code == 200
     assert calls["auth"] is True
     assert calls["scope"]["mode"] == "projects"
+    assert calls["cost_model_state"] == "absent"
 
 
 def test_hosted_authorization_failure_maps_to_forbidden() -> None:

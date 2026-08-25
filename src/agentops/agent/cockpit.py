@@ -28,6 +28,7 @@ from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange
+from agentops.core.cost import MAX_COST_COMPONENTS, MAX_COST_PERIODS, load_cost_model
 from agentops.core.observe import (
     AgentDetailRequest,
     ObserveQueryRequest,
@@ -4960,6 +4961,27 @@ def create_app(
             "Install with: pip install 'agentops-accelerator[agent]'"
         ) from exc
 
+    cost_model_result = load_cost_model(os.getenv("AGENTOPS_COST_MODEL"))
+    cost_periods: tuple[dict[str, str | tuple[str, ...]], ...] = ()
+    cost_components: tuple[dict[str, str], ...] = ()
+    if cost_model_result.state == "valid" and cost_model_result.model is not None:
+        model = cost_model_result.model
+        cost_periods = tuple(
+            {
+                "id": period.id,
+                "label": period.id,
+                "component_ids": tuple(
+                    component.id
+                    for component in period.components[:MAX_COST_COMPONENTS]
+                ),
+            }
+            for period in model.periods[:MAX_COST_PERIODS]
+        )
+        if model.periods:
+            cost_components = tuple(
+                {"id": component.id, "label": component.id}
+                for component in model.periods[0].components[:MAX_COST_COMPONENTS]
+            )
     configured = load_cockpit_runtime_configuration()
     effective_mode = mode or configured.mode
     if effective_mode not in {"local", "hosted"}:
@@ -4987,7 +5009,10 @@ def create_app(
         if observe_service is None and effective_scope is not None:
             from agentops.agent.observe.facade import create_observe_facade
 
-            observe_service = create_observe_facade(scope=effective_scope)
+            observe_service = create_observe_facade(
+                scope=effective_scope,
+                cost_model_result=cost_model_result,
+            )
     else:
         scope_payload = observe_scope or configured.observe_scope
         if scope_payload is None:
@@ -5002,7 +5027,10 @@ def create_app(
         if observe_service is None:
             from agentops.agent.observe.facade import create_observe_facade
 
-            observe_service = create_observe_facade(scope=effective_scope)
+            observe_service = create_observe_facade(
+                scope=effective_scope,
+                cost_model_result=cost_model_result,
+            )
 
     app = FastAPI(
         title="AgentOps Cockpit",
@@ -5088,7 +5116,14 @@ def create_app(
                 scope_label = f"Projects ({resource_count})"
             else:
                 scope_label = scope_mode.replace("_", " ").title()
-        return HTMLResponse(render_observe_page(scope_label=scope_label))
+        return HTMLResponse(
+            render_observe_page(
+                scope_label=scope_label,
+                cost_enabled=cost_model_result.state == "valid",
+                cost_periods=cost_periods,
+                cost_components=cost_components,
+            )
+        )
 
     @app.get("/", response_class=HTMLResponse)
     def _index(
@@ -5186,6 +5221,26 @@ def create_app(
         payload: ObserveQueryRequest,
         user_context: Dict[str, Any] = Depends(_authorize),
     ):
+        if payload.view == "cost" and cost_model_result.state != "valid":
+            if cost_model_result.state == "absent":
+                detail = (
+                    "Cost view is unavailable because AGENTOPS_COST_MODEL is not "
+                    "configured. Configure a valid cost model and restart Cockpit."
+                )
+            else:
+                message = cost_model_result.message or (
+                    "Correct AGENTOPS_COST_MODEL and restart Cockpit."
+                )
+                restart_action = (
+                    ""
+                    if "restart cockpit" in message.lower()
+                    else " Correct the configuration and restart Cockpit."
+                )
+                detail = (
+                    "Cost view is unavailable because AGENTOPS_COST_MODEL is invalid. "
+                    f"{message}{restart_action}"
+                )
+            raise HTTPException(status_code=422, detail=detail)
         filters = payload.filters
         if effective_scope is not None:
             filters.validate_scope(ObserveScope.model_validate(effective_scope))

@@ -50,6 +50,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, Protocol, Sequence
 
+from agentops.core.cost import load_cost_model
 from agentops.core.observe import (
     DeploymentFailure,
     DeploymentJournal,
@@ -479,6 +480,7 @@ ALLOWED_RESOURCE_TYPES = frozenset(
 ALLOWED_SETTINGS_KEYS = frozenset(
     {
         "AGENTOPS_COCKPIT_MODE",
+        "AGENTOPS_COST_MODEL",
         "AGENTOPS_OBSERVE_SCOPE",
         "AGENTOPS_TENANT_ID",
         # Canonical name chosen to match the packaged Bicep template
@@ -1380,6 +1382,21 @@ def build_application_settings(
     if selection.allowed_group_id:
         settings["AGENTOPS_ALLOWED_GROUP_OBJECT_ID"] = str(selection.allowed_group_id)
 
+    raw_cost_model = os.getenv("AGENTOPS_COST_MODEL")
+    if raw_cost_model is not None:
+        cost_model_result = load_cost_model(raw_cost_model)
+        if cost_model_result.state != "valid":
+            raise CockpitDeploymentError(
+                cost_model_result.message
+                or "AGENTOPS_COST_MODEL contains an invalid cost model.",
+                stage="build_preview",
+                remediation=(
+                    "Correct or remove AGENTOPS_COST_MODEL before previewing "
+                    "the hosted Cockpit deployment."
+                ),
+            )
+        settings["AGENTOPS_COST_MODEL"] = raw_cost_model
+
     unexpected = set(settings) - ALLOWED_SETTINGS_KEYS
     if unexpected:
         raise CockpitDeploymentError(
@@ -1400,7 +1417,8 @@ def _azd_env_values(
     the packaged ``infra/main.parameters.json`` (``WEB_APP_NAME``,
     ``AZURE_LOCATION``, ``AZURE_ENV_NAME``, ``AZURE_TENANT_ID``,
     ``AGENTOPS_APPLICATION_CLIENT_ID``, ``AGENTOPS_ALLOWED_GROUP_OBJECT_ID``,
-    ``AGENTOPS_OBSERVE_SCOPE``, ``AGENTOPS_VERSION``) plus the standard azd
+    ``AGENTOPS_OBSERVE_SCOPE``, ``AGENTOPS_COST_MODEL``, ``AGENTOPS_VERSION``)
+    plus the standard azd
     subscription/resource-group variables it reads directly. ``application_
     settings`` already supplies ``AGENTOPS_APPLICATION_CLIENT_ID``,
     ``AGENTOPS_ALLOWED_GROUP_OBJECT_ID`` (when set), and

@@ -53,7 +53,9 @@ Azure SDKs.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Optional, Sequence
+from urllib.parse import urlencode
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -103,6 +105,27 @@ OBSERVE_FILTER_QUERY_KEYS: tuple[str, ...] = (
     "end",
 )
 
+#: Cost selectors are intentionally separate from the shared Observe filters.
+#: A cost request sends only these fields because its configured period is the
+#: authoritative window and allocation is not narrowed by Observe identity
+#: filters.
+COST_FILTER_QUERY_KEYS: tuple[str, ...] = (
+    "cost_period_id",
+    "cost_component_id",
+    "cost_breakdown",
+    "cost_agent_key",
+)
+
+COST_DISCLAIMER = (
+    "Operational cost allocation from declared billed totals and observed usage; "
+    "not an invoice or billing-accurate charge."
+)
+
+COST_BREAKDOWN_WARNING = (
+    "Agent, tool, and run breakdowns are alternative reconciliations of the same "
+    "billed pools; do not add them together."
+)
+
 #: Default lookback window, in hours, applied when no range is in the URL.
 DEFAULT_RANGE_HOURS: int = 24
 
@@ -142,6 +165,7 @@ COVERAGE_DIMENSION_LABELS: dict[str, str] = {
     "run_correlation": "Run correlation",
     "trace_correlation": "Trace correlation",
     "protected_content": "Protected content",
+    "cost_attribution": "Cost attribution",
 }
 
 #: Copy for each ``GenerativeAIContent.protection_state`` value.
@@ -175,6 +199,9 @@ __all__ = [
     "OBSERVE_VIEW_LABELS",
     "OBSERVE_VIEW_WIRE_NAMES",
     "OBSERVE_FILTER_QUERY_KEYS",
+    "COST_FILTER_QUERY_KEYS",
+    "COST_DISCLAIMER",
+    "COST_BREAKDOWN_WARNING",
     "DEFAULT_RANGE_HOURS",
     "AUTO_REFRESH_MS",
     "MAX_TREND_POINTS",
@@ -190,6 +217,8 @@ __all__ = [
     "render_filter_bar",
     "render_overview_cards",
     "render_agents_table",
+    "render_cost_controls",
+    "render_cost_view",
     "render_models_usage_table",
     "render_tools_table",
     "render_runs_table",
@@ -647,11 +676,12 @@ def render_trend_chart(
 # ---------------------------------------------------------------------------
 
 
-def render_observe_nav(active_view: str = "overview") -> str:
+def render_observe_nav(active_view: str = "overview", *, cost_enabled: bool = False) -> str:
     """Render the Observe navigation as an accessible list of same-page links."""
     items = []
-    for view in OBSERVE_VIEWS:
-        label = OBSERVE_VIEW_LABELS[view]
+    views = OBSERVE_VIEWS + (("cost",) if cost_enabled else ())
+    for view in views:
+        label = "Cost" if view == "cost" else OBSERVE_VIEW_LABELS[view]
         current = ' aria-current="page"' if view == active_view else ""
         items.append(
             f'<li><a href="#{view}" data-observe-nav-link="{view}" class="observe-nav-link"'
@@ -862,6 +892,577 @@ def render_agents_table(
   <tbody>{"".join(rows)}</tbody>
 </table>
 """.strip()
+
+
+# ---------------------------------------------------------------------------
+# Cost allocation (spec 013 T021)
+# ---------------------------------------------------------------------------
+
+
+def _cost_label(value: Any) -> str:
+    return str(value or "Not reported").replace("_", " ").strip().title()
+
+
+def _render_cost_method_badge(value: Any) -> str:
+    method = str(value or "unavailable")
+    tone = {"metered": "info", "commitment": "warn"}.get(method, "muted")
+    return _render_badge(
+        _cost_label(value),
+        tone,
+        extra_class=f"observe-cost-method-{html_escape(method)}",
+    )
+
+
+def _render_cost_confidence_badge(value: Any) -> str:
+    confidence = str(value or "unavailable")
+    tone = {
+        "high": "ok",
+        "medium": "info",
+        "low": "warn",
+        "unavailable": "muted",
+    }.get(confidence, "muted")
+    return _render_badge(
+        _cost_label(value),
+        tone,
+        extra_class=f"observe-cost-confidence-{html_escape(confidence)}",
+    )
+
+
+def _cost_amount(amount: Any, currency: Any) -> str:
+    if amount is None:
+        return '<span class="observe-metric metric-missing">Not reported</span>'
+    try:
+        is_zero = Decimal(str(amount)) == 0
+    except (InvalidOperation, ValueError):
+        is_zero = False
+    zero = (
+        ' <span class="observe-hint observe-cost-observed-zero">Observed zero</span>'
+        if is_zero
+        else ""
+    )
+    return (
+        f'<span class="observe-cost-amount{" metric-zero" if is_zero else ""}">'
+        f"{html_escape(amount)} {html_escape(currency or 'Not reported')}{zero}</span>"
+    )
+
+
+def _cost_declared_amount(amount: Any, currency: Any) -> str:
+    if amount is None:
+        return (
+            '<span class="observe-metric metric-missing '
+            'observe-cost-missing-total">Missing configured billed total</span>'
+        )
+    return _cost_amount(amount, currency)
+
+
+def _cost_options(
+    options: Sequence[Any],
+    *,
+    id_key: str,
+    selected: Any,
+    all_label: Optional[str] = None,
+) -> str:
+    rendered: list[str] = []
+    if all_label is not None:
+        selected_attr = " selected" if not selected else ""
+        rendered.append(f'<option value=""{selected_attr}>{html_escape(all_label)}</option>')
+    for option in options:
+        value = option if isinstance(option, str) else _get(option, id_key)
+        if value is None:
+            continue
+        label = value if isinstance(option, str) else (_get(option, "label") or value)
+        selected_attr = " selected" if str(value) == str(selected) else ""
+        rendered.append(
+            f'<option value="{html_escape(value)}"{selected_attr}>{html_escape(label)}</option>'
+        )
+    return "".join(rendered)
+
+
+def _cost_period_options(options: Sequence[Any], *, selected: Any) -> str:
+    rendered: list[str] = []
+    for option in options:
+        value = option if isinstance(option, str) else _get(option, "id")
+        if value is None:
+            continue
+        label = value if isinstance(option, str) else (_get(option, "label") or value)
+        component_ids = None if isinstance(option, str) else _get(option, "component_ids")
+        component_attr = ""
+        if component_ids is not None:
+            encoded_component_ids = ",".join(
+                str(component_id) for component_id in component_ids
+            )
+            component_attr = (
+                f' data-cost-component-ids="{html_escape(encoded_component_ids)}"'
+            )
+        selected_attr = " selected" if str(value) == str(selected) else ""
+        rendered.append(
+            f'<option value="{html_escape(value)}"{component_attr}'
+            f"{selected_attr}>{html_escape(label)}</option>"
+        )
+    return "".join(rendered)
+
+
+def render_cost_controls(
+    cost: Any = None,
+    *,
+    period_options: Sequence[Any] = (),
+    component_options: Sequence[Any] = (),
+    agent_options: Sequence[Any] = (),
+) -> str:
+    """Render Cost-only selectors without reusing shared Observe filters."""
+    period = _get(cost, "period", {}) or {}
+    selected_period = _get(period, "id")
+    selected_component = _get(cost, "component_filter")
+    selected_breakdown = _get(cost, "breakdown") or "agents"
+    selected_agent = _get(cost, "cost_agent_key")
+
+    if not period_options and selected_period:
+        period_options = ({"id": selected_period, "label": selected_period},)
+    if not selected_period:
+        selected_period = next(
+            (
+                value
+                for option in period_options
+                if (value := option if isinstance(option, str) else _get(option, "id"))
+            ),
+            None,
+        )
+    if not component_options:
+        component_options = tuple(
+            {
+                "id": _get(component, "component_id"),
+                "label": _get(component, "component_id"),
+            }
+            for component in (_get(cost, "components", ()) or ())
+            if _get(component, "component_id")
+        )
+    if not agent_options:
+        seen: set[str] = set()
+        inferred_agents: list[dict[str, str]] = []
+        for row in _get(cost, "rows", ()) or ():
+            key = _get(row, "agent_key")
+            if not key and _get(row, "consumer_kind") == "agent":
+                key = _get(row, "consumer_key")
+            if key and str(key) not in seen:
+                seen.add(str(key))
+                inferred_agents.append({"key": str(key), "label": str(key)})
+        agent_options = tuple(inferred_agents)
+
+    breakdown_options = "".join(
+        f'<option value="{value}"{" selected" if value == selected_breakdown else ""}>'
+        f"{html_escape(label)}</option>"
+        for value, label in (("agents", "Agents"), ("tools", "Tools"), ("runs", "Runs"))
+    )
+    return f"""
+<form class="observe-cost-filter-bar" id="observe-cost-filter-form" aria-label="Cost selectors">
+  <p class="observe-hint">
+    The configured cost period is authoritative. Shared Observe time and identity filters
+    do not change these allocations.
+  </p>
+  <div class="observe-filter-fields observe-cost-filter-fields">
+    <label for="observe-cost-period">Period
+      <select id="observe-cost-period" name="cost_period_id"
+              data-cost-filter="cost_period_id">
+        {_cost_period_options(period_options, selected=selected_period)}
+      </select>
+    </label>
+    <label for="observe-cost-component">Component
+      <select id="observe-cost-component" name="cost_component_id"
+              data-cost-filter="cost_component_id">
+        {_cost_options(component_options, id_key="id", selected=selected_component, all_label="All components")}
+      </select>
+    </label>
+    <label for="observe-cost-breakdown">Breakdown
+      <select id="observe-cost-breakdown" name="cost_breakdown"
+              data-cost-filter="cost_breakdown">{breakdown_options}</select>
+    </label>
+    <label for="observe-cost-agent">Agent
+      <select id="observe-cost-agent" name="cost_agent_key"
+              data-cost-filter="cost_agent_key">
+        {_cost_options(agent_options, id_key="key", selected=selected_agent, all_label="All agents")}
+      </select>
+    </label>
+  </div>
+  <div class="observe-filter-actions">
+    <button type="submit" id="observe-apply-cost-filters" class="observe-apply-button">
+      Apply cost selectors
+    </button>
+  </div>
+</form>
+""".strip()
+
+
+def _render_cost_usage_share(row: Any) -> str:
+    numerator = _get(row, "usage_numerator")
+    denominator = _get(row, "usage_denominator")
+    if numerator is None or denominator is None:
+        return (
+            '<span class="observe-metric metric-missing">'
+            "Observed usage: Not reported</span>"
+        )
+    unit = str(_get(row, "usage_unit") or "usage").replace("_", " ")
+    return (
+        '<span class="observe-cost-usage-share">'
+        f"Observed usage: {html_escape(numerator)} / {html_escape(denominator)} "
+        f"{html_escape(unit)}</span>"
+    )
+
+
+def _render_cost_period(cost: Any) -> str:
+    period = _get(cost, "period", {}) or {}
+    starts_at = _get(period, "starts_at") or "Not reported"
+    ends_at = _get(period, "ends_at") or "Not reported"
+    return (
+        '<dl class="observe-cost-period">'
+        f"<div><dt>Period</dt><dd>{html_escape(_get(period, 'id') or 'Not reported')}</dd></div>"
+        f"<div><dt>Observation window</dt><dd>{html_escape(starts_at)} to {html_escape(ends_at)}</dd></div>"
+        f"<div><dt>Calculated at</dt><dd>{html_escape(_get(cost, 'calculated_at') or 'Not reported')}</dd></div>"
+        f"<div><dt>Latest observed</dt><dd>{html_escape(_get(cost, 'latest_observed_at') or 'Not reported')}</dd></div>"
+        "</dl>"
+    )
+
+
+def _render_cost_subtotals(subtotals: Sequence[Any]) -> str:
+    if not subtotals:
+        return '<p class="observe-empty">No currency subtotals reported.</p>'
+    rows = []
+    for subtotal in subtotals:
+        currency = _get(subtotal, "currency")
+        precision = _get(subtotal, "currency_minor_units")
+        rows.append(
+            '<tr class="observe-cost-subtotal-row">'
+            f"<td>{html_escape(currency or 'Not reported')}</td>"
+            f"<td>{html_escape(precision if precision is not None else 'Not reported')}</td>"
+            f"<td>{_cost_declared_amount(_get(subtotal, 'declared_total'), currency)}</td>"
+            f"<td>{_cost_amount(_get(subtotal, 'attributed_amount'), currency)}</td>"
+            f"<td>{_cost_amount(_get(subtotal, 'unattributed_amount'), currency)}</td>"
+            f"<td>{_cost_amount(_get(subtotal, 'unallocated_amount'), currency)}</td>"
+            "</tr>"
+        )
+    return f"""
+<table class="observe-cost-subtotals-table" aria-label="Cost currency subtotals">
+  <caption>Currency subtotals are separate and are never converted or added across currencies.</caption>
+  <thead><tr>
+    <th scope="col">Currency</th><th scope="col">Minor units</th>
+    <th scope="col">Declared</th><th scope="col">Attributed</th>
+    <th scope="col">Unattributed</th><th scope="col">Unallocated</th>
+  </tr></thead>
+  <tbody>{"".join(rows)}</tbody>
+</table>
+<ul class="observe-cost-precision-notes">
+  {"".join(
+      f"<li>Currency precision: {html_escape(_get(item, 'currency_minor_units'))} minor units "
+      f"for {html_escape(_get(item, 'currency'))}</li>"
+      for item in subtotals
+  )}
+</ul>
+""".strip()
+
+
+def _render_cost_components(components: Sequence[Any]) -> str:
+    if not components:
+        return '<p class="observe-empty">No configured component summaries reported.</p>'
+    rows = []
+    for component in components:
+        currency = _get(component, "currency")
+        boundary = _get(component, "billing_boundary", {}) or {}
+        boundary_text = f"{_cost_label(_get(boundary, 'kind'))}: "
+        boundary_text += str(_get(boundary, "label") or _get(boundary, "value") or "Not reported")
+        if _get(boundary, "label") and _get(boundary, "value"):
+            boundary_text += f" ({_get(boundary, 'value')})"
+        applied_key = _get(component, "applied_key")
+        preferred_key = _get(component, "preferred_key")
+        fallback = bool(applied_key and preferred_key and applied_key != preferred_key)
+        method = (
+            f"{_cost_label(_get(component, 'allocation_model'))}; "
+            f"Preferred key: {_cost_label(preferred_key)}; "
+            f"Applied key: {_cost_label(applied_key)}; "
+            f"Fallback: {'Yes' if fallback else 'No'}"
+        )
+        rows_shown = _get(component, "rows_shown")
+        rows_total = _get(component, "rows_total")
+        if rows_total is None:
+            row_count = f"{rows_shown if rows_shown is not None else 'Not reported'} / total unknown"
+        else:
+            omitted = max(int(rows_total) - int(rows_shown or 0), 0)
+            row_count = f"{rows_shown if rows_shown is not None else 'Not reported'} / {rows_total}"
+            if omitted:
+                row_count += f" ({omitted} omitted)"
+        coverage_state = _cost_label(_get(component, "coverage_state"))
+        coverage_reason = _get(component, "coverage_reason") or "No incomplete-coverage reason reported."
+        next_action = _get(component, "next_action") or "No follow-up action required."
+        rows.append(
+            "<tr>"
+            f"<td>{html_escape(_get(component, 'component_id') or 'Not reported')}<br />"
+            f'<span class="observe-hint">{html_escape(_cost_label(_get(component, "component_type")))}</span></td>'
+            f"<td>{html_escape(boundary_text)}</td>"
+            f"<td>{html_escape(_get(component, 'billed_source') or 'Not reported')}</td>"
+            f"<td>{_render_cost_method_badge(_get(component, 'allocation_model'))}<br />"
+            f'<span class="observe-hint">{html_escape(method)}</span></td>'
+            f"<td>{_cost_declared_amount(_get(component, 'declared_total'), currency)}</td>"
+            f"<td>{_cost_amount(_get(component, 'attributed_amount'), currency)}</td>"
+            f"<td>{_cost_amount(_get(component, 'unattributed_amount'), currency)}</td>"
+            f"<td>{_cost_amount(_get(component, 'unallocated_amount'), currency)}</td>"
+            f"<td>{_cost_amount(_get(component, 'omitted_allocated_amount'), currency)}</td>"
+            f"<td>{html_escape(row_count)}</td>"
+            f"<td><strong>Confidence:</strong> {_render_cost_confidence_badge(_get(component, 'confidence'))}<br />"
+            f"<strong>Coverage:</strong> {html_escape(coverage_state)}<br />"
+            f'<span class="observe-hint"><strong>Reason:</strong> {html_escape(coverage_reason)}<br />'
+            f"<strong>Next action:</strong> {html_escape(next_action)}</span></td>"
+            "</tr>"
+        )
+    return f"""
+<table class="observe-cost-components-table" aria-label="Exact cost component reconciliation">
+  <caption>Exact component summaries reconcile each declared billed pool independently.</caption>
+  <thead><tr>
+    <th scope="col">Component</th><th scope="col">Billing boundary</th>
+    <th scope="col">Source</th><th scope="col">Method</th>
+    <th scope="col">Declared</th><th scope="col">Attributed</th>
+    <th scope="col">Unattributed</th><th scope="col">Unallocated</th>
+    <th scope="col">Omitted allocated</th><th scope="col">Rows</th>
+    <th scope="col">Confidence and coverage</th>
+  </tr></thead>
+  <tbody>{"".join(rows)}</tbody>
+</table>
+""".strip()
+
+
+def _cost_breakdown_label(breakdown: Any) -> str:
+    return {"agents": "Agent", "tools": "Tool", "runs": "Run"}.get(str(breakdown), "Consumer")
+
+
+def _cost_consumer_label(row: Any, breakdown: Any) -> str:
+    if _get(row, "consumer_kind") != "unattributed":
+        identity = {
+            "agents": _get(row, "agent_key"),
+            "tools": _get(row, "tool_name"),
+            "runs": _get(row, "run_key"),
+        }.get(str(breakdown))
+        return str(identity or _get(row, "consumer_key") or "Not reported")
+    return {
+        "agents": "Unattributed agent",
+        "tools": "Unattributed tool",
+        "runs": "Unattributed run",
+    }.get(str(breakdown), "Unattributed")
+
+
+def _cost_drilldown_href(cost: Any, row: Any, breakdown: str) -> str:
+    period = _get(cost, "period", {}) or {}
+    params = {
+        "view": "cost",
+        "cost_period_id": _get(period, "id"),
+        "cost_component_id": _get(cost, "component_filter"),
+        "cost_breakdown": breakdown,
+        "cost_agent_key": _get(row, "agent_key") or _get(row, "consumer_key"),
+    }
+    return f"?{urlencode({key: value for key, value in params.items() if value is not None})}#cost"
+
+
+def _render_cost_row_evidence(row: Any, cost: Any) -> str:
+    period = _get(cost, "period", {}) or {}
+    row_boundary = _get(row, "billing_boundary", {}) or {}
+    boundary = (
+        f"{_cost_label(_get(row_boundary, 'kind'))}: "
+        f"{_get(row_boundary, 'label') or _get(row_boundary, 'value') or 'Not reported'}"
+    )
+    period_id = _get(row, "period_id") or _get(period, "id") or "Not reported"
+    starts_at = _get(row, "period_starts_at") or _get(period, "starts_at") or "Not reported"
+    ends_at = _get(row, "period_ends_at") or _get(period, "ends_at") or "Not reported"
+    details = (
+        ("Period", period_id),
+        ("Observation window", f"{starts_at} to {ends_at}"),
+        ("Billing boundary", boundary),
+        ("Source resource", _get(row, "source_resource_id") or "Not reported"),
+        ("Project resource", _get(row, "project_resource_id") or "Not reported"),
+        ("Agent key", _get(row, "agent_key") or "Not reported"),
+        ("Preferred key", _cost_label(_get(row, "preferred_key"))),
+        ("Applied key", _cost_label(_get(row, "applied_key"))),
+        ("Fallback", "Yes" if _get(row, "fallback_used") else "No"),
+        (
+            "Rounding adjustment",
+            f"{_get(row, 'rounding_adjustment_minor_units')} minor unit"
+            f"{'' if _get(row, 'rounding_adjustment_minor_units') == 1 else 's'}"
+            if _get(row, "rounding_adjustment_minor_units") is not None
+            else "Not reported",
+        ),
+        ("Confidence", _cost_label(_get(row, "confidence"))),
+        ("Coverage", _cost_label(_get(row, "coverage_state"))),
+        ("Coverage reason", _get(row, "coverage_reason") or "No incomplete-coverage reason reported."),
+        ("Calculated at", _get(row, "calculated_at") or "Not reported"),
+        ("Latest observed", _get(row, "latest_observed_at") or "Not reported"),
+    )
+    return '<dl class="observe-cost-row-evidence">' + "".join(
+        f"<div><dt>{html_escape(label)}</dt><dd>{html_escape(value)}</dd></div>"
+        for label, value in details
+    ) + "</dl>"
+
+
+def _render_cost_rows(rows: Sequence[Any], cost: Any) -> str:
+    if not rows:
+        return '<p class="observe-empty">No allocations reported for the selected cost selectors.</p>'
+    breakdown = _get(cost, "breakdown") or "agents"
+    consumer_heading = _cost_breakdown_label(breakdown)
+    rendered = []
+    for row in rows:
+        consumer = _cost_consumer_label(row, breakdown)
+        method = (
+            f"{_cost_label(_get(row, 'allocation_model'))}; "
+            f"Preferred key: {_cost_label(_get(row, 'preferred_key'))}; "
+            f"Applied key: {_cost_label(_get(row, 'applied_key'))}; "
+            f"Fallback: {'Yes' if _get(row, 'fallback_used') else 'No'}"
+        )
+        coverage = " — ".join(
+            str(part)
+            for part in (
+                _cost_label(_get(row, "confidence")),
+                _cost_label(_get(row, "coverage_state")),
+                _get(row, "coverage_reason"),
+            )
+            if part
+        )
+        actions = ""
+        if (
+            breakdown == "agents"
+            and _get(row, "consumer_kind") != "unattributed"
+            and (_get(row, "agent_key") or _get(row, "consumer_key"))
+        ):
+            actions = (
+                '<div class="observe-cost-drilldown-actions">'
+                f'<a href="{html_escape(_cost_drilldown_href(cost, row, "tools"))}">View tools</a> '
+                f'<a href="{html_escape(_cost_drilldown_href(cost, row, "runs"))}">View runs</a>'
+                "</div>"
+            )
+        rendered.append(
+            "<tr>"
+            f"<td>{html_escape(consumer)}{actions}</td>"
+            f"<td>{html_escape(_get(row, 'component_id') or 'Not reported')}</td>"
+            f"<td>{_cost_amount(_get(row, 'amount'), _get(row, 'currency'))}</td>"
+            f"<td>{_render_cost_usage_share(row)}</td>"
+            f"<td>{_render_cost_method_badge(_get(row, 'allocation_model'))}<br />"
+            f'<span class="observe-hint">{html_escape(method)}</span></td>'
+            f"<td>{html_escape(_get(row, 'billed_source') or 'Not reported')}</td>"
+            f"<td>{_render_cost_confidence_badge(_get(row, 'confidence'))}<br />"
+            f'<span class="observe-hint">{html_escape(coverage)}</span></td>'
+            f"<td>{_render_cost_row_evidence(row, cost)}</td>"
+            "</tr>"
+        )
+    return f"""
+<table class="observe-cost-allocations-table" aria-label="{html_escape(consumer_heading)} cost allocations">
+  <caption>{html_escape(consumer_heading)} allocations from declared billed totals and observed usage.</caption>
+  <thead><tr>
+    <th scope="col">{html_escape(consumer_heading)}</th><th scope="col">Component</th>
+    <th scope="col">Amount</th><th scope="col">Usage share</th>
+    <th scope="col">Method</th><th scope="col">Source</th>
+    <th scope="col">Confidence and coverage</th><th scope="col">Provenance and evidence</th>
+  </tr></thead>
+  <tbody>{"".join(rendered)}</tbody>
+</table>
+""".strip()
+
+
+def _render_cost_coverage(coverage: Sequence[Any]) -> str:
+    if not coverage:
+        return ""
+    rows = []
+    for item in coverage:
+        state = _get(item, "state") or "unknown"
+        state_text = _cost_label(state)
+        if state == "not_configured":
+            state_text = "Missing configured billed total"
+        rows.append(
+            "<tr>"
+            f"<td>{html_escape(_get(item, 'source_id') or 'Not reported')}</td>"
+            f"<td>{html_escape(_cost_label(_get(item, 'dimension')))}</td>"
+            f"<td>{html_escape(_get(item, 'allocation_key') or 'Not reported')}</td>"
+            f"<td>{html_escape(state_text)}</td>"
+            f"<td>{html_escape(_get(item, 'reason') or 'No reason reported.')}</td>"
+            f"<td>{html_escape(_get(item, 'next_action') or 'No follow-up action reported.')}</td>"
+            "</tr>"
+        )
+    return f"""
+<section class="observe-cost-coverage" aria-labelledby="observe-cost-coverage-title">
+  <h3 id="observe-cost-coverage-title">Cost attribution coverage</h3>
+  <table aria-label="Cost attribution coverage">
+    <thead><tr><th scope="col">Source or component</th><th scope="col">Dimension</th>
+      <th scope="col">Allocation key</th><th scope="col">State</th>
+      <th scope="col">Reason</th><th scope="col">Next action</th></tr></thead>
+    <tbody>{"".join(rows)}</tbody>
+  </table>
+</section>
+""".strip()
+
+
+def _render_cost_partial_failures(partial_failures: Sequence[Any]) -> str:
+    if not partial_failures:
+        return ""
+    return (
+        '<section class="observe-cost-partial-failures" '
+        'aria-labelledby="observe-cost-partial-failures-title">'
+        '<h3 id="observe-cost-partial-failures-title">Partial source failures</h3>'
+        "<p>Readable components remain visible; failed sources may make allocations incomplete.</p>"
+        "<ul>"
+        + "".join(
+            "<li>"
+            f"<strong>{html_escape(_get(item, 'source_id') or 'Not reported')}</strong> "
+            f"({html_escape(_cost_label(_get(item, 'status')))}) — "
+            f"{html_escape(_get(item, 'reason') or 'No reason reported.')} "
+            f"<strong>Next action:</strong> "
+            f"{html_escape(_get(item, 'next_action') or 'No follow-up action reported.')}"
+            "</li>"
+            for item in partial_failures
+        )
+        + "</ul></section>"
+    )
+
+
+def _render_cost_bounds(bounds: Any) -> str:
+    if bounds is None:
+        return ""
+    shown = _get(bounds, "rows_shown")
+    total = _get(bounds, "rows_total_in_scope")
+    if total is None:
+        text = f"Showing {shown if shown is not None else 'an unknown number of'} rows; total unknown."
+    else:
+        text = f"Showing {shown if shown is not None else 'an unknown number of'} of {total} rows in scope"
+        text += "; results are truncated." if _get(bounds, "truncated") else "."
+    return f'<p class="observe-hint observe-cost-bounds-notice">{html_escape(text)}</p>'
+
+
+def render_cost_view(
+    cost: Any,
+    *,
+    diagnostics: Optional[Mapping[str, Any]] = None,
+    coverage: Sequence[Any] = (),
+    partial_failures: Sequence[Any] = (),
+    bounds: Any = None,
+) -> str:
+    """Render exact, currency-safe billed-cost allocations and reconciliation."""
+    banner = render_diagnostics_banner(diagnostics or {})
+    supplemental = (
+        f"{_render_cost_bounds(bounds)}"
+        f"{_render_cost_coverage(coverage)}"
+        f"{_render_cost_partial_failures(partial_failures)}"
+    )
+    if not cost:
+        return (
+            f'{banner}<div class="observe-cost-view observe-empty-state">'
+            '<p class="observe-empty">No cost allocation data reported.</p>'
+            f"{supplemental}"
+            f'<p class="observe-cost-breakdown-warning">{html_escape(COST_BREAKDOWN_WARNING)}</p>'
+            f'<p class="observe-cost-disclaimer">{html_escape(COST_DISCLAIMER)}</p></div>'
+        )
+    return (
+        f'<div class="observe-cost-view">{banner}'
+        f"{_render_cost_period(cost)}"
+        f'<p class="observe-cost-breakdown-warning">{html_escape(COST_BREAKDOWN_WARNING)}</p>'
+        f"<h3>Currency subtotals</h3>{_render_cost_subtotals(_get(cost, 'currency_subtotals', ()) or ())}"
+        f"<h3>Component reconciliation</h3>{_render_cost_components(_get(cost, 'components', ()) or ())}"
+        f"<h3>{html_escape(_cost_label(_get(cost, 'breakdown')))} allocation</h3>"
+        f"{_render_cost_rows(_get(cost, 'rows', ()) or (), cost)}"
+        f"{supplemental}"
+        f'<p class="observe-cost-disclaimer">{html_escape(COST_DISCLAIMER)}</p>'
+        "</div>"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1413,6 +2014,13 @@ _OBSERVE_STYLES = """
 .observe-filter-fields { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 .observe-filter-fields label { display: flex; flex-direction: column; font-size: 0.85rem; gap: 0.25rem; }
 .observe-filter-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
+.observe-cost-filter-bar { border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+.observe-cost-period, .observe-cost-precision-notes { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
+.observe-cost-period div { display: flex; gap: 0.35rem; }
+.observe-cost-period dt { font-weight: 600; }
+.observe-cost-period dd { margin: 0; }
+.observe-cost-disclaimer { border-left: 4px solid var(--observe-warn); padding: 0.75rem; color: var(--observe-muted); }
+.observe-cost-view table { margin-bottom: 1rem; }
 
 .observe-overview-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
 .observe-card { background: var(--observe-card-bg); border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; }
@@ -1465,6 +2073,9 @@ _OBSERVE_SCRIPT = """
   "use strict";
 
   var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", "model", "tool_name", "run_key", "start", "end"];
+  var COST_FILTER_KEYS = ["cost_period_id", "cost_component_id", "cost_breakdown", "cost_agent_key"];
+  var COST_DISCLAIMER = "Operational cost allocation from declared billed totals and observed usage; not an invoice or billing-accurate charge.";
+  var COST_BREAKDOWN_WARNING = "Agent, tool, and run breakdowns are alternative reconciliations of the same billed pools; do not add them together.";
   var AUTO_REFRESH_MS = 300000; // five minutes
   var DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000; // trailing 24 hours
   // Mirrors MAX_TREND_POINTS in ui.py: even though the backend is expected
@@ -1513,7 +2124,19 @@ _OBSERVE_SCRIPT = """
         applied[key] = value;
       }
     });
+    if (document.getElementById("cost")) {
+      COST_FILTER_KEYS.forEach(function (key) {
+        var value = params.get(key);
+        if (value) {
+          applied[key] = value;
+        }
+      });
+      applied.cost_breakdown = applied.cost_breakdown || "agents";
+    }
     currentView = params.get("view") || "overview";
+    if (currentView === "cost" && !document.getElementById("cost")) {
+      currentView = "overview";
+    }
     if (!applied.start || !applied.end) {
       var end = new Date();
       var start = new Date(end.getTime() - DEFAULT_RANGE_MS);
@@ -1530,6 +2153,13 @@ _OBSERVE_SCRIPT = """
         params.set(key, appliedFilters[key]);
       }
     });
+    if (document.getElementById("cost")) {
+      COST_FILTER_KEYS.forEach(function (key) {
+        if (appliedFilters[key]) {
+          params.set(key, appliedFilters[key]);
+        }
+      });
+    }
     params.set("view", currentView);
     var next = window.location.pathname + "?" + params.toString();
     window.history.replaceState(null, "", next);
@@ -1549,6 +2179,44 @@ _OBSERVE_SCRIPT = """
       var field = form.querySelector('[data-draft-filter="' + key + '"]');
       if (field) {
         field.value = appliedFilters[key] || "";
+      }
+    });
+  }
+
+  function readCostDraftFromForm(form) {
+    var draft = {};
+    COST_FILTER_KEYS.forEach(function (key) {
+      var field = form.querySelector('[data-cost-filter="' + key + '"]');
+      draft[key] = field && field.value ? field.value : "";
+    });
+    return draft;
+  }
+
+  function initializeCostPeriodFromServer(form) {
+    if (appliedFilters.cost_period_id) {
+      return;
+    }
+    var field = form.querySelector('[data-cost-filter="cost_period_id"]');
+    if (!field) {
+      return;
+    }
+    for (var index = 0; index < field.options.length; index += 1) {
+      var option = field.options[index];
+      if (option && option.value) {
+        appliedFilters.cost_period_id = String(option.value);
+        field.value = String(option.value);
+        return;
+      }
+    }
+  }
+
+  function populateCostFormFromApplied(form) {
+    COST_FILTER_KEYS.forEach(function (key) {
+      var field = form.querySelector('[data-cost-filter="' + key + '"]');
+      if (field) {
+        var value = appliedFilters[key] || (key === "cost_breakdown" ? "agents" : "");
+        ensureSelectOption(field, value, value);
+        field.value = value;
       }
     });
   }
@@ -1594,6 +2262,7 @@ _OBSERVE_SCRIPT = """
     run_correlation: "Run correlation",
     trace_correlation: "Trace correlation",
     protected_content: "Protected content",
+    cost_attribution: "Cost attribution",
   };
 
   function clearChildren(node) {
@@ -2365,6 +3034,610 @@ _OBSERVE_SCRIPT = """
     setViewContent("runs", [banner, notice, hint, table]);
   }
 
+  function costLabel(value) {
+    if (value === null || value === undefined || value === "") {
+      return "Not reported";
+    }
+    return String(value).split("_").map(function (part) {
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    }).join(" ");
+  }
+
+  function renderCostMethodBadgeNode(value) {
+    var method = value || "unavailable";
+    var tone = { metered: "info", commitment: "warn" }[method] || "muted";
+    return renderBadgeJs(
+      costLabel(value),
+      tone,
+      "observe-cost-method-" + String(method)
+    );
+  }
+
+  function renderCostConfidenceBadgeNode(value) {
+    var confidence = value || "unavailable";
+    var tone = { high: "ok", medium: "info", low: "warn", unavailable: "muted" }[
+      confidence
+    ] || "muted";
+    return renderBadgeJs(
+      costLabel(value),
+      tone,
+      "observe-cost-confidence-" + String(confidence)
+    );
+  }
+
+  function renderCostAmountNode(amount, currency) {
+    if (amount === null || amount === undefined) {
+      return makeEl("span", "observe-metric metric-missing", "Not reported");
+    }
+    var isZero = Number(amount) === 0;
+    var node = makeEl(
+      "span",
+      "observe-cost-amount" + (isZero ? " metric-zero" : ""),
+      String(amount) + " " + (currency || "Not reported")
+    );
+    if (isZero) {
+      node.appendChild(document.createTextNode(" "));
+      node.appendChild(makeEl("span", "observe-hint observe-cost-observed-zero", "Observed zero"));
+    }
+    return node;
+  }
+
+  function renderCostDeclaredAmountNode(amount, currency) {
+    if (amount === null || amount === undefined) {
+      return makeEl(
+        "span",
+        "observe-metric metric-missing observe-cost-missing-total",
+        "Missing configured billed total"
+      );
+    }
+    return renderCostAmountNode(amount, currency);
+  }
+
+  function renderCostUsageShareNode(row) {
+    row = row || {};
+    if (
+      row.usage_numerator === null || row.usage_numerator === undefined ||
+      row.usage_denominator === null || row.usage_denominator === undefined
+    ) {
+      return makeEl(
+        "span",
+        "observe-metric metric-missing",
+        "Observed usage: Not reported"
+      );
+    }
+    var unit = String(row.usage_unit || "usage").split("_").join(" ");
+    return makeEl(
+      "span",
+      "observe-cost-usage-share",
+      "Observed usage: " + String(row.usage_numerator) + " / " +
+        String(row.usage_denominator) + " " + unit
+    );
+  }
+
+  function ensureSelectOption(select, value, label) {
+    if (!select || value === null || value === undefined || value === "") {
+      return;
+    }
+    var textValue = String(value);
+    var found = false;
+    Array.prototype.forEach.call(select.options, function (option) {
+      if (option.value === textValue) {
+        found = true;
+      }
+    });
+    if (!found) {
+      var option = document.createElement("option");
+      option.value = textValue;
+      option.textContent = label === null || label === undefined ? textValue : String(label);
+      select.appendChild(option);
+    }
+  }
+
+  function replaceCostSelectOptions(select, values, allLabel) {
+    if (!select) {
+      return;
+    }
+    while (select.firstChild) {
+      select.removeChild(select.firstChild);
+    }
+    if (allLabel !== null && allLabel !== undefined) {
+      var allOption = document.createElement("option");
+      allOption.value = "";
+      allOption.textContent = String(allLabel);
+      select.appendChild(allOption);
+    }
+    (Array.isArray(values) ? values : []).forEach(function (value) {
+      ensureSelectOption(select, value, value);
+    });
+  }
+
+  function selectedPeriodComponentIds(periodSelect) {
+    if (!periodSelect || periodSelect.selectedIndex < 0) {
+      return [];
+    }
+    var selectedOption = periodSelect.options[periodSelect.selectedIndex];
+    var encoded = selectedOption
+      ? selectedOption.getAttribute("data-cost-component-ids")
+      : "";
+    return encoded
+      ? encoded.split(",").filter(function (value) { return value !== ""; })
+      : [];
+  }
+
+  function resetCostAgentSelector(form) {
+    var agentSelect = form.querySelector('[data-cost-filter="cost_agent_key"]');
+    replaceCostSelectOptions(agentSelect, [], "All agents");
+    appliedFilters.cost_agent_key = "";
+  }
+
+  function resetCostSelectorsForPeriod(form) {
+    var periodSelect = form.querySelector('[data-cost-filter="cost_period_id"]');
+    var componentSelect = form.querySelector('[data-cost-filter="cost_component_id"]');
+    replaceCostSelectOptions(
+      componentSelect,
+      selectedPeriodComponentIds(periodSelect),
+      "All components"
+    );
+    appliedFilters.cost_component_id = "";
+    resetCostAgentSelector(form);
+  }
+
+  function renderCostControlsFromData(data) {
+    data = data && typeof data === "object" ? data : {};
+    var period = data.period || {};
+    var periodSelect = document.getElementById("observe-cost-period");
+    ensureSelectOption(periodSelect, period.id, period.id);
+    if (period.id) {
+      appliedFilters.cost_period_id = String(period.id);
+      if (periodSelect) periodSelect.value = String(period.id);
+    }
+
+    var componentSelect = document.getElementById("observe-cost-component");
+    var configuredComponentIds = selectedPeriodComponentIds(periodSelect);
+    if (!configuredComponentIds.length && !data.component_filter) {
+      configuredComponentIds = (Array.isArray(data.components) ? data.components : [])
+        .map(function (component) {
+          return component && component.component_id ? String(component.component_id) : "";
+        })
+        .filter(function (value) { return value !== ""; });
+      if (periodSelect && periodSelect.selectedIndex >= 0) {
+        periodSelect.options[periodSelect.selectedIndex].setAttribute(
+          "data-cost-component-ids",
+          configuredComponentIds.join(",")
+        );
+      }
+    }
+    if (configuredComponentIds.length) {
+      replaceCostSelectOptions(componentSelect, configuredComponentIds, "All components");
+    }
+    (Array.isArray(data.components) ? data.components : []).forEach(function (component) {
+      component = component || {};
+      ensureSelectOption(componentSelect, component.component_id, component.component_id);
+    });
+    if (data.component_filter) {
+      ensureSelectOption(componentSelect, data.component_filter, data.component_filter);
+      appliedFilters.cost_component_id = String(data.component_filter);
+      if (componentSelect) componentSelect.value = String(data.component_filter);
+    } else {
+      appliedFilters.cost_component_id = "";
+      if (componentSelect) componentSelect.value = "";
+    }
+
+    var breakdownSelect = document.getElementById("observe-cost-breakdown");
+    if (data.breakdown) {
+      appliedFilters.cost_breakdown = String(data.breakdown);
+      if (breakdownSelect) breakdownSelect.value = String(data.breakdown);
+    }
+
+    var agentSelect = document.getElementById("observe-cost-agent");
+    var selectedAgent = appliedFilters.cost_agent_key || "";
+    var agentKeys = [];
+    (Array.isArray(data.rows) ? data.rows : []).forEach(function (row) {
+      row = row || {};
+      var key = row.agent_key ||
+        (row.consumer_kind === "agent" ? row.consumer_key : null);
+      if (key !== null && key !== undefined && key !== "" &&
+          agentKeys.indexOf(String(key)) === -1) {
+        agentKeys.push(String(key));
+      }
+    });
+    replaceCostSelectOptions(agentSelect, agentKeys, "All agents");
+    ensureSelectOption(agentSelect, selectedAgent, selectedAgent);
+    if (agentSelect) agentSelect.value = selectedAgent;
+    syncUrl();
+  }
+
+  function renderCostPeriodNode(data) {
+    data = data || {};
+    var period = data.period || {};
+    var dl = makeEl("dl", "observe-cost-period");
+    [
+      ["Period", period.id],
+      [
+        "Observation window",
+        String(period.starts_at || "Not reported") + " to " +
+          String(period.ends_at || "Not reported"),
+      ],
+      ["Calculated at", data.calculated_at],
+      ["Latest observed", data.latest_observed_at],
+    ].forEach(function (item) {
+      var div = document.createElement("div");
+      div.appendChild(makeEl("dt", null, item[0]));
+      div.appendChild(makeEl("dd", null, item[1] || "Not reported"));
+      dl.appendChild(div);
+    });
+    return dl;
+  }
+
+  function renderCostSubtotalsNode(subtotals) {
+    subtotals = Array.isArray(subtotals) ? subtotals : [];
+    if (!subtotals.length) {
+      return emptyStateNode("No currency subtotals reported.");
+    }
+    var rows = subtotals.map(function (subtotal) {
+      subtotal = subtotal || {};
+      return [
+        subtotal.currency || "Not reported",
+        subtotal.currency_minor_units === null || subtotal.currency_minor_units === undefined
+          ? "Not reported"
+          : String(subtotal.currency_minor_units),
+        renderCostDeclaredAmountNode(subtotal.declared_total, subtotal.currency),
+        renderCostAmountNode(subtotal.attributed_amount, subtotal.currency),
+        renderCostAmountNode(subtotal.unattributed_amount, subtotal.currency),
+        renderCostAmountNode(subtotal.unallocated_amount, subtotal.currency),
+      ];
+    });
+    var wrap = makeEl("div", "observe-cost-subtotals");
+    wrap.appendChild(
+      buildDataTable(
+        "observe-cost-subtotals-table",
+        "Cost currency subtotals",
+        ["Currency", "Minor units", "Declared", "Attributed", "Unattributed", "Unallocated"],
+        rows
+      )
+    );
+    var notes = makeEl("ul", "observe-cost-precision-notes");
+    subtotals.forEach(function (subtotal) {
+      subtotal = subtotal || {};
+      notes.appendChild(
+        makeEl(
+          "li",
+          null,
+          "Currency precision: " + String(subtotal.currency_minor_units) +
+            " minor units for " + String(subtotal.currency || "Not reported")
+        )
+      );
+    });
+    wrap.appendChild(notes);
+    return wrap;
+  }
+
+  function renderCostComponentsNode(components) {
+    components = Array.isArray(components) ? components : [];
+    if (!components.length) {
+      return emptyStateNode("No configured component summaries reported.");
+    }
+    var rows = components.map(function (component) {
+      component = component || {};
+      var boundary = component.billing_boundary || {};
+      var boundaryText = costLabel(boundary.kind) + ": " +
+        String(boundary.label || boundary.value || "Not reported");
+      if (boundary.label && boundary.value) {
+        boundaryText += " (" + String(boundary.value) + ")";
+      }
+      var fallback = !!(
+        component.applied_key && component.preferred_key &&
+        component.applied_key !== component.preferred_key
+      );
+      var method = costLabel(component.allocation_model) +
+        "; Preferred key: " + costLabel(component.preferred_key) +
+        "; Applied key: " + costLabel(component.applied_key) +
+        "; Fallback: " + (fallback ? "Yes" : "No");
+      var shown = component.rows_shown;
+      var total = component.rows_total;
+      var rowCount = String(shown === null || shown === undefined ? "Not reported" : shown);
+      if (total === null || total === undefined) {
+        rowCount += " / total unknown";
+      } else {
+        var omitted = Math.max(Number(total) - Number(shown || 0), 0);
+        rowCount += " / " + String(total);
+        if (omitted) rowCount += " (" + String(omitted) + " omitted)";
+      }
+      var coverage = [
+        makeEl("strong", null, "Confidence:"),
+        document.createTextNode(" " + costLabel(component.confidence)),
+        document.createElement("br"),
+        makeEl("strong", null, "Coverage:"),
+        document.createTextNode(" " + costLabel(component.coverage_state)),
+        document.createElement("br"),
+        makeEl("strong", null, "Reason:"),
+        document.createTextNode(
+          " " + String(component.coverage_reason || "No incomplete-coverage reason reported.")
+        ),
+        document.createElement("br"),
+        makeEl("strong", null, "Next action:"),
+        document.createTextNode(
+          " " + String(component.next_action || "No follow-up action required.")
+        ),
+      ];
+      return [
+        [
+          document.createTextNode(component.component_id || "Not reported"),
+          document.createElement("br"),
+          makeEl("span", "observe-hint", costLabel(component.component_type)),
+        ],
+        boundaryText,
+        component.billed_source || "Not reported",
+        [
+          renderCostMethodBadgeNode(component.allocation_model),
+          document.createElement("br"),
+          makeEl("span", "observe-hint", method),
+        ],
+        renderCostDeclaredAmountNode(component.declared_total, component.currency),
+        renderCostAmountNode(component.attributed_amount, component.currency),
+        renderCostAmountNode(component.unattributed_amount, component.currency),
+        renderCostAmountNode(component.unallocated_amount, component.currency),
+        renderCostAmountNode(component.omitted_allocated_amount, component.currency),
+        rowCount,
+        [
+          renderCostConfidenceBadgeNode(component.confidence),
+          document.createElement("br"),
+        ].concat(coverage),
+      ];
+    });
+    return buildDataTable(
+      "observe-cost-components-table",
+      "Exact cost component reconciliation",
+      [
+        "Component", "Billing boundary", "Source", "Method", "Declared", "Attributed",
+        "Unattributed", "Unallocated", "Omitted allocated", "Rows", "Confidence and coverage",
+      ],
+      rows
+    );
+  }
+
+  function costBreakdownLabel(breakdown) {
+    return { agents: "Agent", tools: "Tool", runs: "Run" }[breakdown] || "Consumer";
+  }
+
+  function costConsumerLabel(row, breakdown) {
+    if (row.consumer_kind !== "unattributed") {
+      var identity = {
+        agents: row.agent_key,
+        tools: row.tool_name,
+        runs: row.run_key,
+      }[breakdown];
+      return identity || row.consumer_key || "Not reported";
+    }
+    return {
+      agents: "Unattributed agent",
+      tools: "Unattributed tool",
+      runs: "Unattributed run",
+    }[breakdown] || "Unattributed";
+  }
+
+  function costDrilldownHref(data, row, breakdown) {
+    var params = new URLSearchParams();
+    var period = data.period || {};
+    params.set("view", "cost");
+    if (period.id) params.set("cost_period_id", String(period.id));
+    if (data.component_filter) {
+      params.set("cost_component_id", String(data.component_filter));
+    }
+    params.set("cost_breakdown", breakdown);
+    var agentKey = row.agent_key || row.consumer_key;
+    if (agentKey) params.set("cost_agent_key", String(agentKey));
+    return "?" + params.toString() + "#cost";
+  }
+
+  function costRowEvidenceNode(row, data) {
+    var period = data.period || {};
+    var boundary = row.billing_boundary || {};
+    var dl = makeEl("dl", "observe-cost-row-evidence");
+    var adjustment = row.rounding_adjustment_minor_units;
+    var details = [
+      ["Period", row.period_id || period.id],
+      [
+        "Observation window",
+        String(row.period_starts_at || period.starts_at || "Not reported") + " to " +
+          String(row.period_ends_at || period.ends_at || "Not reported"),
+      ],
+      [
+        "Billing boundary",
+        costLabel(boundary.kind) + ": " +
+          String(boundary.label || boundary.value || "Not reported"),
+      ],
+      ["Source resource", row.source_resource_id],
+      ["Project resource", row.project_resource_id],
+      ["Agent key", row.agent_key],
+      ["Preferred key", costLabel(row.preferred_key)],
+      ["Applied key", costLabel(row.applied_key)],
+      ["Fallback", row.fallback_used ? "Yes" : "No"],
+      [
+        "Rounding adjustment",
+        adjustment === null || adjustment === undefined
+          ? "Not reported"
+          : String(adjustment) + " minor unit" + (Number(adjustment) === 1 ? "" : "s"),
+      ],
+      ["Confidence", costLabel(row.confidence)],
+      ["Coverage", costLabel(row.coverage_state)],
+      ["Coverage reason", row.coverage_reason || "No incomplete-coverage reason reported."],
+      ["Calculated at", row.calculated_at],
+      ["Latest observed", row.latest_observed_at],
+    ];
+    details.forEach(function (detail) {
+      var div = document.createElement("div");
+      div.appendChild(makeEl("dt", null, detail[0]));
+      div.appendChild(makeEl("dd", null, detail[1] || "Not reported"));
+      dl.appendChild(div);
+    });
+    return dl;
+  }
+
+  function renderCostRowsNode(rows, data) {
+    rows = Array.isArray(rows) ? rows : [];
+    if (!rows.length) {
+      return emptyStateNode("No allocations reported for the selected cost selectors.");
+    }
+    data = data || {};
+    var breakdown = data.breakdown || "agents";
+    var consumerHeading = costBreakdownLabel(breakdown);
+    var renderedRows = rows.map(function (row) {
+      row = row || {};
+      var method = costLabel(row.allocation_model) +
+        "; Preferred key: " + costLabel(row.preferred_key) +
+        "; Applied key: " + costLabel(row.applied_key) +
+        "; Fallback: " + (row.fallback_used ? "Yes" : "No");
+      var consumerCell = [document.createTextNode(costConsumerLabel(row, breakdown))];
+      if (
+        breakdown === "agents" && row.consumer_kind !== "unattributed" &&
+        (row.agent_key || row.consumer_key)
+      ) {
+        var actions = makeEl("div", "observe-cost-drilldown-actions");
+        var toolsLink = makeEl("a", null, "View tools");
+        toolsLink.setAttribute("href", costDrilldownHref(data, row, "tools"));
+        var runsLink = makeEl("a", null, "View runs");
+        runsLink.setAttribute("href", costDrilldownHref(data, row, "runs"));
+        actions.appendChild(toolsLink);
+        actions.appendChild(document.createTextNode(" "));
+        actions.appendChild(runsLink);
+        consumerCell.push(actions);
+      }
+      var coverage = [
+        costLabel(row.confidence),
+        costLabel(row.coverage_state),
+        row.coverage_reason,
+      ].filter(function (part) { return !!part; }).join(" \u2014 ");
+      return [
+        consumerCell,
+        row.component_id || "Not reported",
+        renderCostAmountNode(row.amount, row.currency),
+        renderCostUsageShareNode(row),
+        [
+          renderCostMethodBadgeNode(row.allocation_model),
+          document.createElement("br"),
+          makeEl("span", "observe-hint", method),
+        ],
+        row.billed_source || "Not reported",
+        [
+          renderCostConfidenceBadgeNode(row.confidence),
+          document.createElement("br"),
+          makeEl("span", "observe-hint", coverage),
+        ],
+        costRowEvidenceNode(row, data),
+      ];
+    });
+    return buildDataTable(
+      "observe-cost-allocations-table",
+      consumerHeading + " cost allocations",
+      [
+        consumerHeading, "Component", "Amount", "Usage share", "Method", "Source",
+        "Confidence and coverage", "Provenance and evidence",
+      ],
+      renderedRows
+    );
+  }
+
+  function renderCostCoverageNode(coverage) {
+    coverage = Array.isArray(coverage) ? coverage : [];
+    if (!coverage.length) return null;
+    var rows = coverage.map(function (entry) {
+      entry = entry || {};
+      var state = entry.state === "not_configured"
+        ? "Missing configured billed total"
+        : costLabel(entry.state);
+      return [
+        entry.source_id || "Not reported",
+        costLabel(entry.dimension),
+        entry.allocation_key || "Not reported",
+        state,
+        entry.reason || "No reason reported.",
+        entry.next_action || "No follow-up action reported.",
+      ];
+    });
+    return buildDataTable(
+      "observe-cost-coverage-table",
+      "Cost attribution coverage",
+      ["Source or component", "Dimension", "Allocation key", "State", "Reason", "Next action"],
+      rows
+    );
+  }
+
+  function renderCostPartialFailuresNode(partialFailures) {
+    partialFailures = Array.isArray(partialFailures) ? partialFailures : [];
+    if (!partialFailures.length) return null;
+    var section = makeEl("section", "observe-cost-partial-failures");
+    section.appendChild(makeEl("h3", null, "Partial source failures"));
+    section.appendChild(makeEl(
+      "p",
+      null,
+      "Readable components remain visible; failed sources may make allocations incomplete."
+    ));
+    var list = document.createElement("ul");
+    partialFailures.forEach(function (failure) {
+      failure = failure || {};
+      list.appendChild(makeEl(
+        "li",
+        null,
+        String(failure.source_id || "Not reported") + " (" + costLabel(failure.status) +
+          ") \u2014 " + String(failure.reason || "No reason reported.") +
+          " Next action: " + String(failure.next_action || "No follow-up action reported.")
+      ));
+    });
+    section.appendChild(list);
+    return section;
+  }
+
+  function renderCostBoundsNode(bounds) {
+    if (!bounds) return null;
+    var shown = bounds.rows_shown;
+    var total = bounds.rows_total_in_scope;
+    var text = total === null || total === undefined
+      ? "Showing " + String(shown === null || shown === undefined ? "an unknown number of" : shown) +
+        " rows; total unknown."
+      : "Showing " + String(shown === null || shown === undefined ? "an unknown number of" : shown) +
+        " of " + String(total) + " rows in scope" +
+        (bounds.truncated ? "; results are truncated." : ".");
+    return makeEl("p", "observe-hint observe-cost-bounds-notice", text);
+  }
+
+  function renderCost(data, diagnostics, coverage, partialFailures, bounds) {
+    var banner = renderDiagnosticsBannerNode(diagnostics);
+    if (!data || typeof data !== "object") {
+      var emptyNodes = [
+        banner,
+        emptyStateNode("No cost allocation data reported."),
+        makeEl("p", "observe-cost-breakdown-warning", COST_BREAKDOWN_WARNING),
+        makeEl("p", "observe-cost-disclaimer", COST_DISCLAIMER),
+      ];
+      var emptyCoverage = renderCostCoverageNode(coverage);
+      var emptyFailures = renderCostPartialFailuresNode(partialFailures);
+      var emptyBounds = renderCostBoundsNode(bounds);
+      if (emptyBounds) emptyNodes.splice(1, 0, emptyBounds);
+      if (emptyCoverage) emptyNodes.splice(emptyNodes.length - 1, 0, emptyCoverage);
+      if (emptyFailures) emptyNodes.splice(emptyNodes.length - 1, 0, emptyFailures);
+      setViewContent("cost", emptyNodes);
+      return;
+    }
+    renderCostControlsFromData(data);
+    var nodes = [banner, renderCostPeriodNode(data)];
+    nodes.push(makeEl("p", "observe-cost-breakdown-warning", COST_BREAKDOWN_WARNING));
+    nodes.push(makeEl("h3", null, "Currency subtotals"));
+    nodes.push(renderCostSubtotalsNode(data.currency_subtotals));
+    nodes.push(makeEl("h3", null, "Component reconciliation"));
+    nodes.push(renderCostComponentsNode(data.components));
+    nodes.push(makeEl("h3", null, costLabel(data.breakdown) + " allocation"));
+    nodes.push(renderCostRowsNode(data.rows, data));
+    var boundsNode = renderCostBoundsNode(bounds);
+    var coverageNode = renderCostCoverageNode(coverage);
+    var failuresNode = renderCostPartialFailuresNode(partialFailures);
+    if (boundsNode) nodes.push(boundsNode);
+    if (coverageNode) nodes.push(coverageNode);
+    if (failuresNode) nodes.push(failuresNode);
+    nodes.push(makeEl("p", "observe-cost-disclaimer", COST_DISCLAIMER));
+    setViewContent("cost", nodes);
+  }
+
   function renderCoverage(coverage, diagnostics) {
     var banner = renderDiagnosticsBannerNode(diagnostics);
     coverage = Array.isArray(coverage) ? coverage : [];
@@ -2428,9 +3701,30 @@ _OBSERVE_SCRIPT = """
       renderTools(body.data, body.diagnostics, body.bounds);
     } else if (view === "runs") {
       renderRuns(body.data, body.diagnostics, body.bounds);
+    } else if (view === "cost") {
+      renderCost(
+        body.data,
+        body.diagnostics,
+        body.coverage,
+        body.partial_failures,
+        body.bounds
+      );
     } else if (view === "coverage") {
       renderCoverage(body.coverage, body.diagnostics);
     }
+  }
+
+  function buildCostPayload(manual) {
+    return {
+      view: "cost",
+      filters: {
+        cost_period_id: appliedFilters.cost_period_id || null,
+        cost_component_id: appliedFilters.cost_component_id || null,
+        cost_breakdown: appliedFilters.cost_breakdown || "agents",
+        cost_agent_key: appliedFilters.cost_agent_key || null,
+      },
+      refresh: manual === true,
+    };
   }
 
   function fetchObserveData(manual) {
@@ -2462,6 +3756,7 @@ _OBSERVE_SCRIPT = """
       },
       refresh: manual === true,
     };
+    payload = currentView === "cost" ? buildCostPayload(manual) : payload;
 
     return fetch("/api/observe/query", {
       method: "POST",
@@ -2542,7 +3837,50 @@ _OBSERVE_SCRIPT = """
       form.addEventListener("submit", function (event) {
         event.preventDefault();
         draftFilters = readDraftFromForm(form);
+        var preservedCostFilters = document.getElementById("observe-cost-filter-form") ? {
+          cost_period_id: appliedFilters.cost_period_id || "",
+          cost_component_id: appliedFilters.cost_component_id || "",
+          cost_breakdown: appliedFilters.cost_breakdown || "",
+          cost_agent_key: appliedFilters.cost_agent_key || "",
+        } : null;
         appliedFilters = draftFilters;
+        if (preservedCostFilters) {
+          appliedFilters.cost_period_id = preservedCostFilters.cost_period_id;
+          appliedFilters.cost_component_id = preservedCostFilters.cost_component_id;
+          appliedFilters.cost_breakdown = preservedCostFilters.cost_breakdown;
+          appliedFilters.cost_agent_key = preservedCostFilters.cost_agent_key;
+        }
+        syncUrl();
+        fetchObserveData(true);
+      });
+    }
+    var costForm = document.getElementById("observe-cost-filter-form");
+    if (costForm) {
+      initializeCostPeriodFromServer(costForm);
+      populateCostFormFromApplied(costForm);
+      var costPeriodField = costForm.querySelector(
+        '[data-cost-filter="cost_period_id"]'
+      );
+      if (costPeriodField) {
+        costPeriodField.addEventListener("change", function () {
+          resetCostSelectorsForPeriod(costForm);
+        });
+      }
+      ["cost_component_id", "cost_breakdown"].forEach(function (key) {
+        var field = costForm.querySelector('[data-cost-filter="' + key + '"]');
+        if (field) {
+          field.addEventListener("change", function () {
+            resetCostAgentSelector(costForm);
+          });
+        }
+      });
+      costForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        var costDraft = readCostDraftFromForm(costForm);
+        COST_FILTER_KEYS.forEach(function (key) {
+          appliedFilters[key] = costDraft[key];
+        });
+        currentView = "cost";
         syncUrl();
         fetchObserveData(true);
       });
@@ -2599,15 +3937,25 @@ def render_observe_page(
     diagnostics: Optional[Mapping[str, Any]] = None,
     tools_bounds: Any = None,
     runs_bounds: Any = None,
+    cost_enabled: bool = False,
+    cost: Any = None,
+    cost_periods: Sequence[Any] = (),
+    cost_components: Sequence[Any] = (),
+    cost_agent_keys: Sequence[Any] = (),
+    cost_coverage: Sequence[Any] = (),
+    cost_partial_failures: Sequence[Any] = (),
+    cost_bounds: Any = None,
 ) -> str:
     """Assemble the full Observe HTML document.
 
-    This wires together the nav, filter bar, and the six views (Overview,
-    Agents, Models/usage, Tools, Runs, Telemetry coverage) into one self-contained page
-    with an inline stylesheet and inline behavior script -- no external
-    assets are referenced.
+    Cost is additive and opt-in: when ``cost_enabled`` is false its navigation,
+    controls, and section are omitted. This preserves the existing six-view
+    surface for absent cost configuration.
     """
-    nav = render_observe_nav(active_view)
+    effective_active_view = (
+        active_view if cost_enabled or active_view != "cost" else "overview"
+    )
+    nav = render_observe_nav(effective_active_view, cost_enabled=cost_enabled)
     filters = render_filter_bar(scope_label)
     overview = render_overview_cards(overview_metrics, diagnostics=diagnostics)
     agents_html = render_agents_table(agents, diagnostics=diagnostics)
@@ -2615,6 +3963,27 @@ def render_observe_page(
     tools_html = render_tools_table(tools, diagnostics=diagnostics, bounds=tools_bounds)
     runs_html = render_runs_table(runs, diagnostics=diagnostics, bounds=runs_bounds)
     coverage_html = render_coverage_view(coverage, diagnostics)
+    cost_section = ""
+    if cost_enabled:
+        cost_controls = render_cost_controls(
+            cost,
+            period_options=cost_periods,
+            component_options=cost_components,
+            agent_options=cost_agent_keys,
+        )
+        cost_html = render_cost_view(
+            cost,
+            diagnostics=diagnostics,
+            coverage=cost_coverage,
+            partial_failures=cost_partial_failures,
+            bounds=cost_bounds,
+        )
+        cost_section = f"""
+  <section id="cost" aria-labelledby="cost-heading">
+    <h2 id="cost-heading">Cost</h2>
+    {cost_controls}
+    <div id="cost-content" data-observe-view-content="cost">{cost_html}</div>
+  </section>"""
 
     return f"""<!doctype html>
 <html lang="en">
@@ -2631,7 +4000,7 @@ def render_observe_page(
     Static data below reflects the last server-rendered snapshot.
   </p>
 </noscript>
-<main id="observe-app" data-observe-active-view="{html_escape(active_view)}">
+<main id="observe-app" data-observe-active-view="{html_escape(effective_active_view)}">
   <h1>AgentOps Observe</h1>
   {nav}
   {filters}
@@ -2656,6 +4025,7 @@ def render_observe_page(
     <h2 id="runs-heading">Runs</h2>
     <div id="runs-content" data-observe-view-content="runs">{runs_html}</div>
   </section>
+  {cost_section}
   <section id="coverage" aria-labelledby="coverage-heading">
     <h2 id="coverage-heading">Telemetry coverage</h2>
     <div id="coverage-content" data-observe-view-content="coverage">{coverage_html}</div>

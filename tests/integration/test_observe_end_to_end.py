@@ -2,13 +2,30 @@
 
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
+from agentops.agent import cockpit as cockpit_module
 from agentops.agent.cockpit import create_app
+from agentops.agent.observe.cost_allocation import allocate_cost_period
+from agentops.agent.observe import facade as facade_module
 from agentops.agent.observe.ui import render_models_usage_table
+from agentops.core.cost import (
+    CostUsageObservation,
+    load_cost_model as load_cost_model_contract,
+)
+from fixtures.cost import (
+    FOUNDRY_RESOURCE_ID,
+    mixed_currency_cost_model_payload,
+    valid_cost_model_payload,
+    valid_multi_period_cost_model_payload,
+)
 
 
 class _Auth:
@@ -59,6 +76,123 @@ class _Service:
         return {"agent_key": agent_key, "filters": filters, "trends": []}
 
 
+class _CostFacade(_Service):
+    """Agreed cost-facade signature backed by deterministic fake telemetry."""
+
+    def __init__(self, cost_model_result: Any) -> None:
+        super().__init__()
+        self.cost_model_result = cost_model_result
+        self.telemetry = [
+            {"agent_key": "agent-a", "weighted_tokens": Decimal("2")},
+            {"agent_key": "agent-b", "weighted_tokens": Decimal("1")},
+        ]
+
+    def query(self, *, view: str, filters: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if view != "cost":
+            return super().query(view=view, filters=filters)
+        self.query_calls += 1
+        assert self.cost_model_result.state == "valid"
+        component = self.cost_model_result.model.periods[0].components[0]
+        total_usage = sum(row["weighted_tokens"] for row in self.telemetry)
+        rows = []
+        for telemetry in self.telemetry:
+            share = telemetry["weighted_tokens"] / total_usage
+            amount = (component.billed_total * share).quantize(Decimal("0.01"))
+            rows.append(
+                {
+                    "consumer_key": telemetry["agent_key"],
+                    "allocated_amount": str(amount),
+                    "observed_usage": str(telemetry["weighted_tokens"]),
+                    "usage_share": str(share),
+                }
+            )
+        return {
+            "view": "cost",
+            "data": {
+                "period_id": self.cost_model_result.model.periods[0].id,
+                "breakdown": "agents",
+                "rows": rows,
+            },
+            "coverage": [],
+            "diagnostics": {
+                "started_at": "2026-08-21T00:00:00Z",
+                "completed_at": "2026-08-21T00:00:00Z",
+                "duration_ms": 0,
+                "source_count": 1,
+                "successful_sources": 1,
+                "partial_sources": 0,
+                "failed_sources": 0,
+                "cache_status": "miss",
+            },
+            "refreshed_at": "2026-08-21T00:00:00Z",
+        }
+
+
+class _AllocationFacade(_Service):
+    """HTTP-facing fake telemetry facade using the real allocation engine."""
+
+    def __init__(
+        self,
+        cost_model_result: Any,
+        observations: list[CostUsageObservation],
+        *,
+        partial_sources: bool = False,
+    ) -> None:
+        super().__init__()
+        self.cost_model_result = cost_model_result
+        self.observations = observations
+        self.partial_sources = partial_sources
+
+    def query(self, *, view: str, filters: dict[str, Any], **_: Any) -> dict[str, Any]:
+        if view != "cost":
+            return super().query(view=view, filters=filters)
+        self.query_calls += 1
+        assert self.cost_model_result.state == "valid"
+        period_id = filters.get("cost_period_id")
+        period = next(
+            period
+            for period in self.cost_model_result.model.periods
+            if period.id == period_id
+        )
+        allocation = allocate_cost_period(
+            period,
+            self.observations,
+            breakdown=filters.get("cost_breakdown") or "agents",
+            calculated_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+            component_id=filters.get("cost_component_id"),
+            cost_agent_key=filters.get("cost_agent_key"),
+        )
+        return {
+            "view": "cost",
+            "data": allocation.model_dump(mode="json"),
+            "coverage": (
+                [
+                    {
+                        "source_id": "workspace-partial",
+                        "dimension": "cost_attribution",
+                        "state": "partial",
+                        "reason": "One telemetry source was unavailable.",
+                        "next_action": "Restore access to the unavailable telemetry source.",
+                        "refreshed_at": "2026-09-01T00:00:00Z",
+                    }
+                ]
+                if self.partial_sources
+                else []
+            ),
+            "diagnostics": {
+                "started_at": "2026-09-01T00:00:00Z",
+                "completed_at": "2026-09-01T00:00:00Z",
+                "duration_ms": 0,
+                "source_count": 2 if self.partial_sources else 1,
+                "successful_sources": 1,
+                "partial_sources": 1 if self.partial_sources else 0,
+                "failed_sources": 0,
+                "cache_status": "miss",
+            },
+            "refreshed_at": "2026-09-01T00:00:00Z",
+        }
+
+
 def _hosted_client() -> TestClient:
     app = create_app(
         None,
@@ -75,6 +209,61 @@ def _hosted_client() -> TestClient:
         auth_context_resolver=_Auth(),
     )
     return TestClient(app)
+
+
+def _cost_client(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, Any],
+    observations: list[CostUsageObservation],
+    *,
+    partial_sources: bool = False,
+) -> TestClient:
+    raw_model = json.dumps(payload)
+    result = load_cost_model_contract(raw_model)
+    assert result.state == "valid"
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", raw_model)
+    return TestClient(
+        create_app(
+            None,
+            mode="hosted",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourcegroups/rg/providers/"
+                    "microsoft.cognitiveservices/accounts/foundry/projects/project-a"
+                ],
+            },
+            observe_service=_AllocationFacade(
+                result,
+                observations,
+                partial_sources=partial_sources,
+            ),
+            auth_context_resolver=_Auth(),
+        )
+    )
+
+
+def _usage(**overrides: Any) -> CostUsageObservation:
+    values: dict[str, Any] = {
+        "source_resource_id": FOUNDRY_RESOURCE_ID,
+        "project_resource_id": (
+            f"{FOUNDRY_RESOURCE_ID}/projects/project-a"
+        ),
+        "agent_key": "agent-a",
+        "tool_name": "search",
+        "run_key": "run-a",
+        "runtime_kind": "foundry_hosted",
+        "deployment": "gpt-prod",
+        "input_tokens": 1,
+        "output_tokens": 1,
+        "cache_read_tokens": 0,
+        "tool_invocations": 1,
+        "latest_observed_at": "2026-08-31T23:00:00Z",
+        "coverage_complete": True,
+    }
+    values.update(overrides)
+    return CostUsageObservation.model_validate(values)
 
 
 def test_observe_discovery_and_all_views() -> None:
@@ -273,3 +462,474 @@ def test_local_and_hosted_modes_share_observe_results_without_startup_queries(
 
     assert local_payload == hosted_payload
     assert local_service.query_calls == hosted_service.query_calls == 1
+
+
+def test_valid_cost_model_startup_opens_agent_allocation_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    load_calls: list[str | None] = []
+    injected_results: list[Any] = []
+    render_states: list[bool] = []
+
+    def _load_once(raw: str | None) -> Any:
+        load_calls.append(raw)
+        return load_cost_model_contract(raw)
+
+    def _create_facade(*, scope: Any, cost_model_result: Any) -> _CostFacade:
+        assert scope["mode"] == "projects"
+        injected_results.append(cost_model_result)
+        return _CostFacade(cost_model_result)
+
+    def _render_page(
+        *,
+        scope_label: str | None,
+        cost_enabled: bool = False,
+        cost_periods: Any = (),
+        cost_components: Any = (),
+    ) -> str:
+        render_states.append(cost_enabled)
+        assert [period["id"] for period in cost_periods] == ["2026-08"]
+        assert cost_periods[0]["component_ids"] == ("gpt-ptu-prod",)
+        assert [component["id"] for component in cost_components] == [
+            "gpt-ptu-prod"
+        ]
+        return f"<html><body>{scope_label}: Cost</body></html>"
+
+    monkeypatch.setenv("AGENTOPS_COST_MODEL", json.dumps(valid_cost_model_payload()))
+    monkeypatch.setattr(cockpit_module, "load_cost_model", _load_once)
+    monkeypatch.setattr(facade_module, "create_observe_facade", _create_facade)
+    monkeypatch.setattr(
+        "agentops.agent.observe.ui.render_observe_page",
+        _render_page,
+    )
+
+    client = TestClient(
+        cockpit_module.create_app(
+            None,
+            mode="hosted",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourcegroups/rg/providers/"
+                    "microsoft.cognitiveservices/accounts/foundry/projects/project-a"
+                ],
+            },
+            auth_context_resolver=_Auth(),
+        )
+    )
+    headers = {"x-ms-client-principal": "allowed"}
+
+    shell = client.get("/observe", headers=headers)
+    assert shell.status_code == 200
+    assert "Cost" in shell.text
+    response = client.post(
+        "/api/observe/query",
+        headers=headers,
+        json={
+            "view": "cost",
+            "filters": {
+                "start": "2026-08-01T00:00:00Z",
+                "end": "2026-09-01T00:00:00Z",
+                "cost_period_id": "2026-08",
+                "cost_breakdown": "agents",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["rows"] == [
+        {
+            "consumer_key": "agent-a",
+            "allocated_amount": "8000.00",
+            "observed_usage": "2",
+            "usage_share": "0.6666666666666666666666666667",
+        },
+        {
+            "consumer_key": "agent-b",
+            "allocated_amount": "4000.00",
+            "observed_usage": "1",
+            "usage_share": "0.3333333333333333333333333333",
+        },
+    ]
+    assert len(load_calls) == 1
+    assert len(injected_results) == 1
+    assert injected_results[0].state == "valid"
+    assert render_states == [True]
+
+
+def test_multi_period_shell_and_second_period_component_round_trip(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = valid_multi_period_cost_model_payload()
+    client = _cost_client(monkeypatch, payload, [_usage()])
+    headers = {"x-ms-client-principal": "allowed"}
+
+    shell = client.get("/observe", headers=headers)
+    assert shell.status_code == 200
+    assert 'value="2026-08" data-cost-component-ids="gpt-ptu-prod"' in shell.text
+    assert (
+        'value="2026-09" data-cost-component-ids="gpt-ptu-september"'
+        in shell.text
+    )
+
+    response = client.post(
+        "/api/observe/query",
+        headers=headers,
+        json={
+            "view": "cost",
+            "filters": {
+                "start": "2026-09-01T00:00:00Z",
+                "end": "2026-10-01T00:00:00Z",
+                "cost_period_id": "2026-09",
+                "cost_component_id": "gpt-ptu-september",
+                "cost_breakdown": "agents",
+            },
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["period"]["id"] == "2026-09"
+    assert data["component_filter"] == "gpt-ptu-september"
+
+
+def test_clean_cost_url_uses_typed_default_period_without_model_leakage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = valid_cost_model_payload()
+    client = _cost_client(monkeypatch, payload, [_usage()])
+    headers = {"x-ms-client-principal": "allowed"}
+
+    shell = client.get("/observe", headers=headers)
+
+    assert shell.status_code == 200
+    assert (
+        '<option value="2026-08" data-cost-component-ids="gpt-ptu-prod" '
+        "selected>2026-08</option>"
+        in shell.text
+    )
+    assert '<option value="gpt-ptu-prod">gpt-ptu-prod</option>' in shell.text
+    assert payload["periods"][0]["components"][0]["billed_source"] not in shell.text
+    assert payload["periods"][0]["components"][0]["billed_total"] not in shell.text
+    assert FOUNDRY_RESOURCE_ID not in shell.text
+    assert "gpt-prod" not in shell.text
+
+    default_period = "2026-08"
+    response = client.post(
+        "/api/observe/query",
+        headers=headers,
+        json={
+            "view": "cost",
+            "filters": {
+                "start": "2026-08-01T00:00:00Z",
+                "end": "2026-09-01T00:00:00Z",
+                "cost_period_id": default_period,
+                "cost_breakdown": "agents",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    allocation = response.json()["data"]
+    assert allocation["period"]["id"] == default_period
+    assert allocation["components"][0]["declared_total"] == "12000.00"
+    assert allocation["rows"][0]["consumer_key"] == "agent-a"
+
+
+def test_tool_and_run_allocations_include_correlated_and_uncorrelated_activity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observations = [
+        _usage(
+            agent_key="agent-a",
+            tool_name="search",
+            run_key="run-a",
+            input_tokens=1,
+            output_tokens=0,
+        ),
+        _usage(
+            agent_key="agent-b",
+            tool_name="grounding",
+            run_key="run-b",
+            input_tokens=3,
+            output_tokens=0,
+        ),
+        _usage(
+            agent_key="agent-a",
+            tool_name=None,
+            run_key=None,
+            input_tokens=2,
+            output_tokens=0,
+        ),
+    ]
+    client = _cost_client(
+        monkeypatch,
+        valid_cost_model_payload(),
+        observations,
+    )
+    headers = {"x-ms-client-principal": "allowed"}
+    filters = {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-09-01T00:00:00Z",
+        "cost_period_id": "2026-08",
+    }
+
+    responses = {}
+    for breakdown in ("tools", "runs"):
+        response = client.post(
+            "/api/observe/query",
+            headers=headers,
+            json={
+                "view": "cost",
+                "filters": {**filters, "cost_breakdown": breakdown},
+            },
+        )
+        assert response.status_code == 200
+        responses[breakdown] = response.json()["data"]
+
+    assert {row["consumer_key"] for row in responses["tools"]["rows"]} == {
+        "search",
+        "grounding",
+        "__unattributed_tool__",
+    }
+    assert {row["consumer_key"] for row in responses["runs"]["rows"]} == {
+        "run-a",
+        "run-b",
+        "__unattributed_run__",
+    }
+    for breakdown, data in responses.items():
+        assert data["breakdown"] == breakdown
+        assert sum(Decimal(row["amount"]) for row in data["rows"]) == Decimal(
+            "12000.00"
+        )
+        assert data["components"][0]["declared_total"] == "12000.00"
+        assert data["components"][0]["unattributed_amount"] == "4000.00"
+
+
+def _confidence_cost_model_payload() -> dict[str, Any]:
+    payload = mixed_currency_cost_model_payload()
+    template = deepcopy(payload["periods"][0]["components"][0])
+    template["billed_total"] = "100.00"
+    components = []
+    for component_id, deployment in (
+        ("high", "high-deployment"),
+        ("medium", "medium-deployment"),
+        ("low", "low-deployment"),
+        ("unavailable", "unavailable-deployment"),
+    ):
+        component = deepcopy(template)
+        component["id"] = component_id
+        component["usage_match"] = {"deployments": [deployment]}
+        if component_id in {"low", "unavailable"}:
+            component["allocation_key"] = "total_tokens"
+            component["fallback_key"] = None
+            component["token_weights"] = None
+        components.append(component)
+    search = deepcopy(payload["periods"][0]["components"][1])
+    components.append(search)
+    payload["periods"][0]["components"] = components
+    return payload
+
+
+def test_cost_missing_data_states_mixed_currencies_and_partial_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observations = [
+        _usage(
+            deployment="high-deployment",
+            agent_key="agent-high",
+            input_tokens=1,
+            output_tokens=1,
+            cache_read_tokens=1,
+        ),
+        _usage(
+            deployment="medium-deployment",
+            agent_key="agent-medium",
+            input_tokens=1,
+            output_tokens=1,
+            cache_read_tokens=None,
+        ),
+        _usage(
+            deployment="low-deployment",
+            agent_key="agent-low",
+            input_tokens=3,
+            output_tokens=0,
+            coverage_complete=False,
+        ),
+        _usage(
+            deployment="low-deployment",
+            agent_key=None,
+            tool_name=None,
+            run_key=None,
+            input_tokens=1,
+            output_tokens=0,
+            coverage_complete=False,
+        ),
+        _usage(
+            source_resource_id=(
+                "/subscriptions/11111111-1111-1111-1111-111111111111/"
+                "resourceGroups/AI-Prod/providers/Microsoft.Search/"
+                "searchServices/Search-Prod"
+            ),
+            deployment=None,
+            agent_key="agent-search",
+            tool_name="product_search",
+            input_tokens=None,
+            output_tokens=None,
+            cache_read_tokens=None,
+            tool_invocations=2,
+        ),
+    ]
+    client = _cost_client(
+        monkeypatch,
+        _confidence_cost_model_payload(),
+        observations,
+        partial_sources=True,
+    )
+    response = client.post(
+        "/api/observe/query",
+        headers={"x-ms-client-principal": "allowed"},
+        json={
+            "view": "cost",
+            "filters": {
+                "start": "2026-08-01T00:00:00Z",
+                "end": "2026-09-01T00:00:00Z",
+                "cost_period_id": "2026-08",
+                "cost_breakdown": "agents",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    data = payload["data"]
+    summaries = {
+        summary["component_id"]: summary for summary in data["components"]
+    }
+    assert {
+        component_id: summaries[component_id]["confidence"]
+        for component_id in ("high", "medium", "low", "unavailable")
+    } == {
+        "high": "high",
+        "medium": "medium",
+        "low": "low",
+        "unavailable": "unavailable",
+    }
+    assert summaries["low"]["unattributed_amount"] == "25.00"
+    assert summaries["unavailable"]["unallocated_amount"] == "100.00"
+    assert summaries["unavailable"]["rows_total"] == 0
+    assert summaries["unavailable"]["next_action"]
+    assert {subtotal["currency"] for subtotal in data["currency_subtotals"]} == {
+        "USD",
+        "EUR",
+    }
+    assert payload["diagnostics"]["partial_sources"] == 1
+    assert payload["diagnostics"]["successful_sources"] == 1
+    assert payload["coverage"] == [
+        {
+            "source_id": "workspace-partial",
+            "dimension": "cost_attribution",
+            "state": "partial",
+            "reason": "One telemetry source was unavailable.",
+            "next_action": "Restore access to the unavailable telemetry source.",
+            "refreshed_at": "2026-09-01T00:00:00Z",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("raw_model", "expected_detail"),
+    [
+        (None, "not configured"),
+        ('{"client_secret":"do-not-echo"}', "invalid"),
+    ],
+)
+def test_unavailable_cost_isolated_from_other_observe_routes(
+    monkeypatch: pytest.MonkeyPatch,
+    raw_model: str | None,
+    expected_detail: str,
+) -> None:
+    load_calls: list[str | None] = []
+    render_states: list[bool] = []
+    service = _Service()
+
+    def _load_once(raw: str | None) -> Any:
+        load_calls.append(raw)
+        return load_cost_model_contract(raw)
+
+    def _render_page(
+        *,
+        scope_label: str | None,
+        cost_enabled: bool = False,
+        cost_periods: Any = (),
+        cost_components: Any = (),
+    ) -> str:
+        render_states.append(cost_enabled)
+        assert cost_periods == ()
+        assert cost_components == ()
+        return f"<html><body>{scope_label}</body></html>"
+
+    if raw_model is None:
+        monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
+    else:
+        monkeypatch.setenv("AGENTOPS_COST_MODEL", raw_model)
+    monkeypatch.setattr(cockpit_module, "load_cost_model", _load_once)
+    monkeypatch.setattr(
+        "agentops.agent.observe.ui.render_observe_page",
+        _render_page,
+    )
+
+    client = TestClient(
+        cockpit_module.create_app(
+            None,
+            mode="hosted",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourcegroups/rg/providers/"
+                    "microsoft.cognitiveservices/accounts/foundry/projects/project-a"
+                ],
+            },
+            observe_service=service,
+            auth_context_resolver=_Auth(),
+        )
+    )
+    headers = {"x-ms-client-principal": "allowed"}
+    filters = {
+        "start": "2026-08-01T00:00:00Z",
+        "end": "2026-09-01T00:00:00Z",
+    }
+
+    assert client.get("/observe", headers=headers).status_code == 200
+    non_cost = [
+        client.post(
+            "/api/observe/query",
+            headers=headers,
+            json={"view": view, "filters": filters},
+        )
+        for view in ("overview", "agents", "models", "tools", "runs", "coverage")
+    ]
+    cost = client.post(
+        "/api/observe/query",
+        headers=headers,
+        json={"view": "cost", "filters": filters},
+    )
+
+    assert [response.status_code for response in non_cost] == [200] * 6
+    assert [response.json()["view"] for response in non_cost] == [
+        "overview",
+        "agents",
+        "models",
+        "tools",
+        "runs",
+        "coverage",
+    ]
+    assert cost.status_code == 422
+    detail = cost.json()["detail"]
+    assert expected_detail in detail.lower()
+    assert "AGENTOPS_COST_MODEL" in detail
+    assert "do-not-echo" not in detail
+    assert service.query_calls == 6
+    assert load_calls == [raw_model]
+    assert render_states == [False]

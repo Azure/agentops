@@ -59,6 +59,7 @@ from agentops.agent.observe.queries import (
 )
 from agentops.agent.observe.service import CACHE_TTL_SECONDS, ObserveResult, ObserveService, View
 from agentops.agent.observe.ui import build_azure_resource_portal_url
+from agentops.core.cost import CostModelLoadResult, CostViewData
 from agentops.core.observe import (
     GenerativeAIContent,
     ObservedAgent,
@@ -82,7 +83,7 @@ _NATIVE_QUERY_VIEWS: frozenset[str] = frozenset(get_args(View))
 #: native view) and only the serialized wire payload's ``"view"`` key is
 #: overridden to ``"coverage"`` -- see ``_serialize_observe_result``'s
 #: ``view_override`` parameter.
-_SUPPORTED_QUERY_VIEWS: frozenset[str] = _NATIVE_QUERY_VIEWS | {"coverage"}
+_SUPPORTED_QUERY_VIEWS: frozenset[str] = _NATIVE_QUERY_VIEWS | {"coverage", "cost"}
 
 #: T053: bounded trend series. Each metric produced by
 #: ``build_agent_detail_query`` becomes one named, unit-labelled series; the
@@ -122,9 +123,12 @@ def _serialize_data(data: Any) -> Any:
     """Serialize :attr:`ObserveResult.data`, whose shape depends on ``view``.
 
     ``"overview"`` yields a plain ``dict`` of aggregate totals (see
-    ``ObserveService._normalize_view``); row-bearing views yield lists of
-    Pydantic contract values. Both must round-trip to JSON-safe plain Python.
+    ``ObserveService._normalize_view``), ``"cost"`` yields one typed
+    :class:`CostViewData`, and row-bearing views yield lists of Pydantic
+    contract values. Every shape must round-trip to JSON-safe plain Python.
     """
+    if hasattr(data, "model_dump"):
+        return data.model_dump(mode="json")
     if isinstance(data, Mapping):
         return dict(data)
     if isinstance(data, (list, tuple)):
@@ -249,6 +253,7 @@ class ObserveFacade:
         credential_factory: CredentialFactory | None = None,
         obo_factory: ObeFactory | None = None,
         aggregate_credential: TokenCredential | None = None,
+        cost_model_result: CostModelLoadResult | None = None,
     ) -> None:
         self._scope = scope
         self._tenant_id = tenant_id
@@ -258,6 +263,11 @@ class ObserveFacade:
         self._monotonic_clock = monotonic_clock
         self._credential_factory = credential_factory
         self._obo_factory = obo_factory
+        self._cost_model_result = (
+            cost_model_result
+            if cost_model_result is not None
+            else CostModelLoadResult(state="absent")
+        )
 
         credential = aggregate_credential or build_aggregate_credential(
             uami_client_id, credential_factory=credential_factory
@@ -322,6 +332,12 @@ class ObserveFacade:
             raise ValueError(f"unknown Observe view: {view!r}")
         filter_state = ObserveFilterState.model_validate(dict(filters))
 
+        if view == "cost":
+            return await self._query_cost(
+                filter_state,
+                refresh=refresh,
+            )
+
         if view == "coverage":
             result = await self._service.query_view(
                 self._scope, filter_state, view="overview", refresh=refresh
@@ -334,6 +350,76 @@ class ObserveFacade:
             self._scope, filter_state, view=native_view, refresh=refresh
         )
         return _serialize_observe_result(result)
+
+    async def _query_cost(
+        self,
+        filters: ObserveFilterState,
+        *,
+        refresh: bool,
+    ) -> dict[str, Any]:
+        """Validate cost-only selectors and dispatch an authoritative-period query."""
+        loaded = self._cost_model_result
+        if loaded.state == "absent":
+            raise ValueError(
+                "Cost view is not configured. Set AGENTOPS_COST_MODEL to a valid "
+                "versioned cost model and restart Cockpit."
+            )
+        if loaded.state == "invalid":
+            detail = loaded.message or (
+                "Correct AGENTOPS_COST_MODEL and restart Cockpit."
+            )
+            raise ValueError(f"Cost view is unavailable: {detail}")
+
+        model = loaded.model
+        fingerprint = loaded.fingerprint
+        if model is None or fingerprint is None:  # defensive against unvalidated collaborators
+            raise ValueError(
+                "Cost view is unavailable because AGENTOPS_COST_MODEL did not "
+                "produce a validated model. Correct the configuration and restart Cockpit."
+            )
+        if filters.cost_period_id is None:
+            raise ValueError(
+                "cost_period_id is required for the Cost view. Select a configured cost period."
+            )
+
+        period = next(
+            (item for item in model.periods if item.id == filters.cost_period_id),
+            None,
+        )
+        if period is None:
+            raise ValueError(
+                f"unknown cost period {filters.cost_period_id!r}; "
+                "select a period configured in AGENTOPS_COST_MODEL."
+            )
+        if (
+            filters.cost_component_id is not None
+            and not any(
+                component.id == filters.cost_component_id
+                for component in period.components
+            )
+        ):
+            raise ValueError(
+                f"unknown cost component {filters.cost_component_id!r} for period "
+                f"{period.id!r}; select a component configured in that period."
+            )
+
+        calculation_filters = ObserveFilterState(
+            start=period.starts_at,
+            end=period.ends_at,
+            cost_period_id=period.id,
+            cost_breakdown=filters.cost_breakdown or "agents",
+            cost_component_id=filters.cost_component_id,
+            cost_agent_key=filters.cost_agent_key,
+        )
+        result = await self._service.query_cost(
+            self._scope,
+            calculation_filters,
+            cost_model=model,
+            cost_model_fingerprint=fingerprint,
+            refresh=refresh,
+        )
+        typed_data = CostViewData.model_validate(result.data)
+        return _serialize_observe_result(replace(result, data=typed_data))
 
     # -- agent_detail -----------------------------------------------------
 
@@ -488,6 +574,7 @@ def create_observe_facade(
     monotonic_clock: Callable[[], float] = time.monotonic,
     credential_factory: CredentialFactory | None = None,
     obo_factory: ObeFactory | None = None,
+    cost_model_result: CostModelLoadResult | None = None,
 ) -> ObserveFacade:
     """Build the single ``ObserveFacade`` ``create_app(observe_service=...)`` needs.
 
@@ -531,4 +618,5 @@ def create_observe_facade(
         monotonic_clock=monotonic_clock,
         credential_factory=credential_factory,
         obo_factory=obo_factory,
+        cost_model_result=cost_model_result,
     )
