@@ -35,7 +35,6 @@ SOURCE_LABELS: Dict[str, str] = {
     "azure_resources": "Azure resources (ARM)",
     "spec_workspace": "spec docs (.specify / AGENTS.md)",
     "judge_model": "judge model deployment",
-    "graph": "Microsoft Graph (Entra agent identity)",
 }
 
 SOURCE_DESCRIPTIONS: Dict[str, str] = {
@@ -82,13 +81,6 @@ SOURCE_DESCRIPTIONS: Dict[str, str] = {
         "A Foundry/OpenAI model deployment used only by opt-in LLM-judged "
         "checks. It reviews semantic signals like prompt guardrails, dataset "
         "PII risk, bundle coverage, and spec-vs-implementation gaps."
-    ),
-    "graph": (
-        "Microsoft Graph v1.0, read-only, used to confirm that the agent has "
-        "an Entra agent identity blueprint in Microsoft Agent 365. This source "
-        "is opt-in: set `identity.verify: true` in `agentops.yaml`. It needs "
-        "the `AgentIdentityBlueprint.Read.All` application permission with "
-        "tenant admin consent."
     ),
 }
 
@@ -157,15 +149,6 @@ CHECK_REFERENCE_URLS: Dict[str, str] = {
     ),
     "observability.trace_replay_missing": (
         "https://learn.microsoft.com/azure/foundry/concepts/observability"
-    ),
-    "agent_identity.not_registered": (
-        "https://learn.microsoft.com/entra/identity/agent-id/agent-id-overview"
-    ),
-    "agent_identity.not_recorded": (
-        "https://learn.microsoft.com/entra/identity/agent-id/agent-id-overview"
-    ),
-    "agent_identity.lookup_failed": (
-        "https://learn.microsoft.com/entra/identity/agent-id/agent-id-overview"
     ),
 }
 
@@ -704,42 +687,6 @@ CHECKS: Tuple[CheckSpec, ...] = (
     # ------------------------------------------------------------------
     # Security
     # ------------------------------------------------------------------
-    CheckSpec(
-        id="agent_identity.not_registered",
-        category=Category.SECURITY,
-        title="Agent is not registered in Microsoft Agent 365",
-        summary=(
-            "No Entra Agent ID is recorded for the workspace, so the "
-            "agent is absent from the tenant agent inventory and cannot "
-            "be targeted by Conditional Access."
-        ),
-        severities=(Severity.WARNING,),
-        requires=("workspace",),
-    ),
-    CheckSpec(
-        id="agent_identity.not_recorded",
-        category=Category.SECURITY,
-        title="Agent identity exists in Entra but is not recorded locally",
-        summary=(
-            "Microsoft Entra has a matching agent identity blueprint but "
-            "the workspace has no local record, so traces and the release "
-            "evidence bundle cannot quote the Entra Agent ID."
-        ),
-        severities=(Severity.INFO,),
-        requires=("workspace", "graph"),
-    ),
-    CheckSpec(
-        id="agent_identity.lookup_failed",
-        category=Category.SECURITY,
-        title="Agent 365 registration could not be verified",
-        summary=(
-            "Microsoft Graph could not be consulted, usually because the "
-            "AgentIdentityBlueprint.Read.All permission has no admin "
-            "consent in the tenant."
-        ),
-        severities=(Severity.WARNING,),
-        requires=("workspace", "graph"),
-    ),
     CheckSpec(
         id="waf.security.local_auth_disabled",
         category=Category.SECURITY,

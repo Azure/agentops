@@ -3,8 +3,7 @@
 The watchdog agent reads three signal sources (AgentOps eval history,
 Azure Monitor / App Insights traces, Foundry control plane), runs a
 set of checks over the gathered data, and produces a Markdown findings
-report. It is exposed both as a CLI (``agentops doctor``) and as
-a Copilot Extension HTTP server (``agentops agent serve``).
+report. It is exposed as a CLI (``agentops doctor``).
 """
 
 from agentops.agent.findings import Finding, Severity

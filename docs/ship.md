@@ -158,28 +158,6 @@ long steps here:
 - [GitHub OIDC with Azure (workload identity federation)](https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp)
 - [Assign Azure roles (RBAC)](https://learn.microsoft.com/azure/role-based-access-control/role-assignments-portal)
 
-### Giving the agent its own identity
-
-The OIDC principal above answers "which pipeline is deploying". It does not
-answer "which agent is running in production", and that second question is the
-one an auditor asks. A Microsoft Entra agent identity closes the gap: the agent
-gets its own directory object with a named human sponsor, and AgentOps then
-stamps that id on every trace and republishes it in the release evidence.
-
-Registration is a one-line command and it is idempotent, so re-running it adopts
-the existing blueprint instead of creating a duplicate:
-
-```bash
-agentops agent register --sponsor owner@contoso.com
-```
-
-The generated production workflows carry the same step, disabled by default.
-Set the `AGENTOPS_IDENTITY_SPONSOR` repository variable to the sponsor's UPN and
-the step turns on. It stays opt-in because it writes to your tenant, which needs
-a deliberate decision rather than a default. The full handshake, the
-`identity` block in `agentops.yaml`, and the trace query are documented in
-[Agent identity on traces](observe.md#agent-identity-on-traces).
-
 ## Try it
 
 Generate the CI/CD workflows from the same analysis AgentOps uses, smallest gate

@@ -4961,8 +4961,8 @@ def create_app(
         from fastapi.responses import HTMLResponse, JSONResponse
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "agentops cockpit requires the [agent] extra. "
-            "Install with: pip install 'agentops-accelerator[agent]'"
+            "agentops cockpit requires the [cockpit] extra. "
+            "Install with: pip install 'agentops-accelerator[cockpit]'"
         ) from exc
 
     attribution_config_result = load_attribution_config(

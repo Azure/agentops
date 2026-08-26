@@ -521,6 +521,85 @@ The skills that map to observability are:
 |---|---|
 | `agentops-agent` | Watchdog analysis of production health and latency spikes. |
 
+## The Observe dashboard
+
+Observe renders as a self-contained operational dashboard that is visually part
+of the AgentOps Cockpit. It shares one design system with Cockpit instead of
+theming itself independently.
+
+### One shared theme
+
+Cockpit and Observe read the same canonical design tokens from
+`src/agentops/agent/ui_theme.py`: colors, surfaces, borders, typography, and the
+`aos-*` layout primitives (header, shell, cards). Observe imports those tokens
+rather than defining its own palette, so both surfaces look like one product.
+
+Theme selection is **explicit**. The page ships a deliberate dark theme by
+default (`<html data-theme="dark">`) and a matching light theme
+(`[data-theme="light"]`), and an in-page toggle switches between them. Observe
+does **not** use a bare `@media (prefers-color-scheme: dark)` rule, which is what
+previously let it drift to white while Cockpit stayed dark. The toggle keeps its
+choice in memory only for the current page — it never writes `localStorage`,
+`sessionStorage`, cookies, or any other browser persistence, preserving the
+privacy guarantees.
+
+### Executive overview and first-class trends
+
+The Overview is an executive summary: compact KPI cards with a value, a
+direction-aware delta chip (the direction is shown with a glyph, not color
+alone), a short caption, and an inline sparkline. Below the cards, invocation,
+failure, latency, token, and coverage trends render as first-class charts with
+thin trend lines, a subtle grid, restrained legends, exact-value tooltips, and
+an accessible area gradient. Charts are responsive and every chart is
+screen-reader accessible (`role="img"`, an `aria-label`, an SVG `<title>`/`<desc>`,
+and a visually hidden data `<table>`).
+
+Filters stay compact and visually subordinate to the summary. The Agents,
+Models, Tools, Runs, Costs, Attribution, and Coverage views are clear
+drill-down tables.
+
+### Intentional states
+
+Every view can render six deliberate states through one shared
+`render_state_panel` helper: **loading**, **empty**, **partial**,
+**permission-denied**, **disconnected**, and **error**. Each state uses a
+non-color glyph plus text (so meaning does not depend on color), the correct
+ARIA role (`role="alert"` for errors, `role="status"` otherwise, `aria-busy`
+while loading), and a `data-observe-state` hook for tests.
+
+### Preserved guarantees
+
+The redesign is presentation-only. It preserves accessibility (ARIA labels,
+roles, table semantics, and non-color status encoding), privacy (no receiver
+addresses, PII, secrets, or raw trace content in the markup), bounded queries,
+URL-driven filters that round-trip through the allow-listed query keys, and
+protected-content handling. The HTML remains fully self-contained: no CDN,
+`<link>`, or network fetch happens at render time, so Observe works offline and
+in locked-down environments.
+
+### Visual regression tests
+
+Because Playwright and a real browser are not guaranteed in CI, visual
+regression is enforced as deterministic HTML/CSS **snapshot** tests in
+`tests/unit/test_observe_ui_visual.py`. Fixed fixture data renders the page and
+stylesheet with no clock, random, or UUID input, and the output is compared
+against committed goldens under `tests/unit/__snapshots__/`
+(`observe_overview.html`, `observe_styles.css`). The same file also asserts
+theme parity with `ui_theme.py`, that all six states render, chart and KPI
+accessibility, privacy invariants, and URL filter round-trips.
+
+Regenerate the goldens after an intentional visual change:
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:AGENTOPS_UPDATE_SNAPSHOTS = "1"
+python -m pytest tests/unit/test_observe_ui_visual.py -q
+Remove-Item Env:\AGENTOPS_UPDATE_SNAPSHOTS
+```
+
+Review the regenerated snapshot diff before committing, then run the suite again
+without the environment variable to confirm it passes against the new goldens.
+
 ## Next
 
 Act on the signal over time on the [Operate](operate.md) page, feed passing

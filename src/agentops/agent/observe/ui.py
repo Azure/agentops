@@ -57,6 +57,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
+from agentops.agent import ui_theme
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -522,6 +524,78 @@ def _render_model_token_usage(entry: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Intentional states (issue #459): loading / empty / partial /
+# permission-denied / disconnected / error
+# ---------------------------------------------------------------------------
+
+#: The six deliberately designed non-happy-path states an Observe surface can
+#: present. Each maps to an accessible, theme-consistent panel via
+#: :func:`render_state_panel`. The tone drives the accent color; the glyph is a
+#: text marker (never color-only) so the state is legible without color.
+OBSERVE_STATE_KINDS: tuple[str, ...] = (
+    "loading",
+    "empty",
+    "partial",
+    "permission-denied",
+    "disconnected",
+    "error",
+)
+
+_OBSERVE_STATE_META: dict[str, dict[str, str]] = {
+    "loading": {"tone": "info", "glyph": "\u2026", "title": "Loading"},
+    "empty": {"tone": "muted", "glyph": "\u2205", "title": "No data"},
+    "partial": {"tone": "warn", "glyph": "\u25d1", "title": "Partial data"},
+    "permission-denied": {"tone": "warn", "glyph": "\u26bf", "title": "Access needed"},
+    "disconnected": {"tone": "muted", "glyph": "\u2205", "title": "Disconnected"},
+    "error": {"tone": "crit", "glyph": "\u26a0", "title": "Something went wrong"},
+}
+
+
+def render_state_panel(
+    kind: str,
+    message: str,
+    *,
+    title: Optional[str] = None,
+    detail: Optional[str] = None,
+    actions_html: str = "",
+    busy: bool = False,
+) -> str:
+    """Render one of the six deliberately-designed Observe states.
+
+    ``kind`` must be one of :data:`OBSERVE_STATE_KINDS`. The panel is an
+    accessible, theme-consistent surface: it carries ``role="status"`` (with
+    ``aria-busy`` for the loading state) so assistive technology announces the
+    state, a non-color glyph marker, a heading, the primary ``message``, and an
+    optional secondary ``detail`` plus optional ``actions_html``.
+    """
+    if kind not in _OBSERVE_STATE_META:
+        raise ValueError(f"unknown state kind: {kind!r}")
+    meta = _OBSERVE_STATE_META[kind]
+    tone = meta["tone"]
+    heading = title if title is not None else meta["title"]
+    role = "alert" if kind == "error" else "status"
+    busy_attr = ' aria-busy="true"' if (busy or kind == "loading") else ""
+    detail_html = (
+        f'<p class="observe-state-detail">{html_escape(detail)}</p>' if detail else ""
+    )
+    actions = (
+        f'<div class="observe-state-actions">{actions_html}</div>' if actions_html else ""
+    )
+    return (
+        f'<div class="observe-state observe-state-{html_escape(kind)} '
+        f'observe-tone-{tone}" role="{role}"{busy_attr} '
+        f'data-observe-state="{html_escape(kind)}">'
+        f'<span class="observe-state-icon" aria-hidden="true">{meta["glyph"]}</span>'
+        f'<div class="observe-state-body">'
+        f'<p class="observe-state-title">{html_escape(heading)}</p>'
+        f'<p class="observe-state-message">{html_escape(message)}</p>'
+        f"{detail_html}{actions}"
+        "</div>"
+        "</div>"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Chart rendering (T052 / FR-035)
 # ---------------------------------------------------------------------------
 
@@ -788,21 +862,72 @@ def render_filter_bar(scope_label: Optional[str] = None) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _render_metric_delta(delta: Any) -> str:
+    """Render an optional delta chip for a KPI card.
+
+    ``delta`` is a mapping with ``value`` (the display text, already formatted),
+    an optional ``direction`` (``"up"``/``"down"``/``"flat"``), and an optional
+    ``tone`` (``"ok"``/``"warn"``/``"crit"``/``"muted"``). Direction only sets a
+    non-color glyph; tone sets the accent. Nothing here is color-only.
+    """
+    if not delta:
+        return ""
+    value = str(_get(delta, "value", ""))
+    if not value:
+        return ""
+    direction = str(_get(delta, "direction", "flat") or "flat")
+    tone = str(_get(delta, "tone", "muted") or "muted")
+    glyph = {"up": "\u2191", "down": "\u2193", "flat": "\u2192"}.get(direction, "\u2192")
+    label = str(_get(delta, "label", "") or "")
+    label_html = f' <span class="observe-card-delta-label">{html_escape(label)}</span>' if label else ""
+    return (
+        f'<span class="observe-card-delta observe-tone-{html_escape(tone)}" '
+        f'data-direction="{html_escape(direction)}">'
+        f'<span class="observe-card-delta-glyph" aria-hidden="true">{glyph}</span> '
+        f"{html_escape(value)}{label_html}</span>"
+    )
+
+
 def _render_metric_card(
     title: str,
     value_html: str,
     *,
     source: Any = None,
     refreshed_at: Any = None,
+    tone: Optional[str] = None,
+    delta: Any = None,
+    caption: Optional[str] = None,
+    series: Optional[Sequence[Mapping[str, Any]]] = None,
+    unit: str = "",
 ) -> str:
     source_html = render_source_label(source) if source is not None else ""
     refreshed_html = render_refreshed_at(refreshed_at) if refreshed_at is not None else ""
+    tone_class = f" observe-tone-{html_escape(tone)}" if tone else ""
+    delta_html = _render_metric_delta(delta)
+    caption_html = (
+        f'<p class="observe-card-caption">{html_escape(caption)}</p>' if caption else ""
+    )
+    spark_html = ""
+    if series:
+        # A compact, inline sparkline makes the trend first-class on the card
+        # itself. render_trend_chart already emits an accessible <svg role="img">
+        # plus a visually-hidden data table, so the sparkline is not color-only.
+        spark_html = (
+            '<div class="observe-card-spark">'
+            + render_trend_chart(f"{title} trend", series, width=240, height=64, unit=unit)
+            + "</div>"
+        )
+    footer = (
+        f'<div class="observe-card-footer">{source_html}{refreshed_html}</div>'
+        if (source_html or refreshed_html)
+        else ""
+    )
     return (
-        '<div class="observe-card" role="group" '
+        f'<div class="observe-card observe-metric-card{tone_class}" role="group" '
         f'aria-label="{html_escape(title)}">'
         f'<h3 class="observe-card-title">{html_escape(title)}</h3>'
         f'<p class="observe-card-value">{value_html}</p>'
-        f"{source_html}{refreshed_html}"
+        f"{delta_html}{caption_html}{spark_html}{footer}"
         "</div>"
     )
 
@@ -811,15 +936,24 @@ def render_overview_cards(
     metrics: Sequence[Mapping[str, Any]],
     *,
     diagnostics: Optional[Mapping[str, Any]] = None,
+    trends: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> str:
-    """Render the Overview cards grid.
+    """Render the Overview executive dashboard: KPI cards plus trend charts.
 
     Each entry in ``metrics`` is a mapping with ``title``, ``value``
     (rendered through the zero-vs-missing helper unless ``value_html`` is
-    supplied directly), optional ``unit``, ``source``, and ``refreshed_at``.
+    supplied directly), optional ``unit``, ``source``, ``refreshed_at`` and the
+    new, purely-additive KPI keys ``tone`` (accent), ``delta`` (a delta chip
+    mapping), ``caption`` (supporting text), and ``series`` (a compact inline
+    sparkline).
+
+    ``trends`` is an optional sequence of first-class trend charts rendered
+    below the KPI grid. Each entry is ``{"title", "series", optional "unit"}``
+    matching :func:`render_trend_chart`. Invocation, failure, latency, token and
+    coverage trends are surfaced here.
     """
     banner = render_diagnostics_banner(diagnostics) if diagnostics is not None else ""
-    if not metrics:
+    if not metrics and not trends:
         return (
             f'{banner}<div class="observe-overview-cards observe-empty-state">'
             "<p class=\"observe-empty\">No data found for the selected filters.</p></div>"
@@ -827,19 +961,48 @@ def render_overview_cards(
     cards = []
     for metric in metrics:
         title = str(metric.get("title", ""))
+        unit = str(metric.get("unit", ""))
         if "value_html" in metric:
             value_html = metric["value_html"]
         else:
-            value_html = _render_maybe_missing(metric.get("value"), suffix=str(metric.get("unit", "")))
+            value_html = _render_maybe_missing(metric.get("value"), suffix=unit)
         cards.append(
             _render_metric_card(
                 title,
                 value_html,
                 source=metric.get("source"),
                 refreshed_at=metric.get("refreshed_at"),
+                tone=metric.get("tone"),
+                delta=metric.get("delta"),
+                caption=metric.get("caption"),
+                series=metric.get("series"),
+                unit=unit,
             )
         )
-    return f'{banner}<div class="observe-overview-cards">{"".join(cards)}</div>'
+    cards_html = (
+        f'<div class="observe-overview-cards">{"".join(cards)}</div>' if cards else ""
+    )
+    trends_html = ""
+    if trends:
+        charts = []
+        for trend in trends:
+            charts.append(
+                '<div class="observe-trend-tile">'
+                + render_trend_chart(
+                    str(trend.get("title", "")),
+                    trend.get("series", ()),
+                    unit=str(trend.get("unit", "")),
+                )
+                + "</div>"
+            )
+        trends_html = (
+            '<section class="observe-overview-trends" '
+            'aria-label="Operational trends">'
+            '<h3 class="observe-overview-trends-title aos-section-title">Trends</h3>'
+            f'<div class="observe-trend-grid">{"".join(charts)}</div>'
+            "</section>"
+        )
+    return f'{banner}{cards_html}{trends_html}'
 
 
 # ---------------------------------------------------------------------------
@@ -2313,45 +2476,38 @@ def render_trace_detail_shell(
 # Styles (T052: responsive light/dark, non-color distinction)
 # ---------------------------------------------------------------------------
 
-_OBSERVE_STYLES = """
-:root {
-  --observe-bg: #ffffff;
-  --observe-fg: #14181f;
-  --observe-muted: #5b6270;
-  --observe-border: #d8dce3;
-  --observe-card-bg: #f6f7fa;
-  --observe-accent: #2f6fed;
-  --observe-ok: #1a7f37;
-  --observe-warn: #9a6700;
-  --observe-crit: #cf222e;
-  --observe-series-1: #2f6fed;
-  --observe-series-2: #9a6700;
-  --observe-series-3: #1a7f37;
-  --observe-series-4: #8250df;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --observe-bg: #0d1117;
-    --observe-fg: #e6edf3;
-    --observe-muted: #9198a1;
-    --observe-border: #30363d;
-    --observe-card-bg: #161b22;
-    --observe-accent: #6ea8fe;
-    --observe-ok: #3fb950;
-    --observe-warn: #d29922;
-    --observe-crit: #f85149;
-    --observe-series-1: #6ea8fe;
-    --observe-series-2: #d29922;
-    --observe-series-3: #3fb950;
-    --observe-series-4: #bc8cff;
-  }
-}
-
+_OBSERVE_COMPONENT_CSS = """
+/*
+ * Observe component styles. All theming flows from the canonical AgentOps
+ * tokens (see agentops.agent.ui_theme). The legacy per-component
+ * ``--observe-*`` custom properties are mapped onto those tokens on
+ * ``.observe-root`` so every existing rule themes correctly in both the dark
+ * (default) and explicit light themes -- there is deliberately no
+ * OS-preference media query that could drift from the Cockpit.
+ */
 .observe-root {
-  background: var(--observe-bg);
-  color: var(--observe-fg);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  --observe-bg: var(--bg);
+  --observe-fg: var(--text);
+  --observe-muted: var(--text-dim);
+  --observe-faint: var(--text-faint);
+  --observe-border: var(--border);
+  --observe-border-strong: var(--border-strong);
+  --observe-card-bg: var(--card);
+  --observe-card-hi: var(--card-hi);
+  --observe-accent: var(--info);
+  --observe-ok: var(--ok);
+  --observe-warn: var(--warn);
+  --observe-crit: var(--crit);
+  --observe-series-1: var(--info);
+  --observe-series-2: var(--warn);
+  --observe-series-3: var(--ok);
+  --observe-series-4: #bc8cff;
 }
 
 .visually-hidden {
@@ -2364,54 +2520,349 @@ _OBSERVE_STYLES = """
   border: 0;
 }
 
-.observe-nav-list { display: flex; gap: 1rem; list-style: none; padding: 0; }
-.observe-nav-link[aria-current="page"] { font-weight: 700; text-decoration: underline; }
+/* --- Navigation ---------------------------------------------------------- */
+.observe-nav {
+  margin: 4px 0 22px;
+  border-bottom: 1px solid var(--observe-border);
+}
+.observe-nav-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.observe-nav-link {
+  display: inline-block;
+  padding: 8px 14px;
+  color: var(--observe-muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.observe-nav-link:hover { color: var(--observe-fg); }
+.observe-nav-link[aria-current="page"] {
+  color: var(--observe-fg);
+  border-bottom-color: var(--observe-accent);
+  text-decoration: none;
+}
+.observe-nav-link:focus-visible {
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
-.observe-filter-bar { border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; }
-.observe-filter-fields { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.observe-filter-fields label { display: flex; flex-direction: column; font-size: 0.85rem; gap: 0.25rem; }
-.observe-filter-actions { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; }
-.observe-cost-filter-bar { border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-.observe-attribution-filter-bar { border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
-.observe-attribution-summary { background: var(--observe-card-bg); border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+/* --- Filters (compact, subordinate to the summary) ----------------------- */
+.observe-filter-bar,
+.observe-cost-filter-bar,
+.observe-attribution-filter-bar {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.observe-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 12px;
+}
+.observe-filter-fields label {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--observe-faint);
+  gap: 4px;
+}
+.observe-filter-fields input {
+  font: inherit;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  color: var(--observe-fg);
+  background: var(--bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+.observe-filter-fields input:focus-visible {
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 1px;
+  border-color: var(--observe-accent);
+}
+.observe-filter-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.observe-apply-button,
+.observe-refresh-button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--observe-border);
+  background: var(--observe-card-bg);
+  color: var(--observe-fg);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.observe-apply-button {
+  background: color-mix(in srgb, var(--observe-accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--observe-accent) 42%, transparent);
+  color: var(--observe-accent);
+}
+.observe-apply-button:hover {
+  background: color-mix(in srgb, var(--observe-accent) 26%, transparent);
+}
+.observe-refresh-button:hover { border-color: var(--observe-border-strong); }
+.observe-apply-button:focus-visible,
+.observe-refresh-button:focus-visible {
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
+.observe-refresh-status { color: var(--observe-muted); font-size: 12px; }
+.observe-scope { margin: 0 0 10px; font-size: 12px; color: var(--observe-muted); }
+
+.observe-attribution-summary {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
 .observe-attribution-summary-columns, .observe-attribution-usage { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
 .observe-attribution-usage div { min-width: 8rem; }
-.observe-attribution-usage dt { font-weight: 600; }
+.observe-attribution-usage dt { font-weight: 600; color: var(--observe-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
 .observe-attribution-usage dd { margin: 0; }
 .observe-cost-period, .observe-cost-precision-notes { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
 .observe-cost-period div { display: flex; gap: 0.35rem; }
 .observe-cost-period dt { font-weight: 600; }
 .observe-cost-period dd { margin: 0; }
-.observe-cost-disclaimer { border-left: 4px solid var(--observe-warn); padding: 0.75rem; color: var(--observe-muted); }
+.observe-cost-disclaimer { border-left: 3px solid var(--observe-warn); padding: 0.75rem; color: var(--observe-muted); background: color-mix(in srgb, var(--observe-warn) 8%, transparent); border-radius: 0 8px 8px 0; }
 .observe-cost-view table { margin-bottom: 1rem; }
 
-.observe-overview-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; }
-.observe-card { background: var(--observe-card-bg); border: 1px solid var(--observe-border); border-radius: 8px; padding: 1rem; }
-.observe-card-value { font-size: 1.5rem; font-weight: 600; }
+/* --- Overview KPI cards -------------------------------------------------- */
+.observe-overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.observe-card {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.observe-card:hover { border-color: var(--observe-border-strong); }
+.observe-metric-card { display: flex; flex-direction: column; gap: 6px; position: relative; }
+.observe-card-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--observe-faint);
+}
+.observe-card-value {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--observe-fg);
+}
+.observe-metric-card.observe-tone-ok .observe-card-value { color: var(--observe-ok); }
+.observe-metric-card.observe-tone-warn .observe-card-value { color: var(--observe-warn); }
+.observe-metric-card.observe-tone-crit .observe-card-value { color: var(--observe-crit); }
+.observe-card-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.observe-card-delta-label { color: var(--observe-muted); font-weight: 500; }
+.observe-card-caption { margin: 0; font-size: 12px; color: var(--observe-muted); }
+.observe-card-spark { margin-top: 4px; }
+.observe-card-spark .observe-chart { margin: 0; }
+.observe-card-spark figcaption { display: none; }
+.observe-card-spark .observe-chart-legend { display: none; }
+.observe-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--observe-faint);
+}
 
-table { border-collapse: collapse; width: 100%; }
-th, td { border-bottom: 1px solid var(--observe-border); padding: 0.5rem; text-align: left; }
+/* --- Trends ------------------------------------------------------------- */
+.observe-overview-trends { margin-top: 26px; }
+.observe-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.observe-trend-tile {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
 
-.observe-badge { border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.8rem; border: 1px solid currentColor; }
+/* --- Tables (drill-down views) ------------------------------------------ */
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+caption { text-align: left; }
+th, td {
+  border-bottom: 1px solid var(--observe-border);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+thead th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--observe-faint);
+  border-bottom: 1px solid var(--observe-border-strong);
+  position: sticky;
+  top: 0;
+  background: var(--observe-bg);
+}
+tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
+
+/* --- Badges & tones ----------------------------------------------------- */
+.observe-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  border: 1px solid currentColor;
+}
 .observe-tone-ok { color: var(--observe-ok); }
 .observe-tone-warn { color: var(--observe-warn); }
 .observe-tone-crit { color: var(--observe-crit); }
+.observe-tone-info { color: var(--observe-accent); }
 .observe-tone-muted { color: var(--observe-muted); }
 
 .metric-missing { color: var(--observe-muted); font-style: italic; }
 .metric-zero { color: var(--observe-fg); }
 
+/* --- Charts ------------------------------------------------------------- */
+.observe-chart { margin: 0 0 8px; }
+.observe-chart figcaption {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--observe-faint);
+  margin-bottom: 6px;
+}
 .observe-chart-svg { width: 100%; height: auto; display: block; }
-.observe-chart-grid { stroke: var(--observe-border); stroke-opacity: 0.5; }
-.observe-chart-marker { font-size: 10px; }
-.observe-chart-legend { display: flex; flex-wrap: wrap; gap: 0.75rem; list-style: none; padding: 0; font-size: 0.85rem; }
+.observe-chart-grid { stroke: var(--observe-border); stroke-opacity: 0.6; stroke-width: 1; }
+.observe-chart-line { stroke-linejoin: round; stroke-linecap: round; }
+.observe-chart-marker { font-size: 9px; }
+.observe-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--observe-muted);
+}
+.observe-chart-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.observe-chart-legend-marker { font-size: 11px; }
+.observe-chart-empty { color: var(--observe-muted); }
 
-.observe-partial-notice { color: var(--observe-warn); font-weight: 600; }
+/* --- Notices ------------------------------------------------------------ */
+.observe-partial-notice {
+  color: var(--observe-warn);
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--observe-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--observe-warn) 8%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
 .observe-protected-notice { color: var(--observe-muted); }
 .observe-empty { color: var(--observe-muted); }
+.observe-empty-state {
+  border: 1px dashed var(--observe-border-strong);
+  border-radius: 14px;
+  padding: 28px 20px;
+  text-align: center;
+}
+.observe-hint { color: var(--observe-muted); font-size: 12px; }
 
-.observe-hint { color: var(--observe-muted); font-size: 0.8rem; }
+/* --- Intentional states ------------------------------------------------- */
+.observe-state {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-left-width: 3px;
+  border-left-color: var(--observe-border-strong);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 8px 0 16px;
+}
+.observe-state.observe-tone-info { border-left-color: var(--observe-accent); }
+.observe-state.observe-tone-warn { border-left-color: var(--observe-warn); }
+.observe-state.observe-tone-crit { border-left-color: var(--observe-crit); }
+.observe-state.observe-tone-muted { border-left-color: var(--observe-border-strong); }
+.observe-state-icon { font-size: 20px; line-height: 1.2; color: currentColor; }
+.observe-state.observe-tone-info .observe-state-icon { color: var(--observe-accent); }
+.observe-state.observe-tone-warn .observe-state-icon { color: var(--observe-warn); }
+.observe-state.observe-tone-crit .observe-state-icon { color: var(--observe-crit); }
+.observe-state.observe-tone-muted .observe-state-icon { color: var(--observe-muted); }
+.observe-state-body { flex: 1; min-width: 0; }
+.observe-state-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--observe-fg); }
+.observe-state-message { margin: 0; font-size: 13px; color: var(--observe-muted); }
+.observe-state-detail { margin: 6px 0 0; font-size: 12px; color: var(--observe-faint); }
+.observe-state-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+.observe-state-loading .observe-state-icon { animation: observe-pulse 1.4s ease-in-out infinite; }
+
+@keyframes observe-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .observe-card, .observe-nav-link, .observe-apply-button, .observe-refresh-button { transition: none; }
+  .observe-state-loading .observe-state-icon { animation: none; }
+}
 """.strip()
+
+
+_OBSERVE_STYLES = "\n\n".join(
+    (
+        ui_theme.render_theme_variables(default_theme="dark"),
+        ui_theme.SHARED_SHELL_CSS.strip(),
+        _OBSERVE_COMPONENT_CSS,
+    )
+).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -4538,6 +4989,26 @@ _OBSERVE_SCRIPT = """
     });
   }
 
+  function setupThemeToggle() {
+    var toggle = document.querySelector("[data-observe-theme-toggle]");
+    if (!toggle) return;
+    var root = document.documentElement;
+    function apply(theme) {
+      root.setAttribute("data-theme", theme);
+      var isLight = theme === "light";
+      toggle.setAttribute("aria-pressed", isLight ? "true" : "false");
+      var icon = toggle.querySelector("[data-observe-theme-icon]");
+      if (icon) icon.textContent = isLight ? "\u2600" : "\u263D";
+      var label = toggle.querySelector("[data-observe-theme-label]");
+      if (label) label.textContent = isLight ? "Light" : "Dark";
+    }
+    // In-memory only: never persisted to storage or cookies.
+    apply(root.getAttribute("data-theme") === "light" ? "light" : "dark");
+    toggle.addEventListener("click", function () {
+      apply(root.getAttribute("data-theme") === "light" ? "dark" : "light");
+    });
+  }
+
   function init() {
     appliedFilters = readAppliedFromUrl();
     var form = document.getElementById("observe-filter-form");
@@ -4658,6 +5129,7 @@ _OBSERVE_SCRIPT = """
         fetchObserveData(false);
       });
     });
+    setupThemeToggle();
     syncUrl();
     scheduleAutoRefresh();
   }
@@ -4705,6 +5177,7 @@ def render_observe_page(
     attribution_coverage: Sequence[Any] = (),
     attribution_partial_failures: Sequence[Any] = (),
     attribution_bounds: Any = None,
+    overview_trends: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     """Assemble the full Observe HTML document.
 
@@ -4723,7 +5196,9 @@ def render_observe_page(
         attribution_enabled=attribution_enabled,
     )
     filters = render_filter_bar(scope_label)
-    overview = render_overview_cards(overview_metrics, diagnostics=diagnostics)
+    overview = render_overview_cards(
+        overview_metrics, diagnostics=diagnostics, trends=overview_trends
+    )
     agents_html = render_agents_table(agents, diagnostics=diagnostics)
     usage_html = render_models_usage_table(usage, diagnostics=diagnostics)
     tools_html = render_tools_table(tools, diagnostics=diagnostics, bounds=tools_bounds)
@@ -4778,8 +5253,25 @@ def render_observe_page(
     <div id="departments-content" data-observe-view-content="departments">{attribution_html}</div>
   </section>"""
 
+    scope_subtitle = html_escape(scope_label) if scope_label else "Runtime observability"
+    header_html = f"""  <header class="aos-header observe-header">
+    <div class="aos-brand-block">
+      <h1 class="aos-brand observe-brand">AgentOps Observe</h1>
+      <p class="aos-subtitle observe-subtitle">{scope_subtitle}</p>
+    </div>
+    <div class="aos-header-actions observe-header-actions">
+      <a class="aos-link observe-cockpit-link" href="/" data-observe-cockpit-link>&#8592; Cockpit</a>
+      <button type="button" id="observe-theme-toggle" class="aos-theme-toggle observe-theme-toggle"
+        aria-pressed="false" aria-label="Toggle dark and light theme" title="Toggle theme"
+        data-observe-theme-toggle>
+        <span class="aos-theme-icon" aria-hidden="true" data-observe-theme-icon>&#9789;</span>
+        <span class="observe-theme-label" data-observe-theme-label>Theme</span>
+      </button>
+    </div>
+  </header>"""
+
     return f"""<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -4793,8 +5285,8 @@ def render_observe_page(
     Static data below reflects the last server-rendered snapshot.
   </p>
 </noscript>
-<main id="observe-app" data-observe-active-view="{html_escape(effective_active_view)}">
-  <h1>AgentOps Observe</h1>
+<main id="observe-app" class="aos-app observe-app" data-observe-active-view="{html_escape(effective_active_view)}">
+{header_html}
   {nav}
   {filters}
   <section id="overview" aria-labelledby="overview-heading">

@@ -26,16 +26,16 @@ AgentOps Accelerator helps Microsoft Foundry agent teams evaluate quality, prepa
 ## Get started
 
 ```powershell
-python -m pip install "agentops-accelerator[agent]"
+python -m pip install "agentops-accelerator[cockpit]"
 agentops init
 ```
 
-Use the `[agent]` option when you want Cockpit, either locally or hosted on Azure.
+Use the `[cockpit]` option when you want Cockpit, either locally or hosted on Azure.
 
 To install a specific release directly from GitHub:
 
 ```powershell
-python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
+python -m pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
 ```
 
 Replace `vX.Y.Z` with the desired release tag.
@@ -119,7 +119,7 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 
 ## Commands
 
-Install optional extras as needed: `[agent]` for Doctor/Cockpit and `[mcp]` for MCP.
+Install optional extras as needed: `[cockpit]` for Doctor/Cockpit and `[mcp]` for MCP.
 
 - `agentops --version` - show installed version.
 - `agentops init` - bootstrap config and seed data.
@@ -138,7 +138,6 @@ Install optional extras as needed: `[agent]` for Doctor/Cockpit and `[mcp]` for 
 - `agentops doctor [--evidence-pack]` - run readiness checks.
 - `agentops cockpit` - open the local Cockpit.
 - `agentops cockpit deploy` - preview or deploy the authenticated hosted Cockpit.
-- `agentops agent serve` - serve Doctor as a Copilot Extension.
 
 ## AgentOps Cockpit
 

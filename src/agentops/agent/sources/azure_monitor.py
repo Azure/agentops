@@ -156,7 +156,7 @@ def collect_azure_monitor(
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
             "azure-monitor-query / azure-identity not installed "
-            "(install agentops-accelerator[agent])"
+            "(install agentops-accelerator[cockpit])"
         )
         log.info("azure-monitor-query unavailable: %s", exc)
         return AzureMonitorPayload(diagnostics=diagnostics)
@@ -400,7 +400,7 @@ def _collect_application_insights_by_app_id(
         bearer = _acquire_application_insights_token()
     except ImportError as exc:
         diagnostics["status"] = "skipped"
-        diagnostics["reason"] = "azure-identity not installed (install agentops-accelerator[agent])"
+        diagnostics["reason"] = "azure-identity not installed (install agentops-accelerator[cockpit])"
         log.info("azure-identity unavailable: %s", exc)
         return AzureMonitorPayload(diagnostics=diagnostics)
     except Exception as exc:  # pragma: no cover - network / auth errors

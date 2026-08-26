@@ -212,7 +212,7 @@ install AgentOps, and install the Copilot skills:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[agent]"
+python -m pip install "agentops-accelerator[cockpit]"
 agentops --version
 agentops skills install
 ```

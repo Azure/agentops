@@ -57,7 +57,6 @@ Public CLI contract:
 - `agentops telemetry dashboard deploy [--dry-run] [--subscription ID] [--resource-group RG] [--workspace-id ID] [--name NAME] [--dir PATH]`
 - `agentops telemetry dashboard open [--print-url] [--subscription ID] [--resource-group RG] [--name NAME] [--dir PATH]`
 - `agentops telemetry dashboard export [--out PATH]`
-- `agentops agent serve [--host HOST] [--port PORT] [--config PATH] [--no-verify] [--workers N]`
 
 Exit code contract:
 - `0` = execution succeeded and all thresholds passed
@@ -131,7 +130,7 @@ src/
     ├── cli/
     │   └── app.py                     # Typer CLI entry points (init, eval, report,
     │                                   #  workflow, skills, mcp, doctor, cockpit,
-    │                                   #  agent serve, explain)
+    │                                   #  explain)
     │
     ├── core/
 │   ├── agentops_config.py         # Flat 1.0 `agentops.yaml` Pydantic model
@@ -197,11 +196,7 @@ src/
         ├── skills/                    # Coding-agent skill templates
         ├── workflows/                 # GitHub Actions templates (PR + 3 deploys
         │                              #  + scheduled Doctor)
-        ├── pipelines/                 # Azure DevOps pipeline templates
-        └── agent-server/              # Doctor-as-Copilot-Extension deploy scaffold
-            ├── Dockerfile
-            ├── main.bicep
-            └── README.md
+        └── pipelines/                 # Azure DevOps pipeline templates
 ```
 
 ### Tests

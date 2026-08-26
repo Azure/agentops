@@ -5,6 +5,29 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Removed
+- **The `agentops agent` command group.** Both `agent serve` (the GitHub
+  App-based Copilot Extension server) and `agent register` (Entra Agent ID
+  registration) are removed, along with their `explain` pages. GitHub sunset
+  GitHub App-based Copilot Extensions in November 2025, and Entra Agent ID
+  registration now belongs to the Agent 365 CLI. Use `agentops cockpit` for the
+  read-only Cockpit UI and `agentops mcp serve` to expose AgentOps to code
+  agents.
+- **The Copilot Extension server package** (`agentops.agent.server`), including
+  its request/response protocol and webhook signature validation.
+- **Entra Agent ID registration.** The `agent_identity` registration service,
+  the `agent_identity.*` Doctor checks and their `graph` data source, the
+  `identity:` block in `agentops.yaml` (`AgentIdentityConfig`), the
+  `.agentops/identity/agent-identity.json` local record, agent-identity
+  telemetry attributes, and the agent-identity fields in release evidence.
+- **The `agent-server/` deploy scaffold** template and its packaged assets.
+
+### Changed
+- **Renamed the `[agent]` packaging extra to `[cockpit]` with no compatibility
+  alias.** Install Doctor and Cockpit dependencies with
+  `agentops-accelerator[cockpit]`. All docs, README, workflow and pipeline
+  templates, skills, and plugin docs now reference `[cockpit]`.
+
 ## [0.13.0] - 2026-08-25
 
 ### Added

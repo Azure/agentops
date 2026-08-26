@@ -1,0 +1,533 @@
+:root {
+  color-scheme: dark;
+  --bg: #08090b;
+  --bg-grad: radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.06), transparent 60%);
+  --card: #161618;
+  --card-hi: #1c1c1f;
+  --border: rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --text: #fafafa;
+  --text-dim: #a1a1aa;
+  --text-faint: #71717a;
+  --ok: #4ade80;
+  --info: #38bdf8;
+  --warn: #fbbf24;
+  --crit: #f87171;
+  --muted: #71717a;
+  --accent: #38bdf8;
+  --fg: #fafafa;
+}
+
+:root[data-theme="light"], [data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --bg-grad: radial-gradient(1200px 600px at 80% -10%, rgba(9, 105, 218, 0.05), transparent 60%);
+  --card: #f6f8fa;
+  --card-hi: #ffffff;
+  --border: rgba(15, 23, 42, 0.10);
+  --border-strong: rgba(15, 23, 42, 0.20);
+  --text: #0d1117;
+  --text-dim: #57606a;
+  --text-faint: #6e7781;
+  --ok: #1a7f37;
+  --info: #0969da;
+  --warn: #9a6700;
+  --crit: #cf222e;
+  --muted: #6e7781;
+  --accent: #0969da;
+  --fg: #0d1117;
+}
+
+* { box-sizing: border-box; }
+
+.aos-app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 28px 32px 48px;
+  background: var(--bg) var(--bg-grad) no-repeat;
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.aos-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.aos-brand { display: flex; align-items: center; gap: 14px; }
+.aos-brand h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.aos-subtitle {
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+  margin-top: 2px;
+}
+.aos-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.aos-section-title {
+  margin: 30px 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-faint);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.aos-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 16px 18px;
+  color: var(--text);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.aos-card:hover { border-color: var(--border-strong); }
+
+.aos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.aos-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.aos-btn:hover {
+  border-color: var(--border-strong);
+  background: var(--card-hi);
+}
+.aos-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.aos-btn-primary {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  color: var(--accent);
+}
+.aos-btn-primary:hover {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.aos-link {
+  color: var(--info);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 13px;
+}
+.aos-link:hover { text-decoration: underline; }
+
+.aos-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.aos-theme-toggle .aos-theme-icon { font-size: 14px; line-height: 1; }
+
+/*
+ * Observe component styles. All theming flows from the canonical AgentOps
+ * tokens (see agentops.agent.ui_theme). The legacy per-component
+ * ``--observe-*`` custom properties are mapped onto those tokens on
+ * ``.observe-root`` so every existing rule themes correctly in both the dark
+ * (default) and explicit light themes -- there is deliberately no
+ * OS-preference media query that could drift from the Cockpit.
+ */
+.observe-root {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  --observe-bg: var(--bg);
+  --observe-fg: var(--text);
+  --observe-muted: var(--text-dim);
+  --observe-faint: var(--text-faint);
+  --observe-border: var(--border);
+  --observe-border-strong: var(--border-strong);
+  --observe-card-bg: var(--card);
+  --observe-card-hi: var(--card-hi);
+  --observe-accent: var(--info);
+  --observe-ok: var(--ok);
+  --observe-warn: var(--warn);
+  --observe-crit: var(--crit);
+  --observe-series-1: var(--info);
+  --observe-series-2: var(--warn);
+  --observe-series-3: var(--ok);
+  --observe-series-4: #bc8cff;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Navigation ---------------------------------------------------------- */
+.observe-nav {
+  margin: 4px 0 22px;
+  border-bottom: 1px solid var(--observe-border);
+}
+.observe-nav-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.observe-nav-link {
+  display: inline-block;
+  padding: 8px 14px;
+  color: var(--observe-muted);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.observe-nav-link:hover { color: var(--observe-fg); }
+.observe-nav-link[aria-current="page"] {
+  color: var(--observe-fg);
+  border-bottom-color: var(--observe-accent);
+  text-decoration: none;
+}
+.observe-nav-link:focus-visible {
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* --- Filters (compact, subordinate to the summary) ----------------------- */
+.observe-filter-bar,
+.observe-cost-filter-bar,
+.observe-attribution-filter-bar {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+}
+.observe-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 12px;
+}
+.observe-filter-fields label {
+  display: flex;
+  flex-direction: column;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--observe-faint);
+  gap: 4px;
+}
+.observe-filter-fields input {
+  font: inherit;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  color: var(--observe-fg);
+  background: var(--bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+.observe-filter-fields input:focus-visible {
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 1px;
+  border-color: var(--observe-accent);
+}
+.observe-filter-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+.observe-apply-button,
+.observe-refresh-button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--observe-border);
+  background: var(--observe-card-bg);
+  color: var(--observe-fg);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.observe-apply-button {
+  background: color-mix(in srgb, var(--observe-accent) 16%, transparent);
+  border-color: color-mix(in srgb, var(--observe-accent) 42%, transparent);
+  color: var(--observe-accent);
+}
+.observe-apply-button:hover {
+  background: color-mix(in srgb, var(--observe-accent) 26%, transparent);
+}
+.observe-refresh-button:hover { border-color: var(--observe-border-strong); }
+.observe-apply-button:focus-visible,
+.observe-refresh-button:focus-visible {
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
+.observe-refresh-status { color: var(--observe-muted); font-size: 12px; }
+.observe-scope { margin: 0 0 10px; font-size: 12px; color: var(--observe-muted); }
+
+.observe-attribution-summary {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.observe-attribution-summary-columns, .observe-attribution-usage { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
+.observe-attribution-usage div { min-width: 8rem; }
+.observe-attribution-usage dt { font-weight: 600; color: var(--observe-faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.observe-attribution-usage dd { margin: 0; }
+.observe-cost-period, .observe-cost-precision-notes { display: flex; flex-wrap: wrap; gap: 0.75rem 1.5rem; }
+.observe-cost-period div { display: flex; gap: 0.35rem; }
+.observe-cost-period dt { font-weight: 600; }
+.observe-cost-period dd { margin: 0; }
+.observe-cost-disclaimer { border-left: 3px solid var(--observe-warn); padding: 0.75rem; color: var(--observe-muted); background: color-mix(in srgb, var(--observe-warn) 8%, transparent); border-radius: 0 8px 8px 0; }
+.observe-cost-view table { margin-bottom: 1rem; }
+
+/* --- Overview KPI cards -------------------------------------------------- */
+.observe-overview-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.observe-card {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.observe-card:hover { border-color: var(--observe-border-strong); }
+.observe-metric-card { display: flex; flex-direction: column; gap: 6px; position: relative; }
+.observe-card-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--observe-faint);
+}
+.observe-card-value {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--observe-fg);
+}
+.observe-metric-card.observe-tone-ok .observe-card-value { color: var(--observe-ok); }
+.observe-metric-card.observe-tone-warn .observe-card-value { color: var(--observe-warn); }
+.observe-metric-card.observe-tone-crit .observe-card-value { color: var(--observe-crit); }
+.observe-card-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.observe-card-delta-label { color: var(--observe-muted); font-weight: 500; }
+.observe-card-caption { margin: 0; font-size: 12px; color: var(--observe-muted); }
+.observe-card-spark { margin-top: 4px; }
+.observe-card-spark .observe-chart { margin: 0; }
+.observe-card-spark figcaption { display: none; }
+.observe-card-spark .observe-chart-legend { display: none; }
+.observe-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--observe-faint);
+}
+
+/* --- Trends ------------------------------------------------------------- */
+.observe-overview-trends { margin-top: 26px; }
+.observe-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+}
+.observe-trend-tile {
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+
+/* --- Tables (drill-down views) ------------------------------------------ */
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+caption { text-align: left; }
+th, td {
+  border-bottom: 1px solid var(--observe-border);
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+thead th {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--observe-faint);
+  border-bottom: 1px solid var(--observe-border-strong);
+  position: sticky;
+  top: 0;
+  background: var(--observe-bg);
+}
+tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
+
+/* --- Badges & tones ----------------------------------------------------- */
+.observe-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  border: 1px solid currentColor;
+}
+.observe-tone-ok { color: var(--observe-ok); }
+.observe-tone-warn { color: var(--observe-warn); }
+.observe-tone-crit { color: var(--observe-crit); }
+.observe-tone-info { color: var(--observe-accent); }
+.observe-tone-muted { color: var(--observe-muted); }
+
+.metric-missing { color: var(--observe-muted); font-style: italic; }
+.metric-zero { color: var(--observe-fg); }
+
+/* --- Charts ------------------------------------------------------------- */
+.observe-chart { margin: 0 0 8px; }
+.observe-chart figcaption {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--observe-faint);
+  margin-bottom: 6px;
+}
+.observe-chart-svg { width: 100%; height: auto; display: block; }
+.observe-chart-grid { stroke: var(--observe-border); stroke-opacity: 0.6; stroke-width: 1; }
+.observe-chart-line { stroke-linejoin: round; stroke-linecap: round; }
+.observe-chart-marker { font-size: 9px; }
+.observe-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--observe-muted);
+}
+.observe-chart-legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.observe-chart-legend-marker { font-size: 11px; }
+.observe-chart-empty { color: var(--observe-muted); }
+
+/* --- Notices ------------------------------------------------------------ */
+.observe-partial-notice {
+  color: var(--observe-warn);
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--observe-warn) 40%, transparent);
+  background: color-mix(in srgb, var(--observe-warn) 8%, transparent);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.observe-protected-notice { color: var(--observe-muted); }
+.observe-empty { color: var(--observe-muted); }
+.observe-empty-state {
+  border: 1px dashed var(--observe-border-strong);
+  border-radius: 14px;
+  padding: 28px 20px;
+  text-align: center;
+}
+.observe-hint { color: var(--observe-muted); font-size: 12px; }
+
+/* --- Intentional states ------------------------------------------------- */
+.observe-state {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-left-width: 3px;
+  border-left-color: var(--observe-border-strong);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 8px 0 16px;
+}
+.observe-state.observe-tone-info { border-left-color: var(--observe-accent); }
+.observe-state.observe-tone-warn { border-left-color: var(--observe-warn); }
+.observe-state.observe-tone-crit { border-left-color: var(--observe-crit); }
+.observe-state.observe-tone-muted { border-left-color: var(--observe-border-strong); }
+.observe-state-icon { font-size: 20px; line-height: 1.2; color: currentColor; }
+.observe-state.observe-tone-info .observe-state-icon { color: var(--observe-accent); }
+.observe-state.observe-tone-warn .observe-state-icon { color: var(--observe-warn); }
+.observe-state.observe-tone-crit .observe-state-icon { color: var(--observe-crit); }
+.observe-state.observe-tone-muted .observe-state-icon { color: var(--observe-muted); }
+.observe-state-body { flex: 1; min-width: 0; }
+.observe-state-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--observe-fg); }
+.observe-state-message { margin: 0; font-size: 13px; color: var(--observe-muted); }
+.observe-state-detail { margin: 6px 0 0; font-size: 12px; color: var(--observe-faint); }
+.observe-state-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+.observe-state-loading .observe-state-icon { animation: observe-pulse 1.4s ease-in-out infinite; }
+
+@keyframes observe-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .observe-card, .observe-nav-link, .observe-apply-button, .observe-refresh-button { transition: none; }
+  .observe-state-loading .observe-state-icon { animation: none; }
+}

@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TypeVar
 
 from agentops.agent.checks.errors import run_errors_check
 from agentops.agent.checks.foundry_config import run_foundry_config_check
-from agentops.agent.checks.agent_identity import run_agent_identity_check
 from agentops.agent.checks.governance import run_governance_check
 from agentops.agent.checks.latency import run_latency_check
 from agentops.agent.checks.observability import run_observability_check
@@ -152,7 +151,6 @@ def analyze(
     findings.extend(run_rbac_openai_data_plane_check(resources))
     findings.extend(run_opex_workspace_check(workspace))
     findings.extend(run_governance_check(workspace))
-    findings.extend(run_agent_identity_check(workspace))
     findings.extend(run_observability_check(workspace))
     findings.extend(run_opex_check(history, config.checks.opex))
     findings.extend(run_release_readiness_check(workspace, history, foundry))

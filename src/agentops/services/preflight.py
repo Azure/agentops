@@ -1,5 +1,4 @@
-"""Pre-flight checks shared by `agentops doctor`, `agentops cockpit`,
-and `agentops agent serve`.
+"""Pre-flight checks shared by `agentops doctor` and `agentops cockpit`.
 
 Goal: surface every reason the agent might silently misbehave *before*
 the user waits ~20 seconds for the first cockpit render or the first
@@ -126,7 +125,7 @@ def _check_azure_cli() -> PreflightCheck:
             display_name="Azure authentication",
             status="skip",
             message="azure-identity SDK not installed.",
-            remediation="Install the agent extra: pip install agentops-accelerator[agent].",
+            remediation="Install the cockpit extra: pip install agentops-accelerator[cockpit].",
             duration_seconds=time.time() - started,
         )
     try:
@@ -314,7 +313,7 @@ def _check_application_insights_env() -> PreflightCheck:
 # ---------------------------------------------------------------------------
 
 
-_Scope = Literal["doctor", "cockpit", "agent_serve"]
+_Scope = Literal["doctor", "cockpit"]
 
 
 def run_preflight(

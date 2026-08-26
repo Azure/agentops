@@ -418,7 +418,7 @@ def collect_azure_resources(
     except ImportError as exc:
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
-            "azure-identity is not installed (install agentops-accelerator[agent])"
+            "azure-identity is not installed (install agentops-accelerator[cockpit])"
         )
         log.info("azure-identity unavailable: %s", exc)
         return AzureResourcesPayload(diagnostics=diagnostics)
@@ -435,7 +435,7 @@ def collect_azure_resources(
             diagnostics["status"] = "skipped"
             diagnostics["reason"] = (
                 "azure-mgmt-cognitiveservices / azure-mgmt-monitor not installed "
-                "(install agentops-accelerator[agent])"
+                "(install agentops-accelerator[cockpit])"
             )
             log.info("azure-mgmt-* unavailable: %s", exc)
             return payload

@@ -2429,9 +2429,19 @@ def test_generated_html_never_contains_raw_content_field_names_outside_trace_det
         assert field not in html
 
 
-def test_styles_support_light_and_dark_via_prefers_color_scheme() -> None:
+def test_styles_use_explicit_themes_not_prefers_color_scheme() -> None:
+    """Observe must theme explicitly (via ``data-theme``) so it never drifts
+    from the Cockpit through an independent OS-preference media query."""
     styles = ui._OBSERVE_STYLES
-    assert "@media (prefers-color-scheme: dark)" in styles
+    # No bare OS-preference block that could diverge from Cockpit's dark theme.
+    assert "prefers-color-scheme" not in styles
+    # Explicit, deliberate light + dark themes keyed off ``data-theme``.
+    assert '[data-theme="light"]' in styles
+    assert "color-scheme: dark" in styles
+    # Canonical shared design tokens are present (theme parity with ui_theme).
+    for token in ("--bg", "--card", "--text", "--border", "--info", "--ok", "--warn", "--crit"):
+        assert f"{token}:" in styles
+    # Observe series palette still exposed for the trend charts.
     assert "--observe-series-1" in styles
 
 

@@ -245,7 +245,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
     generate_cicd_workflows(directory=tmp_path, kinds=["doctor"])
 
     content = (tmp_path / _DOCTOR_PATH).read_text(encoding="utf-8")
-    assert 'agentops-accelerator[agent]' in content
+    assert 'agentops-accelerator[cockpit]' in content
     assert "--evidence-pack" in content
     assert ".agentops/release/latest/evidence.md" in content
     assert "watchdog" not in content.lower()
@@ -263,7 +263,7 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
         force=True,
     )
     ado_content = (tmp_path / _ADO_DOCTOR).read_text(encoding="utf-8")
-    assert 'agentops-accelerator[agent]' in ado_content
+    assert 'agentops-accelerator[cockpit]' in ado_content
     assert "--evidence-pack" in ado_content
     assert "agentops-doctor-release-evidence" in ado_content
     assert "watchdog" not in ado_content.lower()

@@ -43,7 +43,6 @@ The Doctor reaches Azure through six sources, all configured in
 | `azure_monitor` | Application Insights / Log Analytics via REST (KQL) |
 | `foundry_control` | Foundry project / agents / evaluation rules via `azure-ai-projects` |
 | `azure_resources` | Cognitive Services account properties via `azure-mgmt-cognitiveservices`; inferred from explicit config, AZD `.azure/<env>/.env` when present, or Foundry endpoint/account matching |
-| `graph` | Microsoft Entra agent identity blueprints via Microsoft Graph, read-only, and only when `identity.verify` is enabled |
 
 The LLM-judged rules additionally use the Foundry project's OpenAI
 client (auto-discovered) as the judge model.
@@ -65,17 +64,6 @@ stopping the whole run.
 | `waf.security.diagnostic_settings` | warning | `azure_resources` | programmatic | account has ≥1 diagnostic setting with a `workspace_id` |
 | `safety.runtime.content_filter` | warning | `azure_monitor` | programmatic | KQL hits on `gen_ai.response.finish_reasons contains content_filter` |
 | `responsible_ai.llm.prompt_jailbreak_surface` | info / warning | `foundry_control` | llm-judged | judge model scans system prompt for override-phrasing, embedded secrets, unbounded role-play |
-| `agent_identity.not_registered` | warning | `graph` | programmatic | no Entra Agent ID in `.agentops/identity/agent-identity.json` or `AGENTOPS_ENTRA_AGENT_ID` |
-| `agent_identity.not_recorded` | info | `graph` | programmatic | `identity.verify: true` and Graph finds a blueprint, but no local record exists |
-| `agent_identity.lookup_failed` | warning | `graph` | programmatic | `identity.verify: true` and the Graph lookup failed (missing consent, throttling, network) |
-
-!!! info "Identity checks are read-only"
-    The `agent_identity.*` checks never create or modify anything in Microsoft
-    Entra. Registration is an explicit, separate action: `agentops agent
-    register`. Graph is contacted only when `identity.verify` is set to true in
-    `agentops.yaml`; with it off, the check reads local state only and still
-    reports whether an identity exists. See
-    [Agent identity on traces](observe.md#agent-identity-on-traces).
 
 ### ⚙️ Operational Excellence
 

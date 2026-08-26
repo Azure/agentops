@@ -13,8 +13,8 @@ Use this skill when the user asks any of:
 - *"Show latency / error spikes from Azure Monitor"*
 - *"Open the AgentOps doctor report"*
 
-This skill is the front door to `agentops doctor` and the
-`agentops agent serve` Copilot Extension. It does **not** invent
+This skill is the front door to `agentops doctor` and the local
+`agentops cockpit`. It does **not** invent
 findings - it shells out to the CLI which reads real data from:
 
 1. `.agentops/results/*/results.json` (eval history)
@@ -86,7 +86,7 @@ For a workspace-level operations view the user can open a local
 Cockpit:
 
 ```bash
-pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@main"
+pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@main"
 agentops cockpit
 # → http://127.0.0.1:8090
 ```
@@ -113,28 +113,16 @@ Resolution order:
 
 ## Copilot Extension server
 
-If the user wants the Doctor inside Copilot Chat, they can:
-
-```bash
-pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@main"
-agentops agent serve --no-verify       # local dev
-```
-
-For production, point them at:
-
-- `src/agentops/templates/agent-server/Dockerfile`
-- `src/agentops/templates/agent-server/main.bicep`
-- `src/agentops/templates/agent-server/README.md`
-
-These are the deploy scaffold for hosting the Doctor as a Copilot
-Extension on Azure Container Apps.
+The legacy `agentops agent serve` Copilot Extension has been retired
+(GitHub sunset GitHub App-based Copilot Extensions in November 2025).
+Use the local `agentops cockpit` for a read-only operations view, and
+`agentops mcp serve` to expose AgentOps tooling to an MCP client.
 
 ## Guardrails
 
 - Do **not** fabricate findings, metric values, or recommendations.
 - Do **not** invent CLI flags. The contract is exactly:
   - `agentops doctor [--workspace] [--config] [--out] [--lookback-days] [--severity-fail]`
-  - `agentops agent serve [--host] [--port] [--config] [--no-verify] [--workers]`
   - `agentops cockpit [--host] [--port] [--workspace]`
 - If a source is `skipped` or `error`, surface that as the *first*
   thing in the user-facing summary so they know the analyzer ran with

@@ -34,7 +34,7 @@ class AzureResourcesSourceConfig(BaseModel):
     """Read-only management-plane source for Azure resource posture audits.
 
     Requires ``Reader`` (or stronger) RBAC on the resource group, and the
-    ``[agent]`` extra (which pulls in ``azure-mgmt-cognitiveservices`` and
+    ``[cockpit]`` extra (which pulls in ``azure-mgmt-cognitiveservices`` and
     ``azure-mgmt-monitor``).
     """
 
@@ -200,11 +200,6 @@ class ChecksConfig(BaseModel):
     llm_assist: LLMAssistCheckConfig = Field(default_factory=LLMAssistCheckConfig)
 
 
-class ServerConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    github_app_client_id: Optional[str] = None
-
-
 class AgentConfig(BaseModel):
     """Root config for ``.agentops/agent.yaml``."""
 
@@ -212,7 +207,6 @@ class AgentConfig(BaseModel):
     version: int = 1
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
     checks: ChecksConfig = Field(default_factory=ChecksConfig)
-    server: ServerConfig = Field(default_factory=ServerConfig)
     lookback_days: int = Field(7, ge=1)
 
 

@@ -91,7 +91,7 @@ Then install AgentOps and confirm the CLI:
 
 ```powershell
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[agent]"
+python -m pip install "agentops-accelerator[cockpit]"
 agentops --version
 ```
 

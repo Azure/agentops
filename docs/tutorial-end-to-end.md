@@ -138,7 +138,7 @@ cd agentops-end-to-end
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[agent]" fastapi "uvicorn[standard]"
+python -m pip install "agentops-accelerator[cockpit]" fastapi "uvicorn[standard]"
 az login
 ```
 
@@ -147,7 +147,7 @@ install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 You will provide the target values through the interactive `agentops init`

@@ -74,10 +74,17 @@ def test_workflow_command_exposes_analyze_and_generate() -> None:
     assert "generate" in stripped
 
 
-def test_agent_command_group_wired() -> None:
-    """`agentops agent` exposes the watchdog subcommands."""
-    result = runner.invoke(app, ["agent", "--help"])
-    assert result.exit_code == 0
-    stripped = _strip_ansi(result.stdout)
-    assert "analyze" in stripped
-    assert "serve" in stripped
+def test_agent_command_group_removed() -> None:
+    """The obsolete `agentops agent` group (serve/register) is gone.
+
+    Issue #451 removed the GitHub App-based Copilot Extension server and the
+    Entra Agent ID registration command with no compatibility alias.
+    """
+    group_help = runner.invoke(app, ["agent", "--help"])
+    assert group_help.exit_code != 0
+
+    serve = runner.invoke(app, ["agent", "serve"])
+    assert serve.exit_code != 0
+
+    register = runner.invoke(app, ["agent", "register"])
+    assert register.exit_code != 0

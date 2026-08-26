@@ -73,7 +73,7 @@ src/
     │   ├── preflight.py       # Pre-flight checks (workspace, auth, Foundry, App Insights)
     │   └── trace_promotion.py # Trace export → dataset candidates
     │
-    ├── agent/                 # Doctor, Cockpit, and agent server
+    ├── agent/                 # Doctor and Cockpit
     │   └── observe/           # Hosted/local discovery, bounded queries, OBO, and UI
     ├── mcp/                   # `agentops mcp serve` Model Context Protocol server
     │
@@ -85,8 +85,7 @@ src/
         ├── agent.yaml         # Doctor config seed
         ├── skills/            # Coding agent skill templates
         ├── workflows/         # GitHub Actions workflow templates
-        ├── pipelines/         # Azure DevOps pipeline templates
-        └── agent-server/      # Doctor-as-Copilot-Extension deploy scaffold
+        └── pipelines/         # Azure DevOps pipeline templates
 ```
 
 ### Where to Add New Code
@@ -326,7 +325,6 @@ flowchart LR
 | `agentops workflow generate` | Generate CI/CD workflows for GitHub Actions or Azure DevOps |
 | `agentops skills install` | (Re)install coding-agent skills (Copilot or Claude) |
 | `agentops mcp serve` | Run AgentOps as an MCP server for code agents |
-| `agentops agent serve` | Run the Doctor as a Copilot Extension / FastAPI server |
 
 Every command supports `--help` for a terse description; long-form,
 paged documentation is accessible through `agentops explain` (or the

@@ -152,7 +152,6 @@ def build_release_evidence(
     observability = _observability_status(root, trace_dataset)
     ailz = _ailz_status(analysis)
     governance = _governance_status(root)
-    agent_identity = _agent_identity_status(root)
 
     checks: list[ReleaseEvidenceCheck] = []
     blockers: list[str] = []
@@ -170,7 +169,6 @@ def build_release_evidence(
     _add_trace_dataset_check(checks, warnings, ready, trace_dataset)
     _add_ailz_check(checks, warnings, ready, ailz)
     _add_governance_check(checks, warnings, ready, governance)
-    _add_agent_identity_check(checks, warnings, ready, agent_identity)
 
     status = "blocked" if blockers else "ready_with_warnings" if warnings else "ready"
     links = _links(latest_eval, observability)
@@ -197,7 +195,6 @@ def build_release_evidence(
         observability=observability,
         ailz=ailz,
         governance=governance,
-        agent_identity=agent_identity,
     )
     return ReleaseEvidence.model_validate(_redact_obj(evidence.model_dump()))
 
@@ -919,78 +916,6 @@ def _add_governance_check(
             status="ready",
             summary=message,
             evidence=governance,
-        )
-    )
-
-
-def _agent_identity_status(root: Path) -> dict[str, Any]:
-    """Summarize the agent's Entra identity for the evidence bundle.
-
-    The bundle records the Entra Agent ID so a release artifact can be tied
-    back to the governed principal that produced its traces. Absence is
-    reported as a status rather than an error, because registration is
-    opt-in until a tenant has Agent 365 enabled.
-    """
-
-    from agentops.services.agent_identity import (
-        identity_record_path,
-        read_identity_record,
-        resolve_agent_id,
-    )
-
-    record = read_identity_record(root) or {}
-    agent_id = resolve_agent_id(root)
-    if not agent_id:
-        return {"status": "not_registered", "agent_id": None}
-
-    summary: dict[str, Any] = {
-        "status": "registered",
-        "agent_id": agent_id,
-        "source": "record" if record.get("app_id") else "environment",
-    }
-    for key in ("display_name", "object_id", "recorded_at"):
-        value = record.get(key)
-        if isinstance(value, str) and value.strip():
-            summary[key] = value.strip()
-    if record:
-        summary["record_path"] = str(identity_record_path(root))
-    return summary
-
-
-def _add_agent_identity_check(
-    checks: list[ReleaseEvidenceCheck],
-    warnings: list[str],
-    ready: list[str],
-    agent_identity: dict[str, Any],
-) -> None:
-    if agent_identity.get("status") != "registered":
-        message = (
-            "Agent identity is not registered in Microsoft Entra, so release "
-            "evidence cannot be attributed to a governed principal. "
-            "Run `agentops agent register --sponsor <upn>`."
-        )
-        warnings.append(message)
-        checks.append(
-            ReleaseEvidenceCheck(
-                name="Agent identity",
-                status="warning",
-                summary=message,
-                evidence=agent_identity,
-            )
-        )
-        return
-
-    message = (
-        "Agent identity "
-        f"{agent_identity.get('agent_id')} is registered and stamped on traces."
-    )
-    ready.append(message)
-    checks.append(
-        ReleaseEvidenceCheck(
-            name="Agent identity",
-            status="ready",
-            summary=message,
-            evidence=agent_identity,
         )
     )
 

@@ -620,50 +620,6 @@ class RedTeamRunConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class AgentIdentityConfig(BaseModel):
-    """Optional Microsoft Agent 365 identity settings.
-
-    Declares the agent's first-class identity in Microsoft Entra so Doctor,
-    tracing, and the release evidence pack all reference the same Entra Agent
-    ID. AgentOps never invents these values: ``agentops agent register``
-    creates or adopts the blueprint and records the resolved id under
-    ``.agentops/identity/agent-identity.json``.
-
-    Example::
-
-        identity:
-          display_name: support-agent
-          sponsor: owner@contoso.com
-          verify: true
-    """
-
-    display_name: Optional[str] = Field(
-        None,
-        description=(
-            "Blueprint display name in Microsoft Entra. When omitted, "
-            "AgentOps derives one from the 'agent' target."
-        ),
-    )
-    sponsor: Optional[str] = Field(
-        None,
-        description=(
-            "Accountable owner (UPN or object id). Required to register a "
-            "blueprint; there is no silent fallback because an unowned agent "
-            "identity cannot be governed."
-        ),
-    )
-    verify: bool = Field(
-        False,
-        description=(
-            "When true, Doctor calls Microsoft Graph to confirm the blueprint "
-            "exists. Off by default because the lookup needs tenant admin "
-            "consent that most workspaces will not have on day one."
-        ),
-    )
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class StreamConfig(BaseModel):
     """Streaming aggregation options for ``http-json`` targets.
 
@@ -798,13 +754,6 @@ class AgentOpsConfig(BaseModel):
         single-turn evals working while letting Doctor, Cockpit, CI evidence, and
         azd/Foundry recipes reason about multi-turn coverage, rubric gates, trace
         sampling, and trace replay links.
-
-    ``identity``
-        Optional Microsoft Agent 365 identity settings (display name, sponsor,
-        and whether Doctor verifies the blueprint against Microsoft Graph). The
-        resolved Entra Agent ID itself is not stored here; it lives in
-        ``.agentops/identity/agent-identity.json`` after
-        ``agentops agent register``.
     """
 
     version: int = Field(..., description="Schema version. Must be 1.")
@@ -871,14 +820,6 @@ class AgentOpsConfig(BaseModel):
             "redteam run' invokes the Foundry/PyRIT AI Red Teaming agent and "
             "writes normalized results that the evidence pack ingests via "
             "redteam_path automatically."
-        ),
-    )
-    identity: Optional[AgentIdentityConfig] = Field(
-        None,
-        description=(
-            "Optional Microsoft Agent 365 identity settings used by 'agentops "
-            "agent register', the Doctor registration posture check, trace "
-            "stamping, and the release evidence pack."
         ),
     )
 
