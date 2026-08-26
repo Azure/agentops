@@ -46,9 +46,9 @@ evidence pack that proves a release is ready for production.
     agentops skills install --platform copilot
     ```
 
-    The `[agent]` extra installs the web server and Azure management dependencies
-    required by `agentops cockpit`, `agentops cockpit deploy`, and
-    `agentops agent serve`. Without it, the eval and Doctor commands still work.
+    The `[agent]` extra adds the web and Azure dependencies used by Cockpit,
+    hosted deployment, and agent serving. Skip it only if you need evaluation
+    and Doctor.
 
     To install a specific release directly from GitHub:
 

@@ -30,10 +30,8 @@ python -m pip install "agentops-accelerator[agent]"
 agentops init
 ```
 
-The `[agent]` extra installs the web server and Azure management dependencies
-required by `agentops cockpit`, `agentops cockpit deploy`, and `agentops agent
-serve`. Without it, `agentops init`, `agentops eval`, and `agentops doctor`
-still work. Both tutorials below use the extra.
+The `[agent]` extra adds the web and Azure dependencies used by Cockpit, hosted
+deployment, and agent serving. Skip it only if you need evaluation and Doctor.
 
 To install a specific release directly from GitHub:
 
