@@ -30,11 +30,18 @@ python -m pip install "agentops-accelerator[agent]"
 agentops init
 ```
 
-The `[agent]` extra pulls in the FastAPI stack and the Azure Monitor and
-management SDKs. Without it `agentops init`, `agentops eval`, and `agentops
-doctor` still work, but `agentops cockpit`, `agentops agent serve`, and the
-observability commands raise an `ImportError`. Both tutorials below use those
-commands, so install the extra unless you only need evaluation.
+The `[agent]` extra installs the web server and Azure management dependencies
+required by `agentops cockpit`, `agentops cockpit deploy`, and `agentops agent
+serve`. Without it, `agentops init`, `agentops eval`, and `agentops doctor`
+still work. Both tutorials below use the extra.
+
+To install a specific release directly from GitHub:
+
+```powershell
+python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
+```
+
+Replace `vX.Y.Z` with the desired release tag.
 
 `agentops init` starts a guided setup that creates your `agentops.yaml` and
 `.agentops/` workspace.

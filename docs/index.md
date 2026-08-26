@@ -46,9 +46,17 @@ evidence pack that proves a release is ready for production.
     agentops skills install --platform copilot
     ```
 
-    The `[agent]` extra pulls in the FastAPI stack behind `agentops cockpit` and
-    `agentops agent serve`. Plain `pip install agentops-accelerator` gives you
-    the eval and Doctor commands but raises an `ImportError` on those two.
+    The `[agent]` extra installs the web server and Azure management dependencies
+    required by `agentops cockpit`, `agentops cockpit deploy`, and
+    `agentops agent serve`. Without it, the eval and Doctor commands still work.
+
+    To install a specific release directly from GitHub:
+
+    ```bash
+    python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
+    ```
+
+    Replace `vX.Y.Z` with the desired release tag.
 
 <div class="agentops-video-embed">
   <iframe
