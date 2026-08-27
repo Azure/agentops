@@ -1600,51 +1600,35 @@ long steps here:</p>
 <li><a href="https://learn.microsoft.com/azure/active-directory/workload-identities/workload-identity-federation-create-trust?pivots=identity-wif-apps-methods-azp">GitHub OIDC with Azure (workload identity federation)</a></li>
 <li><a href="https://learn.microsoft.com/azure/role-based-access-control/role-assignments-portal">Assign Azure roles (RBAC)</a></li>
 </ul>
-<h3 id="giving-the-agent-its-own-identity">Giving the agent its own identity<a class="headerlink" href="#giving-the-agent-its-own-identity" title="Permanent link">&para;</a></h3>
-<p>The OIDC principal above answers "which pipeline is deploying". It does not
-answer "which agent is running in production", and that second question is the
-one an auditor asks. A Microsoft Entra agent identity closes the gap: the agent
-gets its own directory object with a named human sponsor, and AgentOps then
-stamps that id on every trace and republishes it in the release evidence.</p>
-<p>Registration is a one-line command and it is idempotent, so re-running it adopts
-the existing blueprint instead of creating a duplicate:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>agentops<span class="w"> </span>agent<span class="w"> </span>register<span class="w"> </span>--sponsor<span class="w"> </span>owner@contoso.com
-</code></pre></div>
-<p>The generated production workflows carry the same step, disabled by default.
-Set the <code>AGENTOPS_IDENTITY_SPONSOR</code> repository variable to the sponsor's UPN and
-the step turns on. It stays opt-in because it writes to your tenant, which needs
-a deliberate decision rather than a default. The full handshake, the
-<code>identity</code> block in <code>agentops.yaml</code>, and the trace query are documented in
-<a href="../observe/#agent-identity-on-traces">Agent identity on traces</a>.</p>
 <h2 id="try-it">Try it<a class="headerlink" href="#try-it" title="Permanent link">&para;</a></h2>
 <p>Generate the CI/CD workflows from the same analysis AgentOps uses, smallest gate
 first.</p>
 <ol>
 <li>
 <p>Read the repo and recommend the deploy wiring and eval runner.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>analyze
 </code></pre></div>
 </li>
 <li>
 <p>Generate just the PR gate first so your first green run stays small.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr
 </code></pre></div>
 </li>
 <li>
 <p>Add the per-environment deploy workflows once GitHub Environments and Azure OIDC are ready.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr,dev,qa,prod
 </code></pre></div>
 </li>
 <li>
 <p>Target Azure DevOps Pipelines instead of GitHub Actions when that is your platform.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr<span class="w"> </span>--platform<span class="w"> </span>azure-devops
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>workflow<span class="w"> </span>generate<span class="w"> </span>--kinds<span class="w"> </span>pr<span class="w"> </span>--platform<span class="w"> </span>azure-devops
 </code></pre></div>
 </li>
 </ol>
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can wire and explain the
 pipeline for you.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>
 <p>The skill that maps to shipping is:</p>
 <table>

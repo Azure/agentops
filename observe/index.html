@@ -940,6 +940,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-observe-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Observe dashboard
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#next" class="md-nav__link">
     <span class="md-ellipsis">
       Next
@@ -1398,6 +1407,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#the-observe-dashboard" class="md-nav__link">
+    <span class="md-ellipsis">
+      The Observe dashboard
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#next" class="md-nav__link">
     <span class="md-ellipsis">
       Next
@@ -1724,6 +1742,30 @@ by source scope, <code>TraceId</code>, and <code>SpanId</code>. There is no lega
 shared caches, URLs, browser storage, telemetry, diagnostics, or deployment
 artifacts. See <a href="../operate/#shared-hosted-cockpit-and-protected-content">Operate</a>
 and <a href="../deploy-hosted-cockpit/">Deploy the hosted Cockpit</a>.</p>
+<h3 id="local-developer-versus-hosted-authentication">Local developer versus hosted authentication<a class="headerlink" href="#local-developer-versus-hosted-authentication" title="Permanent link">&para;</a></h3>
+<p>Cockpit authenticates one of two ways, chosen automatically by run mode.</p>
+<p>Local mode (<code>agentops cockpit</code> on a developer workstation) uses your own
+ambient Azure sign-in through <code>DefaultAzureCredential(process_timeout=30)</code> —
+the Azure CLI, VS Code, or environment credential you already have. It requires
+none of the hosted identity configuration: <code>AGENTOPS_TENANT_ID</code>,
+<code>AGENTOPS_APPLICATION_CLIENT_ID</code>, and <code>AGENTOPS_UAMI_CLIENT_ID</code> may all be
+unset. <code>agentops cockpit</code> therefore starts against any discoverable project
+scope without hosted identity provisioning. The <code>process_timeout=30</code> override is
+mandatory on Windows, where the SDK's 10-second default times out the <code>az.cmd</code>
+cold start.</p>
+<p>Because local mode signs in as the developer rather than a hosted end user, it
+has no delegated end-user identity to act on behalf of. Aggregate discovery and
+telemetry reads work normally, but <strong>user-delegated views are reported as
+unavailable rather than emulated</strong>: the per-user attribution query and the
+protected trace-content read each return an actionable "unavailable in local
+developer mode" diagnostic (HTTP 409) instead of fabricating a delegated
+principal. Use the hosted Cockpit with Easy Auth for those views.</p>
+<p>Hosted mode (the deployed Cockpit web application) keeps the full hosted chain
+described above: a shared user-assigned managed identity for aggregate reads and
+a fresh signed-in-user On-Behalf-Of credential for every delegated per-user and
+trace-content read. It requires <code>AGENTOPS_TENANT_ID</code>,
+<code>AGENTOPS_APPLICATION_CLIENT_ID</code>, and <code>AGENTOPS_UAMI_CLIENT_ID</code>; a missing value
+fails fast with an actionable configuration error.</p>
 <h2 id="enable-user-and-department-attribution">Enable user and department attribution<a class="headerlink" href="#enable-user-and-department-attribution" title="Permanent link">&para;</a></h2>
 <p>Attribution is opt-in. Set <code>AGENTOPS_ATTRIBUTION_CONFIG</code> on the Cockpit
 deployment and restart it. An enabled version 1 configuration requires a stable,
@@ -1961,7 +2003,6 @@ findings from your own production traffic, separate from the eval gate. That
 is intended: a real release should investigate latency and errors before
 promoting, even when the candidate's eval scores pass.</p>
 </div>
-<p><a id="agent-identity-on-traces"></a></p>
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can read telemetry and
 investigate production health.</p>
@@ -1982,6 +2023,67 @@ investigate production health.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="the-observe-dashboard">The Observe dashboard<a class="headerlink" href="#the-observe-dashboard" title="Permanent link">&para;</a></h2>
+<p>Observe renders as a self-contained operational dashboard that is visually part
+of the AgentOps Cockpit. It shares one design system with Cockpit instead of
+theming itself independently.</p>
+<h3 id="one-shared-theme">One shared theme<a class="headerlink" href="#one-shared-theme" title="Permanent link">&para;</a></h3>
+<p>Cockpit and Observe read the same canonical design tokens from
+<code>src/agentops/agent/ui_theme.py</code>: colors, surfaces, borders, typography, and the
+<code>aos-*</code> layout primitives (header, shell, cards). Observe imports those tokens
+rather than defining its own palette, so both surfaces look like one product.</p>
+<p>Theme selection is <strong>explicit</strong>. The page ships a deliberate dark theme by
+default (<code>&lt;html data-theme="dark"&gt;</code>) and a matching light theme
+(<code>[data-theme="light"]</code>), and an in-page toggle switches between them. Observe
+does <strong>not</strong> use a bare <code>@media (prefers-color-scheme: dark)</code> rule, which is what
+previously let it drift to white while Cockpit stayed dark. The toggle keeps its
+choice in memory only for the current page — it never writes <code>localStorage</code>,
+<code>sessionStorage</code>, cookies, or any other browser persistence, preserving the
+privacy guarantees.</p>
+<h3 id="executive-overview-and-first-class-trends">Executive overview and first-class trends<a class="headerlink" href="#executive-overview-and-first-class-trends" title="Permanent link">&para;</a></h3>
+<p>The Overview is an executive summary: compact KPI cards with a value, a
+direction-aware delta chip (the direction is shown with a glyph, not color
+alone), a short caption, and an inline sparkline. Below the cards, invocation,
+failure, latency, token, and coverage trends render as first-class charts with
+thin trend lines, a subtle grid, restrained legends, exact-value tooltips, and
+an accessible area gradient. Charts are responsive and every chart is
+screen-reader accessible (<code>role="img"</code>, an <code>aria-label</code>, an SVG <code>&lt;title&gt;</code>/<code>&lt;desc&gt;</code>,
+and a visually hidden data <code>&lt;table&gt;</code>).</p>
+<p>Filters stay compact and visually subordinate to the summary. The Agents,
+Models, Tools, Runs, Costs, Attribution, and Coverage views are clear
+drill-down tables.</p>
+<h3 id="intentional-states">Intentional states<a class="headerlink" href="#intentional-states" title="Permanent link">&para;</a></h3>
+<p>Every view can render six deliberate states through one shared
+<code>render_state_panel</code> helper: <strong>loading</strong>, <strong>empty</strong>, <strong>partial</strong>,
+<strong>permission-denied</strong>, <strong>disconnected</strong>, and <strong>error</strong>. Each state uses a
+non-color glyph plus text (so meaning does not depend on color), the correct
+ARIA role (<code>role="alert"</code> for errors, <code>role="status"</code> otherwise, <code>aria-busy</code>
+while loading), and a <code>data-observe-state</code> hook for tests.</p>
+<h3 id="preserved-guarantees">Preserved guarantees<a class="headerlink" href="#preserved-guarantees" title="Permanent link">&para;</a></h3>
+<p>The redesign is presentation-only. It preserves accessibility (ARIA labels,
+roles, table semantics, and non-color status encoding), privacy (no receiver
+addresses, PII, secrets, or raw trace content in the markup), bounded queries,
+URL-driven filters that round-trip through the allow-listed query keys, and
+protected-content handling. The HTML remains fully self-contained: no CDN,
+<code>&lt;link&gt;</code>, or network fetch happens at render time, so Observe works offline and
+in locked-down environments.</p>
+<h3 id="visual-regression-tests">Visual regression tests<a class="headerlink" href="#visual-regression-tests" title="Permanent link">&para;</a></h3>
+<p>Because Playwright and a real browser are not guaranteed in CI, visual
+regression is enforced as deterministic HTML/CSS <strong>snapshot</strong> tests in
+<code>tests/unit/test_observe_ui_visual.py</code>. Fixed fixture data renders the page and
+stylesheet with no clock, random, or UUID input, and the output is compared
+against committed goldens under <code>tests/unit/__snapshots__/</code>
+(<code>observe_overview.html</code>, <code>observe_styles.css</code>). The same file also asserts
+theme parity with <code>ui_theme.py</code>, that all six states render, chart and KPI
+accessibility, privacy invariants, and URL filter round-trips.</p>
+<p>Regenerate the goldens after an intentional visual change:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">$env:PYTHONPATH</span> <span class="p">=</span> <span class="s2">"src"</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">$env:AGENTOPS_UPDATE_SNAPSHOTS</span> <span class="p">=</span> <span class="s2">"1"</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span><span class="n">unit</span><span class="p">/</span><span class="n">test_observe_ui_visual</span><span class="p">.</span><span class="n">py</span> <span class="n">-q</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="nb">Remove-Item</span> <span class="n">Env</span><span class="p">:\</span><span class="n">AGENTOPS_UPDATE_SNAPSHOTS</span>
+</code></pre></div>
+<p>Review the regenerated snapshot diff before committing, then run the suite again
+without the environment variable to confirm it passes against the new goldens.</p>
 <h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
 <p>Act on the signal over time on the <a href="../operate/">Operate</a> page, feed passing
 evidence back into the gate on the <a href="../ship/">Ship</a> page, or harden the dataset
