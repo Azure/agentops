@@ -460,6 +460,39 @@ th[aria-sort="descending"] .observe-sort-button::after {
   outline-offset: 3px;
 }
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
+.observe-drilldown-button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--observe-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--observe-accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.observe-drilldown-button:hover { text-decoration-color: currentColor; }
+.observe-drilldown-button:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 3px;
+}
+.observe-drilldown-row > td {
+  background: color-mix(in srgb, var(--observe-accent) 4%, var(--observe-surface));
+  padding: 14px;
+}
+.observe-drilldown-panel {
+  border-left: 3px solid var(--observe-accent);
+  padding-left: 12px;
+}
+.observe-drilldown-panel > p { margin: 0 0 10px; }
+.observe-drilldown-table {
+  background: var(--observe-bg);
+  border: 1px solid var(--observe-border);
+}
+.observe-drilldown-table td { word-break: break-word; }
 
 /* --- Badges & tones ----------------------------------------------------- */
 .observe-badge {

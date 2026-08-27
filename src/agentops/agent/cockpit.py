@@ -39,6 +39,7 @@ from agentops.core.governance import (
 from agentops.core.observe import (
     AgentDetailRequest,
     AttributionQueryRequest,
+    ObserveDrilldownRequest,
     ObserveQueryRequest,
     ObserveScope,
     TraceContentRequest,
@@ -5939,6 +5940,25 @@ def create_app(
                 detail="Agent key was not found in the current filter window.",
             )
         return JSONResponse(result)
+
+    @app.post("/api/observe/drilldown")
+    async def _api_observe_drilldown(
+        payload: ObserveDrilldownRequest,
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        filters = payload.filters
+        if effective_scope is not None:
+            filters.validate_scope(ObserveScope.model_validate(effective_scope))
+        return JSONResponse(
+            await _service_call(
+                "drilldown",
+                view=payload.view,
+                filters=filters.model_dump(mode="json"),
+                selector=payload.selector.model_dump(mode="json"),
+                limit=payload.limit,
+                user_context=user_context,
+            )
+        )
 
     @app.post("/api/observe/trace-content")
     async def _api_observe_trace_content(

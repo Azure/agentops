@@ -263,33 +263,35 @@ def build_overview_query(
     filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
 ) -> str:
     """Aggregate agent invocations without counting internal HTTP/model spans."""
-    lines = [
+    base_lines = [
         _TELEMETRY_TABLES,
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend is_request_invocation = TelemetryTable == "AppRequests" and '
-        'operation_name == "invoke_agent", '
-        'is_dependency_invocation = TelemetryTable == "AppDependencies" and '
-        'operation_name == "invoke_agent"',
-        "| summarize request_invocations = countif(is_request_invocation), "
-        "dependency_invocations = countif(is_dependency_invocation), "
-        "request_failures = countif(is_request_invocation and Success == false), "
-        "dependency_failures = countif(is_dependency_invocation and Success == false), "
-        "request_avg_latency_ms = avgif(DurationMs, is_request_invocation), "
-        "dependency_avg_latency_ms = avgif(DurationMs, is_dependency_invocation), "
-        "request_p95_latency_ms = percentileif(DurationMs, 95, is_request_invocation), "
-        "dependency_p95_latency_ms = percentileif(DurationMs, 95, is_dependency_invocation)",
-        "| extend invocations = iff(request_invocations > 0, "
-        "request_invocations, dependency_invocations), "
-        "failures = iff(request_invocations > 0, request_failures, dependency_failures), "
-        "avg_latency_ms = iff(request_invocations > 0, "
-        "request_avg_latency_ms, dependency_avg_latency_ms), "
-        "p95_latency_ms = iff(request_invocations > 0, "
-        "request_p95_latency_ms, dependency_p95_latency_ms)",
-        "| project invocations, failures, avg_latency_ms, p95_latency_ms",
+        '| where operation_name == "invoke_agent"',
+        '| extend is_request_invocation = TelemetryTable endswith "AppRequests", '
+        'is_dependency_invocation = TelemetryTable endswith "AppDependencies"',
+        "| where is_request_invocation or is_dependency_invocation",
     ]
-    return "\n".join(lines)
+    return "\n".join(
+        [
+            f"let candidates = materialize({base_lines[0]}",
+            *base_lines[1:],
+            ");",
+            "let preferences = candidates",
+            "| summarize has_request = countif(is_request_invocation) > 0 "
+            "by project_resource_id, agent_key;",
+            "candidates",
+            "| join kind=leftouter preferences on project_resource_id, agent_key",
+            "| where (has_request and is_request_invocation) or "
+            "(not(has_request) and is_dependency_invocation)",
+            "| summarize invocations = count(), "
+            "failures = countif(Success == false), "
+            "avg_latency_ms = avg(DurationMs), "
+            "p95_latency_ms = percentile(DurationMs, 95)",
+            "| project invocations, failures, avg_latency_ms, p95_latency_ms",
+        ]
+    )
 
 
 def build_agents_query(
@@ -301,16 +303,18 @@ def build_agents_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend is_request_invocation = TelemetryTable == "AppRequests" and '
+        '| extend is_request_invocation = TelemetryTable endswith "AppRequests" and '
         'operation_name == "invoke_agent", '
-        'is_dependency_invocation = TelemetryTable == "AppDependencies" and '
+        'is_dependency_invocation = TelemetryTable endswith "AppDependencies" and '
         'operation_name == "invoke_agent"',
         "| summarize request_invocations = countif(is_request_invocation), "
         "dependency_invocations = countif(is_dependency_invocation), "
         "request_failures = countif(is_request_invocation and Success == false), "
         "dependency_failures = countif(is_dependency_invocation and Success == false), "
-        "request_p95_latency_ms = percentileif(DurationMs, 95, is_request_invocation), "
-        "dependency_p95_latency_ms = percentileif(DurationMs, 95, is_dependency_invocation), "
+        "request_p95_latency_ms = percentile("
+        "iff(is_request_invocation, DurationMs, real(null)), 95), "
+        "dependency_p95_latency_ms = percentile("
+        "iff(is_dependency_invocation, DurationMs, real(null)), 95), "
         "input_tokens = sum(input_tokens), "
         "output_tokens = sum(output_tokens), "
         "last_seen = max(TimeGenerated), "
@@ -345,6 +349,7 @@ def build_models_query(
         '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
         *_token_class_extend_clauses(),
         "| where isnotempty(model) or isnotempty(deployment)",
+        '| where operation_name !in ("invoke_agent", "execute_tool")',
     ]
     summary_lines = [
         "| summarize requests = count(), "
@@ -549,6 +554,110 @@ def build_runs_query(
         ]
     )
     return _bounded_aggregate(aggregate_lines, order_by="last_activity_at")
+
+
+def build_drilldown_query(
+    filters: ObserveFilterState,
+    *,
+    view: Literal["agents", "models", "tools", "runs"],
+    selector: Mapping[str, str | None],
+    scope_source: TelemetrySource | None = None,
+    limit: int = 50,
+) -> str:
+    """Return bounded, metadata-only telemetry rows behind one aggregate."""
+    if limit < 1 or limit > 100:
+        raise ValueError("drill-through limit must be between 1 and 100")
+
+    base_lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(filters),
+        *_dimension_filters(filters, scope_source),
+        *_agent_extend_clauses(),
+        '| extend deployment = tostring(Properties["gen_ai.request.deployment"]), '
+        'tool_name = tostring(Properties["gen_ai.tool.name"]), '
+        'conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
+    ]
+    project_resource_id = selector.get("project_resource_id")
+    if project_resource_id:
+        base_lines.append(
+            "| where tolower(project_resource_id) == "
+            f"'{_kql_escape(project_resource_id.lower())}'"
+        )
+    else:
+        base_lines.append("| where isempty(project_resource_id)")
+
+    if view == "agents":
+        agent_key = selector.get("agent_key")
+        if not agent_key:
+            raise ValueError("agent drill-through requires agent_key")
+        base_lines.extend(
+            [
+                f"| where agent_key == '{_kql_escape(agent_key)}'",
+                '| where operation_name == "invoke_agent"',
+            ]
+        )
+    elif view == "models":
+        model = selector.get("model")
+        deployment = selector.get("deployment")
+        if not model and not deployment:
+            raise ValueError("model drill-through requires model or deployment")
+        if model:
+            base_lines.append(f"| where model == '{_kql_escape(model)}'")
+        if deployment:
+            base_lines.append(f"| where deployment == '{_kql_escape(deployment)}'")
+        base_lines.append('| where operation_name !in ("invoke_agent", "execute_tool")')
+    elif view == "tools":
+        tool_name = selector.get("tool_name")
+        if not tool_name:
+            raise ValueError("tool drill-through requires tool_name")
+        base_lines.append(f"| where tool_name == '{_kql_escape(tool_name)}'")
+        if selector.get("agent_key"):
+            base_lines.append(
+                f"| where agent_key == '{_kql_escape(selector['agent_key'] or '')}'"
+            )
+    elif view == "runs":
+        run_key = selector.get("run_key")
+        if not run_key:
+            raise ValueError("run drill-through requires run_key")
+        base_lines.append(f"| where run_key == '{_kql_escape(run_key)}'")
+        if selector.get("agent_key"):
+            base_lines.append(
+                f"| where agent_key == '{_kql_escape(selector['agent_key'] or '')}'"
+            )
+    else:
+        raise ValueError(f"unsupported drill-through view: {view}")
+
+    projection = [
+        "| project timestamp = TimeGenerated, "
+        'telemetry_type = iff(TelemetryTable endswith "AppRequests", '
+        '"request", "dependency"), '
+        "operation_name, trace_id = tostring(OperationId), "
+        "span_id = tostring(Id), parent_span_id = tostring(ParentId), "
+        "agent_id, agent_name, model, deployment, tool_name, "
+        "success = Success, duration_ms = DurationMs",
+        "| sort by timestamp desc",
+        f"| take {limit + 1}",
+    ]
+
+    if view != "agents":
+        return "\n".join([*base_lines, *projection])
+
+    return "\n".join(
+        [
+            f"let selected = materialize({base_lines[0]}",
+            *base_lines[1:],
+            ");",
+            "let has_request_rows = toscalar("
+            'selected | where TelemetryTable endswith "AppRequests" | count) > 0;',
+            "selected",
+            "| where not(has_request_rows) or "
+            'TelemetryTable endswith "AppRequests"',
+            *projection,
+        ]
+    )
 
 
 def build_usage_query(

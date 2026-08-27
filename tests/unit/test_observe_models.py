@@ -17,6 +17,7 @@ from agentops.core.observe import (
     DeploymentJournal,
     GenerativeAIContent,
     MutationRecord,
+    ObserveDrilldownRequest,
     ObserveFilterState,
     ObserveQueryRequest,
     ObserveScope,
@@ -271,6 +272,15 @@ def test_observe_api_requests_are_strict_and_canonical() -> None:
 
     query = ObserveQueryRequest(view="agents", filters=filters)
     detail = AgentDetailRequest(agent_key="agent-a", filters=filters, refresh=True)
+    drilldown = ObserveDrilldownRequest(
+        view="models",
+        filters=filters,
+        selector={
+            "source_id": "source-a",
+            "project_resource_id": PROJECT.upper(),
+            "model": "gpt-5",
+        },
+    )
     content = TraceContentRequest(
         source_resource_id=PROJECT.upper(),
         trace_id="trace-a",
@@ -282,9 +292,21 @@ def test_observe_api_requests_are_strict_and_canonical() -> None:
     assert ObserveQueryRequest(view="tools", filters=filters).view == "tools"
     assert ObserveQueryRequest(view="runs", filters=filters).view == "runs"
     assert detail.refresh is True
+    assert drilldown.limit == 50
+    assert drilldown.selector.project_resource_id == PROJECT.lower()
     assert content.source_resource_id == PROJECT.lower()
     with pytest.raises(ValidationError):
         ObserveQueryRequest(view="unknown", filters=filters)
+    with pytest.raises(ValidationError):
+        ObserveDrilldownRequest(
+            view="tools",
+            filters=filters,
+            selector={
+                "source_id": "source-a",
+                "project_resource_id": PROJECT,
+                "model": "gpt-5",
+            },
+        )
     with pytest.raises(ValidationError):
         TraceContentRequest(
             source_resource_id=PROJECT,

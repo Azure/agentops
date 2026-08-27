@@ -394,6 +394,7 @@ def test_normalize_model_row_reads_deployment_and_tokens() -> None:
     }
     usage = normalize_model_row(row, source=source)
     assert usage.deployment == "gpt-4o-prod"
+    assert usage.source_id == source.source_id
     assert usage.project_resource_id == _PROJECT_ID
     assert usage.requests == 5
     assert usage.failures == 1
