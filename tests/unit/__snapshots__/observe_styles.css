@@ -425,6 +425,40 @@ thead th {
   top: 0;
   background: var(--observe-bg);
 }
+.observe-sort-button {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 6px;
+  letter-spacing: inherit;
+  padding: 0;
+  text-align: left;
+  text-transform: inherit;
+}
+.observe-sort-button::after {
+  color: var(--observe-muted);
+  content: "95";
+  font-size: 12px;
+  line-height: 1;
+}
+th[aria-sort="ascending"] .observe-sort-button::after {
+  color: var(--observe-accent);
+  content: "91";
+}
+th[aria-sort="descending"] .observe-sort-button::after {
+  color: var(--observe-accent);
+  content: "93";
+}
+.observe-sort-button:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 3px;
+}
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
 
 /* --- Badges & tones ----------------------------------------------------- */

@@ -227,6 +227,10 @@ _COPILOT_STUDIO_PROVIDERS = frozenset(
 
 _HOSTED_AGENT_KINDS = frozenset({"hosted", "container", "foundry_hosted"})
 _PROMPT_AGENT_KINDS = frozenset({"prompt", "foundry_prompt"})
+_HOSTED_AGENT_PROVIDERS = frozenset(
+    {"azure.ai.foundry", "microsoft.agent_framework", "microsoft agent framework"}
+)
+_PROMPT_AGENT_PROVIDERS = frozenset({"microsoft.foundry", "microsoft foundry"})
 
 
 def _normalized_runtime_value(value: Any) -> str | None:
@@ -344,6 +348,14 @@ def classify_runtime(
     """
     if _is_copilot_studio_provider(provider_name, system):
         return "copilot_studio"
+
+    provider = _normalized_runtime_value(provider_name)
+    if provider is not None:
+        readable_provider = provider.replace("_", " ")
+        if provider in _HOSTED_AGENT_PROVIDERS or readable_provider in _HOSTED_AGENT_PROVIDERS:
+            return "foundry_hosted"
+        if provider in _PROMPT_AGENT_PROVIDERS or readable_provider in _PROMPT_AGENT_PROVIDERS:
+            return "foundry_prompt"
 
     if agent_id:
         return _inventory_agent_kind(inventory, agent_id=agent_id) or "unknown"
@@ -1808,7 +1820,9 @@ class ObserveService:
                 cache_status="hit",
             )
 
-        inventory = await self.get_inventory(scope, refresh=refresh)
+        # Refresh telemetry without repeating the slower control-plane discovery.
+        # Inventory has its own cache and explicit discover endpoint for forced refreshes.
+        inventory = await self.get_inventory(scope)
         available_sources = [
             source
             for source in inventory.telemetry_sources
@@ -1927,7 +1941,7 @@ class ObserveService:
                 scope=scope,
             ).id
 
-        inventory = await self.get_inventory(scope, refresh=request.refresh)
+        inventory = await self.get_inventory(scope)
         available_sources = [
             source
             for source in inventory.telemetry_sources
@@ -2748,7 +2762,7 @@ class ObserveService:
             principal_group_ids=groups,
         )
 
-        inventory = await self.get_inventory(scope, refresh=request.refresh)
+        inventory = await self.get_inventory(scope)
         sources = [
             source
             for source in inventory.telemetry_sources
@@ -3121,7 +3135,7 @@ class ObserveService:
                 cache_status="hit",
             )
 
-        inventory = await self.get_inventory(scope, refresh=refresh)
+        inventory = await self.get_inventory(scope)
         available_sources = [
             source
             for source in inventory.telemetry_sources
@@ -3671,12 +3685,30 @@ class ObserveService:
             return runs, coverage
 
         # "overview": aggregate totals only, never inferring a zero as failure.
-        totals = {"invocations": 0, "failures": 0}
+        totals: dict[str, int | float | None] = {
+            "invocations": 0,
+            "failures": 0,
+            "avg_latency_ms": None,
+            "p95_latency_ms": None,
+        }
+        weighted_latency = 0.0
+        latency_invocations = 0
+        source_p95_values: list[float] = []
         for result in results:
             rows = list(result.tables or [])
             for row in rows:
-                totals["invocations"] += int(row.get("invocations") or 0)
-                totals["failures"] += int(row.get("failures") or 0)
+                invocations = int(row.get("invocations") or 0)
+                totals["invocations"] = int(totals["invocations"] or 0) + invocations
+                totals["failures"] = int(totals["failures"] or 0) + int(
+                    row.get("failures") or 0
+                )
+                average = row.get("avg_latency_ms")
+                if average is not None and invocations > 0:
+                    weighted_latency += float(average) * invocations
+                    latency_invocations += invocations
+                p95 = row.get("p95_latency_ms")
+                if p95 is not None:
+                    source_p95_values.append(float(p95))
             coverage.append(
                 classify_query_coverage(
                     source_id=result.source_id,
@@ -3687,6 +3719,12 @@ class ObserveService:
                     refreshed_at=refreshed_at,
                 )
             )
+        if latency_invocations:
+            totals["avg_latency_ms"] = weighted_latency / latency_invocations
+        if source_p95_values:
+            # A percentile cannot be recomputed from per-source aggregates. The
+            # maximum is a conservative cross-source operational signal.
+            totals["p95_latency_ms"] = max(source_p95_values)
         return totals, coverage
 
     def _build_diagnostics(
