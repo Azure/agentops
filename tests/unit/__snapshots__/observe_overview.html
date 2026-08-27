@@ -431,6 +431,40 @@ thead th {
   top: 0;
   background: var(--observe-bg);
 }
+.observe-sort-button {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  gap: 6px;
+  letter-spacing: inherit;
+  padding: 0;
+  text-align: left;
+  text-transform: inherit;
+}
+.observe-sort-button::after {
+  color: var(--observe-muted);
+  content: "95";
+  font-size: 12px;
+  line-height: 1;
+}
+th[aria-sort="ascending"] .observe-sort-button::after {
+  color: var(--observe-accent);
+  content: "91";
+}
+th[aria-sort="descending"] .observe-sort-button::after {
+  color: var(--observe-accent);
+  content: "93";
+}
+.observe-sort-button:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 3px;
+}
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
 
 /* --- Badges & tones ----------------------------------------------------- */
@@ -561,7 +595,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       </button>
     </div>
   </header>
-  <nav class="observe-nav" aria-label="Observe views"><ul class="observe-nav-list" role="tablist"><li role="presentation"><a href="?view=overview" id="observe-tab-overview" data-observe-nav-link="overview" class="observe-nav-link" role="tab" aria-controls="overview" aria-selected="true">Overview</a></li><li role="presentation"><a href="?view=agents" id="observe-tab-agents" data-observe-nav-link="agents" class="observe-nav-link" role="tab" aria-controls="agents" aria-selected="false">Agents</a></li><li role="presentation"><a href="?view=usage" id="observe-tab-usage" data-observe-nav-link="usage" class="observe-nav-link" role="tab" aria-controls="usage" aria-selected="false">Models and usage</a></li><li role="presentation"><a href="?view=tools" id="observe-tab-tools" data-observe-nav-link="tools" class="observe-nav-link" role="tab" aria-controls="tools" aria-selected="false">Tools</a></li><li role="presentation"><a href="?view=runs" id="observe-tab-runs" data-observe-nav-link="runs" class="observe-nav-link" role="tab" aria-controls="runs" aria-selected="false">Runs</a></li><li role="presentation"><a href="?view=coverage" id="observe-tab-coverage" data-observe-nav-link="coverage" class="observe-nav-link" role="tab" aria-controls="coverage" aria-selected="false">Telemetry coverage</a></li></ul></nav>
+  <nav class="observe-nav" aria-label="Observe views"><ul class="observe-nav-list" role="tablist"><li role="presentation"><a href="?view=overview" id="observe-tab-overview" data-observe-nav-link="overview" class="observe-nav-link" role="tab" aria-controls="overview" aria-selected="true">Overview</a></li><li role="presentation"><a href="?view=agents" id="observe-tab-agents" data-observe-nav-link="agents" class="observe-nav-link" role="tab" aria-controls="agents" aria-selected="false">Agents</a></li><li role="presentation"><a href="?view=usage" id="observe-tab-usage" data-observe-nav-link="usage" class="observe-nav-link" role="tab" aria-controls="usage" aria-selected="false">Models and usage</a></li><li role="presentation"><a href="?view=tools" id="observe-tab-tools" data-observe-nav-link="tools" class="observe-nav-link" role="tab" aria-controls="tools" aria-selected="false">Tools</a></li><li role="presentation"><a href="?view=runs" id="observe-tab-runs" data-observe-nav-link="runs" class="observe-nav-link" role="tab" aria-controls="runs" aria-selected="false">Runs</a></li></ul></nav>
   <form class="observe-filter-bar" id="observe-filter-form" aria-label="Observe filters">
   <p class="observe-scope"><span class="observe-hint">Scope:</span> Foundry project: project-a</p>
   <div class="observe-filter-fields">
@@ -623,20 +657,15 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   <section id="tools" data-observe-panel role="tabpanel"
            aria-labelledby="observe-tab-tools" hidden>
     <h2 id="tools-heading">Tools</h2>
-    <div id="tools-content" data-observe-view-content="tools"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-tools-view observe-empty-state"><p class="observe-empty">No tool activity was found for the selected filters. Tool attribution may not be reported; check Telemetry coverage for details.</p></div></div>
+    <div id="tools-content" data-observe-view-content="tools"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-tools-view observe-empty-state"><p class="observe-empty">No tool activity was found for the selected filters. Tool attribution may not be reported for this selection.</p></div></div>
   </section>
   <section id="runs" data-observe-panel role="tabpanel"
            aria-labelledby="observe-tab-runs" hidden>
     <h2 id="runs-heading">Runs</h2>
-    <div id="runs-content" data-observe-view-content="runs"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-runs-view observe-empty-state"><p class="observe-empty">No runs could be correlated for the selected filters. Run correlation may not be reported; check Telemetry coverage for details.</p></div></div>
+    <div id="runs-content" data-observe-view-content="runs"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-runs-view observe-empty-state"><p class="observe-empty">No runs could be correlated for the selected filters. Run correlation may not be reported for this selection.</p></div></div>
   </section>
   
   
-  <section id="coverage" data-observe-panel role="tabpanel"
-           aria-labelledby="observe-tab-coverage" hidden>
-    <h2 id="coverage-heading">Telemetry coverage</h2>
-    <div id="coverage-content" data-observe-view-content="coverage"><div class="observe-coverage-view"><p class="observe-empty">No coverage information reported.</p></div></div>
-  </section>
 </main>
 <script>(function () {
   "use strict";
@@ -657,7 +686,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   // Maps each internal view identifier to the `ObserveQuery.view` wire value
   // from contracts/observe-api.openapi.yaml (mirrors OBSERVE_VIEW_WIRE_NAMES
   // in ui.py -- the internal "usage" id is spelled "models" on the wire).
-  var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", tools: "tools", runs: "runs", coverage: "coverage" };
+  var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", tools: "tools", runs: "runs" };
   // Best-effort, human-friendly labels for *documented* portal link keys
   // (mirrors _KNOWN_PORTAL_LABELS in ui.py). Any key not listed here still
   // renders (title-cased) rather than being dropped -- the "best-effort
@@ -974,6 +1003,30 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     return wrap;
   }
 
+  function observedTokenTotal(inputTokens, outputTokens) {
+    if (inputTokens === null && outputTokens === null) {
+      return null;
+    }
+    if (inputTokens === undefined && outputTokens === undefined) {
+      return null;
+    }
+    return Number(inputTokens || 0) + Number(outputTokens || 0);
+  }
+
+  function renderAdditionalTokenClasses(entry) {
+    entry = entry || {};
+    var values = Object.keys(entry.additional_token_classes || {}).map(function (name) {
+      return name + ": " + formatNumberJs(entry.additional_token_classes[name]);
+    });
+    if (entry.additional_token_classes_truncated) {
+      values.push("Additional classes truncated");
+    }
+    if (entry.token_classes_partial) {
+      values.push("Partial class coverage");
+    }
+    return values.length ? values.join("; ") : renderMaybeMissing(null);
+  }
+
   function renderModelTokenUsage(entry) {
     entry = entry || {};
     var wrap = makeEl("span", "observe-model-token-usage");
@@ -1087,48 +1140,6 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     return renderBadgeJs("Identity not reported", "muted", "observe-identity-badge");
   }
 
-  function renderDiagnosticsBannerNode(diagnostics) {
-    if (!diagnostics) {
-      return null;
-    }
-    var banner = makeEl("div", "observe-diagnostics-banner");
-    var partial = diagnostics.partial_sources || 0;
-    var failed = diagnostics.failed_sources || 0;
-    if (partial > 0 || failed > 0) {
-      var notice = makeEl(
-        "p",
-        "observe-partial-notice",
-        "Partial results: some telemetry sources did not fully respond. " +
-          "Data from every source that did respond is still shown below."
-      );
-      notice.setAttribute("role", "status");
-      banner.appendChild(notice);
-    }
-    var dl = makeEl("dl", "observe-diagnostics-list");
-    var rows = [
-      ["Sources queried", diagnostics.source_count, {}],
-      ["Successful", diagnostics.successful_sources, {}],
-      ["Partial", diagnostics.partial_sources, {}],
-      ["Failed", diagnostics.failed_sources, {}],
-      ["Query duration", diagnostics.duration_ms, { suffix: " ms" }],
-    ];
-    rows.forEach(function (row) {
-      var div = document.createElement("div");
-      div.appendChild(makeEl("dt", null, row[0]));
-      var dd = document.createElement("dd");
-      dd.appendChild(renderMaybeMissing(row[1], row[2]));
-      div.appendChild(dd);
-      dl.appendChild(div);
-    });
-    var cacheDiv = document.createElement("div");
-    cacheDiv.appendChild(makeEl("dt", null, "Cache"));
-    cacheDiv.appendChild(makeEl("dd", null, diagnostics.cache_status || "Not reported"));
-    dl.appendChild(cacheDiv);
-    banner.appendChild(dl);
-    banner.appendChild(renderRefreshedAtJs(diagnostics.completed_at));
-    return banner;
-  }
-
   function emptyStateNode(message) {
     var wrap = makeEl("div", "observe-empty-state");
     wrap.appendChild(makeEl("p", "observe-empty", message));
@@ -1146,6 +1157,86 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         container.appendChild(node);
       }
     });
+    enhanceSortableTables(container);
+  }
+
+  function sortableCellValue(cell) {
+    var text = String(cell.getAttribute("data-sort-value") || cell.textContent || "").trim();
+    if (!text || /^(not reported|not measured|not available)$/i.test(text)) {
+      return { missing: true, type: "text", value: "" };
+    }
+    var iso = text.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?/);
+    if (iso) {
+      var timestamp = Date.parse(iso[0]);
+      if (!Number.isNaN(timestamp)) {
+        return { missing: false, type: "number", value: timestamp };
+      }
+    }
+    var compact = text.replace(/,/g, "");
+    var numeric = compact.match(/-?\d+(?:\.\d+)?/);
+    if (numeric && (/^-?[\d,.]+\s*(?:%|ms|s)?$/i.test(text) || /^(in:|last seen:)/i.test(text))) {
+      return { missing: false, type: "number", value: Number(numeric[0]) };
+    }
+    return { missing: false, type: "text", value: text.toLocaleLowerCase() };
+  }
+
+  function enhanceSortableTable(table) {
+    if (!table || table.dataset.observeSortable === "true") {
+      return;
+    }
+    var body = table.tBodies && table.tBodies[0];
+    var headers = table.querySelectorAll("thead th");
+    if (!body || !headers.length) {
+      return;
+    }
+    table.dataset.observeSortable = "true";
+    headers.forEach(function (header, columnIndex) {
+      var label = String(header.textContent || "").trim() || "Column " + (columnIndex + 1);
+      clearChildren(header);
+      header.setAttribute("aria-sort", "none");
+      var button = makeEl("button", "observe-sort-button", label);
+      button.type = "button";
+      button.title = "Sort by " + label;
+      button.setAttribute("aria-label", "Sort by " + label);
+      button.addEventListener("click", function () {
+        var direction = header.getAttribute("aria-sort") === "ascending"
+          ? "descending"
+          : "ascending";
+        headers.forEach(function (other) {
+          other.setAttribute("aria-sort", other === header ? direction : "none");
+        });
+        var rows = Array.prototype.slice.call(body.rows).map(function (row, index) {
+          return { row: row, index: index, value: sortableCellValue(row.cells[columnIndex] || row) };
+        });
+        rows.sort(function (left, right) {
+          if (left.value.missing !== right.value.missing) {
+            return left.value.missing ? 1 : -1;
+          }
+          var comparison = 0;
+          if (left.value.type === "number" && right.value.type === "number") {
+            comparison = left.value.value - right.value.value;
+          } else {
+            comparison = String(left.value.value).localeCompare(String(right.value.value));
+          }
+          if (comparison === 0) {
+            comparison = left.index - right.index;
+          }
+          return direction === "ascending" ? comparison : -comparison;
+        });
+        rows.forEach(function (entry) {
+          body.appendChild(entry.row);
+        });
+        button.setAttribute(
+          "aria-label",
+          "Sort by " + label + (direction === "ascending" ? " descending" : " ascending")
+        );
+      });
+      header.appendChild(button);
+    });
+  }
+
+  function enhanceSortableTables(root) {
+    (root || document).querySelectorAll("table").forEach(enhanceSortableTable);
   }
 
   function buildDataTable(className, ariaLabel, columns, rows) {
@@ -1179,6 +1270,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
+    enhanceSortableTable(table);
     return table;
   }
 
@@ -1191,6 +1283,21 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     if (Array.isArray(data)) return data;
     if (data && Array.isArray(data.metrics)) return data.metrics;
     if (data && Array.isArray(data.cards)) return data.cards;
+    if (data && typeof data === "object" && data.invocations !== undefined) {
+      var invocations = Number(data.invocations || 0);
+      var failures = Number(data.failures || 0);
+      return [
+        { title: "Invocations", value: invocations },
+        { title: "Failures", value: failures },
+        {
+          title: "Success rate",
+          value: invocations > 0 ? Math.round(((invocations - failures) / invocations) * 1000) / 10 : null,
+          unit: "%",
+        },
+        { title: "Average latency", value: data.avg_latency_ms, unit: " ms" },
+        { title: "p95 latency", value: data.p95_latency_ms, unit: " ms" },
+      ];
+    }
     return [];
   }
 
@@ -1228,10 +1335,9 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   }
 
   function renderOverview(data, diagnostics) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
     var metrics = overviewMetricsFrom(data);
     if (!metrics.length) {
-      setViewContent("overview", [banner, emptyStateNode("No data found for the selected filters.")]);
+      setViewContent("overview", [emptyStateNode("No data found for the selected filters.")]);
       return;
     }
     var grid = makeEl("div", "observe-overview-cards");
@@ -1253,7 +1359,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       }
       grid.appendChild(card);
     });
-    setViewContent("overview", [banner, grid]);
+    setViewContent("overview", [grid]);
   }
 
   function renderAgents(data, diagnostics) {
@@ -1278,17 +1384,22 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         renderMaybeMissing(agent.invocations),
         renderFailureRate(agent.invocations, agent.failures),
         renderMaybeMissing(agent.p95_latency_ms, { suffix: " ms" }),
-        renderTokenTotals(agent.input_tokens, agent.output_tokens),
+        renderMaybeMissing(agent.input_tokens),
+        renderMaybeMissing(agent.output_tokens),
+        renderMaybeMissing(observedTokenTotal(agent.input_tokens, agent.output_tokens)),
         buildAgentDetailButton(agent),
       ];
     });
     var table = buildDataTable(
       "observe-agents-table",
       "Agents observed in the selected range",
-      ["Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens", "Details"],
+      ["Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Input tokens", "Output tokens", "Total tokens", "Details"],
       rows
     );
-    setViewContent("agents", [table]);
+    setViewContent("agents", [
+      makeEl("p", "observe-hint", "Token columns show observed usage, not billing data."),
+      table,
+    ]);
   }
 
   // ---------------------------------------------------------------------
@@ -1562,10 +1673,9 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   }
 
   function renderUsage(data, diagnostics) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
     var usage = modelsFrom(data);
     if (!usage.length) {
-      setViewContent("usage", [banner, emptyStateNode("No data found for the selected filters.")]);
+      setViewContent("usage", [emptyStateNode("No data found for the selected filters.")]);
       return;
     }
     var rows = usage.map(function (entry) {
@@ -1576,28 +1686,35 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         renderMaybeMissing(entry.requests),
         renderFailureRate(entry.requests, entry.failures),
         renderMaybeMissing(entry.p95_latency_ms, { suffix: " ms" }),
-        renderModelTokenUsage(entry),
+        renderMaybeMissing(entry.input_tokens),
+        renderMaybeMissing(entry.output_tokens),
+        renderMaybeMissing(observedTokenTotal(entry.input_tokens, entry.output_tokens)),
+        renderMaybeMissing(entry.cache_read_tokens),
+        renderMaybeMissing(entry.cache_write_tokens),
+        renderMaybeMissing(entry.reasoning_tokens),
+        renderAdditionalTokenClasses(entry),
         renderLastSeenJs(entry.last_seen),
       ];
     });
     var table = buildDataTable(
       "observe-usage-table",
       "Model usage observed in the selected range",
-      ["Model", "Deployment", "Requests", "Failure rate", "p95 latency", "Tokens", "Last seen"],
+      ["Model", "Deployment", "Requests", "Failure rate", "p95 latency", "Input tokens", "Output tokens", "Total tokens", "Cache read", "Cache write", "Reasoning", "Other token classes", "Last seen"],
       rows
     );
-    setViewContent("usage", [banner, table]);
+    setViewContent("usage", [
+      makeEl("p", "observe-hint", "Token columns show observed usage, not billing data."),
+      table,
+    ]);
   }
 
   function renderTools(data, diagnostics, bounds) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
     var tools = toolsFrom(data);
     var notice = boundsNoticeNode(bounds, tools.length);
     if (!tools.length) {
       setViewContent("tools", [
-        banner,
         notice,
-        emptyStateNode("No tool activity was found for the selected filters. Tool attribution may not be reported; check Telemetry coverage for details."),
+        emptyStateNode("No tool activity was found for the selected filters. Tool attribution may not be reported for this selection."),
       ]);
       return;
     }
@@ -1620,18 +1737,16 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       ["Tool", "Agent", "Source", "Runtime", "Last seen", "Invocations", "Failures", "p95 latency"],
       rows
     );
-    setViewContent("tools", [banner, notice, table]);
+    setViewContent("tools", [notice, table]);
   }
 
   function renderRuns(data, diagnostics, bounds) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
     var runs = runsFrom(data);
     var notice = boundsNoticeNode(bounds, runs.length);
     if (!runs.length) {
       setViewContent("runs", [
-        banner,
         notice,
-        emptyStateNode("No runs could be correlated for the selected filters. Run correlation may not be reported; check Telemetry coverage for details."),
+        emptyStateNode("No runs could be correlated for the selected filters. Run correlation may not be reported for this selection."),
       ]);
       return;
     }
@@ -1648,17 +1763,19 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         run.status || "Not reported",
         renderMaybeMissing(run.turns),
         renderMaybeMissing(run.tool_invocations),
-        renderTokenTotals(run.input_tokens, run.output_tokens, "Not available"),
+        renderMaybeMissing(run.input_tokens, { missingText: "Not available" }),
+        renderMaybeMissing(run.output_tokens, { missingText: "Not available" }),
+        renderMaybeMissing(observedTokenTotal(run.input_tokens, run.output_tokens), { missingText: "Not available" }),
       ];
     });
     var hint = makeEl("p", "observe-hint", "Start, duration, and turns describe activity within the selected range.");
     var table = buildDataTable(
       "observe-runs-table",
       "Runs observed in the selected range",
-      ["Run key", "Correlation", "Agent", "Source", "Runtime", "Started in range", "Duration in range", "Status", "Turns in range", "Tool invocations", "Tokens"],
+      ["Run key", "Correlation", "Agent", "Source", "Runtime", "Started in range", "Duration in range", "Status", "Turns in range", "Tool invocations", "Input tokens", "Output tokens", "Total tokens"],
       rows
     );
-    setViewContent("runs", [banner, notice, hint, table]);
+    setViewContent("runs", [notice, hint, table]);
   }
 
   function costLabel(value) {
@@ -2229,10 +2346,8 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   }
 
   function renderCost(data, diagnostics, coverage, partialFailures, bounds) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
     if (!data || typeof data !== "object") {
       var emptyNodes = [
-        banner,
         emptyStateNode("No cost allocation data reported."),
         makeEl("p", "observe-cost-breakdown-warning", COST_BREAKDOWN_WARNING),
         makeEl("p", "observe-cost-disclaimer", COST_DISCLAIMER),
@@ -2247,7 +2362,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       return;
     }
     renderCostControlsFromData(data);
-    var nodes = [banner, renderCostPeriodNode(data)];
+    var nodes = [renderCostPeriodNode(data)];
     nodes.push(makeEl("p", "observe-cost-breakdown-warning", COST_BREAKDOWN_WARNING));
     nodes.push(makeEl("h3", null, "Currency subtotals"));
     nodes.push(renderCostSubtotalsNode(data.currency_subtotals));
@@ -2263,36 +2378,6 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     if (failuresNode) nodes.push(failuresNode);
     nodes.push(makeEl("p", "observe-cost-disclaimer", COST_DISCLAIMER));
     setViewContent("cost", nodes);
-  }
-
-  function renderCoverage(coverage, diagnostics) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
-    coverage = Array.isArray(coverage) ? coverage : [];
-    if (!coverage.length) {
-      setViewContent("coverage", [banner, emptyStateNode("No coverage information reported.")]);
-      return;
-    }
-    var rows = coverage.map(function (entry) {
-      entry = entry || {};
-      var state = entry.state || "error";
-      var copy = COVERAGE_STATE_LABELS[state] || COVERAGE_STATE_LABELS.error;
-      var dimensionLabel = COVERAGE_DIMENSION_LABELS[entry.dimension] || (entry.dimension || "Unknown dimension");
-      return [
-        entry.source_id || "Not reported",
-        dimensionLabel,
-        renderBadgeJs(copy.label, copy.tone, "observe-coverage-state-" + state),
-        entry.reason || "Not reported",
-        entry.next_action || "Not reported",
-        renderRefreshedAtJs(entry.refreshed_at),
-      ];
-    });
-    var table = buildDataTable(
-      "observe-coverage-table",
-      "Telemetry coverage and troubleshooting detail",
-      ["Source", "Dimension", "State", "Reason", "Next action", "Refreshed"],
-      rows
-    );
-    setViewContent("coverage", [banner, table]);
   }
 
   function renderAttributionControlsFromData(data) {
@@ -2607,8 +2692,6 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         body.partial_failures,
         body.bounds
       );
-    } else if (view === "coverage") {
-      renderCoverage(body.coverage, body.diagnostics);
     }
   }
 
@@ -2929,6 +3012,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     });
     activateView(currentView);
     setupThemeToggle();
+    enhanceSortableTables(document);
     syncUrl();
     scheduleAutoRefresh();
   }

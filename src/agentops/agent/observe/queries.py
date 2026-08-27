@@ -39,13 +39,15 @@ _TELEMETRY_TABLES = "union AppDependencies, AppRequests"
 _APPGENAI_TABLE = "AppGenAIContent"
 _PROJECT_RESOURCE_ID = (
     'tostring(coalesce(Properties["gen_ai.project.id"], '
-    'Properties["gen_ai.azure_ai_project.id"]))'
+    'Properties["gen_ai.azure_ai_project.id"], '
+    'Properties["microsoft.foundry.project.id"]))'
 )
 
 TOKEN_CLASS_ALIASES: dict[str, tuple[str, ...]] = {
     "cache_read": (
         "gen_ai.usage.cache_read.input_tokens",
         "gen_ai.usage.cache_read_input_tokens",
+        "gen_ai.usage.cached_tokens",
     ),
     "cache_write": (
         "gen_ai.usage.cache_write.input_tokens",
@@ -169,6 +171,7 @@ def _agent_extend_clauses() -> list[str]:
         '| extend agent_name = tostring(Properties["gen_ai.agent.name"])',
         '| extend provider_name = tostring(Properties["gen_ai.provider.name"])',
         '| extend system = tostring(Properties["gen_ai.system"])',
+        '| extend operation_name = tostring(Properties["gen_ai.operation.name"])',
         '| extend model = tostring(coalesce(Properties["gen_ai.request.model"], '
         'Properties["gen_ai.response.model"]))',
         '| extend input_tokens = toint(Properties["gen_ai.usage.input_tokens"])',
@@ -259,16 +262,32 @@ def _token_class_extend_clauses() -> list[str]:
 def build_overview_query(
     filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
 ) -> str:
-    """Bounded aggregate invocation/failure/latency query for the overview view."""
+    """Aggregate agent invocations without counting internal HTTP/model spans."""
     lines = [
         _TELEMETRY_TABLES,
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
-        "| where isnotempty(Name)",
-        "| summarize invocations = count(), "
-        "failures = countif(Success == false), "
-        "avg_latency_ms = avg(DurationMs), "
-        "p95_latency_ms = percentile(DurationMs, 95)",
+        *_agent_extend_clauses(),
+        '| extend is_request_invocation = Type == "AppRequests" and '
+        'operation_name == "invoke_agent", '
+        'is_dependency_invocation = Type == "AppDependencies" and '
+        'operation_name == "invoke_agent"',
+        "| summarize request_invocations = countif(is_request_invocation), "
+        "dependency_invocations = countif(is_dependency_invocation), "
+        "request_failures = countif(is_request_invocation and Success == false), "
+        "dependency_failures = countif(is_dependency_invocation and Success == false), "
+        "request_avg_latency_ms = avgif(DurationMs, is_request_invocation), "
+        "dependency_avg_latency_ms = avgif(DurationMs, is_dependency_invocation), "
+        "request_p95_latency_ms = percentileif(DurationMs, 95, is_request_invocation), "
+        "dependency_p95_latency_ms = percentileif(DurationMs, 95, is_dependency_invocation)",
+        "| extend invocations = iff(request_invocations > 0, "
+        "request_invocations, dependency_invocations), "
+        "failures = iff(request_invocations > 0, request_failures, dependency_failures), "
+        "avg_latency_ms = iff(request_invocations > 0, "
+        "request_avg_latency_ms, dependency_avg_latency_ms), "
+        "p95_latency_ms = iff(request_invocations > 0, "
+        "request_p95_latency_ms, dependency_p95_latency_ms)",
+        "| project invocations, failures, avg_latency_ms, p95_latency_ms",
     ]
     return "\n".join(lines)
 
@@ -282,9 +301,16 @@ def build_agents_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        "| summarize invocations = count(), "
-        "failures = countif(Success == false), "
-        "p95_latency_ms = percentile(DurationMs, 95), "
+        '| extend is_request_invocation = Type == "AppRequests" and '
+        'operation_name == "invoke_agent", '
+        'is_dependency_invocation = Type == "AppDependencies" and '
+        'operation_name == "invoke_agent"',
+        "| summarize request_invocations = countif(is_request_invocation), "
+        "dependency_invocations = countif(is_dependency_invocation), "
+        "request_failures = countif(is_request_invocation and Success == false), "
+        "dependency_failures = countif(is_dependency_invocation and Success == false), "
+        "request_p95_latency_ms = percentileif(DurationMs, 95, is_request_invocation), "
+        "dependency_p95_latency_ms = percentileif(DurationMs, 95, is_dependency_invocation), "
         "input_tokens = sum(input_tokens), "
         "output_tokens = sum(output_tokens), "
         "last_seen = max(TimeGenerated), "
@@ -294,6 +320,15 @@ def build_agents_query(
         "system = take_anyif(system, isnotempty(system)), "
         "model = take_anyif(model, isnotempty(model)) "
         "by project_resource_id, agent_key",
+        "| extend invocations = iff(request_invocations > 0, "
+        "request_invocations, dependency_invocations), "
+        "failures = iff(request_invocations > 0, request_failures, dependency_failures), "
+        "p95_latency_ms = iff(request_invocations > 0, "
+        "request_p95_latency_ms, dependency_p95_latency_ms)",
+        "| project-away request_invocations, dependency_invocations, "
+        "request_failures, dependency_failures, request_p95_latency_ms, "
+        "dependency_p95_latency_ms",
+        "| where invocations > 0",
     ]
     return _bounded_aggregate(aggregate_lines, order_by="invocations")
 
@@ -309,6 +344,7 @@ def build_models_query(
         *_agent_extend_clauses(),
         '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
         *_token_class_extend_clauses(),
+        "| where isnotempty(model) or isnotempty(deployment)",
     ]
     summary_lines = [
         "| summarize requests = count(), "
@@ -488,9 +524,12 @@ def build_runs_query(
             "cache_write_token_reports = countif(isnotnull(cache_write_tokens)), "
             "reasoning_token_reports = countif(isnotnull(reasoning_tokens)), "
             "credit_reports = countif(isnotnull(credits)), "
-            "credit_event_reports = countif(isnotnull(credit_event)) "
-            "by project_resource_id, agent_key, agent_id, agent_name, provider_name, system, "
-            "run_key, run_key_kind, operation_name",
+            "credit_event_reports = countif(isnotnull(credit_event)), "
+            "agent_id = take_anyif(agent_id, isnotempty(agent_id)), "
+            "agent_name = take_anyif(agent_name, isnotempty(agent_name)), "
+            "provider_name = take_anyif(provider_name, isnotempty(provider_name)), "
+            "system = take_anyif(system, isnotempty(system)) "
+            "by project_resource_id, agent_key, run_key, run_key_kind",
             "| extend input_tokens = iff(input_token_reports == 0, long(null), input_tokens), "
             "output_tokens = iff(output_token_reports == 0, long(null), output_tokens), "
             "cache_read_tokens = iff(cache_read_token_reports == 0, long(null), "

@@ -249,7 +249,7 @@ def test_authenticated_hosted_root_renders_observe_shell() -> None:
     assert response.status_code == 200
     assert "AgentOps Observe" in response.text
     assert "Apply filters" in response.text
-    assert "Telemetry coverage" in response.text
+    assert "Telemetry coverage" not in response.text
 
 
 def test_hosted_runtime_has_no_local_history_dependency() -> None:

@@ -162,6 +162,10 @@ def test_overview_query_is_bounded_to_time_window_and_tables() -> None:
     assert "TimeGenerated between" in query
     assert "2024-01-01" in query
     assert "2024-01-02" in query
+    assert 'operation_name == "invoke_agent"' in query
+    assert "request_invocations" in query
+    assert "dependency_invocations" in query
+    assert "| project invocations, failures, avg_latency_ms, p95_latency_ms" in query
 
 
 def test_agents_query_applies_dimension_filters_and_bounds_rows() -> None:
@@ -712,7 +716,8 @@ def test_runs_query_prefers_conversation_then_foundry_thread_before_trace() -> N
     assert "run\\'o\\'\\'key" in query
     assert "| sort by last_activity_at desc" in query
     assert "turns = dcount(OperationId)" in query
-    assert "provider_name, system, run_key, run_key_kind" in query
+    assert "provider_name = take_anyif(provider_name, isnotempty(provider_name))" in query
+    assert "by project_resource_id, agent_key, run_key, run_key_kind" in query
     assert "input_token_reports = countif(isnotnull(input_tokens))" in query
     assert "iff(input_token_reports == 0, long(null), input_tokens)" in query
 
@@ -748,7 +753,10 @@ def test_runs_query_projects_only_direct_non_negative_credit_signals() -> None:
         "credit_events = iff(credit_event_reports == 0, long(null), credit_events)"
         in query
     )
-    assert "run_key, run_key_kind, operation_name" in query
+    assert "by project_resource_id, agent_key, run_key, run_key_kind" in query
+    assert "agent_id = take_anyif(agent_id, isnotempty(agent_id))" in query
+    assert "provider_name = take_anyif(provider_name, isnotempty(provider_name))" in query
+    assert "run_key, run_key_kind, operation_name" not in query
 
     for inferred_signal in ("credit_rate", "token_rate", "message_rate"):
         assert inferred_signal not in query

@@ -40,14 +40,14 @@ def test_default_range_and_refresh_constants() -> None:
 
 
 def test_observe_views_and_labels_cover_all_required_surfaces() -> None:
-    assert ui.OBSERVE_VIEWS == ("overview", "agents", "usage", "tools", "runs", "coverage")
+    assert ui.OBSERVE_VIEWS == ("overview", "agents", "usage", "tools", "runs")
     for view in ui.OBSERVE_VIEWS:
         assert view in ui.OBSERVE_VIEW_LABELS
 
 
 def test_observe_view_wire_names_map_internal_ids_to_openapi_view_enum() -> None:
     # contracts/observe-api.openapi.yaml spells the `ObserveQuery.view` enum
-    # as [overview, agents, models, tools, runs, coverage]; the internal "usage" id (used
+    # as [overview, agents, models, tools, runs]; the internal "usage" id (used
     # throughout DOM ids/CSS/labels) must be translated to "models" only when
     # building the outgoing wire payload.
     assert ui.OBSERVE_VIEW_WIRE_NAMES == {
@@ -56,7 +56,6 @@ def test_observe_view_wire_names_map_internal_ids_to_openapi_view_enum() -> None
         "usage": "models",
         "tools": "tools",
         "runs": "runs",
-        "coverage": "coverage",
     }
     for view in ui.OBSERVE_VIEWS:
         assert view in ui.OBSERVE_VIEW_WIRE_NAMES
@@ -629,6 +628,14 @@ def test_render_overview_cards_zero_value_is_distinct_from_missing() -> None:
     assert "metric-missing" in html_missing
 
 
+def test_script_overview_renders_aggregate_response_as_kpi_cards() -> None:
+    script = ui._OBSERVE_SCRIPT
+    block = script.split("function overviewMetricsFrom(data) {")[1].split("\n  }\n")[0]
+    for title in ("Invocations", "Failures", "Success rate", "Average latency", "p95 latency"):
+        assert f'title: "{title}"' in block
+    assert "data.invocations !== undefined" in block
+
+
 # ---------------------------------------------------------------------------
 # Agents table (T050/T052)
 # ---------------------------------------------------------------------------
@@ -662,7 +669,18 @@ def test_render_agents_table_empty_shows_no_data_found() -> None:
 
 def test_render_agents_table_renders_expected_columns() -> None:
     html = ui.render_agents_table([_agent()])
-    for heading in ("Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens"):
+    for heading in (
+        "Agent",
+        "Source",
+        "Model",
+        "Last seen",
+        "Invocations",
+        "Failure rate",
+        "p95 latency",
+        "Input tokens",
+        "Output tokens",
+        "Total tokens",
+    ):
         assert f">{heading}<" in html
     assert "Agent A" in html
     assert "gpt-4o" in html
@@ -1417,7 +1435,9 @@ def test_render_runs_table_shows_correlation_range_scope_source_and_tokens() -> 
         "Duration in range",
         "Turns in range",
         "Tool invocations",
-        "Tokens",
+        "Input tokens",
+        "Output tokens",
+        "Total tokens",
     ):
         assert f">{heading}<" in html
     assert "conversation-123" in html
@@ -1526,7 +1546,7 @@ def test_render_models_usage_table_renders_each_token_class_and_partial_state() 
     assert "Partial class coverage" in html
     assert "metric-zero" in html
     assert "Not reported" in html
-    assert "(observed usage, not billing data)" in html
+    assert "observed usage, not billing data" in html
 
 
 def test_render_models_usage_table_marks_intermittent_class_reporting() -> None:
@@ -1574,19 +1594,16 @@ def test_models_renderers_show_additional_classes_and_truncation() -> None:
     assert "Additional classes truncated" in script
 
 
-def test_existing_token_totals_are_byte_identical_across_existing_surfaces() -> None:
-    expected = (
-        '<span class="observe-token-totals">'
-        '<span class="observe-token-in">In: '
-        '<span class="observe-metric metric-value">1,000</span></span> '
-        '<span class="observe-token-out">Out: '
-        '<span class="observe-metric metric-value">2,000</span></span>'
-        '<span class="observe-hint"> (observed usage, not billing data)</span>'
-        "</span>"
-    )
-    assert ui._render_token_totals(1000, 2000) == expected
-    assert expected in ui.render_agents_table([_agent(input_tokens=1000, output_tokens=2000)])
-    assert expected in ui.render_models_usage_table([_usage(input_tokens=1000, output_tokens=2000)])
+def test_token_totals_are_rendered_in_separate_columns() -> None:
+    agents_html = ui.render_agents_table([_agent(input_tokens=1000, output_tokens=2000)])
+    models_html = ui.render_models_usage_table([_usage(input_tokens=1000, output_tokens=2000)])
+    for html in (agents_html, models_html):
+        assert ">Input tokens<" in html
+        assert ">Output tokens<" in html
+        assert ">Total tokens<" in html
+        assert ">1,000<" in html
+        assert ">2,000<" in html
+        assert ">3,000<" in html
 
 
 def test_models_row_with_only_totals_adds_no_partial_indicator() -> None:
@@ -1602,11 +1619,12 @@ def test_models_row_with_only_totals_adds_no_partial_indicator() -> None:
             )
         ]
     )
-    assert "In: " in html
-    assert "Out: " in html
-    assert html.count("Not reported") == 3
+    assert ">Input tokens<" in html
+    assert ">Output tokens<" in html
+    assert ">Total tokens<" in html
+    assert html.count("Not reported") == 4
     assert "Partial class coverage" not in html
-    assert "(observed usage, not billing data)" in html
+    assert "observed usage, not billing data" in html
 
 
 # ---------------------------------------------------------------------------
@@ -1976,15 +1994,16 @@ def test_render_observe_page_has_no_external_asset_references() -> None:
     assert "cdn." not in html
 
 
-def test_render_observe_page_includes_all_six_views() -> None:
+def test_render_observe_page_includes_all_operator_views() -> None:
     html = ui.render_observe_page(
         overview_metrics=[{"title": "Invocations", "value": 5}],
         agents=[_agent()],
         usage=[_usage()],
         coverage=[_coverage("available")],
     )
-    for section_id in ("overview", "agents", "usage", "tools", "runs", "coverage"):
+    for section_id in ("overview", "agents", "usage", "tools", "runs"):
         assert f'<section id="{section_id}"' in html
+    assert '<section id="coverage"' not in html
 
 
 # ---------------------------------------------------------------------------
@@ -2141,7 +2160,7 @@ def test_script_view_wire_names_translate_internal_usage_id_to_models() -> None:
     script = ui._OBSERVE_SCRIPT
     assert (
         'var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", '
-        'tools: "tools", runs: "runs", coverage: "coverage" };'
+        'tools: "tools", runs: "runs" };'
     ) in script
 
 
@@ -2215,14 +2234,14 @@ def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states(
         assert "boundsNoticeNode(bounds" in block
         assert empty_copy in block
     assert 'missingText: "Not measured"' in script
-    assert 'renderTokenTotals(run.input_tokens, run.output_tokens, "Not available")' in script
+    assert "observedTokenTotal(run.input_tokens, run.output_tokens)" in script
     assert "run.run_key_kind || \"Not reported\"" in script
     assert "activity within the selected range" in script
 
 
 # ---------------------------------------------------------------------------
 # Functional page: parse fetch responses and render/update the active view
-# (overview cards, agents, models/usage, coverage, diagnostics banner,
+# (overview cards, agents, models/usage, tools, runs,
 # refreshed timestamp) instead of only updating the refresh-status text.
 # ---------------------------------------------------------------------------
 
@@ -2251,9 +2270,7 @@ def test_script_defines_response_parsing_and_render_dispatch_functions() -> None
         "function renderUsage(data, diagnostics)",
         "function renderTools(data, diagnostics, bounds)",
         "function renderRuns(data, diagnostics, bounds)",
-        "function renderCoverage(coverage, diagnostics)",
         "function internalViewFromWire(view)",
-        "function renderDiagnosticsBannerNode(diagnostics)",
         "function setViewContent(view, nodes)",
     ):
         assert name in script
@@ -2302,11 +2319,7 @@ def test_script_render_dispatch_routes_each_view_to_its_own_renderer_and_field()
     assert "renderUsage(body.data, body.diagnostics);" in dispatch_block
     assert "renderTools(body.data, body.diagnostics, body.bounds);" in dispatch_block
     assert "renderRuns(body.data, body.diagnostics, body.bounds);" in dispatch_block
-    # Coverage row detail is a top-level `ObserveResponse.coverage` array in
-    # the OpenAPI contract, not `data` -- the dispatcher must read the
-    # correct field for that view.
-    assert "renderCoverage(body.coverage, body.diagnostics);" in dispatch_block
-    assert "renderCoverage(body.data" not in dispatch_block
+    assert "renderCoverage(" not in dispatch_block
 
 
 def test_script_internal_view_from_wire_maps_models_back_to_usage_only() -> None:
@@ -2337,31 +2350,17 @@ def test_script_view_content_helper_targets_the_generated_wrapper_divs() -> None
     assert "clearChildren(container);" in fn_block
 
 
-def test_script_diagnostics_banner_reflects_partial_results_and_is_rebuilt_per_view() -> None:
+def test_script_omits_internal_query_diagnostics_from_operator_views() -> None:
     script = ui._OBSERVE_SCRIPT
-    banner_fn = script.split("function renderDiagnosticsBannerNode(diagnostics) {")[1].split(
-        "\n  }\n"
-    )[0]
-    assert "Partial results: some telemetry sources did not fully respond." in banner_fn
-    assert '"Sources queried"' in banner_fn
-    assert '"Successful"' in banner_fn
-    assert '"Partial"' in banner_fn
-    assert '"Failed"' in banner_fn
-    assert '"Query duration"' in banner_fn
-    assert '"Cache"' in banner_fn
-    # Operational views keep source diagnostics available. Agents intentionally
-    # omits the technical banner so the inventory remains operator-focused.
-    for fn_name in ("renderOverview", "renderUsage", "renderTools", "renderRuns", "renderCoverage"):
-        fn_block = script.split(f"function {fn_name}(")[1].split("\n  }\n")[0]
-        assert "renderDiagnosticsBannerNode(diagnostics)" in fn_block
-    agents_block = script.split("function renderAgents(")[1].split("\n  }\n")[0]
-    assert "renderDiagnosticsBannerNode(diagnostics)" not in agents_block
+    assert "function renderDiagnosticsBannerNode(" not in script
+    assert '"Sources queried"' not in script
+    assert '"Query duration"' not in script
 
 
 def test_script_disclaimers_preserved_in_render_functions() -> None:
     script = ui._OBSERVE_SCRIPT
     assert "Last seen reflects observed telemetry only, not agent lifecycle status." in script
-    assert "(observed usage, not billing data)" in script
+    assert "Token columns show observed usage, not billing data." in script
 
 
 def test_script_zero_vs_missing_distinction_uses_distinct_classes() -> None:
@@ -2389,17 +2388,9 @@ def test_script_coverage_state_and_dimension_labels_mirror_python_constants() ->
         assert f'"{label}"' in dimension_block
 
 
-def test_script_coverage_rows_always_rendered_independent_of_state() -> None:
-    # T062: coverage rows are mapped unconditionally from the full array --
-    # no state value causes other rows to be hidden or skipped.
+def test_script_does_not_render_removed_coverage_view() -> None:
     script = ui._OBSERVE_SCRIPT
-    fn_block = script.split("function renderCoverage(coverage, diagnostics) {")[1].split(
-        "\n  }\n"
-    )[0]
-    assert "coverage.map(function (entry) {" in fn_block
-    assert "if (" not in fn_block.split("coverage.map(function (entry) {")[1].split(
-        "return ["
-    )[0]
+    assert "function renderCoverage(" not in script
 
 
 def test_script_nav_link_click_fetches_the_newly_selected_view() -> None:

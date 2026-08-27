@@ -2412,7 +2412,7 @@ async def test_query_view_refresh_bypasses_cache_and_requeries() -> None:
 
     assert refreshed.cache_status == "bypass"
     assert len(query.calls) == 2
-    assert discovery.calls == 2
+    assert discovery.calls == 1
 
 
 @pytest.mark.asyncio
@@ -2663,13 +2663,25 @@ async def test_query_view_models_and_overview_normalize_correctly() -> None:
             SourceResult(
                 source_id="src-1",
                 status="success",
-                tables=[{"invocations": 5, "failures": 1}],
+                tables=[
+                    {
+                        "invocations": 5,
+                        "failures": 1,
+                        "avg_latency_ms": 100.0,
+                        "p95_latency_ms": 180.0,
+                    }
+                ],
             )
         ],
         clock=clock,
     )
     overview = await overview_service.query_view(_scope(), _filters(), view="overview")
-    assert overview.data == {"invocations": 5, "failures": 1}
+    assert overview.data == {
+        "invocations": 5,
+        "failures": 1,
+        "avg_latency_ms": 100.0,
+        "p95_latency_ms": 180.0,
+    }
 
 
 @pytest.mark.asyncio
