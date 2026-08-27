@@ -78,14 +78,13 @@ stopping the whole run.
 | `opex.unversioned_bundle` | warning | `workspace_files` | programmatic | bundle YAMLs lack a top-level `version:` |
 | `opex.results_dir_bloat` | warning | `workspace_files` | programmatic | `.agentops/results/` holds > 50 run folders |
 | `opex.workflow_concurrency_lock` | warning | `workspace_files` | programmatic | AgentOps workflows missing a top-level `concurrency:` block |
-| `opex.workflow_action_sha_pinning` | warning | `workspace_files` | programmatic | `uses:` pinned to tag instead of 40-char SHA |
+| `opex.workflow_action_sha_pinning` | info | `workspace_files` | programmatic | `uses:` references an action by version tag instead of a commit id (optional hardening) |
 | `opex.ailz_readiness` | info | `workspace_files` | programmatic | canonical AI Landing Zone signals detected; reports deployment readiness dimensions |
 | `opex.ailz_gaps` | warning | `workspace_files` | programmatic | AI Landing Zone signals detected but preflight, eval config, azd workflow, or private-runner path needs attention |
 | `opex.release.no_eval_evidence` | warning | `workspace_files` + `results_history` | programmatic | AgentOps workspace detected but no completed eval run is available for release evidence |
 | `opex.release.latest_eval_failed` | critical | `results_history` | programmatic | latest eval run exists but did not pass |
 | `opex.release.no_baseline` | warning | `workspace_files` + `results_history` | programmatic | eval evidence exists but no baseline/comparison is available for regression decisions |
 | `opex.release.no_trace_regression_dataset` | info | `workspace_files` + `results_history` | programmatic | no `.agentops/data/trace-regression-manifest.json` exists yet |
-| `opex.release.no_continuous_eval` | warning | `foundry_control` | programmatic | Foundry control plane is reachable but no enabled continuous evaluation rule was detected |
 | `opex.no_foundry_control_configured` | warning | `foundry_control` | programmatic | Foundry control plane unreachable |
 | `opex.stale_evaluation` | warning / critical | `results_history` | programmatic | latest run older than `stale_after_days` (critical at 2×) |
 | `opex.flaky_metric.<metric>` | warning | `results_history` | programmatic | coefficient of variation across last N runs > `flaky_cv_threshold` |

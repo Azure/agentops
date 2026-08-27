@@ -84,9 +84,21 @@ def _normalize_foundry_openai_client(client: Any) -> Any:
         return client
 
 
+def _rejects_temperature(exc: Exception) -> bool:
+    """True when the deployment refused an explicit ``temperature``.
+
+    Azure OpenAI answers with HTTP 400 and
+    ``{"param": "temperature", "code": "unsupported_value"}``. We match on
+    the message text because the SDK exception type varies by version.
+    """
+    text = str(exc).lower()
+    return "temperature" in text and (
+        "unsupported_value" in text or "unsupported value" in text
+    )
+
+
 class LLMJudge:
     """Thin wrapper around the Foundry project's OpenAI client."""
-
     def __init__(
         self,
         config: LLMAssistCheckConfig,
@@ -96,6 +108,11 @@ class LLMJudge:
         self.workspace = workspace
         self._client: Any = None
         self._deployment: Optional[str] = None
+        # Reasoning models (gpt-5 family and friends) reject any explicit
+        # ``temperature``. We start optimistic - a pinned 0.0 keeps judge
+        # verdicts reproducible - and flip this off permanently for the
+        # process the first time the deployment rejects the parameter.
+        self._supports_temperature = True
 
     # ------------------------------------------------------------------
     # Resolution helpers
@@ -187,7 +204,7 @@ class LLMJudge:
         for preferred in self._DEPLOYMENT_PREFERENCE:
             for name in names:
                 if name.lower() == preferred or preferred in name.lower():
-                    log.info(
+                    log.debug(
                         "llm_assist: auto-selected deployment %s (preferred)",
                         name,
                     )
@@ -197,7 +214,7 @@ class LLMJudge:
         # = cheaper judge calls).
         for name in names:
             if "mini" in name.lower():
-                log.info(
+                log.debug(
                     "llm_assist: auto-selected deployment %s (mini fallback)",
                     name,
                 )
@@ -206,7 +223,7 @@ class LLMJudge:
         # 3. Last resort - first non-embedding deployment.
         for name in names:
             if "embedding" not in name.lower():
-                log.info(
+                log.debug(
                     "llm_assist: auto-selected deployment %s (first non-embedding)",
                     name,
                 )
@@ -262,7 +279,7 @@ class LLMJudge:
                 encoding="utf-8",
             )
         except OSError as exc:
-            log.warning("LLM cache write failed at %s: %s", path, exc)
+            log.info("LLM cache write failed at %s: %s", path, exc)
 
     # ------------------------------------------------------------------
     # Client init
@@ -301,13 +318,53 @@ class LLMJudge:
                 return None
             self._client = _normalize_foundry_openai_client(get_openai_client())
         except Exception as exc:  # pragma: no cover
-            log.warning("llm_assist: openai client init failed: %s", exc)
+            log.info("llm_assist: openai client init failed: %s", exc)
             return None
         return self._client
 
     # ------------------------------------------------------------------
     # Public call
     # ------------------------------------------------------------------
+
+    def _create_completion(
+        self,
+        client: Any,
+        deployment: str,
+        *,
+        system: str,
+        user: str,
+    ) -> Any:
+        """Call the judge, transparently dropping an unsupported temperature.
+
+        Reasoning deployments (``gpt-5-nano`` and siblings) answer an
+        explicit ``temperature`` with HTTP 400 ``unsupported_value``. That
+        used to fail every LLM-assisted check. We retry once without the
+        parameter and remember the outcome for the rest of the process.
+        """
+        kwargs: Dict[str, Any] = {
+            "model": deployment,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        if self._supports_temperature:
+            kwargs["temperature"] = 0.0
+
+        try:
+            return client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            if not self._supports_temperature or not _rejects_temperature(exc):
+                raise
+            log.info(
+                "llm_assist: deployment %s rejects an explicit temperature; "
+                "retrying with the model default",
+                deployment,
+            )
+            self._supports_temperature = False
+            kwargs.pop("temperature", None)
+            return client.chat.completions.create(**kwargs)
 
     def call(
         self,
@@ -343,17 +400,14 @@ class LLMJudge:
             return None
 
         try:
-            response = client.chat.completions.create(
-                model=deployment,
-                temperature=0.0,
-                response_format={"type": "json_object"},
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+            response = self._create_completion(
+                client, deployment, system=system, user=user
             )
         except Exception as exc:  # pragma: no cover
-            log.warning("llm_assist: judge call failed: %s", exc)
+            # LLM-assisted checks are advisory: a judge outage must never
+            # scream at the user mid-run. Keep the detail at INFO so
+            # `--verbose` still surfaces it.
+            log.info("llm_assist: judge call failed: %s", exc)
             return None
 
         raw = ""
@@ -362,14 +416,14 @@ class LLMJudge:
             raw = response.choices[0].message.content or ""
             usage = getattr(response, "usage", None)
         except (AttributeError, IndexError) as exc:  # pragma: no cover
-            log.warning("llm_assist: judge response malformed: %s", exc)
+            log.info("llm_assist: judge response malformed: %s", exc)
             return None
 
         try:
             payload = json.loads(raw)
             verdict = schema.model_validate(payload)
         except (json.JSONDecodeError, ValidationError) as exc:
-            log.warning("llm_assist: judge JSON invalid: %s", exc)
+            log.info("llm_assist: judge JSON invalid: %s", exc)
             return None
 
         meta = JudgementMeta(

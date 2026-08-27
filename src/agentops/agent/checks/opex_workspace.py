@@ -526,21 +526,23 @@ def _check_workflow_sha_pinning(workspace: Path) -> List[Finding]:
     return [
         Finding(
             id="opex.workflow_action_sha_pinning",
-            severity=Severity.WARNING,
+            severity=Severity.INFO,
             category=Category.OPERATIONAL_EXCELLENCE,
-            title="AgentOps workflows pin actions by tag, not by commit SHA",
+            title="CI workflows use version tags for GitHub Actions",
             summary=(
-                f"{len(offenders)} `uses:` line(s) across AgentOps "
-                "workflows pin a GitHub Action to a tag (e.g. `@v4`) "
-                "rather than a 40-character commit SHA. Tags are "
-                "mutable; CI runs are not reproducible if the tag "
-                "moves."
+                f"{len(offenders)} action(s) in your AgentOps workflows are "
+                "referenced by version tag (like `@v4`) instead of an exact "
+                "commit id. A tag can be repointed by its owner, so the same "
+                "workflow file can run different code tomorrow. This is a "
+                "supply-chain hardening step, not a release blocker - the "
+                "workflows AgentOps generates use tags by default."
             ),
             recommendation=(
-                "Replace each `uses: <owner>/<repo>@<tag>` with "
-                "`uses: <owner>/<repo>@<40-char-sha>`. The Dependabot "
-                "`github-actions` ecosystem can keep these pinned "
-                "SHAs current automatically."
+                "If your organisation requires reproducible CI, replace each "
+                "`uses: owner/repo@v4` with `uses: owner/repo@<commit-sha>` "
+                "and enable Dependabot's `github-actions` ecosystem to keep "
+                "those commit ids up to date. Otherwise this is safe to "
+                "ignore."
             ),
             source=SOURCE_NAME,
             evidence={"offenders": offenders},

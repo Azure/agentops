@@ -81,11 +81,18 @@ class RegressionCheckConfig(BaseModel):
 class LatencyCheckConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     p95_threshold_seconds: float = Field(5.0, gt=0)
+    # A p95 computed from a handful of requests is noise, not a signal:
+    # two slow warm-up calls in a smoke test are enough to blow past the
+    # threshold. Stay quiet until the window holds a usable sample.
+    min_requests: int = Field(20, ge=1)
 
 
 class ErrorsCheckConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rate_threshold: float = Field(0.05, ge=0.0, le=1.0)
+    # Same reasoning as LatencyCheckConfig.min_requests: 1 failure out of
+    # 3 requests is a 33% "error rate" that means nothing.
+    min_requests: int = Field(20, ge=1)
 
 
 class SafetyCheckConfig(BaseModel):

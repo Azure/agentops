@@ -20,6 +20,7 @@ def run_errors_check(
     if (
         monitor
         and monitor.error_rate is not None
+        and monitor.request_count >= config.min_requests
         and monitor.error_rate > config.rate_threshold
     ):
         severity = (

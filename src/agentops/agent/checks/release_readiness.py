@@ -26,7 +26,9 @@ def run_release_readiness_check(
     findings.extend(_check_latest_eval(history))
     findings.extend(_check_baseline(workspace, history))
     findings.extend(_check_trace_regression_dataset(workspace, history))
-    findings.extend(_check_foundry_online_evaluation(foundry))
+    # Continuous evaluation coverage is reported once, by the responsible-AI
+    # check `safety.config.continuous_eval_missing`. Emitting it here too
+    # produced two findings for a single missing Foundry rule.
     return findings
 
 
@@ -144,39 +146,3 @@ def _check_trace_regression_dataset(workspace: Path, history: ResultsHistory) ->
     ]
 
 
-def _check_foundry_online_evaluation(
-    foundry: Optional[FoundryControlPayload],
-) -> List[Finding]:
-    if foundry is None:
-        return []
-    diag = foundry.diagnostics or {}
-    if diag.get("status") != "ok":
-        return []
-    if "evaluation_rules_count" not in diag and "evaluation_rules_warning" not in diag:
-        return []
-    enabled = [rule for rule in foundry.evaluation_rules if rule.enabled is not False]
-    if enabled:
-        return []
-    return [
-        Finding(
-            id="opex.release.no_continuous_eval",
-            severity=Severity.WARNING,
-            category=Category.OPERATIONAL_EXCELLENCE,
-            title="No enabled Foundry continuous evaluation rule is attached",
-            summary=(
-                "The Foundry control plane was reachable, but AgentOps did not "
-                "detect an enabled continuous evaluation rule. Production "
-                "responses may not be sampled and scored after deployment."
-            ),
-            recommendation=(
-                "Enable Foundry continuous evaluation for the production agent "
-                "and include at least one safety or quality evaluator so runtime "
-                "traffic keeps producing quality evidence."
-            ),
-            source=SOURCE_NAME,
-            evidence={
-                "evaluation_rules_count": len(foundry.evaluation_rules),
-                "agents": [agent.agent_id for agent in foundry.agents],
-            },
-        )
-    ]

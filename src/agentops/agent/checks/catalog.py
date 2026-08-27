@@ -442,17 +442,6 @@ CHECKS: Tuple[CheckSpec, ...] = (
         requires=("workspace", "results_history"),
     ),
     CheckSpec(
-        id="opex.release.no_continuous_eval",
-        category=Category.OPERATIONAL_EXCELLENCE,
-        title="No enabled Foundry continuous evaluation rule is attached",
-        summary=(
-            "The Foundry control plane is reachable, but no enabled online "
-            "evaluation rule was detected for ongoing production scoring."
-        ),
-        severities=(Severity.WARNING,),
-        requires=("foundry_control",),
-    ),
-    CheckSpec(
         id="opex.results_not_gitignored",
         category=Category.OPERATIONAL_EXCELLENCE,
         title="Eval results are not gitignored",
@@ -510,12 +499,12 @@ CHECKS: Tuple[CheckSpec, ...] = (
     CheckSpec(
         id="opex.workflow_action_sha_pinning",
         category=Category.OPERATIONAL_EXCELLENCE,
-        title="AgentOps workflows pin actions by tag, not by SHA",
+        title="CI workflows use version tags for GitHub Actions",
         summary=(
-            "Tag-pinned actions can change underneath you. Pin to a "
-            "commit SHA for supply-chain hardening."
+            "Actions referenced by tag can change underneath you. Pinning "
+            "to a commit id is optional supply-chain hardening."
         ),
-        severities=(Severity.WARNING,),
+        severities=(Severity.INFO,),
         requires=("workspace",),
     ),
     CheckSpec(

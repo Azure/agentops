@@ -61,6 +61,35 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   unchanged.
 
 ### Fixed
+- **Doctor no longer raises latency and error-rate alarms on tiny samples.**
+  `latency.p95_production` and `errors.production_rate` compared an Application
+  Insights p95 and failure ratio against their thresholds regardless of how many
+  requests the lookback window actually held, so a smoke test with three
+  requests could report a "33% production error rate". Both checks now require
+  at least `min_requests` (default 20) requests in the window, configurable per
+  check in `agent.yaml`, and the latency summary states the sample size it
+  graded.
+- **The GitHub Actions pinning finding is now informational and written in plain
+  language.** `opex.workflow_action_sha_pinning` fired as a `warning` titled
+  "AgentOps workflows pin actions by tag, not by commit SHA", which read as a
+  release blocker for a supply-chain hardening step that AgentOps' own generated
+  workflows do not take. It is now `info` and explains what a moving version tag
+  means and when the commit-id form is worth adopting.
+- **The Doctor LLM judge recovers from models that reject an explicit
+  `temperature`.** Reasoning-family deployments answer `temperature: 0.0` with
+  HTTP 400 `unsupported_value`, which surfaced as repeated
+  `llm_assist: judge call failed` warnings mid-run. The client now detects that
+  specific rejection, caches the capability, and retries once without the
+  parameter.
+- **Doctor no longer prints third-party HTTP chatter over its progress
+  spinner.** `httpx`, `openai`, and Azure SDK `INFO` records were interleaving
+  with the spinner; a handler-level filter now drops sub-warning records from
+  those libraries regardless of which dependency re-enables their log level.
+- **Continuous evaluation is reported once instead of twice.**
+  `opex.release.no_continuous_eval` duplicated
+  `safety.config.continuous_eval_missing` for the same condition. The
+  operational-excellence copy was removed; the responsible-AI finding remains the
+  single owner.
 - **The `agentops init` target menu no longer hides hosted-agent versioning.**
   Option 2 showed only `.../agents/<name>`, implying a pinned revision was not
   supported. The menu now shows `.../agents/<name>[/versions/<v>]` and states
