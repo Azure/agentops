@@ -70,6 +70,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Observe distinguishes request and dependency telemetry reliably.** KQL now
+  retains the source table while unioning Application Insights records, so
+  Overview and Agents prefer request-level `invoke_agent` records correctly
+  instead of returning zero totals, and Runs omits uncorrelated internal spans.
 - **Observe now attributes Foundry agents and presents usable telemetry tables.**
   Hosted and prompt agents are classified from their emitted provider metadata,
   project attribution recognizes the Foundry project dimension, and Runs returns
