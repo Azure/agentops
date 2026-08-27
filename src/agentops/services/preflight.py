@@ -292,12 +292,34 @@ def _check_application_insights_env() -> PreflightCheck:
                 )
         except ImportError:
             pass
+        # A Foundry project *is* configured but discovery surfaced no
+        # App Insights connection — this is an actionable gap, so warn.
+        return PreflightCheck(
+            name="app_insights",
+            display_name="Application Insights",
+            status="warn",
+            message=(
+                "No connection string available; production telemetry "
+                "will be empty."
+            ),
+            remediation=(
+                "Wire App Insights to your Foundry project (Project details "
+                "> Connected resources > Add connection > Application "
+                "Insights) or set APPLICATIONINSIGHTS_CONNECTION_STRING."
+            ),
+            duration_seconds=time.time() - started,
+        )
+
+    # Neither an explicit connection string nor a Foundry endpoint is
+    # configured — there is no telemetry context to inspect yet, so this
+    # check is not applicable rather than a problem to fix.
     return PreflightCheck(
         name="app_insights",
         display_name="Application Insights",
-        status="warn",
+        status="skip",
         message=(
-            "No connection string available; production telemetry will be empty."
+            "No telemetry source configured; production telemetry is "
+            "unavailable."
         ),
         remediation=(
             "Wire App Insights to your Foundry project (Project details "
@@ -306,6 +328,58 @@ def _check_application_insights_env() -> PreflightCheck:
         ),
         duration_seconds=time.time() - started,
     )
+
+
+# ---------------------------------------------------------------------------
+# Cockpit startup guidance
+# ---------------------------------------------------------------------------
+
+
+_DOCTOR_GUIDANCE = (
+    "Run agentops doctor to generate readiness findings, then refresh Cockpit."
+)
+
+
+def workspace_is_initialized(workspace: Path) -> bool:
+    """True when the workspace has been scaffolded by ``agentops init``.
+
+    The presence of the ``.agentops/`` directory is the same signal the
+    workspace pre-flight check uses to decide whether workspace-dependent
+    checks can run at all.
+    """
+    return (workspace / ".agentops").is_dir()
+
+
+def _has_doctor_findings(workspace: Path) -> bool:
+    """True when a prior Doctor run has recorded findings locally.
+
+    Filesystem-only and read-only: a non-empty
+    ``.agentops/agent/history.jsonl`` means Doctor has already produced
+    readiness findings for this workspace.
+    """
+    history = workspace / ".agentops" / "agent" / "history.jsonl"
+    try:
+        return history.is_file() and history.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def cockpit_doctor_guidance(workspace: Path) -> Optional[str]:
+    """Return the state-aware Doctor guidance line for cockpit startup.
+
+    * Before the workspace is initialized, return ``None`` — the workspace
+      warning already tells the user to run ``agentops init`` and Doctor
+      cannot produce meaningful findings yet.
+    * Once initialized but with no Doctor findings, return the clearer
+      state-aware prompt.
+    * When Doctor findings already exist, return ``None`` — nothing new to
+      say.
+    """
+    if not workspace_is_initialized(workspace):
+        return None
+    if _has_doctor_findings(workspace):
+        return None
+    return _DOCTOR_GUIDANCE
 
 
 # ---------------------------------------------------------------------------

@@ -21,10 +21,12 @@ from agentops.agent.observe.auth import MissingUserAssertionError
 from agentops.agent.observe.cache import ObserveCache
 from agentops.agent.observe.facade import (
     AttributionCacheError,
+    LocalDelegatedUnavailableError,
     MAX_TREND_POINTS,
     ProtectedAttributionError,
     ObserveFacade,
     _build_trend_series,
+    create_local_observe_facade,
     create_observe_facade,
 )
 from agentops.agent.observe.queries import SourceResult
@@ -682,8 +684,72 @@ def test_create_observe_facade_accepts_cost_model_load_result() -> None:
 
 
 # ---------------------------------------------------------------------------
-# discover
+# create_local_observe_facade (local developer mode)
 # ---------------------------------------------------------------------------
+
+
+def test_create_local_observe_facade_requires_no_hosted_identity() -> None:
+    fac = create_local_observe_facade(
+        scope=_scope(),
+        discovery_client=FakeDiscoveryClient(_inventory([_source()])),
+        query_client=FakeQueryClient(),
+    )
+    assert fac._auth_mode == "local"
+    assert fac._tenant_id is None
+    assert fac._application_client_id is None
+    assert fac._uami_client_id is None
+
+
+def test_create_local_observe_facade_accepts_scope_mapping() -> None:
+    fac = create_local_observe_facade(
+        scope={"mode": "projects", "project_resource_ids": [_PROJECT_ID]},
+        discovery_client=FakeDiscoveryClient(_inventory([_source()])),
+        query_client=FakeQueryClient(),
+    )
+    assert isinstance(fac._scope, ObserveScope)
+    assert fac._scope.project_resource_ids == [_PROJECT_ID.lower()]
+
+
+@pytest.mark.asyncio
+async def test_local_facade_shares_aggregate_query_path_with_hosted() -> None:
+    fac = create_local_observe_facade(
+        scope=_scope(),
+        discovery_client=FakeDiscoveryClient(_inventory([_source()])),
+        query_client=FakeQueryClient(rows=[_agent_row()]),
+    )
+    result = await fac.query(view="agents", filters=_filters(), refresh=False, user_context={})
+    assert result["view"] == "agents"
+    assert result["data"][0]["key"] == "agent-1"
+
+
+@pytest.mark.asyncio
+async def test_local_facade_delegated_attribution_unavailable() -> None:
+    fac = create_local_observe_facade(
+        scope=_scope(),
+        discovery_client=FakeDiscoveryClient(_inventory([_source()])),
+        query_client=FakeQueryClient(),
+    )
+    with pytest.raises(LocalDelegatedUnavailableError) as excinfo:
+        await fac._query_attribution_delegated(
+            object(),  # local guard raises before the request is inspected
+            config=None,
+            user_context={},
+        )
+    assert excinfo.value.code == "observe_delegated_unavailable_local"
+    assert excinfo.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_local_facade_trace_content_unavailable() -> None:
+    fac = create_local_observe_facade(
+        scope=_scope(),
+        discovery_client=FakeDiscoveryClient(_inventory([_source()])),
+        query_client=FakeQueryClient(),
+    )
+    with pytest.raises(LocalDelegatedUnavailableError) as excinfo:
+        await fac.trace_content(request={"correlation_id": "abc"}, user_context={})
+    assert excinfo.value.status_code == 409
+    assert "local" in str(excinfo.value).lower()
 
 
 @pytest.mark.asyncio

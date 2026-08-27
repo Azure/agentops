@@ -273,6 +273,80 @@ def test_doctor_templates_emit_doctor_findings_to_app_insights(tmp_path: Path) -
     ) in ado_content
 
 
+def test_doctor_workflow_propagates_exit_code_after_artifacts(tmp_path: Path) -> None:
+    """The scheduled GitHub Doctor job must fail on a captured exit code of 2.
+
+    Regression guard for issue #455: the run step captures ``agentops doctor``'s
+    exit code under ``set +e``; a final step must propagate it so a readiness
+    gate failure (exit 2) or runtime error (exit 1) turns the job red, while the
+    artifact upload and step summary steps still publish via ``if: always()``.
+    """
+    generate_cicd_workflows(directory=tmp_path, kinds=["doctor"])
+    content = (tmp_path / _DOCTOR_PATH).read_text(encoding="utf-8")
+    data = yaml.safe_load(content)
+    steps = data["jobs"]["analyze"]["steps"]
+    names = [s.get("name") for s in steps]
+
+    # The doctor run step captures the exit code under a known step id.
+    run_step = next(s for s in steps if s.get("name") == "Run AgentOps doctor")
+    step_id = run_step["id"]
+    assert step_id == "analyze"
+    assert 'echo "exit_code=$?" >> "$GITHUB_OUTPUT"' in run_step["run"]
+    assert "set +e" in run_step["run"]
+
+    # Artifacts and the step summary still publish even when the job fails.
+    upload = next(s for s in steps if s.get("name") == "Upload Doctor artifacts")
+    summary = next(s for s in steps if s.get("name") == "Step summary")
+    assert upload["if"] == "always()"
+    assert summary["if"] == "always()"
+
+    # The final step propagates the captured exit code — exit 2 fails the job.
+    last = steps[-1]
+    assert last["if"] == "always()"
+    assert last["run"].strip() == "exit ${{ steps.%s.outputs.exit_code }}" % step_id
+    assert f"steps.{step_id}.outputs.exit_code" in last["run"]
+
+    # Propagation must run after artifacts and the summary are published.
+    assert names.index("Upload Doctor artifacts") < len(names) - 1
+    assert names.index("Step summary") < len(names) - 1
+    assert steps.index(last) == len(steps) - 1
+
+
+def test_azure_devops_doctor_pipeline_fails_on_doctor_exit_code(tmp_path: Path) -> None:
+    """The ADO Doctor pipeline fails the task on a non-zero doctor exit code.
+
+    ``agentops doctor`` is the final command of the AzureCLI task (no
+    ``set +e`` swallows it), so exit 2/1 fails the task while the publish and
+    print steps still run via ``condition: always()``.
+    """
+    generate_cicd_workflows(
+        directory=tmp_path, platform="azure-devops", kinds=["doctor"], force=True
+    )
+    content = (tmp_path / _ADO_DOCTOR).read_text(encoding="utf-8")
+    data = yaml.safe_load(content)
+    steps = data["stages"][0]["jobs"][0]["steps"]
+
+    cli = next(s for s in steps if str(s.get("task", "")).startswith("AzureCLI@"))
+    script = cli["inputs"]["inlineScript"]
+    # No error-swallowing and no capture-without-propagate anti-pattern.
+    assert "set +e" not in script
+    assert "$GITHUB_OUTPUT" not in script
+    assert "exit_code=" not in script
+    # doctor is the last command, so its exit code becomes the task result.
+    non_empty = [ln.strip() for ln in script.splitlines() if ln.strip()]
+    assert "agentops doctor --workspace ." in script
+    assert non_empty[-1] == "--severity-fail critical --evidence-pack"
+
+    # Publish + print steps still run on failure.
+    publishes = [
+        s for s in steps if str(s.get("task", "")).startswith("PublishPipelineArtifact@")
+    ]
+    assert publishes
+    assert all(p["condition"] == "always()" for p in publishes)
+    print_step = next(s for s in steps if s.get("displayName") == "Print Doctor report")
+    assert print_step["condition"] == "always()"
+
+
 def test_azure_devops_templates_pass_app_insights_for_eval_telemetry(tmp_path: Path) -> None:
     generate_cicd_workflows(directory=tmp_path, platform="azure-devops", kinds=ALL_KINDS)
 

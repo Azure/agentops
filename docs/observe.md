@@ -252,6 +252,35 @@ shared caches, URLs, browser storage, telemetry, diagnostics, or deployment
 artifacts. See [Operate](operate.md#shared-hosted-cockpit-and-protected-content)
 and [Deploy the hosted Cockpit](deploy-hosted-cockpit.md).
 
+### Local developer versus hosted authentication
+
+Cockpit authenticates one of two ways, chosen automatically by run mode.
+
+Local mode (`agentops cockpit` on a developer workstation) uses your own
+ambient Azure sign-in through `DefaultAzureCredential(process_timeout=30)` —
+the Azure CLI, VS Code, or environment credential you already have. It requires
+none of the hosted identity configuration: `AGENTOPS_TENANT_ID`,
+`AGENTOPS_APPLICATION_CLIENT_ID`, and `AGENTOPS_UAMI_CLIENT_ID` may all be
+unset. `agentops cockpit` therefore starts against any discoverable project
+scope without hosted identity provisioning. The `process_timeout=30` override is
+mandatory on Windows, where the SDK's 10-second default times out the `az.cmd`
+cold start.
+
+Because local mode signs in as the developer rather than a hosted end user, it
+has no delegated end-user identity to act on behalf of. Aggregate discovery and
+telemetry reads work normally, but **user-delegated views are reported as
+unavailable rather than emulated**: the per-user attribution query and the
+protected trace-content read each return an actionable "unavailable in local
+developer mode" diagnostic (HTTP 409) instead of fabricating a delegated
+principal. Use the hosted Cockpit with Easy Auth for those views.
+
+Hosted mode (the deployed Cockpit web application) keeps the full hosted chain
+described above: a shared user-assigned managed identity for aggregate reads and
+a fresh signed-in-user On-Behalf-Of credential for every delegated per-user and
+trace-content read. It requires `AGENTOPS_TENANT_ID`,
+`AGENTOPS_APPLICATION_CLIENT_ID`, and `AGENTOPS_UAMI_CLIENT_ID`; a missing value
+fails fast with an actionable configuration error.
+
 ## Enable user and department attribution
 
 Attribution is opt-in. Set `AGENTOPS_ATTRIBUTION_CONFIG` on the Cockpit

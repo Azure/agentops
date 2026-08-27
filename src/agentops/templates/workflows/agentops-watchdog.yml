@@ -120,3 +120,13 @@ jobs:
               cat .agentops/release/latest/evidence.md
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Propagate the captured Doctor exit code as the job result. This runs
+      # last, after artifacts and the step summary have been published (both
+      # `if: always()`), so a readiness gate failure (exit 2) or runtime error
+      # (exit 1) turns the scheduled job red instead of leaving it green. A
+      # failed CI run is a fallback signal only — it is not equivalent to an
+      # Azure Monitor operational alert.
+      - name: Propagate Doctor exit code
+        if: always()
+        run: exit ${{ steps.analyze.outputs.exit_code }}

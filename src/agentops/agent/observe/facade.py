@@ -33,7 +33,7 @@ import os
 import time
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping, Sequence, cast, get_args
+from typing import Any, Callable, Literal, Mapping, Sequence, cast, get_args
 
 from agentops.agent.observe import adapters
 from agentops.agent.observe.adapters import AzureDiscoveryClient, AzureQueryClient
@@ -43,6 +43,7 @@ from agentops.agent.observe.auth import (
     TokenCredential,
     build_aggregate_credential,
     build_delegated_monitor_credential,
+    build_local_developer_credential,
 )
 from agentops.agent.observe.cache import ObserveCache
 from agentops.agent.observe.attribution import SingletonAttributionError
@@ -106,6 +107,19 @@ _TREND_METRICS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+#: Auth mode string bound accepted by :class:`ObserveFacade` and the two
+#: construction factories. ``"hosted"`` is the Easy Auth / UAMI / delegated
+#: chain; ``"local"`` is the developer-signed-in DefaultAzureCredential chain.
+AuthMode = Literal["hosted", "local"]
+
+#: Stable cache-key identity used for aggregate reads in local developer mode.
+#: The hosted path keys aggregate reads on the UAMI client id; local mode has
+#: no UAMI, so a single stable constant is used instead -- aggregate reads are
+#: not tied to any signed-in user, so a shared, constant identity is exactly
+#: what makes the two-minute cache safe to share across concurrent requests.
+LOCAL_DEVELOPER_IDENTITY = "local-developer"
+
+
 class AttributionCacheError(RuntimeError):
     """Stable fail-closed error for attribution cache infrastructure failures."""
 
@@ -129,6 +143,39 @@ class ProtectedAttributionError(RuntimeError):
             "Verify delegated access and retry the attribution query.",
         )
         self.status_code = getattr(error, "status_code", 503)
+
+
+class LocalDelegatedUnavailableError(ValueError):
+    """User-delegated Observe reads are unavailable in local developer mode.
+
+    Local Cockpit authenticates with the developer's own ambient Azure sign-in
+    (a :class:`~azure.identity.DefaultAzureCredential`), which has no hosted
+    end-user identity to delegate on behalf of. Rather than fabricate a
+    delegated principal, per-user attribution views and protected
+    trace-content reads report themselves as unavailable so callers get an
+    actionable diagnostic instead of a misleading identity-only result.
+
+    It is a :class:`ValueError` carrying ``code``/``next_action``/
+    ``status_code`` so ``cockpit.py``'s ``_service_call`` maps it to a clean
+    HTTP error without crashing.
+    """
+
+    code = "observe_delegated_unavailable_local"
+    next_action = (
+        "Deploy the hosted Cockpit with Easy Auth to use user-delegated "
+        "attribution and trace-content views."
+    )
+    status_code = 409
+    private = False
+
+    def __init__(self, message: str | None = None) -> None:
+        super().__init__(
+            message
+            or (
+                "User-delegated telemetry access is unavailable in local "
+                "developer mode; run the hosted Cockpit for per-user views."
+            )
+        )
 
 
 @dataclass(frozen=True)
@@ -298,9 +345,10 @@ class ObserveFacade:
         self,
         *,
         scope: ObserveScope,
-        tenant_id: str,
-        application_client_id: str,
-        uami_client_id: str,
+        tenant_id: str | None = None,
+        application_client_id: str | None = None,
+        uami_client_id: str | None = None,
+        auth_mode: AuthMode = "hosted",
         discovery_client: Any | None = None,
         query_client: Any | None = None,
         cache: ObserveCache | None = None,
@@ -313,6 +361,7 @@ class ObserveFacade:
         attribution_config_result: AttributionConfigurationLoadResult | None = None,
     ) -> None:
         self._scope = scope
+        self._auth_mode: AuthMode = auth_mode
         self._tenant_id = tenant_id
         self._application_client_id = application_client_id
         self._uami_client_id = uami_client_id
@@ -331,9 +380,25 @@ class ObserveFacade:
             else AttributionConfigurationLoadResult(state="absent")
         )
 
-        credential = aggregate_credential or build_aggregate_credential(
-            uami_client_id, credential_factory=credential_factory
-        )
+        if aggregate_credential is not None:
+            credential = aggregate_credential
+        elif auth_mode == "local":
+            # Local developer mode: the developer's ambient Azure sign-in
+            # (Azure CLI / VS Code / environment) drives aggregate reads and
+            # needs none of the hosted identity variables. Build the
+            # credential lazily only when a real Azure client is actually
+            # required (i.e. at least one client is not injected).
+            credential = (
+                build_local_developer_credential()
+                if (discovery_client is None or query_client is None)
+                else None
+            )
+        else:
+            # Hosted mode: preserved byte-identical -- UAMI-only aggregate
+            # credential built from the hosted identity configuration.
+            credential = build_aggregate_credential(
+                uami_client_id, credential_factory=credential_factory
+            )
         self._discovery_client = discovery_client or AzureDiscoveryClient(
             credential=credential, clock=clock
         )
@@ -341,7 +406,10 @@ class ObserveFacade:
             credential=credential, clock=monotonic_clock
         )
         self._cache = cache or ObserveCache(ttl_seconds=CACHE_TTL_SECONDS)
-        self._runtime = _AggregateRuntimeContext(uami_client_id=uami_client_id)
+        runtime_identity = (
+            uami_client_id if auth_mode == "hosted" else LOCAL_DEVELOPER_IDENTITY
+        )
+        self._runtime = _AggregateRuntimeContext(uami_client_id=runtime_identity)
         self._service = ObserveService(
             discovery_client=self._discovery_client,
             query_client=self._query_client,
@@ -539,6 +607,8 @@ class ObserveFacade:
         cost_model: Any = None,
         user_context: Mapping[str, Any],
     ) -> AttributionResponse:
+        if self._auth_mode == "local":
+            raise LocalDelegatedUnavailableError()
         user_assertion = user_context.get(ACCESS_TOKEN_CONTEXT_KEY) or ""
         credential = build_delegated_monitor_credential(
             tenant_id=self._tenant_id,
@@ -711,6 +781,11 @@ class ObserveFacade:
         local to this call and are never written to ``ObserveCache`` --
         raw/protected content must never enter a shared cache.
         """
+        if self._auth_mode == "local":
+            raise LocalDelegatedUnavailableError(
+                "Protected trace content is unavailable in local developer "
+                "mode; run the hosted Cockpit with Easy Auth to read it."
+            )
         trace_request = TraceContentRequest.model_validate(dict(request))
         context = user_context or {}
         user_assertion = context.get(ACCESS_TOKEN_CONTEXT_KEY) or ""
@@ -839,6 +914,51 @@ def create_observe_facade(
         monotonic_clock=monotonic_clock,
         credential_factory=credential_factory,
         obo_factory=obo_factory,
+        cost_model_result=cost_model_result,
+        attribution_config_result=attribution_config_result,
+    )
+
+
+def create_local_observe_facade(
+    *,
+    scope: ObserveScope | Mapping[str, Any],
+    credential: TokenCredential | None = None,
+    discovery_client: Any | None = None,
+    query_client: Any | None = None,
+    cache: ObserveCache | None = None,
+    clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    monotonic_clock: Callable[[], float] = time.monotonic,
+    cost_model_result: CostModelLoadResult | None = None,
+    attribution_config_result: AttributionConfigurationLoadResult | None = None,
+) -> ObserveFacade:
+    """Build an ``ObserveFacade`` for local developer use.
+
+    This is the local counterpart to :func:`create_observe_facade`. It shares
+    the exact discovery, query, cache, cost and scope logic -- only the auth
+    mode differs. Aggregate discovery/query reads use the developer's ambient
+    Azure sign-in via a :class:`~azure.identity.DefaultAzureCredential`
+    (built lazily with the mandatory ``process_timeout=30``), so this factory
+    requires **none** of the hosted identity variables
+    (``AGENTOPS_TENANT_ID`` / ``AGENTOPS_APPLICATION_CLIENT_ID`` /
+    ``AGENTOPS_UAMI_CLIENT_ID``).
+
+    User-delegated attribution views and protected trace-content reads are
+    reported as unavailable in this mode (via
+    :class:`LocalDelegatedUnavailableError`) rather than emulated with a
+    fabricated end-user identity.
+    """
+    resolved_scope = (
+        scope if isinstance(scope, ObserveScope) else ObserveScope.model_validate(scope)
+    )
+    return ObserveFacade(
+        scope=resolved_scope,
+        auth_mode="local",
+        aggregate_credential=credential,
+        discovery_client=discovery_client,
+        query_client=query_client,
+        cache=cache,
+        clock=clock,
+        monotonic_clock=monotonic_clock,
         cost_model_result=cost_model_result,
         attribution_config_result=attribution_config_result,
     )

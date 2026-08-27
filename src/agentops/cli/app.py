@@ -5980,7 +5980,11 @@ def cmd_cockpit(
     import webbrowser
 
     from agentops.agent.cockpit import create_app as create_cockpit_app
-    from agentops.services.preflight import format_report, run_preflight
+    from agentops.services.preflight import (
+        cockpit_doctor_guidance,
+        format_report,
+        run_preflight,
+    )
 
     workspace = workspace.resolve()
 
@@ -6031,9 +6035,9 @@ def cmd_cockpit(
     for label, value in connection_rows:
         padding = " " * (label_width - len(label))
         typer.echo(f"{_cli_label(label)}:{padding} {value}")
-    typer.echo(
-        f"Run {_cli_command('agentops doctor')} in another terminal to populate doctor findings."
-    )
+    doctor_guidance = cockpit_doctor_guidance(workspace)
+    if doctor_guidance:
+        typer.echo(doctor_guidance)
     typer.echo("")
     typer.echo(style("Press Enter (or Ctrl+C) to stop the cockpit.", "dim"))
 

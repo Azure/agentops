@@ -5014,13 +5014,28 @@ def create_app(
             else None
         )
         if observe_service is None and effective_scope is not None:
-            from agentops.agent.observe.facade import create_observe_facade
+            from agentops.agent.observe.facade import create_local_observe_facade
 
-            observe_service = create_observe_facade(
-                scope=effective_scope,
-                cost_model_result=cost_model_result,
-                attribution_config_result=attribution_config_result,
-            )
+            # Local developer mode: use the developer's ambient Azure sign-in
+            # (DefaultAzureCredential) and require none of the hosted identity
+            # variables. Startup must never crash on Observe wiring -- missing
+            # Azure SDKs, unavailable CLI credentials, or discovery failures
+            # degrade to a graceful 503 (observe_service stays None) rather than
+            # taking down `agentops cockpit`.
+            try:
+                observe_service = create_local_observe_facade(
+                    scope=effective_scope,
+                    cost_model_result=cost_model_result,
+                    attribution_config_result=attribution_config_result,
+                )
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).debug(
+                    "Local Observe wiring unavailable; continuing without it.",
+                    exc_info=True,
+                )
+                observe_service = None
     else:
         scope_payload = observe_scope or configured.observe_scope
         if scope_payload is None:
