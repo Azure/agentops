@@ -47,7 +47,13 @@ def setup_logging(verbose: bool = False) -> None:
         verbose: When True, set level to DEBUG and include timestamps.
                  When False (default), set level to INFO.
     """
-    level = logging.DEBUG if verbose else logging.INFO
+    # Operator-facing commands render their own progress and diagnostics.
+    # In normal mode, stdlib INFO records add noise without actionable value.
+    # ``logging.disable`` is global and therefore remains effective even if a
+    # dependency later installs a new handler or calls ``basicConfig(force=True)``.
+    logging.disable(logging.NOTSET if verbose else logging.INFO)
+
+    level = logging.DEBUG if verbose else logging.WARNING
     fmt = _LOG_FORMAT_VERBOSE if verbose else _LOG_FORMAT
 
     logging.basicConfig(

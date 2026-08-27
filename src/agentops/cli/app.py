@@ -319,22 +319,28 @@ def _console_width() -> int:
 
 
 def _wrap_balanced(text: str, width: int) -> list[str]:
-    """Wrap ``text`` without leaving a single word alone on the last line.
+    """Wrap ``text`` without leaving a visibly short final line.
 
     ``textwrap.wrap`` greedily fills every line, which regularly strands
-    one short word on its own ("... available for" / "release"). When
-    that happens we retry with progressively narrower widths and keep
-    the first result that has the same line count but no orphan.
+    a word or short phrase on its own. Try narrower widths that preserve
+    the line count and choose the most evenly balanced result.
     """
     lines = wrap(text, width=width)
-    if len(lines) < 2 or len(lines[-1].split()) > 1:
+    if len(lines) < 2:
         return lines
+
     floor = max(32, width // 2)
+    best = lines
+    best_score = max(len(line) for line in lines) - min(len(line) for line in lines)
     for candidate in range(width - 1, floor - 1, -1):
         trial = wrap(text, width=candidate)
-        if len(trial) == len(lines) and len(trial[-1].split()) > 1:
-            return trial
-    return lines
+        if len(trial) != len(lines):
+            continue
+        score = max(len(line) for line in trial) - min(len(line) for line in trial)
+        if score < best_score:
+            best = trial
+            best_score = score
+    return best
 
 
 def _workflow_eval_runner_label(eval_runner: str) -> str:

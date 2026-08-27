@@ -90,11 +90,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   as `HTTP Request: GET .../openai/v1/evals?limit=10` cannot interrupt the Doctor
   spinner even when a dependency resets the log level, clears our filter, or
   calls `logging.basicConfig(force=True)`. `--verbose` reverses this and shows
-  every record again.
-- **The Doctor finding summary no longer leaves a single orphan word on the last
-  line.** Titles were wrapped at a fixed 110 columns regardless of the real
-  terminal width. Wrapping now uses the actual terminal size and re-flows a
-  finding when the last line would hold only one word.
+  every record again. Normal operator mode now globally suppresses all
+  non-actionable `INFO` records, including handlers installed after startup.
+- **The Doctor finding summary no longer leaves an orphan word or short phrase
+  on the last line.** Titles were wrapped at a fixed 110 columns regardless of
+  the real terminal width. Wrapping now uses the actual terminal size and picks
+  the most evenly balanced line lengths.
 - **Doctor only calls an error rate `critical` when it is unambiguously broken.**
   `errors.production_rate` escalated to `critical` at twice the warning bar, so a
   13% failure rate on a development workspace was reported as a release blocker.

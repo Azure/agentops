@@ -23,7 +23,9 @@ class _Capture(logging.Handler):
 def _restore_logging():
     root = logging.getLogger()
     saved_handlers, saved_level = list(root.handlers), root.level
+    saved_disable = root.manager.disable
     yield
+    logging.disable(saved_disable)
     root.handlers[:] = saved_handlers
     root.setLevel(saved_level)
     for name in ("httpx", "openai", "azure", "httpcore", "urllib3"):
@@ -80,16 +82,16 @@ def test_noise_stays_muted_even_if_filters_are_cleared() -> None:
     assert capture.messages == []
 
 
-def test_warnings_and_own_logs_still_pass() -> None:
+def test_warnings_pass_but_info_is_hidden() -> None:
     setup_logging(verbose=False)
     noisy = _attach("httpx")
     ours = _attach()
 
     logging.getLogger("httpx").warning("real problem")
-    logging.getLogger("agentops.demo").info("our own message")
+    logging.getLogger("agentops.demo").info("operator noise")
 
     assert noisy.messages == ["real problem"]
-    assert ours.messages == ["our own message"]
+    assert ours.messages == []
 
 
 def test_verbose_keeps_everything() -> None:
