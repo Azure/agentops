@@ -1505,10 +1505,10 @@ stopping the whole run.</p>
 </tr>
 <tr>
 <td><code>opex.workflow_action_sha_pinning</code></td>
-<td>warning</td>
+<td>info</td>
 <td><code>workspace_files</code></td>
 <td>programmatic</td>
-<td><code>uses:</code> pinned to tag instead of 40-char SHA</td>
+<td><code>uses:</code> references an action by version tag instead of a commit id (optional hardening)</td>
 </tr>
 <tr>
 <td><code>opex.ailz_readiness</code></td>
@@ -1551,13 +1551,6 @@ stopping the whole run.</p>
 <td><code>workspace_files</code> + <code>results_history</code></td>
 <td>programmatic</td>
 <td>no <code>.agentops/data/trace-regression-manifest.json</code> exists yet</td>
-</tr>
-<tr>
-<td><code>opex.release.no_continuous_eval</code></td>
-<td>warning</td>
-<td><code>foundry_control</code></td>
-<td>programmatic</td>
-<td>Foundry control plane is reachable but no enabled continuous evaluation rule was detected</td>
 </tr>
 <tr>
 <td><code>opex.no_foundry_control_configured</code></td>
