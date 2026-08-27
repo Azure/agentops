@@ -11,6 +11,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from agentops.core.agentops_config import (
     AGENT_OVERRIDE_ENV,
+    NO_AGENT_TARGET_MESSAGE,
     AgentOpsConfig,
     classify_agent,
     resolve_agent_override,
@@ -263,6 +264,8 @@ def _build_plan(config_path: Path, *, agent: str | None = None) -> _EvalPlan:
     except ValueError as exc:
         raise OfficialEvalUnsupported(str(exc)) from exc
     agent_expression = override or config.agent
+    if not agent_expression:
+        raise OfficialEvalUnsupported(NO_AGENT_TARGET_MESSAGE)
     target = classify_agent(agent_expression, config.protocol)
     if target.kind != "foundry_prompt":
         raise OfficialEvalUnsupported(

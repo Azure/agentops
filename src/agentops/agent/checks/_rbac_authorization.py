@@ -73,7 +73,7 @@ def list_principal_role_definition_ids(
     except ImportError as exc:
         raise AuthorizationCheckError(
             "azure-mgmt-authorization not installed; install "
-            "`agentops-accelerator[agent]` (or add the package directly) to "
+            "`agentops-accelerator[cockpit]` (or add the package directly) to "
             "enable the OpenAI data-plane RBAC check"
         ) from exc
 

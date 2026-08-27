@@ -41,12 +41,6 @@ workflow_app = typer.Typer(help="CI/CD workflow commands.")
 skills_app = typer.Typer(help="Coding agent skills management.")
 prompt_app = typer.Typer(help="Foundry prompt-agent source control commands.")
 mcp_app = typer.Typer(help="MCP (Model Context Protocol) server commands.")
-agent_app = typer.Typer(
-    help=(
-        "Agent server commands (host AgentOps as a Copilot SDK agent). "
-        "Use `agentops doctor` for the local diagnostic analyzer."
-    )
-)
 doctor_app = typer.Typer(
     help=(
         "Diagnose MLOps / security / responsible-AI gaps in this workspace. "
@@ -93,7 +87,6 @@ app.add_typer(workflow_app, name="workflow")
 app.add_typer(skills_app, name="skills")
 app.add_typer(prompt_app, name="prompt")
 app.add_typer(mcp_app, name="mcp")
-app.add_typer(agent_app, name="agent")
 app.add_typer(doctor_app, name="doctor")
 app.add_typer(init_app, name="init")
 app.add_typer(assert_app, name="assert")
@@ -499,7 +492,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "agentops explain eval run --open",
             "agentops explain cockpit --format markdown --out cockpit.md",
         ),
-        children=("init", "eval", "report", "workflow", "skills", "prompt", "mcp", "agent", "doctor", "cockpit", "assert", "redteam"),
+        children=("init", "eval", "report", "workflow", "skills", "prompt", "mcp", "doctor", "cockpit", "assert", "redteam"),
     ),
     ("init",): ExplainPage(
         title="Initialize workspace and configure endpoints",
@@ -517,7 +510,16 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "It is the single entrypoint for setting up a project: it "
             "scaffolds `agentops.yaml` plus the `.agentops/` starter files, "
             "and runs a question loop that fills in project endpoint, "
-            "agent, and dataset.",
+            "evaluation target, and dataset.",
+            "The evaluation target is optional. The wizard offers an explicit "
+            "target-kind choice — (1) Foundry prompt agent `<name>:<version>`, "
+            "(2) Foundry hosted agent URL, (3) model deployment "
+            "`model:<deployment>`, (4) external HTTP agent URL, or "
+            "(5) configure later / project observability only. Choice 5 writes "
+            "no `agent` key at all: Doctor, Cockpit, and Observe work fully "
+            "against just the Foundry project, and agent-dependent checks are "
+            "reported as not-applicable rather than failing. No placeholder "
+            "target is ever written.",
             "Every answer is persisted as soon as it is validated, so a "
             "Ctrl+C mid-wizard never loses values that were already entered. "
             "Re-running `agentops init` is idempotent: questions whose values "
@@ -533,11 +535,17 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "azd env when one already exists, `.agentops/.env`, and the "
             "process environment. Each question shows the current value as "
             "its default; pressing Enter keeps it.",
-            "Persists `agent` and `dataset` to `agentops.yaml` (declarative, "
-            "version-controlled). Persists the Foundry project endpoint to "
-            "`.agentops/.env` by default, or to `.azure/<env>/.env` when an "
-            "azd environment already exists or `--azd-env` is provided. App "
-            "Insights is not asked in the wizard; runtime commands try to "
+            "The evaluation-target question normalizes what you enter: hosted "
+            "agent URLs are canonicalized, while a Foundry project endpoint or "
+            "a portal/browser URL pasted as an agent is rejected with specific "
+            "guidance. Choosing 'configure later' (or accepting the default) "
+            "leaves `agent` out of `agentops.yaml` entirely — a valid, "
+            "fully-supported project-observability-only config.",
+            "Persists `agent` (when set) and `dataset` to `agentops.yaml` "
+            "(declarative, version-controlled). Persists the Foundry project "
+            "endpoint to `.agentops/.env` by default, or to `.azure/<env>/.env` "
+            "when an azd environment already exists or `--azd-env` is provided. "
+            "App Insights is not asked in the wizard; runtime commands try to "
             "discover the Foundry project's "
             "attached resource through the Azure AI Projects SDK, and "
             "`--appinsights-connection-string` remains available when you need "
@@ -548,7 +556,10 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "Supports a fully scripted mode through `--project-endpoint`, "
             "`--agent`, `--dataset`, `--appinsights-connection-string`, and "
             "`--azd-env` flags. The wizard is skipped automatically when any "
-            "of those flags is provided, or when `--no-prompt` is passed.",
+            "of those flags is provided, or when `--no-prompt` is passed. "
+            "`--no-prompt` without `--agent` produces a valid agent-less "
+            "config; `--agent` validates and normalizes through the same rules "
+            "as the interactive path.",
             "`agentops init show` prints the active configuration: azd "
             "environment when present, AgentOps local env, agentops.yaml "
             "fields, and each managed variable with its source and whether it "
@@ -559,7 +570,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "User answers entered interactively, or values supplied via flags.",
         ),
         outputs=(
-            "`agentops.yaml` — version, agent, dataset.",
+            "`agentops.yaml` — version, dataset, and an optional evaluation target.",
             "`.agentops/` — starter data and asset folders.",
             "`.agentops/.env` — local AgentOps env values when no azd env is active.",
             "`.azure/<env>/.env` — only when an azd env already exists or `--azd-env` is provided.",
@@ -849,65 +860,6 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
         ),
         inputs=("MCP client stdio messages",),
         examples=("agentops mcp serve",),
-    ),
-    ("agent",): ExplainPage(
-        title="Agent server commands",
-        command="agentops agent",
-        synopsis=("agentops agent COMMAND [ARGS]...", "agentops agent explain"),
-        summary=("Contains commands that host AgentOps Doctor as an HTTP agent/Copilot Extension surface, and that manage the agent's Microsoft Entra identity.",),
-        children=("serve", "register"),
-    ),
-    ("agent", "register"): ExplainPage(
-        title="Register the agent identity blueprint",
-        command="agentops agent register",
-        synopsis=(
-            "agentops agent register [--sponsor UPN_OR_ID] [--display-name NAME] [--workspace PATH] [--dry-run]",
-            "agentops agent register explain",
-        ),
-        summary=(
-            "Creates the agent's identity blueprint in Microsoft Entra so the agent becomes a governed principal in Microsoft Agent 365.",
-            "Registration is what makes an agent visible in the tenant agent inventory, targetable by Conditional Access, and attributable to an accountable sponsor. Until it exists, the agent is just a workload with no identity of its own.",
-            "The command is idempotent: it looks the blueprint up by display name first and adopts the existing one instead of creating a duplicate.",
-        ),
-        how_it_works=(
-            "Resolves the display name from `--display-name`, then `identity.display_name` in `agentops.yaml`, then the agent target name.",
-            "Resolves the sponsor from `--sponsor` or `identity.sponsor` in `agentops.yaml`. A sponsor is mandatory: Agent 365 requires an accountable human owner.",
-            "Acquires an app-only Microsoft Graph token through the shared Azure credential chain.",
-            "Queries `GET /applications` filtered by display name. If a blueprint already exists it is reused.",
-            "Otherwise it POSTs a `Microsoft.Graph.AgentIdentityBlueprint` application to Graph v1.0.",
-            "Writes `.agentops/identity/agent-identity.json` so Doctor, the OTel exporter, and the release evidence pack can all quote the same Entra Agent ID.",
-        ),
-        inputs=(
-            "`agentops.yaml` keys `identity.sponsor`, `identity.display_name`, `identity.owner`.",
-            "Microsoft Graph application permission `AgentIdentityBlueprint.Create` with tenant admin consent.",
-        ),
-        outputs=(
-            "`.agentops/identity/agent-identity.json` containing `app_id`, `object_id`, and `display_name`.",
-            "The Entra Agent ID echoed to stdout for use in CI logs.",
-        ),
-        examples=(
-            "agentops agent register --sponsor jane@contoso.com",
-            "agentops agent register --dry-run",
-        ),
-        see_also=("agentops explain doctor", "agentops explain telemetry"),
-    ),
-    ("agent", "serve"): ExplainPage(
-        title="Serve AgentOps as an HTTP agent",
-        command="agentops agent serve",
-        synopsis=("agentops agent serve [--host HOST] [--port PORT] [--workspace PATH] [--config PATH] [--no-verify] [--workers N]", "agentops agent serve explain"),
-        summary=(
-            "Hosts AgentOps Doctor behind an HTTP API compatible with Copilot Extensions.",
-            "It exposes message handling and health endpoints so AgentOps diagnostics can be used from a chat-based agent surface.",
-        ),
-        how_it_works=(
-            "Loads `.agentops/agent.yaml` or the explicit `--config` path.",
-            "Creates the FastAPI app from the agent server module.",
-            "Runs Uvicorn with signature verification enabled by default.",
-        ),
-        inputs=("`.agentops/agent.yaml`", "Copilot Extensions HTTP requests"),
-        outputs=("HTTP endpoints: `POST /agents/messages`, `GET /healthz`, `GET /`",),
-        examples=("agentops agent serve", "agentops agent serve --host 127.0.0.1 --port 8080 --no-verify"),
-        see_also=("agentops explain doctor",),
     ),
     ("doctor",): ExplainPage(
         title="Doctor diagnostics",
@@ -1543,7 +1495,6 @@ workflow_app.command("explain")(_make_group_explain(("workflow",)))
 skills_app.command("explain")(_make_group_explain(("skills",)))
 prompt_app.command("explain")(_make_group_explain(("prompt",)))
 mcp_app.command("explain")(_make_group_explain(("mcp",)))
-agent_app.command("explain")(_make_group_explain(("agent",)))
 
 
 # ---------------------------------------------------------------------------
@@ -1604,7 +1555,7 @@ def cmd_init(
         Optional[str],
         typer.Option(
             "--agent",
-            help="Set the agent identifier non-interactively (name:version, model:deployment, or URL).",
+            help="Set the optional evaluation target non-interactively (name:version, model:deployment, or URL). Omit for project-observability-only mode.",
         ),
     ] = None,
     dataset: Annotated[
@@ -1663,10 +1614,14 @@ def cmd_init(
         apply_answers,
         discover_defaults,
         is_placeholder_agent,
+        normalize_hosted_agent_url,
         run_wizard,
         validate_agent,
         validate_dataset,
         validate_project_endpoint,
+    )
+    from agentops.services.setup_wizard import (
+        default_target_discovery as _wizard_target_discovery,
     )
     from agentops.utils.azd_env import ensure_azd_env, set_default_azd_env
 
@@ -1794,6 +1749,14 @@ def cmd_init(
             if err:
                 typer.echo(f"{_cli_error('Error')}: --agent: {err}", err=True)
                 raise typer.Exit(code=1)
+            # Canonicalize hosted-agent URLs through the same normalizer the
+            # interactive wizard uses (strip trailing slashes, etc.).
+            if "/agents/" in agent.lower():
+                normalized, norm_err = normalize_hosted_agent_url(agent)
+                if norm_err:
+                    typer.echo(f"{_cli_error('Error')}: --agent: {norm_err}", err=True)
+                    raise typer.Exit(code=1)
+                agent = normalized
         if dataset is not None:
             if not dataset.strip():
                 typer.echo(
@@ -1908,6 +1871,7 @@ def cmd_init(
             reconfigure=reconfigure,
             force_prompt_fields=force_prompt_fields,
             target_env_name=azd_env_name,
+            discover_targets=_wizard_target_discovery,
         )
 
     # ----- Phase 4: apply (idempotent — covers scripted mode and any
@@ -3887,7 +3851,7 @@ def cmd_mcp_serve(
 
 
 # ---------------------------------------------------------------------------
-# `agentops agent` commands
+# Doctor / cockpit config helpers
 # ---------------------------------------------------------------------------
 
 
@@ -5776,175 +5740,6 @@ def _sources_enabled(config) -> list:
     return enabled
 
 
-@agent_app.command("serve")
-def cmd_agent_serve(
-    host: Annotated[
-        str, typer.Option("--host", help="Bind host.")
-    ] = "0.0.0.0",
-    port: Annotated[
-        int, typer.Option("--port", help="Bind port.")
-    ] = 8080,
-    workspace: Annotated[
-        Path,
-        typer.Option("--workspace", "-w", help="Project root for analysis."),
-    ] = Path("."),
-    config_path: Annotated[
-        Path | None,
-        typer.Option(
-            "--config",
-            "-c",
-            help="Path to `agent.yaml` (default: `.agentops/agent.yaml`).",
-        ),
-    ] = None,
-    no_verify: Annotated[
-        bool,
-        typer.Option(
-            "--no-verify",
-            help="Skip Copilot Extensions signature validation (dev only).",
-        ),
-    ] = False,
-    workers: Annotated[
-        int, typer.Option("--workers", help="Uvicorn worker count.")
-    ] = 1,
-    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
-) -> None:
-    """Start the AgentOps doctor as a Copilot Extension HTTP server.
-
-    Exposes ``POST /agents/messages`` (Copilot Extensions protocol),
-    ``GET /healthz`` and ``GET /``. Requires the ``[agent]`` extra:
-
-        pip install agentops-accelerator[agent]
-    """
-    if _maybe_explain_leaf(("agent", "serve"), explain):
-        return
-
-    try:
-        import uvicorn
-    except ImportError as exc:
-        typer.echo(
-            f"{_cli_error('Error')}: agent extras not installed. "
-            "Run `pip install agentops-accelerator[agent]`.",
-            err=True,
-        )
-        raise typer.Exit(code=1) from exc
-
-    from agentops.agent.config import load_agent_config
-    from agentops.agent.server.app import create_app
-
-    workspace = workspace.resolve()
-    resolved_config = _resolve_agent_config_path(workspace, config_path)
-
-    try:
-        config = load_agent_config(resolved_config)
-    except Exception as exc:
-        typer.echo(f"{_cli_error('Error loading agent config')}: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
-
-    fastapi_app = create_app(
-        workspace=workspace,
-        config=config,
-        verify_signature=not no_verify,
-    )
-
-    if no_verify:
-        typer.echo(
-            f"{_cli_warn('WARNING')}: Copilot Extensions signature validation is disabled. "
-            "Use only for local development."
-        )
-
-    uvicorn.run(fastapi_app, host=host, port=port, workers=workers)
-
-
-@agent_app.command("register")
-def cmd_agent_register(
-    sponsor: Annotated[
-        str | None,
-        typer.Option(
-            "--sponsor",
-            help=(
-                "Accountable owner (UPN or object id). Falls back to "
-                "`identity.sponsor` in agentops.yaml."
-            ),
-        ),
-    ] = None,
-    display_name: Annotated[
-        str | None,
-        typer.Option(
-            "--display-name",
-            help=(
-                "Blueprint display name. Falls back to "
-                "`identity.display_name`, then the agent target name."
-            ),
-        ),
-    ] = None,
-    workspace: Annotated[
-        Path,
-        typer.Option("--workspace", "-w", help="Project root."),
-    ] = Path("."),
-    dry_run: Annotated[
-        bool,
-        typer.Option(
-            "--dry-run",
-            help="Resolve inputs and report what would happen, without calling Graph.",
-        ),
-    ] = False,
-    explain: Annotated[str | None, typer.Argument(hidden=True)] = None,
-) -> None:
-    """Register the agent's identity blueprint in Microsoft Entra.
-
-    Idempotent: an existing blueprint with the same display name is
-    adopted rather than duplicated. The resolved Entra Agent ID is
-    written to ``.agentops/identity/agent-identity.json`` so Doctor,
-    tracing, and the release evidence pack all quote the same value.
-    """
-    if _maybe_explain_leaf(("agent", "register"), explain):
-        return
-
-    from agentops.services.agent_identity import (
-        AgentIdentityError,
-        register_blueprint,
-        resolve_registration_inputs,
-        write_identity_record,
-    )
-
-    workspace = workspace.resolve()
-
-    try:
-        resolved_name, resolved_sponsor = resolve_registration_inputs(
-            workspace,
-            display_name=display_name,
-            sponsor=sponsor,
-        )
-    except AgentIdentityError as exc:
-        typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
-
-    typer.echo(f"{_cli_label('Display name')}: {resolved_name}")
-    typer.echo(f"{_cli_label('Sponsor')}: {resolved_sponsor}")
-
-    if dry_run:
-        typer.echo(
-            "Dry run: no Microsoft Graph call was made. "
-            "Re-run without --dry-run to register."
-        )
-        return
-
-    try:
-        blueprint, created = register_blueprint(
-            resolved_name, sponsor=resolved_sponsor
-        )
-    except AgentIdentityError as exc:
-        typer.echo(f"{_cli_error('Error')}: {exc}", err=True)
-        raise typer.Exit(code=1) from exc
-
-    record_path = write_identity_record(workspace, blueprint, created=created)
-
-    action = "Registered" if created else "Reused existing"
-    typer.echo(f"{_cli_label(action + ' agent identity')}: {blueprint.app_id}")
-    typer.echo(f"{_cli_label('Wrote')}: {_cli_path(record_path)}")
-    typer.echo(f"{_cli_label('Entra portal')}: {blueprint.portal_url}")
-
-
 def _render_cockpit_deployment_preview(plan: Any) -> None:
     preview = plan.preview
     typer.echo(_cli_heading("Hosted Cockpit deployment preview"))
@@ -6205,8 +6000,8 @@ def cmd_cockpit(
         import uvicorn
     except ImportError as exc:
         typer.echo(
-            f"{_cli_error('Error')}: cockpit requires the [agent] extra. "
-            "Run `pip install agentops-accelerator[agent]`.",
+            f"{_cli_error('Error')}: cockpit requires the [cockpit] extra. "
+            "Run `pip install agentops-accelerator[cockpit]`.",
             err=True,
         )
         raise typer.Exit(code=1) from exc
@@ -6216,7 +6011,11 @@ def cmd_cockpit(
     import webbrowser
 
     from agentops.agent.cockpit import create_app as create_cockpit_app
-    from agentops.services.preflight import format_report, run_preflight
+    from agentops.services.preflight import (
+        cockpit_doctor_guidance,
+        format_report,
+        run_preflight,
+    )
 
     workspace = workspace.resolve()
 
@@ -6267,9 +6066,9 @@ def cmd_cockpit(
     for label, value in connection_rows:
         padding = " " * (label_width - len(label))
         typer.echo(f"{_cli_label(label)}:{padding} {value}")
-    typer.echo(
-        f"Run {_cli_command('agentops doctor')} in another terminal to populate doctor findings."
-    )
+    doctor_guidance = cockpit_doctor_guidance(workspace)
+    if doctor_guidance:
+        typer.echo(doctor_guidance)
     typer.echo("")
     typer.echo(style("Press Enter (or Ctrl+C) to stop the cockpit.", "dim"))
 

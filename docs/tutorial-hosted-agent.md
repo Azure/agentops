@@ -109,11 +109,11 @@ python -m venv .venv
 Then install AgentOps and confirm the CLI:
 
 ```powershell
-python -m pip install "agentops-accelerator[agent]"
+python -m pip install "agentops-accelerator[cockpit]"
 agentops --help
 ```
 
-The `[agent]` extra is what makes `agentops cockpit` work in step 13. Without
+The `[cockpit]` extra is what makes `agentops cockpit` work in step 13. Without
 it, the CLI installs fine and the eval commands run, but Cockpit raises an
 `ImportError`.
 

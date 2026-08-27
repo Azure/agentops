@@ -15,6 +15,7 @@ from agentops.agent.observe.auth import (
     MissingUserAssertionError,
     build_aggregate_credential,
     build_delegated_monitor_credential,
+    build_local_developer_credential,
 )
 
 
@@ -170,7 +171,38 @@ def test_default_obo_credential_passes_process_timeout(monkeypatch) -> None:
     assert calls[0]["tenant_id"] == "tenant-1"
 
 
+def test_local_developer_credential_uses_injected_factory() -> None:
+    sentinel = SimpleNamespace(kind="local-developer")
+    credential = build_local_developer_credential(credential_factory=lambda: sentinel)
+    assert credential is sentinel
+
+
+def test_local_developer_credential_requires_no_hosted_identity_arguments() -> None:
+    signature = inspect.signature(build_local_developer_credential)
+    assert "tenant_id" not in signature.parameters
+    assert "client_id" not in signature.parameters
+    assert "uami_client_id" not in signature.parameters
+    assert "user_assertion" not in signature.parameters
+
+
+def test_default_local_developer_credential_passes_process_timeout(monkeypatch) -> None:
+    """Windows ``az.cmd`` cold starts need more than the SDK's 10s default."""
+    calls: list[dict[str, object]] = []
+
+    class _FakeDefaultAzureCredential:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(kwargs)
+
+    fake_module = SimpleNamespace(DefaultAzureCredential=_FakeDefaultAzureCredential)
+    monkeypatch.setitem(sys.modules, "azure.identity", fake_module)
+
+    build_local_developer_credential()
+
+    assert calls == [{"process_timeout": 30}]
+
+
 def test_module_import_never_imports_azure_identity_eagerly(monkeypatch) -> None:
+    original_module = sys.modules.get("agentops.agent.observe.auth")
     sys.modules.pop("agentops.agent.observe.auth", None)
     original_import = builtins.__import__
 
@@ -183,4 +215,16 @@ def test_module_import_never_imports_azure_identity_eagerly(monkeypatch) -> None
 
     monkeypatch.setattr(builtins, "__import__", guard)
 
-    import agentops.agent.observe.auth  # noqa: F401 -- re-import under the guard
+    try:
+        import agentops.agent.observe.auth  # noqa: F401 -- re-import under the guard
+    finally:
+        # Restore the originally imported module so this test does not leak a
+        # freshly re-imported ``agentops.agent.observe.auth`` (with fresh class
+        # objects) into ``sys.modules`` and pollute later cross-module tests.
+        if original_module is not None:
+            sys.modules["agentops.agent.observe.auth"] = original_module
+            parent = sys.modules.get("agentops.agent.observe")
+            if parent is not None:
+                parent.auth = original_module
+        else:
+            sys.modules.pop("agentops.agent.observe.auth", None)

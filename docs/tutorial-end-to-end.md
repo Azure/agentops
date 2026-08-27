@@ -50,7 +50,7 @@ review.
 For **prompt agents**, each `.env` points at a different Foundry project so
 playground saves in sandbox don't appear in dev. For **hosted agents**, each
 `.env` typically points at the same Foundry project (for observability) but
-the agent URL (`AGENTOPS_AGENT_ENDPOINT`) differs per environment because the
+the agent URL (`AGENTOPS_AGENT`) differs per environment because the
 hosted endpoint itself is the per-environment artifact.
 
 > **Why a separate sandbox?** When authors save in the Foundry playground,
@@ -138,7 +138,7 @@ cd agentops-end-to-end
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[agent]" fastapi "uvicorn[standard]"
+python -m pip install "agentops-accelerator[cockpit]" fastapi "uvicorn[standard]"
 az login
 ```
 
@@ -147,7 +147,7 @@ install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 You will provide the target values through the interactive `agentops init`
@@ -712,7 +712,6 @@ Use this loop in the video:
 | Signal | Foundry or Azure Monitor action | AgentOps handoff |
 |---|---|---|
 | App Insights connection | In Foundry, open the project or agent **Traces** view and connect an App Insights resource. Verify it under project connected resources. | Doctor checks whether telemetry wiring is discoverable. |
-| Trace sampling | Configure the project's trace sampling policy in Foundry or the hosted-agent observability settings your team owns. Keep the policy name in `agentops.yaml` under `observability.trace_sampling`. | Doctor/evidence can show reviewers that live-quality sampling exists before traces are promoted. |
 | Live trace | Run one playground prompt for a Prompt Agent, or call the hosted endpoint a few times. Open the agent **Traces** tab, wait 2-5 minutes if needed, and click the Trace ID. In the modal, inspect spans plus the **Input + Output** and **Metadata** tabs. | Evidence and Cockpit link reviewers back to the runtime view. |
 | Operate summary | Switch to **Operate** -> **Overview**, select the same subscription/project, wait for metrics to sync, and use **Ask AI** for dashboard-level questions such as `Help me identify any issues or anomalies in my agent metrics.` | The summary informs the release discussion; AgentOps does not rewrite it. |
 | Eval context | From a Foundry eval run, inspect row-level explanations, rubric scores, and, when available, the trace attached to the interaction. | The repo keeps the exact target, dataset, rubric gate, and evidence together. |

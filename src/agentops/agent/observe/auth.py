@@ -144,3 +144,27 @@ def build_aggregate_credential(
     """
     factory = credential_factory or _default_managed_identity_factory
     return factory(client_id=uami_client_id)
+
+
+def build_local_developer_credential(
+    *,
+    credential_factory: Optional[Callable[[], TokenCredential]] = None,
+) -> TokenCredential:
+    """Build the ambient credential used for local developer Cockpit access.
+
+    Unlike the two hosted chains above, this uses the developer's own signed-in
+    Azure identity (Azure CLI / VS Code / environment) via
+    :class:`~azure.identity.DefaultAzureCredential`. It requires none of the
+    hosted identity configuration (``AGENTOPS_TENANT_ID`` /
+    ``AGENTOPS_APPLICATION_CLIENT_ID`` / ``AGENTOPS_UAMI_CLIENT_ID``) and is only
+    ever used for aggregate discovery/query reads -- local mode has no hosted
+    end-user identity, so it never grants delegated (per-user) access.
+
+    ``process_timeout=30`` is mandatory: the 10s default times out the
+    ``az.cmd`` cold start on Windows.
+    """
+    if credential_factory is not None:
+        return credential_factory()
+    from azure.identity import DefaultAzureCredential  # lazy: optional dep
+
+    return DefaultAzureCredential(process_timeout=30)

@@ -252,6 +252,35 @@ shared caches, URLs, browser storage, telemetry, diagnostics, or deployment
 artifacts. See [Operate](operate.md#shared-hosted-cockpit-and-protected-content)
 and [Deploy the hosted Cockpit](deploy-hosted-cockpit.md).
 
+### Local developer versus hosted authentication
+
+Cockpit authenticates one of two ways, chosen automatically by run mode.
+
+Local mode (`agentops cockpit` on a developer workstation) uses your own
+ambient Azure sign-in through `DefaultAzureCredential(process_timeout=30)` —
+the Azure CLI, VS Code, or environment credential you already have. It requires
+none of the hosted identity configuration: `AGENTOPS_TENANT_ID`,
+`AGENTOPS_APPLICATION_CLIENT_ID`, and `AGENTOPS_UAMI_CLIENT_ID` may all be
+unset. `agentops cockpit` therefore starts against any discoverable project
+scope without hosted identity provisioning. The `process_timeout=30` override is
+mandatory on Windows, where the SDK's 10-second default times out the `az.cmd`
+cold start.
+
+Because local mode signs in as the developer rather than a hosted end user, it
+has no delegated end-user identity to act on behalf of. Aggregate discovery and
+telemetry reads work normally, but **user-delegated views are reported as
+unavailable rather than emulated**: the per-user attribution query and the
+protected trace-content read each return an actionable "unavailable in local
+developer mode" diagnostic (HTTP 409) instead of fabricating a delegated
+principal. Use the hosted Cockpit with Easy Auth for those views.
+
+Hosted mode (the deployed Cockpit web application) keeps the full hosted chain
+described above: a shared user-assigned managed identity for aggregate reads and
+a fresh signed-in-user On-Behalf-Of credential for every delegated per-user and
+trace-content read. It requires `AGENTOPS_TENANT_ID`,
+`AGENTOPS_APPLICATION_CLIENT_ID`, and `AGENTOPS_UAMI_CLIENT_ID`; a missing value
+fails fast with an actionable configuration error.
+
 ## Enable user and department attribution
 
 Attribution is opt-in. Set `AGENTOPS_ATTRIBUTION_CONFIG` on the Cockpit
@@ -504,8 +533,6 @@ with no monitoring does not look healthy simply because nothing is being graded.
     is intended: a real release should investigate latency and errors before
     promoting, even when the candidate's eval scores pass.
 
-<a id="agent-identity-on-traces"></a>
-
 ## Run from your coding agent
 
 Install the AgentOps skills so your coding agent can read telemetry and
@@ -520,6 +547,85 @@ The skills that map to observability are:
 | Skill | What it helps with |
 |---|---|
 | `agentops-agent` | Watchdog analysis of production health and latency spikes. |
+
+## The Observe dashboard
+
+Observe renders as a self-contained operational dashboard that is visually part
+of the AgentOps Cockpit. It shares one design system with Cockpit instead of
+theming itself independently.
+
+### One shared theme
+
+Cockpit and Observe read the same canonical design tokens from
+`src/agentops/agent/ui_theme.py`: colors, surfaces, borders, typography, and the
+`aos-*` layout primitives (header, shell, cards). Observe imports those tokens
+rather than defining its own palette, so both surfaces look like one product.
+
+Theme selection is **explicit**. The page ships a deliberate dark theme by
+default (`<html data-theme="dark">`) and a matching light theme
+(`[data-theme="light"]`), and an in-page toggle switches between them. Observe
+does **not** use a bare `@media (prefers-color-scheme: dark)` rule, which is what
+previously let it drift to white while Cockpit stayed dark. The toggle keeps its
+choice in memory only for the current page — it never writes `localStorage`,
+`sessionStorage`, cookies, or any other browser persistence, preserving the
+privacy guarantees.
+
+### Executive overview and first-class trends
+
+The Overview is an executive summary: compact KPI cards with a value, a
+direction-aware delta chip (the direction is shown with a glyph, not color
+alone), a short caption, and an inline sparkline. Below the cards, invocation,
+failure, latency, token, and coverage trends render as first-class charts with
+thin trend lines, a subtle grid, restrained legends, exact-value tooltips, and
+an accessible area gradient. Charts are responsive and every chart is
+screen-reader accessible (`role="img"`, an `aria-label`, an SVG `<title>`/`<desc>`,
+and a visually hidden data `<table>`).
+
+Filters stay compact and visually subordinate to the summary. The Agents,
+Models, Tools, Runs, Costs, Attribution, and Coverage views are clear
+drill-down tables.
+
+### Intentional states
+
+Every view can render six deliberate states through one shared
+`render_state_panel` helper: **loading**, **empty**, **partial**,
+**permission-denied**, **disconnected**, and **error**. Each state uses a
+non-color glyph plus text (so meaning does not depend on color), the correct
+ARIA role (`role="alert"` for errors, `role="status"` otherwise, `aria-busy`
+while loading), and a `data-observe-state` hook for tests.
+
+### Preserved guarantees
+
+The redesign is presentation-only. It preserves accessibility (ARIA labels,
+roles, table semantics, and non-color status encoding), privacy (no receiver
+addresses, PII, secrets, or raw trace content in the markup), bounded queries,
+URL-driven filters that round-trip through the allow-listed query keys, and
+protected-content handling. The HTML remains fully self-contained: no CDN,
+`<link>`, or network fetch happens at render time, so Observe works offline and
+in locked-down environments.
+
+### Visual regression tests
+
+Because Playwright and a real browser are not guaranteed in CI, visual
+regression is enforced as deterministic HTML/CSS **snapshot** tests in
+`tests/unit/test_observe_ui_visual.py`. Fixed fixture data renders the page and
+stylesheet with no clock, random, or UUID input, and the output is compared
+against committed goldens under `tests/unit/__snapshots__/`
+(`observe_overview.html`, `observe_styles.css`). The same file also asserts
+theme parity with `ui_theme.py`, that all six states render, chart and KPI
+accessibility, privacy invariants, and URL filter round-trips.
+
+Regenerate the goldens after an intentional visual change:
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:AGENTOPS_UPDATE_SNAPSHOTS = "1"
+python -m pytest tests/unit/test_observe_ui_visual.py -q
+Remove-Item Env:\AGENTOPS_UPDATE_SNAPSHOTS
+```
+
+Review the regenerated snapshot diff before committing, then run the suite again
+without the environment variable to confirm it passes against the new goldens.
 
 ## Next
 

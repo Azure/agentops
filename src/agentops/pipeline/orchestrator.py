@@ -19,7 +19,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from agentops.core.agentops_config import AgentOpsConfig, Threshold, classify_agent
+from agentops.core.agentops_config import (
+    NO_AGENT_TARGET_MESSAGE,
+    AgentOpsConfig,
+    Threshold,
+    classify_agent,
+)
 from agentops.core.azd_eval import load_eval_recipe
 from agentops.core.evaluators import (
     detect_dataset_shape,
@@ -81,7 +86,9 @@ def _run_evaluation(
     options: RunOptions,
 ) -> RunResult:
     """Run a full evaluation after optional telemetry has been initialized."""
-    if config.rubrics and _resolve_execution_backend(config) != "azd":
+    if not (options.agent_override or config.agent):
+        raise ValueError(NO_AGENT_TARGET_MESSAGE)
+    if config.rubrics and _resolve_execution_backend(config, agent_override=options.agent_override) != "azd":
         raise ValueError(
             "rubrics require execution: azd so Foundry/azd runs the rubric "
             "evaluator. Set `execution: azd`, run `agentops eval init`, and "
@@ -96,17 +103,19 @@ def _run_evaluation(
 
     if config.execution == "cloud":
         return _run_evaluation_cloud(config, options=options)
-    if _resolve_execution_backend(config) == "azd":
+    if _resolve_execution_backend(config, agent_override=options.agent_override) == "azd":
         return _run_evaluation_azd(config, options=options)
     return _run_evaluation_local(config, options=options)
 
 
-def _resolve_execution_backend(config: AgentOpsConfig) -> str:
+def _resolve_execution_backend(
+    config: AgentOpsConfig, *, agent_override: Optional[str] = None
+) -> str:
     """Resolve the effective backend without probing tool availability."""
 
     if config.execution != "auto":
         return config.execution
-    target = classify_agent(config.agent, config.protocol)
+    target = classify_agent(agent_override or config.agent, config.protocol)
     if target.kind in {"foundry_prompt", "foundry_hosted"}:
         return "azd"
     return "local"

@@ -224,6 +224,7 @@ def test_cost_model_startup_states_have_local_hosted_parity(
     else:
         monkeypatch.setenv("AGENTOPS_COST_MODEL", raw_model)
     monkeypatch.setattr(facade_module, "create_observe_facade", _factory)
+    monkeypatch.setattr(facade_module, "create_local_observe_facade", _factory)
     monkeypatch.setattr(
         "agentops.agent.observe.ui.render_observe_page",
         _render,
@@ -343,6 +344,7 @@ def test_cost_model_changes_require_restart_and_removal_disables_new_apps(
         return service
 
     monkeypatch.setattr(facade_module, "create_observe_facade", _factory)
+    monkeypatch.setattr(facade_module, "create_local_observe_facade", _factory)
     monkeypatch.setenv("AGENTOPS_COST_MODEL", json.dumps(valid_cost_model_payload()))
 
     def _start() -> TestClient:
@@ -438,6 +440,7 @@ def test_attribution_configuration_startup_states_are_mode_independent(
         return _ObserveService()
 
     monkeypatch.setattr(facade_module, "create_observe_facade", _factory)
+    monkeypatch.setattr(facade_module, "create_local_observe_facade", _factory)
     if raw_config is None:
         monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
     else:
@@ -469,3 +472,80 @@ def test_attribution_configuration_startup_states_are_mode_independent(
         headers=headers,
         json={"view": "overview", "filters": _FILTERS},
     ).status_code == 200
+
+
+class _FakeAzureClient:
+    """Stand-in for the Azure discovery/query clients (no SDK, no network)."""
+
+    def __init__(self, **_: Any) -> None:  # pragma: no cover - trivial
+        self.credential_seen = _
+
+
+def test_local_cockpit_starts_with_discoverable_scope_and_no_hosted_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression for #458.
+
+    A workspace whose Foundry endpoint resolves to a *discoverable* project
+    scope must start the local Cockpit even when **none** of the hosted
+    identity variables are set and **no** ``observe_service`` is injected.
+    Previously this routed the auto-discovered scope into the hosted factory,
+    which raised ``ValueError: missing required Observe hosted configuration``.
+
+    This test deliberately does neither of the things the pre-existing local
+    tests do: it does not inject a fake ``observe_service`` and it forces a
+    real, non-empty discovered scope. The *real* ``create_local_observe_facade``
+    and ``ObserveFacade.__init__`` run; only the Azure SDK seams are stubbed.
+    """
+    # All three hosted identity variables absent.
+    monkeypatch.delenv("AGENTOPS_TENANT_ID", raising=False)
+    monkeypatch.delenv("AGENTOPS_APPLICATION_CLIENT_ID", raising=False)
+    monkeypatch.delenv("AGENTOPS_UAMI_CLIENT_ID", raising=False)
+    # Do not let any ambient scope short-circuit auto-discovery.
+    monkeypatch.delenv("AGENTOPS_OBSERVE_SCOPE", raising=False)
+
+    project_ids = list(_SCOPE["project_resource_ids"])
+
+    class _FakeResolver:
+        def discover_projects(self, workspace: Path) -> list[str]:
+            assert isinstance(workspace, Path)
+            return project_ids
+
+    import agentops.services.cockpit_deployment as deployment_module
+
+    monkeypatch.setattr(
+        deployment_module, "WorkspaceProjectResolver", _FakeResolver
+    )
+
+    # Block every Azure SDK seam the *real* local factory would otherwise touch.
+    monkeypatch.setattr(
+        facade_module, "build_local_developer_credential", lambda **_: object()
+    )
+    monkeypatch.setattr(facade_module, "AzureDiscoveryClient", _FakeAzureClient)
+    monkeypatch.setattr(facade_module, "AzureQueryClient", _FakeAzureClient)
+
+    # Spy that WRAPS (does not replace) the real local factory so we can prove
+    # it actually ran and produced a local-mode facade.
+    captured: dict[str, Any] = {}
+    real_factory = facade_module.create_local_observe_facade
+
+    def _spy(**kwargs: Any) -> Any:
+        facade = real_factory(**kwargs)
+        captured["facade"] = facade
+        return facade
+
+    monkeypatch.setattr(facade_module, "create_local_observe_facade", _spy)
+
+    app = create_app(tmp_path, mode="local")
+
+    assert app is not None
+    # The real local factory ran (not swallowed to observe_service=None).
+    assert "facade" in captured
+    facade = captured["facade"]
+    assert facade is not None
+    # Local auth mode, and none of the hosted identity fields were required.
+    assert facade._auth_mode == "local"
+    assert facade._tenant_id is None
+    assert facade._application_client_id is None
+    assert facade._uami_client_id is None

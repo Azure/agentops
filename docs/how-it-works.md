@@ -73,7 +73,7 @@ src/
     │   ├── preflight.py       # Pre-flight checks (workspace, auth, Foundry, App Insights)
     │   └── trace_promotion.py # Trace export → dataset candidates
     │
-    ├── agent/                 # Doctor, Cockpit, and agent server
+    ├── agent/                 # Doctor and Cockpit
     │   └── observe/           # Hosted/local discovery, bounded queries, OBO, and UI
     ├── mcp/                   # `agentops mcp serve` Model Context Protocol server
     │
@@ -85,8 +85,7 @@ src/
         ├── agent.yaml         # Doctor config seed
         ├── skills/            # Coding agent skill templates
         ├── workflows/         # GitHub Actions workflow templates
-        ├── pipelines/         # Azure DevOps pipeline templates
-        └── agent-server/      # Doctor-as-Copilot-Extension deploy scaffold
+        └── pipelines/         # Azure DevOps pipeline templates
 ```
 
 ### Where to Add New Code
@@ -326,7 +325,6 @@ flowchart LR
 | `agentops workflow generate` | Generate CI/CD workflows for GitHub Actions or Azure DevOps |
 | `agentops skills install` | (Re)install coding-agent skills (Copilot or Claude) |
 | `agentops mcp serve` | Run AgentOps as an MCP server for code agents |
-| `agentops agent serve` | Run the Doctor as a Copilot Extension / FastAPI server |
 
 Every command supports `--help` for a terse description; long-form,
 paged documentation is accessible through `agentops explain` (or the
@@ -407,7 +405,7 @@ That's a complete config. AgentOps:
 | Field | Required | Description |
 |---|---|---|
 | `version` | yes | Schema version. Must be `1`. |
-| `agent` | yes | Target identifier. See "Target kinds" below. |
+| `agent` | no | Target identifier. See "Target kinds" below. Omit it to run in project-observability-only mode (Doctor, Cockpit, and Observe against the Foundry project with no evaluation target). Required for `eval run`, `prompt pull`, and the azd eval paths. |
 | `dataset` | yes | Relative/absolute JSONL path, or canonical Blob/ADLS Gen2 HTTPS object URL, with one evaluation row per line. |
 | `thresholds` | no | Metric gates such as `">=3"` or `"<=10"`. |
 | `protocol` | no | URL protocol: `responses`, `invocations`, or `http-json`. |

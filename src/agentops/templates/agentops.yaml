@@ -1,10 +1,12 @@
 # AgentOps configuration — 1.0 flat schema.
 #
-# The four required fields are 'version', 'agent', 'dataset', and (optionally)
-# 'thresholds'. AgentOps infers evaluators from the agent type and dataset
-# columns, so most users only need this much.
+# The only required fields are 'version' and 'dataset'. 'agent' is OPTIONAL:
+# omit it to run project-observability-only (Doctor, Cockpit, Observe against a
+# Foundry project) without committing an evaluation target. Add an 'agent' when
+# you are ready to evaluate. AgentOps infers evaluators from the agent type and
+# dataset columns, so most users only need this much.
 #
-# Examples:
+# Agent examples (pick one when you configure a target):
 #
 #   agent: "my-rag:3"                      # Foundry prompt agent (name:version)
 #   agent: "https://...foundry.../agents/" # Foundry hosted endpoint
@@ -14,9 +16,11 @@
 # Schema version of this agentops.yaml file (not the agent version).
 version: 1
 
-# Foundry agent identifier as name:version, where the trailing number is
-# the *agent* version published in Foundry (not the schema version above).
-agent: "my-agent:1"
+# Optional evaluation target. Uncomment and set one of the forms above when you
+# are ready to evaluate. Leaving it out keeps a valid project-observability-only
+# config — `agentops init` never writes a placeholder target for you.
+#
+# agent: "my-agent:1"
 
 # Local JSONL path (default), or one canonical Azure Storage object URL:
 # dataset: https://<account>.blob.core.windows.net/<container>/smoke.jsonl
@@ -99,15 +103,10 @@ dataset: .agentops/data/smoke.jsonl
 # execution: local
 #
 # Optional. Foundry observability readiness metadata. AgentOps reads
-# this for Doctor/Cockpit/evidence; Foundry still owns tracing, replay, and
-# trace sampling at runtime.
+# this for Doctor/Cockpit/evidence; Foundry still owns tracing at runtime.
 #
 # observability:
 #   tracing_enabled: true
-#   trace_sampling:
-#     enabled: true
-#     mode: foundry
-#   trace_replay_url: "https://ai.azure.com/..."
 #   evaluations_url: "https://ai.azure.com/..."
 #   datasets_url: "https://ai.azure.com/..."
 #

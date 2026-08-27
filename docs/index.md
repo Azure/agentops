@@ -41,18 +41,18 @@ evidence pack that proves a release is ready for production.
     coding agent.
 
     ```bash
-    pip install "agentops-accelerator[agent]"
+    pip install "agentops-accelerator[cockpit]"
     agentops init
     agentops skills install --platform copilot
     ```
 
-    Use the `[agent]` option when you want Cockpit, either locally or hosted on
+    Use the `[cockpit]` option when you want Cockpit, either locally or hosted on
     Azure.
 
     To install a specific release directly from GitHub:
 
     ```bash
-    python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
+    python -m pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
     ```
 
     Replace `vX.Y.Z` with the desired release tag.

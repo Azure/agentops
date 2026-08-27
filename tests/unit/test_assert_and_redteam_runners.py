@@ -592,6 +592,22 @@ def test_run_redteam_normalizes_and_gates(tmp_path: Path, monkeypatch):
     assert Path(result.output_path).exists()
     payload = json.loads(Path(result.output_path).read_text(encoding="utf-8"))
     assert payload["successful_attacks"] == 2
+    # normalized evidence carries a generation timestamp and a stable
+    # fingerprint of the target + config so staleness and target-mismatch
+    # are detectable by the readiness classifier.
+    assert result.generated_at is not None
+    assert result.target_fingerprint
+    assert payload["generated_at"] == result.generated_at
+    assert payload["target_fingerprint"] == result.target_fingerprint
+    from agentops.core.governance import compute_redteam_fingerprint
+
+    assert result.target_fingerprint == compute_redteam_fingerprint(
+        target={"model_deployment": "gpt-4o-mini"},
+        risk_categories=["violence", "hate"],
+        attack_strategies=["base64", "rot13"],
+        num_objectives=3,
+        fail_threshold=0.5,
+    )
 
 
 # ---------------------------------------------------------------------------

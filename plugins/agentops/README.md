@@ -10,8 +10,8 @@ They are different from the **AgentOps Watchdog runtime agent**:
 
 - **Skills** live in `.github/skills/` or `.claude/commands/` and guide a
   coding assistant.
-- **Watchdog** is the runtime CLI/server behind `agentops doctor`
-  and `agentops agent serve`; it reads real eval history, Azure Monitor
+- **Watchdog** is the runtime CLI behind `agentops doctor`
+  and `agentops cockpit`; it reads real eval history, Azure Monitor
   telemetry, and Foundry metadata.
 - The `agentops-agent` skill is only the coding-agent front door to that
   Watchdog runtime. It does not fabricate findings.

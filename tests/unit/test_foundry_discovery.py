@@ -422,3 +422,342 @@ def test_telemetry_status_surfaces_discovery_reason_in_cockpit_tile(monkeypatch)
     # The actionable reason text appears inline in the tile detail.
     assert "401 Unauthorized" in status["detail"]
     assert "Why:" in status["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Target discovery (issue #457): discover_prompt_agents / discover_hosted_agents
+# / discover_model_deployments. All Azure SDK calls are mocked; the suite runs
+# with no Azure credentials.
+# ---------------------------------------------------------------------------
+
+
+class _AuthError(Exception):
+    """Stand-in whose class name matches the auth classifier branch."""
+
+
+_AuthError.__name__ = "ClientAuthenticationError"
+
+
+def _fake_modules(*, client=None, credential_exc=None):
+    """Build patched azure.ai.projects / azure.identity module doubles.
+
+    ``client`` is returned from ``AIProjectClient(...)``. When
+    ``credential_exc`` is set, ``DefaultAzureCredential(...)`` raises it so the
+    client-build failure path is exercised.
+    """
+    fake_projects_mod = mock.MagicMock()
+    if client is not None:
+        fake_projects_mod.AIProjectClient.return_value = client
+    fake_identity_mod = mock.MagicMock()
+    if credential_exc is not None:
+        fake_identity_mod.DefaultAzureCredential.side_effect = credential_exc
+    return fake_projects_mod, fake_identity_mod
+
+
+def _client_with_agents(agents):
+    client = mock.MagicMock()
+    client.agents.list.return_value = agents
+    return client
+
+
+def _client_with_agents_error(exc):
+    client = mock.MagicMock()
+    client.agents.list.side_effect = exc
+    return client
+
+
+def _client_with_deployments(deployments):
+    client = mock.MagicMock()
+    client.deployments.list.return_value = deployments
+    return client
+
+
+def test_discover_prompt_agents_happy_path_sorted():
+    from agentops.utils import foundry_discovery
+
+    agents = [
+        {"name": "zeta", "version": "1", "status": "ready"},
+        {"name": "alpha", "version": "2", "status": "ready"},
+    ]
+    projects, identity = _fake_modules(client=_client_with_agents(agents))
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert reason is None
+    # Deterministic sort by (name.lower(), version): alpha before zeta.
+    assert [t.agent_ref for t in targets] == ["alpha:2", "zeta:1"]
+    assert all(t.target_type == "prompt" for t in targets)
+
+
+def test_discover_prompt_agents_multi_version_disambiguation():
+    from agentops.utils import foundry_discovery
+
+    agents = [
+        {
+            "name": "my-agent",
+            "versions": [
+                {"version": "2", "status": "draft"},
+                {"version": "1", "status": "ready"},
+            ],
+        }
+    ]
+    projects, identity = _fake_modules(client=_client_with_agents(agents))
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert reason is None
+    assert [t.agent_ref for t in targets] == ["my-agent:1", "my-agent:2"]
+
+
+def test_discover_hosted_agents_keeps_only_agent_urls():
+    from agentops.utils import foundry_discovery
+
+    hosted_url = (
+        "https://c.services.ai.azure.com/api/projects/p/agents/a/versions/3/"
+    )
+    agents = [
+        {"name": "hosted", "endpoint": hosted_url},
+        {"name": "not-hosted", "endpoint": "https://c.services.ai.azure.com/x"},
+    ]
+    projects, identity = _fake_modules(client=_client_with_agents(agents))
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_hosted_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert reason is None
+    assert len(targets) == 1
+    assert targets[0].target_type == "hosted"
+    # Trailing slash stripped; only the /agents/ URL survives.
+    assert targets[0].agent_ref == hosted_url.rstrip("/")
+
+
+def test_discover_model_deployments_happy_path():
+    from agentops.utils import foundry_discovery
+
+    deployments = [
+        {"name": "gpt-4o", "model": "gpt-4o"},
+        {"name": "embed", "type": "embedding"},
+    ]
+    projects, identity = _fake_modules(
+        client=_client_with_deployments(deployments)
+    )
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_model_deployments(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert reason is None
+    # Non-model deployment type is filtered out.
+    assert [t.agent_ref for t in targets] == ["model:gpt-4o"]
+    assert targets[0].version is None
+
+
+def test_discover_empty_endpoint_returns_reason():
+    from agentops.utils import foundry_discovery
+
+    targets, reason = foundry_discovery.discover_prompt_agents("")
+    assert targets == []
+    assert reason is not None
+    assert "endpoint" in reason.lower()
+
+
+def test_discover_empty_results_is_not_an_error():
+    from agentops.utils import foundry_discovery
+
+    projects, identity = _fake_modules(client=_client_with_agents([]))
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert targets == []
+    assert reason is None
+
+
+def test_discover_sdk_not_installed(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "azure.ai.projects", None)
+    monkeypatch.setitem(sys.modules, "azure.identity", None)
+
+    from agentops.utils import foundry_discovery
+
+    targets, reason = foundry_discovery.discover_prompt_agents(
+        "https://c.services.ai.azure.com/api/projects/p"
+    )
+    assert targets == []
+    assert reason is not None
+    assert "azure-ai-projects" in reason.lower()
+
+
+def test_discover_auth_unavailable_distinct_message():
+    from agentops.utils import foundry_discovery
+
+    projects, identity = _fake_modules(
+        credential_exc=_AuthError("DefaultAzureCredential failed to retrieve a token")
+    )
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert targets == []
+    assert reason is not None
+    assert "authentication failed" in reason.lower()
+
+
+def test_discover_rbac_distinct_message():
+    from agentops.utils import foundry_discovery
+
+    client = _client_with_agents_error(Exception("AuthorizationFailed: no access"))
+    projects, identity = _fake_modules(client=client)
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert targets == []
+    assert reason is not None
+    assert "not readable" in reason.lower()
+
+
+def test_discover_unsupported_api_distinct_message():
+    from agentops.utils import foundry_discovery
+
+    client = _client_with_agents_error(
+        Exception("Unsupported api version '2020-01-01'")
+    )
+    projects, identity = _fake_modules(client=client)
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert targets == []
+    assert reason is not None
+    assert "not supported by this foundry project" in reason.lower()
+
+
+def test_discover_network_failure_fallback_message():
+    from agentops.utils import foundry_discovery
+
+    client = _client_with_agents_error(Exception("connection reset by peer"))
+    projects, identity = _fake_modules(client=client)
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert targets == []
+    assert reason is not None
+    assert "connection reset by peer" in reason
+    assert "failed" in reason.lower()
+
+
+def test_discover_unsupported_sdk_when_accessor_missing():
+    from agentops.utils import foundry_discovery
+
+    # A client with no ``agents`` accessor at all (spec=[] blocks attribute
+    # access) degrades to a clean "SDK too old" reason, not AttributeError.
+    client = mock.MagicMock(spec=[])
+    projects, identity = _fake_modules(client=client)
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        targets, reason = foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    assert targets == []
+    assert reason is not None
+
+
+def test_discover_caches_second_call():
+    from agentops.utils import foundry_discovery
+
+    projects, identity = _fake_modules(
+        client=_client_with_agents([{"name": "a", "version": "1"}])
+    )
+    endpoint = "https://c.services.ai.azure.com/api/projects/p"
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        first, _ = foundry_discovery.discover_prompt_agents(endpoint)
+        second, _ = foundry_discovery.discover_prompt_agents(endpoint)
+
+    assert [t.agent_ref for t in first] == [t.agent_ref for t in second]
+    # Second call is served from cache: the SDK client is built only once.
+    assert projects.AIProjectClient.call_count == 1
+
+
+def test_reset_cache_forces_rediscovery():
+    from agentops.utils import foundry_discovery
+
+    projects, identity = _fake_modules(
+        client=_client_with_agents([{"name": "a", "version": "1"}])
+    )
+    endpoint = "https://c.services.ai.azure.com/api/projects/p"
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        foundry_discovery.discover_prompt_agents(endpoint)
+        foundry_discovery.reset_cache()
+        foundry_discovery.discover_prompt_agents(endpoint)
+
+    assert projects.AIProjectClient.call_count == 2
+
+
+def test_discover_credential_uses_process_timeout():
+    from agentops.utils import foundry_discovery
+
+    projects, identity = _fake_modules(
+        client=_client_with_agents([{"name": "a", "version": "1"}])
+    )
+    with mock.patch.dict(
+        "sys.modules",
+        {"azure.ai.projects": projects, "azure.identity": identity},
+    ):
+        foundry_discovery.discover_prompt_agents(
+            "https://c.services.ai.azure.com/api/projects/p"
+        )
+
+    identity.DefaultAzureCredential.assert_called_once()
+    _, kwargs = identity.DefaultAzureCredential.call_args
+    # Hard rule: az.cmd cold start needs a 30s timeout on Windows.
+    assert kwargs.get("process_timeout") == 30
+

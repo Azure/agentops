@@ -31,6 +31,54 @@ _WIDE = TimeRange(
 )
 
 
+def _make_alert_coverage(
+    *,
+    state: str,
+    reason: str | None = None,
+    rules: tuple = (),
+    by_category: dict | None = None,
+    iac_provenance: tuple = (),
+):
+    """Build a deterministic AlertCoverage for cockpit card tests."""
+    from agentops.utils.alert_discovery import AlertCoverage
+
+    categories = by_category or {
+        "quality": "gap",
+        "safety": "gap",
+        "errors": "gap",
+        "latency": "gap",
+    }
+    return AlertCoverage(
+        state=state,
+        reason=reason,
+        rules=rules,
+        by_category=categories,
+        iac_provenance=iac_provenance,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_alert_coverage(monkeypatch):
+    """Keep cockpit alert cards deterministic and offline by default.
+
+    Individual tests override this by patching
+    ``agentops.utils.alert_discovery.discover_alert_coverage`` again. The
+    default mirrors the real ``not_applicable`` path (no endpoint / nothing to
+    verify) while faithfully echoing IaC provenance, so no Azure call is ever
+    made from cockpit tests regardless of the developer's environment.
+    """
+    from agentops.utils import alert_discovery
+
+    def _stub(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_NOT_APPLICABLE,
+            reason="No Foundry project endpoint is configured.",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _stub)
+
+
 def _set_appinsights_env(monkeypatch) -> None:
     monkeypatch.setenv(
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
@@ -120,7 +168,7 @@ def _write_eval_run(
 def test_empty_workspace_yields_empty_state(tmp_path: Path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     assert payload["watchdog"]["has_history"] is False
-    assert len(payload["readiness"]["checks"]) == 13
+    assert len(payload["readiness"]["checks"]) == 8
     html = render_cockpit_html(payload)
     assert "No analysis history yet" in html
     assert "NO-GO" in html
@@ -373,7 +421,7 @@ def test_readiness_splits_connection_and_instrumentation(tmp_path: Path):
     assert "App Insights connection" in html
 
 
-def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
+def test_readiness_detects_multiturn_and_threshold_bound_rubric(tmp_path: Path):
     from agentops.agent.cockpit import _build_readiness_checklist
 
     (tmp_path / "agentops.yaml").write_text(
@@ -382,17 +430,29 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
         "dataset: .agentops/data/travel-conversations.jsonl\n"
         "dataset_kind: multi-turn\n"
         "execution: azd\n"
+        "thresholds:\n"
+        "  task_success: \">=0.8\"\n"
         "rubrics:\n"
         "  - name: travel-concierge-quality\n"
         "    evaluator: travel-concierge-quality\n"
         "    dimensions:\n"
         "      - name: task_success\n"
-        "        description: Completes the requested trip plan.\n"
-        "observability:\n"
-        "  trace_sampling:\n"
-        "    enabled: true\n"
-        "    mode: foundry\n"
-        "  trace_replay_url: https://ai.azure.com/traces/replay/abc\n",
+        "        description: Completes the requested trip plan.\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "travel-conversations.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user", "content": "Plan a trip to Rome."},
+                    {"role": "assistant", "content": "Here is a 3-day plan."},
+                ],
+                "expected": "A multi-day Rome itinerary.",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -404,10 +464,62 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
     )
     by_title = {check["title"]: check for check in readiness["checks"]}
 
+    # Multi-turn coverage is applicable (declared + real conversation rows).
     assert by_title["Multi-turn eval coverage"]["status"] == "ok"
+    # Rubric gates readiness only because a threshold binds one of its metrics.
     assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
-    assert by_title["Trace sampling for live quality"]["status"] == "ok"
-    assert by_title["Trace replay linked to evidence"]["status"] == "ok"
+    # Trace sampling / replay cards were removed entirely.
+    assert "Trace sampling for live quality" not in by_title
+    assert "Trace replay linked to evidence" not in by_title
+
+
+def test_readiness_hides_multiturn_for_single_turn_dataset(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: support-agent:4\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "dataset_kind: single-turn\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    titles = [c["title"] for c in readiness["checks"]]
+    # Single-turn agents are not deficient for being single-turn.
+    assert "Multi-turn eval coverage" not in titles
+
+
+def test_readiness_rubric_declared_without_threshold_is_not_a_gate(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: travel-agent:3\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "rubrics:\n"
+        "  - name: travel-concierge-quality\n"
+        "    evaluator: travel-concierge-quality\n"
+        "    dimensions:\n"
+        "      - name: task_success\n"
+        "        description: Completes the requested trip plan.\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    # Declared but not threshold-bound -> informational, never a missing gate.
+    assert by_title["Optional rubric evaluator gate"]["status"] == "muted"
 
 
 def test_readiness_detects_hosted_otel_eval_rubric_and_unknown_alerts(
@@ -457,7 +569,9 @@ def test_readiness_detects_hosted_otel_eval_rubric_and_unknown_alerts(
     assert "native tracing" in tracing["detail"]
     assert "no application-side OpenTelemetry setup is required" in tracing["detail"]
     assert "acs_middleware.py" in tracing["detail"]
-    assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
+    # The azd eval recipe declares a rubric evaluator, but no threshold binds
+    # its metrics, so it is informational (muted), not a missing gate.
+    assert by_title["Optional rubric evaluator gate"]["status"] == "muted"
     assert "src/helpdeskbot/eval.yaml" in by_title[
         "Optional rubric evaluator gate"
     ]["detail"]
@@ -493,7 +607,8 @@ def test_readiness_recognizes_prompt_agent_native_tracing(tmp_path: Path):
     assert "Custom spans remain optional" in tracing["detail"]
 
 
-def test_readiness_detects_alerts_declared_as_infrastructure(tmp_path: Path):
+def test_readiness_shows_iac_alerts_as_provenance_not_proof(tmp_path: Path):
+    """IaC markers are provenance only and must never yield a ready card."""
     from agentops.agent.cockpit import _build_readiness_checklist
 
     infra = tmp_path / "infra"
@@ -514,8 +629,119 @@ def test_readiness_detects_alerts_declared_as_infrastructure(tmp_path: Path):
     alerts = next(
         check for check in readiness["checks"] if check["title"] == "Alerts wired"
     )
-    assert alerts["status"] == "ok"
+    # A string in a template is not proof a rule is deployed and enabled.
+    assert alerts["status"] != "ok"
+    # ...but the file is still surfaced as deployment provenance.
     assert "infra/alerts.bicep" in alerts["detail"]
+    assert "provenance only" in alerts["detail"]
+
+
+def test_alerts_wired_card_ready_when_coverage_ready(tmp_path: Path, monkeypatch):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: my-agent:1\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _ready(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_READY,
+            rules=(SimpleNamespace(),),
+            by_category={
+                "quality": "gap",
+                "safety": "gap",
+                "errors": "covered",
+                "latency": "gap",
+            },
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _ready)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "ok"
+    assert "Verified 1 enabled Azure Monitor alert rule" in alerts["detail"]
+    assert "covered: errors" in alerts["detail"]
+
+
+def test_alerts_wired_card_cannot_verify_is_not_absence(
+    tmp_path: Path, monkeypatch
+):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: d.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _cannot(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_CANNOT_VERIFY,
+            reason="insufficient RBAC to list alert rules",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _cannot)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "cannot_verify"
+    assert "does not claim that alerting is absent" in alerts["detail"]
+    assert "Monitoring Reader" in alerts["detail"]
+
+
+def test_alerts_wired_card_not_configured_is_warn(tmp_path: Path, monkeypatch):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: d.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _missing(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_NOT_CONFIGURED,
+            reason="no rule scoped to the resource",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _missing)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "warn"
+    assert "How to complete:" in alerts["detail"]
 
 
 def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypatch):
@@ -547,8 +773,12 @@ def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypat
         assert ("<a " in detail) or ("<code>" in detail) or ("Foundry" in detail)
     by_title = {check["title"]: check["detail"] for check in readiness["checks"]}
     assert "OpenTelemetry" in by_title["Agent tracing instrumentation"]
-    assert "agentops eval run" in by_title["Scheduled eval (drift watch)"]
-    assert "safe_agent_baseline.yaml" in by_title["Red team scans"]
+    # Scheduled eval is optional drift-watch context and is hidden entirely
+    # when no cron-scheduled workflow exists, so it must not appear here.
+    assert "Scheduled eval (drift watch)" not in by_title
+    # Red-team readiness is hidden before workspace init (no agentops.yaml),
+    # so the card must not appear on an uninitialized workspace.
+    assert "Red team scans" not in by_title
     assert "does not claim" in by_title["Alerts wired"]
 
 
@@ -654,6 +884,72 @@ def test_next_actions_prioritize_doctor_then_incomplete_readiness():
     ]
 
 
+def test_next_actions_skip_non_actionable_statuses():
+    """Hidden, not-applicable, informational, muted, and ok statuses must not
+    manufacture any action."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {"title": "Ready", "status": "ok", "detail": "done"},
+                {"title": "Info", "status": "info", "detail": "context"},
+                {"title": "Muted", "status": "muted", "detail": "optional"},
+                {"title": "NotApplicable", "status": "na", "detail": "n/a"},
+                {"title": "Hidden", "status": "hidden", "detail": "hidden"},
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    assert titles == ["All caught up"]
+
+
+def test_next_actions_cannot_verify_uses_softer_wording():
+    """``cannot_verify`` is not a failure, so it yields an "Enable
+    verification" action, never a "Complete readiness" one."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {
+                    "title": "Multi-turn coverage",
+                    "status": "cannot_verify",
+                    "detail": "Dataset not readable yet.",
+                },
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    assert titles == ["Enable verification: Multi-turn coverage"]
+    assert not any("Complete readiness" in title for title in titles)
+
+
+def test_next_actions_uninitialized_emits_single_onboarding_action():
+    """Before init, emit exactly one onboarding action regardless of how many
+    readiness checks would otherwise be non-ok."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {"title": "A", "status": "warn", "detail": "x"},
+                {"title": "B", "status": "warn", "detail": "y"},
+                {"title": "C", "status": "cannot_verify", "detail": "z"},
+            ],
+        },
+        initialized=False,
+    )
+
+    assert len(actions["actions"]) == 1
+    assert actions["actions"][0]["title"] == "Get started: initialize AgentOps"
+
+
 def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
     from agentops.agent.cockpit import _build_readiness_checklist
 
@@ -704,7 +1000,7 @@ def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
     assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
         "CI eval gate (workflow on PRs)"
     ]["detail"]
-    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "info"
     assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
         "Scheduled eval (drift watch)"
     ]["detail"]
@@ -765,7 +1061,7 @@ def test_readiness_detects_agentops_cloud_eval_workflow_and_evidence(tmp_path: P
     assert "AgentOps cloud eval" in by_title["CI eval gate (workflow on PRs)"][
         "detail"
     ]
-    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "info"
     assert "AgentOps cloud eval" in by_title["Scheduled eval (drift watch)"][
         "detail"
     ]
@@ -1863,3 +2159,121 @@ def test_missing_delegated_assertion_is_private_and_never_retried(
         ),
     }
     assert len(service.attribution_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Project-observability-only mode (agent-less workspace)
+# ---------------------------------------------------------------------------
+
+
+def _write_observability_only_workspace(tmp_path: Path) -> None:
+    """A workspace whose agentops.yaml has a dataset but no agent target."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+
+
+def test_readiness_agentless_workspace_is_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    _write_observability_only_workspace(tmp_path)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    assert readiness["observability_only"] is True
+    assert readiness["mode_label"] == "Project observability only"
+
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    # An explicit informational "Evaluation target" row is present at index 0.
+    assert readiness["checks"][0]["title"] == "Evaluation target"
+    assert readiness["checks"][0]["status"] == "info"
+    # Agent/eval-dependent release gates are not-applicable, never failed.
+    for title in (
+        "CI eval gate (workflow on PRs)",
+        "CI/CD deploy stage",
+        "Release evidence pack",
+    ):
+        if title in by_title:
+            assert by_title[title]["status"] == "na"
+
+
+def test_readiness_legacy_placeholder_is_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    # The legacy my-agent:1 placeholder is treated as "no target configured".
+    assert readiness["observability_only"] is True
+
+
+def test_readiness_real_agent_is_not_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: travel-agent:3\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    assert readiness["observability_only"] is False
+    titles = [c["title"] for c in readiness["checks"]]
+    assert "Evaluation target" not in titles
+
+
+def test_next_actions_observability_only_emits_single_configure_action():
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "observability_only": True,
+            "checks": [
+                {"title": "Evaluation target", "status": "info", "detail": "x"},
+                {"title": "CI eval gate (workflow on PRs)", "status": "na", "detail": "y"},
+                {"title": "CI/CD deploy stage", "status": "na", "detail": "z"},
+                {"title": "Release evidence pack", "status": "na", "detail": "w"},
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    # Exactly one configure-target action; agent-dependent na checks add none.
+    assert titles == ["Configure an evaluation target when ready"]
+
+
+def test_cockpit_html_agentless_not_blanket_no_go(tmp_path: Path):
+    _write_observability_only_workspace(tmp_path)
+
+    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
+    html = render_cockpit_html(payload)
+
+    # The workspace is labelled project-observability-only, not NO-GO.
+    assert "Project observability only" in html

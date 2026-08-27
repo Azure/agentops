@@ -2,7 +2,7 @@
 
 This module is the `app.main:app` target invoked by gunicorn/uvicorn on the
 App Service Linux worker (see `infra/main.bicep`'s `appCommandLine`). It only
-wires together the already-installed `agentops-accelerator[agent]` package;
+wires together the already-installed `agentops-accelerator[cockpit]` package;
 it contains no application logic, no Azure SDK calls, and no additional HTTP
 routes of its own — `/healthz` and every other hosted route are served by
 `agentops.agent.cockpit.create_app`.

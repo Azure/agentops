@@ -192,14 +192,7 @@ def _appinsights_connection_string_parts(value: str) -> dict[str, str]:
 
 
 def _resource_attributes() -> dict:
-    """Resource attributes shared by every AgentOps tracer provider.
-
-    The Entra Agent ID is stamped as ``gen_ai.agent.id`` when the workspace
-    has a registered identity. Without it every span is attributable to a
-    service but not to a governed principal, which is exactly the gap that
-    makes agent traces hard to audit. The attribute is omitted rather than
-    emitted empty so downstream queries can filter on its presence.
-    """
+    """Resource attributes shared by every AgentOps tracer provider."""
 
     import agentops
 
@@ -207,19 +200,6 @@ def _resource_attributes() -> dict:
         "service.name": "agentops",
         "service.version": getattr(agentops, "__version__", "0.0.0"),
     }
-    try:
-        from pathlib import Path
-
-        from agentops.services.agent_identity import (
-            AGENT_ID_ATTRIBUTE,
-            resolve_agent_id,
-        )
-
-        agent_id = resolve_agent_id(Path.cwd())
-        if agent_id:
-            attributes[AGENT_ID_ATTRIBUTE] = agent_id
-    except Exception:  # noqa: BLE001 - identity is optional, tracing is not
-        pass
     return attributes
 
 

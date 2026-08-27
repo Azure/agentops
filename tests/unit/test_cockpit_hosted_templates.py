@@ -444,7 +444,7 @@ class TestMainPy:
 class TestRequirementsTemplate:
     def test_contains_version_placeholder(self, requirements_tmpl_text: str) -> None:
         assert "__AGENTOPS_VERSION__" in requirements_tmpl_text
-        assert "agentops-accelerator[agent]==__AGENTOPS_VERSION__" in requirements_tmpl_text
+        assert "agentops-accelerator[cockpit]==__AGENTOPS_VERSION__" in requirements_tmpl_text
 
     def test_no_secret_like_content(self, requirements_tmpl_text: str) -> None:
         # Only inspect non-comment (actual requirement) lines -- explanatory
@@ -476,3 +476,18 @@ class TestPyprojectRegistration:
             assert expected_entry in block, (
                 f"pyproject.toml package-data must register '{expected_entry}'"
             )
+
+    def test_cockpit_extra_declared_and_agent_extra_absent(
+        self, pyproject_text: str
+    ) -> None:
+        """Issue #451 renamed the `[agent]` extra to `[cockpit]` with no alias."""
+        assert re.search(
+            r"^\s*cockpit\s*=\s*\[", pyproject_text, re.MULTILINE
+        ), "pyproject.toml must declare a `cockpit` optional-dependencies extra"
+        assert not re.search(
+            r"^\s*agent\s*=\s*\[", pyproject_text, re.MULTILINE
+        ), "pyproject.toml must not declare an `agent` extra (renamed to cockpit)"
+
+    def test_agent_server_assets_not_registered(self, pyproject_text: str) -> None:
+        """The removed `agent-server/` scaffold must not be packaged."""
+        assert "agent-server/" not in pyproject_text

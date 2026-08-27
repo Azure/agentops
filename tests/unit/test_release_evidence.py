@@ -122,12 +122,14 @@ def test_build_release_evidence_includes_observability_links_and_rubric_status(
         "      - name: task_success\n"
         "        description: Completes the requested trip plan.\n"
         "observability:\n"
-        "  trace_sampling:\n"
-        "    enabled: true\n"
-        "    mode: foundry\n"
-        "  trace_replay_url: https://ai.azure.com/traces/replay/abc\n"
         "  evaluations_url: https://ai.azure.com/evaluations/run-1\n"
         "  datasets_url: https://ai.azure.com/datasets/travel\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / ".agentops" / "data" / "trace-regression-manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text(
+        json.dumps({"lineage": {"multi_turn_rows": 3}}),
         encoding="utf-8",
     )
 
@@ -135,13 +137,13 @@ def test_build_release_evidence_includes_observability_links_and_rubric_status(
 
     assert evidence.observability["multi_turn_ready"] is True
     assert evidence.observability["rubrics_count"] == 1
-    assert evidence.observability["trace_sampling_enabled"] is True
-    assert evidence.observability["trace_replay_urls"] == [
-        "https://ai.azure.com/traces/replay/abc"
-    ]
+    # trace_sampling / trace_replay signals were removed entirely.
+    assert "trace_sampling_enabled" not in evidence.observability
+    assert "trace_sampling_mode" not in evidence.observability
+    assert "trace_replay_urls" not in evidence.observability
     assert any(check.name == "Foundry observability" and check.status == "ready" for check in evidence.checks)
     labels = {link.label: link.url for link in evidence.links}
-    assert labels["Foundry trace replay"] == "https://ai.azure.com/traces/replay/abc"
+    assert "Foundry trace replay" not in labels
     assert labels["Foundry evaluation"] == "https://ai.azure.com/evaluations/run-1"
     assert labels["Foundry datasets"] == "https://ai.azure.com/datasets/travel"
 

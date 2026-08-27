@@ -267,7 +267,7 @@ def _check_no_runtime_telemetry(
             recommendation=(
                 "Configure `sources.azure_monitor.app_insights_resource_id` "
                 "or set `APPLICATIONINSIGHTS_CONNECTION_STRING` with an "
-                "`ApplicationId`, install the `[agent]` extra, and connect "
+                "`ApplicationId`, install the `[cockpit]` extra, and connect "
                 "Azure Monitor OpenTelemetry on the agent runtime "
                 "(call `configure_azure_monitor()` on startup). "
                 "See `docs/tutorial-end-to-end.md` -> "

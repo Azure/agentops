@@ -14,11 +14,27 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from agentops.cli.app import app
 
 runner = CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _no_network_discovery(monkeypatch) -> None:  # noqa: ANN001
+    """Keep the init wizard offline in tests.
+
+    The CLI opts into Azure-backed target discovery (issue #457). No test here
+    should reach real Azure, so force the discovery boundary to report an
+    empty project (``([], None)``), which makes the wizard fall through to the
+    existing manual-entry path without changing any scripted input counts.
+    """
+    monkeypatch.setattr(
+        "agentops.services.setup_wizard.default_target_discovery",
+        lambda _endpoint, _kind: ([], None),
+    )
 
 
 def _strip_ansi(text: str) -> str:
@@ -357,6 +373,7 @@ def test_run_wizard_calls_on_answer_for_each_validated_input(
     replies = iter(
         [
             "https://acct.services.ai.azure.com/api/projects/p",  # project_endpoint
+            "1",  # target kind: Foundry prompt agent
             "my-agent:1",  # agent
             ".agentops/data/smoke.jsonl",  # dataset
         ]
@@ -495,6 +512,6 @@ def test_run_wizard_reconfigure_forces_questions_even_when_defaults_present(
 
     assert prompt_calls == [
         "Foundry project endpoint",
-        "Agent / orchestrator endpoint",
+        "Choose a target kind [1-5]",
         "Dataset path",
     ]

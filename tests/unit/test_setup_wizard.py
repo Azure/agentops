@@ -12,6 +12,7 @@ import pytest
 
 import agentops.services.setup_wizard as setup_wizard
 from agentops.services.setup_wizard import (
+    AGENT_CHOICE_LATER,
     WizardAnswers,
     apply_answers,
     collect_snapshot,
@@ -607,6 +608,7 @@ def test_run_wizard_collects_core_answers(
     prompt = _scripted_prompt(
         [
             "https://acct.services.ai.azure.com/api/projects/p",
+            "1",  # guided menu: Foundry prompt agent
             "my-bot:9",
             "data.jsonl",
         ]
@@ -628,6 +630,7 @@ def test_run_wizard_does_not_prompt_for_appinsights(
     prompt = _scripted_prompt(
         [
             "https://acct.services.ai.azure.com/api/projects/p",
+            "1",  # guided menu: Foundry prompt agent
             "my-bot:9",
             "data.jsonl",
         ]
@@ -728,7 +731,7 @@ def test_run_wizard_reprompts_blank_required_values(
         [
             "",
             "https://acct.services.ai.azure.com/api/projects/p",
-            "",
+            "1",  # guided menu: Foundry prompt agent
             "my-bot:9",
             "",
         ]
@@ -742,7 +745,6 @@ def test_run_wizard_reprompts_blank_required_values(
     assert answers.dataset == ".agentops/data/smoke.jsonl"
     output = "\n".join(messages)
     assert "Foundry project endpoint is required." in output
-    assert "Agent is required." in output
 
 
 def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
@@ -769,7 +771,7 @@ def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
     (data_dir / "smoke.jsonl").write_text("{}\n", encoding="utf-8")
     (data_dir / "travel-smoke.jsonl").write_text("{}\n", encoding="utf-8")
 
-    replies = iter(["", "travel-agent:1", ".agentops/data/travel-smoke.jsonl"])
+    replies = iter(["", "1", "travel-agent:1", ".agentops/data/travel-smoke.jsonl"])
     prompt_calls: list[tuple[str, object]] = []
 
     def prompt(question: str, default):  # noqa: ANN001
@@ -785,7 +787,8 @@ def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
 
     assert prompt_calls == [
         ("Foundry project endpoint", "https://acct.services.ai.azure.com/api/projects/p"),
-        ("Agent / orchestrator endpoint", None),
+        ("Choose a target kind [1-5]", AGENT_CHOICE_LATER),
+        ("Foundry prompt agent (<name>:<version>)", None),
         ("Dataset path", ".agentops/data/smoke.jsonl"),
     ]
     assert answers.project_endpoint is None
@@ -820,15 +823,21 @@ def test_run_wizard_reasks_placeholder_agent(
 
     def prompt(question: str, default):  # noqa: ANN001
         prompt_calls.append((question, default))
-        return "" if question == "Foundry project endpoint" else "http://127.0.0.1:8000/chat"
+        if question == "Foundry project endpoint":
+            return ""
+        if question == "Choose a target kind [1-5]":
+            return "4"  # external HTTP agent
+        return "http://127.0.0.1:8000/chat"
 
     answers = run_wizard(tmp_path, prompt=prompt, echo=lambda _msg: None)
 
     assert prompt_calls == [
         ("Foundry project endpoint", "https://acct.services.ai.azure.com/api/projects/p"),
-        ("Agent / orchestrator endpoint", None),
+        ("Choose a target kind [1-5]", AGENT_CHOICE_LATER),
+        ("External HTTP agent URL", None),
     ]
     assert answers.agent == "http://127.0.0.1:8000/chat"
+    assert answers.protocol == "http-json"
 
 
 def test_run_wizard_appinsights_is_not_interactive_even_when_missing(
@@ -916,6 +925,7 @@ def test_run_wizard_re_prompts_on_invalid_input(
         [
             "not a url",
             "https://acct.services.ai.azure.com/api/projects/p",
+            "1",  # guided menu: Foundry prompt agent
             "bare-name",
             "my-bot:2",
             "data.jsonl",
@@ -1241,3 +1251,313 @@ def test_mask_secret_handles_short_and_long_values():
     assert mask_secret("short") == "***"
     masked = mask_secret("AAAAmiddleBBBB")
     assert masked.startswith("AAAA") and masked.endswith("BBBB") and "***" in masked
+
+
+# ---------------------------------------------------------------------------
+# Azure-backed target discovery wiring (issue #457)
+# ---------------------------------------------------------------------------
+
+from agentops.utils.foundry_discovery import DiscoveredTarget  # noqa: E402
+
+_DISCOVERY_ENDPOINT = "https://acct.services.ai.azure.com/api/projects/p"
+
+
+def _script(replies):
+    """Return (prompt_fn, recorded_calls) replaying ``replies`` in order."""
+    it = iter(replies)
+    calls: list = []
+
+    def prompt(question, default):
+        calls.append((question, default))
+        return next(it)
+
+    return prompt, calls
+
+
+def _echo_recorder():
+    lines: list[str] = []
+    return lines.append, lines
+
+
+def _recording_discover(result_map):
+    calls: list = []
+
+    def discover(endpoint, kind):
+        calls.append((endpoint, kind))
+        return result_map[kind]
+
+    discover.calls = calls  # type: ignore[attr-defined]
+    return discover
+
+
+def _never_called_discover(endpoint, kind):  # pragma: no cover - guard
+    raise AssertionError(f"discovery must not run (endpoint={endpoint}, kind={kind})")
+
+
+def test_agent_menu_discovers_prompt_agents_and_returns_selected_ref():
+    targets = [
+        DiscoveredTarget(
+            target_type="prompt",
+            display_name="alpha",
+            name="alpha",
+            agent_ref="alpha:1",
+            version="1",
+            status="ready",
+        ),
+        DiscoveredTarget(
+            target_type="prompt",
+            display_name="beta",
+            name="beta",
+            agent_ref="beta:2",
+            version="2",
+            status="ready",
+        ),
+    ]
+    discover = _recording_discover({"prompt": (targets, None)})
+    prompt, calls = _script(["1", "2"])
+    echo, lines = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == ("beta:2", None, False)
+    assert discover.calls == [(_DISCOVERY_ENDPOINT, "prompt")]
+    assert any(q == "Select a prompt agent [0-2]" for q, _ in calls)
+    assert any("Found 2 prompt agents:" in line for line in lines)
+
+
+def test_agent_menu_prompt_multi_version_requires_explicit_choice():
+    targets = [
+        DiscoveredTarget(
+            target_type="prompt",
+            display_name="alpha",
+            name="alpha",
+            agent_ref="alpha:1",
+            version="1",
+        ),
+        DiscoveredTarget(
+            target_type="prompt",
+            display_name="alpha",
+            name="alpha",
+            agent_ref="alpha:2",
+            version="2",
+        ),
+    ]
+    discover = _recording_discover({"prompt": (targets, None)})
+    prompt, _ = _script(["1", "1"])
+    echo, _ = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    # No silent "latest": the explicit index selects version 1.
+    assert result == ("alpha:1", None, False)
+
+
+def test_agent_menu_hosted_selection_normalizes_url():
+    ref = "https://acct.services.ai.azure.com/api/projects/p/agents/a/versions/3/"
+    targets = [
+        DiscoveredTarget(
+            target_type="hosted",
+            display_name="a",
+            name="a",
+            agent_ref=ref,
+            version="3",
+        )
+    ]
+    discover = _recording_discover({"hosted": (targets, None)})
+    prompt, _ = _script(["2", "1"])
+    echo, _ = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == (
+        "https://acct.services.ai.azure.com/api/projects/p/agents/a/versions/3",
+        None,
+        False,
+    )
+    assert discover.calls == [(_DISCOVERY_ENDPOINT, "hosted")]
+
+
+def test_agent_menu_model_selection_returns_model_ref():
+    targets = [
+        DiscoveredTarget(
+            target_type="model",
+            display_name="gpt-4o",
+            name="gpt-4o",
+            agent_ref="model:gpt-4o",
+        )
+    ]
+    discover = _recording_discover({"model": (targets, None)})
+    prompt, _ = _script(["3", "1"])
+    echo, _ = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == ("model:gpt-4o", None, False)
+    assert discover.calls == [(_DISCOVERY_ENDPOINT, "model")]
+
+
+def test_agent_menu_zero_routes_to_manual_entry():
+    targets = [
+        DiscoveredTarget(
+            target_type="prompt",
+            display_name="alpha",
+            name="alpha",
+            agent_ref="alpha:1",
+            version="1",
+        )
+    ]
+    discover = _recording_discover({"prompt": (targets, None)})
+    prompt, calls = _script(["1", "0", "manual-agent:9"])
+    echo, _ = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == ("manual-agent:9", None, False)
+    assert any(
+        q == "Foundry prompt agent (<name>:<version>)" for q, _ in calls
+    )
+
+
+def test_agent_menu_blank_selection_returns_to_menu():
+    targets = [
+        DiscoveredTarget(
+            target_type="prompt",
+            display_name="alpha",
+            name="alpha",
+            agent_ref="alpha:1",
+            version="1",
+        )
+    ]
+    discover = _recording_discover({"prompt": (targets, None)})
+    prompt, calls = _script(["1", "", "5"])
+    echo, _ = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == (None, None, True)
+    menu_prompts = [q for q, _ in calls if q == "Choose a target kind [1-5]"]
+    assert len(menu_prompts) == 2  # blank selection re-showed the menu
+
+
+def test_agent_menu_discovery_failure_falls_back_to_manual():
+    discover = _recording_discover({"prompt": ([], "authentication unavailable")})
+    prompt, _ = _script(["1", "fallback-agent:1"])
+    echo, lines = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == ("fallback-agent:1", None, False)
+    assert any(
+        line
+        == f"  ! {setup_wizard.DISCOVERY_FAILED_PREFIX}: authentication unavailable"
+        for line in lines
+    )
+
+
+def test_agent_menu_discovery_empty_state_falls_back_to_manual():
+    discover = _recording_discover({"prompt": ([], None)})
+    prompt, _ = _script(["1", "empty-agent:1"])
+    echo, lines = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == ("empty-agent:1", None, False)
+    assert any(setup_wizard.DISCOVERY_EMPTY_PROMPT in line for line in lines)
+
+
+def test_agent_menu_http_choice_skips_discovery():
+    prompt, _ = _script(["4", "https://api.example.com/chat"])
+    echo, _ = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt,
+        echo,
+        project_endpoint=_DISCOVERY_ENDPOINT,
+        discover_targets=_never_called_discover,
+    )
+
+    assert result == ("https://api.example.com/chat", "http-json", False)
+
+
+def test_agent_menu_later_choice_is_offline():
+    prompt, _ = _script(["5"])
+    echo, _ = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt,
+        echo,
+        project_endpoint=_DISCOVERY_ENDPOINT,
+        discover_targets=_never_called_discover,
+    )
+
+    assert result == (None, None, True)
+
+
+def test_agent_menu_without_discovery_uses_manual_path():
+    prompt, calls = _script(["1", "my-agent:1"])
+    echo, lines = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=None
+    )
+
+    assert result == ("my-agent:1", None, False)
+    assert not any("Found" in line for line in lines)
+    assert any(
+        q == "Foundry prompt agent (<name>:<version>)" for q, _ in calls
+    )
+
+
+def test_agent_menu_discovery_skipped_without_endpoint():
+    prompt, calls = _script(["1", "my-agent:1"])
+    echo, lines = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt,
+        echo,
+        project_endpoint=None,
+        discover_targets=_never_called_discover,
+    )
+
+    assert result == ("my-agent:1", None, False)
+    assert not any("Found" in line for line in lines)
+
+
+def test_agent_menu_out_of_range_selection_reprompts():
+    targets = [
+        DiscoveredTarget(
+            target_type="prompt",
+            display_name="alpha",
+            name="alpha",
+            agent_ref="alpha:1",
+            version="1",
+        )
+    ]
+    discover = _recording_discover({"prompt": (targets, None)})
+    prompt, _ = _script(["1", "9", "1"])
+    echo, lines = _echo_recorder()
+
+    result = setup_wizard._prompt_agent_target(
+        prompt, echo, project_endpoint=_DISCOVERY_ENDPOINT, discover_targets=discover
+    )
+
+    assert result == ("alpha:1", None, False)
+    assert any("Enter a number between 0 and 1." in line for line in lines)
+
+
