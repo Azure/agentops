@@ -171,7 +171,7 @@ def test_empty_workspace_yields_empty_state(tmp_path: Path):
     assert len(payload["readiness"]["checks"]) == 8
     html = render_cockpit_html(payload)
     assert "No analysis history yet" in html
-    assert "NO-GO" in html
+    assert "Not assessed" in html
 
 
 def test_telemetry_status_reflects_env(tmp_path: Path, monkeypatch):
@@ -781,6 +781,32 @@ def test_doctor_sparkline_hover_shows_when_and_quantity():
     assert 'tabindex="0"' in svg
 
 
+def test_doctor_history_uses_two_distinct_headline_cards():
+    from agentops.agent.cockpit import _build_watchdog_section
+    from agentops.agent.history import AnalysisRecord
+
+    record = AnalysisRecord(
+        timestamp="2026-08-27T15:30:00Z",
+        findings_total=1,
+        findings_by_severity={"critical": 0, "warning": 1, "info": 0},
+        findings_by_category={},
+        max_severity="warning",
+        sources_enabled=[],
+        lookback_days=1,
+        duration_seconds=1.0,
+        findings=[],
+    )
+
+    section = _build_watchdog_section([record])
+
+    assert [card["label"] for card in section["headline_cards"]] == [
+        "Findings",
+        "Critical",
+    ]
+    assert section["last_analysis_at"] == "2026-08-27T15:30:00Z"
+    assert section["headline_cards"][0]["badge"]["label"] == "latest analysis"
+
+
 def test_cockpit_uses_doctor_not_watchdog_in_visible_copy(tmp_path: Path):
     payload = build_cockpit_payload(tmp_path)
     html = render_cockpit_html(payload)
@@ -1182,13 +1208,17 @@ def test_readiness_detects_prompt_agent_deploy_workflow(tmp_path: Path):
     assert "evaluates that exact version" in deploy_row["detail"]
 
 
-def test_readiness_continuous_eval_ok_when_doctor_finds_no_problem(
+def test_readiness_continuous_eval_is_not_inferred_from_absent_finding(
     tmp_path: Path,
 ):
-    """A Doctor run that did not emit the continuous-eval findings is
-    treated as confirmation that rules are configured."""
+    """No finding is not positive evidence that a rule is configured."""
     from agentops.agent.cockpit import _build_readiness_checklist
 
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: support-agent:4\n"
+        "dataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
     telemetry = {"enabled": True, "detail": "ok", "portal_url": "https://x"}
     watchdog = {"has_history": True, "latest_findings": []}
 
@@ -1199,7 +1229,9 @@ def test_readiness_continuous_eval_ok_when_doctor_finds_no_problem(
         c for c in readiness["checks"]
         if "Continuous evaluation rules" in c["title"]
     )
-    assert cont_row["status"] == "ok"
+    assert cont_row["status"] == "muted"
+    assert "Not verified" in cont_row["detail"]
+    assert "absence of a finding is not proof" in cont_row["detail"]
 
 
 def test_deployments_diagnostic_not_a_git_repo(tmp_path: Path):
@@ -2240,6 +2272,9 @@ def test_readiness_agentless_workspace_is_observability_only(tmp_path: Path):
     # An explicit informational "Evaluation target" row is present at index 0.
     assert readiness["checks"][0]["title"] == "Evaluation target"
     assert readiness["checks"][0]["status"] == "info"
+    assert "Agent tracing instrumentation" not in by_title
+    assert "Continuous evaluation rules (Foundry)" not in by_title
+    assert "Optional rubric evaluator gate" not in by_title
     # Agent/eval-dependent release gates are not-applicable, never failed.
     for title in (
         "CI eval gate (workflow on PRs)",
@@ -2319,5 +2354,9 @@ def test_cockpit_html_agentless_not_blanket_no_go(tmp_path: Path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     html = render_cockpit_html(payload)
 
-    # The workspace is labelled project-observability-only, not NO-GO.
+    # The workspace uses a descriptive monitoring state, not an alarm-style verdict.
     assert "Project observability only" in html
+    assert "Monitoring only" in html
+    assert "No evaluation target configured" in html
+    assert "OBSERVABILITY ONLY" not in html
+    assert "NO-GO" not in html

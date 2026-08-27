@@ -413,9 +413,6 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
 
     findings_series = _series(lambda r: r.findings_total)
     critical_series = _series(lambda r: r.findings_by_severity.get("critical", 0))
-    record_labels = [_label_for_record(r) for r in records]
-
-    latest_label, latest_badge = _latest_run_badge(latest)
 
     # Latest findings list. We project the dict directly from the
     # AnalysisRecord (which stores the same Finding.to_dict() payload
@@ -435,6 +432,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
     return {
         "has_history": bool(records),
         "history_count": len(records),
+        "last_analysis_at": latest.timestamp if latest else None,
         "headline_cards": [
             {
                 "key": "findings_total",
@@ -471,24 +469,6 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                     "candidate."
                 ),
                 "source": "Findings tagged as critical severity in the latest analysis.",
-            },
-            {
-                "key": "last_analysis",
-                "label": "Last analysis",
-                "value": latest_label,
-                "unit": "",
-                "value_kind": "text",
-                "series": findings_series[-6:],
-                "labels": record_labels[-6:],
-                "badge": latest_badge,
-                "help": (
-                    "When the most recent Doctor analysis finished. The "
-                    "badge reflects how stale that analysis is relative "
-                    "to now."
-                ),
-                "meta": _latest_run_meta(latest),
-                "source": "When the most recent Doctor analysis finished.",
-                "hover_value_label": "finding",
             },
         ],
         "latest_findings": latest_findings,
@@ -2010,13 +1990,23 @@ def _build_readiness_checklist(
     _ = deployments  # Backwards-compatible input; readiness is repo/Doctor based.
     checks: List[Dict[str, Any]] = []
     agentops_config = _read_agentops_config(workspace)
+    config_present = (workspace / "agentops.yaml").exists()
+    agent_configured = _workspace_agent_configured(agentops_config)
+    observability_only = config_present and not agent_configured
+    agent_checks_applicable = not observability_only
     trace_manifest = _read_trace_regression_manifest(workspace)
     raw_trace_lineage = trace_manifest.get("lineage")
     trace_lineage: Dict[str, Any] = (
         raw_trace_lineage if isinstance(raw_trace_lineage, dict) else {}
     )
-    custom_tracing_path = _detect_custom_tracing(workspace)
-    foundry_runtime = _detect_foundry_agent_runtime(workspace, agentops_config)
+    custom_tracing_path = (
+        _detect_custom_tracing(workspace) if agent_checks_applicable else ""
+    )
+    foundry_runtime = (
+        _detect_foundry_agent_runtime(workspace, agentops_config)
+        if agent_checks_applicable
+        else ""
+    )
 
     tracing_linked = bool(telemetry.get("enabled"))
     checks.append(
@@ -2035,12 +2025,13 @@ def _build_readiness_checklist(
         }
     )
 
-    agent_tracing_ready = bool(foundry_runtime or custom_tracing_path)
-    checks.append(
-        {
-            "title": "Agent tracing instrumentation",
-            "status": "ok" if agent_tracing_ready else "muted",
-            "detail": (
+    if agent_checks_applicable:
+        agent_tracing_ready = bool(foundry_runtime or custom_tracing_path)
+        checks.append(
+            {
+                "title": "Agent tracing instrumentation",
+                "status": "ok" if agent_tracing_ready else "muted",
+                "detail": (
                 f"Microsoft Foundry provides native tracing for this "
                 f"{_html_escape(foundry_runtime)}; no application-side "
                 "OpenTelemetry setup is required."
@@ -2062,25 +2053,30 @@ def _build_readiness_checklist(
                 "external runtimes must configure their own tracer and exporter. "
                 '<a href="https://learn.microsoft.com/azure/ai-foundry/observability/concepts/trace-agent-concept" '
                 'target="_blank" rel="noopener noreferrer">Foundry tracing docs &#x2197;</a>'
-            ),
-        }
-    )
+                ),
+            }
+        )
 
     # Continuous evaluation in Foundry: read the latest Doctor findings
     # rather than probing the SDK again. Doctor's safety check emits
     # ``safety.config.continuous_eval_missing`` /
     # ``safety.config.continuous_eval_disabled`` when the Foundry
     # project lists agents but no continuous-evaluation rules.
-    cont_eval_status, cont_eval_detail = _continuous_eval_status_from_watchdog(watchdog)
-    checks.append(
-        {
-            "title": "Continuous evaluation rules (Foundry)",
-            "status": cont_eval_status,
-            "detail": cont_eval_detail,
-        }
-    )
+    if agent_checks_applicable:
+        cont_eval_status, cont_eval_detail = _continuous_eval_status_from_watchdog(watchdog)
+        checks.append(
+            {
+                "title": "Continuous evaluation rules (Foundry)",
+                "status": cont_eval_status,
+                "detail": cont_eval_detail,
+            }
+        )
 
-    multi_turn = _multiturn_readiness(workspace, agentops_config, trace_lineage)
+    multi_turn = (
+        _multiturn_readiness(workspace, agentops_config, trace_lineage)
+        if agent_checks_applicable
+        else None
+    )
     if multi_turn is not None:
         multi_turn_status, multi_turn_detail = multi_turn
         checks.append(
@@ -2118,13 +2114,14 @@ def _build_readiness_checklist(
             "exists and azd emits stable metric names you can bind to "
             "thresholds."
         )
-    checks.append(
-        {
-            "title": "Optional rubric evaluator gate",
-            "status": rubric_status,
-            "detail": rubric_detail,
-        }
-    )
+    if agent_checks_applicable:
+        checks.append(
+            {
+                "title": "Optional rubric evaluator gate",
+                "status": rubric_status,
+                "detail": rubric_detail,
+            }
+        )
 
     eval_workflow = _detect_eval_workflow(workspace)
     cont_eval = bool(eval_workflow.get("present"))
@@ -2258,10 +2255,6 @@ def _build_readiness_checklist(
     # (agentops.yaml exists) but no evaluation target is configured. The
     # agent- and eval-dependent release gates are then not-applicable rather
     # than failing, and the cockpit must not blanket NO-GO the workspace.
-    config_present = (workspace / "agentops.yaml").exists()
-    observability_only = config_present and not _workspace_agent_configured(
-        agentops_config
-    )
     mode_label = ""
     if observability_only:
         mode_label = "Project observability only"
@@ -2362,10 +2355,10 @@ def _continuous_eval_status_from_watchdog(
             'target="_blank" rel="noopener noreferrer">Foundry monitor docs &#x2197;</a>',
         )
     return (
-        "ok",
-        "Doctor confirmed continuous-evaluation rules are configured for "
-        "your Foundry agents. Production responses are scored against "
-        "quality and safety metrics in Foundry.",
+        "muted",
+        "Not verified. The latest Doctor analysis did not report a missing or "
+        "disabled rule, but absence of a finding is not proof that continuous "
+        "evaluation is configured.",
     )
 
 
@@ -3299,9 +3292,13 @@ def _headline_badge_total(series: List[float]) -> Dict[str, str]:
     last = series[-1]
     if last == 0:
         return {"label": "all clear", "tone": "ok"}
+    if len(series) == 1:
+        return {"label": "latest analysis", "tone": "info"}
     if len(series) >= 2 and last > series[-2]:
         return {"label": "trending up", "tone": "warn"}
-    return {"label": "open", "tone": "info"}
+    if last < series[-2]:
+        return {"label": "trending down", "tone": "ok"}
+    return {"label": "unchanged", "tone": "info"}
 
 
 def _headline_badge_critical(series: List[float]) -> Dict[str, str]:
@@ -4000,9 +3997,9 @@ def _render_status_cards_section(
         # mode, not a failed release. Do not blanket NO-GO; label it clearly.
         readiness_card = _card(
             title="Readiness",
-            value="OBSERVABILITY ONLY",
+            value="Monitoring only",
             tone="info",
-            sub=readiness.get("mode_label") or "Project observability only",
+            sub="No evaluation target configured",
             anchor="#section-readiness",
         )
     else:
@@ -4014,7 +4011,7 @@ def _render_status_cards_section(
             readiness_tone = "warn"
         readiness_card = _card(
             title="Readiness",
-            value="GO" if readiness_tone == "ok" else "NO-GO",
+            value="Ready" if readiness_tone == "ok" else "Needs attention",
             tone=readiness_tone,
             sub=readiness_label,
             anchor="#section-readiness",
@@ -4033,19 +4030,25 @@ def _render_status_cards_section(
 
     if not watchdog.get("has_history"):
         doctor_tone = "warn"
-        doctor_value = "NO-GO"
-        doctor_sub = "No Doctor run"
+        doctor_value = "Not assessed"
+        doctor_sub = "Run Doctor to assess this workspace"
     else:
         findings_total = _headline_value("findings_total")
         critical = _headline_value("critical")
         if critical > 0:
             doctor_tone = "crit"
+            doctor_value = "Blocked"
         elif findings_total > 0:
             doctor_tone = "warn"
+            doctor_value = "Review findings"
         else:
             doctor_tone = "ok"
-        doctor_value = "GO" if findings_total == 0 else "NO-GO"
-        doctor_sub = f"{critical} critical"
+            doctor_value = "No findings"
+        finding_label = "finding" if findings_total == 1 else "findings"
+        critical_label = "critical finding" if critical == 1 else "critical findings"
+        doctor_sub = (
+            f"{findings_total} {finding_label} · {critical} {critical_label}"
+        )
     doctor_card = _card(
         title="Doctor",
         value=doctor_value,
@@ -4057,8 +4060,8 @@ def _render_status_cards_section(
     cards = readiness_card + doctor_card
     return (
         '<section class="status-cards-section" id="section-status-cards">'
-        '<div class="status-cards-caption">Can I ship? '
-        'Click a card for the full detail below.</div>'
+        '<div class="status-cards-caption">Release overview · '
+        'Select a card to review the supporting detail.</div>'
         f'<div class="grid status-cards-grid">{cards}</div>'
         '</section>'
     )
@@ -4413,8 +4416,12 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         watchdog_headline = "".join(
             _render_card(c, hero=True) for c in watchdog["headline_cards"]
         )
+        last_analysis_at = _html_escape(
+            str(watchdog.get("last_analysis_at") or "unknown")
+        )
         findings_list = _render_findings_list(watchdog.get("latest_findings") or [])
         watchdog_body = (
+            f'<p class="muted">Last analyzed: {last_analysis_at}</p>'
             f'<div class="grid">{watchdog_headline}</div>'
             f'{findings_list}'
         )

@@ -105,6 +105,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   sparkline point shows both the analysis timestamp and the measured quantity,
   including explicit zero values. Remaining outdated terminology in Cockpit was
   replaced with “Doctor”.
+- **Cockpit no longer mistakes AgentOps for the monitored agent.** In
+  project-observability-only mode, agent tracing, continuous evaluation, and
+  rubric rows are hidden instead of scanning AgentOps source files as though
+  they were an agent runtime. Continuous evaluation is no longer marked ready
+  merely because the latest Doctor run emitted no related finding.
+- **Doctor summary removes duplicated charts and vague state.** The redundant
+  Last analysis sparkline was removed, its timestamp now appears as section
+  context, and the Findings badge reports an explicit trend instead of “open”.
+- **Cockpit status cards use professional, descriptive states.** Alarm-style
+  all-caps GO/NO-GO labels were replaced with Monitoring only, Ready, Needs
+  attention, Not assessed, Review findings, Blocked, and No findings.
 - **Doctor findings now state the measured value and the threshold that was
   crossed.** `errors.production_rate`, `latency.p95_production`,
   `latency.eval_avg` and `opex.no_thresholds` previously said only "above
