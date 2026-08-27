@@ -70,13 +70,19 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Observe distinguishes request and dependency telemetry reliably.** KQL now
+  retains the source table while unioning Application Insights records, so
+  Overview and Agents prefer request-level `invoke_agent` records correctly
+  instead of returning zero totals, and Runs omits uncorrelated internal spans.
 - **Observe now attributes Foundry agents and presents usable telemetry tables.**
   Hosted and prompt agents are classified from their emitted provider metadata,
   project attribution recognizes the Foundry project dimension, and Runs returns
   one correlated execution instead of separate rows for each internal operation.
-  Overview counts only agent invocations, token usage is split into sortable
-  columns, and internal connector diagnostics and the redundant Telemetry
-  coverage tab no longer appear in the user-facing dashboard.
+  KQL tracks each unioned telemetry table explicitly so Overview and Agents can
+  prefer request records without returning empty totals. Overview counts only
+  agent invocations, token usage is split into sortable columns, and internal
+  connector diagnostics and the redundant Telemetry coverage tab no longer
+  appear in the user-facing dashboard.
 - **Foundry project links now open the configured project instead of the tenant
   landing page.** In project-observability-only mode there is no cloud evaluation
   report from which to recover a portal URL, so Cockpit previously fell back to

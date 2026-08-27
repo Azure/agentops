@@ -287,7 +287,9 @@ def test_models_query_projects_unmapped_usage_attributes_in_one_bounded_query() 
     assert "make_bag(pack(token_class_name, token_class_value))" in query
     assert "extra_token_classes" in query
     assert "join kind=leftouter" in query
-    assert query.count("union AppDependencies, AppRequests") == 1
+    assert (
+        query.count("union withsource=TelemetryTable AppDependencies, AppRequests") == 1
+    )
     assert query.count("by project_resource_id, model, deployment") >= 2
     assert "| sort by requests desc" in query
     assert f"| take {MAX_ROWS_PER_QUERY}" in query
@@ -688,7 +690,9 @@ def test_tool_filter_kql_metacharacters_remain_inside_the_string_literal() -> No
 def test_tools_query_uses_tool_metadata_without_reading_tool_content() -> None:
     query = build_tools_query(_filters(tool_name="lookup'o''ticket"))
 
-    assert query.startswith("let base = union AppDependencies, AppRequests")
+    assert query.startswith(
+        "let base = union withsource=TelemetryTable AppDependencies, AppRequests"
+    )
     assert 'Properties["gen_ai.tool.name"]' in query
     assert 'Properties["gen_ai.operation.name"]' in query
     assert "| where isnotempty(tool_name)" in query
@@ -713,6 +717,10 @@ def test_runs_query_prefers_conversation_then_foundry_thread_before_trace() -> N
         < query.index("tostring(OperationId)")
     )
     assert '"conversation", "trace"' in query
+    assert (
+        "| where isnotempty(conversation_id) or isnotempty(foundry_thread_id) "
+        'or operation_name == "invoke_agent"'
+    ) in query
     assert "run\\'o\\'\\'key" in query
     assert "| sort by last_activity_at desc" in query
     assert "turns = dcount(OperationId)" in query
