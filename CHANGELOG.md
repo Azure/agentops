@@ -60,21 +60,27 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   is visible in CI. The Azure DevOps pipeline already failed correctly and is
   unchanged.
 
+### Removed
+- **The GitHub Actions SHA-pinning finding was dropped.**
+  `opex.workflow_action_sha_pinning` flagged every `uses:` reference that pointed
+  at a version tag (`@v4`) rather than a 40-character commit id. AgentOps' own
+  generated workflows use tags, so the check reliably reported the toolkit's own
+  output as a problem, and commit-id pinning is optional supply-chain hardening
+  rather than a release-readiness signal. The check, its catalog entry, and its
+  WAF checklist row are gone.
+
 ### Fixed
-- **Doctor no longer raises latency and error-rate alarms on tiny samples.**
-  `latency.p95_production` and `errors.production_rate` compared an Application
-  Insights p95 and failure ratio against their thresholds regardless of how many
-  requests the lookback window actually held, so a smoke test with three
-  requests could report a "33% production error rate". Both checks now require
-  at least `min_requests` (default 20) requests in the window, configurable per
-  check in `agent.yaml`, and the latency summary states the sample size it
-  graded.
-- **The GitHub Actions pinning finding is now informational and written in plain
-  language.** `opex.workflow_action_sha_pinning` fired as a `warning` titled
-  "AgentOps workflows pin actions by tag, not by commit SHA", which read as a
-  release blocker for a supply-chain hardening step that AgentOps' own generated
-  workflows do not take. It is now `info` and explains what a moving version tag
-  means and when the commit-id form is worth adopting.
+- **Doctor no longer raises latency and error-rate alarms on tiny samples, and
+  the latency bar is realistic.** `latency.p95_production` and
+  `errors.production_rate` compared an Application Insights p95 and failure ratio
+  against their thresholds regardless of how many requests the lookback window
+  actually held, so a smoke test with three requests could report a "33%
+  production error rate". Both checks now require at least `min_requests`
+  (default 20) requests in the window, configurable per check in `agent.yaml`,
+  and the latency summary states the sample size it graded. The default
+  `checks.latency.p95_threshold_seconds` also moved from 5 to 15 seconds, which
+  matches what an agent turn that calls a model and one or two tools actually
+  costs.
 - **The Doctor LLM judge recovers from models that reject an explicit
   `temperature`.** Reasoning-family deployments answer `temperature: 0.0` with
   HTTP 400 `unsupported_value`, which surfaced as repeated

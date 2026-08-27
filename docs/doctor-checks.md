@@ -78,7 +78,6 @@ stopping the whole run.
 | `opex.unversioned_bundle` | warning | `workspace_files` | programmatic | bundle YAMLs lack a top-level `version:` |
 | `opex.results_dir_bloat` | warning | `workspace_files` | programmatic | `.agentops/results/` holds > 50 run folders |
 | `opex.workflow_concurrency_lock` | warning | `workspace_files` | programmatic | AgentOps workflows missing a top-level `concurrency:` block |
-| `opex.workflow_action_sha_pinning` | info | `workspace_files` | programmatic | `uses:` references an action by version tag instead of a commit id (optional hardening) |
 | `opex.ailz_readiness` | info | `workspace_files` | programmatic | canonical AI Landing Zone signals detected; reports deployment readiness dimensions |
 | `opex.ailz_gaps` | warning | `workspace_files` | programmatic | AI Landing Zone signals detected but preflight, eval config, azd workflow, or private-runner path needs attention |
 | `opex.release.no_eval_evidence` | warning | `workspace_files` + `results_history` | programmatic | AgentOps workspace detected but no completed eval run is available for release evidence |

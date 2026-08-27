@@ -77,7 +77,6 @@ def test_find_waf_item_for_new_genaiops_rules() -> None:
         "opex.unversioned_bundle",
         "opex.results_dir_bloat",
         "opex.workflow_concurrency_lock",
-        "opex.workflow_action_sha_pinning",
         "opex.no_foundry_control_configured",
     ):
         item = find_waf_item(finding_id)

@@ -60,10 +60,13 @@ checks:
     min_runs: 3
 
   latency:
-    p95_threshold_seconds: 5.0
+    p95_threshold_seconds: 15.0
+    # Ignore the p95 until the window holds a usable sample.
+    min_requests: 20
 
   errors:
     rate_threshold: 0.05
+    min_requests: 20
 
   safety:
     severity_floor: Medium  # Low | Medium | High

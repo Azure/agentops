@@ -361,57 +361,6 @@ def test_workflow_concurrency_silent_when_block_present(workspace: Path) -> None
 
 
 # ---------------------------------------------------------------------------
-# workflow_action_sha_pinning
-# ---------------------------------------------------------------------------
-
-
-def test_workflow_sha_pinning_emitted_for_tag_refs(workspace: Path) -> None:
-    wf_dir = workspace / ".github" / "workflows"
-    wf_dir.mkdir(parents=True)
-    (wf_dir / "agentops-pr.yml").write_text(
-        "name: pr\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n"
-        "      - uses: actions/checkout@v4\n"
-        "      - uses: actions/setup-python@v5\n",
-        encoding="utf-8",
-    )
-    finding = next(
-        f
-        for f in run_opex_workspace_check(workspace)
-        if f.id == "opex.workflow_action_sha_pinning"
-    )
-    offenders = finding.evidence.get("offenders", [])
-    assert len(offenders) == 2
-    assert all("@v" in o["ref"] for o in offenders)
-
-
-def test_workflow_sha_pinning_silent_for_sha_pinned(workspace: Path) -> None:
-    wf_dir = workspace / ".github" / "workflows"
-    wf_dir.mkdir(parents=True)
-    pinned_sha = "a" * 40
-    (wf_dir / "agentops-pr.yml").write_text(
-        "name: pr\njobs:\n  build:\n    steps:\n"
-        f"      - uses: actions/checkout@{pinned_sha}\n",
-        encoding="utf-8",
-    )
-    assert "opex.workflow_action_sha_pinning" not in _ids(
-        run_opex_workspace_check(workspace)
-    )
-
-
-def test_workflow_sha_pinning_skips_local_actions(workspace: Path) -> None:
-    wf_dir = workspace / ".github" / "workflows"
-    wf_dir.mkdir(parents=True)
-    (wf_dir / "agentops-pr.yml").write_text(
-        "name: pr\njobs:\n  build:\n    steps:\n"
-        "      - uses: ./.github/actions/local\n",
-        encoding="utf-8",
-    )
-    assert "opex.workflow_action_sha_pinning" not in _ids(
-        run_opex_workspace_check(workspace)
-    )
-
-
-# ---------------------------------------------------------------------------
 # AI.26 output token limit (opex.max_tokens_undefined)
 # ---------------------------------------------------------------------------
 
