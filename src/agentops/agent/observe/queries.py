@@ -35,7 +35,7 @@ SOURCE_TIMEOUT_SECONDS = 30
 DEFAULT_REQUEST_DEADLINE_SECONDS = 10
 DEFAULT_LOOKBACK_HOURS = 24
 
-_TELEMETRY_TABLES = "union AppDependencies, AppRequests"
+_TELEMETRY_TABLES = "union withsource=TelemetryTable AppDependencies, AppRequests"
 _APPGENAI_TABLE = "AppGenAIContent"
 _PROJECT_RESOURCE_ID = (
     'tostring(coalesce(Properties["gen_ai.project.id"], '
@@ -268,9 +268,9 @@ def build_overview_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend is_request_invocation = Type == "AppRequests" and '
+        '| extend is_request_invocation = TelemetryTable == "AppRequests" and '
         'operation_name == "invoke_agent", '
-        'is_dependency_invocation = Type == "AppDependencies" and '
+        'is_dependency_invocation = TelemetryTable == "AppDependencies" and '
         'operation_name == "invoke_agent"',
         "| summarize request_invocations = countif(is_request_invocation), "
         "dependency_invocations = countif(is_dependency_invocation), "
@@ -301,9 +301,9 @@ def build_agents_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend is_request_invocation = Type == "AppRequests" and '
+        '| extend is_request_invocation = TelemetryTable == "AppRequests" and '
         'operation_name == "invoke_agent", '
-        'is_dependency_invocation = Type == "AppDependencies" and '
+        'is_dependency_invocation = TelemetryTable == "AppDependencies" and '
         'operation_name == "invoke_agent"',
         "| summarize request_invocations = countif(is_request_invocation), "
         "dependency_invocations = countif(is_dependency_invocation), "
@@ -496,6 +496,8 @@ def build_runs_query(
         "reported_credits, decimal(null))",
         '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"])',
         '| extend foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| where isnotempty(conversation_id) or isnotempty(foundry_thread_id) "
+        'or operation_name == "invoke_agent"',
         "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
         "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
         "| extend run_key_kind = iff(isnotempty(conversation_id) or isnotempty(foundry_thread_id), "
