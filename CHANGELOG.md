@@ -5,7 +5,89 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **`agentops init` can discover evaluation targets from your Foundry project.**
+  When a project endpoint is known, the wizard lists existing prompt agents,
+  hosted agents, and model deployments so you can pick one instead of typing a
+  reference by hand. Manual entry stays available, discovery failures degrade to
+  a clear message rather than blocking setup, and `--no-prompt` and
+  non-interactive runs never contact Azure.
+- **Red-team readiness is verified against recorded scan evidence.** Doctor, the
+  Cockpit and release evidence now read the recorded red-team run and compare its
+  target fingerprint, risk categories, attack strategies and failure threshold
+  against the current configuration, reporting `ready`, `threshold_breach`,
+  `missing_categories`, `target_mismatch`, `stale` or `cannot_verify`. A
+  threshold breach blocks release evidence; anything else unverified warns.
+- **Production alerting is verified against Azure Monitor.** The new
+  `agentops.utils.alert_discovery` module resolves the Foundry-linked Application
+  Insights resource and lists metric and scheduled-query alert rules read-only,
+  checking each for enabled state, scope, a firing condition, and at least one
+  enabled action group. Results are reduced to non-sensitive snapshots: action
+  groups are reported as a count and enabled state only, never receiver
+  addresses, phone numbers, or webhooks.
+
+### Changed
+- **Renamed the `[agent]` packaging extra to `[cockpit]` with no compatibility
+  alias.** Install Doctor and Cockpit dependencies with
+  `agentops-accelerator[cockpit]`. All docs, README, workflow and pipeline
+  templates, skills, and plugin docs now reference `[cockpit]`.
+- **The evaluation target is optional.** `agent:` may now be omitted from
+  `agentops.yaml`. `agentops init` offers a guided menu of the five target kinds
+  plus "decide later", and a workspace without a target runs in an
+  observability-only mode where eval-dependent readiness checks report `n/a`
+  instead of failing. Commands that genuinely require a target fail with a single
+  explicit message.
+- **The Cockpit Observe dashboard was redesigned.** Shared design tokens now live
+  in `agentops.agent.ui_theme`; Observe uses an explicit `data-theme` attribute
+  with an in-memory toggle instead of following the OS colour scheme, and the
+  Overview is organised around executive KPI cards. The Cockpit itself now renders
+  its tokens from the same module, so the two surfaces cannot drift.
+- **Observability readiness only reports what it can actually verify.** Multi-turn
+  coverage is treated as a dataset property and inferred solely from conversation
+  rows; rubric evaluators count as ready only when they are both declared and
+  threshold-bound; the scheduled-evaluation card is informational and appears only
+  when a cron-scheduled workflow exists. Next Actions are emitted only for `warn`
+  and `cannot_verify` checks, and an uninitialised workspace gets exactly one
+  onboarding action.
+- **`agentops cockpit` points you at Doctor when the workspace needs it.** Startup
+  prints Doctor guidance only when the workspace is initialised and has findings.
+  The Application Insights pre-flight check now warns when a Foundry endpoint is
+  configured without App Insights and skips when neither is set, instead of
+  reporting a hard failure.
+- **The scheduled Doctor workflow propagates Doctor's exit code.** The generated
+  GitHub Actions watchdog uploads artifacts and writes its step summary with
+  `if: always()`, then exits with Doctor's captured code so a failing scheduled run
+  is visible in CI. The Azure DevOps pipeline already failed correctly and is
+  unchanged.
+
+### Fixed
+- **The local Cockpit no longer requires hosted authentication for Observe.** A
+  local developer credential path backs Observe when the Cockpit runs on your
+  machine, while delegated-only operations (user attribution and trace content)
+  return an explicit HTTP 409 rather than failing obscurely. The hosted
+  authentication path is unchanged.
+- **Hosted Foundry agent URLs are no longer misclassified as portal URLs.**
+  `classify_agent_url_problem` treated every `*.services.ai.azure.com` host as an
+  `ai.azure.com` portal link and rejected valid hosted endpoints.
+- **`agent_override` is honoured when resolving the execution backend.**
+  `_resolve_execution_backend` ignored the override, so a per-environment agent
+  could be evaluated against the wrong backend.
+- **Undefined Cockpit CSS variables.** The Cockpit referenced `var(--accent)` and
+  `var(--fg)` without ever defining them, and its loading splash used drifted
+  token values that caused a visible colour flash on load. Both surfaces now
+  consume the shared token block.
+
 ### Removed
+- **Trace sampling and trace replay configuration.** `observability.trace_sampling`
+  and `observability.trace_replay_url` are removed from `agentops.yaml`, along
+  with their readiness checks, Cockpit cards and release-evidence fields. Trace
+  sampling is a Foundry-native concern and AgentOps could not verify either
+  setting. Foundry's own trace-sampling guidance in the skills and tutorial is
+  unchanged.
+- **The unverifiable "Alerts wired" detector.** The Cockpit no longer claims
+  alerting is configured based on an `observability.alerts` key that could never
+  validate, or on Infrastructure-as-Code text matches. Infrastructure-as-Code is
+  retained only as deployment provenance and can never upgrade the card to ready.
 - **The `agentops agent` command group.** Both `agent serve` (the GitHub
   App-based Copilot Extension server) and `agent register` (Entra Agent ID
   registration) are removed, along with their `explain` pages. GitHub sunset
@@ -21,12 +103,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `.agentops/identity/agent-identity.json` local record, agent-identity
   telemetry attributes, and the agent-identity fields in release evidence.
 - **The `agent-server/` deploy scaffold** template and its packaged assets.
-
-### Changed
-- **Renamed the `[agent]` packaging extra to `[cockpit]` with no compatibility
-  alias.** Install Doctor and Cockpit dependencies with
-  `agentops-accelerator[cockpit]`. All docs, README, workflow and pipeline
-  templates, skills, and plugin docs now reference `[cockpit]`.
 
 ## [0.13.0] - 2026-08-25
 
