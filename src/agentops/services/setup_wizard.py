@@ -85,6 +85,33 @@ AGENT_LATER_CONFIRMATION = (
     "ready to evaluate."
 )
 
+# Discovery empty-state messages (kind → message). Shown when Azure discovery
+# succeeds but the project has no compatible resource of the chosen kind. This
+# is NOT an error: the wizard falls through to manual entry so init finishes.
+DISCOVERY_EMPTY_PROMPT = (
+    "No Foundry prompt agents were found in this project. Create one in "
+    "Foundry, or enter a <name>:<version> reference manually below."
+)
+DISCOVERY_EMPTY_HOSTED = (
+    "No Foundry hosted agents were found in this project. Deploy a hosted "
+    "agent in Foundry, or paste its endpoint URL manually below."
+)
+DISCOVERY_EMPTY_MODEL = (
+    "No Foundry model deployments were found in this project. Create a "
+    "deployment in Foundry, or enter model:<deployment> manually below."
+)
+DISCOVERY_EMPTY_MESSAGES = {
+    "prompt": DISCOVERY_EMPTY_PROMPT,
+    "hosted": DISCOVERY_EMPTY_HOSTED,
+    "model": DISCOVERY_EMPTY_MODEL,
+}
+
+# Prefix for a discovery failure line. The specific reason (auth, RBAC,
+# unsupported project/API, SDK missing, network) comes from
+# ``foundry_discovery`` so each failure mode reads distinctly. Manual entry
+# always follows so discovery can never block init.
+DISCOVERY_FAILED_PREFIX = "Could not list resources from Foundry"
+
 DATASET_TITLE = "Dataset path (JSONL file with `input` / `expected` rows)"
 DATASET_HELP = (
     "Path to the JSONL dataset, relative to the project root.\n"
@@ -298,7 +325,12 @@ def classify_agent_url_problem(value: str) -> Optional[str]:
     host = _url_host(value)
     if not host:
         return None
-    if host in _FOUNDRY_PORTAL_HOSTS or host.endswith("." + _FOUNDRY_PORTAL_HOSTS[0]):
+    is_portal_host = host in _FOUNDRY_PORTAL_HOSTS or host.endswith(
+        "." + _FOUNDRY_PORTAL_HOSTS[0]
+    )
+    # ``<res>.services.ai.azure.com`` also ends in ``.ai.azure.com`` but is a real
+    # hosted-agent host, not the portal — exclude it so hosted URLs pass through.
+    if is_portal_host and not host.endswith(_FOUNDRY_SERVICES_HOST_SUFFIX):
         return (
             "That looks like a Foundry portal/browser URL "
             f"({host}), not an agent endpoint. Open your agent in Foundry, copy "
@@ -781,6 +813,33 @@ def _read_active_env_with_source(
 PromptFn = Callable[[str, Optional[str]], str]
 OnAnswerFn = Callable[[str, str], None]
 
+# Discovery boundary. Given (project_endpoint, kind) where kind is one of
+# "prompt" | "hosted" | "model", return (targets, reason). ``reason`` is None
+# on success (targets may be empty); otherwise it is an actionable message.
+# Injected into ``run_wizard`` so tests never touch Azure and ``--no-prompt``
+# / missing-endpoint paths stay offline.
+TargetDiscoveryFn = Callable[
+    [str, str], "tuple[list, Optional[str]]"
+]
+
+
+def default_target_discovery(project_endpoint: str, kind: str):
+    """Real discovery dispatcher used by the CLI (lazy Azure import).
+
+    Routes the chosen target kind to the matching ``foundry_discovery``
+    function. Any unknown kind yields an empty, no-error result so the wizard
+    falls through to manual entry.
+    """
+    from agentops.utils import foundry_discovery  # noqa: PLC0415
+
+    if kind == "prompt":
+        return foundry_discovery.discover_prompt_agents(project_endpoint)
+    if kind == "hosted":
+        return foundry_discovery.discover_hosted_agents(project_endpoint)
+    if kind == "model":
+        return foundry_discovery.discover_model_deployments(project_endpoint)
+    return [], None
+
 
 def _mask_secret(value: str) -> str:
     """Show only the tail of a secret so the user can recognise it without leaking."""
@@ -807,9 +866,125 @@ def _can_encode(text: str) -> bool:
     return True
 
 
+_KIND_NOUN = {
+    "prompt": "prompt agent",
+    "hosted": "hosted agent",
+    "model": "model deployment",
+}
+_TARGET_TYPE_LABEL = {
+    "prompt": "prompt agent",
+    "hosted": "hosted agent",
+    "model": "model deployment",
+}
+_SELECT_LABEL = {
+    "prompt": "Select a prompt agent [0-{n}]",
+    "hosted": "Select a hosted agent [0-{n}]",
+    "model": "Select a model deployment [0-{n}]",
+}
+
+
+def _format_target(target: object) -> str:
+    """One selectable line: display name, name, version, status, target type."""
+    display = str(getattr(target, "display_name", "") or getattr(target, "name", ""))
+    name = getattr(target, "name", None)
+    version = getattr(target, "version", None)
+    status = getattr(target, "status", None)
+    target_type = getattr(target, "target_type", "")
+    ref = getattr(target, "agent_ref", "")
+    bits: list[str] = []
+    if name and str(name) != display:
+        bits.append(f"name={name}")
+    if version:
+        bits.append(f"v{version}")
+    if status:
+        bits.append(str(status))
+    bits.append(_TARGET_TYPE_LABEL.get(target_type, str(target_type)))
+    suffix = f"  [{', '.join(bits)}]" if bits else ""
+    return f"{display}{suffix}  → {ref}"
+
+
+def _choose_from_targets(
+    prompt: PromptFn,
+    echo: Callable[[str], None],
+    kind: str,
+    targets: list,
+    manual: Callable[[], Optional[str]],
+) -> Optional[str]:
+    """Render the numbered candidate list and return the chosen canonical ref.
+
+    ``0`` routes to manual entry; empty input returns ``None`` (back to the
+    menu) so a version is never silently picked when several exist.
+    """
+    noun = _KIND_NOUN.get(kind, "target")
+    plural = noun if len(targets) == 1 else noun + "s"
+    echo(f"  Found {len(targets)} {plural}:")
+    for index, target in enumerate(targets, start=1):
+        echo(f"    {index}) {_format_target(target)}")
+    echo("    0) Enter manually")
+    label = _SELECT_LABEL.get(kind, "Select a target [0-{n}]").format(n=len(targets))
+    while True:
+        raw = prompt(label, None).strip()
+        if not raw:
+            return None  # back to the menu; no silent default
+        if raw == "0":
+            return manual()
+        if raw.isdigit():
+            idx = int(raw)
+            if 1 <= idx <= len(targets):
+                chosen = targets[idx - 1]
+                ref = str(getattr(chosen, "agent_ref", ""))
+                if kind == "hosted":
+                    normalized, err = normalize_hosted_agent_url(ref)
+                    if err:
+                        echo("  ! " + err)
+                        return manual()
+                    return normalized
+                return ref
+        echo(f"  ! Enter a number between 0 and {len(targets)}.")
+
+
+def _select_or_enter_target(
+    prompt: PromptFn,
+    echo: Callable[[str], None],
+    *,
+    kind: str,
+    project_endpoint: Optional[str],
+    discover_targets: Optional[TargetDiscoveryFn],
+    manual_label: Optional[str],
+    validator: Optional[Callable[[str], Optional[str]]],
+) -> Optional[str]:
+    """Discover candidates for ``kind`` then let the user select or type one.
+
+    Returns a canonical agent ref, or ``None`` to go back to the target-kind
+    menu. Discovery failures and empty results always fall through to manual
+    entry so init can finish; each mode is announced distinctly.
+    """
+
+    def manual() -> Optional[str]:
+        if kind == "hosted":
+            return _prompt_hosted_agent_url(prompt, echo)
+        assert manual_label is not None and validator is not None
+        return _prompt_validated_value(prompt, echo, manual_label, validator)
+
+    if discover_targets is None or not project_endpoint:
+        return manual()
+
+    targets, reason = discover_targets(project_endpoint, kind)
+    if reason:
+        echo(f"  ! {DISCOVERY_FAILED_PREFIX}: {reason}")
+        return manual()
+    if not targets:
+        echo("  " + DISCOVERY_EMPTY_MESSAGES.get(kind, "No resources found."))
+        return manual()
+    return _choose_from_targets(prompt, echo, kind, list(targets), manual)
+
+
 def _prompt_agent_target(
     prompt: PromptFn,
     echo: Callable[[str], None],
+    *,
+    project_endpoint: Optional[str] = None,
+    discover_targets: Optional[TargetDiscoveryFn] = None,
 ) -> tuple[Optional[str], Optional[str], bool]:
     """Run the guided evaluation-target menu.
 
@@ -820,6 +995,11 @@ def _prompt_agent_target(
 
     ``protocol`` is only set for the external-HTTP choice (``http-json``); the
     Foundry choices rely on runtime auto-classification.
+
+    When ``discover_targets`` and ``project_endpoint`` are both available, the
+    three Foundry choices (1/2/3) query the project and offer a selectable
+    list of real resources. Choice 4 (external HTTP) never touches the network,
+    and choice 5 stays instant and offline.
     """
     while True:
         choice = prompt(
@@ -834,36 +1014,55 @@ def _prompt_agent_target(
             return None, None, True
 
         if choice == AGENT_CHOICE_PROMPT:
-            label, validator, protocol = (
-                "Foundry prompt agent (<name>:<version>)",
-                validate_foundry_prompt_ref,
-                None,
+            value = _select_or_enter_target(
+                prompt,
+                echo,
+                kind="prompt",
+                project_endpoint=project_endpoint,
+                discover_targets=discover_targets,
+                manual_label="Foundry prompt agent (<name>:<version>)",
+                validator=validate_foundry_prompt_ref,
             )
-        elif choice == AGENT_CHOICE_HOSTED_URL:
-            value = _prompt_hosted_agent_url(prompt, echo)
             if value is None:
-                continue  # user blanked out; back to the menu
+                continue  # back to the menu
+            return value, None, False
+        elif choice == AGENT_CHOICE_HOSTED_URL:
+            value = _select_or_enter_target(
+                prompt,
+                echo,
+                kind="hosted",
+                project_endpoint=project_endpoint,
+                discover_targets=discover_targets,
+                manual_label=None,
+                validator=None,
+            )
+            if value is None:
+                continue  # back to the menu
             return value, None, False
         elif choice == AGENT_CHOICE_MODEL:
-            label, validator, protocol = (
-                "Model deployment (model:<deployment>)",
-                validate_model_deployment,
-                None,
+            value = _select_or_enter_target(
+                prompt,
+                echo,
+                kind="model",
+                project_endpoint=project_endpoint,
+                discover_targets=discover_targets,
+                manual_label="Model deployment (model:<deployment>)",
+                validator=validate_model_deployment,
             )
+            if value is None:
+                continue  # back to the menu
+            return value, None, False
         elif choice == AGENT_CHOICE_HTTP:
-            label, validator, protocol = (
-                "External HTTP agent URL",
-                validate_external_http_agent,
-                "http-json",
+            # External HTTP agents are outside Foundry — never discover.
+            value = _prompt_validated_value(
+                prompt, echo, "External HTTP agent URL", validate_external_http_agent
             )
+            if value is None:
+                continue  # user blanked out; back to the menu
+            return value, "http-json", False
         else:
             echo("  ! Enter a number between 1 and 5.")
             continue
-
-        value = _prompt_validated_value(prompt, echo, label, validator)
-        if value is None:
-            continue  # user blanked out; back to the menu
-        return value, protocol, False
 
 
 def _prompt_validated_value(
@@ -917,6 +1116,7 @@ def run_wizard(
     reconfigure: bool = False,
     force_prompt_fields: Optional[Collection[str]] = None,
     target_env_name: Optional[str] = None,
+    discover_targets: Optional[TargetDiscoveryFn] = None,
 ) -> WizardAnswers:
     """Drive the interactive question loop.
 
@@ -1052,7 +1252,10 @@ def run_wizard(
         echo(AGENT_TITLE)
         echo(_indent(AGENT_HELP))
         chosen_agent, chosen_protocol, configure_later = _prompt_agent_target(
-            prompt, echo
+            prompt,
+            echo,
+            project_endpoint=answers.project_endpoint or effective_endpoint_default,
+            discover_targets=discover_targets,
         )
         if configure_later:
             answers.clear_agent = True

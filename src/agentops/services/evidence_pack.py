@@ -16,7 +16,14 @@ from agentops.core.release_evidence import (
     ReleaseEvidenceCheck,
     ReleaseEvidenceLink,
 )
-from agentops.core.governance import summarize_acs, summarize_assert, summarize_redteam
+from agentops.core.governance import (
+    REDTEAM_STATE_READY,
+    REDTEAM_STATE_THRESHOLD_BREACH,
+    summarize_acs,
+    summarize_assert,
+    summarize_redteam,
+    summarize_redteam_readiness,
+)
 from agentops.pipeline.official_eval import AZD_EVAL_RUNNER, OFFICIAL_EVAL_RUNNER
 from agentops.utils.yaml import load_yaml
 
@@ -169,6 +176,7 @@ def build_release_evidence(
     _add_trace_dataset_check(checks, warnings, ready, trace_dataset)
     _add_ailz_check(checks, warnings, ready, ailz)
     _add_governance_check(checks, warnings, ready, governance)
+    _add_redteam_readiness_check(checks, blockers, warnings, ready, root)
 
     status = "blocked" if blockers else "ready_with_warnings" if warnings else "ready"
     links = _links(latest_eval, observability)
@@ -908,6 +916,75 @@ def _add_governance_check(
             status="ready",
             summary=message,
             evidence=governance,
+        )
+    )
+
+
+def _redteam_agent_configured(config: dict[str, Any]) -> bool:
+    """True when a real evaluation target is configured (not observability-only).
+
+    A blank ``agent`` value or the legacy ``my-agent:1`` placeholder both count
+    as "no target", matching the Cockpit's observability-only handling.
+    """
+    value = config.get("agent") if isinstance(config, dict) else None
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    return bool(text) and text != "my-agent:1"
+
+
+def _add_redteam_readiness_check(
+    checks: list[ReleaseEvidenceCheck],
+    blockers: list[str],
+    warnings: list[str],
+    ready: list[str],
+    root: Path,
+) -> None:
+    """Add a red-team readiness check derived from normalized scan evidence.
+
+    Skipped entirely in project-observability-only mode (no evaluation target),
+    consistent with the other agent-dependent release gates. A threshold breach
+    is a blocking gate; every other non-ready state is a warning.
+    """
+    config = _agentops_config(root)
+    if not _redteam_agent_configured(config):
+        return
+
+    readiness = summarize_redteam_readiness(root, config)
+    evidence = readiness.to_dict()
+
+    if readiness.state == REDTEAM_STATE_READY:
+        ready.append(readiness.message)
+        checks.append(
+            ReleaseEvidenceCheck(
+                name="Red team readiness",
+                status="ready",
+                summary=readiness.message,
+                evidence=evidence,
+            )
+        )
+        return
+
+    message = f"{readiness.message} {readiness.remediation}".strip()
+    if readiness.state == REDTEAM_STATE_THRESHOLD_BREACH:
+        blockers.append(message)
+        checks.append(
+            ReleaseEvidenceCheck(
+                name="Red team readiness",
+                status="blocked",
+                summary=message,
+                evidence=evidence,
+            )
+        )
+        return
+
+    warnings.append(message)
+    checks.append(
+        ReleaseEvidenceCheck(
+            name="Red team readiness",
+            status="warning",
+            summary=message,
+            evidence=evidence,
         )
     )
 

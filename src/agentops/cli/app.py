@@ -1620,6 +1620,9 @@ def cmd_init(
         validate_dataset,
         validate_project_endpoint,
     )
+    from agentops.services.setup_wizard import (
+        default_target_discovery as _wizard_target_discovery,
+    )
     from agentops.utils.azd_env import ensure_azd_env, set_default_azd_env
 
     workspace = directory.resolve()
@@ -1868,6 +1871,7 @@ def cmd_init(
             reconfigure=reconfigure,
             force_prompt_fields=force_prompt_fields,
             target_env_name=azd_env_name,
+            discover_targets=_wizard_target_discovery,
         )
 
     # ----- Phase 4: apply (idempotent — covers scripted mode and any

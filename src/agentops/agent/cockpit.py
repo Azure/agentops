@@ -30,6 +30,11 @@ from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange
 from agentops.core.attribution import load_attribution_config
 from agentops.core.cost import MAX_COST_COMPONENTS, MAX_COST_PERIODS, load_cost_model
+from agentops.core.governance import (
+    REDTEAM_STATE_CANNOT_VERIFY,
+    REDTEAM_STATE_READY,
+    summarize_redteam_readiness,
+)
 from agentops.core.observe import (
     AgentDetailRequest,
     AttributionQueryRequest,
@@ -1891,6 +1896,7 @@ _OBSERVABILITY_ONLY_NA_CHECKS = frozenset(
         "CI eval gate (workflow on PRs)",
         "CI/CD deploy stage",
         "Release evidence pack",
+        "Red team scans",
     }
 )
 
@@ -2142,27 +2148,24 @@ def _build_readiness_checklist(
             }
         )
 
-    redteam = _detect_redteam_config(workspace)
-    checks.append(
-        {
-            "title": "Red team scans",
-            "status": "ok" if redteam else "muted",
-            "detail": (
-                "Detected a red-team bundle in <code>.agentops/bundles/</code>."
-                if redteam
-                else "<strong>How to complete:</strong> add adversarial safety "
-                "coverage. In AgentOps, create a safety eval config that uses "
-                "a safety/red-team bundle such as "
-                "<code>safe_agent_baseline.yaml</code> and schedule it in CI. "
-                "In Foundry, also run the native red-team scan from "
-                "<strong>Observability &rarr; Red Teaming</strong>; use "
-                "AgentOps for repeatable repo/CI gates and Foundry for the "
-                "portal drilldown and managed adversarial scans. "
-                '<a href="https://learn.microsoft.com/azure/ai-foundry/concepts/observability" '
-                'target="_blank" rel="noopener noreferrer">Foundry observability docs &#x2197;</a>'
-            ),
-        }
-    )
+    # Red-team readiness is derived exclusively from real, normalized scan
+    # evidence (.agentops/redteam/latest.json or a configured redteam_path).
+    # Before workspace init there is nothing to gate, so the card is hidden.
+    if (workspace / "agentops.yaml").exists():
+        redteam_readiness = summarize_redteam_readiness(workspace, agentops_config)
+        if redteam_readiness.state == REDTEAM_STATE_READY:
+            redteam_status = "ok"
+        elif redteam_readiness.state == REDTEAM_STATE_CANNOT_VERIFY:
+            redteam_status = "cannot_verify"
+        else:
+            redteam_status = "warn"
+        checks.append(
+            {
+                "title": "Red team scans",
+                "status": redteam_status,
+                "detail": _redteam_readiness_detail(redteam_readiness),
+            }
+        )
 
     alerts, alerts_source = _detect_alert_configuration(
         workspace,
@@ -2968,6 +2971,30 @@ def _release_evidence_status(workspace: Path) -> Dict[str, Any]:
     }
 
 
+def _redteam_readiness_detail(readiness: Any) -> str:
+    """Render the Cockpit detail HTML for a red-team readiness state."""
+
+    message = _html_escape(getattr(readiness, "message", ""))
+    if getattr(readiness, "state", "") == REDTEAM_STATE_READY:
+        path = getattr(readiness, "evidence_path", None)
+        suffix = (
+            f" Evidence: <code>{_html_escape(path)}</code>." if path else ""
+        )
+        return f"{message}{suffix}"
+
+    return (
+        f"{message} <strong>How to complete:</strong> run "
+        "<code>agentops redteam run</code> to produce normalized scan evidence "
+        "at <code>.agentops/redteam/latest.json</code>, or point "
+        "<code>redteam_path</code> in agentops.yaml at a normalized export from "
+        "the native Foundry red-team scan (<strong>Observability &rarr; Red "
+        "Teaming</strong>). Use AgentOps for repeatable repo/CI gates and "
+        "Foundry for managed adversarial scans. "
+        '<a href="https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent" '
+        'target="_blank" rel="noopener noreferrer">Red teaming docs &#x2197;</a>'
+    )
+
+
 def _release_evidence_detail(evidence: Dict[str, Any]) -> str:
     status = evidence.get("status")
     if status == "missing":
@@ -3060,24 +3087,6 @@ def _detect_deployment_workflow(workspace: Path) -> Optional[str]:
             if "Build (placeholder)" in text or "Deploy (placeholder)" in text:
                 detected_placeholder = True
     return "placeholder" if detected_placeholder else None
-
-
-def _detect_redteam_config(workspace: Path) -> bool:
-    """True when the workspace ships a safety / red-team bundle."""
-    bundles = workspace / ".agentops" / "bundles"
-    if not bundles.is_dir():
-        return False
-    for entry in bundles.glob("*.y*ml"):
-        name = entry.name.lower()
-        if "safe" in name or "redteam" in name or "red_team" in name or "safety" in name:
-            return True
-        try:
-            text = entry.read_text(encoding="utf-8", errors="ignore").lower()
-        except OSError:
-            continue
-        if "redteam" in text or "red_team" in text:
-            return True
-    return False
 
 
 # ---------------------------------------------------------------------------

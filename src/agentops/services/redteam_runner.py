@@ -25,8 +25,11 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from agentops.core.governance import compute_redteam_fingerprint
 
 NORMALIZED_RESULT_FILENAME = "latest.json"
 DEFAULT_NORMALIZED_DIR = Path(".agentops") / "redteam"
@@ -53,6 +56,8 @@ class RedTeamRunResult:
     raw_summary_path: Optional[str] = None
     has_violations: bool = False
     fail_threshold: Optional[float] = None
+    generated_at: Optional[str] = None
+    target_fingerprint: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -159,6 +164,14 @@ def run_redteam(
         raw_summary_path=str(raw_summary_path) if raw_summary_path else None,
         has_violations=has_violations,
         fail_threshold=fail_threshold,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        target_fingerprint=compute_redteam_fingerprint(
+            target=target,
+            risk_categories=risk_categories,
+            attack_strategies=attack_strategies,
+            num_objectives=num_objectives,
+            fail_threshold=fail_threshold,
+        ),
     )
 
     resolved_output.write_text(

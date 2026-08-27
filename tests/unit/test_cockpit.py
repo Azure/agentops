@@ -120,7 +120,7 @@ def _write_eval_run(
 def test_empty_workspace_yields_empty_state(tmp_path: Path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     assert payload["watchdog"]["has_history"] is False
-    assert len(payload["readiness"]["checks"]) == 9
+    assert len(payload["readiness"]["checks"]) == 8
     html = render_cockpit_html(payload)
     assert "No analysis history yet" in html
     assert "NO-GO" in html
@@ -616,7 +616,9 @@ def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypat
     # Scheduled eval is optional drift-watch context and is hidden entirely
     # when no cron-scheduled workflow exists, so it must not appear here.
     assert "Scheduled eval (drift watch)" not in by_title
-    assert "safe_agent_baseline.yaml" in by_title["Red team scans"]
+    # Red-team readiness is hidden before workspace init (no agentops.yaml),
+    # so the card must not appear on an uninitialized workspace.
+    assert "Red team scans" not in by_title
     assert "does not claim" in by_title["Alerts wired"]
 
 
