@@ -30,10 +30,11 @@ This module performs no I/O, reads no environment variables, and imports no
 Azure SDKs. It only assembles CSS strings from constants.
 
 .. note::
-   Follow-up: :mod:`agentops.agent.cockpit` should be refactored to consume
-   :func:`render_theme_variables` and :data:`SHARED_SHELL_CSS` from this module
-   instead of hard-coding equivalent CSS, so the two surfaces can never drift
-   again. Observe already consumes this module today.
+   :mod:`agentops.agent.cockpit` consumes :func:`render_theme_variables` for its
+   design tokens, so the Cockpit and Observe token values can no longer drift.
+   Cockpit still styles its page with bare element selectors rather than the
+   ``aos-*`` shell primitives below; adopting :data:`SHARED_SHELL_CSS` there
+   would require reworking the Cockpit markup and is deliberately out of scope.
 """
 
 from __future__ import annotations

@@ -28,6 +28,7 @@ from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange
+from agentops.agent.ui_theme import render_theme_variables
 from agentops.core.attribution import load_attribution_config
 from agentops.core.cost import MAX_COST_COMPONENTS, MAX_COST_PERIODS, load_cost_model
 from agentops.core.governance import (
@@ -4166,6 +4167,12 @@ def _render_next_actions_section(next_actions: Dict[str, Any]) -> str:
     )
 
 
+#: Canonical design tokens shared with the hosted Observe dashboard. Rendered
+#: once at import time because :func:`render_theme_variables` is pure. Both the
+#: loading shell and the full cockpit page embed this so they cannot drift.
+_THEME_VARIABLES = render_theme_variables(default_theme="dark")
+
+
 def _render_loading_shell() -> str:
     """Tiny self-contained HTML shell shown while the full cockpit
     is being built server-side.
@@ -4176,20 +4183,16 @@ def _render_loading_shell() -> str:
     fetches ``/?_partial=1`` to hydrate the real cockpit. The page
     falls back to a plain link for clients with JavaScript disabled.
     """
-    return """<!doctype html>
+    return (
+        """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>AgentOps Cockpit - Loading...</title>
 <style>
-  :root {
-    --bg: #0b0e14;
-    --card: #11151c;
-    --border: #1f2630;
-    --text: #e6ebf2;
-    --text-dim: #9aa3b2;
-    --accent: #38bdf8;
-  }
+"""
+        + _THEME_VARIABLES
+        + """
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif; }
@@ -4313,6 +4316,7 @@ def _render_loading_shell() -> str:
 </body>
 </html>
 """
+    )
 
 
 def render_cockpit_html(payload: Dict[str, Any]) -> str:
@@ -4370,6 +4374,7 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
     )
 
     return _COCKPIT_TEMPLATE.format(
+        theme_variables=_THEME_VARIABLES,
         status_cards_section=status_cards_section,
         connections_section=connections_section,
         readiness_section=readiness_section,
@@ -4400,22 +4405,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/png" href="{icon_uri}" />
 <style>
-  :root {{
-    --bg: #08090b;
-    --bg-grad: radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.06), transparent 60%);
-    --card: #161618;
-    --card-hi: #1c1c1f;
-    --border: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.12);
-    --text: #fafafa;
-    --text-dim: #a1a1aa;
-    --text-faint: #71717a;
-    --ok: #4ade80;
-    --info: #38bdf8;
-    --warn: #fbbf24;
-    --crit: #f87171;
-    --muted: #71717a;
-  }}
+{theme_variables}
   * {{ box-sizing: border-box; }}
   html, body {{ margin: 0; padding: 0; background: var(--bg); color: var(--text); }}
   body {{
