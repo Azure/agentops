@@ -766,6 +766,28 @@ def test_alerts_wired_card_not_configured_is_optional(tmp_path: Path, monkeypatc
     )
 
 
+def test_doctor_sparkline_hover_shows_when_and_quantity():
+    from agentops.agent.cockpit import _sparkline_svg
+
+    svg = _sparkline_svg(
+        [0.0, 1.0, 2.0],
+        labels=["2026-08-27 13:00", "2026-08-27 14:00", "2026-08-27 15:00"],
+        value_label="finding",
+    )
+
+    assert 'data-hover="2026-08-27 13:00 · 0 findings"' in svg
+    assert 'data-hover="2026-08-27 14:00 · 1 finding"' in svg
+    assert 'data-hover="2026-08-27 15:00 · 2 findings"' in svg
+    assert 'tabindex="0"' in svg
+
+
+def test_cockpit_uses_doctor_not_watchdog_in_visible_copy(tmp_path: Path):
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+
+    assert "watchdog" not in html.lower()
+
+
 def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypatch):
     from agentops.agent.cockpit import _build_readiness_checklist
 
@@ -900,8 +922,8 @@ def test_next_actions_prioritize_doctor_then_incomplete_readiness():
     )
 
     assert [action["title"] for action in actions["actions"]] == [
-        "Fix Doctor: Answer quality is blocked",
-        "Fix Doctor: Trace coverage is incomplete",
+        "Fix: Answer quality is blocked",
+        "Fix: Trace coverage is incomplete",
         "Complete readiness: Server-side tracing",
     ]
 

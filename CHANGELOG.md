@@ -97,6 +97,14 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   panel in place, marks the active tab for assistive technology, updates the
   query-string view, and preserves browser back/forward behavior. It no longer
   scrolls through a long page containing every view.
+- **Next actions no longer imply that Doctor itself is broken.** Finding actions
+  now use “Fix: …” and “View finding details” instead of “Fix Doctor: …” and
+  “Open Doctor finding”, making it clear that Doctor detected the underlying
+  production or readiness problem.
+- **Doctor charts now explain every data point.** Hovering or focusing a
+  sparkline point shows both the analysis timestamp and the measured quantity,
+  including explicit zero values. Remaining outdated terminology in Cockpit was
+  replaced with “Doctor”.
 - **Doctor findings now state the measured value and the threshold that was
   crossed.** `errors.production_rate`, `latency.p95_production`,
   `latency.eval_avg` and `opex.no_thresholds` previously said only "above

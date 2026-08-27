@@ -482,12 +482,13 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                 "labels": record_labels[-6:],
                 "badge": latest_badge,
                 "help": (
-                    "When the most recent watchdog run finished. The "
+                    "When the most recent Doctor analysis finished. The "
                     "badge reflects how stale that analysis is relative "
                     "to now."
                 ),
                 "meta": _latest_run_meta(latest),
-                "source": "When the most recent watchdog analysis finished.",
+                "source": "When the most recent Doctor analysis finished.",
+                "hover_value_label": "finding",
             },
         ],
         "latest_findings": latest_findings,
@@ -2393,9 +2394,9 @@ def _build_next_actions(
         recommendation = str(finding.get("recommendation") or finding.get("summary") or "")
         actions.append(
             {
-                "title": f"Fix Doctor: {finding.get('title') or finding.get('id') or 'finding'}",
+                "title": f"Fix: {finding.get('title') or finding.get('id') or 'finding'}",
                 "detail": _render_recommendation_body(recommendation),
-                "cta": "Open Doctor finding",
+                "cta": "View finding details",
                 "anchor": "#section-agentops-doctor",
             }
         )
@@ -3375,6 +3376,7 @@ def _render_card(card: Dict[str, Any], *, hero: bool = False) -> str:
         links=card.get("links"),
         alt_links=card.get("alt_links"),
         alt_labels=card.get("alt_labels"),
+        value_label=card.get("hover_value_label") or card.get("label"),
     )
     badge = card["badge"]
     css_class = "card hero" if hero else "card"
@@ -3564,6 +3566,7 @@ def _sparkline_svg(
     links: Optional[List[str]] = None,
     alt_links: Optional[List[Optional[str]]] = None,
     alt_labels: Optional[List[Optional[str]]] = None,
+    value_label: Optional[str] = None,
 ) -> str:
     if not series:
         return ""
@@ -3618,6 +3621,14 @@ def _sparkline_svg(
             f"{value:.2f}" if isinstance(value, float) and not value.is_integer()
             else f"{int(value)}"
         )
+        noun = str(value_label or "value").strip().lower()
+        if formatted_value != "1" and not noun.endswith("s"):
+            noun += "s"
+        hover_text = (
+            f"{label} · {formatted_value} {_html_escape(noun)}"
+            if label
+            else f"{formatted_value} {_html_escape(noun)}"
+        )
         alt_attrs = ""
         if alt_href and alt_label:
             alt_attrs = (
@@ -3626,8 +3637,9 @@ def _sparkline_svg(
             )
         circle = (
             f'<circle class="dot {is_last} {is_clickable}" cx="{x:.1f}" cy="{y:.1f}" r="3.5" '
-            f'fill="currentColor" data-v="{formatted_value}" data-l="{label}"{alt_attrs}>'
-            f'<title>{label}{" - " + formatted_value if label else formatted_value}'
+            f'fill="currentColor" data-v="{formatted_value}" data-l="{label}" '
+            f'data-hover="{hover_text}" tabindex="0"{alt_attrs}>'
+            f'<title>{hover_text}'
             f'{" · click to open" if href else ""}</title>'
             f'</circle>'
         )
@@ -5128,7 +5140,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     color: var(--text); font-size: 12px;
     font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
   }}
-  /* Findings list (watchdog section). One stacked card per finding,
+  /* Doctor findings list. One stacked card per finding,
      sorted by severity. Replaces the per-category trend mini-charts. */
   .findings-list {{
     display: flex; flex-direction: column; gap: 10px;
@@ -5311,6 +5323,26 @@ function openHashSection() {{
 }}
 window.addEventListener('hashchange', openHashSection);
 openHashSection();
+
+// Every sparkline point exposes its timestamp and measured quantity on hover
+// and keyboard focus. SVG <title> remains as a no-script/native fallback.
+document.querySelectorAll('.sparkline .dot').forEach(function(dot) {{
+  var card = dot.closest('.card');
+  var detail = card ? card.querySelector('.hover-detail') : null;
+  if (!detail) return;
+  var show = function() {{
+    detail.textContent = dot.getAttribute('data-hover') || '';
+    detail.classList.add('active');
+  }};
+  var clear = function() {{
+    detail.innerHTML = '&nbsp;';
+    detail.classList.remove('active');
+  }};
+  dot.addEventListener('mouseenter', show);
+  dot.addEventListener('focus', show);
+  dot.addEventListener('mouseleave', clear);
+  dot.addEventListener('blur', clear);
+}});
 
 // while keeping the visible card label compact.
 (function() {{
