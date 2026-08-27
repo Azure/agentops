@@ -10,6 +10,18 @@ from agentops.agent.sources.azure_monitor import AzureMonitorPayload
 from agentops.agent.sources.foundry_control import FoundryControlPayload
 
 
+def _monitor_target_name(monitor: AzureMonitorPayload) -> str:
+    target = monitor.diagnostics.get("target")
+    if not isinstance(target, str) or not target.strip():
+        return "connected resource"
+    value = target.strip().rstrip("/")
+    if "/" in value:
+        return value.rsplit("/", 1)[-1]
+    if monitor.diagnostics.get("target_kind") == "application_id":
+        return f"Application ID {value}"
+    return value
+
+
 def run_errors_check(
     monitor: Optional[AzureMonitorPayload],
     foundry: Optional[FoundryControlPayload],
@@ -30,6 +42,7 @@ def run_errors_check(
             if isinstance(lookback_days, int)
             else ""
         )
+        target_name = _monitor_target_name(monitor)
         severity = (
             Severity.CRITICAL
             if monitor.error_rate >= config.critical_rate_threshold
@@ -41,17 +54,21 @@ def run_errors_check(
                 severity=severity,
                 category=Category.RELIABILITY,
                 title=(
-                    f"Production error rate is "
+                    f"Application Insights `{target_name}` aggregate error rate is "
                     f"{monitor.error_rate * 100:.1f}% "
-                    f"({monitor.error_count} of {monitor.request_count} "
-                    f"requests failed{window}), above the "
-                    f"{config.rate_threshold * 100:.0f}% threshold"
+                    f"({monitor.error_count} of {monitor.request_count} records "
+                    f"failed{window}), above {config.rate_threshold * 100:.0f}%; "
+                    "this covers all requests and dependencies in the resource, "
+                    "not one agent"
                 ),
                 summary=(
-                    f"App Insights reports {monitor.error_count} failed "
-                    f"requests over {monitor.request_count} total "
+                    f"Application Insights `{target_name}` reports "
+                    f"{monitor.error_count} failed request/dependency records "
+                    f"over {monitor.request_count} total "
                     f"({monitor.error_rate * 100:.2f}%){window}, above the "
-                    f"{config.rate_threshold * 100:.2f}% threshold."
+                    f"{config.rate_threshold * 100:.2f}% threshold. The query "
+                    "covers the whole telemetry resource and does not filter by "
+                    "Foundry project or agent."
                 ),
                 recommendation=(
                     "Open the App Insights resource, group failures by "
@@ -65,6 +82,9 @@ def run_errors_check(
                     "error_rate": monitor.error_rate,
                     "threshold": config.rate_threshold,
                     "lookback_days": lookback_days,
+                    "telemetry_target": monitor.diagnostics.get("target"),
+                    "scope": "all requests and dependencies in the telemetry resource",
+                    "agent_filtered": False,
                 },
             )
         )

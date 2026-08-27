@@ -83,7 +83,9 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - **Production error-rate findings now state their telemetry window.** The
   percentage and request counts come from Application Insights over the last
   seven days by default, or the period selected with `--lookback-days`; the
-  finding title and evidence now include that period explicitly.
+  finding title and evidence now include that period explicitly. They also name
+  the queried Application Insights target and state that the rate aggregates all
+  requests and dependencies in that resource rather than filtering to one agent.
 - **Third-party HTTP logs can no longer break through into the terminal.**
   `httpx`, `openai`, `httpcore`, `urllib3` and the Azure SDK loggers now get a
   private `WARNING`-level handler and `propagate = False`, so an `INFO` line such

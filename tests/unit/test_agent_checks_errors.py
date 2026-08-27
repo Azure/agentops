@@ -168,11 +168,22 @@ def test_production_rate_stays_warning_below_critical_threshold() -> None:
         request_count=53,
         error_count=7,
         error_rate=7 / 53,
-        diagnostics={"status": "ok"},
+        diagnostics={
+            "status": "ok",
+            "lookback_days": 7,
+            "target": (
+                "/subscriptions/sub/resourceGroups/rg/providers/"
+                "Microsoft.Insights/components/aif-agentops-dev"
+            ),
+        },
     )
     findings = run_errors_check(monitor, None, ErrorsCheckConfig())
     rate = next(f for f in findings if f.id == "errors.production_rate")
     assert rate.severity == Severity.WARNING
+    assert "Application Insights `aif-agentops-dev`" in rate.title
+    assert "over the last 7 days" in rate.title
+    assert "not one agent" in rate.title
+    assert rate.evidence["agent_filtered"] is False
 
 
 def test_production_rate_escalates_to_critical_when_badly_broken() -> None:
