@@ -70,11 +70,13 @@ from agentops.core.cost import CostModelLoadResult, CostViewData
 from agentops.core.observe import (
     AttributionQueryRequest,
     AttributionResponse,
+    DrilldownView,
     GenerativeAIContent,
     ObservedAgent,
     ObserveFilterState,
     ObserveScope,
     TraceContentRequest,
+    canonical_arm_id,
 )
 
 #: Views the facade forwards directly to ``ObserveService.query_view``. Derived
@@ -773,6 +775,91 @@ class ObserveFacade:
 
         portal_links = _agent_detail_portal_links(agent, sources)
         return trends, portal_links
+
+    # -- drilldown --------------------------------------------------------
+
+    async def drilldown(
+        self,
+        *,
+        view: str,
+        filters: Mapping[str, Any],
+        selector: Mapping[str, str | None],
+        limit: int = 50,
+        user_context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return bounded metadata-only rows behind an Observe aggregate."""
+        filter_state = ObserveFilterState.model_validate(dict(filters))
+        inventory = await self._service.get_inventory(self._scope)
+        source_id = str(selector.get("source_id") or "")
+        raw_project_resource_id = selector.get("project_resource_id")
+        project_resource_id = (
+            canonical_arm_id(raw_project_resource_id)
+            if raw_project_resource_id is not None
+            else None
+        )
+        if project_resource_id is not None and not self._scope.contains(project_resource_id):
+            raise ValueError("drill-through project is outside Observe scope")
+        sources = [
+            source
+            for source in inventory.telemetry_sources
+            if source.state == "available"
+            and source.workspace_id
+            and source.source_id.casefold() == source_id.casefold()
+            and (
+                project_resource_id is None
+                or project_resource_id in source.project_resource_ids
+            )
+        ]
+        if not sources:
+            raise ValueError("drill-through source is not available in Observe scope")
+        query_drilldown = getattr(self._query_client, "query_drilldown", None)
+        if not callable(query_drilldown):
+            raise RuntimeError("Observe drill-through is unavailable for this query client")
+
+        source_results = await query_drilldown(
+            sources,
+            filter_state,
+            view=cast(DrilldownView, view),
+            selector=selector,
+            limit=limit,
+        )
+        source_by_id = {source.source_id: source for source in sources}
+        rows: list[dict[str, Any]] = []
+        source_failures: list[dict[str, str]] = []
+        for result in source_results:
+            if result.status not in ("success", "partial"):
+                source_failures.append(
+                    {"source_id": result.source_id, "status": result.status}
+                )
+                continue
+            if result.status == "partial":
+                source_failures.append(
+                    {"source_id": result.source_id, "status": result.status}
+                )
+            source = source_by_id.get(result.source_id)
+            for raw_row in result.tables or []:
+                row = dict(raw_row)
+                row["source_id"] = result.source_id
+                row["source_resource_id"] = (
+                    source.resource_id if source is not None else None
+                )
+                timestamp = row.get("timestamp")
+                if isinstance(timestamp, datetime):
+                    if timestamp.tzinfo is None:
+                        timestamp = timestamp.replace(tzinfo=timezone.utc)
+                    row["timestamp"] = timestamp.astimezone(timezone.utc).isoformat()
+                rows.append(row)
+
+        rows.sort(key=lambda row: str(row.get("timestamp") or ""), reverse=True)
+        truncated = len(rows) > limit
+        return {
+            "view": view,
+            "data": _serialize_data(rows[:limit]),
+            "metadata_only": True,
+            "truncated": truncated,
+            "complete": not source_failures,
+            "source_failures": source_failures,
+        }
 
     # -- trace_content -----------------------------------------------------
 

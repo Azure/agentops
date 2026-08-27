@@ -57,6 +57,7 @@ from agentops.agent.observe.queries import (
     build_agent_detail_query,
     build_agents_query,
     build_department_usage_query,
+    build_drilldown_query,
     build_models_query,
     build_overview_query,
     build_runs_query,
@@ -1020,6 +1021,27 @@ class AzureQueryClient:
             sources,
             lambda source: build_agent_detail_query(
                 filters, agent_key=agent_key, scope_source=source
+            ),
+        )
+
+    async def query_drilldown(
+        self,
+        sources: Sequence[TelemetrySource],
+        filters: ObserveFilterState,
+        *,
+        view: Literal["agents", "models", "tools", "runs"],
+        selector: Mapping[str, str | None],
+        limit: int,
+    ) -> list[SourceResult]:
+        """Run one bounded metadata-only drill-through query per source."""
+        return await self._run(
+            sources,
+            lambda source: build_drilldown_query(
+                filters,
+                view=view,
+                selector=selector,
+                scope_source=source,
+                limit=limit,
             ),
         )
 

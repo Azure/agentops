@@ -70,6 +70,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Observe now exposes trustworthy aggregates with metadata-only drill-through.**
+  Overview and Agents use workspace-compatible percentile expressions, Models
+  excludes agent and tool spans from inference counts, and sortable counters in
+  Agents, Models, Tools, and Runs expand to bounded operational records without
+  querying prompts, responses, or tool payloads.
 - **Observe distinguishes request and dependency telemetry reliably.** KQL now
   retains the source table while unioning Application Insights records, so
   Overview and Agents prefer request-level `invoke_agent` records correctly

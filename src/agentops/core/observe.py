@@ -17,6 +17,7 @@ ScopeMode = Literal["projects", "foundry", "resource_group", "subscription"]
 ObserveView = Literal[
     "overview", "agents", "models", "coverage", "tools", "runs", "cost"
 ]
+DrilldownView = Literal["agents", "models", "tools", "runs"]
 CostBreakdown = Literal["agents", "tools", "runs"]
 AllocationKey = Literal[
     "weighted_tokens",
@@ -433,6 +434,40 @@ class AgentDetailRequest(ContractModel):
     refresh: bool = False
 
 
+class ObserveDrilldownSelector(ContractModel):
+    source_id: str = Field(min_length=1, max_length=2048)
+    project_resource_id: str | None
+    agent_key: str | None = Field(default=None, min_length=1, max_length=512)
+    model: str | None = Field(default=None, min_length=1, max_length=512)
+    deployment: str | None = Field(default=None, min_length=1, max_length=512)
+    tool_name: str | None = Field(default=None, min_length=1, max_length=512)
+    run_key: str | None = Field(default=None, min_length=1, max_length=512)
+
+    _canonicalize_project = field_validator("project_resource_id", mode="before")(
+        lambda value: canonical_arm_id(value) if isinstance(value, str) else value
+    )
+
+
+class ObserveDrilldownRequest(ContractModel):
+    view: DrilldownView
+    filters: ObserveFilterState
+    selector: ObserveDrilldownSelector
+    limit: int = Field(default=50, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def _validate_selector_for_view(self) -> "ObserveDrilldownRequest":
+        selector = self.selector
+        valid = {
+            "agents": selector.agent_key is not None,
+            "models": selector.model is not None or selector.deployment is not None,
+            "tools": selector.tool_name is not None,
+            "runs": selector.run_key is not None,
+        }[self.view]
+        if not valid:
+            raise ValueError(f"{self.view} drill-through requires its row identifier")
+        return self
+
+
 class TraceContentRequest(ContractModel):
     source_resource_id: str
     trace_id: str = Field(min_length=1)
@@ -487,6 +522,7 @@ class ObservedAgent(ContractModel):
 
 
 class ModelUsage(ContractModel):
+    source_id: str | None = Field(default=None, min_length=1)
     project_resource_id: str | None = None
     agent_id: str | None = None
     deployment: str | None = None

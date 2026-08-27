@@ -20,6 +20,7 @@ from agentops.agent.observe.queries import (
     SupersededRequestError,
     build_agent_detail_query,
     build_department_usage_query,
+    build_drilldown_query,
     build_agents_query,
     build_appgenai_content_query,
     build_models_query,
@@ -163,8 +164,13 @@ def test_overview_query_is_bounded_to_time_window_and_tables() -> None:
     assert "2024-01-01" in query
     assert "2024-01-02" in query
     assert 'operation_name == "invoke_agent"' in query
-    assert "request_invocations" in query
-    assert "dependency_invocations" in query
+    assert 'TelemetryTable endswith "AppRequests"' in query
+    assert 'TelemetryTable endswith "AppDependencies"' in query
+    assert "percentileif" not in query
+    assert "let candidates = materialize(" in query
+    assert "has_request = countif(is_request_invocation) > 0" in query
+    assert "p95_latency_ms = percentile(DurationMs, 95)" in query
+    assert "max(p95_latency_ms)" not in query
     assert "| project invocations, failures, avg_latency_ms, p95_latency_ms" in query
 
 
@@ -258,6 +264,7 @@ def test_models_query_projects_and_sums_normalized_token_classes() -> None:
 
 def test_models_query_preserves_missing_and_intermittent_class_reporting() -> None:
     query = build_models_query(_filters())
+    assert 'operation_name !in ("invoke_agent", "execute_tool")' in query
     assert "token_reporting_records = countif(" in query
     for token_class in TOKEN_CLASS_ALIASES:
         reporting_records = f"{token_class}_reporting_records"
@@ -272,6 +279,52 @@ def test_models_query_preserves_missing_and_intermittent_class_reporting() -> No
             f"{token_class}_tokens_partial = {reporting_records} > 0 and "
             f"{reporting_records} < token_reporting_records"
         ) in query
+
+
+@pytest.mark.parametrize(
+    ("view", "selector", "expected"),
+    [
+        ("agents", {"agent_key": "agent-a"}, "has_request_rows"),
+        ("models", {"model": "gpt-5"}, "model == 'gpt-5'"),
+        ("tools", {"tool_name": "weather"}, "tool_name == 'weather'"),
+        ("runs", {"run_key": "run-a"}, "run_key == 'run-a'"),
+    ],
+)
+def test_drilldown_query_is_bounded_and_metadata_only(
+    view: Any, selector: dict[str, str], expected: str
+) -> None:
+    selector.update(
+        source_id="source-1",
+        project_resource_id=_PROJECT_ARM_ID,
+    )
+    query = build_drilldown_query(
+        _filters(),
+        view=view,
+        selector=selector,
+        limit=50,
+    )
+
+    assert expected in query
+    assert f"tolower(project_resource_id) == '{_PROJECT_ARM_ID.lower()}'" in query
+    assert "| take 51" in query
+    assert "trace_id = tostring(OperationId)" in query
+    assert "Properties[\"gen_ai.prompt\"]" not in query
+    assert "AppGenAIContent" not in query
+
+
+def test_tool_drilldown_matches_the_tool_aggregate_semantics() -> None:
+    query = build_drilldown_query(
+        _filters(),
+        view="tools",
+        selector={
+            "source_id": "source-1",
+            "project_resource_id": _PROJECT_ARM_ID,
+            "tool_name": "weather",
+        },
+    )
+
+    assert "tool_name == 'weather'" in query
+    assert 'operation_name == "execute_tool"' not in query
 
 
 def test_models_query_projects_unmapped_usage_attributes_in_one_bounded_query() -> None:

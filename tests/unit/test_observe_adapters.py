@@ -813,6 +813,35 @@ async def test_azure_query_client_query_agent_detail_uses_bounded_trend_query() 
 
 
 @pytest.mark.asyncio
+async def test_azure_query_client_drilldown_uses_metadata_only_builder() -> None:
+    client = AzureQueryClient(credential="fake-credential")
+    fake_logs_client = _FakeLogsClient()
+    client._logs_client = fake_logs_client
+    project_id = (
+        "/subscriptions/s/resourceGroups/rg/providers/"
+        "Microsoft.CognitiveServices/accounts/a/projects/project"
+    )
+
+    await client.query_drilldown(
+        [_make_source("source-1")],
+        _make_filters(),
+        view="tools",
+        selector={
+            "source_id": "source-1",
+            "project_resource_id": project_id,
+            "tool_name": "weather",
+        },
+        limit=25,
+    )
+
+    (request,) = fake_logs_client.batches[0]
+    assert "tool_name == 'weather'" in request.query
+    assert f"tolower(project_resource_id) == '{project_id.lower()}'" in request.query
+    assert "| take 26" in request.query
+    assert "AppGenAIContent" not in request.query
+
+
+@pytest.mark.asyncio
 async def test_azure_query_client_always_applies_source_project_boundary() -> None:
     client = AzureQueryClient(credential="fake-credential")
     fake_logs_client = _FakeLogsClient()

@@ -97,6 +97,23 @@ class _FakeObserveService:
             "trends": [],
         }
 
+    def drilldown(
+        self,
+        *,
+        view: str,
+        filters: dict[str, Any],
+        selector: dict[str, Any],
+        limit: int,
+        user_context: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "view": view,
+            "data": [{"operation_name": "execute_tool", **selector}],
+            "metadata_only": True,
+            "truncated": False,
+            "limit": limit,
+        }
+
     def trace_content(
         self,
         *,
@@ -507,10 +524,48 @@ def test_observe_routes_are_present_in_application_schema() -> None:
     for path in (
         "/api/observe/discovery",
         "/api/observe/query",
+        "/api/observe/drilldown",
         "/api/observe/agent-detail",
         "/api/observe/trace-content",
     ):
         assert path in schema["paths"]
+
+
+def test_observe_drilldown_returns_metadata_only_rows() -> None:
+    client = _hosted_client()
+    response = client.post(
+        "/api/observe/drilldown",
+        headers={"x-ms-client-principal": "allowed"},
+        json={
+            "view": "tools",
+            "filters": {
+                "start": "2026-08-20T00:00:00Z",
+                "end": "2026-08-21T00:00:00Z",
+            },
+            "selector": {
+                "source_id": "source-1",
+                "project_resource_id": (
+                    "/subscriptions/00000000-0000-0000-0000-000000000000/"
+                    "resourceGroups/rg/providers/Microsoft.CognitiveServices/"
+                    "accounts/account/projects/project"
+                ),
+                "tool_name": "weather",
+            },
+            "limit": 25,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["metadata_only"] is True
+    assert payload["data"][0]["operation_name"] == "execute_tool"
+    assert payload["data"][0]["source_id"] == "source-1"
+    assert payload["data"][0]["project_resource_id"] == (
+        "/subscriptions/00000000-0000-0000-0000-000000000000/"
+        "resourcegroups/rg/providers/microsoft.cognitiveservices/"
+        "accounts/account/projects/project"
+    )
+    assert payload["data"][0]["tool_name"] == "weather"
 
 
 def test_hosted_mode_composes_default_auth_and_observe_factories(monkeypatch) -> None:

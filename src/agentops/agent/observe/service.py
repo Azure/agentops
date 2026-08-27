@@ -842,6 +842,7 @@ def normalize_model_row(
         if is_true(row.get(f"{field}_partial"))
     )
     return ModelUsage(
+        source_id=source.source_id,
         project_resource_id=project_resource_id,
         agent_id=row.get("agent_id") or None,
         deployment=row.get("deployment") or None,

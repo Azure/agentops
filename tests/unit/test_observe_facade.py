@@ -116,9 +116,11 @@ class FakeQueryClient:
         *,
         rows: Sequence[Mapping[str, Any]] = (),
         detail_results: Sequence[SourceResult] | None = None,
+        drilldown_results: Sequence[SourceResult] | None = None,
     ) -> None:
         self.rows = list(rows)
         self.detail_results = detail_results
+        self.drilldown_results = drilldown_results
         self.query_calls: list[str] = []
         self.attribution_filters: list[Any] = []
         self.detail_calls = 0
@@ -137,6 +139,20 @@ class FakeQueryClient:
             return list(self.detail_results)
         return [
             SourceResult(source_id=source.source_id, status="success", tables=[], duration_ms=1)
+            for source in sources
+        ]
+
+    async def query_drilldown(self, sources, filters, **kwargs):
+        self.query_calls.append("drilldown")
+        if self.drilldown_results is not None:
+            return list(self.drilldown_results)
+        return [
+            SourceResult(
+                source_id=source.source_id,
+                status="success",
+                tables=self.rows,
+                duration_ms=1,
+            )
             for source in sources
         ]
 
@@ -1390,6 +1406,72 @@ async def test_agent_detail_returns_none_for_unseen_agent() -> None:
     fac = _make_facade(query_client=FakeQueryClient(rows=[_agent_row(agent_key="agent-1")]))
     result = await fac.agent_detail(agent_key="agent-does-not-exist", filters=_filters(), user_context={})
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_drilldown_returns_bounded_metadata_rows_with_source_context() -> None:
+    query_client = FakeQueryClient(
+        rows=[
+            {
+                "timestamp": datetime(2026, 8, 20, 12, 0, tzinfo=timezone.utc),
+                "operation_name": "execute_tool",
+                "tool_name": "weather",
+                "trace_id": "trace-1",
+            }
+        ]
+    )
+    fac = _make_facade(query_client=query_client)
+
+    result = await fac.drilldown(
+        view="tools",
+        filters=_filters(),
+        selector={
+            "source_id": "source-1",
+            "project_resource_id": _PROJECT_ID,
+            "tool_name": "weather",
+        },
+        limit=50,
+    )
+
+    assert result["metadata_only"] is True
+    assert result["truncated"] is False
+    assert result["complete"] is True
+    assert result["source_failures"] == []
+    assert result["data"][0]["tool_name"] == "weather"
+    assert result["data"][0]["source_id"] == "source-1"
+    assert result["data"][0]["timestamp"] == "2026-08-20T12:00:00+00:00"
+    assert "content" not in result["data"][0]
+    assert query_client.query_calls == ["drilldown"]
+
+
+@pytest.mark.asyncio
+async def test_drilldown_reports_source_failure_instead_of_empty_success() -> None:
+    query_client = FakeQueryClient(
+        drilldown_results=[
+            SourceResult(
+                source_id="source-1",
+                status="timeout",
+                reason="deadline exceeded",
+            )
+        ]
+    )
+    fac = _make_facade(query_client=query_client)
+
+    result = await fac.drilldown(
+        view="tools",
+        filters=_filters(),
+        selector={
+            "source_id": "source-1",
+            "project_resource_id": _PROJECT_ID,
+            "tool_name": "weather",
+        },
+    )
+
+    assert result["data"] == []
+    assert result["complete"] is False
+    assert result["source_failures"] == [
+        {"source_id": "source-1", "status": "timeout"}
+    ]
 
 
 @pytest.mark.asyncio

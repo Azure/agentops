@@ -2817,6 +2817,39 @@ th[aria-sort="descending"] .observe-sort-button::after {
   outline-offset: 3px;
 }
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
+.observe-drilldown-button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--observe-accent);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--observe-accent) 45%, transparent);
+  text-underline-offset: 3px;
+}
+.observe-drilldown-button:hover { text-decoration-color: currentColor; }
+.observe-drilldown-button:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 3px;
+}
+.observe-drilldown-row > td {
+  background: color-mix(in srgb, var(--observe-accent) 4%, var(--observe-surface));
+  padding: 14px;
+}
+.observe-drilldown-panel {
+  border-left: 3px solid var(--observe-accent);
+  padding-left: 12px;
+}
+.observe-drilldown-panel > p { margin: 0 0 10px; }
+.observe-drilldown-table {
+  background: var(--observe-bg);
+  border: 1px solid var(--observe-border);
+}
+.observe-drilldown-table td { word-break: break-word; }
 
 /* --- Badges & tones ----------------------------------------------------- */
 .observe-badge {
@@ -3484,13 +3517,23 @@ _OBSERVE_SCRIPT = """
       button.title = "Sort by " + label;
       button.setAttribute("aria-label", "Sort by " + label);
       button.addEventListener("click", function () {
+        body.querySelectorAll("[data-observe-drilldown-row]").forEach(function (detailRow) {
+          detailRow.remove();
+        });
+        body.querySelectorAll(".observe-drilldown-button").forEach(function (detailButton) {
+          detailButton.setAttribute("aria-expanded", "false");
+        });
         var direction = header.getAttribute("aria-sort") === "ascending"
           ? "descending"
           : "ascending";
         headers.forEach(function (other) {
           other.setAttribute("aria-sort", other === header ? direction : "none");
         });
-        var rows = Array.prototype.slice.call(body.rows).map(function (row, index) {
+        var rows = Array.prototype.slice.call(body.rows)
+          .filter(function (row) {
+            return row.dataset.observeDrilldownRow !== "true";
+          })
+          .map(function (row, index) {
           return { row: row, index: index, value: sortableCellValue(row.cells[columnIndex] || row) };
         });
         rows.sort(function (left, right) {
@@ -3557,6 +3600,142 @@ _OBSERVE_SCRIPT = """
     table.appendChild(tbody);
     enhanceSortableTable(table);
     return table;
+  }
+
+  function drilldownFilters() {
+    return {
+      foundry_resource_id: appliedFilters.foundry_resource_id || null,
+      project_resource_id: appliedFilters.project_resource_id || null,
+      agent_id: appliedFilters.agent_id || null,
+      model: appliedFilters.model || null,
+      start: appliedFilters.start,
+      end: appliedFilters.end,
+    };
+  }
+
+  function renderDrilldownRows(body) {
+    var rows = body && Array.isArray(body.data) ? body.data : [];
+    if (!rows.length) {
+      if (body && body.complete === false) {
+        return emptyStateNode("Activity details could not be loaded completely. Refresh and try again.");
+      }
+      return emptyStateNode("No matching activity was found for this row.");
+    }
+    var tableRows = rows.map(function (row) {
+      row = row || {};
+      var status = row.success === true
+        ? "Succeeded"
+        : (row.success === false ? "Failed" : "Not reported");
+      return [
+        row.timestamp || "Not reported",
+        row.telemetry_type || "Not reported",
+        row.operation_name || "Not reported",
+        row.agent_name || row.agent_id || "Not reported",
+        row.model || "Not reported",
+        row.deployment || "Not reported",
+        row.tool_name || "Not reported",
+        status,
+        renderMaybeMissing(row.duration_ms, { suffix: " ms", missingText: "Not measured" }),
+        row.trace_id || "Not reported",
+      ];
+    });
+    return buildDataTable(
+      "observe-drilldown-table",
+      "Metadata-only activity for the selected aggregate",
+      ["Time", "Type", "Operation", "Agent", "Model", "Deployment", "Tool", "Status", "Duration", "Trace ID"],
+      tableRows
+    );
+  }
+
+  function toggleDrilldown(button, view, selector) {
+    var parentRow = button.closest("tr");
+    if (!parentRow || !parentRow.parentNode) {
+      return;
+    }
+    var existing = parentRow.nextElementSibling;
+    if (existing && existing.dataset.observeDrilldownRow === "true") {
+      existing.remove();
+      button.setAttribute("aria-expanded", "false");
+      return;
+    }
+
+    parentRow.parentNode.querySelectorAll("[data-observe-drilldown-row]").forEach(function (row) {
+      row.remove();
+    });
+    parentRow.parentNode.querySelectorAll(".observe-drilldown-button").forEach(function (other) {
+      other.setAttribute("aria-expanded", "false");
+    });
+
+    var detailRow = document.createElement("tr");
+    detailRow.className = "observe-drilldown-row";
+    detailRow.dataset.observeDrilldownRow = "true";
+    var detailCell = document.createElement("td");
+    detailCell.colSpan = parentRow.cells.length;
+    var panel = makeEl("div", "observe-drilldown-panel");
+    panel.appendChild(makeEl("p", "observe-hint", "Loading activity metadata\u2026"));
+    detailCell.appendChild(panel);
+    detailRow.appendChild(detailCell);
+    parentRow.parentNode.insertBefore(detailRow, parentRow.nextSibling);
+    button.setAttribute("aria-expanded", "true");
+
+    fetch("/api/observe/drilldown", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        view: view,
+        filters: drilldownFilters(),
+        selector: selector,
+        limit: 50,
+      }),
+    })
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("drill-through request failed");
+        }
+        return response.json();
+      })
+      .then(function (body) {
+        if (!detailRow.isConnected) {
+          return;
+        }
+        clearChildren(panel);
+        panel.appendChild(
+          makeEl(
+            "p",
+            "observe-hint",
+            body.complete === false
+              ? "Some activity sources could not be loaded. The records shown may be incomplete."
+              : body.truncated
+              ? "Showing the 50 most recent metadata records."
+              : "Metadata only. Prompts, responses, and tool payloads are not loaded."
+          )
+        );
+        panel.appendChild(renderDrilldownRows(body));
+      })
+      .catch(function () {
+        if (!detailRow.isConnected) {
+          return;
+        }
+        clearChildren(panel);
+        panel.appendChild(
+          emptyStateNode("Activity details could not be loaded. Refresh and try again.")
+        );
+      });
+  }
+
+  function buildDrilldownButton(view, selector, value, label) {
+    var button = makeEl(
+      "button",
+      "observe-drilldown-button",
+      value === undefined || value === null ? "View" : String(value)
+    );
+    button.type = "button";
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-label", label || "View activity details");
+    button.addEventListener("click", function () {
+      toggleDrilldown(button, view, selector);
+    });
+    return button;
   }
 
   // The exact key(s) each per-view renderer reads from `data` are a
@@ -3666,7 +3845,16 @@ _OBSERVE_SCRIPT = """
         sourceCell,
         agent.model || "Not reported",
         renderLastSeenJs(agent.last_seen),
-        renderMaybeMissing(agent.invocations),
+        buildDrilldownButton(
+          "agents",
+          {
+            source_id: agent.source_id,
+            project_resource_id: agent.project_resource_id || null,
+            agent_key: agentKeyFor(agent),
+          },
+          agent.invocations,
+          "View " + String(agent.invocations || 0) + " invocations for " + (agent.agent_name || agent.agent_id || "this agent")
+        ),
         renderFailureRate(agent.invocations, agent.failures),
         renderMaybeMissing(agent.p95_latency_ms, { suffix: " ms" }),
         renderMaybeMissing(agent.input_tokens),
@@ -3968,7 +4156,17 @@ _OBSERVE_SCRIPT = """
       return [
         entry.model || entry.deployment || "Not reported",
         entry.deployment || "Not reported",
-        renderMaybeMissing(entry.requests),
+        buildDrilldownButton(
+          "models",
+          {
+            source_id: entry.source_id,
+            project_resource_id: entry.project_resource_id || null,
+            model: entry.model || null,
+            deployment: entry.deployment || null,
+          },
+          entry.requests,
+          "View " + String(entry.requests || 0) + " requests for " + (entry.model || entry.deployment || "this model")
+        ),
         renderFailureRate(entry.requests, entry.failures),
         renderMaybeMissing(entry.p95_latency_ms, { suffix: " ms" }),
         renderMaybeMissing(entry.input_tokens),
@@ -4011,7 +4209,17 @@ _OBSERVE_SCRIPT = """
         tool.source_id || "Not reported",
         renderSourceKindBadge(tool.source_kind),
         renderLastSeenJs(tool.last_seen),
-        renderMaybeMissing(tool.invocations),
+        buildDrilldownButton(
+          "tools",
+          {
+            source_id: tool.source_id,
+            project_resource_id: tool.project_resource_id || null,
+            tool_name: tool.tool_name,
+            agent_key: tool.agent_key || null,
+          },
+          tool.invocations,
+          "View " + String(tool.invocations || 0) + " invocations for " + (tool.tool_name || "this tool")
+        ),
         renderMaybeMissing(tool.failures),
         renderMaybeMissing(tool.p95_latency_ms, { suffix: " ms", missingText: "Not measured" }),
       ];
@@ -4046,7 +4254,17 @@ _OBSERVE_SCRIPT = """
         run.started_at || "Not reported",
         renderMaybeMissing(run.duration_ms, { suffix: " ms" }),
         run.status || "Not reported",
-        renderMaybeMissing(run.turns),
+        buildDrilldownButton(
+          "runs",
+          {
+            source_id: run.source_id,
+            project_resource_id: run.project_resource_id || null,
+            run_key: run.run_key,
+            agent_key: run.agent_key || null,
+          },
+          run.turns,
+          "View activity for run " + (run.run_key || "")
+        ),
         renderMaybeMissing(run.tool_invocations),
         renderMaybeMissing(run.input_tokens, { missingText: "Not available" }),
         renderMaybeMissing(run.output_tokens, { missingText: "Not available" }),

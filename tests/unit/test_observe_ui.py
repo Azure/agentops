@@ -744,6 +744,22 @@ def test_render_agents_table_omits_technical_diagnostics_banner() -> None:
     assert "Sources queried" not in html
 
 
+def test_drilldown_controls_preserve_source_and_project_scope() -> None:
+    script = ui._OBSERVE_SCRIPT
+    for selector_field in ("source_id", "project_resource_id"):
+        assert f"{selector_field}:" in script
+    assert "body.complete === false" in script
+    assert "Some activity sources could not be loaded." in script
+    assert "No matching activity was found for this row." in script
+
+
+def test_all_observe_table_columns_are_upgraded_to_sortable_headers() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert 'var headers = table.querySelectorAll("thead th")' in script
+    assert 'makeEl("button", "observe-sort-button", label)' in script
+    assert 'other.setAttribute("aria-sort", other === header ? direction : "none")' in script
+
+
 # ---------------------------------------------------------------------------
 # Cost allocation (spec 013 T013/T021)
 # ---------------------------------------------------------------------------
