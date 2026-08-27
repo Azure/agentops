@@ -533,8 +533,6 @@ with no monitoring does not look healthy simply because nothing is being graded.
     is intended: a real release should investigate latency and errors before
     promoting, even when the candidate's eval scores pass.
 
-<a id="agent-identity-on-traces"></a>
-
 ## Run from your coding agent
 
 Install the AgentOps skills so your coding agent can read telemetry and

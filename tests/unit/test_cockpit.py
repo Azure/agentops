@@ -31,6 +31,54 @@ _WIDE = TimeRange(
 )
 
 
+def _make_alert_coverage(
+    *,
+    state: str,
+    reason: str | None = None,
+    rules: tuple = (),
+    by_category: dict | None = None,
+    iac_provenance: tuple = (),
+):
+    """Build a deterministic AlertCoverage for cockpit card tests."""
+    from agentops.utils.alert_discovery import AlertCoverage
+
+    categories = by_category or {
+        "quality": "gap",
+        "safety": "gap",
+        "errors": "gap",
+        "latency": "gap",
+    }
+    return AlertCoverage(
+        state=state,
+        reason=reason,
+        rules=rules,
+        by_category=categories,
+        iac_provenance=iac_provenance,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_alert_coverage(monkeypatch):
+    """Keep cockpit alert cards deterministic and offline by default.
+
+    Individual tests override this by patching
+    ``agentops.utils.alert_discovery.discover_alert_coverage`` again. The
+    default mirrors the real ``not_applicable`` path (no endpoint / nothing to
+    verify) while faithfully echoing IaC provenance, so no Azure call is ever
+    made from cockpit tests regardless of the developer's environment.
+    """
+    from agentops.utils import alert_discovery
+
+    def _stub(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_NOT_APPLICABLE,
+            reason="No Foundry project endpoint is configured.",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _stub)
+
+
 def _set_appinsights_env(monkeypatch) -> None:
     monkeypatch.setenv(
         "APPLICATIONINSIGHTS_CONNECTION_STRING",
@@ -559,7 +607,8 @@ def test_readiness_recognizes_prompt_agent_native_tracing(tmp_path: Path):
     assert "Custom spans remain optional" in tracing["detail"]
 
 
-def test_readiness_detects_alerts_declared_as_infrastructure(tmp_path: Path):
+def test_readiness_shows_iac_alerts_as_provenance_not_proof(tmp_path: Path):
+    """IaC markers are provenance only and must never yield a ready card."""
     from agentops.agent.cockpit import _build_readiness_checklist
 
     infra = tmp_path / "infra"
@@ -580,8 +629,119 @@ def test_readiness_detects_alerts_declared_as_infrastructure(tmp_path: Path):
     alerts = next(
         check for check in readiness["checks"] if check["title"] == "Alerts wired"
     )
-    assert alerts["status"] == "ok"
+    # A string in a template is not proof a rule is deployed and enabled.
+    assert alerts["status"] != "ok"
+    # ...but the file is still surfaced as deployment provenance.
     assert "infra/alerts.bicep" in alerts["detail"]
+    assert "provenance only" in alerts["detail"]
+
+
+def test_alerts_wired_card_ready_when_coverage_ready(tmp_path: Path, monkeypatch):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: my-agent:1\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _ready(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_READY,
+            rules=(SimpleNamespace(),),
+            by_category={
+                "quality": "gap",
+                "safety": "gap",
+                "errors": "covered",
+                "latency": "gap",
+            },
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _ready)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "ok"
+    assert "Verified 1 enabled Azure Monitor alert rule" in alerts["detail"]
+    assert "covered: errors" in alerts["detail"]
+
+
+def test_alerts_wired_card_cannot_verify_is_not_absence(
+    tmp_path: Path, monkeypatch
+):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: d.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _cannot(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_CANNOT_VERIFY,
+            reason="insufficient RBAC to list alert rules",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _cannot)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "cannot_verify"
+    assert "does not claim that alerting is absent" in alerts["detail"]
+    assert "Monitoring Reader" in alerts["detail"]
+
+
+def test_alerts_wired_card_not_configured_is_warn(tmp_path: Path, monkeypatch):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: d.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _missing(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_NOT_CONFIGURED,
+            reason="no rule scoped to the resource",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _missing)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "warn"
+    assert "How to complete:" in alerts["detail"]
 
 
 def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypatch):

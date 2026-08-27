@@ -50,7 +50,7 @@ review.
 For **prompt agents**, each `.env` points at a different Foundry project so
 playground saves in sandbox don't appear in dev. For **hosted agents**, each
 `.env` typically points at the same Foundry project (for observability) but
-the agent URL (`AGENTOPS_AGENT_ENDPOINT`) differs per environment because the
+the agent URL (`AGENTOPS_AGENT`) differs per environment because the
 hosted endpoint itself is the per-environment artifact.
 
 > **Why a separate sandbox?** When authors save in the Foundry playground,

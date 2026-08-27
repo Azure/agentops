@@ -108,6 +108,75 @@ the release reviewer should stop; `ready_with_warnings` means the release can be
 reviewed with explicit gaps. The underlying Doctor exit code still depends only
 on `--severity-fail`.
 
+### Verified Azure Monitor alerting ("Alerts wired")
+
+The Cockpit "Alerts wired" readiness card and any alert-related Doctor context
+are backed by a **real, read-only inventory of Azure Monitor alert rules**, not
+by a substring match in an IaC template. AgentOps resolves the Application
+Insights resource linked to the Foundry project, then lists the metric alerts
+and scheduled-query rules scoped to it and checks that each candidate rule is
+enabled, correctly scoped, has a condition, and is attached to at least one
+enabled action group. Only the **count and enabled-state** of action groups are
+read — receiver addresses, phone numbers, and webhook URLs are never inspected,
+logged, or emitted.
+
+The card resolves to one of six deterministic states:
+
+| State | Card status | Meaning |
+|---|---|---|
+| `ready` | ok | ≥1 enabled rule scoped to the App Insights resource with an action group. |
+| `no_recent_signal` | info | Rules are configured and scoped, but no matching telemetry was seen in the recent window. |
+| `not_configured` | warn | No enabled rule targets the resource. |
+| `misconfigured` | warn | Rules exist but are disabled, mis-scoped, or missing an action group. |
+| `cannot_verify` | cannot_verify | The inventory could not be read (auth unavailable / insufficient RBAC / SDK missing). **This never means "not configured".** |
+| `not_applicable` | info / hidden | No Foundry project endpoint is configured, so nothing can be inventoried. |
+
+IaC markers (`Microsoft.Insights/metricAlerts`, `azurerm_monitor_metric_alert`,
+scheduled-query equivalents) found under `infra/`, `deploy/`, or root
+`*.bicep` / `*.tf` are surfaced **only as deployment provenance** in the detail
+text. A string in a template is not proof a rule is deployed and enabled, so
+provenance never upgrades the card to `ready`.
+
+#### Minimum read-only RBAC to verify alerting
+
+To inventory alert rules without any write access, grant the identity running
+Cockpit/Doctor the built-in **`Monitoring Reader`** role at the scope that
+contains the alerting resources (typically the resource group, or the
+subscription if rules live at subscription scope):
+
+- **Alert rules** (`Microsoft.Insights/metricAlerts`,
+  `Microsoft.Insights/scheduledQueryRules`) — list/read.
+- **Action Groups** (`Microsoft.Insights/actionGroups`) — read count and
+  enabled-state only (never the receivers).
+- **Application Insights** component (`Microsoft.Insights/components`) — read, to
+  resolve the Foundry-linked resource id.
+- **Log Analytics** workspace (`Microsoft.OperationalInsights/workspaces`) —
+  read, for scheduled-query rule scopes.
+
+`Monitoring Reader` covers all four read paths and grants no ability to create,
+mutate, delete, or test-fire any rule or action group. AgentOps is read-only by
+design and never calls an Action Group test/notification API.
+
+#### Three signals that are *not* interchangeable
+
+Release reviewers must not conflate three distinct notification mechanisms:
+
+1. **Verified Azure Monitor alerting** — deployed metric/scheduled-query alert
+   rules on the production App Insights resource that fire action groups when a
+   live threshold is breached. This is what the "Alerts wired" card verifies.
+2. **Foundry continuous-evaluation telemetry** — Foundry's server-side
+   continuous evaluation of agent runs (`foundry_control`, `safety`
+   continuous-eval rules). It scores quality/safety of runs but does **not**
+   page anyone; a passing eval rule is not an alert.
+3. **CI workflow failure notification** — a scheduled-Doctor or eval workflow
+   whose non-zero exit code fails the pipeline and notifies via the CI provider.
+   It gates the repository, not the running production service.
+
+Each answers a different question ("is production breaching a threshold right
+now", "are agent runs scoring well", "did the last CI gate pass"). A project can
+have any one without the others, so AgentOps reports them separately and never
+treats one as a substitute for another.
+
 ### Extension point: Microsoft 365 Copilot agents
 
 The four sources above all target Azure Foundry workloads.

@@ -2167,25 +2167,15 @@ def _build_readiness_checklist(
             }
         )
 
-    alerts, alerts_source = _detect_alert_configuration(
+    alert_status, alert_detail = _build_alert_readiness_row(
         workspace,
         agentops_config,
     )
     checks.append(
         {
             "title": "Alerts wired",
-            "status": "ok" if alerts else "info",
-            "detail": (
-                "Detected Azure Monitor alert configuration in "
-                f"<code>{_html_escape(alerts_source)}</code>."
-                if alerts
-                else "Not verified: Cockpit found no alert definition in repo "
-                "configuration, and the latest Doctor analysis does not inventory "
-                "Azure Monitor alert rules. This does not claim that cloud-side "
-                "alerts are absent. Define alerts as IaC or verify them in Azure Monitor. "
-                '<a href="https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-create-new-alert-rule" '
-                'target="_blank" rel="noopener noreferrer">Alert docs &#x2197;</a>'
-            ),
+            "status": alert_status,
+            "detail": alert_detail,
         }
     )
 
@@ -2864,21 +2854,27 @@ def _detect_rubric_evaluator(
     return False, False, ""
 
 
-def _detect_alert_configuration(
-    workspace: Path,
-    agentops_config: Dict[str, Any],
-) -> Tuple[bool, str]:
-    """Find explicit alert definitions without claiming cloud state."""
-    observability = agentops_config.get("observability")
-    if isinstance(observability, dict) and observability.get("alerts"):
-        return True, "agentops.yaml"
+_ALERT_IAC_MARKERS = (
+    "microsoft.insights/metricalerts",
+    "microsoft.insights/scheduledqueryrules",
+    "azurerm_monitor_metric_alert",
+    "azurerm_monitor_scheduled_query_rules_alert",
+)
 
-    markers = (
-        "microsoft.insights/metricalerts",
-        "microsoft.insights/scheduledqueryrules",
-        "azurerm_monitor_metric_alert",
-        "azurerm_monitor_scheduled_query_rules_alert",
-    )
+_ALERT_DOCS_LINK = (
+    '<a href="https://learn.microsoft.com/azure/azure-monitor/alerts/'
+    'alerts-create-new-alert-rule" target="_blank" rel="noopener noreferrer">'
+    "Alert docs &#x2197;</a>"
+)
+
+
+def _detect_alert_iac_provenance(workspace: Path) -> Tuple[str, ...]:
+    """Return IaC files that reference alert rules, as provenance only.
+
+    A marker string in a template is *not* proof a rule is deployed and enabled.
+    The returned paths are surfaced solely as deployment provenance in the
+    readiness detail; they never upgrade the card to ``ready``.
+    """
     candidates: List[Path] = []
     for root in (workspace / "infra", workspace / "deploy"):
         if root.is_dir():
@@ -2886,14 +2882,144 @@ def _detect_alert_configuration(
                 candidates.extend(root.glob(pattern))
     for pattern in ("*.bicep", "*.tf"):
         candidates.extend(workspace.glob(pattern))
+
+    found: set[str] = set()
     for path in candidates:
         try:
             text = path.read_text(encoding="utf-8", errors="ignore").lower()
         except OSError:
             continue
-        if any(marker in text for marker in markers):
-            return True, path.relative_to(workspace).as_posix()
-    return False, ""
+        if any(marker in text for marker in _ALERT_IAC_MARKERS):
+            found.add(path.relative_to(workspace).as_posix())
+    return tuple(sorted(found))
+
+
+def _alert_provenance_html(provenance: Tuple[str, ...]) -> str:
+    """Render IaC provenance as an informational, non-proof note."""
+    if not provenance:
+        return ""
+    files = ", ".join(f"<code>{_html_escape(p)}</code>" for p in provenance)
+    return (
+        " Infrastructure references alert rules in "
+        f"{files} — deployment provenance only; it does not prove a rule is "
+        "deployed and enabled in Azure Monitor."
+    )
+
+
+def _alert_category_html(by_category: Dict[str, str]) -> str:
+    """Render per-signal-category coverage without leaking any secrets."""
+    if not by_category:
+        return ""
+    covered = [name for name, state in by_category.items() if state == "covered"]
+    gaps = [name for name, state in by_category.items() if state == "gap"]
+    parts: List[str] = []
+    if covered:
+        parts.append("covered: " + ", ".join(covered))
+    if gaps:
+        parts.append("no rule: " + ", ".join(gaps))
+    if not parts:
+        return ""
+    return " Signal coverage — " + "; ".join(parts) + "."
+
+
+def _build_alert_readiness_row(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+) -> Tuple[str, str]:
+    """Verify Azure Monitor alert rules read-only; return (status, detail HTML).
+
+    Provenance from IaC is shown for context but never counts as proof. The
+    live query is delegated to :func:`discover_alert_coverage`, which is fully
+    mockable and never mutates any cloud resource.
+    """
+    from agentops.utils.alert_discovery import (
+        STATE_CANNOT_VERIFY,
+        STATE_MISCONFIGURED,
+        STATE_NO_RECENT_SIGNAL,
+        STATE_NOT_APPLICABLE,
+        STATE_NOT_CONFIGURED,
+        STATE_READY,
+        discover_alert_coverage,
+    )
+
+    provenance = _detect_alert_iac_provenance(workspace)
+    provenance_html = _alert_provenance_html(provenance)
+
+    project_endpoint = str(
+        agentops_config.get("project_endpoint")
+        or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+        or ""
+    ).strip()
+
+    coverage = discover_alert_coverage(
+        project_endpoint,
+        iac_provenance=provenance,
+    )
+    reason = _html_escape(coverage.reason or "")
+    category_html = _alert_category_html(dict(coverage.by_category))
+
+    if coverage.state == STATE_READY:
+        rule_count = len(coverage.rules)
+        detail = (
+            f"Verified {rule_count} enabled Azure Monitor alert rule"
+            f"{'s' if rule_count != 1 else ''} scoped to the Foundry "
+            "Application Insights resource, each wired to at least one action "
+            "group." + category_html + provenance_html
+        )
+        return "ok", detail
+
+    if coverage.state == STATE_NO_RECENT_SIGNAL:
+        detail = (
+            "Azure Monitor alert rules are configured and scoped to the "
+            "Foundry Application Insights resource, but no matching telemetry "
+            "was observed in the recent window."
+            + (f" {reason}" if reason else "")
+            + category_html
+            + provenance_html
+        )
+        return "info", detail
+
+    if coverage.state == STATE_NOT_CONFIGURED:
+        detail = (
+            "<strong>How to complete:</strong> No enabled Azure Monitor alert "
+            "rule targets the Foundry Application Insights resource. Create a "
+            "metric or scheduled-query alert scoped to it and attach an action "
+            "group, then re-check. " + _ALERT_DOCS_LINK + provenance_html
+        )
+        return "warn", detail
+
+    if coverage.state == STATE_MISCONFIGURED:
+        detail = (
+            "<strong>How to complete:</strong> Azure Monitor alert rules exist "
+            "but are not release-ready. "
+            + (f"{reason} " if reason else "")
+            + "Enable the rule, confirm it is scoped to the Foundry "
+            "Application Insights resource, and attach an action group. "
+            + _ALERT_DOCS_LINK
+            + provenance_html
+        )
+        return "warn", detail
+
+    if coverage.state == STATE_CANNOT_VERIFY:
+        detail = (
+            "Cockpit could not verify Azure Monitor alert rules"
+            + (f": {reason}" if reason else ".")
+            + " This does not claim that alerting is absent — it means the "
+            "inventory could not be read. Grant <code>Monitoring Reader</code> "
+            "on the Foundry Application Insights resource and re-check. "
+            + _ALERT_DOCS_LINK
+            + provenance_html
+        )
+        return "cannot_verify", detail
+
+    # STATE_NOT_APPLICABLE (or any unexpected state): never claim absence.
+    detail = (
+        "Not verified: no Foundry project endpoint is configured, so Cockpit "
+        "cannot inventory Azure Monitor alert rules. This does not claim that "
+        "cloud-side alerts are absent. Configure a project endpoint to verify "
+        "alerting, or define alerts as IaC. " + _ALERT_DOCS_LINK + provenance_html
+    )
+    return "info", detail
 
 
 def _read_trace_regression_manifest(workspace: Path) -> Dict[str, Any]:
