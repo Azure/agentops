@@ -70,6 +70,24 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Doctor only calls an error rate `critical` when it is unambiguously broken.**
+  `errors.production_rate` escalated to `critical` at twice the warning bar, so a
+  13% failure rate on a development workspace was reported as a release blocker.
+  Escalation now uses a dedicated `critical_rate_threshold` (default 25%),
+  configurable per workspace in `agent.yaml`.
+- **`agentops.yaml` and `eval.yaml` are no longer reported as missing datasets.**
+  The spec-kit reference extractor classified any backticked `.yaml`/`.yml`
+  filename as an evaluation dataset, so `opex.spec_conformance.dataset_drift`
+  listed configuration files that were never meant to live under
+  `.agentops/data/`. Only `.jsonl` files are treated as datasets now, and the
+  finding explains in plain language what is missing and how to fix it.
+- **Third-party `INFO` lines no longer break through the Doctor spinner.** The
+  noise filter was installed only on the root handler, which a dependency
+  calling `logging.basicConfig(force=True)` replaces outright, letting
+  `INFO: HTTP Request: ...` back onto the console. The filter now also lives on
+  the noisy loggers themselves, where nothing in the standard library can clear
+  it, and the `llm_assist` temperature-retry notice dropped from `info` to
+  `debug`.
 - **Doctor no longer raises latency and error-rate alarms on tiny samples, and
   the latency bar is realistic.** `latency.p95_production` and
   `errors.production_rate` compared an Application Insights p95 and failure ratio

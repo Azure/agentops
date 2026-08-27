@@ -357,7 +357,7 @@ class LLMJudge:
         except Exception as exc:
             if not self._supports_temperature or not _rejects_temperature(exc):
                 raise
-            log.info(
+            log.debug(
                 "llm_assist: deployment %s rejects an explicit temperature; "
                 "retrying with the model default",
                 deployment,

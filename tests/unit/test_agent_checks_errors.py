@@ -160,3 +160,28 @@ def test_no_token_telemetry_silent_when_zero_requests():
     )
     findings = run_errors_check(monitor, None, ErrorsCheckConfig())
     assert not any(f.id == "opex.no_token_telemetry" for f in findings)
+
+
+def test_production_rate_stays_warning_below_critical_threshold() -> None:
+    """13% of 53 requests is worth a look, not a release blocker."""
+    monitor = AzureMonitorPayload(
+        request_count=53,
+        error_count=7,
+        error_rate=7 / 53,
+        diagnostics={"status": "ok"},
+    )
+    findings = run_errors_check(monitor, None, ErrorsCheckConfig())
+    rate = next(f for f in findings if f.id == "errors.production_rate")
+    assert rate.severity == Severity.WARNING
+
+
+def test_production_rate_escalates_to_critical_when_badly_broken() -> None:
+    monitor = AzureMonitorPayload(
+        request_count=100,
+        error_count=40,
+        error_rate=0.40,
+        diagnostics={"status": "ok"},
+    )
+    findings = run_errors_check(monitor, None, ErrorsCheckConfig())
+    rate = next(f for f in findings if f.id == "errors.production_rate")
+    assert rate.severity == Severity.CRITICAL

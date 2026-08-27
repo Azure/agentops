@@ -90,6 +90,10 @@ class LatencyCheckConfig(BaseModel):
 class ErrorsCheckConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rate_threshold: float = Field(0.05, ge=0.0, le=1.0)
+    # Above `rate_threshold` the finding is a warning: something is worth
+    # looking at. `critical` means "do not ship", so it needs a rate that
+    # is unambiguously broken rather than merely twice the warning bar.
+    critical_rate_threshold: float = Field(0.25, ge=0.0, le=1.0)
     # Same reasoning as LatencyCheckConfig.min_requests: 1 failure out of
     # 3 requests is a 33% "error rate" that means nothing.
     min_requests: int = Field(20, ge=1)

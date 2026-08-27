@@ -66,6 +66,9 @@ checks:
 
   errors:
     rate_threshold: 0.05
+    # `critical` means "do not ship", so it needs a rate that is
+    # unambiguously broken - not just twice the warning bar.
+    critical_rate_threshold: 0.25
     min_requests: 20
 
   safety:

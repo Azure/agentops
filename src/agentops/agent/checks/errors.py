@@ -25,7 +25,7 @@ def run_errors_check(
     ):
         severity = (
             Severity.CRITICAL
-            if monitor.error_rate >= config.rate_threshold * 2
+            if monitor.error_rate >= config.critical_rate_threshold
             else Severity.WARNING
         )
         findings.append(

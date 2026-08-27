@@ -271,16 +271,16 @@ def _check_dataset_drift(workspace: Path, doc: SpecDocument) -> List[Finding]:
             id="opex.spec_conformance.dataset_drift",
             severity=Severity.WARNING,
             category=Category.OPERATIONAL_EXCELLENCE,
-            title="Spec references datasets that aren't in the workspace",
+            title="Spec mentions dataset files that don't exist yet",
             summary=(
-                "Dataset filenames mentioned in the spec do not "
-                "exist under `.agentops/datasets/` or "
-                "`.agentops/data/`."
+                "The spec mentions `.jsonl` dataset files that are not "
+                "present under `.agentops/data/` (or `.agentops/datasets/`). "
+                "Either the files were renamed / not committed, or the spec "
+                "is describing work that has not been done yet."
             ),
             recommendation=(
-                "Add the missing dataset file(s) under "
-                "`.agentops/datasets/` (and the matching JSONL under "
-                "`.agentops/data/`), or update the spec."
+                "Add the missing `.jsonl` file(s) under `.agentops/data/`, "
+                "or update the spec to match the datasets you actually use."
             ),
             source=SOURCE_NAME,
             evidence={"missing_datasets": missing[:10]},
