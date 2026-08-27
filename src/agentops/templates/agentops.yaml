@@ -99,15 +99,10 @@ dataset: .agentops/data/smoke.jsonl
 # execution: local
 #
 # Optional. Foundry observability readiness metadata. AgentOps reads
-# this for Doctor/Cockpit/evidence; Foundry still owns tracing, replay, and
-# trace sampling at runtime.
+# this for Doctor/Cockpit/evidence; Foundry still owns tracing at runtime.
 #
 # observability:
 #   tracing_enabled: true
-#   trace_sampling:
-#     enabled: true
-#     mode: foundry
-#   trace_replay_url: "https://ai.azure.com/..."
 #   evaluations_url: "https://ai.azure.com/..."
 #   datasets_url: "https://ai.azure.com/..."
 #

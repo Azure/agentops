@@ -120,7 +120,7 @@ def _write_eval_run(
 def test_empty_workspace_yields_empty_state(tmp_path: Path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     assert payload["watchdog"]["has_history"] is False
-    assert len(payload["readiness"]["checks"]) == 13
+    assert len(payload["readiness"]["checks"]) == 9
     html = render_cockpit_html(payload)
     assert "No analysis history yet" in html
     assert "NO-GO" in html
@@ -373,7 +373,7 @@ def test_readiness_splits_connection_and_instrumentation(tmp_path: Path):
     assert "App Insights connection" in html
 
 
-def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
+def test_readiness_detects_multiturn_and_threshold_bound_rubric(tmp_path: Path):
     from agentops.agent.cockpit import _build_readiness_checklist
 
     (tmp_path / "agentops.yaml").write_text(
@@ -382,17 +382,29 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
         "dataset: .agentops/data/travel-conversations.jsonl\n"
         "dataset_kind: multi-turn\n"
         "execution: azd\n"
+        "thresholds:\n"
+        "  task_success: \">=0.8\"\n"
         "rubrics:\n"
         "  - name: travel-concierge-quality\n"
         "    evaluator: travel-concierge-quality\n"
         "    dimensions:\n"
         "      - name: task_success\n"
-        "        description: Completes the requested trip plan.\n"
-        "observability:\n"
-        "  trace_sampling:\n"
-        "    enabled: true\n"
-        "    mode: foundry\n"
-        "  trace_replay_url: https://ai.azure.com/traces/replay/abc\n",
+        "        description: Completes the requested trip plan.\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "travel-conversations.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user", "content": "Plan a trip to Rome."},
+                    {"role": "assistant", "content": "Here is a 3-day plan."},
+                ],
+                "expected": "A multi-day Rome itinerary.",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -404,10 +416,62 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
     )
     by_title = {check["title"]: check for check in readiness["checks"]}
 
+    # Multi-turn coverage is applicable (declared + real conversation rows).
     assert by_title["Multi-turn eval coverage"]["status"] == "ok"
+    # Rubric gates readiness only because a threshold binds one of its metrics.
     assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
-    assert by_title["Trace sampling for live quality"]["status"] == "ok"
-    assert by_title["Trace replay linked to evidence"]["status"] == "ok"
+    # Trace sampling / replay cards were removed entirely.
+    assert "Trace sampling for live quality" not in by_title
+    assert "Trace replay linked to evidence" not in by_title
+
+
+def test_readiness_hides_multiturn_for_single_turn_dataset(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: support-agent:4\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "dataset_kind: single-turn\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    titles = [c["title"] for c in readiness["checks"]]
+    # Single-turn agents are not deficient for being single-turn.
+    assert "Multi-turn eval coverage" not in titles
+
+
+def test_readiness_rubric_declared_without_threshold_is_not_a_gate(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: travel-agent:3\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "rubrics:\n"
+        "  - name: travel-concierge-quality\n"
+        "    evaluator: travel-concierge-quality\n"
+        "    dimensions:\n"
+        "      - name: task_success\n"
+        "        description: Completes the requested trip plan.\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    # Declared but not threshold-bound -> informational, never a missing gate.
+    assert by_title["Optional rubric evaluator gate"]["status"] == "muted"
 
 
 def test_readiness_detects_hosted_otel_eval_rubric_and_unknown_alerts(
@@ -457,7 +521,9 @@ def test_readiness_detects_hosted_otel_eval_rubric_and_unknown_alerts(
     assert "native tracing" in tracing["detail"]
     assert "no application-side OpenTelemetry setup is required" in tracing["detail"]
     assert "acs_middleware.py" in tracing["detail"]
-    assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
+    # The azd eval recipe declares a rubric evaluator, but no threshold binds
+    # its metrics, so it is informational (muted), not a missing gate.
+    assert by_title["Optional rubric evaluator gate"]["status"] == "muted"
     assert "src/helpdeskbot/eval.yaml" in by_title[
         "Optional rubric evaluator gate"
     ]["detail"]
@@ -547,7 +613,9 @@ def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypat
         assert ("<a " in detail) or ("<code>" in detail) or ("Foundry" in detail)
     by_title = {check["title"]: check["detail"] for check in readiness["checks"]}
     assert "OpenTelemetry" in by_title["Agent tracing instrumentation"]
-    assert "agentops eval run" in by_title["Scheduled eval (drift watch)"]
+    # Scheduled eval is optional drift-watch context and is hidden entirely
+    # when no cron-scheduled workflow exists, so it must not appear here.
+    assert "Scheduled eval (drift watch)" not in by_title
     assert "safe_agent_baseline.yaml" in by_title["Red team scans"]
     assert "does not claim" in by_title["Alerts wired"]
 
@@ -654,6 +722,72 @@ def test_next_actions_prioritize_doctor_then_incomplete_readiness():
     ]
 
 
+def test_next_actions_skip_non_actionable_statuses():
+    """Hidden, not-applicable, informational, muted, and ok statuses must not
+    manufacture any action."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {"title": "Ready", "status": "ok", "detail": "done"},
+                {"title": "Info", "status": "info", "detail": "context"},
+                {"title": "Muted", "status": "muted", "detail": "optional"},
+                {"title": "NotApplicable", "status": "na", "detail": "n/a"},
+                {"title": "Hidden", "status": "hidden", "detail": "hidden"},
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    assert titles == ["All caught up"]
+
+
+def test_next_actions_cannot_verify_uses_softer_wording():
+    """``cannot_verify`` is not a failure, so it yields an "Enable
+    verification" action, never a "Complete readiness" one."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {
+                    "title": "Multi-turn coverage",
+                    "status": "cannot_verify",
+                    "detail": "Dataset not readable yet.",
+                },
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    assert titles == ["Enable verification: Multi-turn coverage"]
+    assert not any("Complete readiness" in title for title in titles)
+
+
+def test_next_actions_uninitialized_emits_single_onboarding_action():
+    """Before init, emit exactly one onboarding action regardless of how many
+    readiness checks would otherwise be non-ok."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {"title": "A", "status": "warn", "detail": "x"},
+                {"title": "B", "status": "warn", "detail": "y"},
+                {"title": "C", "status": "cannot_verify", "detail": "z"},
+            ],
+        },
+        initialized=False,
+    )
+
+    assert len(actions["actions"]) == 1
+    assert actions["actions"][0]["title"] == "Get started: initialize AgentOps"
+
+
 def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
     from agentops.agent.cockpit import _build_readiness_checklist
 
@@ -704,7 +838,7 @@ def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
     assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
         "CI eval gate (workflow on PRs)"
     ]["detail"]
-    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "info"
     assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
         "Scheduled eval (drift watch)"
     ]["detail"]
@@ -765,7 +899,7 @@ def test_readiness_detects_agentops_cloud_eval_workflow_and_evidence(tmp_path: P
     assert "AgentOps cloud eval" in by_title["CI eval gate (workflow on PRs)"][
         "detail"
     ]
-    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "info"
     assert "AgentOps cloud eval" in by_title["Scheduled eval (drift watch)"][
         "detail"
     ]

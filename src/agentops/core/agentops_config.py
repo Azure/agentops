@@ -339,43 +339,20 @@ class RubricConfig(BaseModel):
         return value
 
 
-class TraceSamplingConfig(BaseModel):
-    """Foundry intelligent trace-sampling readiness contract."""
-
-    enabled: bool = False
-    mode: Literal["manual", "foundry", "scheduled"] = "manual"
-    description: Optional[str] = None
-
-    model_config = ConfigDict(extra="forbid")
-
-    @field_validator("description")
-    @classmethod
-    def _description_non_empty(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return value
-        value = value.strip()
-        if not value:
-            raise ValueError("observability.trace_sampling.description must be non-empty")
-        return value
-
-
 class ObservabilityConfig(BaseModel):
     """Foundry observability readiness metadata.
 
     The fields are read-only intent for Doctor, Cockpit, and release evidence.
-    AgentOps does not create Foundry trace replay, sampling, or portal resources
-    from this block.
+    AgentOps does not create Foundry portal resources from this block.
     """
 
     tracing_enabled: bool = False
-    trace_sampling: TraceSamplingConfig = Field(default_factory=TraceSamplingConfig)
-    trace_replay_url: Optional[str] = None
     evaluations_url: Optional[str] = None
     datasets_url: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")
 
-    @field_validator("trace_replay_url", "evaluations_url", "datasets_url")
+    @field_validator("evaluations_url", "datasets_url")
     @classmethod
     def _url_non_empty(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
@@ -752,8 +729,7 @@ class AgentOpsConfig(BaseModel):
     ``dataset_kind`` / ``rubrics`` / ``observability``
         Optional Foundry observability metadata. These fields keep existing
         single-turn evals working while letting Doctor, Cockpit, CI evidence, and
-        azd/Foundry recipes reason about multi-turn coverage, rubric gates, trace
-        sampling, and trace replay links.
+        azd/Foundry recipes reason about multi-turn coverage and rubric gates.
     """
 
     version: int = Field(..., description="Schema version. Must be 1.")

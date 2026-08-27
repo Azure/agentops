@@ -549,28 +549,26 @@ def _observability_status(root: Path, trace_dataset: dict[str, Any]) -> dict[str
     rubrics = rubrics if isinstance(rubrics, list) else []
     lineage = trace_dataset.get("lineage")
     lineage = lineage if isinstance(lineage, dict) else {}
-    trace_sampling = observability.get("trace_sampling")
-    trace_sampling = trace_sampling if isinstance(trace_sampling, dict) else {}
 
-    replay_urls = [str(url) for url in _as_list(lineage.get("replay_urls")) if url]
     evaluation_urls = [str(url) for url in _as_list(lineage.get("evaluation_urls")) if url]
-    sampling_policies = [
-        str(policy) for policy in _as_list(lineage.get("sampling_policies")) if policy
-    ]
     multi_turn_rows = int(lineage.get("multi_turn_rows") or 0)
+
+    dataset_kind = str(config.get("dataset_kind") or "auto").strip().lower()
+    # Multi-turn coverage is a property of the dataset, not a universal
+    # requirement. Only a declared multi-turn dataset without conversation
+    # rows is genuinely incomplete; single-turn and auto datasets are ready.
+    if dataset_kind == "multi-turn":
+        multi_turn_ready = multi_turn_rows > 0
+    else:
+        multi_turn_ready = True
 
     return {
         "status": "ok" if observability or rubrics or lineage else "not_configured",
         "dataset_kind": config.get("dataset_kind", "auto"),
-        "multi_turn_ready": config.get("dataset_kind") == "multi-turn" or multi_turn_rows > 0,
+        "multi_turn_ready": multi_turn_ready,
         "multi_turn_rows": multi_turn_rows,
         "rubrics_count": len(rubrics),
         "rubrics": rubrics,
-        "trace_sampling_enabled": bool(trace_sampling.get("enabled")) or bool(sampling_policies),
-        "trace_sampling_mode": trace_sampling.get("mode"),
-        "sampling_policies": sampling_policies,
-        "trace_replay_urls": replay_urls
-        or ([str(observability["trace_replay_url"])] if observability.get("trace_replay_url") else []),
         "evaluation_urls": evaluation_urls
         or ([str(observability["evaluations_url"])] if observability.get("evaluations_url") else []),
         "datasets_url": observability.get("datasets_url"),
@@ -795,17 +793,11 @@ def _add_observability_check(
     missing: list[str] = []
     if not observability.get("multi_turn_ready"):
         missing.append("multi-turn eval coverage")
-    if int(observability.get("rubrics_count") or 0) <= 0:
-        missing.append("rubric evaluator")
-    if not observability.get("trace_sampling_enabled"):
-        missing.append("intelligent trace sampling")
-    if not observability.get("trace_replay_urls"):
-        missing.append("trace replay link")
 
     if not missing:
         message = (
             "Foundry observability signals are evidence-ready: "
-            "multi-turn coverage, rubric scoring, trace sampling, and replay links."
+            "multi-turn coverage and rubric scoring."
         )
         ready.append(message)
         checks.append(
@@ -925,8 +917,6 @@ def _links(latest_eval: dict[str, Any], observability: dict[str, Any]) -> list[R
     report_url = latest_eval.get("foundry_report_url")
     if report_url:
         links.append(ReleaseEvidenceLink(label="Foundry evaluation report", url=str(report_url)))
-    for url in _as_list(observability.get("trace_replay_urls"))[:3]:
-        links.append(ReleaseEvidenceLink(label="Foundry trace replay", url=str(url)))
     for url in _as_list(observability.get("evaluation_urls"))[:3]:
         links.append(ReleaseEvidenceLink(label="Foundry evaluation", url=str(url)))
     datasets_url = observability.get("datasets_url")

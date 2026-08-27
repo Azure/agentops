@@ -479,8 +479,8 @@ class TestAgentOpsConfig:
             ],
             observability=ObservabilityConfig(
                 tracing_enabled=True,
-                trace_sampling={"enabled": True, "mode": "foundry"},
-                trace_replay_url="https://ai.azure.com/project/traces/trace-1",
+                evaluations_url="https://ai.azure.com/project/evaluations",
+                datasets_url="https://ai.azure.com/project/datasets",
             ),
             thresholds={"task_success": ">=4"},
         )
@@ -489,7 +489,7 @@ class TestAgentOpsConfig:
         assert cfg.rubrics[0].name == "travel-concierge-quality"
         assert cfg.rubrics[0].dimensions[0].weight == 0.5
         assert cfg.observability.tracing_enabled is True
-        assert cfg.observability.trace_sampling.enabled is True
+        assert cfg.observability.evaluations_url.endswith("/evaluations")
 
     def test_observability_rejects_non_url_links(self) -> None:
         with pytest.raises(ValidationError, match="observability URLs"):
@@ -498,9 +498,40 @@ class TestAgentOpsConfig:
                     "version": 1,
                     "agent": "travel-agent:2",
                     "dataset": ".agentops/data/smoke.jsonl",
-                    "observability": {"trace_replay_url": "ai.azure.com/traces"},
+                    "observability": {"evaluations_url": "ai.azure.com/evals"},
                 }
             )
+
+    def test_observability_rejects_removed_trace_fields(self) -> None:
+        # trace_sampling and trace_replay_url were removed entirely; the block
+        # uses extra="forbid" so these keys are rejected, not silently kept.
+        with pytest.raises(ValidationError):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "travel-agent:2",
+                    "dataset": ".agentops/data/smoke.jsonl",
+                    "observability": {
+                        "trace_sampling": {"enabled": True, "mode": "foundry"},
+                    },
+                }
+            )
+        with pytest.raises(ValidationError):
+            AgentOpsConfig.model_validate(
+                {
+                    "version": 1,
+                    "agent": "travel-agent:2",
+                    "dataset": ".agentops/data/smoke.jsonl",
+                    "observability": {
+                        "trace_replay_url": "https://ai.azure.com/traces/t-1",
+                    },
+                }
+            )
+
+    def test_trace_sampling_config_is_removed(self) -> None:
+        import agentops.core.agentops_config as config_module
+
+        assert not hasattr(config_module, "TraceSamplingConfig")
 
     def test_rubric_rejects_empty_dimension(self) -> None:
         with pytest.raises(ValidationError, match="rubric dimension"):

@@ -122,6 +122,7 @@ def build_cockpit_payload(
     )
     next_actions = _build_next_actions(
         watchdog_payload, readiness,
+        initialized=(workspace / "agentops.yaml").exists(),
     )
 
     return {
@@ -1971,81 +1972,49 @@ def _build_readiness_checklist(
         }
     )
 
-    multi_turn_ready = (
-        agentops_config.get("dataset_kind") == "multi-turn"
-        or int(trace_lineage.get("multi_turn_rows") or 0) > 0
-    )
-    checks.append(
-        {
-            "title": "Multi-turn eval coverage",
-            "status": "ok" if multi_turn_ready else "muted",
-            "detail": (
-                "Detected conversation-level evaluation coverage from "
-                "<code>dataset_kind: multi-turn</code> or trace-derived rows."
-                if multi_turn_ready
-                else "<strong>How to complete:</strong> add a conversation "
-                "dataset or promote traces that include <code>messages</code>, "
-                "then set <code>dataset_kind: multi-turn</code> in "
-                "<code>agentops.yaml</code>."
-            ),
-        }
-    )
+    multi_turn = _multiturn_readiness(workspace, agentops_config, trace_lineage)
+    if multi_turn is not None:
+        multi_turn_status, multi_turn_detail = multi_turn
+        checks.append(
+            {
+                "title": "Multi-turn eval coverage",
+                "status": multi_turn_status,
+                "detail": multi_turn_detail,
+            }
+        )
 
-    rubric_ready, rubric_source = _detect_rubric_evaluator(
+    rubric_declared, rubric_bound, rubric_source = _detect_rubric_evaluator(
         workspace,
         agentops_config,
     )
+    if rubric_declared and rubric_bound:
+        rubric_status = "ok"
+        rubric_detail = (
+            f"Detected a rubric evaluator in "
+            f"<code>{_html_escape(rubric_source)}</code> with a metric bound to a "
+            "configured threshold, so it gates readiness."
+        )
+    elif rubric_declared:
+        rubric_status = "muted"
+        rubric_detail = (
+            f"Detected a rubric evaluator in "
+            f"<code>{_html_escape(rubric_source)}</code>, but no emitted metric is "
+            "bound to a <code>thresholds</code> entry, so it does not gate "
+            "readiness. Bind a threshold to a rubric metric to make it a gate."
+        )
+    else:
+        rubric_status = "muted"
+        rubric_detail = (
+            "<strong>How to complete:</strong> optional - add "
+            "<code>rubrics:</code> only after a real Foundry rubric evaluator "
+            "exists and azd emits stable metric names you can bind to "
+            "thresholds."
+        )
     checks.append(
         {
             "title": "Optional rubric evaluator gate",
-            "status": "ok" if rubric_ready else "muted",
-            "detail": (
-                f"Detected a rubric evaluator in "
-                f"<code>{_html_escape(rubric_source)}</code>. "
-                "Keep thresholds bound only to metric names emitted by the "
-                "corresponding Foundry / azd evaluation run."
-                if rubric_ready
-                else "<strong>How to complete:</strong> optional - add "
-                "<code>rubrics:</code> only after a real Foundry rubric evaluator "
-                "exists and azd emits stable metric names you can bind to "
-                "thresholds."
-            ),
-        }
-    )
-
-    observability = agentops_config.get("observability")
-    observability = observability if isinstance(observability, dict) else {}
-    trace_sampling = observability.get("trace_sampling")
-    trace_sampling = trace_sampling if isinstance(trace_sampling, dict) else {}
-    sampling_ready = bool(trace_sampling.get("enabled")) or bool(trace_lineage.get("sampling_policies"))
-    checks.append(
-        {
-            "title": "Trace sampling for live quality",
-            "status": "ok" if sampling_ready else "muted",
-            "detail": (
-                "Detected trace-sampling intent or sampling lineage in the "
-                "trace-derived dataset manifest."
-                if sampling_ready
-                else "<strong>How to complete:</strong> enable Foundry trace "
-                "sampling or document the policy under "
-                "<code>observability.trace_sampling</code>, then harvest sampled "
-                "traces into dataset candidates."
-            ),
-        }
-    )
-
-    replay_ready = bool(observability.get("trace_replay_url")) or bool(trace_lineage.get("replay_urls"))
-    checks.append(
-        {
-            "title": "Trace replay linked to evidence",
-            "status": "ok" if replay_ready else "muted",
-            "detail": (
-                "Detected a Foundry trace replay link in config or trace lineage."
-                if replay_ready
-                else "<strong>How to complete:</strong> keep a representative "
-                "Foundry replay link in <code>observability.trace_replay_url</code> "
-                "or include replay URLs when promoting traces."
-            ),
+            "status": rubric_status,
+            "detail": rubric_detail,
         }
     )
 
@@ -2119,36 +2088,31 @@ def _build_readiness_checklist(
         }
     )
 
+    # Scheduled evaluations are optional drift-watch context, never a release
+    # requirement. Surface the card only when a cron-scheduled eval workflow
+    # already exists, as informational context (never counted as incomplete).
     scheduled = bool(eval_workflow.get("scheduled"))
     scheduled_runner = str(eval_workflow.get("scheduled_runner") or "")
-    checks.append(
-        {
-            "title": "Scheduled eval (drift watch)",
-            "status": "ok" if scheduled else "muted",
-            "detail": (
-                (
-                    "Detected a cron-scheduled workflow that uses AgentOps "
-                    "cloud eval in Foundry."
-                )
-                if scheduled_runner == "agentops-cloud"
-                else (
-                    "Detected a cron-scheduled workflow that uses the official "
-                    "Microsoft Foundry AI Agent Evaluation runner."
-                )
-                if scheduled_runner == "official-ai-agent-evaluation"
-                else "Detected a cron-scheduled AgentOps eval workflow."
-                if scheduled
-                else "<strong>How to complete:</strong> create a scheduled "
-                "quality gate in CI. Add an <code>on.schedule</code> "
-                "cron trigger to an eval workflow that runs "
-                "<code>agentops eval run</code> or the official Microsoft AI "
-                "Agent Evaluation runner for prompt agents. Commit the workflow "
-                "so regressions are caught even when no PR is open. "
-                '<a href="https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#schedule" '
-                'target="_blank" rel="noopener noreferrer">GitHub schedule docs &#x2197;</a>'
-            ),
-        }
-    )
+    if scheduled:
+        checks.append(
+            {
+                "title": "Scheduled eval (drift watch)",
+                "status": "info",
+                "detail": (
+                    (
+                        "Detected a cron-scheduled workflow that uses AgentOps "
+                        "cloud eval in Foundry."
+                    )
+                    if scheduled_runner == "agentops-cloud"
+                    else (
+                        "Detected a cron-scheduled workflow that uses the official "
+                        "Microsoft Foundry AI Agent Evaluation runner."
+                    )
+                    if scheduled_runner == "official-ai-agent-evaluation"
+                    else "Detected a cron-scheduled AgentOps eval workflow."
+                ),
+            }
+        )
 
     redteam = _detect_redteam_config(workspace)
     checks.append(
@@ -2274,8 +2238,18 @@ def _continuous_eval_status_from_watchdog(
 def _build_next_actions(
     watchdog: Dict[str, Any],
     readiness: Dict[str, Any],
+    *,
+    initialized: bool = True,
 ) -> Dict[str, Any]:
-    """Prioritize Doctor findings, then incomplete readiness checks."""
+    """Prioritize Doctor findings, then genuinely-incomplete readiness checks.
+
+    Only statuses that represent real, required, missing work become actions.
+    Hidden, not-applicable, informational, muted, and ``ok`` statuses produce
+    no action. ``cannot_verify`` is not a failure, so it produces a softer
+    "Enable verification" action rather than a "Complete readiness" one. Before
+    the workspace is initialized, emit at most one onboarding action instead of
+    a wall of readiness prompts.
+    """
     actions: List[Dict[str, Any]] = []
     severity_order = {"critical": 0, "warning": 1, "info": 2}
     findings = sorted(
@@ -2293,15 +2267,41 @@ def _build_next_actions(
             }
         )
 
-    readiness_order = {"warn": 0, "muted": 1, "info": 2}
-    incomplete = sorted(
-        (check for check in readiness.get("checks", []) if check.get("status") != "ok"),
-        key=lambda item: readiness_order.get(str(item.get("status") or ""), 3),
-    )
-    for check in incomplete:
+    if not initialized:
+        actions.append(
+            {
+                "title": "Get started: initialize AgentOps",
+                "detail": (
+                    "Run <code>agentops init</code> to scaffold "
+                    "<code>agentops.yaml</code> and the <code>.agentops</code> "
+                    "workspace. Cockpit then tailors readiness to your agent's "
+                    "actual shape instead of showing generic prompts."
+                ),
+                "cta": "Open onboarding",
+                "anchor": "#section-readiness",
+            }
+        )
+        return {"actions": actions}
+
+    checks = readiness.get("checks", [])
+    # Only "warn" is genuinely missing required work; "cannot_verify" is a
+    # softer prompt to enable verification. Everything else (ok/muted/info/na/
+    # hidden) produces no action at all.
+    warn_checks = [c for c in checks if str(c.get("status")) == "warn"]
+    cannot_verify_checks = [c for c in checks if str(c.get("status")) == "cannot_verify"]
+    for check in warn_checks:
         actions.append(
             {
                 "title": f"Complete readiness: {check.get('title') or 'configuration'}",
+                "detail": check.get("detail", ""),
+                "cta": "Open readiness item",
+                "anchor": "#section-readiness",
+            }
+        )
+    for check in cannot_verify_checks:
+        actions.append(
+            {
+                "title": f"Enable verification: {check.get('title') or 'configuration'}",
                 "detail": check.get("detail", ""),
                 "cta": "Open readiness item",
                 "anchor": "#section-readiness",
@@ -2615,14 +2615,144 @@ def _detect_custom_tracing(workspace: Path) -> Optional[str]:
     return None
 
 
+def _multiturn_readiness(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+    trace_lineage: Dict[str, Any],
+) -> Optional[Tuple[str, str]]:
+    """Resolve the multi-turn readiness card as a property of the dataset.
+
+    Returns ``None`` when the card is not applicable and must be hidden
+    (single-turn datasets, single-turn-shaped ``auto`` datasets, or any
+    state we cannot verify without nagging). Otherwise returns a
+    ``(status, detail_html)`` tuple.
+
+    * uninitialized workspace -> hidden (cannot verify, never "missing").
+    * ``dataset_kind: single-turn`` -> hidden (not applicable).
+    * ``dataset_kind: multi-turn`` -> applicable: ``ok`` when conversation
+      coverage exists, ``cannot_verify`` when the dataset is missing/unreadable,
+      ``warn`` only when a readable dataset genuinely lacks conversations.
+    * ``dataset_kind: auto`` (or unset) -> infer only from real content:
+      ``ok`` when conversation rows exist, otherwise hidden.
+    """
+    if not (workspace / "agentops.yaml").exists():
+        return None
+
+    kind = str(agentops_config.get("dataset_kind") or "auto").strip().lower()
+    if kind == "single-turn":
+        return None
+
+    lineage_rows = int(trace_lineage.get("multi_turn_rows") or 0) > 0
+    dataset_state = _dataset_conversation_state(workspace, agentops_config)
+    covered = lineage_rows or dataset_state is True
+
+    covered_detail = (
+        "Detected conversation-level evaluation coverage from dataset rows "
+        "with a <code>messages</code> array or trace-derived multi-turn rows."
+    )
+
+    if kind == "multi-turn":
+        if covered:
+            return ("ok", covered_detail)
+        if dataset_state is None:
+            return (
+                "cannot_verify",
+                "<strong>Cannot verify:</strong> the dataset is missing or "
+                "unreadable, so AgentOps cannot confirm conversation coverage. "
+                "This is not a configuration failure. Point "
+                "<code>dataset</code> at a readable JSONL file to enable "
+                "verification.",
+            )
+        return (
+            "warn",
+            "<strong>How to complete:</strong> <code>dataset_kind: "
+            "multi-turn</code> is declared but the dataset has no rows with a "
+            "<code>messages</code> conversation array. Add conversation rows or "
+            "promote traces that include <code>messages</code>.",
+        )
+
+    # auto / unset: infer applicability only from real conversation content.
+    if covered:
+        return ("ok", covered_detail)
+    return None
+
+
+def _dataset_conversation_state(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+) -> Optional[bool]:
+    """Classify the configured dataset's conversation shape.
+
+    Returns ``True`` when at least one row carries a non-empty
+    ``messages`` array, ``False`` when the dataset is readable but has no
+    such rows, and ``None`` when the dataset is undeclared, remote,
+    missing, or unreadable (the "cannot verify" state).
+    """
+    dataset = agentops_config.get("dataset")
+    if not isinstance(dataset, str) or not dataset.strip():
+        return None
+    if dataset.startswith(("http://", "https://")):
+        return None
+    path = workspace / dataset
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            messages = record.get("messages")
+            if isinstance(messages, list) and len(messages) > 0:
+                return True
+    return False
+
+
 def _detect_rubric_evaluator(
     workspace: Path,
     agentops_config: Dict[str, Any],
-) -> Tuple[bool, str]:
-    """Resolve rubric evidence from AgentOps or azd AI Agent eval config."""
+) -> Tuple[bool, bool, str]:
+    """Resolve rubric evidence from AgentOps or azd AI Agent eval config.
+
+    Returns ``(declared, threshold_bound, source)``. A rubric evaluator only
+    gates readiness when it is both declared (in ``agentops.yaml`` rubrics or
+    an active Foundry/azd eval recipe) *and* emits a metric name that is bound
+    to a configured threshold. When nothing is declared it is not applicable.
+    """
+    thresholds = agentops_config.get("thresholds")
+    threshold_keys = {
+        str(key).strip().lower()
+        for key in (thresholds.keys() if isinstance(thresholds, dict) else [])
+    }
+
+    def _bound(*names: Any) -> bool:
+        for name in names:
+            if isinstance(name, str) and name.strip().lower() in threshold_keys:
+                return True
+        return False
+
     rubrics = agentops_config.get("rubrics")
     if isinstance(rubrics, list) and rubrics:
-        return True, "agentops.yaml"
+        threshold_bound = False
+        for rubric in rubrics:
+            if not isinstance(rubric, dict):
+                continue
+            dimension_names = [
+                dim.get("name")
+                for dim in rubric.get("dimensions", [])
+                if isinstance(dim, dict)
+            ]
+            if _bound(rubric.get("name"), rubric.get("evaluator"), *dimension_names):
+                threshold_bound = True
+                break
+        return True, threshold_bound, "agentops.yaml"
 
     for path in (workspace / "src").glob("**/eval.y*ml"):
         try:
@@ -2632,13 +2762,20 @@ def _detect_rubric_evaluator(
         if not isinstance(payload, dict):
             continue
         evaluators = payload.get("evaluators")
-        if isinstance(evaluators, list) and any(
-            isinstance(evaluator, dict)
-            and bool(evaluator.get("local_uri") or evaluator.get("id"))
-            for evaluator in evaluators
-        ):
-            return True, path.relative_to(workspace).as_posix()
-    return False, ""
+        if isinstance(evaluators, list):
+            rubric_evaluators = [
+                evaluator
+                for evaluator in evaluators
+                if isinstance(evaluator, dict)
+                and bool(evaluator.get("local_uri") or evaluator.get("id"))
+            ]
+            if rubric_evaluators:
+                threshold_bound = any(
+                    _bound(evaluator.get("name"), evaluator.get("id"))
+                    for evaluator in rubric_evaluators
+                )
+                return True, threshold_bound, path.relative_to(workspace).as_posix()
+    return False, False, ""
 
 
 def _detect_alert_configuration(
