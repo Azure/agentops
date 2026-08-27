@@ -64,11 +64,14 @@ AGENT_HELP = (
     "target committed. Pick a target kind:\n"
     "  1) Foundry prompt agent   — <name>:<version> (e.g. quickstart-agent:2)\n"
     "  2) Foundry hosted agent    — https://<res>.services.ai.azure.com/"
-    "api/projects/<proj>/agents/<name>\n"
+    "api/projects/<proj>/agents/<name>[/versions/<v>]\n"
     "  3) Foundry model deploy    — model:<deployment> (e.g. model:gpt-4.1)\n"
     "  4) External HTTP agent     — any https:// endpoint (ACA, AKS, "
     "LangGraph, custom)\n"
-    "  5) Configure later         — project observability only, no target"
+    "  5) Configure later         — project observability only, no target\n"
+    "A hosted URL without '/versions/<v>' evaluates whatever is currently "
+    "deployed. Pin the version for reproducible runs; it is required when "
+    "'execution: cloud' is set in agentops.yaml."
 )
 
 # Numeric menu keys for the guided target-kind choice.

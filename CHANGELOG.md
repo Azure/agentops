@@ -61,6 +61,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   unchanged.
 
 ### Fixed
+- **The `agentops init` target menu no longer hides hosted-agent versioning.**
+  Option 2 showed only `.../agents/<name>`, implying a pinned revision was not
+  supported. The menu now shows `.../agents/<name>[/versions/<v>]` and states
+  that an unpinned URL evaluates whatever is currently deployed, while
+  `execution: cloud` requires the explicit version that `agentops eval run`
+  already enforces.
 - **The local Cockpit no longer requires hosted authentication for Observe.** A
   local developer credential path backs Observe when the Cockpit runs on your
   machine, while delegated-only operations (user attribution and trace content)
