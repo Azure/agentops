@@ -76,14 +76,50 @@ def setup_logging(verbose: bool = False) -> None:
         logging.getLogger("httpx").setLevel(logging.WARNING)
         logging.getLogger("openai").setLevel(logging.WARNING)
 
-        # Belt and braces: levels can be reset by any later import and
-        # ``basicConfig(force=True)`` replaces the root handler outright.
-        # A filter attached to the noisy logger itself survives both,
-        # because nothing in the stdlib clears logger filters.
+        # Belt and braces. Levels can be reset by any later import and
+        # ``basicConfig(force=True)`` replaces the root handler outright,
+        # so neither a level nor a root-handler filter is enough on its
+        # own. ``_quiet`` also gives each chatty logger a private
+        # WARNING-level handler and turns propagation off, which means a
+        # sub-WARNING record has nowhere to go even if the level and the
+        # filter are both undone behind our back.
         for name in _NOISY_LOGGERS:
-            _install_filter(logging.getLogger(name))
+            _quiet(name)
         for handler in logging.getLogger().handlers:
             _install_filter(handler)
+    else:
+        # ``--verbose`` must show everything, including anything muted by a
+        # previous non-verbose call.
+        for name in _NOISY_LOGGERS:
+            _unquiet(name)
+
+
+def _quiet(name: str) -> None:
+    """Make ``name`` structurally incapable of printing below WARNING."""
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.WARNING)
+    _install_filter(logger)
+    if not any(getattr(h, "_agentops_quiet", False) for h in logger.handlers):
+        handler = logging.StreamHandler()
+        handler.setLevel(logging.WARNING)
+        handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        handler.addFilter(_NoisyThirdPartyFilter())
+        handler._agentops_quiet = True  # type: ignore[attr-defined]
+        logger.addHandler(handler)
+    logger.propagate = False
+
+
+def _unquiet(name: str) -> None:
+    """Undo ``_quiet`` so verbose runs show every record again."""
+    logger = logging.getLogger(name)
+    logger.handlers[:] = [
+        h for h in logger.handlers if not getattr(h, "_agentops_quiet", False)
+    ]
+    logger.filters[:] = [
+        f for f in logger.filters if not isinstance(f, _NoisyThirdPartyFilter)
+    ]
+    logger.setLevel(logging.NOTSET)
+    logger.propagate = True
 
 
 def _install_filter(target: logging.Logger | logging.Handler) -> None:

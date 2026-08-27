@@ -29,14 +29,18 @@ def _restore_logging():
     for name in ("httpx", "openai", "azure", "httpcore", "urllib3"):
         logger = logging.getLogger(name)
         logger.filters.clear()
+        logger.handlers[:] = [
+            h for h in logger.handlers if not getattr(h, "_agentops_quiet", False)
+        ]
         logger.setLevel(logging.NOTSET)
+        logger.propagate = True
 
 
-def _attach() -> _Capture:
+def _attach(logger_name: str = "") -> _Capture:
     capture = _Capture()
-    root = logging.getLogger()
-    root.addHandler(capture)
-    root.setLevel(logging.DEBUG)
+    logger = logging.getLogger(logger_name)
+    logger.addHandler(capture)
+    logger.setLevel(logging.DEBUG)
     return capture
 
 
@@ -58,17 +62,39 @@ def test_noisy_info_dropped_even_after_basic_config_force() -> None:
     assert capture.messages == []
 
 
+def test_noise_stays_muted_even_if_filters_are_cleared() -> None:
+    """Worst case: a dependency resets the level *and* drops our filter.
+
+    The private WARNING-level handler plus ``propagate = False`` means the
+    record still has nowhere to go.
+    """
+    setup_logging(verbose=False)
+    noisy = logging.getLogger("httpx")
+    noisy.setLevel(logging.INFO)
+    noisy.filters.clear()
+    logging.basicConfig(level=logging.INFO, force=True)
+    capture = _attach()
+
+    noisy.info("HTTP Request: GET https://x/openai/v1/evals?limit=10 200 OK")
+
+    assert capture.messages == []
+
+
 def test_warnings_and_own_logs_still_pass() -> None:
     setup_logging(verbose=False)
-    capture = _attach()
+    noisy = _attach("httpx")
+    ours = _attach()
 
     logging.getLogger("httpx").warning("real problem")
     logging.getLogger("agentops.demo").info("our own message")
 
-    assert capture.messages == ["real problem", "our own message"]
+    assert noisy.messages == ["real problem"]
+    assert ours.messages == ["our own message"]
 
 
 def test_verbose_keeps_everything() -> None:
+    # A previous non-verbose call must not permanently mute the loggers.
+    setup_logging(verbose=False)
     setup_logging(verbose=True)
     capture = _attach()
 

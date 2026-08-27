@@ -70,6 +70,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Doctor findings now state the measured value and the threshold that was
+  crossed.** `errors.production_rate`, `latency.p95_production`,
+  `latency.eval_avg` and `opex.no_thresholds` previously said only "above
+  threshold" or "has no explicit thresholds", forcing a trip to the docs to find
+  out which number applied. Each title now carries the observed value, the sample
+  it came from where relevant, and the configured limit.
+- **Third-party HTTP logs can no longer break through into the terminal.**
+  `httpx`, `openai`, `httpcore`, `urllib3` and the Azure SDK loggers now get a
+  private `WARNING`-level handler and `propagate = False`, so an `INFO` line such
+  as `HTTP Request: GET .../openai/v1/evals?limit=10` cannot interrupt the Doctor
+  spinner even when a dependency resets the log level, clears our filter, or
+  calls `logging.basicConfig(force=True)`. `--verbose` reverses this and shows
+  every record again.
+- **The Doctor finding summary no longer leaves a single orphan word on the last
+  line.** Titles were wrapped at a fixed 110 columns regardless of the real
+  terminal width. Wrapping now uses the actual terminal size and re-flows a
+  finding when the last line would hold only one word.
 - **Doctor only calls an error rate `critical` when it is unambiguously broken.**
   `errors.production_rate` escalated to `critical` at twice the warning bar, so a
   13% failure rate on a development workspace was reported as a release blocker.

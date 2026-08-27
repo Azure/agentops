@@ -33,7 +33,13 @@ def run_errors_check(
                 id="errors.production_rate",
                 severity=severity,
                 category=Category.RELIABILITY,
-                title="Production error rate above threshold",
+                title=(
+                    f"Production error rate is "
+                    f"{monitor.error_rate * 100:.1f}% "
+                    f"({monitor.error_count} of {monitor.request_count} "
+                    f"requests failed), above the "
+                    f"{config.rate_threshold * 100:.0f}% threshold"
+                ),
                 summary=(
                     f"App Insights reports {monitor.error_count} failed "
                     f"requests over {monitor.request_count} total "

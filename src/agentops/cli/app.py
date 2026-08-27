@@ -293,7 +293,9 @@ def _doctor_findings_summary_lines(findings: Sequence[object]) -> list[str]:
             f"  {marker} {severity_label} "
             f"[{category}] {style(finding_id, 'bold')} - "
         )
-        title_lines = wrap(title, width=max(32, 110 - len(plain_prefix)))
+        title_lines = _wrap_balanced(
+            title, width=max(32, _console_width() - len(plain_prefix))
+        )
         if title_lines:
             lines.append(f"{head}{title_lines[0]}")
             continuation_indent = " " * len(plain_prefix)
@@ -304,6 +306,34 @@ def _doctor_findings_summary_lines(findings: Sequence[object]) -> list[str]:
     remaining = len(findings) - max_items
     if remaining > 0:
         lines.append(f"  ... {remaining} more finding(s) in the Doctor report.")
+    return lines
+
+
+def _console_width() -> int:
+    """Usable console width, clamped so output stays readable."""
+    try:
+        columns = shutil.get_terminal_size((100, 24)).columns
+    except (OSError, ValueError):
+        columns = 100
+    return max(60, min(columns - 2, 160))
+
+
+def _wrap_balanced(text: str, width: int) -> list[str]:
+    """Wrap ``text`` without leaving a single word alone on the last line.
+
+    ``textwrap.wrap`` greedily fills every line, which regularly strands
+    one short word on its own ("... available for" / "release"). When
+    that happens we retry with progressively narrower widths and keep
+    the first result that has the same line count but no orphan.
+    """
+    lines = wrap(text, width=width)
+    if len(lines) < 2 or len(lines[-1].split()) > 1:
+        return lines
+    floor = max(32, width // 2)
+    for candidate in range(width - 1, floor - 1, -1):
+        trial = wrap(text, width=candidate)
+        if len(trial) == len(lines) and len(trial[-1].split()) > 1:
+            return trial
     return lines
 
 

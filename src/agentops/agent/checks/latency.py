@@ -31,7 +31,10 @@ def run_latency_check(
                     id="latency.p95_production",
                     severity=severity,
                     category=Category.PERFORMANCE,
-                    title="Production p95 latency exceeds threshold",
+                    title=(
+                        f"Production p95 latency is {p95:.1f}s, above the "
+                        f"{threshold:.0f}s threshold"
+                    ),
                     summary=(
                         f"Application Insights reports p95 latency of "
                         f"{p95:.2f}s across {monitor.request_count} "
@@ -66,7 +69,10 @@ def run_latency_check(
                     id="latency.eval_avg",
                     severity=severity,
                     category=Category.PERFORMANCE,
-                    title="Evaluation average latency above threshold",
+                    title=(
+                        f"Evaluation average latency is {avg_latency:.1f}s, "
+                        f"above the {threshold:.0f}s threshold"
+                    ),
                     summary=(
                         f"Run `{latest.run_id}` averaged "
                         f"{avg_latency:.2f}s per item, above the "

@@ -117,7 +117,11 @@ def _check_thresholds_block(config: Optional[dict]) -> List[Finding]:
             id="opex.no_thresholds",
             severity=Severity.WARNING,
             category=Category.OPERATIONAL_EXCELLENCE,
-            title="agentops.yaml has no explicit thresholds",
+            title=(
+                "agentops.yaml has no `thresholds:` block, so the eval "
+                "gate uses auto-defaults instead of pass/fail limits "
+                "your team agreed on"
+            ),
             summary=(
                 "Without a `thresholds:` block, AgentOps relies entirely "
                 "on auto-defaults to decide whether a run passes or "
