@@ -380,6 +380,7 @@ class ObserveFacade:
             else AttributionConfigurationLoadResult(state="absent")
         )
 
+        credential: TokenCredential | None
         if aggregate_credential is not None:
             credential = aggregate_credential
         elif auth_mode == "local":
@@ -396,8 +397,10 @@ class ObserveFacade:
         else:
             # Hosted mode: preserved byte-identical -- UAMI-only aggregate
             # credential built from the hosted identity configuration.
+            # Hosted mode guarantees the identity variables are populated;
+            # cast narrows the Optional without altering runtime behaviour.
             credential = build_aggregate_credential(
-                uami_client_id, credential_factory=credential_factory
+                cast(str, uami_client_id), credential_factory=credential_factory
             )
         self._discovery_client = discovery_client or AzureDiscoveryClient(
             credential=credential, clock=clock
@@ -407,7 +410,9 @@ class ObserveFacade:
         )
         self._cache = cache or ObserveCache(ttl_seconds=CACHE_TTL_SECONDS)
         runtime_identity = (
-            uami_client_id if auth_mode == "hosted" else LOCAL_DEVELOPER_IDENTITY
+            cast(str, uami_client_id)
+            if auth_mode == "hosted"
+            else LOCAL_DEVELOPER_IDENTITY
         )
         self._runtime = _AggregateRuntimeContext(uami_client_id=runtime_identity)
         self._service = ObserveService(
@@ -610,10 +615,11 @@ class ObserveFacade:
         if self._auth_mode == "local":
             raise LocalDelegatedUnavailableError()
         user_assertion = user_context.get(ACCESS_TOKEN_CONTEXT_KEY) or ""
+        # The local-mode guard above means hosted identity is configured here.
         credential = build_delegated_monitor_credential(
-            tenant_id=self._tenant_id,
-            client_id=self._application_client_id,
-            uami_client_id=self._uami_client_id,
+            tenant_id=cast(str, self._tenant_id),
+            client_id=cast(str, self._application_client_id),
+            uami_client_id=cast(str, self._uami_client_id),
             user_assertion=user_assertion,
             credential_factory=self._credential_factory,
             obo_factory=self._obo_factory,
@@ -795,9 +801,9 @@ class ObserveFacade:
         # HTTP 422 with an actionable message; there is no identity-only
         # fallback for a protected-table read (FR-072).
         credential = build_delegated_monitor_credential(
-            tenant_id=self._tenant_id,
-            client_id=self._application_client_id,
-            uami_client_id=self._uami_client_id,
+            tenant_id=cast(str, self._tenant_id),
+            client_id=cast(str, self._application_client_id),
+            uami_client_id=cast(str, self._uami_client_id),
             user_assertion=user_assertion,
             credential_factory=self._credential_factory,
             obo_factory=self._obo_factory,

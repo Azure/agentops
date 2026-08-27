@@ -454,7 +454,7 @@ def _iso_or_none(value: Any) -> Optional[str]:
 def _build_by_category(
     healthy_rules: Sequence[AlertRuleSnapshot],
 ) -> Mapping[str, str]:
-    covered = set()
+    covered: set[str] = set()
     for rule in healthy_rules:
         covered.update(rule.signal_categories)
     return {
@@ -485,6 +485,7 @@ def evaluate_coverage(
     relevant = [r for r in ordered if r.scoped_to_target]
     healthy = [r for r in relevant if r.is_healthy]
     provenance = tuple(dict.fromkeys(str(p) for p in iac_provenance if p))
+    resolved_reason: Optional[str]
 
     if healthy:
         if recent_signal is False:

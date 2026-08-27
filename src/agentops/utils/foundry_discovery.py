@@ -689,8 +689,8 @@ def _discover(
     key = f"{kind}:{project_endpoint}"
     cached = _discovery_lookup(key)
     if cached is not None:
-        targets, reason = cached
-        return list(targets), reason
+        cached_targets, reason = cached
+        return list(cached_targets), reason
 
     client, reason = _build_project_client(project_endpoint)
     if client is None:

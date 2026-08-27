@@ -610,7 +610,7 @@ def summarize_redteam_readiness(
             **base,
         )
 
-    if timestamp_ok and age_days > REDTEAM_STALE_AFTER_DAYS:
+    if age_days is not None and age_days > REDTEAM_STALE_AFTER_DAYS:
         return RedTeamReadiness(
             state=REDTEAM_STATE_STALE,
             message=(

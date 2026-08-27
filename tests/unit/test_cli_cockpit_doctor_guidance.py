@@ -53,7 +53,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def _stub_cockpit_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     """Neutralize every side effect except the guidance echo under test."""
-    import uvicorn
+    uvicorn = pytest.importorskip("uvicorn")
     import webbrowser
 
     monkeypatch.setattr(cli_app, "_port_in_use", lambda *a, **k: False)

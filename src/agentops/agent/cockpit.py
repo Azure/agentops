@@ -2937,7 +2937,6 @@ def _build_alert_readiness_row(
         STATE_CANNOT_VERIFY,
         STATE_MISCONFIGURED,
         STATE_NO_RECENT_SIGNAL,
-        STATE_NOT_APPLICABLE,
         STATE_NOT_CONFIGURED,
         STATE_READY,
         discover_alert_coverage,
