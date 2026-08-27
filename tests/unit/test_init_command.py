@@ -357,6 +357,7 @@ def test_run_wizard_calls_on_answer_for_each_validated_input(
     replies = iter(
         [
             "https://acct.services.ai.azure.com/api/projects/p",  # project_endpoint
+            "1",  # target kind: Foundry prompt agent
             "my-agent:1",  # agent
             ".agentops/data/smoke.jsonl",  # dataset
         ]
@@ -495,6 +496,6 @@ def test_run_wizard_reconfigure_forces_questions_even_when_defaults_present(
 
     assert prompt_calls == [
         "Foundry project endpoint",
-        "Agent / orchestrator endpoint",
+        "Choose a target kind [1-5]",
         "Dataset path",
     ]

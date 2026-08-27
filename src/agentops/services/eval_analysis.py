@@ -246,9 +246,10 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
         data = load_yaml(path)
         if not isinstance(data, dict):
             raise ValueError("expected a mapping")
-        agent = str(data.get("agent", "") or "")
+        agent = str(data.get("agent", "") or "").strip()
         dataset_value = data.get("dataset")
-        target = classify_agent(agent, data.get("protocol"))
+        target = classify_agent(agent, data.get("protocol")) if agent else None
+        target_kind = target.kind if target is not None else None
         if dataset_value is None:
             diagnosis = None
             dataset_exists = False
@@ -273,7 +274,12 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
             EvalSignal(
                 "agentops_config",
                 "AgentOps config",
-                f"agentops.yaml targets {target.kind}.",
+                (
+                    f"agentops.yaml targets {target.kind}."
+                    if target is not None
+                    else "agentops.yaml configures project observability only "
+                    "(no evaluation target)."
+                ),
                 "agentops.yaml",
             )
         ]
@@ -312,13 +318,18 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
             else []
         )
         ready = bool(agent and dataset_value and dataset_exists and "input" in dataset_columns)
-        status = "ready" if ready else "incomplete"
+        if not agent:
+            status = "observability_only"
+        elif ready:
+            status = "ready"
+        else:
+            status = "incomplete"
         return _ConfigInfo(
             has_config=True,
             ready=ready,
             status=status,
             dataset_status=dataset_status,
-            target_kind=target.kind,
+            target_kind=target_kind,
             dataset_exists=dataset_exists,
             dataset_columns=dataset_columns,
             signals=signals,
@@ -581,6 +592,14 @@ def _next_steps(
     steps = [
         "Use this analysis as the triage output before `agentops eval run`.",
     ]
+    if config_info.status == "observability_only":
+        steps = [
+            "No evaluation target is configured; Doctor, Cockpit, and Observe run "
+            "in project-observability-only mode.",
+            "Add an `agent:` value to agentops.yaml (or re-run `agentops init`) when "
+            "you are ready to evaluate a target.",
+        ]
+        return steps
     if skills:
         if not skills_installed:
             steps.append("Install the AgentOps Copilot skills first: `agentops skills install --platform copilot`.")
@@ -619,6 +638,8 @@ def _classification(config_info: _ConfigInfo, scenario_hint: str) -> str:
         return "unconfigured AI project"
     if config_info.target_kind:
         return f"{config_info.target_kind} evaluation setup ({scenario_hint})"
+    if config_info.status == "observability_only":
+        return "project observability only (no evaluation target)"
     return f"AgentOps evaluation setup ({scenario_hint})"
 
 

@@ -656,11 +656,16 @@ class AgentOpsConfig(BaseModel):
         Schema version. Must be ``1`` in this release.
 
     ``agent``
-        The thing under evaluation. One of:
+        The thing under evaluation. **Optional.** One of:
 
         * ``"<name>:<version>"`` - a Foundry prompt agent (e.g. ``"my-rag:3"``).
         * ``"https://..."`` - a Foundry hosted endpoint or any HTTP/JSON agent.
         * ``"model:<deployment>"`` - a Foundry model deployment (raw model).
+
+        When omitted, the workspace runs in *project-observability-only* mode:
+        Doctor, Cockpit, Observe, and project-level Azure discovery all work,
+        while evaluation commands (``eval run``, ``prompt pull``, azd eval
+        paths) fail early with exit code 1 until a target is configured.
 
         See :func:`classify_agent` for the full resolution table.
 
@@ -733,7 +738,13 @@ class AgentOpsConfig(BaseModel):
     """
 
     version: int = Field(..., description="Schema version. Must be 1.")
-    agent: str = Field(..., description="Target identifier (name:version, URL, or model:deployment)")
+    agent: Optional[str] = Field(
+        None,
+        description=(
+            "Optional target identifier (name:version, URL, or "
+            "model:deployment). Omit for project-observability-only mode."
+        ),
+    )
     dataset: Path | str = Field(
         ...,
         description="Path or canonical Azure Storage HTTPS URL to a JSONL dataset",
@@ -970,10 +981,17 @@ class AgentOpsConfig(BaseModel):
 
     @field_validator("agent")
     @classmethod
-    def _agent_non_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("agent must be non-empty")
-        return value.strip()
+    def _agent_optional(cls, value: Optional[str]) -> Optional[str]:
+        """Normalize ``agent`` to a non-empty string or ``None``.
+
+        An omitted, empty, or whitespace-only value means "no evaluation
+        target configured" (project-observability-only mode), never a
+        validation error.
+        """
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     @model_validator(mode="after")
     def _validate_publish_compat(self) -> "AgentOpsConfig":
@@ -994,6 +1012,38 @@ class AgentOpsConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate_protocol_compat(self) -> "AgentOpsConfig":
+        if not self.agent:
+            # Project-observability-only mode. There is no target to classify,
+            # so protocol/HTTP-shaping fields have nothing to attach to. Setting
+            # them without a target is a silent no-op at best, so reject it with
+            # a clear message rather than pretending the config is meaningful.
+            if (
+                self.protocol is not None
+                or self.request_field
+                or self.response_field
+                or self.response_fields
+                or self.tool_calls_field
+                or self.headers
+                or self.auth_header_env
+                or self.response_mode != "json"
+                or self.stream is not None
+                or self.auth_header_name
+                or self.auth_value_template
+            ):
+                raise ValueError(
+                    "protocol / request_field / response_field / "
+                    "tool_calls_field / headers / auth_header_env / "
+                    "response_mode / stream / auth_header_name / "
+                    "auth_value_template require an 'agent' target. Configure "
+                    "'agent' or remove these fields."
+                )
+            if self.execution in {"cloud", "azd"}:
+                raise ValueError(
+                    f"execution: {self.execution} requires an 'agent' target. "
+                    "Configure 'agent' or use execution: local (or omit it) "
+                    "for a project-observability-only workspace."
+                )
+            return self
         kind = classify_agent(self.agent, self.protocol).kind
         if self.execution == "azd" and kind not in {"foundry_prompt", "foundry_hosted"}:
             raise ValueError(
@@ -1049,8 +1099,18 @@ class AgentOpsConfig(BaseModel):
         ]
 
     def resolved_target(self) -> "TargetResolution":
-        """Return the resolved target classification."""
+        """Return the resolved target classification.
+
+        Raises :class:`ValueError` with an actionable message when no ``agent``
+        target is configured. Callers on agent-dependent paths should guard on
+        :attr:`has_agent` first and fail early with exit code 1.
+        """
         return classify_agent(self.agent, self.protocol)
+
+    @property
+    def has_agent(self) -> bool:
+        """``True`` when an evaluation target is configured."""
+        return bool(self.agent)
 
     def publish_target(self) -> Optional[PublishTarget]:
         """Return the internal publisher dispatch key, or ``None`` if disabled.
@@ -1071,6 +1131,15 @@ class AgentOpsConfig(BaseModel):
 # ---------------------------------------------------------------------------
 # Agent classifier
 # ---------------------------------------------------------------------------
+
+#: Actionable message raised whenever an agent-dependent code path is reached
+#: with no ``agent`` target configured. Kept in one place so CLI commands and
+#: the classifier surface identical remediation guidance.
+NO_AGENT_TARGET_MESSAGE = (
+    "no evaluation target is configured. Add an 'agent' value to "
+    "agentops.yaml or re-run 'agentops init' (or pass --agent) to configure "
+    "one. Doctor, Cockpit, and Observe run without a target."
+)
 
 
 @dataclass(frozen=True)
@@ -1156,7 +1225,7 @@ AGENT_OVERRIDE_ENV = "AGENTOPS_AGENT"
 _BARE_AGENT_VERSION_RE = re.compile(r"\d+")
 
 
-def apply_agent_version_override(agent: str, override: str) -> str:
+def apply_agent_version_override(agent: Optional[str], override: str) -> str:
     """Resolve the effective ``agent`` expression for an overridden run.
 
     *override* is either a complete agent expression (a hosted endpoint URL,
@@ -1165,7 +1234,9 @@ def apply_agent_version_override(agent: str, override: str) -> str:
     so CI only has to carry the number Foundry just produced instead of
     rebuilding the whole endpoint URL.
 
-    An empty *override* leaves *agent* untouched.
+    An empty *override* leaves *agent* untouched. When *agent* is ``None`` (a
+    project-observability-only workspace) the override must be a complete agent
+    expression; a bare version has no target to substitute into and raises.
 
     Known limitation: a non-numeric *override* is returned verbatim with no
     validation, so malformed input (``12abc``, a truncated endpoint URL) is
@@ -1175,7 +1246,7 @@ def apply_agent_version_override(agent: str, override: str) -> str:
     starts generating these values programmatically.
     """
 
-    base = agent.strip()
+    base = (agent or "").strip()
     candidate = override.strip()
     if not candidate:
         return base
@@ -1215,7 +1286,7 @@ def is_unexpanded_ci_token(value: str) -> bool:
 
 
 def resolve_agent_override(
-    agent: str,
+    agent: Optional[str],
     *,
     explicit: str | None = None,
     env: Mapping[str, str] | None = None,
@@ -1243,10 +1314,14 @@ def resolve_agent_override(
 
 
 def classify_agent(
-    agent: str,
+    agent: Optional[str],
     protocol: Optional[Protocol] = None,
 ) -> TargetResolution:
     """Classify the ``agent`` value into a target kind.
+
+    Raises :class:`ValueError` with :data:`NO_AGENT_TARGET_MESSAGE` when
+    *agent* is ``None`` or blank so that no call site can silently classify a
+    missing target.
 
     Resolution table:
 
@@ -1266,6 +1341,8 @@ def classify_agent(
     | ``https://other-host``  | omitted or ``http-json`` | ``http_json``         |
     +-------------------------+--------------------------+-----------------------+
     """
+    if not agent or not agent.strip():
+        raise ValueError(NO_AGENT_TARGET_MESSAGE)
     raw = agent.strip()
 
     if raw.lower().startswith("model:"):

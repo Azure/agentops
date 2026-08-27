@@ -405,7 +405,7 @@ That's a complete config. AgentOps:
 | Field | Required | Description |
 |---|---|---|
 | `version` | yes | Schema version. Must be `1`. |
-| `agent` | yes | Target identifier. See "Target kinds" below. |
+| `agent` | no | Target identifier. See "Target kinds" below. Omit it to run in project-observability-only mode (Doctor, Cockpit, and Observe against the Foundry project with no evaluation target). Required for `eval run`, `prompt pull`, and the azd eval paths. |
 | `dataset` | yes | Relative/absolute JSONL path, or canonical Blob/ADLS Gen2 HTTPS object URL, with one evaluation row per line. |
 | `thresholds` | no | Metric gates such as `">=3"` or `"<=10"`. |
 | `protocol` | no | URL protocol: `responses`, `invocations`, or `http-json`. |

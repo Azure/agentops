@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from agentops.core.agentops_config import (
     AGENT_OVERRIDE_ENV,
+    NO_AGENT_TARGET_MESSAGE,
     AgentOpsConfig,
     DatasetSyncConfig,
     ObservabilityConfig,
@@ -774,3 +775,80 @@ class TestAgentOpsConfig:
         )
         assert cfg.evaluators is not None
         assert cfg.evaluators[0].name == "GroundednessEvaluator"
+
+
+# ---------------------------------------------------------------------------
+# Agent-less (project-observability-only) mode
+# ---------------------------------------------------------------------------
+
+
+class TestAgentOptional:
+    """``agent`` is optional; omitting it enables observability-only mode."""
+
+    def test_classify_agent_none_raises_actionable_message(self) -> None:
+        with pytest.raises(ValueError, match="no evaluation target is configured"):
+            classify_agent(None)
+
+    def test_classify_agent_none_matches_shared_constant(self) -> None:
+        try:
+            classify_agent(None)
+        except ValueError as exc:
+            assert str(exc) == NO_AGENT_TARGET_MESSAGE
+        else:  # pragma: no cover - defensive
+            pytest.fail("classify_agent(None) should raise")
+
+    def test_config_valid_without_agent(self) -> None:
+        cfg = AgentOpsConfig(version=1, dataset="./qa.jsonl")
+        assert cfg.agent is None
+        assert cfg.has_agent is False
+
+    def test_blank_agent_is_normalized_to_none(self) -> None:
+        cfg = AgentOpsConfig(version=1, agent="   ", dataset="./qa.jsonl")
+        assert cfg.agent is None
+        assert cfg.has_agent is False
+
+    def test_config_with_agent_reports_has_agent(self) -> None:
+        cfg = AgentOpsConfig(version=1, agent="my-rag:3", dataset="./qa.jsonl")
+        assert cfg.has_agent is True
+
+    def test_resolved_target_without_agent_raises(self) -> None:
+        cfg = AgentOpsConfig(version=1, dataset="./qa.jsonl")
+        with pytest.raises(ValueError, match="no evaluation target is configured"):
+            cfg.resolved_target()
+
+    def test_dataset_still_required(self) -> None:
+        with pytest.raises(ValidationError):
+            AgentOpsConfig(version=1)  # type: ignore[call-arg]
+
+    def test_protocol_without_agent_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="require an 'agent' target"):
+            AgentOpsConfig(
+                version=1,
+                dataset="./qa.jsonl",
+                protocol="http-json",
+            )
+
+    def test_http_shaping_field_without_agent_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="require an 'agent' target"):
+            AgentOpsConfig(
+                version=1,
+                dataset="./qa.jsonl",
+                request_field="prompt",
+            )
+
+    def test_cloud_execution_without_agent_is_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="requires an 'agent' target"):
+            AgentOpsConfig(
+                version=1,
+                dataset="./qa.jsonl",
+                execution="cloud",
+            )
+
+    def test_local_execution_without_agent_is_allowed(self) -> None:
+        cfg = AgentOpsConfig(
+            version=1,
+            dataset="./qa.jsonl",
+            execution="local",
+        )
+        assert cfg.has_agent is False
+        assert cfg.execution == "local"

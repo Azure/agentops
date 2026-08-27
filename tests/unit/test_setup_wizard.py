@@ -12,6 +12,7 @@ import pytest
 
 import agentops.services.setup_wizard as setup_wizard
 from agentops.services.setup_wizard import (
+    AGENT_CHOICE_LATER,
     WizardAnswers,
     apply_answers,
     collect_snapshot,
@@ -607,6 +608,7 @@ def test_run_wizard_collects_core_answers(
     prompt = _scripted_prompt(
         [
             "https://acct.services.ai.azure.com/api/projects/p",
+            "1",  # guided menu: Foundry prompt agent
             "my-bot:9",
             "data.jsonl",
         ]
@@ -628,6 +630,7 @@ def test_run_wizard_does_not_prompt_for_appinsights(
     prompt = _scripted_prompt(
         [
             "https://acct.services.ai.azure.com/api/projects/p",
+            "1",  # guided menu: Foundry prompt agent
             "my-bot:9",
             "data.jsonl",
         ]
@@ -728,7 +731,7 @@ def test_run_wizard_reprompts_blank_required_values(
         [
             "",
             "https://acct.services.ai.azure.com/api/projects/p",
-            "",
+            "1",  # guided menu: Foundry prompt agent
             "my-bot:9",
             "",
         ]
@@ -742,7 +745,6 @@ def test_run_wizard_reprompts_blank_required_values(
     assert answers.dataset == ".agentops/data/smoke.jsonl"
     output = "\n".join(messages)
     assert "Foundry project endpoint is required." in output
-    assert "Agent is required." in output
 
 
 def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
@@ -769,7 +771,7 @@ def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
     (data_dir / "smoke.jsonl").write_text("{}\n", encoding="utf-8")
     (data_dir / "travel-smoke.jsonl").write_text("{}\n", encoding="utf-8")
 
-    replies = iter(["", "travel-agent:1", ".agentops/data/travel-smoke.jsonl"])
+    replies = iter(["", "1", "travel-agent:1", ".agentops/data/travel-smoke.jsonl"])
     prompt_calls: list[tuple[str, object]] = []
 
     def prompt(question: str, default):  # noqa: ANN001
@@ -785,7 +787,8 @@ def test_run_wizard_force_prompt_fields_reasks_seed_agent_and_dataset(
 
     assert prompt_calls == [
         ("Foundry project endpoint", "https://acct.services.ai.azure.com/api/projects/p"),
-        ("Agent / orchestrator endpoint", None),
+        ("Choose a target kind [1-5]", AGENT_CHOICE_LATER),
+        ("Foundry prompt agent (<name>:<version>)", None),
         ("Dataset path", ".agentops/data/smoke.jsonl"),
     ]
     assert answers.project_endpoint is None
@@ -820,15 +823,21 @@ def test_run_wizard_reasks_placeholder_agent(
 
     def prompt(question: str, default):  # noqa: ANN001
         prompt_calls.append((question, default))
-        return "" if question == "Foundry project endpoint" else "http://127.0.0.1:8000/chat"
+        if question == "Foundry project endpoint":
+            return ""
+        if question == "Choose a target kind [1-5]":
+            return "4"  # external HTTP agent
+        return "http://127.0.0.1:8000/chat"
 
     answers = run_wizard(tmp_path, prompt=prompt, echo=lambda _msg: None)
 
     assert prompt_calls == [
         ("Foundry project endpoint", "https://acct.services.ai.azure.com/api/projects/p"),
-        ("Agent / orchestrator endpoint", None),
+        ("Choose a target kind [1-5]", AGENT_CHOICE_LATER),
+        ("External HTTP agent URL", None),
     ]
     assert answers.agent == "http://127.0.0.1:8000/chat"
+    assert answers.protocol == "http-json"
 
 
 def test_run_wizard_appinsights_is_not_interactive_even_when_missing(
@@ -916,6 +925,7 @@ def test_run_wizard_re_prompts_on_invalid_input(
         [
             "not a url",
             "https://acct.services.ai.azure.com/api/projects/p",
+            "1",  # guided menu: Foundry prompt agent
             "bare-name",
             "my-bot:2",
             "data.jsonl",

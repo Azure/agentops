@@ -1997,3 +1997,121 @@ def test_missing_delegated_assertion_is_private_and_never_retried(
         ),
     }
     assert len(service.attribution_calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Project-observability-only mode (agent-less workspace)
+# ---------------------------------------------------------------------------
+
+
+def _write_observability_only_workspace(tmp_path: Path) -> None:
+    """A workspace whose agentops.yaml has a dataset but no agent target."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+
+
+def test_readiness_agentless_workspace_is_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    _write_observability_only_workspace(tmp_path)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    assert readiness["observability_only"] is True
+    assert readiness["mode_label"] == "Project observability only"
+
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    # An explicit informational "Evaluation target" row is present at index 0.
+    assert readiness["checks"][0]["title"] == "Evaluation target"
+    assert readiness["checks"][0]["status"] == "info"
+    # Agent/eval-dependent release gates are not-applicable, never failed.
+    for title in (
+        "CI eval gate (workflow on PRs)",
+        "CI/CD deploy stage",
+        "Release evidence pack",
+    ):
+        if title in by_title:
+            assert by_title[title]["status"] == "na"
+
+
+def test_readiness_legacy_placeholder_is_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    # The legacy my-agent:1 placeholder is treated as "no target configured".
+    assert readiness["observability_only"] is True
+
+
+def test_readiness_real_agent_is_not_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: travel-agent:3\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    assert readiness["observability_only"] is False
+    titles = [c["title"] for c in readiness["checks"]]
+    assert "Evaluation target" not in titles
+
+
+def test_next_actions_observability_only_emits_single_configure_action():
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "observability_only": True,
+            "checks": [
+                {"title": "Evaluation target", "status": "info", "detail": "x"},
+                {"title": "CI eval gate (workflow on PRs)", "status": "na", "detail": "y"},
+                {"title": "CI/CD deploy stage", "status": "na", "detail": "z"},
+                {"title": "Release evidence pack", "status": "na", "detail": "w"},
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    # Exactly one configure-target action; agent-dependent na checks add none.
+    assert titles == ["Configure an evaluation target when ready"]
+
+
+def test_cockpit_html_agentless_not_blanket_no_go(tmp_path: Path):
+    _write_observability_only_workspace(tmp_path)
+
+    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
+    html = render_cockpit_html(payload)
+
+    # The workspace is labelled project-observability-only, not NO-GO.
+    assert "Project observability only" in html

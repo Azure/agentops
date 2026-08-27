@@ -328,3 +328,37 @@ def test_eval_analysis_text_softens_hosted_agent_kind(tmp_path: Path) -> None:
 
     assert "Foundry hosted agent" in text
     assert "foundry_hosted" not in text
+
+
+def test_eval_analysis_agentless_config_degrades_to_observability_only(tmp_path: Path) -> None:
+    """`agentops eval analyze` is a read-only inspection: an agent-less config
+    is a normal analyzed state (project observability only), not an error."""
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "hello", "expected": "hi"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.config_status == "observability_only"
+
+
+def test_cli_eval_analyze_agentless_exits_zero(tmp_path: Path) -> None:
+    """The CLI degrades gracefully (exit 0) for an agent-less workspace."""
+    (tmp_path / "data.jsonl").write_text(
+        '{"input": "hello", "expected": "hi"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\ndataset: data.jsonl\n",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["eval", "analyze", "--dir", str(tmp_path)])
+
+    assert result.exit_code == 0, result.stdout
+    assert "observability" in result.stdout.lower()

@@ -1884,6 +1884,34 @@ def _build_open_in_foundry(
     }
 
 
+_LEGACY_AGENT_PLACEHOLDER = "my-agent:1"
+
+_OBSERVABILITY_ONLY_NA_CHECKS = frozenset(
+    {
+        "CI eval gate (workflow on PRs)",
+        "CI/CD deploy stage",
+        "Release evidence pack",
+    }
+)
+
+
+def _workspace_agent_configured(agentops_config: Dict[str, Any]) -> bool:
+    """True when a real evaluation target is configured.
+
+    A blank value or the legacy ``my-agent:1`` placeholder both count as
+    "no target configured" so pre-existing workspaces that still ship the
+    placeholder are treated as project-observability-only, not as a real
+    agent.
+    """
+    value = agentops_config.get("agent") if isinstance(agentops_config, dict) else None
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    return text != _LEGACY_AGENT_PLACEHOLDER
+
+
 def _build_readiness_checklist(
     workspace: Path,
     telemetry: Dict[str, Any],
@@ -2158,6 +2186,42 @@ def _build_readiness_checklist(
         }
     )
 
+    # Project-observability-only mode: the workspace is initialized
+    # (agentops.yaml exists) but no evaluation target is configured. The
+    # agent- and eval-dependent release gates are then not-applicable rather
+    # than failing, and the cockpit must not blanket NO-GO the workspace.
+    config_present = (workspace / "agentops.yaml").exists()
+    observability_only = config_present and not _workspace_agent_configured(
+        agentops_config
+    )
+    mode_label = ""
+    if observability_only:
+        mode_label = "Project observability only"
+        na_detail = (
+            "Not applicable in project-observability-only mode. This release "
+            "gate applies once an evaluation target is configured. Run "
+            "<code>agentops init</code> to add one."
+        )
+        for check in checks:
+            if check.get("title") in _OBSERVABILITY_ONLY_NA_CHECKS:
+                check["status"] = "na"
+                check["detail"] = na_detail
+        checks.insert(
+            0,
+            {
+                "title": "Evaluation target",
+                "status": "info",
+                "detail": (
+                    "Project observability only — no evaluation target is "
+                    "configured. Doctor, Cockpit, and Observe run against the "
+                    "Foundry project; agent and eval release gates are "
+                    "not-applicable. Configure a target with "
+                    "<code>agentops init</code> when you are ready to gate an "
+                    "agent."
+                ),
+            },
+        )
+
     passing = sum(1 for c in checks if c["status"] == "ok")
     total = len(checks)
     return {
@@ -2165,6 +2229,8 @@ def _build_readiness_checklist(
         "passing": passing,
         "total": total,
         "label": f"{passing}/{total} ready",
+        "observability_only": observability_only,
+        "mode_label": mode_label,
     }
 
 
@@ -2284,6 +2350,23 @@ def _build_next_actions(
         return {"actions": actions}
 
     checks = readiness.get("checks", [])
+    # Project-observability-only: surface exactly ONE "configure a target"
+    # action instead of one per agent-dependent gate (those are now na).
+    if readiness.get("observability_only"):
+        actions.append(
+            {
+                "title": "Configure an evaluation target when ready",
+                "detail": (
+                    "This workspace runs in project-observability-only mode: "
+                    "Doctor, Cockpit, and Observe work against the Foundry "
+                    "project with no agent configured. Add an evaluation "
+                    "target with <code>agentops init</code> to unlock eval "
+                    "and release gates."
+                ),
+                "cta": "Configure a target",
+                "anchor": "#section-readiness",
+            }
+        )
     # Only "warn" is genuinely missing required work; "cannot_verify" is a
     # softer prompt to enable verification. Everything else (ok/muted/info/na/
     # hidden) produces no action at all.
@@ -3693,19 +3776,30 @@ def _render_status_cards_section(
     green = sum(1 for c in checks if c.get("status") == "ok")
     total = len(checks)
     readiness_label = readiness.get("label") or f"{green}/{total} ready"
-    if total == 0:
-        readiness_tone = "muted"
-    elif green >= total:
-        readiness_tone = "ok"
+    if readiness.get("observability_only"):
+        # No evaluation target is configured: this is a first-class supported
+        # mode, not a failed release. Do not blanket NO-GO; label it clearly.
+        readiness_card = _card(
+            title="Readiness",
+            value="OBSERVABILITY ONLY",
+            tone="info",
+            sub=readiness.get("mode_label") or "Project observability only",
+            anchor="#section-readiness",
+        )
     else:
-        readiness_tone = "warn"
-    readiness_card = _card(
-        title="Readiness",
-        value="GO" if readiness_tone == "ok" else "NO-GO",
-        tone=readiness_tone,
-        sub=readiness_label,
-        anchor="#section-readiness",
-    )
+        if total == 0:
+            readiness_tone = "muted"
+        elif green >= total:
+            readiness_tone = "ok"
+        else:
+            readiness_tone = "warn"
+        readiness_card = _card(
+            title="Readiness",
+            value="GO" if readiness_tone == "ok" else "NO-GO",
+            tone=readiness_tone,
+            sub=readiness_label,
+            anchor="#section-readiness",
+        )
 
     headline = watchdog.get("headline_cards") or []
 

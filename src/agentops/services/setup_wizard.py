@@ -50,16 +50,39 @@ PROJECT_ENDPOINT_HELP = (
     "Example: https://acct.services.ai.azure.com/api/projects/proj-default"
 )
 
+# Legacy placeholder that older workspaces may still carry in agentops.yaml.
+# The wizard NEVER writes this value again; it is only recognised on read so a
+# pre-existing ``my-agent:1`` is treated as "no target configured" rather than a
+# real evaluation target. See :func:`is_placeholder_agent`.
 AGENT_PLACEHOLDER_VALUE = "my-agent:1"
 AZ_CLI_DISCOVERY_TIMEOUT_SECONDS = 5
 
-AGENT_TITLE = "Agent or orchestrator endpoint"
+AGENT_TITLE = "Evaluation target (optional)"
 AGENT_HELP = (
-    "What you are evaluating. One of:\n"
-    "  * <name>:<version> — Foundry prompt agent (e.g. quickstart-agent:2)\n"
-    "  * model:<deployment> — Foundry model deployment\n"
-    "  * http://... or https://... — an orchestrator, hosted endpoint, "
-    "or any HTTP/JSON agent (e.g. http://127.0.0.1:8000/chat)"
+    "What you want to evaluate. This is OPTIONAL — choose 'Configure later'\n"
+    "to run project observability only (Doctor, Cockpit, Observe) with no\n"
+    "target committed. Pick a target kind:\n"
+    "  1) Foundry prompt agent   — <name>:<version> (e.g. quickstart-agent:2)\n"
+    "  2) Foundry hosted agent    — https://<res>.services.ai.azure.com/"
+    "api/projects/<proj>/agents/<name>\n"
+    "  3) Foundry model deploy    — model:<deployment> (e.g. model:gpt-4.1)\n"
+    "  4) External HTTP agent     — any https:// endpoint (ACA, AKS, "
+    "LangGraph, custom)\n"
+    "  5) Configure later         — project observability only, no target"
+)
+
+# Numeric menu keys for the guided target-kind choice.
+AGENT_CHOICE_PROMPT = "1"
+AGENT_CHOICE_HOSTED_URL = "2"
+AGENT_CHOICE_MODEL = "3"
+AGENT_CHOICE_HTTP = "4"
+AGENT_CHOICE_LATER = "5"
+
+AGENT_LATER_CONFIRMATION = (
+    "Project observability only — no evaluation target will be written to "
+    "agentops.yaml. Doctor, Cockpit, and Observe work without one; run "
+    "`agentops init` again (or set `agent:` in agentops.yaml) when you are "
+    "ready to evaluate."
 )
 
 DATASET_TITLE = "Dataset path (JSONL file with `input` / `expected` rows)"
@@ -75,9 +98,10 @@ ENV_KEY_PROJECT_ENDPOINT = "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT"
 ENV_KEY_APPINSIGHTS = "APPLICATIONINSIGHTS_CONNECTION_STRING"
 
 REQUIRED_CONFIGURATION_MESSAGE = (
-    "AgentOps needs a Foundry project endpoint, an agent, and a dataset path "
-    "before it can finish configuration. Enter the missing value, or press "
-    "Ctrl+C to cancel and re-run `agentops init` later."
+    "AgentOps needs a Foundry project endpoint and a dataset path before it can "
+    "finish configuration. The evaluation target (agent) is optional — you can "
+    "configure it later. Enter the missing value, or press Ctrl+C to cancel and "
+    "re-run `agentops init` later."
 )
 
 
@@ -112,10 +136,15 @@ class WizardAnswers:
 
     project_endpoint: Optional[str] = None
     agent: Optional[str] = None
+    protocol: Optional[str] = None
     dataset: Optional[str] = None
     appinsights_connection_string: Optional[str] = None
     project_endpoint_source: Optional[str] = None
     project_endpoint_source_path: Optional[Path] = None
+    # Set by the "Configure later" wizard choice. When true, :func:`apply_answers`
+    # strips a pre-existing legacy placeholder agent so the workspace is treated
+    # as project-observability-only rather than keeping a fake target.
+    clear_agent: bool = False
 
 
 @dataclass
@@ -213,6 +242,15 @@ def is_placeholder_agent(value: Optional[str]) -> bool:
 
 _URL_RE = re.compile(r"^https?://[^\s]+$")
 _AGENT_REF_RE = re.compile(r"^[A-Za-z0-9._\-]+:[A-Za-z0-9._\-]+$")
+_MODEL_REF_RE = re.compile(r"^model:[A-Za-z0-9._\-]+$")
+
+# Foundry portal / browser hosts. A URL rooted at one of these is something a
+# user copied from the Foundry web experience, not an addressable agent
+# endpoint. Rejected with specific guidance instead of silently accepted.
+_FOUNDRY_PORTAL_HOSTS = ("ai.azure.com", "ml.azure.com")
+
+# A Foundry data-plane host (project/agent endpoints live here).
+_FOUNDRY_SERVICES_HOST_SUFFIX = ".services.ai.azure.com"
 
 
 def validate_project_endpoint(value: str) -> Optional[str]:
@@ -224,17 +262,140 @@ def validate_project_endpoint(value: str) -> Optional[str]:
     return None
 
 
+def _url_host(value: str) -> str:
+    """Lower-cased hostname (no port) for ``value``; '' when unparseable."""
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    try:
+        netloc = urlparse(value).netloc.lower()
+    except Exception:  # noqa: BLE001
+        return ""
+    return netloc.split("@")[-1].split(":")[0]
+
+
+def _url_path(value: str) -> str:
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    try:
+        return urlparse(value).path
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def classify_agent_url_problem(value: str) -> Optional[str]:
+    """Return a specific rejection message when ``value`` is a mis-pasted URL.
+
+    Catches the two most common mistakes users make when pasting an agent:
+
+    * a Foundry **project endpoint** (``.../api/projects/<proj>`` with no
+      ``/agents/`` segment) — that belongs in ``project_endpoint``, not
+      ``agent``; and
+    * a Foundry **portal / browser** URL (``https://ai.azure.com/...``) — that
+      is a web page, not an addressable endpoint.
+
+    Returns ``None`` when the URL is a plausible agent endpoint.
+    """
+    host = _url_host(value)
+    if not host:
+        return None
+    if host in _FOUNDRY_PORTAL_HOSTS or host.endswith("." + _FOUNDRY_PORTAL_HOSTS[0]):
+        return (
+            "That looks like a Foundry portal/browser URL "
+            f"({host}), not an agent endpoint. Open your agent in Foundry, copy "
+            "its hosted endpoint URL (it contains '/agents/<name>'), or use a "
+            "<name>:<version> reference instead."
+        )
+    path = _url_path(value).lower()
+    if host.endswith(_FOUNDRY_SERVICES_HOST_SUFFIX) and "/agents/" not in path:
+        return (
+            "That looks like a Foundry project endpoint, not an agent. It has no "
+            "'/agents/<name>' segment. Set it as the project endpoint instead, "
+            "and choose a specific agent (name:version or a hosted '/agents/...' "
+            "URL) as the evaluation target."
+        )
+    return None
+
+
+def normalize_hosted_agent_url(value: str) -> tuple[Optional[str], Optional[str]]:
+    """Validate + canonicalize a pasted Foundry hosted-agent URL.
+
+    Accepts the common shapes users paste, e.g.::
+
+        https://<res>.services.ai.azure.com/api/projects/<p>/agents/<a>
+        https://<res>.services.ai.azure.com/.../agents/<a>/versions/<v>
+        https://<res>.services.ai.azure.com/.../endpoint/protocols/openai/responses
+
+    Returns ``(normalized_url, None)`` on success or ``(None, error)`` with a
+    specific, actionable message. Rejects project endpoints and portal URLs.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None, "Enter the hosted agent URL, or choose another target type."
+    if not _URL_RE.match(text):
+        return None, "Hosted agent URL must start with https:// or http://."
+    problem = classify_agent_url_problem(text)
+    if problem is not None:
+        return None, problem
+    if "/agents/" not in _url_path(text).lower():
+        return None, (
+            "A Foundry hosted agent URL must contain an '/agents/<name>' "
+            "segment. Paste the agent's hosted endpoint URL from Foundry."
+        )
+    # Normalize: drop trailing slashes and surrounding whitespace.
+    normalized = text.rstrip("/")
+    return normalized, None
+
+
 def validate_agent(value: str) -> Optional[str]:
+    """Validate an ``--agent`` value (scripted path) or a free-form entry.
+
+    Shares the URL rejection rules used by the interactive wizard so a project
+    endpoint or portal URL pasted via ``--agent`` fails with the same guidance.
+    """
     if not value:
         return None
     if _URL_RE.match(value):
-        return None
+        return classify_agent_url_problem(value)
     if _AGENT_REF_RE.match(value):
         return None
     return (
         "Agent must be one of: <name>:<version>, model:<deployment>, or "
         "an https:// URL."
     )
+
+
+def validate_foundry_prompt_ref(value: str) -> Optional[str]:
+    """Validate a ``<name>:<version>`` Foundry prompt-agent reference."""
+    text = (value or "").strip()
+    if not text:
+        return "Enter a <name>:<version> reference, or choose another target type."
+    if text.lower().startswith("model:"):
+        return "That is a model deployment. Choose the 'model deployment' target type."
+    if _URL_RE.match(text):
+        return "That is a URL. Choose the hosted-agent or external-HTTP target type."
+    if not _AGENT_REF_RE.match(text):
+        return "Use <name>:<version> (e.g. quickstart-agent:2)."
+    return None
+
+
+def validate_model_deployment(value: str) -> Optional[str]:
+    """Validate a ``model:<deployment>`` reference."""
+    text = (value or "").strip()
+    if not text:
+        return "Enter model:<deployment> (e.g. model:gpt-4.1)."
+    if not _MODEL_REF_RE.match(text):
+        return "Use model:<deployment> (e.g. model:gpt-4.1)."
+    return None
+
+
+def validate_external_http_agent(value: str) -> Optional[str]:
+    """Validate an arbitrary external HTTP/JSON agent URL."""
+    text = (value or "").strip()
+    if not text:
+        return "Enter the agent's https:// URL, or choose another target type."
+    if not _URL_RE.match(text):
+        return "External agent must be an http:// or https:// URL."
+    return None
 
 
 def validate_dataset(value: str, workspace: Path) -> Optional[str]:
@@ -410,9 +571,21 @@ def apply_answers(
         return current != new_value
 
     yaml_dirty = False
+    if answers.clear_agent and is_placeholder_agent(_as_str(yaml_data.get("agent"))):
+        # "Configure later" on a workspace still carrying the legacy placeholder:
+        # strip it so readers treat this as project-observability-only rather
+        # than a real (fake) target. We never remove a genuine agent here.
+        yaml_data.pop("agent", None)
+        yaml_data.pop("protocol", None)
+        result.yaml_fields.append("agent")
+        yaml_dirty = True
     if _changed("agent", answers.agent):
         yaml_data["agent"] = answers.agent
         result.yaml_fields.append("agent")
+        yaml_dirty = True
+    if _changed("protocol", answers.protocol):
+        yaml_data["protocol"] = answers.protocol
+        result.yaml_fields.append("protocol")
         yaml_dirty = True
     if _changed("dataset", answers.dataset):
         yaml_data["dataset"] = answers.dataset
@@ -512,7 +685,7 @@ def _write_agentops_yaml(path: Path, data: dict) -> None:
     # Preserve simple field order for readability: version, agent, dataset,
     # project_endpoint (legacy, only kept if already present), then
     # everything else.
-    ordered_keys = ["version", "agent", "dataset", "project_endpoint"]
+    ordered_keys = ["version", "agent", "protocol", "dataset", "project_endpoint"]
     ordered: dict = {}
     for key in ordered_keys:
         if key in data:
@@ -632,6 +805,106 @@ def _can_encode(text: str) -> bool:
     except (UnicodeEncodeError, LookupError):
         return False
     return True
+
+
+def _prompt_agent_target(
+    prompt: PromptFn,
+    echo: Callable[[str], None],
+) -> tuple[Optional[str], Optional[str], bool]:
+    """Run the guided evaluation-target menu.
+
+    Returns ``(agent, protocol, configure_later)``:
+
+    * choice 1-4 → ``(normalized_agent, protocol_or_None, False)``
+    * choice 5   → ``(None, None, True)`` (project observability only)
+
+    ``protocol`` is only set for the external-HTTP choice (``http-json``); the
+    Foundry choices rely on runtime auto-classification.
+    """
+    while True:
+        choice = prompt(
+            "Choose a target kind [1-5]", AGENT_CHOICE_LATER
+        ).strip()
+        if not choice:
+            # Pressing Enter defaults to "configure later": the safe,
+            # non-destructive outcome that never writes a fake target.
+            choice = AGENT_CHOICE_LATER
+
+        if choice == AGENT_CHOICE_LATER:
+            return None, None, True
+
+        if choice == AGENT_CHOICE_PROMPT:
+            label, validator, protocol = (
+                "Foundry prompt agent (<name>:<version>)",
+                validate_foundry_prompt_ref,
+                None,
+            )
+        elif choice == AGENT_CHOICE_HOSTED_URL:
+            value = _prompt_hosted_agent_url(prompt, echo)
+            if value is None:
+                continue  # user blanked out; back to the menu
+            return value, None, False
+        elif choice == AGENT_CHOICE_MODEL:
+            label, validator, protocol = (
+                "Model deployment (model:<deployment>)",
+                validate_model_deployment,
+                None,
+            )
+        elif choice == AGENT_CHOICE_HTTP:
+            label, validator, protocol = (
+                "External HTTP agent URL",
+                validate_external_http_agent,
+                "http-json",
+            )
+        else:
+            echo("  ! Enter a number between 1 and 5.")
+            continue
+
+        value = _prompt_validated_value(prompt, echo, label, validator)
+        if value is None:
+            continue  # user blanked out; back to the menu
+        return value, protocol, False
+
+
+def _prompt_validated_value(
+    prompt: PromptFn,
+    echo: Callable[[str], None],
+    label: str,
+    validator: Callable[[str], Optional[str]],
+) -> Optional[str]:
+    """Prompt for a single value, re-asking on validation error.
+
+    Returns the validated string, or ``None`` if the user entered nothing
+    (signal to return to the target-kind menu).
+    """
+    while True:
+        raw = prompt(label, None).strip()
+        if not raw:
+            return None
+        err = validator(raw)
+        if err:
+            echo("  ! " + err)
+            continue
+        return raw
+
+
+def _prompt_hosted_agent_url(
+    prompt: PromptFn,
+    echo: Callable[[str], None],
+) -> Optional[str]:
+    """Prompt for a Foundry hosted-agent URL, normalizing/rejecting as needed.
+
+    Returns the canonical URL, or ``None`` if the user entered nothing.
+    """
+    while True:
+        raw = prompt("Foundry hosted agent URL", None).strip()
+        if not raw:
+            return None
+        normalized, err = normalize_hosted_agent_url(raw)
+        if err:
+            echo("  ! " + err)
+            continue
+        return normalized
 
 
 def run_wizard(
@@ -770,7 +1043,7 @@ def run_wizard(
                 _persist("project_endpoint", value)
             break
 
-    # 2) Agent
+    # 2) Evaluation target (optional) — guided target-kind choice.
     if not agent_needs_prompt:
         _confirm_existing(AGENT_TITLE, agent_default or "")
         skipped.append("agent")
@@ -778,23 +1051,19 @@ def run_wizard(
         echo("")
         echo(AGENT_TITLE)
         echo(_indent(AGENT_HELP))
-        while True:
-            raw = prompt("Agent / orchestrator endpoint", agent_default)
-            value = raw.strip()
-            if not value:
-                if agent_default:
-                    break  # keep current
-                echo("  ! Agent is required.")
-                echo("  ! " + REQUIRED_CONFIGURATION_MESSAGE)
-                continue
-            err = validate_agent(value)
-            if err:
-                echo("  ! " + err)
-                continue
-            if value != (defaults.agent or ""):
-                answers.agent = value
-                _persist("agent", value)
-            break
+        chosen_agent, chosen_protocol, configure_later = _prompt_agent_target(
+            prompt, echo
+        )
+        if configure_later:
+            answers.clear_agent = True
+            echo(_indent(AGENT_LATER_CONFIRMATION))
+        elif chosen_agent is not None:
+            if chosen_agent != (defaults.agent or ""):
+                answers.agent = chosen_agent
+                _persist("agent", chosen_agent)
+            if chosen_protocol is not None:
+                answers.protocol = chosen_protocol
+                _persist("protocol", chosen_protocol)
 
     # 3) Dataset
     if not _should_prompt("dataset", defaults.dataset):

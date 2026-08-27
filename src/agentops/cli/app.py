@@ -510,7 +510,16 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "It is the single entrypoint for setting up a project: it "
             "scaffolds `agentops.yaml` plus the `.agentops/` starter files, "
             "and runs a question loop that fills in project endpoint, "
-            "agent, and dataset.",
+            "evaluation target, and dataset.",
+            "The evaluation target is optional. The wizard offers an explicit "
+            "target-kind choice — (1) Foundry prompt agent `<name>:<version>`, "
+            "(2) Foundry hosted agent URL, (3) model deployment "
+            "`model:<deployment>`, (4) external HTTP agent URL, or "
+            "(5) configure later / project observability only. Choice 5 writes "
+            "no `agent` key at all: Doctor, Cockpit, and Observe work fully "
+            "against just the Foundry project, and agent-dependent checks are "
+            "reported as not-applicable rather than failing. No placeholder "
+            "target is ever written.",
             "Every answer is persisted as soon as it is validated, so a "
             "Ctrl+C mid-wizard never loses values that were already entered. "
             "Re-running `agentops init` is idempotent: questions whose values "
@@ -526,11 +535,17 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "azd env when one already exists, `.agentops/.env`, and the "
             "process environment. Each question shows the current value as "
             "its default; pressing Enter keeps it.",
-            "Persists `agent` and `dataset` to `agentops.yaml` (declarative, "
-            "version-controlled). Persists the Foundry project endpoint to "
-            "`.agentops/.env` by default, or to `.azure/<env>/.env` when an "
-            "azd environment already exists or `--azd-env` is provided. App "
-            "Insights is not asked in the wizard; runtime commands try to "
+            "The evaluation-target question normalizes what you enter: hosted "
+            "agent URLs are canonicalized, while a Foundry project endpoint or "
+            "a portal/browser URL pasted as an agent is rejected with specific "
+            "guidance. Choosing 'configure later' (or accepting the default) "
+            "leaves `agent` out of `agentops.yaml` entirely — a valid, "
+            "fully-supported project-observability-only config.",
+            "Persists `agent` (when set) and `dataset` to `agentops.yaml` "
+            "(declarative, version-controlled). Persists the Foundry project "
+            "endpoint to `.agentops/.env` by default, or to `.azure/<env>/.env` "
+            "when an azd environment already exists or `--azd-env` is provided. "
+            "App Insights is not asked in the wizard; runtime commands try to "
             "discover the Foundry project's "
             "attached resource through the Azure AI Projects SDK, and "
             "`--appinsights-connection-string` remains available when you need "
@@ -541,7 +556,10 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "Supports a fully scripted mode through `--project-endpoint`, "
             "`--agent`, `--dataset`, `--appinsights-connection-string`, and "
             "`--azd-env` flags. The wizard is skipped automatically when any "
-            "of those flags is provided, or when `--no-prompt` is passed.",
+            "of those flags is provided, or when `--no-prompt` is passed. "
+            "`--no-prompt` without `--agent` produces a valid agent-less "
+            "config; `--agent` validates and normalizes through the same rules "
+            "as the interactive path.",
             "`agentops init show` prints the active configuration: azd "
             "environment when present, AgentOps local env, agentops.yaml "
             "fields, and each managed variable with its source and whether it "
@@ -552,7 +570,7 @@ EXPLAIN_PAGES: dict[tuple[str, ...], ExplainPage] = {
             "User answers entered interactively, or values supplied via flags.",
         ),
         outputs=(
-            "`agentops.yaml` — version, agent, dataset.",
+            "`agentops.yaml` — version, dataset, and an optional evaluation target.",
             "`.agentops/` — starter data and asset folders.",
             "`.agentops/.env` — local AgentOps env values when no azd env is active.",
             "`.azure/<env>/.env` — only when an azd env already exists or `--azd-env` is provided.",
@@ -1537,7 +1555,7 @@ def cmd_init(
         Optional[str],
         typer.Option(
             "--agent",
-            help="Set the agent identifier non-interactively (name:version, model:deployment, or URL).",
+            help="Set the optional evaluation target non-interactively (name:version, model:deployment, or URL). Omit for project-observability-only mode.",
         ),
     ] = None,
     dataset: Annotated[
@@ -1596,6 +1614,7 @@ def cmd_init(
         apply_answers,
         discover_defaults,
         is_placeholder_agent,
+        normalize_hosted_agent_url,
         run_wizard,
         validate_agent,
         validate_dataset,
@@ -1727,6 +1746,14 @@ def cmd_init(
             if err:
                 typer.echo(f"{_cli_error('Error')}: --agent: {err}", err=True)
                 raise typer.Exit(code=1)
+            # Canonicalize hosted-agent URLs through the same normalizer the
+            # interactive wizard uses (strip trailing slashes, etc.).
+            if "/agents/" in agent.lower():
+                normalized, norm_err = normalize_hosted_agent_url(agent)
+                if norm_err:
+                    typer.echo(f"{_cli_error('Error')}: --agent: {norm_err}", err=True)
+                    raise typer.Exit(code=1)
+                agent = normalized
         if dataset is not None:
             if not dataset.strip():
                 typer.echo(
