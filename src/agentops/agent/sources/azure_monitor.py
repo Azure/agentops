@@ -104,7 +104,10 @@ def collect_azure_monitor(
     lookback_days: int,
 ) -> AzureMonitorPayload:
     """Run KQL queries against Application Insights for the lookback window."""
-    diagnostics: Dict[str, Any] = {"enabled": config.enabled}
+    diagnostics: Dict[str, Any] = {
+        "enabled": config.enabled,
+        "lookback_days": int(lookback_days),
+    }
     app_insights_resource_id = config.app_insights_resource_id
 
     if not config.enabled:

@@ -8,6 +8,7 @@ from typing import List, Optional
 from agentops.agent.findings import Category, Finding, Severity
 from agentops.agent.sources.foundry_control import FoundryControlPayload
 from agentops.agent.sources.results_history import ResultsHistory
+from agentops.utils.yaml import load_yaml
 
 SOURCE_NAME = "release_readiness"
 
@@ -20,6 +21,8 @@ def run_release_readiness_check(
     """Return findings that block or weaken production release evidence."""
 
     if not _is_agentops_workspace(workspace, history):
+        return []
+    if not _evaluation_target_configured(workspace):
         return []
 
     findings: List[Finding] = []
@@ -39,6 +42,21 @@ def _is_agentops_workspace(workspace: Path, history: ResultsHistory) -> bool:
         or (workspace / ".github" / "workflows" / "agentops-pr.yml").exists()
         or (workspace / ".azuredevops" / "pipelines" / "agentops-pr.yml").exists()
     )
+
+
+def _evaluation_target_configured(workspace: Path) -> bool:
+    path = workspace / "agentops.yaml"
+    if not path.exists():
+        return False
+    try:
+        config = load_yaml(path)
+    except Exception:
+        return False
+    agent = config.get("agent") if isinstance(config, dict) else None
+    if not isinstance(agent, str):
+        return False
+    text = agent.strip()
+    return bool(text) and text != "my-agent:1"
 
 
 def _check_latest_eval(history: ResultsHistory) -> List[Finding]:
@@ -144,5 +162,4 @@ def _check_trace_regression_dataset(workspace: Path, history: ResultsHistory) ->
             evidence={"manifest": str(manifest)},
         )
     ]
-
 

@@ -20,7 +20,7 @@ def workspace(tmp_path: Path) -> Path:
     # Minimal layout: a valid agentops.yaml so the agent_pinning and
     # thresholds rules don't fire by accident.
     (tmp_path / "agentops.yaml").write_text(
-        "agent: my-agent:1\nthresholds:\n  coherence: '>=3'\n",
+        "agent: my-agent:2\nthresholds:\n  coherence: '>=3'\n",
         encoding="utf-8",
     )
     return tmp_path

@@ -6,8 +6,8 @@ aren't covered by Foundry's Operate -> Compliance surface. Examples:
 
 * Agent string isn't pinned to a version (``my-agent`` instead of
   ``my-agent:3``).
-* ``agentops.yaml`` ships with no ``thresholds:`` block - the gate is
-  loose and depends entirely on auto-defaults.
+* An eval-enabled ``agentops.yaml`` ships with no ``thresholds:`` block - the
+  gate is loose and depends entirely on auto-defaults.
 * Repo has no ``agentops-pr.yml`` CI gate.
 
 Findings live under :class:`Category.OPERATIONAL_EXCELLENCE` with the
@@ -42,11 +42,13 @@ def run_opex_workspace_check(workspace: Path) -> List[Finding]:
 
     config_path = workspace / "agentops.yaml"
     config_data = _safe_load_yaml(config_path)
+    evaluation_configured = _agent_configured(config_data)
 
     findings.extend(_check_agent_pinning(config_data))
     findings.extend(_check_thresholds_block(config_data))
-    findings.extend(_check_pr_gate_workflow(workspace))
-    findings.extend(_check_deploy_gate_workflow(workspace))
+    if evaluation_configured:
+        findings.extend(_check_pr_gate_workflow(workspace))
+        findings.extend(_check_deploy_gate_workflow(workspace))
     findings.extend(_check_results_gitignored(workspace))
     findings.extend(_check_dataset_versioning(workspace))
     findings.extend(_check_bundle_versioning(workspace))
@@ -58,13 +60,23 @@ def run_opex_workspace_check(workspace: Path) -> List[Finding]:
     return findings
 
 
+def _agent_configured(config: Optional[dict]) -> bool:
+    if not isinstance(config, dict):
+        return False
+    agent = config.get("agent")
+    if not isinstance(agent, str):
+        return False
+    text = agent.strip()
+    return bool(text) and text != "my-agent:1"
+
+
 def _check_agent_pinning(config: Optional[dict]) -> List[Finding]:
     """Warn when `agent:` is not pinned to a `:version` (foundry agent)
     or to an explicit URL/model identifier."""
     if not isinstance(config, dict):
         return []
     agent = config.get("agent")
-    if not isinstance(agent, str) or not agent.strip():
+    if not _agent_configured(config) or not isinstance(agent, str):
         return []
 
     # URL targets and model: targets are inherently pinned.
@@ -105,9 +117,10 @@ def _check_agent_pinning(config: Optional[dict]) -> List[Finding]:
 
 
 def _check_thresholds_block(config: Optional[dict]) -> List[Finding]:
-    """Warn when `thresholds:` is absent or empty - auto-defaults are
-    fine for exploration but loose for prod gates."""
+    """Warn when an eval-enabled config has no explicit thresholds."""
     if not isinstance(config, dict):
+        return []
+    if not _agent_configured(config):
         return []
     thresholds = config.get("thresholds")
     if isinstance(thresholds, dict) and thresholds:

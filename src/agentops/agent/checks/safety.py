@@ -51,13 +51,15 @@ def run_safety_check(
     config: SafetyCheckConfig,
     monitor: Optional[AzureMonitorPayload] = None,
     foundry: Optional[FoundryControlPayload] = None,
+    *,
+    evaluation_configured: bool = True,
 ) -> List[Finding]:
     """Run all three safety layers and return the merged findings."""
     findings: List[Finding] = []
     findings.extend(_find_eval_safety(history, config))
     if monitor is not None:
         findings.extend(_find_runtime_safety(monitor, config))
-    if foundry is not None:
+    if foundry is not None and evaluation_configured:
         findings.extend(_find_config_safety(foundry))
     return findings
 

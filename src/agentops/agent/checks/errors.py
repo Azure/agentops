@@ -23,6 +23,13 @@ def run_errors_check(
         and monitor.request_count >= config.min_requests
         and monitor.error_rate > config.rate_threshold
     ):
+        lookback_days = monitor.diagnostics.get("lookback_days")
+        window = (
+            f" over the last {lookback_days} day"
+            f"{'s' if lookback_days != 1 else ''}"
+            if isinstance(lookback_days, int)
+            else ""
+        )
         severity = (
             Severity.CRITICAL
             if monitor.error_rate >= config.critical_rate_threshold
@@ -37,13 +44,13 @@ def run_errors_check(
                     f"Production error rate is "
                     f"{monitor.error_rate * 100:.1f}% "
                     f"({monitor.error_count} of {monitor.request_count} "
-                    f"requests failed), above the "
+                    f"requests failed{window}), above the "
                     f"{config.rate_threshold * 100:.0f}% threshold"
                 ),
                 summary=(
                     f"App Insights reports {monitor.error_count} failed "
                     f"requests over {monitor.request_count} total "
-                    f"({monitor.error_rate * 100:.2f}%), above the "
+                    f"({monitor.error_rate * 100:.2f}%){window}, above the "
                     f"{config.rate_threshold * 100:.2f}% threshold."
                 ),
                 recommendation=(
@@ -57,6 +64,7 @@ def run_errors_check(
                     "request_count": monitor.request_count,
                     "error_rate": monitor.error_rate,
                     "threshold": config.rate_threshold,
+                    "lookback_days": lookback_days,
                 },
             )
         )

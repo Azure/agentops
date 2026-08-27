@@ -145,6 +145,21 @@ def test_config_layer_warns_when_evaluation_rules_missing() -> None:
     assert f.category == Category.RESPONSIBLE_AI
 
 
+def test_config_layer_not_applicable_without_evaluation_target() -> None:
+    foundry = FoundryControlPayload(
+        agents=[FoundryAgentSummary(agent_id="agent-1")],
+        evaluation_rules=[],
+        diagnostics={"evaluation_rules_count": 0},
+    )
+    findings = run_safety_check(
+        _empty_history(),
+        SafetyCheckConfig(),
+        foundry=foundry,
+        evaluation_configured=False,
+    )
+    assert findings == []
+
+
 def test_config_layer_warns_when_rule_disabled() -> None:
     foundry = FoundryControlPayload(
         agents=[FoundryAgentSummary(agent_id="agent-1")],

@@ -75,7 +75,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   `latency.eval_avg` and `opex.no_thresholds` previously said only "above
   threshold" or "has no explicit thresholds", forcing a trip to the docs to find
   out which number applied. Each title now carries the observed value, the sample
-  it came from where relevant, and the configured limit.
+  it came from where relevant, and the configured limit. `opex.no_thresholds` is
+  now omitted entirely in project-observability-only workspaces because no eval
+  gate exists until an `agent:` target is configured. The same applicability
+  rule now suppresses PR-gate, release-evidence, and continuous-evaluation
+  findings when no evaluation target exists.
+- **Production error-rate findings now state their telemetry window.** The
+  percentage and request counts come from Application Insights over the last
+  seven days by default, or the period selected with `--lookback-days`; the
+  finding title and evidence now include that period explicitly.
 - **Third-party HTTP logs can no longer break through into the terminal.**
   `httpx`, `openai`, `httpcore`, `urllib3` and the Azure SDK loggers now get a
   private `WARNING`-level handler and `propagate = False`, so an `INFO` line such
