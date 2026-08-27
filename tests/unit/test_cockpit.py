@@ -388,6 +388,30 @@ def test_connections_only_contains_foundry_and_github(tmp_path: Path, monkeypatc
     assert "Open in GitHub" in html
     assert "Azure tenant" not in html
     assert "Application Insights</div>" not in html
+    assert "View findings in App Insights" not in html
+
+
+def test_foundry_connection_opens_configured_project_without_cloud_run(
+    tmp_path: Path, monkeypatch
+):
+    project_id = (
+        "/subscriptions/sub/resourceGroups/rg/providers/"
+        "Microsoft.CognitiveServices/accounts/account/projects/project"
+    )
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://account.services.ai.azure.com/api/projects/project",
+    )
+    monkeypatch.setenv("AZURE_AI_PROJECT_ID", project_id)
+    monkeypatch.setattr("agentops.agent.cockpit._az_tenant_id", lambda: "tenant")
+
+    payload = build_cockpit_payload(tmp_path)
+    foundry = payload["connections"]["items"][0]
+
+    assert foundry["link"] == (
+        "https://ai.azure.com/foundryProject/overview"
+        f"?wsid={project_id}&tid=tenant"
+    )
 
 
 def test_readiness_splits_connection_and_instrumentation(tmp_path: Path):
@@ -712,7 +736,7 @@ def test_alerts_wired_card_cannot_verify_is_not_absence(
     assert "Monitoring Reader" in alerts["detail"]
 
 
-def test_alerts_wired_card_not_configured_is_warn(tmp_path: Path, monkeypatch):
+def test_alerts_wired_card_not_configured_is_optional(tmp_path: Path, monkeypatch):
     from agentops.agent.cockpit import _build_readiness_checklist
     from agentops.utils import alert_discovery
 
@@ -737,11 +761,9 @@ def test_alerts_wired_card_not_configured_is_warn(tmp_path: Path, monkeypatch):
         {"has_data": False},
         watchdog=None,
     )
-    alerts = next(
-        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    assert all(
+        check["title"] != "Alerts wired" for check in readiness["checks"]
     )
-    assert alerts["status"] == "warn"
-    assert "How to complete:" in alerts["detail"]
 
 
 def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypatch):
@@ -1532,7 +1554,7 @@ def test_app_insights_doctor_findings_query_and_link(monkeypatch, tmp_path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     html = render_cockpit_html(payload)
 
-    assert "View findings in App Insights" in html
+    assert "View findings in App Insights" not in html
 
 
 def test_app_insights_eval_runs_query_and_link(monkeypatch, tmp_path):

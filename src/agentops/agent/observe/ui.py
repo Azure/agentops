@@ -773,7 +773,7 @@ def render_observe_nav(
     cost_enabled: bool = False,
     attribution_enabled: bool = False,
 ) -> str:
-    """Render the Observe navigation as an accessible list of same-page links."""
+    """Render the Observe navigation as an accessible tab list."""
     items = []
     views = OBSERVE_VIEWS
     if attribution_enabled:
@@ -784,14 +784,15 @@ def render_observe_nav(
         label = {"cost": "Cost", "departments": "Departments"}.get(
             view, OBSERVE_VIEW_LABELS.get(view, view.title())
         )
-        current = ' aria-current="page"' if view == active_view else ""
+        selected = "true" if view == active_view else "false"
         items.append(
-            f'<li><a href="#{view}" data-observe-nav-link="{view}" class="observe-nav-link"'
-            f'{current}>{html_escape(label)}</a></li>'
+            f'<li role="presentation"><a href="?view={view}" id="observe-tab-{view}" '
+            f'data-observe-nav-link="{view}" class="observe-nav-link" role="tab" '
+            f'aria-controls="{view}" aria-selected="{selected}">{html_escape(label)}</a></li>'
         )
     return (
         '<nav class="observe-nav" aria-label="Observe views">'
-        f'<ul class="observe-nav-list">{"".join(items)}</ul>'
+        f'<ul class="observe-nav-list" role="tablist">{"".join(items)}</ul>'
         "</nav>"
     )
 
@@ -817,27 +818,27 @@ def render_filter_bar(scope_label: Optional[str] = None) -> str:
   <div class="observe-filter-fields">
     <label for="observe-filter-foundry_resource_id">Foundry resource
       <input type="text" id="observe-filter-foundry_resource_id" name="foundry_resource_id"
-             data-draft-filter="foundry_resource_id" placeholder="All" autocomplete="off" />
+             data-draft-filter="foundry_resource_id" placeholder="All in current scope" autocomplete="off" />
     </label>
     <label for="observe-filter-project_resource_id">Project
       <input type="text" id="observe-filter-project_resource_id" name="project_resource_id"
-             data-draft-filter="project_resource_id" placeholder="All" autocomplete="off" />
+             data-draft-filter="project_resource_id" placeholder="All in current scope" autocomplete="off" />
     </label>
     <label for="observe-filter-agent_id">Agent
       <input type="text" id="observe-filter-agent_id" name="agent_id"
-             data-draft-filter="agent_id" placeholder="All" autocomplete="off" />
+             data-draft-filter="agent_id" placeholder="All agents" autocomplete="off" />
     </label>
     <label for="observe-filter-model">Model
       <input type="text" id="observe-filter-model" name="model"
-             data-draft-filter="model" placeholder="All" autocomplete="off" />
+             data-draft-filter="model" placeholder="All models" autocomplete="off" />
     </label>
     <label for="observe-filter-tool_name">Tool
       <input type="text" id="observe-filter-tool_name" name="tool_name"
-             data-draft-filter="tool_name" placeholder="All" autocomplete="off" />
+             data-draft-filter="tool_name" placeholder="All tools" autocomplete="off" />
     </label>
     <label for="observe-filter-run_key">Run key
       <input type="text" id="observe-filter-run_key" name="run_key"
-             data-draft-filter="run_key" placeholder="All" autocomplete="off" />
+             data-draft-filter="run_key" placeholder="All runs" autocomplete="off" />
     </label>
     <label for="observe-filter-start">Start
       <input type="datetime-local" id="observe-filter-start" name="start"
@@ -1042,10 +1043,9 @@ def render_agents_table(
     ``invocations``, ``failures``, ``p95_latency_ms``, ``input_tokens``, and
     ``output_tokens``.
     """
-    banner = render_diagnostics_banner(diagnostics) if diagnostics is not None else ""
     if not agents:
         return (
-            f'{banner}<div class="observe-agents-view observe-empty-state">'
+            '<div class="observe-agents-view observe-empty-state">'
             '<p class="observe-empty">No data found for the selected filters.</p></div>'
         )
     rows = []
@@ -1053,9 +1053,10 @@ def render_agents_table(
         name = _get(agent, "agent_name") or _get(agent, "agent_id") or "Not reported"
         rows.append(
             "<tr>"
-            f"<td>{html_escape(name)} {_render_source_kind_badge(_get(agent, 'source_kind'))} "
+            f"<td>{html_escape(name)} "
             f"{_render_identity_availability(_get(agent, 'agent_id'))}</td>"
-            f"<td>{html_escape(_get(agent, 'source_id') or 'Not reported')}</td>"
+            f'<td title="{html_escape(_get(agent, "source_id") or "")}">'
+            f"{_render_source_kind_badge(_get(agent, 'source_kind'))}</td>"
             f"<td>{html_escape(_get(agent, 'model') or 'Not reported')}</td>"
             f"<td>{render_last_seen(_get(agent, 'last_seen'))}</td>"
             f"<td>{_render_maybe_missing(_get(agent, 'invocations'))}</td>"
@@ -1065,7 +1066,6 @@ def render_agents_table(
             "</tr>"
         )
     return f"""
-{banner}
 <table class="observe-agents-table" aria-label="Agents observed in the selected range">
   <caption class="visually-hidden">Agents observed in the selected range</caption>
   <thead>
@@ -2544,7 +2544,7 @@ _OBSERVE_COMPONENT_CSS = """
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 .observe-nav-link:hover { color: var(--observe-fg); }
-.observe-nav-link[aria-current="page"] {
+.observe-nav-link[aria-selected="true"] {
   color: var(--observe-fg);
   border-bottom-color: var(--observe-accent);
   text-decoration: none;
@@ -2972,7 +2972,7 @@ _OBSERVE_SCRIPT = """
     return applied;
   }
 
-  function syncUrl() {
+  function buildStateUrl() {
     var params = new URLSearchParams();
     FILTER_KEYS.forEach(function (key) {
       if (appliedFilters[key]) {
@@ -2994,15 +2994,44 @@ _OBSERVE_SCRIPT = """
       });
     }
     params.set("view", currentView);
-    var next = window.location.pathname + "?" + params.toString();
-    window.history.replaceState(null, "", next);
+    return window.location.pathname + "?" + params.toString();
+  }
+
+  function syncUrl() {
+    window.history.replaceState(null, "", buildStateUrl());
+  }
+
+  function pushUrl() {
+    window.history.pushState(null, "", buildStateUrl());
+  }
+
+  function activateView(view) {
+    var panel = document.getElementById(view);
+    if (!panel || !panel.hasAttribute("data-observe-panel")) {
+      view = "overview";
+    }
+    currentView = view;
+    document.querySelectorAll("[data-observe-panel]").forEach(function (candidate) {
+      candidate.hidden = candidate.id !== currentView;
+    });
+    document.querySelectorAll("[data-observe-nav-link]").forEach(function (link) {
+      link.setAttribute(
+        "aria-selected",
+        link.getAttribute("data-observe-nav-link") === currentView ? "true" : "false"
+      );
+    });
   }
 
   function readDraftFromForm(form) {
     var draft = {};
     FILTER_KEYS.forEach(function (key) {
       var field = form.querySelector('[data-draft-filter="' + key + '"]');
-      draft[key] = field && field.value ? field.value : "";
+      var value = field && field.value ? field.value : "";
+      if ((key === "start" || key === "end") && value) {
+        var moment = new Date(value);
+        value = isNaN(moment.getTime()) ? "" : moment.toISOString();
+      }
+      draft[key] = value;
     });
     return draft;
   }
@@ -3011,7 +3040,15 @@ _OBSERVE_SCRIPT = """
     FILTER_KEYS.forEach(function (key) {
       var field = form.querySelector('[data-draft-filter="' + key + '"]');
       if (field) {
-        field.value = appliedFilters[key] || "";
+        var value = appliedFilters[key] || "";
+        if ((key === "start" || key === "end") && value) {
+          var moment = new Date(value);
+          if (!isNaN(moment.getTime())) {
+            var local = new Date(moment.getTime() - moment.getTimezoneOffset() * 60000);
+            value = local.toISOString().slice(0, 16);
+          }
+        }
+        field.value = value;
       }
     });
   }
@@ -3465,23 +3502,22 @@ _OBSERVE_SCRIPT = """
   }
 
   function renderAgents(data, diagnostics) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
     var agents = agentsFrom(data);
     if (!agents.length) {
-      setViewContent("agents", [banner, emptyStateNode("No data found for the selected filters.")]);
+      setViewContent("agents", [emptyStateNode("No data found for the selected filters.")]);
       return;
     }
     var rows = agents.map(function (agent) {
       agent = agent || {};
       var nameCell = [
         document.createTextNode((agent.agent_name || agent.agent_id || "Not reported") + " "),
-        renderSourceKindBadge(agent.source_kind),
-        document.createTextNode(" "),
         renderIdentityAvailabilityBadge(agent.agent_id),
       ];
+      var sourceCell = renderSourceKindBadge(agent.source_kind);
+      sourceCell.title = agent.source_id || "";
       return [
         nameCell,
-        agent.source_id || "Not reported",
+        sourceCell,
         agent.model || "Not reported",
         renderLastSeenJs(agent.last_seen),
         renderMaybeMissing(agent.invocations),
@@ -3497,7 +3533,7 @@ _OBSERVE_SCRIPT = """
       ["Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens", "Details"],
       rows
     );
-    setViewContent("agents", [banner, table]);
+    setViewContent("agents", [table]);
   }
 
   // ---------------------------------------------------------------------
@@ -5120,15 +5156,23 @@ _OBSERVE_SCRIPT = """
       });
     });
     document.querySelectorAll("[data-observe-nav-link]").forEach(function (link) {
-      link.addEventListener("click", function () {
-        currentView = link.getAttribute("data-observe-nav-link");
-        syncUrl();
+      link.addEventListener("click", function (event) {
+        event.preventDefault();
+        activateView(link.getAttribute("data-observe-nav-link"));
+        pushUrl();
         // Switching views queries a different `ObserveQuery.view`, so the
         // newly active view must be fetched -- otherwise it would only ever
         // show its initial server-rendered snapshot.
         fetchObserveData(false);
       });
     });
+    window.addEventListener("popstate", function () {
+      appliedFilters = readAppliedFromUrl();
+      populateFormFromApplied(form);
+      activateView(currentView);
+      fetchObserveData(false);
+    });
+    activateView(currentView);
     setupThemeToggle();
     syncUrl();
     scheduleAutoRefresh();
@@ -5220,7 +5264,8 @@ def render_observe_page(
             bounds=cost_bounds,
         )
         cost_section = f"""
-  <section id="cost" aria-labelledby="cost-heading">
+  <section id="cost" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-cost" hidden>
     <h2 id="cost-heading">Cost</h2>
     {cost_controls}
     <div id="cost-content" data-observe-view-content="cost">{cost_html}</div>
@@ -5247,7 +5292,8 @@ def render_observe_page(
             bounds=attribution_bounds,
         )
         attribution_section = f"""
-  <section id="departments" aria-labelledby="departments-heading">
+  <section id="departments" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-departments" hidden>
     <h2 id="departments-heading">Departments</h2>
     {attribution_controls}
     <div id="departments-content" data-observe-view-content="departments">{attribution_html}</div>
@@ -5289,30 +5335,36 @@ def render_observe_page(
 {header_html}
   {nav}
   {filters}
-  <section id="overview" aria-labelledby="overview-heading">
+  <section id="overview" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-overview">
     <h2 id="overview-heading">Overview</h2>
     <div id="overview-content" data-observe-view-content="overview">{overview}</div>
   </section>
-  <section id="agents" aria-labelledby="agents-heading">
+  <section id="agents" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-agents" hidden>
     <h2 id="agents-heading">Agents</h2>
     <div id="agents-content" data-observe-view-content="agents">{agents_html}</div>
     <div id="agent-detail-content" aria-live="polite" data-observe-agent-detail-content></div>
   </section>
-  <section id="usage" aria-labelledby="usage-heading">
+  <section id="usage" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-usage" hidden>
     <h2 id="usage-heading">Models and usage</h2>
     <div id="usage-content" data-observe-view-content="usage">{usage_html}</div>
   </section>
-  <section id="tools" aria-labelledby="tools-heading">
+  <section id="tools" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-tools" hidden>
     <h2 id="tools-heading">Tools</h2>
     <div id="tools-content" data-observe-view-content="tools">{tools_html}</div>
   </section>
-  <section id="runs" aria-labelledby="runs-heading">
+  <section id="runs" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-runs" hidden>
     <h2 id="runs-heading">Runs</h2>
     <div id="runs-content" data-observe-view-content="runs">{runs_html}</div>
   </section>
   {attribution_section}
   {cost_section}
-  <section id="coverage" aria-labelledby="coverage-heading">
+  <section id="coverage" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-coverage" hidden>
     <h2 id="coverage-heading">Telemetry coverage</h2>
     <div id="coverage-content" data-observe-view-content="coverage">{coverage_html}</div>
   </section>

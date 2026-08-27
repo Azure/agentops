@@ -1022,9 +1022,17 @@ def _resolve_foundry_project_url(workspace: Path) -> Optional[str]:
     different directory.
     """
     base = _resolve_foundry_project_root(workspace)
-    if base is None:
-        return _with_tenant("https://ai.azure.com")
-    return _with_tenant(base + "/build/agents")
+    if base is not None:
+        return _with_tenant(base + "/build/agents")
+
+    endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    project_resource_id = _foundry_project_resource_id(endpoint)
+    if project_resource_id:
+        wsid = quote(project_resource_id, safe="/:")
+        return _with_tenant(
+            f"https://ai.azure.com/foundryProject/overview?wsid={wsid}"
+        )
+    return _with_tenant("https://ai.azure.com")
 
 
 def _resolve_foundry_compliance_url(workspace: Path) -> Optional[str]:
@@ -1185,6 +1193,7 @@ def _with_tenant(url: str) -> str:
 
 
 _TENANT_CACHE: Dict[str, Optional[str]] = {}
+_PROJECT_RESOURCE_ID_CACHE: Dict[str, Optional[str]] = {}
 _AZ_ACCOUNT_SHOW_TIMEOUT_SECONDS = 30
 
 
@@ -1215,6 +1224,69 @@ def _az_tenant_id() -> Optional[str]:
         tenant = None
     _TENANT_CACHE["value"] = tenant
     return tenant
+
+
+def _foundry_project_resource_id(endpoint: Optional[str]) -> Optional[str]:
+    """Resolve a Foundry endpoint to its project ARM ID for portal deep-links."""
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        return None
+    endpoint = endpoint.strip()
+
+    match = re.match(
+        r"^https://(?P<account>[^./]+)\.services\.ai\.azure\.com/"
+        r"api/projects/(?P<project>[^/?#]+)",
+        endpoint,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        _PROJECT_RESOURCE_ID_CACHE[endpoint] = None
+        return None
+
+    account = match.group("account")
+    project = match.group("project")
+    expected_suffix = f"/accounts/{account}/projects/{project}".lower()
+    configured_id = os.getenv("AZURE_AI_PROJECT_ID", "").strip()
+    if configured_id.lower().endswith(expected_suffix):
+        _PROJECT_RESOURCE_ID_CACHE[endpoint] = configured_id
+        return configured_id
+    if endpoint in _PROJECT_RESOURCE_ID_CACHE:
+        return _PROJECT_RESOURCE_ID_CACHE[endpoint]
+
+    project_id: Optional[str] = None
+    az = shutil.which("az") or shutil.which("az.cmd")
+    if az:
+        result = _run_quick(
+            [
+                az,
+                "resource",
+                "list",
+                "--resource-type",
+                "Microsoft.CognitiveServices/accounts/projects",
+                "-o",
+                "json",
+            ],
+            cwd=Path.cwd(),
+            timeout=_AZ_ACCOUNT_SHOW_TIMEOUT_SECONDS,
+        )
+        if result is not None and result.returncode == 0:
+            try:
+                resources = json.loads(result.stdout)
+            except (TypeError, json.JSONDecodeError):
+                resources = []
+            if isinstance(resources, list):
+                expected_name = f"{account}/{project}".lower()
+                for resource in resources:
+                    if not isinstance(resource, dict):
+                        continue
+                    if str(resource.get("name") or "").lower() != expected_name:
+                        continue
+                    candidate = resource.get("id")
+                    if isinstance(candidate, str) and candidate:
+                        project_id = candidate
+                        break
+
+    _PROJECT_RESOURCE_ID_CACHE[endpoint] = project_id
+    return project_id
 
 
 def _render_run_report_html(workspace: Path, run_id: str) -> str:
@@ -2172,13 +2244,14 @@ def _build_readiness_checklist(
         workspace,
         agentops_config,
     )
-    checks.append(
-        {
-            "title": "Alerts wired",
-            "status": alert_status,
-            "detail": alert_detail,
-        }
-    )
+    if alert_status != "hidden":
+        checks.append(
+            {
+                "title": "Alerts wired",
+                "status": alert_status,
+                "detail": alert_detail,
+            }
+        )
 
     # Project-observability-only mode: the workspace is initialized
     # (agentops.yaml exists) but no evaluation target is configured. The
@@ -2981,12 +3054,11 @@ def _build_alert_readiness_row(
 
     if coverage.state == STATE_NOT_CONFIGURED:
         detail = (
-            "<strong>How to complete:</strong> No enabled Azure Monitor alert "
-            "rule targets the Foundry Application Insights resource. Create a "
-            "metric or scheduled-query alert scoped to it and attach an action "
-            "group, then re-check. " + _ALERT_DOCS_LINK + provenance_html
+            "No Azure Monitor alert rule targets the Foundry Application "
+            "Insights resource. Alerting is optional unless your team has "
+            "defined an operational alert policy." + provenance_html
         )
-        return "warn", detail
+        return "hidden", detail
 
     if coverage.state == STATE_MISCONFIGURED:
         detail = (
@@ -4322,19 +4394,8 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
     """Render the cockpit from a payload built by
     :func:`build_cockpit_payload`. Returns a complete HTML document.
     """
-    telemetry = payload["telemetry"]
-
     watchdog = payload["watchdog"]
     watchdog_title = "AgentOps Doctor"
-    doctor_findings_url = (
-        telemetry.get("doctor_findings_url") if isinstance(telemetry, dict) else None
-    )
-    if doctor_findings_url:
-        watchdog_title += (
-            f' <a class="section-link" href="{_html_escape(doctor_findings_url)}" '
-            f'target="_blank" rel="noopener noreferrer">'
-            f'View findings in App Insights →</a>'
-        )
 
     if watchdog["has_history"]:
         watchdog_headline = "".join(

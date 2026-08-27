@@ -222,7 +222,7 @@
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 .observe-nav-link:hover { color: var(--observe-fg); }
-.observe-nav-link[aria-current="page"] {
+.observe-nav-link[aria-selected="true"] {
   color: var(--observe-fg);
   border-bottom-color: var(--observe-accent);
   text-decoration: none;

@@ -228,7 +228,7 @@
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 .observe-nav-link:hover { color: var(--observe-fg); }
-.observe-nav-link[aria-current="page"] {
+.observe-nav-link[aria-selected="true"] {
   color: var(--observe-fg);
   border-bottom-color: var(--observe-accent);
   text-decoration: none;
@@ -561,33 +561,33 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       </button>
     </div>
   </header>
-  <nav class="observe-nav" aria-label="Observe views"><ul class="observe-nav-list"><li><a href="#overview" data-observe-nav-link="overview" class="observe-nav-link" aria-current="page">Overview</a></li><li><a href="#agents" data-observe-nav-link="agents" class="observe-nav-link">Agents</a></li><li><a href="#usage" data-observe-nav-link="usage" class="observe-nav-link">Models and usage</a></li><li><a href="#tools" data-observe-nav-link="tools" class="observe-nav-link">Tools</a></li><li><a href="#runs" data-observe-nav-link="runs" class="observe-nav-link">Runs</a></li><li><a href="#coverage" data-observe-nav-link="coverage" class="observe-nav-link">Telemetry coverage</a></li></ul></nav>
+  <nav class="observe-nav" aria-label="Observe views"><ul class="observe-nav-list" role="tablist"><li role="presentation"><a href="?view=overview" id="observe-tab-overview" data-observe-nav-link="overview" class="observe-nav-link" role="tab" aria-controls="overview" aria-selected="true">Overview</a></li><li role="presentation"><a href="?view=agents" id="observe-tab-agents" data-observe-nav-link="agents" class="observe-nav-link" role="tab" aria-controls="agents" aria-selected="false">Agents</a></li><li role="presentation"><a href="?view=usage" id="observe-tab-usage" data-observe-nav-link="usage" class="observe-nav-link" role="tab" aria-controls="usage" aria-selected="false">Models and usage</a></li><li role="presentation"><a href="?view=tools" id="observe-tab-tools" data-observe-nav-link="tools" class="observe-nav-link" role="tab" aria-controls="tools" aria-selected="false">Tools</a></li><li role="presentation"><a href="?view=runs" id="observe-tab-runs" data-observe-nav-link="runs" class="observe-nav-link" role="tab" aria-controls="runs" aria-selected="false">Runs</a></li><li role="presentation"><a href="?view=coverage" id="observe-tab-coverage" data-observe-nav-link="coverage" class="observe-nav-link" role="tab" aria-controls="coverage" aria-selected="false">Telemetry coverage</a></li></ul></nav>
   <form class="observe-filter-bar" id="observe-filter-form" aria-label="Observe filters">
   <p class="observe-scope"><span class="observe-hint">Scope:</span> Foundry project: project-a</p>
   <div class="observe-filter-fields">
     <label for="observe-filter-foundry_resource_id">Foundry resource
       <input type="text" id="observe-filter-foundry_resource_id" name="foundry_resource_id"
-             data-draft-filter="foundry_resource_id" placeholder="All" autocomplete="off" />
+             data-draft-filter="foundry_resource_id" placeholder="All in current scope" autocomplete="off" />
     </label>
     <label for="observe-filter-project_resource_id">Project
       <input type="text" id="observe-filter-project_resource_id" name="project_resource_id"
-             data-draft-filter="project_resource_id" placeholder="All" autocomplete="off" />
+             data-draft-filter="project_resource_id" placeholder="All in current scope" autocomplete="off" />
     </label>
     <label for="observe-filter-agent_id">Agent
       <input type="text" id="observe-filter-agent_id" name="agent_id"
-             data-draft-filter="agent_id" placeholder="All" autocomplete="off" />
+             data-draft-filter="agent_id" placeholder="All agents" autocomplete="off" />
     </label>
     <label for="observe-filter-model">Model
       <input type="text" id="observe-filter-model" name="model"
-             data-draft-filter="model" placeholder="All" autocomplete="off" />
+             data-draft-filter="model" placeholder="All models" autocomplete="off" />
     </label>
     <label for="observe-filter-tool_name">Tool
       <input type="text" id="observe-filter-tool_name" name="tool_name"
-             data-draft-filter="tool_name" placeholder="All" autocomplete="off" />
+             data-draft-filter="tool_name" placeholder="All tools" autocomplete="off" />
     </label>
     <label for="observe-filter-run_key">Run key
       <input type="text" id="observe-filter-run_key" name="run_key"
-             data-draft-filter="run_key" placeholder="All" autocomplete="off" />
+             data-draft-filter="run_key" placeholder="All runs" autocomplete="off" />
     </label>
     <label for="observe-filter-start">Start
       <input type="datetime-local" id="observe-filter-start" name="start"
@@ -604,30 +604,36 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     <span id="observe-refresh-status" class="observe-refresh-status" role="status" aria-live="polite"></span>
   </div>
 </form>
-  <section id="overview" aria-labelledby="overview-heading">
+  <section id="overview" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-overview">
     <h2 id="overview-heading">Overview</h2>
     <div id="overview-content" data-observe-view-content="overview"><div class="observe-overview-cards"><div class="observe-card observe-metric-card observe-tone-info" role="group" aria-label="Invocations"><h3 class="observe-card-title">Invocations</h3><p class="observe-card-value"><span class="observe-metric metric-value">580</span></p><span class="observe-card-delta observe-tone-ok" data-direction="up"><span class="observe-card-delta-glyph" aria-hidden="true">↑</span> +12% <span class="observe-card-delta-label">vs prior</span></span><p class="observe-card-caption">Last 24 hours</p><div class="observe-card-spark"><figure class="observe-chart"><figcaption>Invocations trend</figcaption><svg class="observe-chart-svg" viewBox="0 0 240 64" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Invocations trend"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="212" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="30.00" x2="212" y2="30.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="32.00" x2="212" y2="32.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="34.00" x2="212" y2="34.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="36.00" x2="212" y2="36.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,36.00 28.00,36.00 89.33,33.23 150.67,31.38 212.00,28.00 212.00,36.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,36.00 89.33,33.23 150.67,31.38 212.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>Invocations – Mon: 120</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="36.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Tue: 138</title><text class="observe-chart-marker observe-chart-marker-circle" x="89.33" y="33.23" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Wed: 150</title><text class="observe-chart-marker observe-chart-marker-circle" x="150.67" y="31.38" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Thu: 172</title><text class="observe-chart-marker observe-chart-marker-circle" x="212.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> Invocations</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Invocations trend</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">Invocations</th><td>Mon</td><td>120</td></tr><tr><th scope="row">Invocations</th><td>Tue</td><td>138</td></tr><tr><th scope="row">Invocations</th><td>Wed</td><td>150</td></tr><tr><th scope="row">Invocations</th><td>Thu</td><td>172</td></tr></tbody></table></figure></div></div><div class="observe-card observe-metric-card observe-tone-ok" role="group" aria-label="Failure rate"><h3 class="observe-card-title">Failure rate</h3><p class="observe-card-value"><span class="observe-metric metric-value">1.40%</span></p><span class="observe-card-delta observe-tone-ok" data-direction="down"><span class="observe-card-delta-glyph" aria-hidden="true">↓</span> -0.3pp</span><p class="observe-card-caption">Errors / invocations</p></div><div class="observe-card observe-metric-card observe-tone-warn" role="group" aria-label="p95 latency"><h3 class="observe-card-title">p95 latency</h3><p class="observe-card-value"><span class="observe-metric metric-value">820 ms</span></p><span class="observe-card-delta observe-tone-warn" data-direction="up"><span class="observe-card-delta-glyph" aria-hidden="true">↑</span> +40 ms</span><p class="observe-card-caption">95th percentile</p></div><div class="observe-card observe-metric-card observe-tone-muted" role="group" aria-label="Tokens"><h3 class="observe-card-title">Tokens</h3><p class="observe-card-value"><span class="observe-metric metric-value">1,240,000</span></p><p class="observe-card-caption">Input + output</p></div></div><section class="observe-overview-trends" aria-label="Operational trends"><h3 class="observe-overview-trends-title aos-section-title">Trends</h3><div class="observe-trend-grid"><div class="observe-trend-tile"><figure class="observe-chart"><figcaption>Invocations &amp; failures</figcaption><svg class="observe-chart-svg" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Invocations &amp; failures"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient><linearGradient id="observe-gradient-1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-2)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-2)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="572" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="64.00" x2="572" y2="64.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="100.00" x2="572" y2="100.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="136.00" x2="572" y2="136.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="172.00" x2="572" y2="172.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,172.00 28.00,72.05 209.33,56.80 390.67,46.64 572.00,28.00 572.00,172.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,72.05 209.33,56.80 390.67,46.64 572.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>Invocations – Mon: 120</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="72.05" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Tue: 138</title><text class="observe-chart-marker observe-chart-marker-circle" x="209.33" y="56.80" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Wed: 150</title><text class="observe-chart-marker observe-chart-marker-circle" x="390.67" y="46.64" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Thu: 172</title><text class="observe-chart-marker observe-chart-marker-circle" x="572.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><polygon class="observe-chart-area" points="28.00,172.00 28.00,171.15 209.33,172.00 390.67,170.31 572.00,172.00 572.00,172.00" fill="url(#observe-gradient-1)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,171.15 209.33,172.00 390.67,170.31 572.00,172.00" fill="none" stroke="var(--observe-series-2)" stroke-width="2" /><g class="observe-chart-point"><title>Failures – Mon: 3</title><text class="observe-chart-marker observe-chart-marker-square" x="28.00" y="171.15" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Tue: 2</title><text class="observe-chart-marker observe-chart-marker-square" x="209.33" y="172.00" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Wed: 4</title><text class="observe-chart-marker observe-chart-marker-square" x="390.67" y="170.31" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Thu: 2</title><text class="observe-chart-marker observe-chart-marker-square" x="572.00" y="172.00" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> Invocations</li><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-square" style="color:var(--observe-series-2)" aria-hidden="true">■</span> Failures</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Invocations &amp; failures</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">Invocations</th><td>Mon</td><td>120</td></tr><tr><th scope="row">Invocations</th><td>Tue</td><td>138</td></tr><tr><th scope="row">Invocations</th><td>Wed</td><td>150</td></tr><tr><th scope="row">Invocations</th><td>Thu</td><td>172</td></tr><tr><th scope="row">Failures</th><td>Mon</td><td>3</td></tr><tr><th scope="row">Failures</th><td>Tue</td><td>2</td></tr><tr><th scope="row">Failures</th><td>Wed</td><td>4</td></tr><tr><th scope="row">Failures</th><td>Thu</td><td>2</td></tr></tbody></table></figure></div><div class="observe-trend-tile"><figure class="observe-chart"><figcaption>Latency (p95, ms)</figcaption><svg class="observe-chart-svg" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Latency (p95, ms)"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="572" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="64.00" x2="572" y2="64.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="100.00" x2="572" y2="100.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="136.00" x2="572" y2="136.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="172.00" x2="572" y2="172.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,172.00 28.00,172.00 209.33,100.00 390.67,52.00 572.00,28.00 572.00,172.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,172.00 209.33,100.00 390.67,52.00 572.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>p95 – Mon: 760 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="172.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Tue: 790 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="209.33" y="100.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Wed: 810 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="390.67" y="52.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Thu: 820 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="572.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> p95</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Latency (p95, ms)</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">p95</th><td>Mon</td><td>760 ms</td></tr><tr><th scope="row">p95</th><td>Tue</td><td>790 ms</td></tr><tr><th scope="row">p95</th><td>Wed</td><td>810 ms</td></tr><tr><th scope="row">p95</th><td>Thu</td><td>820 ms</td></tr></tbody></table></figure></div></div></section></div>
   </section>
-  <section id="agents" aria-labelledby="agents-heading">
+  <section id="agents" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-agents" hidden>
     <h2 id="agents-heading">Agents</h2>
     <div id="agents-content" data-observe-view-content="agents"><div class="observe-agents-view observe-empty-state"><p class="observe-empty">No data found for the selected filters.</p></div></div>
     <div id="agent-detail-content" aria-live="polite" data-observe-agent-detail-content></div>
   </section>
-  <section id="usage" aria-labelledby="usage-heading">
+  <section id="usage" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-usage" hidden>
     <h2 id="usage-heading">Models and usage</h2>
     <div id="usage-content" data-observe-view-content="usage"><div class="observe-usage-view observe-empty-state"><p class="observe-empty">No data found for the selected filters.</p></div></div>
   </section>
-  <section id="tools" aria-labelledby="tools-heading">
+  <section id="tools" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-tools" hidden>
     <h2 id="tools-heading">Tools</h2>
     <div id="tools-content" data-observe-view-content="tools"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-tools-view observe-empty-state"><p class="observe-empty">No tool activity was found for the selected filters. Tool attribution may not be reported; check Telemetry coverage for details.</p></div></div>
   </section>
-  <section id="runs" aria-labelledby="runs-heading">
+  <section id="runs" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-runs" hidden>
     <h2 id="runs-heading">Runs</h2>
     <div id="runs-content" data-observe-view-content="runs"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-runs-view observe-empty-state"><p class="observe-empty">No runs could be correlated for the selected filters. Run correlation may not be reported; check Telemetry coverage for details.</p></div></div>
   </section>
   
   
-  <section id="coverage" aria-labelledby="coverage-heading">
+  <section id="coverage" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-coverage" hidden>
     <h2 id="coverage-heading">Telemetry coverage</h2>
     <div id="coverage-content" data-observe-view-content="coverage"><div class="observe-coverage-view"><p class="observe-empty">No coverage information reported.</p></div></div>
   </section>
@@ -721,7 +727,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     return applied;
   }
 
-  function syncUrl() {
+  function buildStateUrl() {
     var params = new URLSearchParams();
     FILTER_KEYS.forEach(function (key) {
       if (appliedFilters[key]) {
@@ -743,15 +749,44 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       });
     }
     params.set("view", currentView);
-    var next = window.location.pathname + "?" + params.toString();
-    window.history.replaceState(null, "", next);
+    return window.location.pathname + "?" + params.toString();
+  }
+
+  function syncUrl() {
+    window.history.replaceState(null, "", buildStateUrl());
+  }
+
+  function pushUrl() {
+    window.history.pushState(null, "", buildStateUrl());
+  }
+
+  function activateView(view) {
+    var panel = document.getElementById(view);
+    if (!panel || !panel.hasAttribute("data-observe-panel")) {
+      view = "overview";
+    }
+    currentView = view;
+    document.querySelectorAll("[data-observe-panel]").forEach(function (candidate) {
+      candidate.hidden = candidate.id !== currentView;
+    });
+    document.querySelectorAll("[data-observe-nav-link]").forEach(function (link) {
+      link.setAttribute(
+        "aria-selected",
+        link.getAttribute("data-observe-nav-link") === currentView ? "true" : "false"
+      );
+    });
   }
 
   function readDraftFromForm(form) {
     var draft = {};
     FILTER_KEYS.forEach(function (key) {
       var field = form.querySelector('[data-draft-filter="' + key + '"]');
-      draft[key] = field && field.value ? field.value : "";
+      var value = field && field.value ? field.value : "";
+      if ((key === "start" || key === "end") && value) {
+        var moment = new Date(value);
+        value = isNaN(moment.getTime()) ? "" : moment.toISOString();
+      }
+      draft[key] = value;
     });
     return draft;
   }
@@ -760,7 +795,15 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     FILTER_KEYS.forEach(function (key) {
       var field = form.querySelector('[data-draft-filter="' + key + '"]');
       if (field) {
-        field.value = appliedFilters[key] || "";
+        var value = appliedFilters[key] || "";
+        if ((key === "start" || key === "end") && value) {
+          var moment = new Date(value);
+          if (!isNaN(moment.getTime())) {
+            var local = new Date(moment.getTime() - moment.getTimezoneOffset() * 60000);
+            value = local.toISOString().slice(0, 16);
+          }
+        }
+        field.value = value;
       }
     });
   }
@@ -1214,23 +1257,22 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   }
 
   function renderAgents(data, diagnostics) {
-    var banner = renderDiagnosticsBannerNode(diagnostics);
     var agents = agentsFrom(data);
     if (!agents.length) {
-      setViewContent("agents", [banner, emptyStateNode("No data found for the selected filters.")]);
+      setViewContent("agents", [emptyStateNode("No data found for the selected filters.")]);
       return;
     }
     var rows = agents.map(function (agent) {
       agent = agent || {};
       var nameCell = [
         document.createTextNode((agent.agent_name || agent.agent_id || "Not reported") + " "),
-        renderSourceKindBadge(agent.source_kind),
-        document.createTextNode(" "),
         renderIdentityAvailabilityBadge(agent.agent_id),
       ];
+      var sourceCell = renderSourceKindBadge(agent.source_kind);
+      sourceCell.title = agent.source_id || "";
       return [
         nameCell,
-        agent.source_id || "Not reported",
+        sourceCell,
         agent.model || "Not reported",
         renderLastSeenJs(agent.last_seen),
         renderMaybeMissing(agent.invocations),
@@ -1246,7 +1288,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       ["Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Tokens", "Details"],
       rows
     );
-    setViewContent("agents", [banner, table]);
+    setViewContent("agents", [table]);
   }
 
   // ---------------------------------------------------------------------
@@ -2869,15 +2911,23 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       });
     });
     document.querySelectorAll("[data-observe-nav-link]").forEach(function (link) {
-      link.addEventListener("click", function () {
-        currentView = link.getAttribute("data-observe-nav-link");
-        syncUrl();
+      link.addEventListener("click", function (event) {
+        event.preventDefault();
+        activateView(link.getAttribute("data-observe-nav-link"));
+        pushUrl();
         // Switching views queries a different `ObserveQuery.view`, so the
         // newly active view must be fetched -- otherwise it would only ever
         // show its initial server-rendered snapshot.
         fetchObserveData(false);
       });
     });
+    window.addEventListener("popstate", function () {
+      appliedFilters = readAppliedFromUrl();
+      populateFormFromApplied(form);
+      activateView(currentView);
+      fetchObserveData(false);
+    });
+    activateView(currentView);
     setupThemeToggle();
     syncUrl();
     scheduleAutoRefresh();

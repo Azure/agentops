@@ -106,9 +106,9 @@ def test_html_escape_none_renders_empty_string() -> None:
 def test_render_observe_nav_marks_active_view_current() -> None:
     html = ui.render_observe_nav("agents")
     assert '<nav class="observe-nav" aria-label="Observe views">' in html
-    assert 'data-observe-nav-link="agents" class="observe-nav-link" aria-current="page"' in html
-    assert 'data-observe-nav-link="overview" class="observe-nav-link">' in html
-    assert "aria-current" not in html.split('data-observe-nav-link="overview"')[1].split("</a>")[0] or True
+    assert 'data-observe-nav-link="agents" class="observe-nav-link" role="tab"' in html
+    assert 'aria-controls="agents" aria-selected="true"' in html
+    assert 'aria-controls="overview" aria-selected="false"' in html
 
 
 def test_render_observe_nav_renders_every_view_once() -> None:
@@ -122,7 +122,7 @@ def test_render_observe_nav_only_adds_cost_when_enabled() -> None:
     html = ui.render_observe_nav("cost", cost_enabled=True)
     assert html.count('data-observe-nav-link="cost"') == 1
     assert (
-        'data-observe-nav-link="cost" class="observe-nav-link" aria-current="page"'
+        'aria-controls="cost" aria-selected="true"'
         in html
     )
     assert ">Cost<" in html
@@ -481,7 +481,7 @@ def test_filter_bar_has_manual_refresh_control() -> None:
 
 def test_filter_bar_defaults_are_all_meaning_unfiltered() -> None:
     html = ui.render_filter_bar()
-    assert html.count('placeholder="All"') == 6  # foundry, project, agent, model, tool, run
+    assert html.count('placeholder="All') == 6  # foundry, project, agent, model, tool, run
 
 
 def test_filter_bar_renders_optional_scope_label() -> None:
@@ -710,7 +710,7 @@ def test_render_agents_table_accepts_plain_mapping_too() -> None:
     assert "External Registered" in html
 
 
-def test_render_agents_table_includes_diagnostics_banner_when_supplied() -> None:
+def test_render_agents_table_omits_technical_diagnostics_banner() -> None:
     diagnostics = {
         "started_at": _dt(0),
         "completed_at": _dt(0),
@@ -722,8 +722,8 @@ def test_render_agents_table_includes_diagnostics_banner_when_supplied() -> None
         "cache_status": "miss",
     }
     html = ui.render_agents_table([_agent()], diagnostics=diagnostics)
-    assert "observe-diagnostics-banner" in html
-    assert "Partial results" in html
+    assert "observe-diagnostics-banner" not in html
+    assert "Sources queried" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -2034,12 +2034,14 @@ def test_script_auto_refreshes_every_five_minutes() -> None:
 def test_script_computes_default_24_hour_range_when_missing_from_url() -> None:
     script = ui._OBSERVE_SCRIPT
     assert "DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000" in script
+    assert 'value = local.toISOString().slice(0, 16);' in script
+    assert "value = isNaN(moment.getTime()) ? \"\" : moment.toISOString();" in script
 
 
 def test_script_uses_history_replace_state_not_push_state_for_url_sync() -> None:
     script = ui._OBSERVE_SCRIPT
     assert "history.replaceState" in script
-    assert "history.pushState" not in script
+    assert "history.pushState" in script
 
 
 def test_script_protected_content_is_only_loaded_on_explicit_click() -> None:
@@ -2195,7 +2197,7 @@ def test_script_runtime_kind_tones_mirror_all_six_python_badges() -> None:
 def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states() -> None:
     script = ui._OBSERVE_SCRIPT
     agents_block = script.split("function renderAgents(data, diagnostics) {")[1].split("\n  }\n")[0]
-    assert 'agent.source_id || "Not reported"' in agents_block
+    assert 'sourceCell.title = agent.source_id || ""' in agents_block
     for function_name, source_field, empty_copy in (
         (
             "function renderTools(data, diagnostics, bounds)",
@@ -2347,11 +2349,13 @@ def test_script_diagnostics_banner_reflects_partial_results_and_is_rebuilt_per_v
     assert '"Failed"' in banner_fn
     assert '"Query duration"' in banner_fn
     assert '"Cache"' in banner_fn
-    # Every per-view renderer rebuilds its own diagnostics banner from the
-    # latest response instead of relying on a single shared/global element.
-    for fn_name in ("renderOverview", "renderAgents", "renderUsage", "renderTools", "renderRuns", "renderCoverage"):
+    # Operational views keep source diagnostics available. Agents intentionally
+    # omits the technical banner so the inventory remains operator-focused.
+    for fn_name in ("renderOverview", "renderUsage", "renderTools", "renderRuns", "renderCoverage"):
         fn_block = script.split(f"function {fn_name}(")[1].split("\n  }\n")[0]
         assert "renderDiagnosticsBannerNode(diagnostics)" in fn_block
+    agents_block = script.split("function renderAgents(")[1].split("\n  }\n")[0]
+    assert "renderDiagnosticsBannerNode(diagnostics)" not in agents_block
 
 
 def test_script_disclaimers_preserved_in_render_functions() -> None:
@@ -2403,10 +2407,23 @@ def test_script_nav_link_click_fetches_the_newly_selected_view() -> None:
     # live fetch for that view, not only update the URL and leave the page
     # showing the initial server-rendered snapshot of a different view.
     script = ui._OBSERVE_SCRIPT
-    nav_block = script.split("[data-observe-nav-link]")[1].split("});")[0]
-    assert "currentView = link.getAttribute" in nav_block
-    assert "syncUrl();" in nav_block
+    nav_block = script.split(
+        'document.querySelectorAll("[data-observe-nav-link]").forEach(function (link) {'
+    )[2].split("    });", 1)[0]
+    assert "activateView(link.getAttribute" in script
+    assert "event.preventDefault();" in script
+    assert "pushUrl();" in nav_block
     assert "fetchObserveData(false);" in nav_block
+
+
+def test_page_renders_real_tab_panels_instead_of_same_page_anchors() -> None:
+    html = ui.render_observe_page()
+    assert 'role="tablist"' in html
+    assert 'href="#agents"' not in html
+    assert '<section id="overview" data-observe-panel role="tabpanel"' in html
+    assert '<section id="agents" data-observe-panel role="tabpanel"' in html
+    assert 'aria-labelledby="observe-tab-agents" hidden' in html
+    assert "function activateView(view)" in html
 
 
 def test_generated_html_never_contains_raw_content_field_names_outside_trace_detail() -> None:

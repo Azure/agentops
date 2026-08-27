@@ -70,6 +70,33 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Foundry project links now open the configured project instead of the tenant
+  landing page.** In project-observability-only mode there is no cloud evaluation
+  report from which to recover a portal URL, so Cockpit previously fell back to
+  `ai.azure.com/?tid=...`. It now resolves the endpoint to its project ARM ID and
+  opens Foundry's project overview with the correct `wsid` and tenant.
+- **Missing Azure Monitor alerts no longer manufacture readiness work.** An
+  absent alert rule is now treated as optional and hidden rather than producing
+  a “Complete readiness: Alerts wired” action. Existing but broken alert
+  configurations still surface because they represent explicit operational
+  intent that needs repair.
+- **Cockpit no longer opens a redundant, unbounded-feeling Doctor query in App
+  Insights.** The “View findings in App Insights” link queried the high-volume
+  dependency table for finding spans that Cockpit already renders locally and
+  could remain in progress for minutes. Doctor findings now stay in the local
+  Doctor section; App Insights links are reserved for operational telemetry.
+- **Observe now shows its active time window and keeps source internals out of
+  the Agents inventory.** Start and End previously appeared blank because ISO
+  timestamps were assigned directly to `datetime-local` controls, even though
+  the query used a trailing 24-hour default. Observe now converts the values to
+  the browser's local format and back to UTC when applied. The Agents view no
+  longer shows the connector-health banner (“Sources queried / Successful”),
+  and unselected identity filters now say “All … in current scope”.
+- **Observe navigation now behaves as real tabs instead of page anchors.**
+  Selecting Agents, Models, Tools, Runs, or Coverage now replaces the visible
+  panel in place, marks the active tab for assistive technology, updates the
+  query-string view, and preserves browser back/forward behavior. It no longer
+  scrolls through a long page containing every view.
 - **Doctor findings now state the measured value and the threshold that was
   crossed.** `errors.production_rate`, `latency.p95_production`,
   `latency.eval_avg` and `opex.no_thresholds` previously said only "above
