@@ -2478,13 +2478,13 @@ async def test_query_view_pages_searches_and_sorts_one_cached_aggregate() -> Non
 
 def test_every_allowlisted_view_sort_field_satisfies_request_contract() -> None:
     for view, fields in observe_service_module._VIEW_SORT_FIELDS.items():
-        for field in fields:
+        for sort_field in fields:
             request = ObserveQueryRequest(
                 view=view,
                 filters=_filters(),
-                sort_by=field,
+                sort_by=sort_field,
             )
-            assert request.sort_by == field
+            assert request.sort_by == sort_field
 
 
 @pytest.mark.asyncio
