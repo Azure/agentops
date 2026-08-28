@@ -39,6 +39,8 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    cooldown:
+      default-days: 7
 
   # VS Code extension (plugins/agentops/package.json)
   - package-ecosystem: "npm"
