@@ -3,7 +3,7 @@
 ``agentops cockpit`` boots a tiny FastAPI server that reads the
 analysis history from ``.agentops/agent/history.jsonl`` **and** the
 evaluation history from ``.agentops/results/*/results.json``, then
-serves a single cockpit page in a dark theme. No external frontend
+serves a single cockpit page with explicit dark and light themes. No external frontend
 dependencies (sparklines are inline SVG); no Azure resource required.
 
 The server is intentionally read-only and bound to ``127.0.0.1`` by
@@ -28,7 +28,11 @@ from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange
-from agentops.agent.ui_theme import render_theme_variables
+from agentops.agent.ui_theme import (
+    THEME_TOGGLE_SCRIPT,
+    render_theme_toggle,
+    render_theme_variables,
+)
 from agentops.core.attribution import load_attribution_config
 from agentops.core.cost import MAX_COST_COMPONENTS, MAX_COST_PERIODS, load_cost_model
 from agentops.core.governance import (
@@ -4463,6 +4467,10 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         workspace_display=workspace_display,
         workspace=payload["workspace"],
         icon_uri=_icon_data_uri(),
+        theme_toggle=render_theme_toggle(
+            control_id="cockpit-theme-toggle", extra_class="cockpit-theme-toggle"
+        ),
+        theme_script=THEME_TOGGLE_SCRIPT,
     )
 
 
@@ -4517,6 +4525,22 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
     color: var(--text-dim); font-size: 12px; font-weight: 500;
   }}
+  header .header-actions {{
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }}
+  .aos-btn {{
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 13px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--text); font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }}
+  .aos-btn:hover {{ border-color: var(--border-strong); background: var(--card-hi); }}
+  .aos-btn:focus-visible {{
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }}
+  .aos-theme-toggle .aos-theme-icon {{ font-size: 14px; line-height: 1; }}
   header .stats-counts {{
     display: flex; align-items: center; gap: 18px;
   }}
@@ -5304,7 +5328,10 @@ _COCKPIT_TEMPLATE = """<!doctype html>
       <div class="subtitle" title="{workspace}">{workspace_display}</div>
     </div>
   </div>
-  <a class="observe-link" href="/observe">Open Observe</a>
+  <div class="header-actions">
+    <a class="observe-link" href="/observe" data-theme-link>Open Observe</a>
+    {theme_toggle}
+  </div>
 </header>
 
 {status_cards_section}
@@ -5316,6 +5343,8 @@ _COCKPIT_TEMPLATE = """<!doctype html>
 <footer><code>agentops cockpit</code></footer>
 
 <script>
+{theme_script}
+setupAgentOpsThemeToggle();
 // Auto-expand a collapsed <details> section when it is targeted via the
 // URL hash (status cards and Next-actions CTAs link to #section-... ids).
 // Details sections collapse by default now, so anchor navigation must open

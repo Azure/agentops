@@ -504,6 +504,9 @@ def normalize_agent_row(
         p95_latency_ms=row.get("p95_latency_ms"),
         input_tokens=row.get("input_tokens"),
         output_tokens=row.get("output_tokens"),
+        cache_read_tokens=row.get("cache_read_tokens"),
+        cache_write_tokens=row.get("cache_write_tokens"),
+        reasoning_tokens=row.get("reasoning_tokens"),
     )
 
 

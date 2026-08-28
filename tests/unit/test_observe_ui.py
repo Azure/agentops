@@ -529,17 +529,18 @@ def test_render_refreshed_at_missing() -> None:
     assert "not yet refreshed" in html
 
 
-def test_render_last_seen_includes_non_lifecycle_disclaimer() -> None:
+def test_render_last_seen_uses_compact_utc_timestamp() -> None:
     html = ui.render_last_seen(_dt(3))
-    assert "2024-01-01T03:00:00Z" in html
-    assert "not agent lifecycle status" in html
+    assert 'datetime="2024-01-01T03:00:00Z"' in html
+    assert ">2024-01-01 03:00:00 UTC<" in html
+    assert "not agent lifecycle status" not in html
 
 
 def test_render_last_seen_missing_uses_metric_missing_class() -> None:
     html = ui.render_last_seen(None)
     assert "metric-missing" in html
-    assert "not reported" in html
-    assert "not agent lifecycle status" in html
+    assert "\u2014" in html
+    assert "not reported" not in html.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -582,9 +583,9 @@ def test_render_failure_rate_zero_invocations_is_no_invocations_not_divide_by_ze
     assert "No invocations" in html
 
 
-def test_render_token_totals_includes_observed_usage_disclaimer() -> None:
+def test_render_token_totals_omits_repeated_usage_disclaimer() -> None:
     html = ui._render_token_totals(100, 0)
-    assert "observed usage, not billing data" in html
+    assert "observed usage, not billing data" not in html
     assert "metric-zero" in html  # output tokens == 0 rendered distinctly from missing
     assert "100" in html
 
@@ -681,9 +682,23 @@ def test_render_agents_table_renders_expected_columns() -> None:
         "Output tokens",
         "Total tokens",
     ):
-        assert f">{heading}<" in html
+        assert f'data-label="{heading}"' in html
     assert "Agent A" in html
     assert "gpt-4o" in html
+
+
+def test_render_agents_table_uses_seconds_and_totals_reported_columns() -> None:
+    html = ui.render_agents_table(
+        [
+            _agent(invocations=10, failures=1, p95_latency_ms=12_763),
+            _agent(invocations=20, failures=2, input_tokens=50, output_tokens=75),
+        ]
+    )
+    assert "12.763 s" in html
+    assert "<tfoot>" in html
+    assert ">30<" in html
+    assert ">150<" in html
+    assert ">275<" in html
 
 
 def test_render_agents_table_shows_source_kind_and_identity_badges() -> None:
@@ -693,9 +708,10 @@ def test_render_agents_table_shows_source_kind_and_identity_badges() -> None:
     assert "source-a" in html
 
 
-def test_render_agents_table_missing_agent_id_shows_identity_not_reported() -> None:
+def test_render_agents_table_missing_agent_id_shows_identity_unavailable() -> None:
     html = ui.render_agents_table([_agent(agent_id=None, agent_name=None)])
-    assert "Identity not reported" in html
+    assert "Identity unavailable" in html
+    assert "Identity not reported" not in html
 
 
 def test_render_agents_table_zero_invocations_distinct_from_missing_latency() -> None:
@@ -1418,26 +1434,28 @@ def test_render_tools_table_shows_source_latency_and_known_bounds() -> None:
         bounds={"rows_shown": 1, "rows_total_in_scope": 3, "truncated": True},
     )
     for heading in ("Tool", "Agent", "Source", "Runtime", "Last seen", "Invocations", "Failures", "p95 latency"):
-        assert f">{heading}<" in html
+        assert f'data-label="{heading}"' in html
     assert "search_documents" in html
     assert "source-a" in html
     assert "Foundry Prompt" in html
     assert "Showing 1 of 3 rows in scope." in html
 
 
-def test_render_tools_table_marks_absent_latency_not_measured_and_escapes_values() -> None:
+def test_render_tools_table_marks_absent_latency_with_dash_and_escapes_values() -> None:
     html = ui.render_tools_table(
         [_tool(tool_name='<tool "name">', source_id="<source>", p95_latency_ms=None)]
     )
-    assert "Not measured" in html
+    assert "Not measured" not in html
+    assert "\u2014" in html
     assert "metric-missing" in html
     assert "&lt;tool &quot;name&quot;&gt;" in html
     assert "&lt;source&gt;" in html
 
 
-def test_render_tools_table_empty_is_explained_and_total_is_unknown() -> None:
+def test_render_tools_table_empty_is_explained_without_unknown_total() -> None:
     html = ui.render_tools_table([], bounds={"rows_shown": 0, "rows_total_in_scope": None})
-    assert "Showing 0 rows; total unknown." in html
+    assert "Showing 0 rows." in html
+    assert "unknown" not in html.lower()
     assert "No tool activity was found" in html
     assert "Tool attribution may not be reported" in html
 
@@ -1459,27 +1477,31 @@ def test_render_runs_table_shows_correlation_range_scope_source_and_tokens() -> 
         "Output tokens",
         "Total tokens",
     ):
-        assert f">{heading}<" in html
+        assert f'data-label="{heading}"' in html
     assert "conversation-123" in html
     assert "conversation" in html
     assert "source-a" in html
     assert "activity within the selected range" in html
     assert "Showing 1 of 4 rows in scope." in html
+    assert "60.000 s" in html
+    assert "<tfoot>" in html
 
 
-def test_render_runs_table_marks_absent_tokens_not_available_and_escapes_values() -> None:
+def test_render_runs_table_marks_absent_tokens_with_dash_and_escapes_values() -> None:
     html = ui.render_runs_table(
         [_run(run_key='<run "key">', source_id="<source>", input_tokens=None, output_tokens=None)]
     )
-    assert "Not available" in html
+    assert "Not available" not in html
+    assert "\u2014" in html
     assert "metric-missing" in html
     assert "&lt;run &quot;key&quot;&gt;" in html
     assert "&lt;source&gt;" in html
 
 
-def test_render_runs_table_empty_is_explained_and_total_is_unknown() -> None:
+def test_render_runs_table_empty_is_explained_without_unknown_total() -> None:
     html = ui.render_runs_table([], bounds={"rows_shown": 0, "rows_total_in_scope": None})
-    assert "Showing 0 rows; total unknown." in html
+    assert "Showing 0 rows." in html
+    assert "unknown" not in html.lower()
     assert "No runs could be correlated" in html
     assert "Run correlation may not be reported" in html
 
@@ -1492,7 +1514,7 @@ def test_render_runs_table_empty_is_explained_and_total_is_unknown() -> None:
         ("external_registered", "External Registered", "warn"),
         ("external_unregistered", "External Unregistered", "warn"),
         ("copilot_studio", "Copilot Studio", "warn"),
-        ("unknown", "Unknown", "muted"),
+        ("unknown", "Unclassified", "muted"),
     ],
 )
 def test_source_kind_badge_covers_all_refined_runtime_kinds(
@@ -1501,6 +1523,13 @@ def test_source_kind_badge_covers_all_refined_runtime_kinds(
     html = ui._render_source_kind_badge(source_kind)
     assert label in html
     assert f"observe-tone-{tone}" in html
+
+
+def test_unclassified_source_kind_explains_missing_attribution() -> None:
+    html = ui._render_source_kind_badge("unknown")
+    assert "Unclassified" in html
+    assert "could not be classified" in html
+    assert ">Unknown<" not in html
 
 
 # ---------------------------------------------------------------------------
@@ -1537,10 +1566,17 @@ def test_render_models_usage_table_includes_observed_usage_wording() -> None:
     assert "gpt-4o-deploy" in html
 
 
+def test_render_models_usage_table_does_not_present_deployment_as_model() -> None:
+    html = ui.render_models_usage_table(
+        [_usage(model=None, deployment="deployment-only")]
+    )
+    assert "<tr><td>\u2014</td><td>deployment-only</td>" in html
+
+
 def test_render_models_usage_table_last_seen_nullable_renders_missing() -> None:
     html = ui.render_models_usage_table([_usage(last_seen=None)])
     assert "metric-missing" in html
-    assert "not agent lifecycle status" in html
+    assert "not agent lifecycle status" not in html
 
 
 def test_render_models_usage_table_zero_failures_is_distinct_from_missing() -> None:
@@ -1563,9 +1599,10 @@ def test_render_models_usage_table_renders_each_token_class_and_partial_state() 
     assert "Cache read" in html
     assert "Cache write" in html
     assert "Reasoning" in html
-    assert "Partial class coverage" in html
+    assert "Some telemetry records omitted one or more token-class attributes" in html
+    assert "Partial class coverage" not in html
     assert "metric-zero" in html
-    assert "Not reported" in html
+    assert "\u2014" in html
     assert "observed usage, not billing data" in html
 
 
@@ -1584,15 +1621,18 @@ def test_render_models_usage_table_marks_intermittent_class_reporting() -> None:
 
     assert "Cache read" in html
     assert ">8<" in html
-    assert "Partial class coverage" in html
+    assert "Some telemetry records omitted one or more token-class attributes" in html
+    assert "Partial class coverage" not in html
 
 
 def test_script_models_renderer_mirrors_token_class_fields_and_labels() -> None:
     script = ui._OBSERVE_SCRIPT
     for field in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
         assert f"entry.{field}" in script
-    for label in ("Cache read", "Cache write", "Reasoning", "Partial class coverage"):
+    for label in ("Cache read", "Cache write", "Reasoning"):
         assert label in script
+    assert "Some telemetry records omitted one or more token-class attributes" in script
+    assert "Partial class coverage" not in script
 
 
 def test_models_renderers_show_additional_classes_and_truncation() -> None:
@@ -1618,9 +1658,9 @@ def test_token_totals_are_rendered_in_separate_columns() -> None:
     agents_html = ui.render_agents_table([_agent(input_tokens=1000, output_tokens=2000)])
     models_html = ui.render_models_usage_table([_usage(input_tokens=1000, output_tokens=2000)])
     for html in (agents_html, models_html):
-        assert ">Input tokens<" in html
-        assert ">Output tokens<" in html
-        assert ">Total tokens<" in html
+        assert 'data-label="Input tokens"' in html
+        assert 'data-label="Output tokens"' in html
+        assert 'data-label="Total tokens"' in html
         assert ">1,000<" in html
         assert ">2,000<" in html
         assert ">3,000<" in html
@@ -1639,10 +1679,10 @@ def test_models_row_with_only_totals_adds_no_partial_indicator() -> None:
             )
         ]
     )
-    assert ">Input tokens<" in html
-    assert ">Output tokens<" in html
-    assert ">Total tokens<" in html
-    assert html.count("Not reported") == 4
+    assert 'data-label="Input tokens"' in html
+    assert 'data-label="Output tokens"' in html
+    assert 'data-label="Total tokens"' in html
+    assert "Not reported" not in html
     assert "Partial class coverage" not in html
     assert "observed usage, not billing data" in html
 
@@ -2240,12 +2280,12 @@ def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states(
     for function_name, source_field, empty_copy in (
         (
             "function renderTools(data, diagnostics, bounds)",
-            "tool.source_id || \"Not reported\"",
+            "tool.source_id || \"\u2014\"",
             "No tool activity was found for the selected filters.",
         ),
         (
             "function renderRuns(data, diagnostics, bounds)",
-            "run.source_id || \"Not reported\"",
+            "run.source_id || \"\u2014\"",
             "No runs could be correlated for the selected filters.",
         ),
     ):
@@ -2253,10 +2293,10 @@ def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states(
         assert source_field in block
         assert "boundsNoticeNode(bounds" in block
         assert empty_copy in block
-    assert 'missingText: "Not measured"' in script
+    assert "renderMillisecondsAsSeconds(tool.p95_latency_ms)" in script
     assert "observedTokenTotal(run.input_tokens, run.output_tokens)" in script
-    assert "run.run_key_kind || \"Not reported\"" in script
-    assert "activity within the selected range" in script
+    assert "run.run_key_kind || \"\u2014\"" in script
+    assert "Elapsed time between first and last observed activity" in script
 
 
 # ---------------------------------------------------------------------------
@@ -2305,7 +2345,9 @@ def test_script_fetch_success_parses_json_and_dispatches_to_render_before_updati
     # updated, so the page reflects the new data by the time the status
     # announces a refresh.
     render_index = then_block.index("renderObserveResponse(body);")
-    status_index = then_block.index('setRefreshStatus("Refreshed " + new Date().toISOString());')
+    status_index = then_block.index(
+        'setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));'
+    )
     assert render_index < status_index
 
 
@@ -2377,10 +2419,12 @@ def test_script_omits_internal_query_diagnostics_from_operator_views() -> None:
     assert '"Query duration"' not in script
 
 
-def test_script_disclaimers_preserved_in_render_functions() -> None:
+def test_script_moves_repeated_disclaimers_to_header_help() -> None:
     script = ui._OBSERVE_SCRIPT
-    assert "Last seen reflects observed telemetry only, not agent lifecycle status." in script
-    assert "Token columns show observed usage, not billing data." in script
+    assert "Last seen reflects observed telemetry only, not agent lifecycle status." not in script
+    assert "Token columns show observed usage, not billing data." not in script
+    assert "Observed token usage from telemetry; this is not billing data." in script
+    assert "Most recent telemetry in the selected range" in script
 
 
 def test_script_zero_vs_missing_distinction_uses_distinct_classes() -> None:
@@ -2391,6 +2435,16 @@ def test_script_zero_vs_missing_distinction_uses_distinct_classes() -> None:
     assert "metric-missing" in fn_block
     assert "metric-zero" in fn_block
     assert "metric-value" in fn_block
+
+
+def test_script_seconds_formatter_preserves_three_decimals_for_whole_seconds() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert "minimumFractionDigits: 3" in script
+    assert "maximumFractionDigits: 3" in script
+    assert "minimumFractionDigits === undefined" in script
+    assert "maximumFractionDigits === undefined" in script
+    assert 'entry.model || "\\u2014"' not in script
+    assert 'entry.model || "\u2014"' in script
 
 
 def test_script_coverage_state_and_dimension_labels_mirror_python_constants() -> None:
@@ -2471,6 +2525,17 @@ def test_styles_use_explicit_themes_not_prefers_color_scheme() -> None:
         assert f"{token}:" in styles
     # Observe series palette still exposed for the trend charts.
     assert "--observe-series-1" in styles
+
+
+def test_page_uses_shared_url_theme_control_without_browser_storage() -> None:
+    html = ui.render_observe_page()
+    assert 'data-aos-theme-toggle' in html
+    assert 'data-theme-link' in html
+    assert 'next.set("theme", theme)' in html
+    assert "setupAgentOpsThemeToggle();" in html
+    assert "localStorage" not in html
+    assert "sessionStorage" not in html
+    assert "document.cookie" not in html
 
 
 def test_get_accessor_supports_both_mapping_and_object() -> None:

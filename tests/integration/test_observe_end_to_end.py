@@ -654,8 +654,9 @@ def test_granular_models_payload_renders_end_to_end() -> None:
 
     html = render_models_usage_table(payload["data"])
     assert "Cache read" in html
-    assert "Not reported" in html
-    assert "Partial class coverage" in html
+    assert "Not reported" not in html
+    assert "Partial class coverage" not in html
+    assert "Some telemetry records omitted one or more token-class attributes" in html
     assert "Additional classes truncated" in html
 
 

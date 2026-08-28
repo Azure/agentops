@@ -152,8 +152,8 @@ def _dimension_filters(
     if filters.model:
         value = _kql_escape(filters.model)
         clauses.append(
-            '| where tostring(coalesce(Properties["gen_ai.request.model"], '
-            'Properties["gen_ai.response.model"])) '
+            '| where tostring(coalesce(Properties["gen_ai.response.model"], '
+            'Properties["gen_ai.request.model"])) '
             f"== '{value}'"
         )
     return clauses
@@ -172,8 +172,8 @@ def _agent_extend_clauses() -> list[str]:
         '| extend provider_name = tostring(Properties["gen_ai.provider.name"])',
         '| extend system = tostring(Properties["gen_ai.system"])',
         '| extend operation_name = tostring(Properties["gen_ai.operation.name"])',
-        '| extend model = tostring(coalesce(Properties["gen_ai.request.model"], '
-        'Properties["gen_ai.response.model"]))',
+        '| extend model = tostring(coalesce(Properties["gen_ai.response.model"], '
+        'Properties["gen_ai.request.model"]))',
         '| extend input_tokens = toint(Properties["gen_ai.usage.input_tokens"])',
         '| extend output_tokens = toint(Properties["gen_ai.usage.output_tokens"])',
     ]
@@ -268,6 +268,7 @@ def build_overview_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
+        *_token_class_extend_clauses(),
         '| where operation_name == "invoke_agent"',
         '| extend is_request_invocation = TelemetryTable endswith "AppRequests", '
         'is_dependency_invocation = TelemetryTable endswith "AppDependencies"',
@@ -303,6 +304,7 @@ def build_agents_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
+        *_token_class_extend_clauses(),
         '| extend is_request_invocation = TelemetryTable endswith "AppRequests" and '
         'operation_name == "invoke_agent", '
         'is_dependency_invocation = TelemetryTable endswith "AppDependencies" and '
@@ -317,6 +319,12 @@ def build_agents_query(
         "iff(is_dependency_invocation, DurationMs, real(null)), 95), "
         "input_tokens = sum(input_tokens), "
         "output_tokens = sum(output_tokens), "
+        "cache_read_tokens = sum(cache_read_tokens), "
+        "cache_read_reporting_records = countif(isnotnull(cache_read_tokens)), "
+        "cache_write_tokens = sum(cache_write_tokens), "
+        "cache_write_reporting_records = countif(isnotnull(cache_write_tokens)), "
+        "reasoning_tokens = sum(reasoning_tokens), "
+        "reasoning_reporting_records = countif(isnotnull(reasoning_tokens)), "
         "last_seen = max(TimeGenerated), "
         "agent_id = take_anyif(agent_id, isnotempty(agent_id)), "
         "agent_name = take_anyif(agent_name, isnotempty(agent_name)), "
@@ -329,9 +337,16 @@ def build_agents_query(
         "failures = iff(request_invocations > 0, request_failures, dependency_failures), "
         "p95_latency_ms = iff(request_invocations > 0, "
         "request_p95_latency_ms, dependency_p95_latency_ms)",
+        "| extend cache_read_tokens = iff(cache_read_reporting_records > 0, "
+        "cache_read_tokens, long(null)), "
+        "cache_write_tokens = iff(cache_write_reporting_records > 0, "
+        "cache_write_tokens, long(null)), "
+        "reasoning_tokens = iff(reasoning_reporting_records > 0, "
+        "reasoning_tokens, long(null))",
         "| project-away request_invocations, dependency_invocations, "
         "request_failures, dependency_failures, request_p95_latency_ms, "
-        "dependency_p95_latency_ms",
+        "dependency_p95_latency_ms, cache_read_reporting_records, "
+        "cache_write_reporting_records, reasoning_reporting_records",
         "| where invocations > 0",
     ]
     return _bounded_aggregate(aggregate_lines, order_by="invocations")
@@ -346,7 +361,8 @@ def build_models_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
+        '| extend deployment = tostring(coalesce('
+        'Properties["gen_ai.request.deployment"], Properties["gen_ai.request.model"]))',
         *_token_class_extend_clauses(),
         "| where isnotempty(model) or isnotempty(deployment)",
         '| where operation_name !in ("invoke_agent", "execute_tool")',
@@ -597,7 +613,8 @@ def build_drilldown_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend deployment = tostring(Properties["gen_ai.request.deployment"]), '
+        '| extend deployment = tostring(coalesce('
+        'Properties["gen_ai.request.deployment"], Properties["gen_ai.request.model"])), '
         'tool_name = tostring(Properties["gen_ai.tool.name"]), '
         'conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
         'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
@@ -768,7 +785,8 @@ def build_department_usage_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
+        '| extend deployment = tostring(coalesce('
+        'Properties["gen_ai.request.deployment"], Properties["gen_ai.request.model"]))',
         '| extend tool_name = tostring(Properties["gen_ai.tool.name"]), '
         'operation_name = tostring(Properties["gen_ai.operation.name"])',
         '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
@@ -979,7 +997,8 @@ def build_user_usage_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
-        '| extend deployment = tostring(Properties["gen_ai.request.deployment"])',
+        '| extend deployment = tostring(coalesce('
+        'Properties["gen_ai.request.deployment"], Properties["gen_ai.request.model"]))',
         '| extend tool_name = tostring(Properties["gen_ai.tool.name"]), '
         'operation_name = tostring(Properties["gen_ai.operation.name"])',
         '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"]), '

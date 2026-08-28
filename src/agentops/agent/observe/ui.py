@@ -307,6 +307,16 @@ def _format_iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _format_compact_timestamp(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _format_seconds(milliseconds: Any) -> str:
+    return f"{float(milliseconds) / 1000:,.3f} s"
+
+
 def _format_number(value: Any) -> str:
     if value is None:
         return "\u2014"  # em dash
@@ -330,6 +340,23 @@ def _tone_class(tone: str) -> str:
 def _render_badge(label: str, tone: str, *, extra_class: str = "") -> str:
     classes = f"observe-badge {_tone_class(tone)} {extra_class}".strip()
     return f'<span class="{classes}">{html_escape(label)}</span>'
+
+
+def _render_info_icon(help_text: str, *, extra_class: str = "") -> str:
+    classes = f"observe-info-icon {extra_class}".strip()
+    escaped = html_escape(help_text)
+    return (
+        f'<span class="{classes}" role="img" tabindex="0" '
+        f'aria-label="{escaped}" title="{escaped}">i</span>'
+    )
+
+
+def _render_header_cell(label: str, help_text: str | None = None) -> str:
+    icon = f" {_render_info_icon(help_text)}" if help_text else ""
+    return (
+        f'<th scope="col" data-label="{html_escape(label)}">'
+        f"{html_escape(label)}{icon}</th>"
+    )
 
 
 def _bound_points(points: Sequence[Any], *, max_points: int = MAX_TREND_POINTS) -> list[Any]:
@@ -365,7 +392,7 @@ def render_source_label(source: Any, *, extra_class: str = "") -> str:
     else:
         kind = _get(source, "source_kind")
         source_id = _get(source, "source_id")
-        label = kind or source_id or "unknown source"
+        label = kind or source_id or "source unavailable"
     classes = f"observe-source-label {extra_class}".strip()
     return f'<span class="{classes}">Source: {html_escape(label)}</span>'
 
@@ -384,32 +411,40 @@ def render_refreshed_at(value: Any, *, label: str = "Refreshed") -> str:
             f"{html_escape(label)}: not yet refreshed</time>"
         )
     iso = _format_iso(moment)
+    compact = _format_compact_timestamp(moment)
     return (
-        f'<time class="observe-refreshed-at" datetime="{html_escape(iso)}">'
-        f"{html_escape(label)}: {html_escape(iso)}</time>"
+        f'<time class="observe-refreshed-at" datetime="{html_escape(iso)}" '
+        f'title="{html_escape(iso)}">'
+        f"{html_escape(label)}: {html_escape(compact)}</time>"
     )
 
 
 def render_last_seen(value: Any) -> str:
-    """Render a "Last seen" marker with an explicit non-lifecycle disclaimer.
-
-    "Last seen" reflects only the most recent *observed telemetry*; it is
-    explicitly not an agent lifecycle/registration status, so every use of
-    it repeats that disclaimer (FR-034 / quickstart wording).
-    """
+    """Render the most recent observed-telemetry timestamp compactly."""
     moment = _coerce_datetime(value)
-    disclaimer = "Last seen reflects observed telemetry only, not agent lifecycle status."
     if moment is None:
         return (
             '<span class="observe-last-seen observe-last-seen-missing metric-missing">'
-            f"Last seen: not reported"
-            f'<span class="observe-hint"> ({html_escape(disclaimer)})</span></span>'
+            "\u2014</span>"
         )
     iso = _format_iso(moment)
+    compact = _format_compact_timestamp(moment)
     return (
         '<span class="observe-last-seen">'
-        f'Last seen: <time datetime="{html_escape(iso)}">{html_escape(iso)}</time>'
-        f'<span class="observe-hint"> ({html_escape(disclaimer)})</span></span>'
+        f'<time datetime="{html_escape(iso)}" title="{html_escape(iso)}">'
+        f"{html_escape(compact)}</time></span>"
+    )
+
+
+def _render_timestamp(value: Any) -> str:
+    moment = _coerce_datetime(value)
+    if moment is None:
+        return '<span class="observe-metric metric-missing">\u2014</span>'
+    iso = _format_iso(moment)
+    compact = _format_compact_timestamp(moment)
+    return (
+        f'<time datetime="{html_escape(iso)}" title="{html_escape(iso)}">'
+        f"{html_escape(compact)}</time>"
     )
 
 
@@ -459,18 +494,13 @@ def _render_token_totals(
     *,
     missing_text: str = "Not reported",
 ) -> str:
-    """Render token totals with the required "observed usage" disclaimer.
-
-    Token counts are observed usage signals, not billing data; every render
-    of a token total must say so explicitly (FR-036).
-    """
+    """Render compact input/output token totals."""
     input_html = _render_maybe_missing(input_tokens, missing_text=missing_text)
     output_html = _render_maybe_missing(output_tokens, missing_text=missing_text)
     return (
         '<span class="observe-token-totals">'
         f'<span class="observe-token-in">In: {input_html}</span> '
         f'<span class="observe-token-out">Out: {output_html}</span>'
-        '<span class="observe-hint"> (observed usage, not billing data)</span>'
         "</span>"
     )
 
@@ -479,6 +509,30 @@ def _observed_token_total(input_tokens: Any, output_tokens: Any) -> int | float 
     if input_tokens is None and output_tokens is None:
         return None
     return (input_tokens or 0) + (output_tokens or 0)
+
+
+def _sum_reported(rows: Sequence[Any], field: str) -> int | float | None:
+    values = [_get(row, field) for row in rows if _get(row, field) is not None]
+    return sum(values) if values else None
+
+
+def _render_seconds(value: Any, *, missing_text: str = "\u2014") -> str:
+    return _render_maybe_missing(
+        value,
+        formatter=_format_seconds,
+        missing_text=missing_text,
+    )
+
+
+def _render_totals_footer(cells: Sequence[str]) -> str:
+    if not cells:
+        return ""
+    return (
+        '<tfoot><tr class="observe-totals-row">'
+        f'<th scope="row">{cells[0]}</th>'
+        f"{''.join(f'<td>{cell}</td>' for cell in cells[1:])}"
+        "</tr></tfoot>"
+    )
 
 
 def _render_additional_token_classes(entry: Any) -> str:
@@ -495,9 +549,13 @@ def _render_additional_token_classes(entry: Any) -> str:
         )
     if _get(entry, "token_classes_partial", False):
         values.append(
-            '<span class="observe-token-classes-partial">Partial class coverage</span>'
+            _render_info_icon(
+                "Some telemetry records omitted one or more token-class attributes; "
+                "totals include the values that were reported.",
+                extra_class="observe-token-classes-partial",
+            )
         )
-    return "".join(values) if values else _render_maybe_missing(None)
+    return "".join(values) if values else _render_maybe_missing(None, missing_text="\u2014")
 
 
 def _render_model_token_usage(entry: Any) -> str:
@@ -515,10 +573,10 @@ def _render_model_token_usage(entry: Any) -> str:
     )
     partial = ""
     if _get(entry, "token_classes_partial", False):
-        partial = (
-            '<span class="observe-token-classes-partial">'
-            "Partial class coverage"
-            "</span>"
+        partial = _render_info_icon(
+            "Some telemetry records omitted one or more token-class attributes; "
+            "totals include the values that were reported.",
+            extra_class="observe-token-classes-partial",
         )
     additional = _get(entry, "additional_token_classes", {}) or {}
     additional_html = "".join(
@@ -1043,14 +1101,21 @@ def _render_source_kind_badge(source_kind: Any) -> str:
         "copilot_studio": "warn",
         "unknown": "muted",
     }.get(kind, "muted")
-    label = str(kind).replace("_", " ").title()
-    return _render_badge(label, tone, extra_class="observe-source-kind-badge")
+    label = "Unclassified" if kind == "unknown" else str(kind).replace("_", " ").title()
+    badge = _render_badge(label, tone, extra_class="observe-source-kind-badge")
+    if kind != "unknown":
+        return badge
+    return (
+        '<span class="observe-inline-help" '
+        'title="Source kind could not be classified from the available telemetry attributes.">'
+        f"{badge}</span>"
+    )
 
 
 def _render_identity_availability(agent_id: Any) -> str:
     if agent_id:
         return _render_badge("Identity available", "ok", extra_class="observe-identity-badge")
-    return _render_badge("Identity not reported", "muted", extra_class="observe-identity-badge")
+    return _render_badge("Identity unavailable", "muted", extra_class="observe-identity-badge")
 
 
 def render_agents_table(
@@ -1072,42 +1137,80 @@ def render_agents_table(
         )
     rows = []
     for agent in agents:
-        name = _get(agent, "agent_name") or _get(agent, "agent_id") or "Not reported"
+        name = _get(agent, "agent_name") or _get(agent, "agent_id") or "\u2014"
+        input_tokens = _get(agent, "input_tokens")
+        output_tokens = _get(agent, "output_tokens")
         rows.append(
             "<tr>"
             f"<td>{html_escape(name)} "
             f"{_render_identity_availability(_get(agent, 'agent_id'))}</td>"
             f'<td title="{html_escape(_get(agent, "source_id") or "")}">'
             f"{_render_source_kind_badge(_get(agent, 'source_kind'))}</td>"
-            f"<td>{html_escape(_get(agent, 'model') or 'Not reported')}</td>"
+            f"<td>{html_escape(_get(agent, 'model') or '—')}</td>"
             f"<td>{render_last_seen(_get(agent, 'last_seen'))}</td>"
-            f"<td>{_render_maybe_missing(_get(agent, 'invocations'))}</td>"
+            f"<td>{_render_maybe_missing(_get(agent, 'invocations'), missing_text='—')}</td>"
             f"<td>{_render_failure_rate(_get(agent, 'invocations'), _get(agent, 'failures'))}</td>"
-            f"<td>{_render_maybe_missing(_get(agent, 'p95_latency_ms'), suffix=' ms')}</td>"
-            f"<td>{_render_maybe_missing(_get(agent, 'input_tokens'))}</td>"
-            f"<td>{_render_maybe_missing(_get(agent, 'output_tokens'))}</td>"
-            f"<td>{_render_maybe_missing(_observed_token_total(_get(agent, 'input_tokens'), _get(agent, 'output_tokens')))}</td>"
+            f"<td>{_render_seconds(_get(agent, 'p95_latency_ms'))}</td>"
+            f"<td>{_render_maybe_missing(input_tokens, missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(output_tokens, missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_observed_token_total(input_tokens, output_tokens), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(agent, 'cache_read_tokens'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(agent, 'cache_write_tokens'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(agent, 'reasoning_tokens'), missing_text='—')}</td>"
             "</tr>"
         )
+    total_invocations = _sum_reported(agents, "invocations")
+    total_failures = _sum_reported(agents, "failures")
+    total_input = _sum_reported(agents, "input_tokens")
+    total_output = _sum_reported(agents, "output_tokens")
+    footer = _render_totals_footer(
+        (
+            f'Totals {_render_info_icon("Totals cover the rows currently displayed.")}',
+            "\u2014",
+            "\u2014",
+            "\u2014",
+            _render_maybe_missing(total_invocations, missing_text="\u2014"),
+            _render_failure_rate(total_invocations, total_failures),
+            "\u2014",
+            _render_maybe_missing(total_input, missing_text="\u2014"),
+            _render_maybe_missing(total_output, missing_text="\u2014"),
+            _render_maybe_missing(
+                _observed_token_total(total_input, total_output), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(agents, "cache_read_tokens"), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(agents, "cache_write_tokens"), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(agents, "reasoning_tokens"), missing_text="\u2014"
+            ),
+        )
+    )
+    token_help = "Observed token usage from telemetry; this is not billing data."
     return f"""
-<p class="observe-hint">Token columns show observed usage, not billing data.</p>
 <table class="observe-agents-table" aria-label="Agents observed in the selected range">
   <caption class="visually-hidden">Agents observed in the selected range</caption>
   <thead>
     <tr>
-      <th scope="col">Agent</th>
-      <th scope="col">Source</th>
-      <th scope="col">Model</th>
-      <th scope="col">Last seen</th>
-      <th scope="col">Invocations</th>
-      <th scope="col">Failure rate</th>
-      <th scope="col">p95 latency</th>
-      <th scope="col">Input tokens</th>
-      <th scope="col">Output tokens</th>
-      <th scope="col">Total tokens</th>
+      {_render_header_cell("Agent")}
+      {_render_header_cell("Source")}
+      {_render_header_cell("Model", "Model identifier reported by response telemetry.")}
+      {_render_header_cell("Last seen", "Most recent telemetry in the selected range; not agent lifecycle status.")}
+      {_render_header_cell("Invocations")}
+      {_render_header_cell("Failure rate", "Failures divided by invocations.")}
+      {_render_header_cell("p95 latency", "95% of observed invocations completed in this time or less.")}
+      {_render_header_cell("Input tokens", token_help)}
+      {_render_header_cell("Output tokens", token_help)}
+      {_render_header_cell("Total tokens", token_help)}
+      {_render_header_cell("Cache read", token_help)}
+      {_render_header_cell("Cache write", token_help)}
+      {_render_header_cell("Reasoning", token_help)}
     </tr>
   </thead>
   <tbody>{"".join(rows)}</tbody>
+  {footer}
 </table>
 """.strip()
 
@@ -1727,7 +1830,7 @@ def _render_cost_components(components: Sequence[Any]) -> str:
         rows_shown = _get(component, "rows_shown")
         rows_total = _get(component, "rows_total")
         if rows_total is None:
-            row_count = f"{rows_shown if rows_shown is not None else 'Not reported'} / total unknown"
+            row_count = str(rows_shown) if rows_shown is not None else "\u2014"
         else:
             omitted = max(int(rows_total) - int(rows_shown or 0), 0)
             row_count = f"{rows_shown if rows_shown is not None else 'Not reported'} / {rows_total}"
@@ -1966,9 +2069,13 @@ def _render_cost_bounds(bounds: Any) -> str:
     shown = _get(bounds, "rows_shown")
     total = _get(bounds, "rows_total_in_scope")
     if total is None:
-        text = f"Showing {shown if shown is not None else 'an unknown number of'} rows; total unknown."
+        text = f"Showing {shown} rows." if shown is not None else "Showing available rows."
     else:
-        text = f"Showing {shown if shown is not None else 'an unknown number of'} of {total} rows in scope"
+        text = (
+            f"Showing {shown} of {total} rows in scope"
+            if shown is not None
+            else f"{total} rows in scope"
+        )
         text += "; results are truncated." if _get(bounds, "truncated") else "."
     return f'<p class="observe-hint observe-cost-bounds-notice">{html_escape(text)}</p>'
 
@@ -2018,7 +2125,7 @@ def _render_bounds_notice(bounds: Any, *, rows_shown: int) -> str:
     """Render bounded-result scope without inventing an unavailable total."""
     total = _get(bounds, "rows_total_in_scope") if bounds is not None else None
     if total is None:
-        text = f"Showing {rows_shown} rows; total unknown."
+        text = f"Showing {rows_shown} rows."
     else:
         text = f"Showing {rows_shown} of {total} rows in scope."
     return f'<p class="observe-hint observe-bounds-notice">{html_escape(text)}</p>'
@@ -2040,36 +2147,56 @@ def render_tools_table(
         )
     rows = []
     for tool in tools:
-        agent = _get(tool, "agent_name") or _get(tool, "agent_id") or _get(tool, "agent_key") or "Not reported"
+        agent = (
+            _get(tool, "agent_name")
+            or _get(tool, "agent_id")
+            or _get(tool, "agent_key")
+            or "\u2014"
+        )
         rows.append(
             "<tr>"
-            f"<td>{html_escape(_get(tool, 'tool_name') or 'Not reported')}</td>"
+            f"<td>{html_escape(_get(tool, 'tool_name') or '—')}</td>"
             f"<td>{html_escape(agent)}</td>"
-            f"<td>{html_escape(_get(tool, 'source_id') or 'Not reported')}</td>"
+            f"<td>{html_escape(_get(tool, 'source_id') or '—')}</td>"
             f"<td>{_render_source_kind_badge(_get(tool, 'source_kind'))}</td>"
             f"<td>{render_last_seen(_get(tool, 'last_seen'))}</td>"
-            f"<td>{_render_maybe_missing(_get(tool, 'invocations'))}</td>"
-            f"<td>{_render_maybe_missing(_get(tool, 'failures'))}</td>"
-            f"<td>{_render_maybe_missing(_get(tool, 'p95_latency_ms'), suffix=' ms', missing_text='Not measured')}</td>"
+            f"<td>{_render_maybe_missing(_get(tool, 'invocations'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(tool, 'failures'), missing_text='—')}</td>"
+            f"<td>{_render_seconds(_get(tool, 'p95_latency_ms'))}</td>"
             "</tr>"
         )
+    total_invocations = _sum_reported(tools, "invocations")
+    total_failures = _sum_reported(tools, "failures")
+    footer = _render_totals_footer(
+        (
+            f'Totals {_render_info_icon("Totals cover the rows currently displayed.")}',
+            "\u2014",
+            "\u2014",
+            "\u2014",
+            "\u2014",
+            _render_maybe_missing(total_invocations, missing_text="\u2014"),
+            _render_maybe_missing(total_failures, missing_text="\u2014"),
+            "\u2014",
+        )
+    )
     return f"""
 {notice}
 <table class="observe-tools-table" aria-label="Tools observed in the selected range">
   <caption class="visually-hidden">Tools observed in the selected range</caption>
   <thead>
     <tr>
-      <th scope="col">Tool</th>
-      <th scope="col">Agent</th>
-      <th scope="col">Source</th>
-      <th scope="col">Runtime</th>
-      <th scope="col">Last seen</th>
-      <th scope="col">Invocations</th>
-      <th scope="col">Failures</th>
-      <th scope="col">p95 latency</th>
+      {_render_header_cell("Tool")}
+      {_render_header_cell("Agent")}
+      {_render_header_cell("Source")}
+      {_render_header_cell("Runtime")}
+      {_render_header_cell("Last seen", "Most recent telemetry in the selected range.")}
+      {_render_header_cell("Invocations")}
+      {_render_header_cell("Failures")}
+      {_render_header_cell("p95 latency", "95% of observed tool invocations completed in this time or less.")}
     </tr>
   </thead>
   <tbody>{"".join(rows)}</tbody>
+  {footer}
 </table>
 """.strip()
 
@@ -2090,48 +2217,93 @@ def render_runs_table(
         )
     rows = []
     for run in runs:
-        agent = _get(run, "agent_name") or _get(run, "agent_id") or _get(run, "agent_key") or "Not reported"
-        started_at = _coerce_datetime(_get(run, "started_at"))
+        agent = (
+            _get(run, "agent_name")
+            or _get(run, "agent_id")
+            or _get(run, "agent_key")
+            or "\u2014"
+        )
+        input_tokens = _get(run, "input_tokens")
+        output_tokens = _get(run, "output_tokens")
         rows.append(
             "<tr>"
-            f"<td>{html_escape(_get(run, 'run_key') or 'Not reported')}</td>"
-            f"<td>{html_escape(_get(run, 'run_key_kind') or 'Not reported')}</td>"
+            f"<td>{html_escape(_get(run, 'run_key') or '—')}</td>"
+            f"<td>{html_escape(_get(run, 'run_key_kind') or '—')}</td>"
             f"<td>{html_escape(agent)}</td>"
-            f"<td>{html_escape(_get(run, 'source_id') or 'Not reported')}</td>"
+            f"<td>{html_escape(_get(run, 'source_id') or '—')}</td>"
             f"<td>{_render_source_kind_badge(_get(run, 'source_kind'))}</td>"
-            f"<td>{html_escape(_format_iso(started_at) if started_at else 'Not reported')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'duration_ms'), suffix=' ms')}</td>"
-            f"<td>{html_escape(_get(run, 'status') or 'Not reported')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'turns'))}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'tool_invocations'))}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'input_tokens'), missing_text='Not available')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'output_tokens'), missing_text='Not available')}</td>"
-            f"<td>{_render_maybe_missing(_observed_token_total(_get(run, 'input_tokens'), _get(run, 'output_tokens')), missing_text='Not available')}</td>"
+            f"<td>{_render_timestamp(_get(run, 'started_at'))}</td>"
+            f"<td>{_render_seconds(_get(run, 'duration_ms'))}</td>"
+            f"<td>{html_escape(_get(run, 'status') or '—')}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'turns'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'tool_invocations'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(input_tokens, missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(output_tokens, missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_observed_token_total(input_tokens, output_tokens), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'cache_read_tokens'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'cache_write_tokens'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(run, 'reasoning_tokens'), missing_text='—')}</td>"
             "</tr>"
         )
+    total_input = _sum_reported(runs, "input_tokens")
+    total_output = _sum_reported(runs, "output_tokens")
+    footer = _render_totals_footer(
+        (
+            f'Totals {_render_info_icon("Totals cover the rows currently displayed.")}',
+            "\u2014",
+            "\u2014",
+            "\u2014",
+            "\u2014",
+            "\u2014",
+            _render_seconds(_sum_reported(runs, "duration_ms")),
+            "\u2014",
+            _render_maybe_missing(_sum_reported(runs, "turns"), missing_text="\u2014"),
+            _render_maybe_missing(
+                _sum_reported(runs, "tool_invocations"), missing_text="\u2014"
+            ),
+            _render_maybe_missing(total_input, missing_text="\u2014"),
+            _render_maybe_missing(total_output, missing_text="\u2014"),
+            _render_maybe_missing(
+                _observed_token_total(total_input, total_output), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(runs, "cache_read_tokens"), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(runs, "cache_write_tokens"), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(runs, "reasoning_tokens"), missing_text="\u2014"
+            ),
+        )
+    )
+    token_help = "Observed token usage from telemetry; this is not billing data."
     return f"""
 {notice}
-<p class="observe-hint">Start, duration, and turns describe activity within the selected range. Token columns show observed usage, not billing data.</p>
 <table class="observe-runs-table" aria-label="Runs observed in the selected range">
   <caption class="visually-hidden">Runs observed in the selected range; start, duration, and turns are range-scoped.</caption>
   <thead>
     <tr>
-      <th scope="col">Run key</th>
-      <th scope="col">Correlation</th>
-      <th scope="col">Agent</th>
-      <th scope="col">Source</th>
-      <th scope="col">Runtime</th>
-      <th scope="col">Started in range</th>
-      <th scope="col">Duration in range</th>
-      <th scope="col">Status</th>
-      <th scope="col">Turns in range</th>
-      <th scope="col">Tool invocations</th>
-      <th scope="col">Input tokens</th>
-      <th scope="col">Output tokens</th>
-      <th scope="col">Total tokens</th>
+      {_render_header_cell("Run key")}
+      {_render_header_cell("Correlation", "Telemetry key used to group this run.")}
+      {_render_header_cell("Agent")}
+      {_render_header_cell("Source")}
+      {_render_header_cell("Runtime")}
+      {_render_header_cell("Started in range", "First observed activity within the selected range.")}
+      {_render_header_cell("Duration in range", "Elapsed time between first and last observed activity in the selected range.")}
+      {_render_header_cell("Status")}
+      {_render_header_cell("Turns in range", "Turns observed within the selected range.")}
+      {_render_header_cell("Tool invocations")}
+      {_render_header_cell("Input tokens", token_help)}
+      {_render_header_cell("Output tokens", token_help)}
+      {_render_header_cell("Total tokens", token_help)}
+      {_render_header_cell("Cache read", token_help)}
+      {_render_header_cell("Cache write", token_help)}
+      {_render_header_cell("Reasoning", token_help)}
     </tr>
   </thead>
   <tbody>{"".join(rows)}</tbody>
+  {footer}
 </table>
 """.strip()
 
@@ -2159,48 +2331,80 @@ def render_models_usage_table(
         )
     rows = []
     for entry in usage:
-        model = _get(entry, "model") or _get(entry, "deployment") or "Not reported"
+        model = _get(entry, "model") or "\u2014"
+        input_tokens = _get(entry, "input_tokens")
+        output_tokens = _get(entry, "output_tokens")
         rows.append(
             "<tr>"
             f"<td>{html_escape(model)}</td>"
-            f"<td>{html_escape(_get(entry, 'deployment') or 'Not reported')}</td>"
-            f"<td>{_render_maybe_missing(_get(entry, 'requests'))}</td>"
+            f"<td>{html_escape(_get(entry, 'deployment') or '—')}</td>"
+            f"<td>{_render_maybe_missing(_get(entry, 'requests'), missing_text='—')}</td>"
             f"<td>{_render_failure_rate(_get(entry, 'requests'), _get(entry, 'failures'))}</td>"
-            f"<td>{_render_maybe_missing(_get(entry, 'p95_latency_ms'), suffix=' ms')}</td>"
-            f"<td>{_render_maybe_missing(_get(entry, 'input_tokens'))}</td>"
-            f"<td>{_render_maybe_missing(_get(entry, 'output_tokens'))}</td>"
-            f"<td>{_render_maybe_missing(_observed_token_total(_get(entry, 'input_tokens'), _get(entry, 'output_tokens')))}</td>"
-            f"<td>{_render_maybe_missing(_get(entry, 'cache_read_tokens'))}</td>"
-            f"<td>{_render_maybe_missing(_get(entry, 'cache_write_tokens'))}</td>"
-            f"<td>{_render_maybe_missing(_get(entry, 'reasoning_tokens'))}</td>"
+            f"<td>{_render_seconds(_get(entry, 'p95_latency_ms'))}</td>"
+            f"<td>{_render_maybe_missing(input_tokens, missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(output_tokens, missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_observed_token_total(input_tokens, output_tokens), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(entry, 'cache_read_tokens'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(entry, 'cache_write_tokens'), missing_text='—')}</td>"
+            f"<td>{_render_maybe_missing(_get(entry, 'reasoning_tokens'), missing_text='—')}</td>"
             f"<td>{_render_additional_token_classes(entry)}</td>"
             f"<td>{render_last_seen(_get(entry, 'last_seen'))}</td>"
             "</tr>"
         )
+    total_requests = _sum_reported(usage, "requests")
+    total_failures = _sum_reported(usage, "failures")
+    total_input = _sum_reported(usage, "input_tokens")
+    total_output = _sum_reported(usage, "output_tokens")
+    footer = _render_totals_footer(
+        (
+            f'Totals {_render_info_icon("Totals cover the rows currently displayed.")}',
+            "\u2014",
+            _render_maybe_missing(total_requests, missing_text="\u2014"),
+            _render_failure_rate(total_requests, total_failures),
+            "\u2014",
+            _render_maybe_missing(total_input, missing_text="\u2014"),
+            _render_maybe_missing(total_output, missing_text="\u2014"),
+            _render_maybe_missing(
+                _observed_token_total(total_input, total_output), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(usage, "cache_read_tokens"), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(usage, "cache_write_tokens"), missing_text="\u2014"
+            ),
+            _render_maybe_missing(
+                _sum_reported(usage, "reasoning_tokens"), missing_text="\u2014"
+            ),
+            "\u2014",
+            "\u2014",
+        )
+    )
+    token_help = "Observed token usage from telemetry; this is not billing data."
     return f"""
-<p class="observe-hint">Token columns show observed usage, not billing data.</p>
 <table class="observe-usage-table" aria-label="Model usage observed in the selected range">
   <caption class="visually-hidden">
     Model usage observed in the selected range. Token counts are observed usage, not billing data.
   </caption>
   <thead>
     <tr>
-      <th scope="col">Model</th>
-      <th scope="col">Deployment</th>
-      <th scope="col">Requests</th>
-      <th scope="col">Failure rate</th>
-      <th scope="col">p95 latency</th>
-      <th scope="col">Input tokens</th>
-      <th scope="col">Output tokens</th>
-      <th scope="col">Total tokens</th>
-      <th scope="col">Cache read</th>
-      <th scope="col">Cache write</th>
-      <th scope="col">Reasoning</th>
-      <th scope="col">Other token classes</th>
-      <th scope="col">Last seen</th>
+      {_render_header_cell("Model", "Model identifier reported by response telemetry.")}
+      {_render_header_cell("Deployment", "Requested Azure OpenAI deployment reported by telemetry.")}
+      {_render_header_cell("Requests")}
+      {_render_header_cell("Failure rate", "Failures divided by requests.")}
+      {_render_header_cell("p95 latency", "95% of observed model requests completed in this time or less.")}
+      {_render_header_cell("Input tokens", token_help)}
+      {_render_header_cell("Output tokens", token_help)}
+      {_render_header_cell("Total tokens", token_help)}
+      {_render_header_cell("Cache read", f"Tokens served from the prompt cache. {token_help}")}
+      {_render_header_cell("Cache write", f"Tokens written to the prompt cache. {token_help}")}
+      {_render_header_cell("Reasoning", f"Reasoning tokens reported by the model provider. {token_help}")}
+      {_render_header_cell("Other token classes", "Additional gen_ai.usage.* classes. A row information icon means some telemetry records omitted token-class attributes.")}
+      {_render_header_cell("Last seen", "Most recent telemetry in the selected range.")}
     </tr>
   </thead>
   <tbody>{"".join(rows)}</tbody>
+  {footer}
 </table>
 """.strip()
 
@@ -2245,8 +2449,8 @@ def render_diagnostics_banner(diagnostics: Mapping[str, Any]) -> str:
     <div><dt>Successful</dt><dd>{_render_maybe_missing(successful)}</dd></div>
     <div><dt>Partial</dt><dd>{_render_maybe_missing(partial)}</dd></div>
     <div><dt>Failed</dt><dd>{_render_maybe_missing(failed)}</dd></div>
-    <div><dt>Query duration</dt><dd>{_render_maybe_missing(duration_ms, suffix=' ms')}</dd></div>
-    <div><dt>Cache</dt><dd>{html_escape(cache_status or 'Not reported')}</dd></div>
+    <div><dt>Query duration</dt><dd>{_render_seconds(duration_ms)}</dd></div>
+    <div><dt>Cache</dt><dd>{html_escape(cache_status or '—')}</dd></div>
   </dl>
   {render_refreshed_at(refreshed_at)}
 </div>
@@ -2816,7 +3020,37 @@ th[aria-sort="descending"] .observe-sort-button::after {
   outline: 2px solid var(--observe-accent);
   outline-offset: 3px;
 }
+.observe-info-icon {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--observe-muted);
+  cursor: help;
+  display: inline-flex;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  height: 14px;
+  justify-content: center;
+  line-height: 1;
+  margin-left: 5px;
+  text-transform: none;
+  vertical-align: middle;
+  width: 14px;
+}
+.observe-info-icon:focus-visible {
+  color: var(--observe-accent);
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
+tfoot th,
+tfoot td {
+  background: color-mix(in srgb, var(--observe-card-bg) 92%, var(--observe-accent));
+  border-top: 1px solid var(--observe-border-strong);
+  border-bottom: 0;
+  font-weight: 700;
+}
 .observe-drilldown-button {
   appearance: none;
   background: transparent;
@@ -2973,9 +3207,9 @@ _OBSERVE_STYLES = "\n\n".join(
 #
 # Safety guarantee enforced by this script (and pinned by tests):
 #   * Only OBSERVE_FILTER_QUERY_KEYS (foundry_resource_id, project_resource_id,
-#     agent_id, model, tool_name, run_key, start, end) plus the active `view`
-#     are ever read from
-#     or written to the URL query string via history.replaceState.
+#     agent_id, model, tool_name, run_key, start, end), the active `view`, and
+#     the non-sensitive `theme` preference are read from or written to the URL
+#     query string via history.replaceState.
 #   * Raw generative-AI content fields (input_messages, output_messages,
 #     system_instructions, tool_content, evaluation_explanation) are NEVER
 #     placed in the URL, and this script never calls localStorage,
@@ -2984,7 +3218,7 @@ _OBSERVE_STYLES = "\n\n".join(
 #     on the "Load protected content" button; there is no automatic fetch of
 #     that endpoint anywhere in this script.
 
-_OBSERVE_SCRIPT = """
+_OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
 (function () {
   "use strict";
 
@@ -3096,6 +3330,7 @@ _OBSERVE_SCRIPT = """
       });
     }
     params.set("view", currentView);
+    params.set("theme", document.documentElement.getAttribute("data-theme") || "dark");
     return window.location.pathname + "?" + params.toString();
   }
 
@@ -3257,7 +3492,7 @@ _OBSERVE_SCRIPT = """
     return node;
   }
 
-  function formatNumberJs(value) {
+  function formatNumberJs(value, minimumFractionDigits, maximumFractionDigits) {
     if (value === null || value === undefined) {
       return "\u2014";
     }
@@ -3268,10 +3503,17 @@ _OBSERVE_SCRIPT = """
     if (isNaN(num)) {
       return String(value);
     }
-    if (Number.isInteger(num)) {
+    if (
+      Number.isInteger(num) &&
+      minimumFractionDigits === undefined &&
+      maximumFractionDigits === undefined
+    ) {
       return num.toLocaleString("en-US");
     }
-    return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return num.toLocaleString("en-US", {
+      minimumFractionDigits: minimumFractionDigits === undefined ? 2 : minimumFractionDigits,
+      maximumFractionDigits: maximumFractionDigits === undefined ? 2 : maximumFractionDigits
+    });
   }
 
   // Mirrors `_render_maybe_missing`: a reported `0` renders as "0" tagged
@@ -3286,7 +3528,63 @@ _OBSERVE_SCRIPT = """
     }
     var numeric = Number(value);
     var isZero = !isNaN(numeric) && numeric === 0;
-    return makeEl("span", "observe-metric " + (isZero ? "metric-zero" : "metric-value"), formatNumberJs(value) + suffix);
+    return makeEl(
+      "span",
+      "observe-metric " + (isZero ? "metric-zero" : "metric-value"),
+      formatNumberJs(value, opts.minimumFractionDigits, opts.maximumFractionDigits) + suffix
+    );
+  }
+
+  function renderMillisecondsAsSeconds(value, missingText) {
+    if (value === null || value === undefined) {
+      return renderMaybeMissing(null, { missingText: missingText || "\u2014" });
+    }
+    return renderMaybeMissing(Number(value) / 1000, {
+      suffix: " s",
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3
+    });
+  }
+
+  function compactTimestamp(value) {
+    if (!value) return "";
+    var moment = new Date(value);
+    if (isNaN(moment.getTime())) return String(value);
+    function pad(part) { return String(part).padStart(2, "0"); }
+    return moment.getUTCFullYear() + "-" + pad(moment.getUTCMonth() + 1) + "-" +
+      pad(moment.getUTCDate()) + " " + pad(moment.getUTCHours()) + ":" +
+      pad(moment.getUTCMinutes()) + ":" + pad(moment.getUTCSeconds()) + " UTC";
+  }
+
+  function renderTimestampJs(value) {
+    if (!value) {
+      return renderMaybeMissing(null, { missingText: "\u2014" });
+    }
+    var time = document.createElement("time");
+    time.setAttribute("datetime", value);
+    time.title = String(value);
+    time.textContent = compactTimestamp(value);
+    return time;
+  }
+
+  function sumReported(rows, field) {
+    var found = false;
+    var total = (rows || []).reduce(function (sum, row) {
+      var value = row && row[field];
+      if (value === null || value === undefined || isNaN(Number(value))) return sum;
+      found = true;
+      return sum + Number(value);
+    }, 0);
+    return found ? total : null;
+  }
+
+  function infoIcon(helpText, extraClass) {
+    var icon = makeEl("span", "observe-info-icon" + (extraClass ? " " + extraClass : ""), "i");
+    icon.setAttribute("role", "img");
+    icon.setAttribute("tabindex", "0");
+    icon.setAttribute("aria-label", helpText);
+    icon.title = helpText;
+    return icon;
   }
 
   // Mirrors `_render_failure_rate`.
@@ -3306,8 +3604,6 @@ _OBSERVE_SCRIPT = """
     return renderMaybeMissing(rate, { suffix: "%" });
   }
 
-  // Mirrors `_render_token_totals`: always appends the "observed usage, not
-  // billing data" disclaimer (FR-036).
   function renderTokenTotals(inputTokens, outputTokens, missingText) {
     var wrap = makeEl("span", "observe-token-totals");
     var inSpan = makeEl("span", "observe-token-in", "In: ");
@@ -3317,7 +3613,6 @@ _OBSERVE_SCRIPT = """
     wrap.appendChild(inSpan);
     wrap.appendChild(document.createTextNode(" "));
     wrap.appendChild(outSpan);
-    wrap.appendChild(makeEl("span", "observe-hint", " (observed usage, not billing data)"));
     return wrap;
   }
 
@@ -3333,16 +3628,27 @@ _OBSERVE_SCRIPT = """
 
   function renderAdditionalTokenClasses(entry) {
     entry = entry || {};
-    var values = Object.keys(entry.additional_token_classes || {}).map(function (name) {
-      return name + ": " + formatNumberJs(entry.additional_token_classes[name]);
+    var wrap = makeEl("span", "observe-additional-token-classes");
+    Object.keys(entry.additional_token_classes || {}).forEach(function (name) {
+      wrap.appendChild(makeEl(
+        "span",
+        "observe-token-class observe-token-class-additional",
+        name + ": " + formatNumberJs(entry.additional_token_classes[name])
+      ));
     });
     if (entry.additional_token_classes_truncated) {
-      values.push("Additional classes truncated");
+      wrap.appendChild(infoIcon(
+        "More additional token classes were reported than can be displayed.",
+        "observe-token-classes-truncated"
+      ));
     }
     if (entry.token_classes_partial) {
-      values.push("Partial class coverage");
+      wrap.appendChild(infoIcon(
+        "Some telemetry records omitted one or more token-class attributes; totals include the values that were reported.",
+        "observe-token-classes-partial"
+      ));
     }
-    return values.length ? values.join("; ") : renderMaybeMissing(null);
+    return wrap.childNodes.length ? wrap : renderMaybeMissing(null, { missingText: "\u2014" });
   }
 
   function renderModelTokenUsage(entry) {
@@ -3367,9 +3673,10 @@ _OBSERVE_SCRIPT = """
       classes.appendChild(tokenClass);
     });
     if (entry.token_classes_partial) {
-      classes.appendChild(
-        makeEl("span", "observe-token-classes-partial", "Partial class coverage")
-      );
+      classes.appendChild(infoIcon(
+        "Some telemetry records omitted one or more token-class attributes; totals include the values that were reported.",
+        "observe-token-classes-partial"
+      ));
     }
     if (entry.additional_token_classes_truncated) {
       classes.appendChild(
@@ -3380,26 +3687,12 @@ _OBSERVE_SCRIPT = """
     return wrap;
   }
 
-  // Mirrors `render_last_seen`: always appends the observed-telemetry-only
-  // disclaimer (FR-034).
   function renderLastSeenJs(value) {
-    var disclaimer = "Last seen reflects observed telemetry only, not agent lifecycle status.";
     if (!value) {
-      var missing = makeEl(
-        "span",
-        "observe-last-seen observe-last-seen-missing metric-missing",
-        "Last seen: not reported"
-      );
-      missing.appendChild(makeEl("span", "observe-hint", " (" + disclaimer + ")"));
-      return missing;
+      return makeEl("span", "observe-last-seen observe-last-seen-missing metric-missing", "\u2014");
     }
     var span = makeEl("span", "observe-last-seen");
-    span.appendChild(document.createTextNode("Last seen: "));
-    var time = document.createElement("time");
-    time.setAttribute("datetime", value);
-    time.textContent = value;
-    span.appendChild(time);
-    span.appendChild(makeEl("span", "observe-hint", " (" + disclaimer + ")"));
+    span.appendChild(renderTimestampJs(value));
     return span;
   }
 
@@ -3414,17 +3707,18 @@ _OBSERVE_SCRIPT = """
     }
     time.className = "observe-refreshed-at";
     time.setAttribute("datetime", value);
-    time.textContent = label + ": " + value;
+    time.title = String(value);
+    time.textContent = label + ": " + compactTimestamp(value);
     return time;
   }
 
   // Mirrors `render_source_label`.
   function renderSourceLabelJs(source) {
-    var label = "unknown source";
+    var label = "source unavailable";
     if (typeof source === "string" && source) {
       label = source;
     } else if (source && typeof source === "object") {
-      label = source.source_kind || source.source_id || "unknown source";
+      label = source.source_kind || source.source_id || "source unavailable";
     }
     return makeEl("span", "observe-source-label", "Source: " + label);
   }
@@ -3448,14 +3742,20 @@ _OBSERVE_SCRIPT = """
     var label = String(kind).split("_").map(function (part) {
       return part.charAt(0).toUpperCase() + part.slice(1);
     }).join(" ");
-    return renderBadgeJs(label, tone, "observe-source-kind-badge");
+    if (kind !== "unknown") {
+      return renderBadgeJs(label, tone, "observe-source-kind-badge");
+    }
+    var help = makeEl("span", "observe-inline-help");
+    help.title = "Source kind could not be classified from the available telemetry attributes.";
+    help.appendChild(renderBadgeJs("Unclassified", tone, "observe-source-kind-badge"));
+    return help;
   }
 
   function renderIdentityAvailabilityBadge(agentId) {
     if (agentId) {
       return renderBadgeJs("Identity available", "ok", "observe-identity-badge");
     }
-    return renderBadgeJs("Identity not reported", "muted", "observe-identity-badge");
+    return renderBadgeJs("Identity unavailable", "muted", "observe-identity-badge");
   }
 
   function emptyStateNode(message) {
@@ -3509,7 +3809,9 @@ _OBSERVE_SCRIPT = """
     }
     table.dataset.observeSortable = "true";
     headers.forEach(function (header, columnIndex) {
-      var label = String(header.textContent || "").trim() || "Column " + (columnIndex + 1);
+      var label = header.dataset.label || String(header.textContent || "").trim() ||
+        "Column " + (columnIndex + 1);
+      var helpText = header.dataset.help || "";
       clearChildren(header);
       header.setAttribute("aria-sort", "none");
       var button = makeEl("button", "observe-sort-button", label);
@@ -3560,6 +3862,9 @@ _OBSERVE_SCRIPT = """
         );
       });
       header.appendChild(button);
+      if (helpText) {
+        header.appendChild(infoIcon(helpText));
+      }
     });
   }
 
@@ -3567,14 +3872,31 @@ _OBSERVE_SCRIPT = """
     (root || document).querySelectorAll("table").forEach(enhanceSortableTable);
   }
 
-  function buildDataTable(className, ariaLabel, columns, rows) {
+  function appendCellContent(cell, content) {
+    if (Array.isArray(content)) {
+      content.forEach(function (part) {
+        appendCellContent(cell, part);
+      });
+    } else if (content instanceof Node) {
+      cell.appendChild(content);
+    } else {
+      cell.textContent = content === undefined || content === null ? "" : String(content);
+    }
+  }
+
+  function buildDataTable(className, ariaLabel, columns, rows, footerCells) {
     var table = makeEl("table", className);
     table.setAttribute("aria-label", ariaLabel);
     var thead = document.createElement("thead");
     var headRow = document.createElement("tr");
     columns.forEach(function (column) {
-      var th = makeEl("th", null, column);
+      var definition = typeof column === "string" ? { label: column } : column;
+      var th = makeEl("th", null, definition.label);
       th.setAttribute("scope", "col");
+      th.dataset.label = definition.label;
+      if (definition.help) {
+        th.dataset.help = definition.help;
+      }
       headRow.appendChild(th);
     });
     thead.appendChild(headRow);
@@ -3584,20 +3906,24 @@ _OBSERVE_SCRIPT = """
       var tr = document.createElement("tr");
       cells.forEach(function (cell) {
         var td = document.createElement("td");
-        if (Array.isArray(cell)) {
-          cell.forEach(function (part) {
-            td.appendChild(part);
-          });
-        } else if (cell instanceof Node) {
-          td.appendChild(cell);
-        } else {
-          td.textContent = cell === undefined || cell === null ? "" : String(cell);
-        }
+        appendCellContent(td, cell);
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
+    if (footerCells && footerCells.length) {
+      var tfoot = document.createElement("tfoot");
+      var footerRow = makeEl("tr", "observe-totals-row");
+      footerCells.forEach(function (cell, index) {
+        var footerCell = document.createElement(index === 0 ? "th" : "td");
+        if (index === 0) footerCell.setAttribute("scope", "row");
+        appendCellContent(footerCell, cell);
+        footerRow.appendChild(footerCell);
+      });
+      tfoot.appendChild(footerRow);
+      table.appendChild(tfoot);
+    }
     enhanceSortableTable(table);
     return table;
   }
@@ -3625,25 +3951,37 @@ _OBSERVE_SCRIPT = """
       row = row || {};
       var status = row.success === true
         ? "Succeeded"
-        : (row.success === false ? "Failed" : "Not reported");
+        : (row.success === false ? "Failed" : "\u2014");
       return [
-        row.timestamp || "Not reported",
-        row.telemetry_type || "Not reported",
-        row.operation_name || "Not reported",
-        row.agent_name || row.agent_id || "Not reported",
-        row.model || "Not reported",
-        row.deployment || "Not reported",
-        row.tool_name || "Not reported",
+        renderTimestampJs(row.timestamp),
+        row.telemetry_type || "\u2014",
+        row.operation_name || "\u2014",
+        row.agent_name || row.agent_id || "\u2014",
+        row.model || "\u2014",
+        row.deployment || "\u2014",
+        row.tool_name || "\u2014",
         status,
-        renderMaybeMissing(row.duration_ms, { suffix: " ms", missingText: "Not measured" }),
-        row.trace_id || "Not reported",
+        renderMillisecondsAsSeconds(row.duration_ms),
+        row.trace_id || "\u2014",
       ];
     });
     return buildDataTable(
       "observe-drilldown-table",
       "Metadata-only activity for the selected aggregate",
       ["Time", "Type", "Operation", "Agent", "Model", "Deployment", "Tool", "Status", "Duration", "Trace ID"],
-      tableRows
+      tableRows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        renderMillisecondsAsSeconds(sumReported(rows, "duration_ms")),
+        "\u2014"
+      ]
     );
   }
 
@@ -3758,8 +4096,20 @@ _OBSERVE_SCRIPT = """
           value: invocations > 0 ? Math.round(((invocations - failures) / invocations) * 1000) / 10 : null,
           unit: "%",
         },
-        { title: "Average latency", value: data.avg_latency_ms, unit: " ms" },
-        { title: "p95 latency", value: data.p95_latency_ms, unit: " ms" },
+        {
+          title: "Average latency",
+          value: data.avg_latency_ms === null ? null : Number(data.avg_latency_ms) / 1000,
+          unit: " s",
+          minimumFractionDigits: 3,
+          maximumFractionDigits: 3
+        },
+        {
+          title: "p95 latency",
+          value: data.p95_latency_ms === null ? null : Number(data.p95_latency_ms) / 1000,
+          unit: " s",
+          minimumFractionDigits: 3,
+          maximumFractionDigits: 3
+        },
       ];
     }
     return [];
@@ -3793,7 +4143,7 @@ _OBSERVE_SCRIPT = """
   function boundsNoticeNode(bounds, rowsShown) {
     var total = bounds && bounds.rows_total_in_scope;
     var text = total === null || total === undefined
-      ? "Showing " + rowsShown + " rows; total unknown."
+      ? "Showing " + rowsShown + " rows."
       : "Showing " + rowsShown + " of " + total + " rows in scope.";
     return makeEl("p", "observe-hint observe-bounds-notice", text);
   }
@@ -3813,7 +4163,11 @@ _OBSERVE_SCRIPT = """
       card.setAttribute("aria-label", title);
       card.appendChild(makeEl("h3", "observe-card-title", title));
       var valueEl = makeEl("p", "observe-card-value");
-      valueEl.appendChild(renderMaybeMissing(metric.value, { suffix: metric.unit || "" }));
+      valueEl.appendChild(renderMaybeMissing(metric.value, {
+        suffix: metric.unit || "",
+        minimumFractionDigits: metric.minimumFractionDigits,
+        maximumFractionDigits: metric.maximumFractionDigits
+      }));
       card.appendChild(valueEl);
       if (metric.source) {
         card.appendChild(renderSourceLabelJs(metric.source));
@@ -3835,7 +4189,7 @@ _OBSERVE_SCRIPT = """
     var rows = agents.map(function (agent) {
       agent = agent || {};
       var nameCell = [
-        document.createTextNode((agent.agent_name || agent.agent_id || "Not reported") + " "),
+        document.createTextNode((agent.agent_name || agent.agent_id || "\u2014") + " "),
         renderIdentityAvailabilityBadge(agent.agent_id),
       ];
       var sourceCell = renderSourceKindBadge(agent.source_kind);
@@ -3843,7 +4197,7 @@ _OBSERVE_SCRIPT = """
       return [
         nameCell,
         sourceCell,
-        agent.model || "Not reported",
+        agent.model || "\u2014",
         renderLastSeenJs(agent.last_seen),
         buildDrilldownButton(
           "agents",
@@ -3856,23 +4210,59 @@ _OBSERVE_SCRIPT = """
           "View " + String(agent.invocations || 0) + " invocations for " + (agent.agent_name || agent.agent_id || "this agent")
         ),
         renderFailureRate(agent.invocations, agent.failures),
-        renderMaybeMissing(agent.p95_latency_ms, { suffix: " ms" }),
-        renderMaybeMissing(agent.input_tokens),
-        renderMaybeMissing(agent.output_tokens),
-        renderMaybeMissing(observedTokenTotal(agent.input_tokens, agent.output_tokens)),
+        renderMillisecondsAsSeconds(agent.p95_latency_ms),
+        renderMaybeMissing(agent.input_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(agent.output_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(observedTokenTotal(agent.input_tokens, agent.output_tokens), { missingText: "\u2014" }),
+        renderMaybeMissing(agent.cache_read_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(agent.cache_write_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(agent.reasoning_tokens, { missingText: "\u2014" }),
         buildAgentDetailButton(agent),
       ];
     });
+    var totalInvocations = sumReported(agents, "invocations");
+    var totalFailures = sumReported(agents, "failures");
+    var totalInput = sumReported(agents, "input_tokens");
+    var totalOutput = sumReported(agents, "output_tokens");
+    var tokenHelp = "Observed token usage from telemetry; this is not billing data.";
     var table = buildDataTable(
       "observe-agents-table",
       "Agents observed in the selected range",
-      ["Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Input tokens", "Output tokens", "Total tokens", "Details"],
-      rows
+      [
+        "Agent",
+        "Source",
+        { label: "Model", help: "Model identifier reported by response telemetry." },
+        { label: "Last seen", help: "Most recent telemetry in the selected range; not agent lifecycle status." },
+        "Invocations",
+        { label: "Failure rate", help: "Failures divided by invocations." },
+        { label: "p95 latency", help: "95% of observed invocations completed in this time or less." },
+        { label: "Input tokens", help: tokenHelp },
+        { label: "Output tokens", help: tokenHelp },
+        { label: "Total tokens", help: tokenHelp },
+        { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
+        { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp },
+        "Details"
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        renderMaybeMissing(totalInvocations, { missingText: "\u2014" }),
+        renderFailureRate(totalInvocations, totalFailures),
+        "\u2014",
+        renderMaybeMissing(totalInput, { missingText: "\u2014" }),
+        renderMaybeMissing(totalOutput, { missingText: "\u2014" }),
+        renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(agents, "cache_read_tokens"), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(agents, "cache_write_tokens"), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "\u2014" }),
+        "\u2014"
+      ]
     );
-    setViewContent("agents", [
-      makeEl("p", "observe-hint", "Token columns show observed usage, not billing data."),
-      table,
-    ]);
+    setViewContent("agents", [table]);
   }
 
   // ---------------------------------------------------------------------
@@ -4154,8 +4544,8 @@ _OBSERVE_SCRIPT = """
     var rows = usage.map(function (entry) {
       entry = entry || {};
       return [
-        entry.model || entry.deployment || "Not reported",
-        entry.deployment || "Not reported",
+        entry.model || "\u2014",
+        entry.deployment || "\u2014",
         buildDrilldownButton(
           "models",
           {
@@ -4168,27 +4558,61 @@ _OBSERVE_SCRIPT = """
           "View " + String(entry.requests || 0) + " requests for " + (entry.model || entry.deployment || "this model")
         ),
         renderFailureRate(entry.requests, entry.failures),
-        renderMaybeMissing(entry.p95_latency_ms, { suffix: " ms" }),
-        renderMaybeMissing(entry.input_tokens),
-        renderMaybeMissing(entry.output_tokens),
-        renderMaybeMissing(observedTokenTotal(entry.input_tokens, entry.output_tokens)),
-        renderMaybeMissing(entry.cache_read_tokens),
-        renderMaybeMissing(entry.cache_write_tokens),
-        renderMaybeMissing(entry.reasoning_tokens),
+        renderMillisecondsAsSeconds(entry.p95_latency_ms),
+        renderMaybeMissing(entry.input_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(entry.output_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(observedTokenTotal(entry.input_tokens, entry.output_tokens), { missingText: "\u2014" }),
+        renderMaybeMissing(entry.cache_read_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(entry.cache_write_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(entry.reasoning_tokens, { missingText: "\u2014" }),
         renderAdditionalTokenClasses(entry),
         renderLastSeenJs(entry.last_seen),
       ];
     });
+    var totalRequests = sumReported(usage, "requests");
+    var totalFailures = sumReported(usage, "failures");
+    var totalInput = sumReported(usage, "input_tokens");
+    var totalOutput = sumReported(usage, "output_tokens");
+    var tokenHelp = "Observed token usage from telemetry; this is not billing data.";
     var table = buildDataTable(
       "observe-usage-table",
       "Model usage observed in the selected range",
-      ["Model", "Deployment", "Requests", "Failure rate", "p95 latency", "Input tokens", "Output tokens", "Total tokens", "Cache read", "Cache write", "Reasoning", "Other token classes", "Last seen"],
-      rows
+      [
+        { label: "Model", help: "Model identifier reported by response telemetry." },
+        { label: "Deployment", help: "Requested Azure OpenAI deployment reported by telemetry." },
+        "Requests",
+        { label: "Failure rate", help: "Failures divided by requests." },
+        { label: "p95 latency", help: "95% of observed model requests completed in this time or less." },
+        { label: "Input tokens", help: tokenHelp },
+        { label: "Output tokens", help: tokenHelp },
+        { label: "Total tokens", help: tokenHelp },
+        { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
+        { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp },
+        {
+          label: "Other token classes",
+          help: "Additional gen_ai.usage.* classes. A row information icon means some telemetry records omitted token-class attributes."
+        },
+        { label: "Last seen", help: "Most recent telemetry in the selected range." }
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "\u2014",
+        renderMaybeMissing(totalRequests, { missingText: "\u2014" }),
+        renderFailureRate(totalRequests, totalFailures),
+        "\u2014",
+        renderMaybeMissing(totalInput, { missingText: "\u2014" }),
+        renderMaybeMissing(totalOutput, { missingText: "\u2014" }),
+        renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(usage, "cache_read_tokens"), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(usage, "cache_write_tokens"), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(usage, "reasoning_tokens"), { missingText: "\u2014" }),
+        "\u2014",
+        "\u2014"
+      ]
     );
-    setViewContent("usage", [
-      makeEl("p", "observe-hint", "Token columns show observed usage, not billing data."),
-      table,
-    ]);
+    setViewContent("usage", [table]);
   }
 
   function renderTools(data, diagnostics, bounds) {
@@ -4204,9 +4628,9 @@ _OBSERVE_SCRIPT = """
     var rows = tools.map(function (tool) {
       tool = tool || {};
       return [
-        tool.tool_name || "Not reported",
-        tool.agent_name || tool.agent_id || tool.agent_key || "Not reported",
-        tool.source_id || "Not reported",
+        tool.tool_name || "\u2014",
+        tool.agent_name || tool.agent_id || tool.agent_key || "\u2014",
+        tool.source_id || "\u2014",
         renderSourceKindBadge(tool.source_kind),
         renderLastSeenJs(tool.last_seen),
         buildDrilldownButton(
@@ -4220,15 +4644,36 @@ _OBSERVE_SCRIPT = """
           tool.invocations,
           "View " + String(tool.invocations || 0) + " invocations for " + (tool.tool_name || "this tool")
         ),
-        renderMaybeMissing(tool.failures),
-        renderMaybeMissing(tool.p95_latency_ms, { suffix: " ms", missingText: "Not measured" }),
+        renderMaybeMissing(tool.failures, { missingText: "\u2014" }),
+        renderMillisecondsAsSeconds(tool.p95_latency_ms),
       ];
     });
+    var totalInvocations = sumReported(tools, "invocations");
+    var totalFailures = sumReported(tools, "failures");
     var table = buildDataTable(
       "observe-tools-table",
       "Tools observed in the selected range",
-      ["Tool", "Agent", "Source", "Runtime", "Last seen", "Invocations", "Failures", "p95 latency"],
-      rows
+      [
+        "Tool",
+        "Agent",
+        "Source",
+        "Runtime",
+        { label: "Last seen", help: "Most recent telemetry in the selected range." },
+        "Invocations",
+        "Failures",
+        { label: "p95 latency", help: "95% of observed tool invocations completed in this time or less." }
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        renderMaybeMissing(totalInvocations, { missingText: "\u2014" }),
+        renderMaybeMissing(totalFailures, { missingText: "\u2014" }),
+        "\u2014"
+      ]
     );
     setViewContent("tools", [notice, table]);
   }
@@ -4246,14 +4691,14 @@ _OBSERVE_SCRIPT = """
     var rows = runs.map(function (run) {
       run = run || {};
       return [
-        run.run_key || "Not reported",
-        run.run_key_kind || "Not reported",
-        run.agent_name || run.agent_id || run.agent_key || "Not reported",
-        run.source_id || "Not reported",
+        run.run_key || "\u2014",
+        run.run_key_kind || "\u2014",
+        run.agent_name || run.agent_id || run.agent_key || "\u2014",
+        run.source_id || "\u2014",
         renderSourceKindBadge(run.source_kind),
-        run.started_at || "Not reported",
-        renderMaybeMissing(run.duration_ms, { suffix: " ms" }),
-        run.status || "Not reported",
+        renderTimestampJs(run.started_at),
+        renderMillisecondsAsSeconds(run.duration_ms),
+        run.status || "\u2014",
         buildDrilldownButton(
           "runs",
           {
@@ -4265,20 +4710,60 @@ _OBSERVE_SCRIPT = """
           run.turns,
           "View activity for run " + (run.run_key || "")
         ),
-        renderMaybeMissing(run.tool_invocations),
-        renderMaybeMissing(run.input_tokens, { missingText: "Not available" }),
-        renderMaybeMissing(run.output_tokens, { missingText: "Not available" }),
-        renderMaybeMissing(observedTokenTotal(run.input_tokens, run.output_tokens), { missingText: "Not available" }),
+        renderMaybeMissing(run.tool_invocations, { missingText: "\u2014" }),
+        renderMaybeMissing(run.input_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(run.output_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(observedTokenTotal(run.input_tokens, run.output_tokens), { missingText: "\u2014" }),
+        renderMaybeMissing(run.cache_read_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(run.cache_write_tokens, { missingText: "\u2014" }),
+        renderMaybeMissing(run.reasoning_tokens, { missingText: "\u2014" }),
       ];
     });
-    var hint = makeEl("p", "observe-hint", "Start, duration, and turns describe activity within the selected range.");
+    var totalInput = sumReported(runs, "input_tokens");
+    var totalOutput = sumReported(runs, "output_tokens");
+    var tokenHelp = "Observed token usage from telemetry; this is not billing data.";
     var table = buildDataTable(
       "observe-runs-table",
       "Runs observed in the selected range",
-      ["Run key", "Correlation", "Agent", "Source", "Runtime", "Started in range", "Duration in range", "Status", "Turns in range", "Tool invocations", "Input tokens", "Output tokens", "Total tokens"],
-      rows
+      [
+        "Run key",
+        { label: "Correlation", help: "Telemetry key used to group this run." },
+        "Agent",
+        "Source",
+        "Runtime",
+        { label: "Started in range", help: "First observed activity within the selected range." },
+        { label: "Duration in range", help: "Elapsed time between first and last observed activity in the selected range." },
+        "Status",
+        { label: "Turns in range", help: "Turns observed within the selected range." },
+        "Tool invocations",
+        { label: "Input tokens", help: tokenHelp },
+        { label: "Output tokens", help: tokenHelp },
+        { label: "Total tokens", help: tokenHelp },
+        { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
+        { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp }
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        "\u2014",
+        renderMillisecondsAsSeconds(sumReported(runs, "duration_ms")),
+        "\u2014",
+        renderMaybeMissing(sumReported(runs, "turns"), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(runs, "tool_invocations"), { missingText: "\u2014" }),
+        renderMaybeMissing(totalInput, { missingText: "\u2014" }),
+        renderMaybeMissing(totalOutput, { missingText: "\u2014" }),
+        renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(runs, "cache_read_tokens"), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(runs, "cache_write_tokens"), { missingText: "\u2014" }),
+        renderMaybeMissing(sumReported(runs, "reasoning_tokens"), { missingText: "\u2014" })
+      ]
     );
-    setViewContent("runs", [notice, hint, table]);
+    setViewContent("runs", [notice, table]);
   }
 
   function costLabel(value) {
@@ -4582,10 +5067,8 @@ _OBSERVE_SCRIPT = """
         "; Fallback: " + (fallback ? "Yes" : "No");
       var shown = component.rows_shown;
       var total = component.rows_total;
-      var rowCount = String(shown === null || shown === undefined ? "Not reported" : shown);
-      if (total === null || total === undefined) {
-        rowCount += " / total unknown";
-      } else {
+      var rowCount = String(shown === null || shown === undefined ? "\u2014" : shown);
+      if (total !== null && total !== undefined) {
         var omitted = Math.max(Number(total) - Number(shown || 0), 0);
         rowCount += " / " + String(total);
         if (omitted) rowCount += " (" + String(omitted) + " omitted)";
@@ -4840,10 +5323,12 @@ _OBSERVE_SCRIPT = """
     var shown = bounds.rows_shown;
     var total = bounds.rows_total_in_scope;
     var text = total === null || total === undefined
-      ? "Showing " + String(shown === null || shown === undefined ? "an unknown number of" : shown) +
-        " rows; total unknown."
-      : "Showing " + String(shown === null || shown === undefined ? "an unknown number of" : shown) +
-        " of " + String(total) + " rows in scope" +
+      ? (shown === null || shown === undefined
+        ? "Showing available rows."
+        : "Showing " + String(shown) + " rows.")
+      : (shown === null || shown === undefined
+        ? String(total) + " rows in scope"
+        : "Showing " + String(shown) + " of " + String(total) + " rows in scope") +
         (bounds.truncated ? "; results are truncated." : ".");
     return makeEl("p", "observe-hint observe-cost-bounds-notice", text);
   }
@@ -5250,7 +5735,7 @@ _OBSERVE_SCRIPT = """
         return response.json().then(function (body) {
           if (myToken !== requestToken) return null;
           renderObserveResponse(body);
-          setRefreshStatus("Refreshed " + new Date().toISOString());
+          setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));
           return body;
         });
       })
@@ -5322,7 +5807,7 @@ _OBSERVE_SCRIPT = """
             return null;
           }
           renderObserveResponse(body);
-          setRefreshStatus("Refreshed " + new Date().toISOString());
+          setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));
           return body;
         });
       })
@@ -5363,26 +5848,6 @@ _OBSERVE_SCRIPT = """
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source_resource_id: sourceResourceId, trace_id: traceId }),
       signal: controller.signal,
-    });
-  }
-
-  function setupThemeToggle() {
-    var toggle = document.querySelector("[data-observe-theme-toggle]");
-    if (!toggle) return;
-    var root = document.documentElement;
-    function apply(theme) {
-      root.setAttribute("data-theme", theme);
-      var isLight = theme === "light";
-      toggle.setAttribute("aria-pressed", isLight ? "true" : "false");
-      var icon = toggle.querySelector("[data-observe-theme-icon]");
-      if (icon) icon.textContent = isLight ? "\u2600" : "\u263D";
-      var label = toggle.querySelector("[data-observe-theme-label]");
-      if (label) label.textContent = isLight ? "Light" : "Dark";
-    }
-    // In-memory only: never persisted to storage or cookies.
-    apply(root.getAttribute("data-theme") === "light" ? "light" : "dark");
-    toggle.addEventListener("click", function () {
-      apply(root.getAttribute("data-theme") === "light" ? "dark" : "light");
     });
   }
 
@@ -5514,7 +5979,7 @@ _OBSERVE_SCRIPT = """
       fetchObserveData(false);
     });
     activateView(currentView);
-    setupThemeToggle();
+    setupAgentOpsThemeToggle();
     enhanceSortableTables(document);
     syncUrl();
     scheduleAutoRefresh();
@@ -5641,19 +6106,17 @@ def render_observe_page(
   </section>"""
 
     scope_subtitle = html_escape(scope_label) if scope_label else "Runtime observability"
+    theme_toggle = ui_theme.render_theme_toggle(
+        control_id="observe-theme-toggle", extra_class="observe-theme-toggle"
+    )
     header_html = f"""  <header class="aos-header observe-header">
     <div class="aos-brand-block">
       <h1 class="aos-brand observe-brand">AgentOps Observe</h1>
       <p class="aos-subtitle observe-subtitle">{scope_subtitle}</p>
     </div>
     <div class="aos-header-actions observe-header-actions">
-      <a class="aos-link observe-cockpit-link" href="/" data-observe-cockpit-link>&#8592; Cockpit</a>
-      <button type="button" id="observe-theme-toggle" class="aos-theme-toggle observe-theme-toggle"
-        aria-pressed="false" aria-label="Toggle dark and light theme" title="Toggle theme"
-        data-observe-theme-toggle>
-        <span class="aos-theme-icon" aria-hidden="true" data-observe-theme-icon>&#9789;</span>
-        <span class="observe-theme-label" data-observe-theme-label>Theme</span>
-      </button>
+      <a class="aos-link observe-cockpit-link" href="/" data-theme-link>&#8592; Cockpit</a>
+      {theme_toggle}
     </div>
   </header>"""
 

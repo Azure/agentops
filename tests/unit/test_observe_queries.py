@@ -187,6 +187,10 @@ def test_agents_query_applies_dimension_filters_and_bounds_rows() -> None:
     assert "gen_ai.azure_ai_project.id" in query
     assert "agent-1" in query
     assert "gpt-4o" in query
+    assert (
+        'coalesce(Properties["gen_ai.response.model"], '
+        'Properties["gen_ai.request.model"])'
+    ) in query
     assert f"| take {MAX_ROWS_PER_QUERY}" in query
     assert "let total_in_scope = toscalar(agg | count);" in query
     assert "| extend total_in_scope = total_in_scope" in query
@@ -228,6 +232,14 @@ def test_agent_and_model_queries_preserve_project_for_shared_workspace() -> None
 
 def test_models_query_summarizes_by_model_and_deployment() -> None:
     query = build_models_query(_filters())
+    assert (
+        'model = tostring(coalesce(Properties["gen_ai.response.model"], '
+        'Properties["gen_ai.request.model"]))'
+    ) in query
+    assert (
+        'deployment = tostring(coalesce(Properties["gen_ai.request.deployment"], '
+        'Properties["gen_ai.request.model"]))'
+    ) in query
     assert "by project_resource_id, model, deployment" in query
     assert "| sort by requests desc" in query
     assert f"| take {MAX_ROWS_PER_QUERY}" in query
@@ -308,6 +320,10 @@ def test_drilldown_query_is_bounded_and_metadata_only(
     assert f"tolower(project_resource_id) == '{_PROJECT_ARM_ID.lower()}'" in query
     assert "| take 51" in query
     assert "trace_id = tostring(OperationId)" in query
+    assert (
+        'deployment = tostring(coalesce(Properties["gen_ai.request.deployment"], '
+        'Properties["gen_ai.request.model"]))'
+    ) in query
     assert "Properties[\"gen_ai.prompt\"]" not in query
     assert "AppGenAIContent" not in query
 
@@ -349,13 +365,26 @@ def test_models_query_projects_unmapped_usage_attributes_in_one_bounded_query() 
     assert "| extend total_in_scope = total_in_scope" in query
 
 
-def test_granular_classes_do_not_change_agents_or_combined_usage_queries() -> None:
-    for query in (build_agents_query(_filters()), build_usage_query(_filters())):
-        assert "cache_read_tokens" not in query
-        assert "cache_write_tokens" not in query
-        assert "reasoning_tokens" not in query
-        assert "extra_token_classes" not in query
-        assert "bag_keys(Properties)" not in query
+def test_agents_query_aggregates_standard_granular_token_classes() -> None:
+    query = build_agents_query(_filters())
+    for token_class in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
+        assert f"{token_class} = sum({token_class})" in query
+    for reporting_counter in (
+        "cache_read_reporting_records",
+        "cache_write_reporting_records",
+        "reasoning_reporting_records",
+    ):
+        assert reporting_counter in query
+    assert "extra_token_classes" not in query
+    assert "bag_keys(Properties)" not in query
+
+
+def test_combined_usage_query_remains_limited_to_input_and_output_tokens() -> None:
+    query = build_usage_query(_filters())
+    for token_class in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
+        assert token_class not in query
+    assert "extra_token_classes" not in query
+    assert "bag_keys(Properties)" not in query
 
 
 def test_models_query_does_not_filter_by_runtime_or_model_family() -> None:
@@ -434,6 +463,10 @@ def test_cost_department_query_filters_real_dimensions_before_aggregation() -> N
     ):
         assert expected in query
         assert query.index(expected) < summarize
+    assert (
+        'deployment = tostring(coalesce(Properties["gen_ai.request.deployment"], '
+        'Properties["gen_ai.request.model"]))'
+    ) in query
     assert "by department_id, department_label, mapping_state, identity_state" in query
     assert "provider_name" in query.rsplit("| project ", 1)[1]
 
@@ -610,6 +643,10 @@ def test_cost_user_query_preserves_runtime_evidence_for_exact_matching() -> None
     )
 
     assert "| where deployment in ('gpt-prod')" in query
+    assert (
+        'deployment = tostring(coalesce(Properties["gen_ai.request.deployment"], '
+        'Properties["gen_ai.request.model"]))'
+    ) in query
     assert "by user_key, raw_identity, project_resource_id" in query
     final_projection = query.rsplit("| project ", 1)[1]
     for dimension in ("agent_id", "agent_name", "provider_name", "system"):

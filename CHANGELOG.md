@@ -39,9 +39,16 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   explicit message.
 - **The Cockpit Observe dashboard was redesigned.** Shared design tokens now live
   in `agentops.agent.ui_theme`; Observe uses an explicit `data-theme` attribute
-  with an in-memory toggle instead of following the OS colour scheme, and the
-  Overview is organised around executive KPI cards. The Cockpit itself now renders
-  its tokens from the same module, so the two surfaces cannot drift.
+  instead of following the OS colour scheme, and the Overview is organised around
+  executive KPI cards. Cockpit and Observe now use the same dark/light control and
+  carry the non-sensitive theme preference in navigation URLs, without browser
+  storage or cookies.
+- **Observe usage tables now present telemetry consistently.** Agents, models,
+  tools, runs, and drill-through details use compact UTC timestamps, seconds for
+  durations, separate cache-read, cache-write, and reasoning-token columns,
+  contextual information icons, and totals for additive metrics. Model deployment
+  falls back to the request model when a deployment attribute is absent, while the
+  response model remains independently visible.
 - **Observability readiness only reports what it can actually verify.** Multi-turn
   coverage is treated as a dataset property and inferred solely from conversation
   rows; rubric evaluators count as ready only when they are both declared and

@@ -19,22 +19,20 @@ stylesheet so the two surfaces are guaranteed to match.
 Theme model
 -----------
 Themes are **explicit**, never inferred from ``prefers-color-scheme``. The
-default theme is dark (matching the Cockpit shell, which is dark-only). A light
+default theme is dark. A light
 theme is a complete, accessible equivalent applied via an explicit
 ``[data-theme="light"]`` attribute on the document root -- there is no bare
-``prefers-color-scheme`` override that could diverge from the Cockpit.
+``prefers-color-scheme`` override that could make product surfaces diverge.
 
-Purity
-------
-This module performs no I/O, reads no environment variables, and imports no
-Azure SDKs. It only assembles CSS strings from constants.
+The shared toggle stores only the non-sensitive ``theme=light|dark`` preference
+in the page URL. Links marked with ``data-theme-link`` carry that preference
+between Cockpit and Observe without cookies or browser storage.
 
 .. note::
    :mod:`agentops.agent.cockpit` consumes :func:`render_theme_variables` for its
    design tokens, so the Cockpit and Observe token values can no longer drift.
-   Cockpit still styles its page with bare element selectors rather than the
-   ``aos-*`` shell primitives below; adopting :data:`SHARED_SHELL_CSS` there
-   would require reworking the Cockpit markup and is deliberately out of scope.
+   Cockpit still styles most page content with its own selectors, while both
+   surfaces consume the canonical tokens and shared theme control.
 """
 
 from __future__ import annotations
@@ -163,6 +161,69 @@ def render_theme_variables(*, default_theme: str = "dark") -> str:
     alt_selector = f':root[data-theme="{alt_name}"], [data-theme="{alt_name}"]'
     alt_block = _emit_block(alt_selector, alt_tokens, color_scheme=alt_scheme)
     return f"{root_block}\n\n{alt_block}"
+
+
+def render_theme_toggle(
+    *, control_id: str = "aos-theme-toggle", extra_class: str = ""
+) -> str:
+    """Return the shared accessible light/dark theme control."""
+    classes = "aos-btn aos-theme-toggle"
+    if extra_class:
+        classes += f" {extra_class}"
+    return (
+        f'<button id="{control_id}" class="{classes}" data-aos-theme-toggle '
+        'type="button" aria-label="Switch to light theme" '
+        'aria-pressed="false">'
+        '<span class="aos-theme-icon" aria-hidden="true">&#9790;</span>'
+        '<span class="aos-theme-label">Dark</span>'
+        "</button>"
+    )
+
+
+THEME_TOGGLE_SCRIPT: str = r"""
+function setupAgentOpsThemeToggle() {
+  var toggle = document.querySelector("[data-aos-theme-toggle]");
+  if (!toggle) { return; }
+  var root = document.documentElement;
+  var params = new URLSearchParams(window.location.search);
+  var requested = params.get("theme");
+  var initialTheme = requested === "light" || requested === "dark" ? requested : "dark";
+
+  function updateThemeLinks(theme) {
+    document.querySelectorAll("[data-theme-link]").forEach(function (link) {
+      var target = new URL(link.getAttribute("href"), window.location.href);
+      target.searchParams.set("theme", theme);
+      link.setAttribute("href", target.pathname + target.search + target.hash);
+    });
+  }
+
+  function applyTheme(theme, updateUrl) {
+    var isLight = theme === "light";
+    root.setAttribute("data-theme", theme);
+    toggle.setAttribute("aria-pressed", isLight ? "true" : "false");
+    toggle.setAttribute("aria-label", isLight ? "Switch to dark theme" : "Switch to light theme");
+    var icon = toggle.querySelector(".aos-theme-icon");
+    var label = toggle.querySelector(".aos-theme-label");
+    if (icon) { icon.textContent = isLight ? "\u2600" : "\u263e"; }
+    if (label) { label.textContent = isLight ? "Light" : "Dark"; }
+    updateThemeLinks(theme);
+    if (updateUrl) {
+      var next = new URLSearchParams(window.location.search);
+      next.set("theme", theme);
+      history.replaceState(null, "", window.location.pathname + "?" + next.toString() + window.location.hash);
+    }
+  }
+
+  applyTheme(initialTheme, requested !== initialTheme);
+  toggle.addEventListener("click", function () {
+    applyTheme(root.getAttribute("data-theme") === "light" ? "dark" : "light", true);
+  });
+  window.addEventListener("popstate", function () {
+    var restored = new URLSearchParams(window.location.search).get("theme");
+    applyTheme(restored === "light" || restored === "dark" ? restored : "dark", false);
+  });
+}
+""".strip()
 
 
 # ---------------------------------------------------------------------------
@@ -306,5 +367,7 @@ __all__ = [
     "DARK_TOKENS",
     "LIGHT_TOKENS",
     "render_theme_variables",
+    "render_theme_toggle",
+    "THEME_TOGGLE_SCRIPT",
     "SHARED_SHELL_CSS",
 ]
