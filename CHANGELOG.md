@@ -49,6 +49,13 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   contextual information icons, and totals for additive metrics. Model deployment
   falls back to the request model when a deployment attribute is absent, while the
   response model remains independently visible.
+- **Observe now scales large agent inventories without re-querying Azure Monitor
+  for every table interaction.** Discovery and normalized aggregates use shared
+  single-flight caches with stale-while-revalidate refresh, Azure Monitor batches
+  run with bounded concurrency, and Agents, Models, Tools, Runs, and Coverage add
+  server-side search, sorting, and pagination. Responses expose stage-level timing
+  through diagnostics and the `Server-Timing` header. Status badges also use
+  stronger borders, filled surfaces, and larger type in both themes.
 - **Observability readiness only reports what it can actually verify.** Multi-turn
   coverage is treated as a dataset property and inferred solely from conversation
   rows; rubric evaluators count as ready only when they are both declared and

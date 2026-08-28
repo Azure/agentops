@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
+import logging
+import time
+from collections.abc import Awaitable, Callable, Hashable
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal, Mapping, Protocol, Sequence
@@ -93,6 +96,10 @@ from agentops.core.observe import (
 
 #: Identity/scope/filter cache entries stay fresh for two minutes (T046).
 CACHE_TTL_SECONDS = 120.0
+INVENTORY_CACHE_TTL_SECONDS = 15 * 60.0
+VIEW_STALE_TTL_SECONDS = 5 * 60.0
+
+logger = logging.getLogger(__name__)
 
 View = Literal["overview", "agents", "models", "tools", "runs", "cost"]
 
@@ -184,7 +191,7 @@ class ObserveResult:
     partial_failures: list[PartialFailure]
     bounds: ResultBounds | None
     refreshed_at: datetime
-    cache_status: Literal["hit", "miss", "bypass"]
+    cache_status: Literal["hit", "miss", "bypass", "stale"]
 
 
 @dataclass(frozen=True)
@@ -1171,6 +1178,187 @@ def _bound_view_data(view: View, data: Sequence[Any]) -> list[Any]:
     )[:MAX_ROWS_PER_QUERY]
 
 
+_VIEW_SORT_FIELDS: dict[str, frozenset[str]] = {
+    "agents": frozenset(
+        {
+            "agent_name",
+            "agent_id",
+            "source_kind",
+            "model",
+            "last_seen",
+            "invocations",
+            "failures",
+            "failure_rate",
+            "p95_latency_ms",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "reasoning_tokens",
+        }
+    ),
+    "models": frozenset(
+        {
+            "model",
+            "deployment",
+            "last_seen",
+            "requests",
+            "failures",
+            "failure_rate",
+            "p95_latency_ms",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "reasoning_tokens",
+        }
+    ),
+    "tools": frozenset(
+        {
+            "tool_name",
+            "agent_name",
+            "source_id",
+            "source_kind",
+            "last_seen",
+            "invocations",
+            "failures",
+            "p95_latency_ms",
+        }
+    ),
+    "runs": frozenset(
+        {
+            "run_key",
+            "run_key_kind",
+            "agent_name",
+            "source_id",
+            "source_kind",
+            "started_at",
+            "last_activity_at",
+            "duration_ms",
+            "status",
+            "turns",
+            "tool_invocations",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "reasoning_tokens",
+        }
+    ),
+}
+_DEFAULT_VIEW_SORT = {
+    "agents": "invocations",
+    "models": "requests",
+    "tools": "invocations",
+    "runs": "last_activity_at",
+}
+
+
+def _row_value(row: Any, field: str) -> Any:
+    if field == "total_tokens":
+        input_tokens = _row_value(row, "input_tokens")
+        output_tokens = _row_value(row, "output_tokens")
+        if input_tokens is None and output_tokens is None:
+            return None
+        return (input_tokens or 0) + (output_tokens or 0)
+    if field == "failure_rate":
+        failures = _row_value(row, "failures")
+        total = _row_value(row, "invocations")
+        if total is None:
+            total = _row_value(row, "requests")
+        if failures is None or not total:
+            return None
+        return failures / total
+    if isinstance(row, Mapping):
+        return row.get(field)
+    return getattr(row, field, None)
+
+
+def _sortable_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.timestamp()
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, str):
+        return value.casefold()
+    return value
+
+
+def _searchable_row(row: Any) -> str:
+    if hasattr(row, "model_dump"):
+        value = row.model_dump(mode="json")
+    elif isinstance(row, Mapping):
+        value = dict(row)
+    else:
+        value = vars(row)
+    return json.dumps(value, sort_keys=True, default=str).casefold()
+
+
+def _page_observe_result(
+    result: ObserveResult,
+    *,
+    page: int,
+    page_size: int,
+    search: str | None,
+    sort_by: str | None,
+    sort_direction: Literal["asc", "desc"],
+) -> ObserveResult:
+    """Sort, filter, and page one cached aggregate without re-querying Azure."""
+    if result.view not in _VIEW_SORT_FIELDS or not isinstance(result.data, list):
+        return result
+    allowed_fields = _VIEW_SORT_FIELDS[result.view]
+    field = sort_by or _DEFAULT_VIEW_SORT[result.view]
+    if field not in allowed_fields:
+        raise ValueError(f"unsupported sort field {field!r} for {result.view}")
+
+    rows = list(result.data)
+    normalized_search = (search or "").strip().casefold()
+    if normalized_search:
+        rows = [row for row in rows if normalized_search in _searchable_row(row)]
+
+    present: list[tuple[int, Any, Any]] = []
+    missing: list[tuple[int, Any]] = []
+    for index, row in enumerate(rows):
+        value = _row_value(row, field)
+        if value is None:
+            missing.append((index, row))
+        else:
+            present.append((index, row, _sortable_value(value)))
+    present.sort(
+        key=lambda item: (item[2], item[0]),
+        reverse=sort_direction == "desc",
+    )
+    ordered = [item[1] for item in present] + [item[1] for item in missing]
+
+    start = (page - 1) * page_size
+    end = start + page_size
+    visible = ordered[start:end]
+    source_bounds = result.bounds
+    hard_truncated = bool(source_bounds and source_bounds.truncated)
+    if normalized_search and hard_truncated:
+        total: int | None = None
+    elif normalized_search:
+        total = len(ordered)
+    elif source_bounds is not None:
+        total = source_bounds.rows_total_in_scope
+    else:
+        total = len(ordered)
+    has_next = end < len(ordered)
+    bounds = ResultBounds(
+        rows_shown=len(visible),
+        rows_total_in_scope=total,
+        truncated=hard_truncated,
+        page=page,
+        page_size=page_size,
+        has_previous_page=page > 1,
+        has_next_page=has_next,
+    )
+    return replace(result, data=visible, bounds=bounds)
+
+
 def _build_partial_failures(results: Sequence[SourceResult]) -> list[PartialFailure]:
     """Summarize every non-``success`` source outcome as a safe partial failure (T061).
 
@@ -1779,12 +1967,79 @@ class ObserveService:
         runtime: RuntimeContext,
         clock: Clock,
         cache: ObserveCache,
+        inventory_cache: ObserveCache | None = None,
+        monotonic_clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._discovery_client = discovery_client
         self._query_client = query_client
         self._runtime = runtime
         self._clock = clock
         self._cache = cache
+        self._inventory_cache = inventory_cache or cache
+        self._monotonic_clock = monotonic_clock
+        self._inflight: dict[Hashable, asyncio.Task[Any]] = {}
+        self._inflight_lock = asyncio.Lock()
+        self._background_tasks: set[asyncio.Task[Any]] = set()
+
+    async def _run_coalesced(
+        self,
+        key: Hashable,
+        operation: Callable[[], Awaitable[Any]],
+    ) -> tuple[Any, bool]:
+        """Run one operation per cache key and let concurrent callers share it."""
+        async with self._inflight_lock:
+            task = self._inflight.get(key)
+            owner = task is None
+            if task is None:
+                task = asyncio.create_task(operation())
+                self._inflight[key] = task
+
+                def remove_inflight(completed: asyncio.Task[Any]) -> None:
+                    if self._inflight.get(key) is completed:
+                        self._inflight.pop(key, None)
+
+                task.add_done_callback(remove_inflight)
+        return await asyncio.shield(task), owner
+
+    def _schedule_refresh(
+        self,
+        key: Hashable,
+        operation: Callable[[], Awaitable[Any]],
+    ) -> None:
+        """Refresh a stale aggregate without delaying the current response."""
+        task = asyncio.create_task(self._run_coalesced(key, operation))
+        self._background_tasks.add(task)
+
+        def finish(completed: asyncio.Task[Any]) -> None:
+            self._background_tasks.discard(completed)
+            if completed.cancelled():
+                return
+            error = completed.exception()
+            if error is not None:
+                logger.warning(
+                    "Observe background refresh failed for key %r",
+                    key,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
+
+        task.add_done_callback(finish)
+
+    def _cached_result(
+        self,
+        cached: _CachedView,
+        *,
+        cache_status: Literal["hit", "stale"],
+    ) -> ObserveResult:
+        return ObserveResult(
+            view=cached.view,
+            data=cached.data,
+            coverage=cached.coverage,
+            diagnostics=cached.diagnostics,
+            partial_failures=cached.partial_failures,
+            bounds=cached.bounds,
+            refreshed_at=cached.refreshed_at,
+            cache_status=cache_status,
+        )
 
     async def get_inventory(
         self, scope: ObserveScope, *, refresh: bool = False
@@ -1792,11 +2047,16 @@ class ObserveService:
         """Discover (or return the cached) resource inventory for *scope*."""
         identity = _identity_key(self._runtime)
         key = _cache_key(identity, scope, "discovery", None)
-        cached = self._cache.get(key, bypass=refresh)
+        cached = self._inventory_cache.get(key, bypass=refresh)
         if cached is not None:
             return cached
-        inventory = await self._discovery_client.discover(scope)
-        self._cache.set(key, inventory)
+
+        async def discover() -> ResourceInventory:
+            inventory = await self._discovery_client.discover(scope)
+            self._inventory_cache.set(key, inventory)
+            return inventory
+
+        inventory, _owner = await self._run_coalesced(key, discover)
         return inventory
 
     async def query_view(
@@ -1806,41 +2066,109 @@ class ObserveService:
         *,
         view: View,
         refresh: bool = False,
+        page: int = 1,
+        page_size: int = 50,
+        search: str | None = None,
+        sort_by: str | None = None,
+        sort_direction: Literal["asc", "desc"] = "desc",
     ) -> ObserveResult:
         """Return the normalized, coverage-annotated response for *view*."""
         filters.validate_scope(scope)
         identity = _identity_key(self._runtime)
         key = _cache_key(identity, scope, view, filters)
-        cached = self._cache.get(key, bypass=refresh)
-        if cached is not None:
-            return ObserveResult(
-                view=cached.view,
-                data=cached.data,
-                coverage=cached.coverage,
-                diagnostics=cached.diagnostics,
-                partial_failures=cached.partial_failures,
-                bounds=cached.bounds,
-                refreshed_at=cached.refreshed_at,
-                cache_status="hit",
+        cached = self._cache.lookup(
+            key,
+            bypass=refresh,
+            max_stale_seconds=VIEW_STALE_TTL_SECONDS,
+        )
+        if cached.state == "fresh" and cached.value is not None:
+            result = self._cached_result(cached.value, cache_status="hit")
+            return _page_observe_result(
+                result,
+                page=page,
+                page_size=page_size,
+                search=search,
+                sort_by=sort_by,
+                sort_direction=sort_direction,
+            )
+        if cached.state == "stale" and cached.value is not None:
+            self._schedule_refresh(
+                key,
+                lambda: self._query_view_uncached(
+                    scope,
+                    filters,
+                    view=view,
+                    key=key,
+                    cache_status="miss",
+                ),
+            )
+            result = self._cached_result(cached.value, cache_status="stale")
+            return _page_observe_result(
+                result,
+                page=page,
+                page_size=page_size,
+                search=search,
+                sort_by=sort_by,
+                sort_direction=sort_direction,
             )
 
+        result, owner = await self._run_coalesced(
+            key,
+            lambda: self._query_view_uncached(
+                scope,
+                filters,
+                view=view,
+                key=key,
+                cache_status="bypass" if refresh else "miss",
+            ),
+        )
+        if owner:
+            response = result
+        else:
+            response = replace(result, cache_status="hit")
+        return _page_observe_result(
+            response,
+            page=page,
+            page_size=page_size,
+            search=search,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        )
+
+    async def _query_view_uncached(
+        self,
+        scope: ObserveScope,
+        filters: ObserveFilterState,
+        *,
+        view: View,
+        key: tuple[Any, ...],
+        cache_status: Literal["miss", "bypass"],
+    ) -> ObserveResult:
+        request_started_at = self._clock()
+        request_started = self._monotonic_clock()
+        discovery_started = self._monotonic_clock()
         # Refresh telemetry without repeating the slower control-plane discovery.
         # Inventory has its own cache and explicit discover endpoint for forced refreshes.
         inventory = await self.get_inventory(scope)
+        discovery_duration_ms = int(
+            (self._monotonic_clock() - discovery_started) * 1000
+        )
         available_sources = [
             source
             for source in inventory.telemetry_sources
             if source.state == "available"
         ]
 
-        started_at = self._clock()
+        query_started = self._monotonic_clock()
         source_results = list(
             await self._query_client.query(available_sources, filters, view=view)
         )
-        completed_at = self._clock()
+        query_duration_ms = int((self._monotonic_clock() - query_started) * 1000)
 
+        normalization_started = self._monotonic_clock()
+        normalization_refreshed_at = self._clock()
         coverage = self._discovery_coverage(
-            inventory.telemetry_sources, refreshed_at=completed_at
+            inventory.telemetry_sources, refreshed_at=normalization_refreshed_at
         )
         data, query_coverage = self._normalize_view(
             view,
@@ -1848,7 +2176,7 @@ class ObserveService:
             inventory.telemetry_sources,
             inventory=inventory,
             window_end=filters.end,
-            refreshed_at=completed_at,
+            refreshed_at=normalization_refreshed_at,
         )
         if view in ("agents", "models", "tools", "runs"):
             data = _bound_view_data(view, data)
@@ -1858,12 +2186,21 @@ class ObserveService:
             if view in ("agents", "models", "tools", "runs")
             else None
         )
+        completed_at = self._clock()
+        normalization_duration_ms = int(
+            (self._monotonic_clock() - normalization_started) * 1000
+        )
+        duration_ms = int((self._monotonic_clock() - request_started) * 1000)
 
         diagnostics = self._build_diagnostics(
             source_results,
-            started_at=started_at,
+            started_at=request_started_at,
             completed_at=completed_at,
-            cache_status="bypass" if refresh else "miss",
+            cache_status=cache_status,
+            duration_ms=duration_ms,
+            discovery_duration_ms=discovery_duration_ms,
+            query_duration_ms=query_duration_ms,
+            normalization_duration_ms=normalization_duration_ms,
         )
         partial_failures = _build_partial_failures(source_results)
 
@@ -1887,7 +2224,7 @@ class ObserveService:
             partial_failures=partial_failures,
             bounds=bounds,
             refreshed_at=completed_at,
-            cache_status="bypass" if refresh else "miss",
+            cache_status=cache_status,
         )
 
     async def query_attribution(
@@ -3738,6 +4075,10 @@ class ObserveService:
         started_at: datetime,
         completed_at: datetime,
         cache_status: Literal["miss", "bypass"],
+        duration_ms: int | None = None,
+        discovery_duration_ms: int = 0,
+        query_duration_ms: int = 0,
+        normalization_duration_ms: int = 0,
     ) -> QueryDiagnostics:
         successful = sum(1 for result in results if result.status == "success")
         partial = sum(1 for result in results if result.status == "partial")
@@ -3746,11 +4087,15 @@ class ObserveService:
             for result in results
             if result.status in ("timeout", "throttled", "error")
         )
-        duration_ms = max(int((completed_at - started_at).total_seconds() * 1000), 0)
+        if duration_ms is None:
+            duration_ms = int((completed_at - started_at).total_seconds() * 1000)
         return QueryDiagnostics(
             started_at=started_at,
             completed_at=completed_at,
-            duration_ms=duration_ms,
+            duration_ms=max(duration_ms, 0),
+            discovery_duration_ms=max(discovery_duration_ms, 0),
+            query_duration_ms=max(query_duration_ms, 0),
+            normalization_duration_ms=max(normalization_duration_ms, 0),
             source_count=len(results),
             successful_sources=successful,
             partial_sources=partial,

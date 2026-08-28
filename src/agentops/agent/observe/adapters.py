@@ -960,10 +960,14 @@ class AzureQueryClient:
         credential: Any,
         source_timeout_seconds: int = SOURCE_TIMEOUT_SECONDS,
         request_deadline_seconds: int = DEFAULT_REQUEST_DEADLINE_SECONDS,
+        max_concurrent_batches: int = 4,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        if max_concurrent_batches < 1:
+            raise ValueError("max_concurrent_batches must be positive")
         self._source_timeout_seconds = source_timeout_seconds
         self._request_deadline_seconds = request_deadline_seconds
+        self._max_concurrent_batches = max_concurrent_batches
         self._clock = clock
         self._logs_client = _LogsQueryAdapter(credential=credential)
 
@@ -973,8 +977,10 @@ class AzureQueryClient:
         build_query: Callable[[TelemetrySource], str],
     ) -> list[SourceResult]:
         queryable = [source for source in sources if source.workspace_id]
-        results: list[SourceResult] = []
-        for chunk in _chunked(queryable, MAX_SOURCES_PER_BATCH):
+        chunks = list(_chunked(queryable, MAX_SOURCES_PER_BATCH))
+        semaphore = asyncio.Semaphore(self._max_concurrent_batches)
+
+        async def run_chunk(chunk: Sequence[TelemetrySource]) -> list[SourceResult]:
             queries = [
                 SourceQuery(
                     source_id=source.source_id,
@@ -985,17 +991,18 @@ class AzureQueryClient:
                 if source.workspace_id
             ]
             if not queries:
-                continue
-            results.extend(
-                await execute_source_batch(
+                return []
+            async with semaphore:
+                return await execute_source_batch(
                     queries,
                     client=self._logs_client,
                     source_timeout_seconds=self._source_timeout_seconds,
                     request_deadline_seconds=self._request_deadline_seconds,
                     clock=self._clock,
                 )
-            )
-        return results
+
+        chunk_results = await asyncio.gather(*(run_chunk(chunk) for chunk in chunks))
+        return [result for batch in chunk_results for result in batch]
 
     async def query(
         self,

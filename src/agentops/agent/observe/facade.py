@@ -60,7 +60,13 @@ from agentops.agent.observe.queries import (
     classify_appgenai_content_result,
     execute_source_batch,
 )
-from agentops.agent.observe.service import CACHE_TTL_SECONDS, ObserveResult, ObserveService, View
+from agentops.agent.observe.service import (
+    CACHE_TTL_SECONDS,
+    INVENTORY_CACHE_TTL_SECONDS,
+    ObserveResult,
+    ObserveService,
+    View,
+)
 from agentops.agent.observe.ui import build_azure_resource_portal_url
 from agentops.core.attribution import (
     AttributionConfigurationLoadResult,
@@ -411,6 +417,9 @@ class ObserveFacade:
             credential=credential, clock=monotonic_clock
         )
         self._cache = cache or ObserveCache(ttl_seconds=CACHE_TTL_SECONDS)
+        self._inventory_cache = ObserveCache(
+            ttl_seconds=INVENTORY_CACHE_TTL_SECONDS
+        )
         runtime_identity = (
             cast(str, uami_client_id)
             if auth_mode == "hosted"
@@ -423,6 +432,8 @@ class ObserveFacade:
             runtime=self._runtime,
             clock=clock,
             cache=self._cache,
+            inventory_cache=self._inventory_cache,
+            monotonic_clock=monotonic_clock,
         )
 
     # -- discover -----------------------------------------------------
@@ -442,6 +453,11 @@ class ObserveFacade:
         view: str,
         filters: Mapping[str, Any],
         refresh: bool = False,
+        page: int = 1,
+        page_size: int = 50,
+        search: str | None = None,
+        sort_by: str | None = None,
+        sort_direction: Literal["asc", "desc"] = "desc",
         user_context: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return one normalized, coverage-annotated Observe view.
@@ -484,7 +500,15 @@ class ObserveFacade:
 
         native_view = cast(View, view)
         result = await self._service.query_view(
-            self._scope, filter_state, view=native_view, refresh=refresh
+            self._scope,
+            filter_state,
+            view=native_view,
+            refresh=refresh,
+            page=page,
+            page_size=page_size,
+            search=search,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
         )
         return _serialize_observe_result(result)
 

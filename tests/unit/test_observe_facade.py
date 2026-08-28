@@ -828,6 +828,10 @@ async def test_query_tools_view_normalizes_rows_and_serializes_bounds() -> None:
         "rows_shown": 1,
         "rows_total_in_scope": 1,
         "truncated": False,
+        "page": 1,
+        "page_size": 50,
+        "has_previous_page": False,
+        "has_next_page": False,
     }
 
 
@@ -1287,6 +1291,10 @@ async def test_query_cost_preserves_explained_partial_and_missing_amount_states(
         "rows_shown": 2,
         "rows_total_in_scope": 3,
         "truncated": False,
+        "page": None,
+        "page_size": None,
+        "has_previous_page": False,
+        "has_next_page": False,
     }
     assert result["coverage"][0]["state"] == "partial"
     assert result["coverage"][0]["component_id"] == "gpt-ptu-prod"
@@ -2049,11 +2057,9 @@ async def test_trace_content_classifies_available_content_and_never_caches(
     assert result["input_messages"] == ["hello"]
     assert FakeLogsQueryAdapter.instances, "expected the fake logs adapter to be used"
     assert FakeLogsQueryAdapter.instances[0].closed is True
-    # get_inventory (non-sensitive) may cache; the protected content itself
-    # must never be written through ObserveCache.set.
-    for call_args in cache.set_calls, cache._entries:  # pragma: no cover - sanity only
-        pass
-    assert cache.set_calls == 1  # only the inventory cache write from get_inventory
+    # Inventory uses a dedicated cache; protected content never writes to the
+    # shared aggregate cache.
+    assert cache.set_calls == 0
 
 
 @pytest.mark.asyncio

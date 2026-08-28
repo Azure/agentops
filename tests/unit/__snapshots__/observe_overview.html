@@ -310,12 +310,42 @@
   background: color-mix(in srgb, var(--observe-accent) 26%, transparent);
 }
 .observe-refresh-button:hover { border-color: var(--observe-border-strong); }
+.observe-refresh-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .observe-apply-button:focus-visible,
 .observe-refresh-button:focus-visible {
   outline: 2px solid var(--observe-accent);
   outline-offset: 2px;
 }
 .observe-refresh-status { color: var(--observe-muted); font-size: 12px; }
+.observe-page-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.observe-page-controls input,
+.observe-page-controls select {
+  box-sizing: border-box;
+  min-height: 32px;
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  background: var(--observe-card-bg);
+  color: var(--observe-fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 9px;
+}
+.observe-page-controls input { min-width: 220px; }
+.observe-page-status {
+  color: var(--observe-muted);
+  font-size: 12px;
+  min-width: 48px;
+  text-align: center;
+}
 .observe-scope { margin: 0 0 10px; font-size: 12px; color: var(--observe-muted); }
 
 .observe-attribution-summary {
@@ -534,12 +564,43 @@ tfoot td {
 .observe-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  box-sizing: border-box;
   border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.6;
-  border: 1px solid currentColor;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: 1px solid var(--observe-border-strong);
+  background: var(--observe-card-hi);
+}
+.observe-badge.observe-tone-ok {
+  border-color: color-mix(in srgb, var(--observe-ok) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-ok) 16%, var(--observe-card-bg));
+  color: var(--observe-ok);
+}
+.observe-badge.observe-tone-warn {
+  border-color: color-mix(in srgb, var(--observe-warn) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-warn) 14%, var(--observe-card-bg));
+  color: var(--observe-warn);
+}
+.observe-badge.observe-tone-crit {
+  border-color: color-mix(in srgb, var(--observe-crit) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-crit) 14%, var(--observe-card-bg));
+  color: var(--observe-crit);
+}
+.observe-badge.observe-tone-info {
+  border-color: color-mix(in srgb, var(--observe-accent) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-accent) 14%, var(--observe-card-bg));
+  color: var(--observe-accent);
+}
+.observe-badge.observe-tone-muted {
+  border-color: var(--observe-border-strong);
+  background: color-mix(in srgb, var(--observe-muted) 10%, var(--observe-card-bg));
+  color: var(--observe-muted);
 }
 .observe-tone-ok { color: var(--observe-ok); }
 .observe-tone-warn { color: var(--observe-warn); }
@@ -777,6 +838,7 @@ tfoot td {
   var ATTRIBUTION_COST_UNAVAILABLE = "Cost attribution is unavailable. Configure a valid cost model and allocatable cost before selecting Cost.";
   var AUTO_REFRESH_MS = 300000; // five minutes
   var DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000; // trailing 24 hours
+  var CACHE_WINDOW_MS = 60 * 1000; // align default windows across browser sessions
   // Mirrors MAX_TREND_POINTS in ui.py: even though the backend is expected
   // to already bound each trend series (T053), the client re-bounds
   // defensively so a chart never renders unbounded markup regardless of
@@ -786,6 +848,39 @@ tfoot td {
   // from contracts/observe-api.openapi.yaml (mirrors OBSERVE_VIEW_WIRE_NAMES
   // in ui.py -- the internal "usage" id is spelled "models" on the wire).
   var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", tools: "tools", runs: "runs" };
+  var SERVER_SORT_KEYS = {
+    "observe-agents-table": {
+      "Agent": "agent_name", "Source": "source_kind", "Model": "model",
+      "Last seen": "last_seen", "Invocations": "invocations",
+      "Failure rate": "failure_rate", "p95 latency": "p95_latency_ms",
+      "Input tokens": "input_tokens", "Output tokens": "output_tokens",
+      "Total tokens": "total_tokens", "Cache read": "cache_read_tokens",
+      "Cache write": "cache_write_tokens", "Reasoning": "reasoning_tokens"
+    },
+    "observe-usage-table": {
+      "Model": "model", "Deployment": "deployment", "Requests": "requests",
+      "Failure rate": "failure_rate", "p95 latency": "p95_latency_ms",
+      "Input tokens": "input_tokens", "Output tokens": "output_tokens",
+      "Total tokens": "total_tokens", "Cache read": "cache_read_tokens",
+      "Cache write": "cache_write_tokens", "Reasoning": "reasoning_tokens",
+      "Last seen": "last_seen"
+    },
+    "observe-tools-table": {
+      "Tool": "tool_name", "Agent": "agent_name", "Source": "source_id",
+      "Runtime": "source_kind", "Last seen": "last_seen",
+      "Invocations": "invocations", "Failures": "failures",
+      "p95 latency": "p95_latency_ms"
+    },
+    "observe-runs-table": {
+      "Run key": "run_key", "Correlation": "run_key_kind", "Agent": "agent_name",
+      "Source": "source_id", "Runtime": "source_kind", "Started in range": "started_at",
+      "Duration in range": "duration_ms", "Status": "status", "Turns in range": "turns",
+      "Tool invocations": "tool_invocations", "Input tokens": "input_tokens",
+      "Output tokens": "output_tokens", "Total tokens": "total_tokens",
+      "Cache read": "cache_read_tokens",
+      "Cache write": "cache_write_tokens", "Reasoning": "reasoning_tokens"
+    }
+  };
   // Best-effort, human-friendly labels for *documented* portal link keys
   // (mirrors _KNOWN_PORTAL_LABELS in ui.py). Any key not listed here still
   // renders (title-cased) rather than being dropped -- the "best-effort
@@ -804,6 +899,11 @@ tfoot td {
   var draftFilters = {};
   var appliedFilters = {};
   var currentView = "overview";
+  var currentPage = 1;
+  var currentPageSize = 50;
+  var currentSearch = "";
+  var currentSortBy = "";
+  var currentSortDirection = "desc";
   var requestToken = 0;
   var activeController = null;
   var refreshTimer = null;
@@ -846,11 +946,22 @@ tfoot td {
     if (currentView === "cost" && !document.getElementById("cost")) {
       currentView = "overview";
     }
+    currentPage = Math.max(1, parseInt(params.get("page") || "1", 10) || 1);
+    currentPageSize = [25, 50, 100].indexOf(parseInt(params.get("page_size") || "50", 10)) >= 0
+      ? parseInt(params.get("page_size") || "50", 10)
+      : 50;
+    currentSearch = String(params.get("search") || "").slice(0, 200);
+    currentSortBy = String(params.get("sort_by") || "").slice(0, 64);
+    currentSortDirection = params.get("sort_direction") === "asc" ? "asc" : "desc";
     if (!applied.start || !applied.end) {
-      var end = new Date();
-      var start = new Date(end.getTime() - DEFAULT_RANGE_MS);
-      applied.start = applied.start || start.toISOString();
-      applied.end = applied.end || end.toISOString();
+      var end = applied.end
+        ? new Date(applied.end)
+        : new Date(Math.floor(Date.now() / CACHE_WINDOW_MS) * CACHE_WINDOW_MS);
+      var start = applied.start
+        ? new Date(applied.start)
+        : new Date(end.getTime() - DEFAULT_RANGE_MS);
+      applied.start = start.toISOString();
+      applied.end = end.toISOString();
     }
     return applied;
   }
@@ -877,6 +988,13 @@ tfoot td {
       });
     }
     params.set("view", currentView);
+    if (isPagedView(currentView)) {
+      params.set("page", String(currentPage));
+      params.set("page_size", String(currentPageSize));
+      if (currentSearch) params.set("search", currentSearch);
+      if (currentSortBy) params.set("sort_by", currentSortBy);
+      params.set("sort_direction", currentSortDirection);
+    }
     params.set("theme", document.documentElement.getAttribute("data-theme") || "dark");
     return window.location.pathname + "?" + params.toString();
   }
@@ -1359,13 +1477,27 @@ tfoot td {
       var label = header.dataset.label || String(header.textContent || "").trim() ||
         "Column " + (columnIndex + 1);
       var helpText = header.dataset.help || "";
+      var serverSortKey = header.dataset.serverSortKey || "";
       clearChildren(header);
-      header.setAttribute("aria-sort", "none");
+      var activeDirection = serverSortKey && currentSortBy === serverSortKey
+        ? (currentSortDirection === "asc" ? "ascending" : "descending")
+        : "none";
+      header.setAttribute("aria-sort", activeDirection);
       var button = makeEl("button", "observe-sort-button", label);
       button.type = "button";
       button.title = "Sort by " + label;
       button.setAttribute("aria-label", "Sort by " + label);
       button.addEventListener("click", function () {
+        if (serverSortKey) {
+          currentSortDirection = currentSortBy === serverSortKey && currentSortDirection === "asc"
+            ? "desc"
+            : "asc";
+          currentSortBy = serverSortKey;
+          currentPage = 1;
+          syncUrl();
+          fetchObserveData(false);
+          return;
+        }
         body.querySelectorAll("[data-observe-drilldown-row]").forEach(function (detailRow) {
           detailRow.remove();
         });
@@ -1436,6 +1568,7 @@ tfoot td {
     table.setAttribute("aria-label", ariaLabel);
     var thead = document.createElement("thead");
     var headRow = document.createElement("tr");
+    var sortKeys = SERVER_SORT_KEYS[className] || {};
     columns.forEach(function (column) {
       var definition = typeof column === "string" ? { label: column } : column;
       var th = makeEl("th", null, definition.label);
@@ -1443,6 +1576,9 @@ tfoot td {
       th.dataset.label = definition.label;
       if (definition.help) {
         th.dataset.help = definition.help;
+      }
+      if (sortKeys[definition.label]) {
+        th.dataset.serverSortKey = sortKeys[definition.label];
       }
       headRow.appendChild(th);
     });
@@ -1689,10 +1825,108 @@ tfoot td {
 
   function boundsNoticeNode(bounds, rowsShown) {
     var total = bounds && bounds.rows_total_in_scope;
-    var text = total === null || total === undefined
-      ? "Showing " + rowsShown + " rows."
-      : "Showing " + rowsShown + " of " + total + " rows in scope.";
+    var page = bounds && bounds.page ? bounds.page : currentPage;
+    var pageSize = bounds && bounds.page_size ? bounds.page_size : currentPageSize;
+    var first = rowsShown ? ((page - 1) * pageSize) + 1 : 0;
+    var last = rowsShown ? first + rowsShown - 1 : 0;
+    var text;
+    if (!rowsShown && page > 1) {
+      text = "No rows are available on page " + page + ".";
+    } else if (bounds && bounds.truncated) {
+      text = "Showing rows " + first + "–" + last + " from the highest-ranked results";
+      text += total === null || total === undefined
+        ? "."
+        : " (" + total + " rows in scope).";
+    } else {
+      text = total === null || total === undefined
+        ? "Showing rows " + first + "–" + last + "."
+        : "Showing rows " + first + "–" + last + " of " + total + ".";
+    }
     return makeEl("p", "observe-hint observe-bounds-notice", text);
+  }
+
+  function isPagedView(view) {
+    return ["agents", "usage", "tools", "runs"].indexOf(view) >= 0;
+  }
+
+  function resetPaging(resetQuery) {
+    currentPage = 1;
+    if (resetQuery) {
+      currentSearch = "";
+      currentSortBy = "";
+      currentSortDirection = "desc";
+    }
+  }
+
+  function paginationToolbar(bounds) {
+    var toolbar = makeEl("form", "observe-page-controls");
+    toolbar.setAttribute("role", "search");
+    toolbar.addEventListener("submit", function (event) {
+      event.preventDefault();
+      currentSearch = String(search.value || "").trim().slice(0, 200);
+      currentPageSize = parseInt(pageSize.value, 10) || 50;
+      currentPage = 1;
+      syncUrl();
+      fetchObserveData(false);
+    });
+
+    var search = document.createElement("input");
+    search.type = "search";
+    search.value = currentSearch;
+    search.placeholder = "Search this view";
+    search.setAttribute("aria-label", "Search this view");
+    toolbar.appendChild(search);
+
+    var pageSize = document.createElement("select");
+    pageSize.setAttribute("aria-label", "Rows per page");
+    [25, 50, 100].forEach(function (size) {
+      var option = document.createElement("option");
+      option.value = String(size);
+      option.textContent = size + " rows";
+      option.selected = size === currentPageSize;
+      pageSize.appendChild(option);
+    });
+    toolbar.appendChild(pageSize);
+    toolbar.appendChild(makeEl("button", "observe-refresh-button", "Search"));
+    var clear = makeEl("button", "observe-refresh-button", "Clear");
+    clear.type = "button";
+    clear.disabled = !currentSearch;
+    clear.addEventListener("click", function () {
+      currentSearch = "";
+      currentPage = 1;
+      syncUrl();
+      fetchObserveData(false);
+    });
+    toolbar.appendChild(clear);
+
+    var previous = makeEl("button", "observe-refresh-button", "Previous");
+    previous.type = "button";
+    previous.disabled = !(bounds && bounds.has_previous_page);
+    previous.addEventListener("click", function () {
+      currentPage = Math.max(1, currentPage - 1);
+      syncUrl();
+      fetchObserveData(false);
+    });
+    toolbar.appendChild(previous);
+
+    var status = makeEl(
+      "span",
+      "observe-page-status",
+      "Page " + String((bounds && bounds.page) || currentPage)
+    );
+    status.setAttribute("aria-live", "polite");
+    toolbar.appendChild(status);
+
+    var next = makeEl("button", "observe-refresh-button", "Next");
+    next.type = "button";
+    next.disabled = !(bounds && bounds.has_next_page);
+    next.addEventListener("click", function () {
+      currentPage += 1;
+      syncUrl();
+      fetchObserveData(false);
+    });
+    toolbar.appendChild(next);
+    return toolbar;
   }
 
   function renderOverview(data, diagnostics) {
@@ -1727,10 +1961,12 @@ tfoot td {
     setViewContent("overview", [grid]);
   }
 
-  function renderAgents(data, diagnostics) {
+  function renderAgents(data, diagnostics, bounds) {
     var agents = agentsFrom(data);
+    var notice = boundsNoticeNode(bounds, agents.length);
+    var controls = paginationToolbar(bounds);
     if (!agents.length) {
-      setViewContent("agents", [emptyStateNode("No data found for the selected filters.")]);
+      setViewContent("agents", [controls, notice, emptyStateNode("No data found for the selected filters.")]);
       return;
     }
     var rows = agents.map(function (agent) {
@@ -1809,7 +2045,7 @@ tfoot td {
         "—"
       ]
     );
-    setViewContent("agents", [table]);
+    setViewContent("agents", [controls, notice, table]);
   }
 
   // ---------------------------------------------------------------------
@@ -2082,10 +2318,12 @@ tfoot td {
       });
   }
 
-  function renderUsage(data, diagnostics) {
+  function renderUsage(data, diagnostics, bounds) {
     var usage = modelsFrom(data);
+    var notice = boundsNoticeNode(bounds, usage.length);
+    var controls = paginationToolbar(bounds);
     if (!usage.length) {
-      setViewContent("usage", [emptyStateNode("No data found for the selected filters.")]);
+      setViewContent("usage", [controls, notice, emptyStateNode("No data found for the selected filters.")]);
       return;
     }
     var rows = usage.map(function (entry) {
@@ -2159,14 +2397,16 @@ tfoot td {
         "—"
       ]
     );
-    setViewContent("usage", [table]);
+    setViewContent("usage", [controls, notice, table]);
   }
 
   function renderTools(data, diagnostics, bounds) {
     var tools = toolsFrom(data);
     var notice = boundsNoticeNode(bounds, tools.length);
+    var controls = paginationToolbar(bounds);
     if (!tools.length) {
       setViewContent("tools", [
+        controls,
         notice,
         emptyStateNode("No tool activity was found for the selected filters. Tool attribution may not be reported for this selection."),
       ]);
@@ -2222,14 +2462,16 @@ tfoot td {
         "—"
       ]
     );
-    setViewContent("tools", [notice, table]);
+    setViewContent("tools", [controls, notice, table]);
   }
 
   function renderRuns(data, diagnostics, bounds) {
     var runs = runsFrom(data);
     var notice = boundsNoticeNode(bounds, runs.length);
+    var controls = paginationToolbar(bounds);
     if (!runs.length) {
       setViewContent("runs", [
+        controls,
         notice,
         emptyStateNode("No runs could be correlated for the selected filters. Run correlation may not be reported for this selection."),
       ]);
@@ -2310,7 +2552,7 @@ tfoot td {
         renderMaybeMissing(sumReported(runs, "reasoning_tokens"), { missingText: "—" })
       ]
     );
-    setViewContent("runs", [notice, table]);
+    setViewContent("runs", [controls, notice, table]);
   }
 
   function costLabel(value) {
@@ -3204,9 +3446,9 @@ tfoot td {
     if (view === "overview") {
       renderOverview(body.data, body.diagnostics);
     } else if (view === "agents") {
-      renderAgents(body.data, body.diagnostics);
+      renderAgents(body.data, body.diagnostics, body.bounds);
     } else if (view === "usage") {
-      renderUsage(body.data, body.diagnostics);
+      renderUsage(body.data, body.diagnostics, body.bounds);
     } else if (view === "tools") {
       renderTools(body.data, body.diagnostics, body.bounds);
     } else if (view === "runs") {
@@ -3321,6 +3563,11 @@ tfoot td {
         end: appliedFilters.end,
       },
       refresh: manual === true,
+      page: currentPage,
+      page_size: currentPageSize,
+      search: currentSearch || null,
+      sort_by: currentSortBy || null,
+      sort_direction: currentSortDirection,
     };
     payload = currentView === "cost" ? buildCostPayload(manual) : payload;
     if (currentView === "departments") {
@@ -3435,6 +3682,7 @@ tfoot td {
           appliedFilters.attribution_cost_period_id = preservedAttributionFilters.attribution_cost_period_id;
           appliedFilters.attribution_cost_component_id = preservedAttributionFilters.attribution_cost_component_id;
         }
+        resetPaging(false);
         syncUrl();
         fetchObserveData(true);
       });
@@ -3511,7 +3759,9 @@ tfoot td {
     document.querySelectorAll("[data-observe-nav-link]").forEach(function (link) {
       link.addEventListener("click", function (event) {
         event.preventDefault();
-        activateView(link.getAttribute("data-observe-nav-link"));
+        var nextView = link.getAttribute("data-observe-nav-link");
+        if (nextView !== currentView) resetPaging(true);
+        activateView(nextView);
         pushUrl();
         // Switching views queries a different `ObserveQuery.view`, so the
         // newly active view must be fetched -- otherwise it would only ever

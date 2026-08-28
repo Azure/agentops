@@ -6,7 +6,7 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from threading import RLock
-from typing import Any, Callable, Generic, Hashable, TypeVar
+from typing import Any, Callable, Generic, Hashable, Literal, TypeVar
 
 
 class SensitiveValueError(ValueError):
@@ -49,6 +49,14 @@ class _Entry(Generic[V]):
     value: V
 
 
+@dataclass(frozen=True)
+class CacheLookup(Generic[V]):
+    """One cache lookup, including whether an expired value is still usable."""
+
+    state: Literal["fresh", "stale", "miss"]
+    value: V | None = None
+
+
 class ObserveCache(Generic[K, V]):
     """Thread-safe TTL/LRU cache that refuses sensitive Observe values."""
 
@@ -70,17 +78,32 @@ class ObserveCache(Generic[K, V]):
         self._lock = RLock()
 
     def get(self, key: K, *, bypass: bool = False) -> V | None:
+        return self.lookup(key, bypass=bypass).value
+
+    def lookup(
+        self,
+        key: K,
+        *,
+        bypass: bool = False,
+        max_stale_seconds: float = 0,
+    ) -> CacheLookup[V]:
+        """Return a fresh or explicitly allowed stale value for *key*."""
         if bypass:
-            return None
+            return CacheLookup(state="miss")
+        if max_stale_seconds < 0:
+            raise ValueError("max_stale_seconds cannot be negative")
         with self._lock:
             entry = self._entries.get(key)
             if entry is None:
-                return None
-            if self._clock() - entry.created_at >= self._ttl_seconds:
+                return CacheLookup(state="miss")
+            age = self._clock() - entry.created_at
+            if age >= self._ttl_seconds + max_stale_seconds:
                 del self._entries[key]
-                return None
+                return CacheLookup(state="miss")
             self._entries.move_to_end(key)
-            return entry.value
+            if age >= self._ttl_seconds:
+                return CacheLookup(state="stale", value=entry.value)
+            return CacheLookup(state="fresh", value=entry.value)
 
     def set(self, key: K, value: V) -> None:
         if _contains_sensitive_value(value):

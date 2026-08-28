@@ -304,12 +304,42 @@
   background: color-mix(in srgb, var(--observe-accent) 26%, transparent);
 }
 .observe-refresh-button:hover { border-color: var(--observe-border-strong); }
+.observe-refresh-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 .observe-apply-button:focus-visible,
 .observe-refresh-button:focus-visible {
   outline: 2px solid var(--observe-accent);
   outline-offset: 2px;
 }
 .observe-refresh-status { color: var(--observe-muted); font-size: 12px; }
+.observe-page-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.observe-page-controls input,
+.observe-page-controls select {
+  box-sizing: border-box;
+  min-height: 32px;
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  background: var(--observe-card-bg);
+  color: var(--observe-fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 9px;
+}
+.observe-page-controls input { min-width: 220px; }
+.observe-page-status {
+  color: var(--observe-muted);
+  font-size: 12px;
+  min-width: 48px;
+  text-align: center;
+}
 .observe-scope { margin: 0 0 10px; font-size: 12px; color: var(--observe-muted); }
 
 .observe-attribution-summary {
@@ -528,12 +558,43 @@ tfoot td {
 .observe-badge {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  box-sizing: border-box;
   border-radius: 999px;
-  padding: 1px 8px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.6;
-  border: 1px solid currentColor;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  border: 1px solid var(--observe-border-strong);
+  background: var(--observe-card-hi);
+}
+.observe-badge.observe-tone-ok {
+  border-color: color-mix(in srgb, var(--observe-ok) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-ok) 16%, var(--observe-card-bg));
+  color: var(--observe-ok);
+}
+.observe-badge.observe-tone-warn {
+  border-color: color-mix(in srgb, var(--observe-warn) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-warn) 14%, var(--observe-card-bg));
+  color: var(--observe-warn);
+}
+.observe-badge.observe-tone-crit {
+  border-color: color-mix(in srgb, var(--observe-crit) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-crit) 14%, var(--observe-card-bg));
+  color: var(--observe-crit);
+}
+.observe-badge.observe-tone-info {
+  border-color: color-mix(in srgb, var(--observe-accent) 52%, var(--observe-border));
+  background: color-mix(in srgb, var(--observe-accent) 14%, var(--observe-card-bg));
+  color: var(--observe-accent);
+}
+.observe-badge.observe-tone-muted {
+  border-color: var(--observe-border-strong);
+  background: color-mix(in srgb, var(--observe-muted) 10%, var(--observe-card-bg));
+  color: var(--observe-muted);
 }
 .observe-tone-ok { color: var(--observe-ok); }
 .observe-tone-warn { color: var(--observe-warn); }

@@ -73,6 +73,28 @@ filters, **Tools** accepts `tool_name` and **Runs** accepts `run_key`. Both only
 narrow results; blank values are rejected, and values are escaped before they
 reach telemetry queries.
 
+### Large inventories
+
+Observe keeps large inventories responsive by separating telemetry collection
+from table navigation. One bounded Azure Monitor collection builds a normalized
+aggregate of at most 5,000 rows. Agents, Models, Tools, Runs, and Coverage then
+search, sort, and paginate that aggregate through the Observe API, returning at
+most 100 rows per page. Changing the page, search text, sort column, or sort
+direction does not issue another Azure Monitor query.
+
+Discovery is cached for 15 minutes. Normalized aggregates stay fresh for two
+minutes and can be served stale for up to five additional minutes while one
+background refresh runs. Single-flight coordination prevents concurrent requests
+for the same scope from duplicating discovery or telemetry work, and source
+batches use bounded concurrency. An explicit refresh bypasses reusable view data.
+Protected trace content and delegated user-level results remain excluded from
+shared caches.
+
+Every response reports discovery, Azure Monitor, normalization, and total
+durations. The HTTP endpoint exposes the same stages in `Server-Timing`, together
+with cache hit, miss, bypass, or stale state, so operators can distinguish slow
+discovery from a slow telemetry query.
+
 ## Allocate declared billed totals
 
 The Cost view is an operational allocation of totals supplied by an operator.
@@ -583,7 +605,10 @@ and a visually hidden data `<table>`).
 
 Filters stay compact and visually subordinate to the summary. The Agents,
 Models, Tools, Runs, Costs, Attribution, and Coverage views are clear
-drill-down tables.
+drill-down tables. Status and classification badges use filled semantic surfaces,
+high-contrast borders, 12-pixel bold text, and the same minimum height as nearby
+controls in both themes, avoiding the thin low-resolution treatment used
+previously.
 
 ### Intentional states
 
