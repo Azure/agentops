@@ -442,17 +442,17 @@ thead th {
 }
 .observe-sort-button::after {
   color: var(--observe-muted);
-  content: "95";
+  content: "\2195";
   font-size: 12px;
   line-height: 1;
 }
 th[aria-sort="ascending"] .observe-sort-button::after {
   color: var(--observe-accent);
-  content: "91";
+  content: "\2191";
 }
 th[aria-sort="descending"] .observe-sort-button::after {
   color: var(--observe-accent);
-  content: "93";
+  content: "\2193";
 }
 .observe-sort-button:focus-visible {
   border-radius: 3px;

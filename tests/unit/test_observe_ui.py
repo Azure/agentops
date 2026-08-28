@@ -758,6 +758,10 @@ def test_all_observe_table_columns_are_upgraded_to_sortable_headers() -> None:
     assert 'var headers = table.querySelectorAll("thead th")' in script
     assert 'makeEl("button", "observe-sort-button", label)' in script
     assert 'other.setAttribute("aria-sort", other === header ? direction : "none")' in script
+    assert 'content: "\\2195"' in ui._OBSERVE_STYLES
+    assert 'content: "\\2191"' in ui._OBSERVE_STYLES
+    assert 'content: "\\2193"' in ui._OBSERVE_STYLES
+    assert not any(ord(character) < 32 and character not in "\n\r\t" for character in ui._OBSERVE_STYLES)
 
 
 # ---------------------------------------------------------------------------
