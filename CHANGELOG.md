@@ -70,6 +70,9 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Observe table headers render proper sorting arrows.** CSS Unicode escapes
+  are preserved through Python rendering, replacing the broken control
+  character and trailing `95`, `91`, or `93` text in sortable columns.
 - **Observe tool rows inherit explicit runtime evidence from their agent invocation.**
   Tool spans that omit provider metadata are now correlated to the matching
   `invoke_agent` span within the same project, agent, and trace, so Hosted
