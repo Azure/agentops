@@ -1505,6 +1505,24 @@ URL or browser persistence. Alongside the existing agent, model, and time-range
 filters, <strong>Tools</strong> accepts <code>tool_name</code> and <strong>Runs</strong> accepts <code>run_key</code>. Both only
 narrow results; blank values are rejected, and values are escaped before they
 reach telemetry queries.</p>
+<h3 id="large-inventories">Large inventories<a class="headerlink" href="#large-inventories" title="Permanent link">&para;</a></h3>
+<p>Observe keeps large inventories responsive by separating telemetry collection
+from table navigation. One bounded Azure Monitor collection builds a normalized
+aggregate of at most 5,000 rows. Agents, Models, Tools, Runs, and Coverage then
+search, sort, and paginate that aggregate through the Observe API, returning at
+most 100 rows per page. Changing the page, search text, sort column, or sort
+direction does not issue another Azure Monitor query.</p>
+<p>Discovery is cached for 15 minutes. Normalized aggregates stay fresh for two
+minutes and can be served stale for up to five additional minutes while one
+background refresh runs. Single-flight coordination prevents concurrent requests
+for the same scope from duplicating discovery or telemetry work, and source
+batches use bounded concurrency. An explicit refresh bypasses reusable view data.
+Protected trace content and delegated user-level results remain excluded from
+shared caches.</p>
+<p>Every response reports discovery, Azure Monitor, normalization, and total
+durations. The HTTP endpoint exposes the same stages in <code>Server-Timing</code>, together
+with cache hit, miss, bypass, or stale state, so operators can distinguish slow
+discovery from a slow telemetry query.</p>
 <h2 id="allocate-declared-billed-totals">Allocate declared billed totals<a class="headerlink" href="#allocate-declared-billed-totals" title="Permanent link">&para;</a></h2>
 <p>The Cost view is an operational allocation of totals supplied by an operator.
 AgentOps does not call Azure Cost Management, discover invoices, apply rate
@@ -2051,7 +2069,10 @@ screen-reader accessible (<code>role="img"</code>, an <code>aria-label</code>, a
 and a visually hidden data <code>&lt;table&gt;</code>).</p>
 <p>Filters stay compact and visually subordinate to the summary. The Agents,
 Models, Tools, Runs, Costs, Attribution, and Coverage views are clear
-drill-down tables.</p>
+drill-down tables. Status and classification badges use filled semantic surfaces,
+high-contrast borders, 12-pixel bold text, and the same minimum height as nearby
+controls in both themes, avoiding the thin low-resolution treatment used
+previously.</p>
 <h3 id="intentional-states">Intentional states<a class="headerlink" href="#intentional-states" title="Permanent link">&para;</a></h3>
 <p>Every view can render six deliberate states through one shared
 <code>render_state_panel</code> helper: <strong>loading</strong>, <strong>empty</strong>, <strong>partial</strong>,
