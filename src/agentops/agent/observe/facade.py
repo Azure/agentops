@@ -417,7 +417,7 @@ class ObserveFacade:
             credential=credential, clock=monotonic_clock
         )
         self._cache = cache or ObserveCache(ttl_seconds=CACHE_TTL_SECONDS)
-        self._inventory_cache = ObserveCache(
+        self._inventory_cache: ObserveCache = ObserveCache(
             ttl_seconds=INVENTORY_CACHE_TTL_SECONDS
         )
         runtime_identity = (

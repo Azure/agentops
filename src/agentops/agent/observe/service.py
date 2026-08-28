@@ -21,7 +21,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Awaitable, Callable, Hashable
+from collections.abc import Callable, Coroutine, Hashable
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -1984,7 +1984,7 @@ class ObserveService:
     async def _run_coalesced(
         self,
         key: Hashable,
-        operation: Callable[[], Awaitable[Any]],
+        operation: Callable[[], Coroutine[Any, Any, Any]],
     ) -> tuple[Any, bool]:
         """Run one operation per cache key and let concurrent callers share it."""
         async with self._inflight_lock:
@@ -2004,7 +2004,7 @@ class ObserveService:
     def _schedule_refresh(
         self,
         key: Hashable,
-        operation: Callable[[], Awaitable[Any]],
+        operation: Callable[[], Coroutine[Any, Any, Any]],
     ) -> None:
         """Refresh a stale aggregate without delaying the current response."""
         task = asyncio.create_task(self._run_coalesced(key, operation))
