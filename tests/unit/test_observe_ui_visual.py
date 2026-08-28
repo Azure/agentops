@@ -285,9 +285,12 @@ def test_rendered_page_makes_no_external_requests() -> None:
     assert "https://fonts" not in html
 
 
-def test_theme_toggle_uses_no_persistent_storage() -> None:
+def test_shared_theme_toggle_uses_no_browser_storage() -> None:
     script = ui._OBSERVE_SCRIPT
-    assert "setupThemeToggle" in script
+    assert "setupAgentOpsThemeToggle" in script
+    assert 'next.set("theme", theme)' in script
+    assert 'window.addEventListener("popstate"' in script
+    assert "applyTheme(restored ===" in script
     for banned in ("localStorage", "sessionStorage", "document.cookie", "indexedDB"):
         assert banned not in script
 

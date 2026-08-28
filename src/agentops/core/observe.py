@@ -513,6 +513,9 @@ class ObservedAgent(ContractModel):
     p95_latency_ms: float | None = Field(default=None, ge=0)
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
+    cache_read_tokens: int | None = Field(default=None, ge=0)
+    cache_write_tokens: int | None = Field(default=None, ge=0)
+    reasoning_tokens: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def _failures_not_greater_than_invocations(self) -> "ObservedAgent":

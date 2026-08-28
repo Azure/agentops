@@ -459,7 +459,37 @@ th[aria-sort="descending"] .observe-sort-button::after {
   outline: 2px solid var(--observe-accent);
   outline-offset: 3px;
 }
+.observe-info-icon {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--observe-muted);
+  cursor: help;
+  display: inline-flex;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  height: 14px;
+  justify-content: center;
+  line-height: 1;
+  margin-left: 5px;
+  text-transform: none;
+  vertical-align: middle;
+  width: 14px;
+}
+.observe-info-icon:focus-visible {
+  color: var(--observe-accent);
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
+tfoot th,
+tfoot td {
+  background: color-mix(in srgb, var(--observe-card-bg) 92%, var(--observe-accent));
+  border-top: 1px solid var(--observe-border-strong);
+  border-bottom: 0;
+  font-weight: 700;
+}
 .observe-drilldown-button {
   appearance: none;
   background: transparent;

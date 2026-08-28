@@ -465,7 +465,37 @@ th[aria-sort="descending"] .observe-sort-button::after {
   outline: 2px solid var(--observe-accent);
   outline-offset: 3px;
 }
+.observe-info-icon {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--observe-muted);
+  cursor: help;
+  display: inline-flex;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  height: 14px;
+  justify-content: center;
+  line-height: 1;
+  margin-left: 5px;
+  text-transform: none;
+  vertical-align: middle;
+  width: 14px;
+}
+.observe-info-icon:focus-visible {
+  color: var(--observe-accent);
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
+tfoot th,
+tfoot td {
+  background: color-mix(in srgb, var(--observe-card-bg) 92%, var(--observe-accent));
+  border-top: 1px solid var(--observe-border-strong);
+  border-bottom: 0;
+  font-weight: 700;
+}
 .observe-drilldown-button {
   appearance: none;
   background: transparent;
@@ -619,13 +649,8 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       <p class="aos-subtitle observe-subtitle">Foundry project: project-a</p>
     </div>
     <div class="aos-header-actions observe-header-actions">
-      <a class="aos-link observe-cockpit-link" href="/" data-observe-cockpit-link>&#8592; Cockpit</a>
-      <button type="button" id="observe-theme-toggle" class="aos-theme-toggle observe-theme-toggle"
-        aria-pressed="false" aria-label="Toggle dark and light theme" title="Toggle theme"
-        data-observe-theme-toggle>
-        <span class="aos-theme-icon" aria-hidden="true" data-observe-theme-icon>&#9789;</span>
-        <span class="observe-theme-label" data-observe-theme-label>Theme</span>
-      </button>
+      <a class="aos-link observe-cockpit-link" href="/" data-theme-link>&#8592; Cockpit</a>
+      <button id="observe-theme-toggle" class="aos-btn aos-theme-toggle observe-theme-toggle" data-aos-theme-toggle type="button" aria-label="Switch to light theme" aria-pressed="false"><span class="aos-theme-icon" aria-hidden="true">&#9790;</span><span class="aos-theme-label">Dark</span></button>
     </div>
   </header>
   <nav class="observe-nav" aria-label="Observe views"><ul class="observe-nav-list" role="tablist"><li role="presentation"><a href="?view=overview" id="observe-tab-overview" data-observe-nav-link="overview" class="observe-nav-link" role="tab" aria-controls="overview" aria-selected="true">Overview</a></li><li role="presentation"><a href="?view=agents" id="observe-tab-agents" data-observe-nav-link="agents" class="observe-nav-link" role="tab" aria-controls="agents" aria-selected="false">Agents</a></li><li role="presentation"><a href="?view=usage" id="observe-tab-usage" data-observe-nav-link="usage" class="observe-nav-link" role="tab" aria-controls="usage" aria-selected="false">Models and usage</a></li><li role="presentation"><a href="?view=tools" id="observe-tab-tools" data-observe-nav-link="tools" class="observe-nav-link" role="tab" aria-controls="tools" aria-selected="false">Tools</a></li><li role="presentation"><a href="?view=runs" id="observe-tab-runs" data-observe-nav-link="runs" class="observe-nav-link" role="tab" aria-controls="runs" aria-selected="false">Runs</a></li></ul></nav>
@@ -690,17 +715,58 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   <section id="tools" data-observe-panel role="tabpanel"
            aria-labelledby="observe-tab-tools" hidden>
     <h2 id="tools-heading">Tools</h2>
-    <div id="tools-content" data-observe-view-content="tools"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-tools-view observe-empty-state"><p class="observe-empty">No tool activity was found for the selected filters. Tool attribution may not be reported for this selection.</p></div></div>
+    <div id="tools-content" data-observe-view-content="tools"><p class="observe-hint observe-bounds-notice">Showing 0 rows.</p><div class="observe-tools-view observe-empty-state"><p class="observe-empty">No tool activity was found for the selected filters. Tool attribution may not be reported for this selection.</p></div></div>
   </section>
   <section id="runs" data-observe-panel role="tabpanel"
            aria-labelledby="observe-tab-runs" hidden>
     <h2 id="runs-heading">Runs</h2>
-    <div id="runs-content" data-observe-view-content="runs"><p class="observe-hint observe-bounds-notice">Showing 0 rows; total unknown.</p><div class="observe-runs-view observe-empty-state"><p class="observe-empty">No runs could be correlated for the selected filters. Run correlation may not be reported for this selection.</p></div></div>
+    <div id="runs-content" data-observe-view-content="runs"><p class="observe-hint observe-bounds-notice">Showing 0 rows.</p><div class="observe-runs-view observe-empty-state"><p class="observe-empty">No runs could be correlated for the selected filters. Run correlation may not be reported for this selection.</p></div></div>
   </section>
   
   
 </main>
-<script>(function () {
+<script>function setupAgentOpsThemeToggle() {
+  var toggle = document.querySelector("[data-aos-theme-toggle]");
+  if (!toggle) { return; }
+  var root = document.documentElement;
+  var params = new URLSearchParams(window.location.search);
+  var requested = params.get("theme");
+  var initialTheme = requested === "light" || requested === "dark" ? requested : "dark";
+
+  function updateThemeLinks(theme) {
+    document.querySelectorAll("[data-theme-link]").forEach(function (link) {
+      var target = new URL(link.getAttribute("href"), window.location.href);
+      target.searchParams.set("theme", theme);
+      link.setAttribute("href", target.pathname + target.search + target.hash);
+    });
+  }
+
+  function applyTheme(theme, updateUrl) {
+    var isLight = theme === "light";
+    root.setAttribute("data-theme", theme);
+    toggle.setAttribute("aria-pressed", isLight ? "true" : "false");
+    toggle.setAttribute("aria-label", isLight ? "Switch to dark theme" : "Switch to light theme");
+    var icon = toggle.querySelector(".aos-theme-icon");
+    var label = toggle.querySelector(".aos-theme-label");
+    if (icon) { icon.textContent = isLight ? "\u2600" : "\u263e"; }
+    if (label) { label.textContent = isLight ? "Light" : "Dark"; }
+    updateThemeLinks(theme);
+    if (updateUrl) {
+      var next = new URLSearchParams(window.location.search);
+      next.set("theme", theme);
+      history.replaceState(null, "", window.location.pathname + "?" + next.toString() + window.location.hash);
+    }
+  }
+
+  applyTheme(initialTheme, requested !== initialTheme);
+  toggle.addEventListener("click", function () {
+    applyTheme(root.getAttribute("data-theme") === "light" ? "dark" : "light", true);
+  });
+  window.addEventListener("popstate", function () {
+    var restored = new URLSearchParams(window.location.search).get("theme");
+    applyTheme(restored === "light" || restored === "dark" ? restored : "dark", false);
+  });
+}(function () {
   "use strict";
 
   var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", "model", "tool_name", "run_key", "start", "end"];
@@ -811,6 +877,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       });
     }
     params.set("view", currentView);
+    params.set("theme", document.documentElement.getAttribute("data-theme") || "dark");
     return window.location.pathname + "?" + params.toString();
   }
 
@@ -972,7 +1039,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     return node;
   }
 
-  function formatNumberJs(value) {
+  function formatNumberJs(value, minimumFractionDigits, maximumFractionDigits) {
     if (value === null || value === undefined) {
       return "—";
     }
@@ -983,10 +1050,17 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     if (isNaN(num)) {
       return String(value);
     }
-    if (Number.isInteger(num)) {
+    if (
+      Number.isInteger(num) &&
+      minimumFractionDigits === undefined &&
+      maximumFractionDigits === undefined
+    ) {
       return num.toLocaleString("en-US");
     }
-    return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return num.toLocaleString("en-US", {
+      minimumFractionDigits: minimumFractionDigits === undefined ? 2 : minimumFractionDigits,
+      maximumFractionDigits: maximumFractionDigits === undefined ? 2 : maximumFractionDigits
+    });
   }
 
   // Mirrors `_render_maybe_missing`: a reported `0` renders as "0" tagged
@@ -1001,7 +1075,63 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     }
     var numeric = Number(value);
     var isZero = !isNaN(numeric) && numeric === 0;
-    return makeEl("span", "observe-metric " + (isZero ? "metric-zero" : "metric-value"), formatNumberJs(value) + suffix);
+    return makeEl(
+      "span",
+      "observe-metric " + (isZero ? "metric-zero" : "metric-value"),
+      formatNumberJs(value, opts.minimumFractionDigits, opts.maximumFractionDigits) + suffix
+    );
+  }
+
+  function renderMillisecondsAsSeconds(value, missingText) {
+    if (value === null || value === undefined) {
+      return renderMaybeMissing(null, { missingText: missingText || "—" });
+    }
+    return renderMaybeMissing(Number(value) / 1000, {
+      suffix: " s",
+      minimumFractionDigits: 3,
+      maximumFractionDigits: 3
+    });
+  }
+
+  function compactTimestamp(value) {
+    if (!value) return "";
+    var moment = new Date(value);
+    if (isNaN(moment.getTime())) return String(value);
+    function pad(part) { return String(part).padStart(2, "0"); }
+    return moment.getUTCFullYear() + "-" + pad(moment.getUTCMonth() + 1) + "-" +
+      pad(moment.getUTCDate()) + " " + pad(moment.getUTCHours()) + ":" +
+      pad(moment.getUTCMinutes()) + ":" + pad(moment.getUTCSeconds()) + " UTC";
+  }
+
+  function renderTimestampJs(value) {
+    if (!value) {
+      return renderMaybeMissing(null, { missingText: "—" });
+    }
+    var time = document.createElement("time");
+    time.setAttribute("datetime", value);
+    time.title = String(value);
+    time.textContent = compactTimestamp(value);
+    return time;
+  }
+
+  function sumReported(rows, field) {
+    var found = false;
+    var total = (rows || []).reduce(function (sum, row) {
+      var value = row && row[field];
+      if (value === null || value === undefined || isNaN(Number(value))) return sum;
+      found = true;
+      return sum + Number(value);
+    }, 0);
+    return found ? total : null;
+  }
+
+  function infoIcon(helpText, extraClass) {
+    var icon = makeEl("span", "observe-info-icon" + (extraClass ? " " + extraClass : ""), "i");
+    icon.setAttribute("role", "img");
+    icon.setAttribute("tabindex", "0");
+    icon.setAttribute("aria-label", helpText);
+    icon.title = helpText;
+    return icon;
   }
 
   // Mirrors `_render_failure_rate`.
@@ -1021,8 +1151,6 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     return renderMaybeMissing(rate, { suffix: "%" });
   }
 
-  // Mirrors `_render_token_totals`: always appends the "observed usage, not
-  // billing data" disclaimer (FR-036).
   function renderTokenTotals(inputTokens, outputTokens, missingText) {
     var wrap = makeEl("span", "observe-token-totals");
     var inSpan = makeEl("span", "observe-token-in", "In: ");
@@ -1032,7 +1160,6 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     wrap.appendChild(inSpan);
     wrap.appendChild(document.createTextNode(" "));
     wrap.appendChild(outSpan);
-    wrap.appendChild(makeEl("span", "observe-hint", " (observed usage, not billing data)"));
     return wrap;
   }
 
@@ -1048,16 +1175,27 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
 
   function renderAdditionalTokenClasses(entry) {
     entry = entry || {};
-    var values = Object.keys(entry.additional_token_classes || {}).map(function (name) {
-      return name + ": " + formatNumberJs(entry.additional_token_classes[name]);
+    var wrap = makeEl("span", "observe-additional-token-classes");
+    Object.keys(entry.additional_token_classes || {}).forEach(function (name) {
+      wrap.appendChild(makeEl(
+        "span",
+        "observe-token-class observe-token-class-additional",
+        name + ": " + formatNumberJs(entry.additional_token_classes[name])
+      ));
     });
     if (entry.additional_token_classes_truncated) {
-      values.push("Additional classes truncated");
+      wrap.appendChild(infoIcon(
+        "More additional token classes were reported than can be displayed.",
+        "observe-token-classes-truncated"
+      ));
     }
     if (entry.token_classes_partial) {
-      values.push("Partial class coverage");
+      wrap.appendChild(infoIcon(
+        "Some telemetry records omitted one or more token-class attributes; totals include the values that were reported.",
+        "observe-token-classes-partial"
+      ));
     }
-    return values.length ? values.join("; ") : renderMaybeMissing(null);
+    return wrap.childNodes.length ? wrap : renderMaybeMissing(null, { missingText: "—" });
   }
 
   function renderModelTokenUsage(entry) {
@@ -1082,9 +1220,10 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       classes.appendChild(tokenClass);
     });
     if (entry.token_classes_partial) {
-      classes.appendChild(
-        makeEl("span", "observe-token-classes-partial", "Partial class coverage")
-      );
+      classes.appendChild(infoIcon(
+        "Some telemetry records omitted one or more token-class attributes; totals include the values that were reported.",
+        "observe-token-classes-partial"
+      ));
     }
     if (entry.additional_token_classes_truncated) {
       classes.appendChild(
@@ -1095,26 +1234,12 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     return wrap;
   }
 
-  // Mirrors `render_last_seen`: always appends the observed-telemetry-only
-  // disclaimer (FR-034).
   function renderLastSeenJs(value) {
-    var disclaimer = "Last seen reflects observed telemetry only, not agent lifecycle status.";
     if (!value) {
-      var missing = makeEl(
-        "span",
-        "observe-last-seen observe-last-seen-missing metric-missing",
-        "Last seen: not reported"
-      );
-      missing.appendChild(makeEl("span", "observe-hint", " (" + disclaimer + ")"));
-      return missing;
+      return makeEl("span", "observe-last-seen observe-last-seen-missing metric-missing", "—");
     }
     var span = makeEl("span", "observe-last-seen");
-    span.appendChild(document.createTextNode("Last seen: "));
-    var time = document.createElement("time");
-    time.setAttribute("datetime", value);
-    time.textContent = value;
-    span.appendChild(time);
-    span.appendChild(makeEl("span", "observe-hint", " (" + disclaimer + ")"));
+    span.appendChild(renderTimestampJs(value));
     return span;
   }
 
@@ -1129,17 +1254,18 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     }
     time.className = "observe-refreshed-at";
     time.setAttribute("datetime", value);
-    time.textContent = label + ": " + value;
+    time.title = String(value);
+    time.textContent = label + ": " + compactTimestamp(value);
     return time;
   }
 
   // Mirrors `render_source_label`.
   function renderSourceLabelJs(source) {
-    var label = "unknown source";
+    var label = "source unavailable";
     if (typeof source === "string" && source) {
       label = source;
     } else if (source && typeof source === "object") {
-      label = source.source_kind || source.source_id || "unknown source";
+      label = source.source_kind || source.source_id || "source unavailable";
     }
     return makeEl("span", "observe-source-label", "Source: " + label);
   }
@@ -1163,14 +1289,20 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     var label = String(kind).split("_").map(function (part) {
       return part.charAt(0).toUpperCase() + part.slice(1);
     }).join(" ");
-    return renderBadgeJs(label, tone, "observe-source-kind-badge");
+    if (kind !== "unknown") {
+      return renderBadgeJs(label, tone, "observe-source-kind-badge");
+    }
+    var help = makeEl("span", "observe-inline-help");
+    help.title = "Source kind could not be classified from the available telemetry attributes.";
+    help.appendChild(renderBadgeJs("Unclassified", tone, "observe-source-kind-badge"));
+    return help;
   }
 
   function renderIdentityAvailabilityBadge(agentId) {
     if (agentId) {
       return renderBadgeJs("Identity available", "ok", "observe-identity-badge");
     }
-    return renderBadgeJs("Identity not reported", "muted", "observe-identity-badge");
+    return renderBadgeJs("Identity unavailable", "muted", "observe-identity-badge");
   }
 
   function emptyStateNode(message) {
@@ -1224,7 +1356,9 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     }
     table.dataset.observeSortable = "true";
     headers.forEach(function (header, columnIndex) {
-      var label = String(header.textContent || "").trim() || "Column " + (columnIndex + 1);
+      var label = header.dataset.label || String(header.textContent || "").trim() ||
+        "Column " + (columnIndex + 1);
+      var helpText = header.dataset.help || "";
       clearChildren(header);
       header.setAttribute("aria-sort", "none");
       var button = makeEl("button", "observe-sort-button", label);
@@ -1275,6 +1409,9 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         );
       });
       header.appendChild(button);
+      if (helpText) {
+        header.appendChild(infoIcon(helpText));
+      }
     });
   }
 
@@ -1282,14 +1419,31 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     (root || document).querySelectorAll("table").forEach(enhanceSortableTable);
   }
 
-  function buildDataTable(className, ariaLabel, columns, rows) {
+  function appendCellContent(cell, content) {
+    if (Array.isArray(content)) {
+      content.forEach(function (part) {
+        appendCellContent(cell, part);
+      });
+    } else if (content instanceof Node) {
+      cell.appendChild(content);
+    } else {
+      cell.textContent = content === undefined || content === null ? "" : String(content);
+    }
+  }
+
+  function buildDataTable(className, ariaLabel, columns, rows, footerCells) {
     var table = makeEl("table", className);
     table.setAttribute("aria-label", ariaLabel);
     var thead = document.createElement("thead");
     var headRow = document.createElement("tr");
     columns.forEach(function (column) {
-      var th = makeEl("th", null, column);
+      var definition = typeof column === "string" ? { label: column } : column;
+      var th = makeEl("th", null, definition.label);
       th.setAttribute("scope", "col");
+      th.dataset.label = definition.label;
+      if (definition.help) {
+        th.dataset.help = definition.help;
+      }
       headRow.appendChild(th);
     });
     thead.appendChild(headRow);
@@ -1299,20 +1453,24 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       var tr = document.createElement("tr");
       cells.forEach(function (cell) {
         var td = document.createElement("td");
-        if (Array.isArray(cell)) {
-          cell.forEach(function (part) {
-            td.appendChild(part);
-          });
-        } else if (cell instanceof Node) {
-          td.appendChild(cell);
-        } else {
-          td.textContent = cell === undefined || cell === null ? "" : String(cell);
-        }
+        appendCellContent(td, cell);
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
+    if (footerCells && footerCells.length) {
+      var tfoot = document.createElement("tfoot");
+      var footerRow = makeEl("tr", "observe-totals-row");
+      footerCells.forEach(function (cell, index) {
+        var footerCell = document.createElement(index === 0 ? "th" : "td");
+        if (index === 0) footerCell.setAttribute("scope", "row");
+        appendCellContent(footerCell, cell);
+        footerRow.appendChild(footerCell);
+      });
+      tfoot.appendChild(footerRow);
+      table.appendChild(tfoot);
+    }
     enhanceSortableTable(table);
     return table;
   }
@@ -1340,25 +1498,37 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       row = row || {};
       var status = row.success === true
         ? "Succeeded"
-        : (row.success === false ? "Failed" : "Not reported");
+        : (row.success === false ? "Failed" : "—");
       return [
-        row.timestamp || "Not reported",
-        row.telemetry_type || "Not reported",
-        row.operation_name || "Not reported",
-        row.agent_name || row.agent_id || "Not reported",
-        row.model || "Not reported",
-        row.deployment || "Not reported",
-        row.tool_name || "Not reported",
+        renderTimestampJs(row.timestamp),
+        row.telemetry_type || "—",
+        row.operation_name || "—",
+        row.agent_name || row.agent_id || "—",
+        row.model || "—",
+        row.deployment || "—",
+        row.tool_name || "—",
         status,
-        renderMaybeMissing(row.duration_ms, { suffix: " ms", missingText: "Not measured" }),
-        row.trace_id || "Not reported",
+        renderMillisecondsAsSeconds(row.duration_ms),
+        row.trace_id || "—",
       ];
     });
     return buildDataTable(
       "observe-drilldown-table",
       "Metadata-only activity for the selected aggregate",
       ["Time", "Type", "Operation", "Agent", "Model", "Deployment", "Tool", "Status", "Duration", "Trace ID"],
-      tableRows
+      tableRows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "—",
+        "—",
+        "—",
+        "—",
+        "—",
+        "—",
+        "—",
+        renderMillisecondsAsSeconds(sumReported(rows, "duration_ms")),
+        "—"
+      ]
     );
   }
 
@@ -1473,8 +1643,20 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
           value: invocations > 0 ? Math.round(((invocations - failures) / invocations) * 1000) / 10 : null,
           unit: "%",
         },
-        { title: "Average latency", value: data.avg_latency_ms, unit: " ms" },
-        { title: "p95 latency", value: data.p95_latency_ms, unit: " ms" },
+        {
+          title: "Average latency",
+          value: data.avg_latency_ms === null ? null : Number(data.avg_latency_ms) / 1000,
+          unit: " s",
+          minimumFractionDigits: 3,
+          maximumFractionDigits: 3
+        },
+        {
+          title: "p95 latency",
+          value: data.p95_latency_ms === null ? null : Number(data.p95_latency_ms) / 1000,
+          unit: " s",
+          minimumFractionDigits: 3,
+          maximumFractionDigits: 3
+        },
       ];
     }
     return [];
@@ -1508,7 +1690,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
   function boundsNoticeNode(bounds, rowsShown) {
     var total = bounds && bounds.rows_total_in_scope;
     var text = total === null || total === undefined
-      ? "Showing " + rowsShown + " rows; total unknown."
+      ? "Showing " + rowsShown + " rows."
       : "Showing " + rowsShown + " of " + total + " rows in scope.";
     return makeEl("p", "observe-hint observe-bounds-notice", text);
   }
@@ -1528,7 +1710,11 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       card.setAttribute("aria-label", title);
       card.appendChild(makeEl("h3", "observe-card-title", title));
       var valueEl = makeEl("p", "observe-card-value");
-      valueEl.appendChild(renderMaybeMissing(metric.value, { suffix: metric.unit || "" }));
+      valueEl.appendChild(renderMaybeMissing(metric.value, {
+        suffix: metric.unit || "",
+        minimumFractionDigits: metric.minimumFractionDigits,
+        maximumFractionDigits: metric.maximumFractionDigits
+      }));
       card.appendChild(valueEl);
       if (metric.source) {
         card.appendChild(renderSourceLabelJs(metric.source));
@@ -1550,7 +1736,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     var rows = agents.map(function (agent) {
       agent = agent || {};
       var nameCell = [
-        document.createTextNode((agent.agent_name || agent.agent_id || "Not reported") + " "),
+        document.createTextNode((agent.agent_name || agent.agent_id || "—") + " "),
         renderIdentityAvailabilityBadge(agent.agent_id),
       ];
       var sourceCell = renderSourceKindBadge(agent.source_kind);
@@ -1558,7 +1744,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       return [
         nameCell,
         sourceCell,
-        agent.model || "Not reported",
+        agent.model || "—",
         renderLastSeenJs(agent.last_seen),
         buildDrilldownButton(
           "agents",
@@ -1571,23 +1757,59 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
           "View " + String(agent.invocations || 0) + " invocations for " + (agent.agent_name || agent.agent_id || "this agent")
         ),
         renderFailureRate(agent.invocations, agent.failures),
-        renderMaybeMissing(agent.p95_latency_ms, { suffix: " ms" }),
-        renderMaybeMissing(agent.input_tokens),
-        renderMaybeMissing(agent.output_tokens),
-        renderMaybeMissing(observedTokenTotal(agent.input_tokens, agent.output_tokens)),
+        renderMillisecondsAsSeconds(agent.p95_latency_ms),
+        renderMaybeMissing(agent.input_tokens, { missingText: "—" }),
+        renderMaybeMissing(agent.output_tokens, { missingText: "—" }),
+        renderMaybeMissing(observedTokenTotal(agent.input_tokens, agent.output_tokens), { missingText: "—" }),
+        renderMaybeMissing(agent.cache_read_tokens, { missingText: "—" }),
+        renderMaybeMissing(agent.cache_write_tokens, { missingText: "—" }),
+        renderMaybeMissing(agent.reasoning_tokens, { missingText: "—" }),
         buildAgentDetailButton(agent),
       ];
     });
+    var totalInvocations = sumReported(agents, "invocations");
+    var totalFailures = sumReported(agents, "failures");
+    var totalInput = sumReported(agents, "input_tokens");
+    var totalOutput = sumReported(agents, "output_tokens");
+    var tokenHelp = "Observed token usage from telemetry; this is not billing data.";
     var table = buildDataTable(
       "observe-agents-table",
       "Agents observed in the selected range",
-      ["Agent", "Source", "Model", "Last seen", "Invocations", "Failure rate", "p95 latency", "Input tokens", "Output tokens", "Total tokens", "Details"],
-      rows
+      [
+        "Agent",
+        "Source",
+        { label: "Model", help: "Model identifier reported by response telemetry." },
+        { label: "Last seen", help: "Most recent telemetry in the selected range; not agent lifecycle status." },
+        "Invocations",
+        { label: "Failure rate", help: "Failures divided by invocations." },
+        { label: "p95 latency", help: "95% of observed invocations completed in this time or less." },
+        { label: "Input tokens", help: tokenHelp },
+        { label: "Output tokens", help: tokenHelp },
+        { label: "Total tokens", help: tokenHelp },
+        { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
+        { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp },
+        "Details"
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "—",
+        "—",
+        "—",
+        renderMaybeMissing(totalInvocations, { missingText: "—" }),
+        renderFailureRate(totalInvocations, totalFailures),
+        "—",
+        renderMaybeMissing(totalInput, { missingText: "—" }),
+        renderMaybeMissing(totalOutput, { missingText: "—" }),
+        renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "—" }),
+        renderMaybeMissing(sumReported(agents, "cache_read_tokens"), { missingText: "—" }),
+        renderMaybeMissing(sumReported(agents, "cache_write_tokens"), { missingText: "—" }),
+        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "—" }),
+        "—"
+      ]
     );
-    setViewContent("agents", [
-      makeEl("p", "observe-hint", "Token columns show observed usage, not billing data."),
-      table,
-    ]);
+    setViewContent("agents", [table]);
   }
 
   // ---------------------------------------------------------------------
@@ -1869,8 +2091,8 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     var rows = usage.map(function (entry) {
       entry = entry || {};
       return [
-        entry.model || entry.deployment || "Not reported",
-        entry.deployment || "Not reported",
+        entry.model || "—",
+        entry.deployment || "—",
         buildDrilldownButton(
           "models",
           {
@@ -1883,27 +2105,61 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
           "View " + String(entry.requests || 0) + " requests for " + (entry.model || entry.deployment || "this model")
         ),
         renderFailureRate(entry.requests, entry.failures),
-        renderMaybeMissing(entry.p95_latency_ms, { suffix: " ms" }),
-        renderMaybeMissing(entry.input_tokens),
-        renderMaybeMissing(entry.output_tokens),
-        renderMaybeMissing(observedTokenTotal(entry.input_tokens, entry.output_tokens)),
-        renderMaybeMissing(entry.cache_read_tokens),
-        renderMaybeMissing(entry.cache_write_tokens),
-        renderMaybeMissing(entry.reasoning_tokens),
+        renderMillisecondsAsSeconds(entry.p95_latency_ms),
+        renderMaybeMissing(entry.input_tokens, { missingText: "—" }),
+        renderMaybeMissing(entry.output_tokens, { missingText: "—" }),
+        renderMaybeMissing(observedTokenTotal(entry.input_tokens, entry.output_tokens), { missingText: "—" }),
+        renderMaybeMissing(entry.cache_read_tokens, { missingText: "—" }),
+        renderMaybeMissing(entry.cache_write_tokens, { missingText: "—" }),
+        renderMaybeMissing(entry.reasoning_tokens, { missingText: "—" }),
         renderAdditionalTokenClasses(entry),
         renderLastSeenJs(entry.last_seen),
       ];
     });
+    var totalRequests = sumReported(usage, "requests");
+    var totalFailures = sumReported(usage, "failures");
+    var totalInput = sumReported(usage, "input_tokens");
+    var totalOutput = sumReported(usage, "output_tokens");
+    var tokenHelp = "Observed token usage from telemetry; this is not billing data.";
     var table = buildDataTable(
       "observe-usage-table",
       "Model usage observed in the selected range",
-      ["Model", "Deployment", "Requests", "Failure rate", "p95 latency", "Input tokens", "Output tokens", "Total tokens", "Cache read", "Cache write", "Reasoning", "Other token classes", "Last seen"],
-      rows
+      [
+        { label: "Model", help: "Model identifier reported by response telemetry." },
+        { label: "Deployment", help: "Requested Azure OpenAI deployment reported by telemetry." },
+        "Requests",
+        { label: "Failure rate", help: "Failures divided by requests." },
+        { label: "p95 latency", help: "95% of observed model requests completed in this time or less." },
+        { label: "Input tokens", help: tokenHelp },
+        { label: "Output tokens", help: tokenHelp },
+        { label: "Total tokens", help: tokenHelp },
+        { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
+        { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp },
+        {
+          label: "Other token classes",
+          help: "Additional gen_ai.usage.* classes. A row information icon means some telemetry records omitted token-class attributes."
+        },
+        { label: "Last seen", help: "Most recent telemetry in the selected range." }
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "—",
+        renderMaybeMissing(totalRequests, { missingText: "—" }),
+        renderFailureRate(totalRequests, totalFailures),
+        "—",
+        renderMaybeMissing(totalInput, { missingText: "—" }),
+        renderMaybeMissing(totalOutput, { missingText: "—" }),
+        renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "—" }),
+        renderMaybeMissing(sumReported(usage, "cache_read_tokens"), { missingText: "—" }),
+        renderMaybeMissing(sumReported(usage, "cache_write_tokens"), { missingText: "—" }),
+        renderMaybeMissing(sumReported(usage, "reasoning_tokens"), { missingText: "—" }),
+        "—",
+        "—"
+      ]
     );
-    setViewContent("usage", [
-      makeEl("p", "observe-hint", "Token columns show observed usage, not billing data."),
-      table,
-    ]);
+    setViewContent("usage", [table]);
   }
 
   function renderTools(data, diagnostics, bounds) {
@@ -1919,9 +2175,9 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     var rows = tools.map(function (tool) {
       tool = tool || {};
       return [
-        tool.tool_name || "Not reported",
-        tool.agent_name || tool.agent_id || tool.agent_key || "Not reported",
-        tool.source_id || "Not reported",
+        tool.tool_name || "—",
+        tool.agent_name || tool.agent_id || tool.agent_key || "—",
+        tool.source_id || "—",
         renderSourceKindBadge(tool.source_kind),
         renderLastSeenJs(tool.last_seen),
         buildDrilldownButton(
@@ -1935,15 +2191,36 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
           tool.invocations,
           "View " + String(tool.invocations || 0) + " invocations for " + (tool.tool_name || "this tool")
         ),
-        renderMaybeMissing(tool.failures),
-        renderMaybeMissing(tool.p95_latency_ms, { suffix: " ms", missingText: "Not measured" }),
+        renderMaybeMissing(tool.failures, { missingText: "—" }),
+        renderMillisecondsAsSeconds(tool.p95_latency_ms),
       ];
     });
+    var totalInvocations = sumReported(tools, "invocations");
+    var totalFailures = sumReported(tools, "failures");
     var table = buildDataTable(
       "observe-tools-table",
       "Tools observed in the selected range",
-      ["Tool", "Agent", "Source", "Runtime", "Last seen", "Invocations", "Failures", "p95 latency"],
-      rows
+      [
+        "Tool",
+        "Agent",
+        "Source",
+        "Runtime",
+        { label: "Last seen", help: "Most recent telemetry in the selected range." },
+        "Invocations",
+        "Failures",
+        { label: "p95 latency", help: "95% of observed tool invocations completed in this time or less." }
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "—",
+        "—",
+        "—",
+        "—",
+        renderMaybeMissing(totalInvocations, { missingText: "—" }),
+        renderMaybeMissing(totalFailures, { missingText: "—" }),
+        "—"
+      ]
     );
     setViewContent("tools", [notice, table]);
   }
@@ -1961,14 +2238,14 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     var rows = runs.map(function (run) {
       run = run || {};
       return [
-        run.run_key || "Not reported",
-        run.run_key_kind || "Not reported",
-        run.agent_name || run.agent_id || run.agent_key || "Not reported",
-        run.source_id || "Not reported",
+        run.run_key || "—",
+        run.run_key_kind || "—",
+        run.agent_name || run.agent_id || run.agent_key || "—",
+        run.source_id || "—",
         renderSourceKindBadge(run.source_kind),
-        run.started_at || "Not reported",
-        renderMaybeMissing(run.duration_ms, { suffix: " ms" }),
-        run.status || "Not reported",
+        renderTimestampJs(run.started_at),
+        renderMillisecondsAsSeconds(run.duration_ms),
+        run.status || "—",
         buildDrilldownButton(
           "runs",
           {
@@ -1980,20 +2257,60 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
           run.turns,
           "View activity for run " + (run.run_key || "")
         ),
-        renderMaybeMissing(run.tool_invocations),
-        renderMaybeMissing(run.input_tokens, { missingText: "Not available" }),
-        renderMaybeMissing(run.output_tokens, { missingText: "Not available" }),
-        renderMaybeMissing(observedTokenTotal(run.input_tokens, run.output_tokens), { missingText: "Not available" }),
+        renderMaybeMissing(run.tool_invocations, { missingText: "—" }),
+        renderMaybeMissing(run.input_tokens, { missingText: "—" }),
+        renderMaybeMissing(run.output_tokens, { missingText: "—" }),
+        renderMaybeMissing(observedTokenTotal(run.input_tokens, run.output_tokens), { missingText: "—" }),
+        renderMaybeMissing(run.cache_read_tokens, { missingText: "—" }),
+        renderMaybeMissing(run.cache_write_tokens, { missingText: "—" }),
+        renderMaybeMissing(run.reasoning_tokens, { missingText: "—" }),
       ];
     });
-    var hint = makeEl("p", "observe-hint", "Start, duration, and turns describe activity within the selected range.");
+    var totalInput = sumReported(runs, "input_tokens");
+    var totalOutput = sumReported(runs, "output_tokens");
+    var tokenHelp = "Observed token usage from telemetry; this is not billing data.";
     var table = buildDataTable(
       "observe-runs-table",
       "Runs observed in the selected range",
-      ["Run key", "Correlation", "Agent", "Source", "Runtime", "Started in range", "Duration in range", "Status", "Turns in range", "Tool invocations", "Input tokens", "Output tokens", "Total tokens"],
-      rows
+      [
+        "Run key",
+        { label: "Correlation", help: "Telemetry key used to group this run." },
+        "Agent",
+        "Source",
+        "Runtime",
+        { label: "Started in range", help: "First observed activity within the selected range." },
+        { label: "Duration in range", help: "Elapsed time between first and last observed activity in the selected range." },
+        "Status",
+        { label: "Turns in range", help: "Turns observed within the selected range." },
+        "Tool invocations",
+        { label: "Input tokens", help: tokenHelp },
+        { label: "Output tokens", help: tokenHelp },
+        { label: "Total tokens", help: tokenHelp },
+        { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
+        { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp }
+      ],
+      rows,
+      [
+        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "—",
+        "—",
+        "—",
+        "—",
+        "—",
+        renderMillisecondsAsSeconds(sumReported(runs, "duration_ms")),
+        "—",
+        renderMaybeMissing(sumReported(runs, "turns"), { missingText: "—" }),
+        renderMaybeMissing(sumReported(runs, "tool_invocations"), { missingText: "—" }),
+        renderMaybeMissing(totalInput, { missingText: "—" }),
+        renderMaybeMissing(totalOutput, { missingText: "—" }),
+        renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "—" }),
+        renderMaybeMissing(sumReported(runs, "cache_read_tokens"), { missingText: "—" }),
+        renderMaybeMissing(sumReported(runs, "cache_write_tokens"), { missingText: "—" }),
+        renderMaybeMissing(sumReported(runs, "reasoning_tokens"), { missingText: "—" })
+      ]
     );
-    setViewContent("runs", [notice, hint, table]);
+    setViewContent("runs", [notice, table]);
   }
 
   function costLabel(value) {
@@ -2297,10 +2614,8 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         "; Fallback: " + (fallback ? "Yes" : "No");
       var shown = component.rows_shown;
       var total = component.rows_total;
-      var rowCount = String(shown === null || shown === undefined ? "Not reported" : shown);
-      if (total === null || total === undefined) {
-        rowCount += " / total unknown";
-      } else {
+      var rowCount = String(shown === null || shown === undefined ? "—" : shown);
+      if (total !== null && total !== undefined) {
         var omitted = Math.max(Number(total) - Number(shown || 0), 0);
         rowCount += " / " + String(total);
         if (omitted) rowCount += " (" + String(omitted) + " omitted)";
@@ -2555,10 +2870,12 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
     var shown = bounds.rows_shown;
     var total = bounds.rows_total_in_scope;
     var text = total === null || total === undefined
-      ? "Showing " + String(shown === null || shown === undefined ? "an unknown number of" : shown) +
-        " rows; total unknown."
-      : "Showing " + String(shown === null || shown === undefined ? "an unknown number of" : shown) +
-        " of " + String(total) + " rows in scope" +
+      ? (shown === null || shown === undefined
+        ? "Showing available rows."
+        : "Showing " + String(shown) + " rows.")
+      : (shown === null || shown === undefined
+        ? String(total) + " rows in scope"
+        : "Showing " + String(shown) + " of " + String(total) + " rows in scope") +
         (bounds.truncated ? "; results are truncated." : ".");
     return makeEl("p", "observe-hint observe-cost-bounds-notice", text);
   }
@@ -2965,7 +3282,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
         return response.json().then(function (body) {
           if (myToken !== requestToken) return null;
           renderObserveResponse(body);
-          setRefreshStatus("Refreshed " + new Date().toISOString());
+          setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));
           return body;
         });
       })
@@ -3037,7 +3354,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
             return null;
           }
           renderObserveResponse(body);
-          setRefreshStatus("Refreshed " + new Date().toISOString());
+          setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));
           return body;
         });
       })
@@ -3078,26 +3395,6 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ source_resource_id: sourceResourceId, trace_id: traceId }),
       signal: controller.signal,
-    });
-  }
-
-  function setupThemeToggle() {
-    var toggle = document.querySelector("[data-observe-theme-toggle]");
-    if (!toggle) return;
-    var root = document.documentElement;
-    function apply(theme) {
-      root.setAttribute("data-theme", theme);
-      var isLight = theme === "light";
-      toggle.setAttribute("aria-pressed", isLight ? "true" : "false");
-      var icon = toggle.querySelector("[data-observe-theme-icon]");
-      if (icon) icon.textContent = isLight ? "☀" : "☽";
-      var label = toggle.querySelector("[data-observe-theme-label]");
-      if (label) label.textContent = isLight ? "Light" : "Dark";
-    }
-    // In-memory only: never persisted to storage or cookies.
-    apply(root.getAttribute("data-theme") === "light" ? "light" : "dark");
-    toggle.addEventListener("click", function () {
-      apply(root.getAttribute("data-theme") === "light" ? "dark" : "light");
     });
   }
 
@@ -3229,7 +3526,7 @@ tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transpa
       fetchObserveData(false);
     });
     activateView(currentView);
-    setupThemeToggle();
+    setupAgentOpsThemeToggle();
     enhanceSortableTables(document);
     syncUrl();
     scheduleAutoRefresh();

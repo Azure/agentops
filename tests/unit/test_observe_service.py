@@ -347,6 +347,9 @@ def test_normalize_agent_row_attributes_project_and_foundry_resource() -> None:
         "p95_latency_ms": 120.0,
         "input_tokens": 100,
         "output_tokens": 50,
+        "cache_read_tokens": 25,
+        "cache_write_tokens": 5,
+        "reasoning_tokens": 10,
         "last_seen": datetime(2024, 1, 1, 12, tzinfo=timezone.utc),
     }
     agent = normalize_agent_row(row, source=source)
@@ -357,6 +360,9 @@ def test_normalize_agent_row_attributes_project_and_foundry_resource() -> None:
     assert agent.foundry_resource_id == source.foundry_resource_id
     assert agent.invocations == 10
     assert agent.failures == 2
+    assert agent.cache_read_tokens == 25
+    assert agent.cache_write_tokens == 5
+    assert agent.reasoning_tokens == 10
 
 
 def test_normalize_agent_row_classifies_external_agent_by_name_only() -> None:

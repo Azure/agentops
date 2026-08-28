@@ -174,6 +174,18 @@ def test_empty_workspace_yields_empty_state(tmp_path: Path):
     assert "Not assessed" in html
 
 
+def test_cockpit_uses_shared_url_theme_control(tmp_path: Path):
+    html = render_cockpit_html(build_cockpit_payload(tmp_path, time_range=_WIDE))
+    assert 'id="cockpit-theme-toggle"' in html
+    assert 'data-aos-theme-toggle' in html
+    assert 'href="/observe" data-theme-link' in html
+    assert "setupAgentOpsThemeToggle();" in html
+    assert '[data-theme="light"]' in html
+    assert "localStorage" not in html
+    assert "sessionStorage" not in html
+    assert "document.cookie" not in html
+
+
 def test_telemetry_status_reflects_env(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
