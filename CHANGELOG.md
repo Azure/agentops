@@ -70,6 +70,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   WAF checklist row are gone.
 
 ### Fixed
+- **Observe tool rows inherit explicit runtime evidence from their agent invocation.**
+  Tool spans that omit provider metadata are now correlated to the matching
+  `invoke_agent` span within the same project, agent, and trace, so Hosted
+  Agents no longer appear as `Unknown` in the Tools table.
 - **Observe now exposes trustworthy aggregates with metadata-only drill-through.**
   Overview and Agents use workspace-compatible percentile expressions, Models
   excludes agent and tool spans from inference counts, and sortable counters in

@@ -655,6 +655,7 @@ def test_normalize_tool_row_preserves_source_and_omits_token_attribution() -> No
             "tool_name": "search",
             "agent_key": "agent-1",
             "agent_id": "agent-1",
+            "provider_name": "microsoft.agent_framework",
             "invocations": 4,
             "failures": 1,
             "p95_latency_ms": None,
@@ -665,6 +666,7 @@ def test_normalize_tool_row_preserves_source_and_omits_token_attribution() -> No
 
     assert tool.source_id == source.source_id
     assert tool.tool_name == "search"
+    assert tool.source_kind == "foundry_hosted"
     assert tool.p95_latency_ms is None
     assert not hasattr(tool, "input_tokens")
     assert not hasattr(tool, "output_tokens")

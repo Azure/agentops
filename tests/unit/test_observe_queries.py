@@ -744,7 +744,8 @@ def test_tools_query_uses_tool_metadata_without_reading_tool_content() -> None:
     query = build_tools_query(_filters(tool_name="lookup'o''ticket"))
 
     assert query.startswith(
-        "let base = union withsource=TelemetryTable AppDependencies, AppRequests"
+        "let base = materialize(\n"
+        "union withsource=TelemetryTable AppDependencies, AppRequests"
     )
     assert 'Properties["gen_ai.tool.name"]' in query
     assert 'Properties["gen_ai.operation.name"]' in query
@@ -754,7 +755,19 @@ def test_tools_query_uses_tool_metadata_without_reading_tool_content() -> None:
     assert "lookup\\'o\\'\\'ticket" in query
     assert "AppGenAIContent" not in query
     assert "gen_ai.tool.message" not in query
-    assert "provider_name, system, tool_name" in query
+    assert (
+        "| join kind=leftouter runtime_evidence "
+        "on project_resource_id, agent_key, OperationId"
+    ) in query
+    assert (
+        'runtime_evidence = base\n| where operation_name == "invoke_agent"'
+    ) in query
+    assert (
+        "provider_name = iff(isnotempty(provider_name), "
+        "provider_name, runtime_provider_name)"
+    ) in query
+    assert "provider_name = take_anyif(provider_name, isnotempty(provider_name))" in query
+    assert "by project_resource_id, agent_key, tool_name" in query
     assert "| sort by invocations desc" in query
     assert f"| take {MAX_ROWS_PER_QUERY}" in query
 

@@ -438,7 +438,19 @@ def build_tools_query(
         '| extend tool_name = tostring(Properties["gen_ai.tool.name"])',
         '| extend operation_name = tostring(Properties["gen_ai.operation.name"])',
     ]
-    aggregate_lines = ["base", "| where isnotempty(tool_name)"]
+    aggregate_lines = [
+        "base",
+        "| where isnotempty(tool_name)",
+        "| join kind=leftouter runtime_evidence "
+        "on project_resource_id, agent_key, OperationId",
+        "| extend agent_id = iff(isnotempty(agent_id), agent_id, runtime_agent_id), "
+        "agent_name = iff(isnotempty(agent_name), agent_name, runtime_agent_name), "
+        "provider_name = iff(isnotempty(provider_name), "
+        "provider_name, runtime_provider_name), "
+        "system = iff(isnotempty(system), system, runtime_system)",
+        "| project-away project_resource_id1, agent_key1, OperationId1, "
+        "runtime_agent_id, runtime_agent_name, runtime_provider_name, runtime_system",
+    ]
     if filters.tool_name:
         aggregate_lines.append(
             f"| where tool_name == '{_kql_escape(filters.tool_name)}'"
@@ -447,8 +459,12 @@ def build_tools_query(
         "| summarize invocations = count(), "
         "failures = countif(Success == false), "
         "p95_latency_ms = percentile(DurationMs, 95), "
-        "last_seen = max(TimeGenerated) "
-        "by project_resource_id, agent_key, agent_id, agent_name, provider_name, system, tool_name"
+        "last_seen = max(TimeGenerated), "
+        "agent_id = take_anyif(agent_id, isnotempty(agent_id)), "
+        "agent_name = take_anyif(agent_name, isnotempty(agent_name)), "
+        "provider_name = take_anyif(provider_name, isnotempty(provider_name)), "
+        "system = take_anyif(system, isnotempty(system)) "
+        "by project_resource_id, agent_key, tool_name"
     )
     unattributed_count = (
         "0"
@@ -457,9 +473,17 @@ def build_tools_query(
     )
     return "\n".join(
         [
-            f"let base = {base_lines[0]}",
-            *base_lines[1:-1],
-            f"{base_lines[-1]};",
+            "let base = materialize(",
+            *base_lines,
+            ");",
+            "let runtime_evidence = base",
+            '| where operation_name == "invoke_agent"',
+            "| summarize "
+            "runtime_agent_id = take_anyif(agent_id, isnotempty(agent_id)), "
+            "runtime_agent_name = take_anyif(agent_name, isnotempty(agent_name)), "
+            "runtime_provider_name = take_anyif(provider_name, isnotempty(provider_name)), "
+            "runtime_system = take_anyif(system, isnotempty(system)) "
+            "by project_resource_id, agent_key, OperationId;",
             f"let unattributed_count = {unattributed_count};",
             f"let agg = {aggregate_lines[0]}",
             *aggregate_lines[1:-1],
