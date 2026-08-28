@@ -11,6 +11,7 @@ what is actually exercised.
 
 from __future__ import annotations
 
+import asyncio
 import builtins
 import sys
 from datetime import datetime, timedelta, timezone
@@ -759,6 +760,50 @@ async def test_azure_query_client_chunks_more_than_ten_sources() -> None:
     assert len(results) == MAX_SOURCES_PER_BATCH + 3
     assert all(isinstance(result, SourceResult) for result in results)
     assert all(result.status == "success" for result in results)
+
+
+@pytest.mark.asyncio
+async def test_azure_query_client_limits_chunk_concurrency_and_preserves_order() -> None:
+    class DelayedLogsClient(_FakeLogsClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.active = 0
+            self.max_active = 0
+
+        async def query_batch(self, requests):
+            batch_index = len(self.batches)
+            self.batches.append(list(requests))
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            await asyncio.sleep(0.01 * (3 - batch_index))
+            self.active -= 1
+            return [
+                SimpleNamespace(
+                    error=None,
+                    partial_error=None,
+                    tables=[],
+                    status="SUCCESS",
+                )
+                for _ in requests
+            ]
+
+    client = AzureQueryClient(
+        credential="fake-credential",
+        max_concurrent_batches=2,
+    )
+    logs_client = DelayedLogsClient()
+    client._logs_client = logs_client
+    sources = [
+        _make_source(f"source-{index}")
+        for index in range((MAX_SOURCES_PER_BATCH * 3) - 1)
+    ]
+
+    results = await client.query(sources, _make_filters(), view="overview")
+
+    assert logs_client.max_active == 2
+    assert [result.source_id for result in results] == [
+        source.source_id for source in sources
+    ]
 
 
 @pytest.mark.asyncio

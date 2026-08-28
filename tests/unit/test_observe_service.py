@@ -10,6 +10,7 @@ faked; nothing here imports azure.monitor.query or azure.mgmt.resourcegraph.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -17,6 +18,7 @@ from typing import Any, Sequence
 
 import pytest
 
+import agentops.agent.observe.service as observe_service_module
 from agentops.agent.observe.cache import ObserveCache, SensitiveValueError
 from agentops.agent.observe.queries import MAX_ROWS_PER_QUERY, SourceResult
 from agentops.agent.observe.service import (
@@ -53,11 +55,18 @@ from agentops.core.attribution import (
     derive_pseudonymous_user_key,
     issue_user_filter_token,
 )
-from agentops.core.cost import CostComponent, CostModel, CostPeriod, CostUsageObservation
+from agentops.core.cost import (
+    MAX_COST_ROWS,
+    CostComponent,
+    CostModel,
+    CostPeriod,
+    CostUsageObservation,
+)
 from agentops.core.observe import (
     AttributionQueryRequest,
     ModelUsage,
     ObserveFilterState,
+    ObserveQueryRequest,
     ObserveScope,
     ResourceInventory,
     TelemetrySource,
@@ -802,7 +811,8 @@ def test_result_bounds_combines_truncated_multi_source_totals() -> None:
     first = SourceResult(
         source_id="src-a",
         status="success",
-        tables=[{"total_in_scope": 600}] * MAX_ROWS_PER_QUERY,
+        tables=[{"total_in_scope": MAX_ROWS_PER_QUERY + 100}]
+        * MAX_ROWS_PER_QUERY,
     )
     second = SourceResult(
         source_id="src-b",
@@ -812,7 +822,7 @@ def test_result_bounds_combines_truncated_multi_source_totals() -> None:
 
     bounds = _result_bounds([first, second], rows_shown=MAX_ROWS_PER_QUERY)
 
-    assert bounds.rows_total_in_scope == 610
+    assert bounds.rows_total_in_scope == MAX_ROWS_PER_QUERY + 110
     assert bounds.rows_shown == MAX_ROWS_PER_QUERY
     assert bounds.truncated is True
 
@@ -1554,12 +1564,12 @@ async def test_query_cost_keeps_omitted_amounts_when_agent_rows_are_bounded() ->
     assert all(summary.rows_total == 501 for summary in result.data.components)
     assert (
         sum(summary.rows_shown for summary in result.data.components)
-        == MAX_ROWS_PER_QUERY
+        == MAX_COST_ROWS
     )
     assert all(
         summary.omitted_allocated_amount > 0 for summary in result.data.components
     )
-    assert len(result.data.rows) == MAX_ROWS_PER_QUERY
+    assert len(result.data.rows) == MAX_COST_ROWS
 
 
 @pytest.mark.asyncio
@@ -2405,6 +2415,178 @@ async def test_query_view_caches_for_two_minutes_and_serves_hits_without_requery
 
 
 @pytest.mark.asyncio
+async def test_query_view_pages_searches_and_sorts_one_cached_aggregate() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    rows = [
+        {
+            "agent_key": f"agent-{index:03d}",
+            "agent_id": f"agent-{index:03d}",
+            "agent_name": f"Agent {index:03d}",
+            "model": "gpt-4o",
+            "invocations": index,
+            "failures": 0,
+            "last_seen": datetime(2024, 1, 1, 8, tzinfo=timezone.utc),
+            "total_in_scope": 120,
+        }
+        for index in range(120)
+    ]
+    service, _discovery, query = _service(
+        inventory=inventory,
+        results=[SourceResult(source_id="src-1", status="success", tables=rows)],
+        clock=clock,
+    )
+
+    second_page = await service.query_view(
+        _scope(),
+        _filters(),
+        view="agents",
+        page=2,
+        page_size=50,
+    )
+    filtered = await service.query_view(
+        _scope(),
+        _filters(),
+        view="agents",
+        page_size=25,
+        search="Agent 11",
+        sort_by="agent_name",
+        sort_direction="asc",
+    )
+
+    assert len(query.calls) == 1
+    assert [row.agent_id for row in second_page.data[:2]] == [
+        "agent-069",
+        "agent-068",
+    ]
+    assert second_page.bounds is not None
+    assert second_page.bounds.model_dump() == {
+        "rows_shown": 50,
+        "rows_total_in_scope": 120,
+        "truncated": False,
+        "page": 2,
+        "page_size": 50,
+        "has_previous_page": True,
+        "has_next_page": True,
+    }
+    assert [row.agent_id for row in filtered.data] == [
+        f"agent-{index:03d}" for index in range(110, 120)
+    ]
+    assert filtered.bounds is not None
+    assert filtered.bounds.rows_total_in_scope == 10
+
+
+def test_every_allowlisted_view_sort_field_satisfies_request_contract() -> None:
+    for view, fields in observe_service_module._VIEW_SORT_FIELDS.items():
+        for sort_field in fields:
+            request = ObserveQueryRequest(
+                view=view,
+                filters=_filters(),
+                sort_by=sort_field,
+            )
+            assert request.sort_by == sort_field
+
+
+@pytest.mark.asyncio
+async def test_truncated_paging_stops_at_last_materialized_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(observe_service_module, "MAX_ROWS_PER_QUERY", 3)
+    rows = [
+        {
+            "agent_key": f"agent-{index}",
+            "agent_id": f"agent-{index}",
+            "agent_name": f"Agent {index}",
+            "model": "gpt-4o",
+            "invocations": index,
+            "failures": 0,
+            "last_seen": datetime(2024, 1, 1, 8, tzinfo=timezone.utc),
+            "total_in_scope": 5,
+        }
+        for index in range(5)
+    ]
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=rows)],
+        clock=FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+    )
+
+    first_page = await service.query_view(
+        _scope(),
+        _filters(),
+        view="agents",
+        page=1,
+        page_size=2,
+    )
+    last_page = await service.query_view(
+        _scope(),
+        _filters(),
+        view="agents",
+        page=2,
+        page_size=2,
+    )
+    filtered_last_page = await service.query_view(
+        _scope(),
+        _filters(),
+        view="agents",
+        page=2,
+        page_size=2,
+        search="Agent",
+    )
+
+    assert len(query.calls) == 1
+    assert first_page.bounds is not None
+    assert first_page.bounds.has_next_page is True
+    assert last_page.bounds is not None
+    assert last_page.bounds.rows_shown == 1
+    assert last_page.bounds.rows_total_in_scope == 5
+    assert last_page.bounds.truncated is True
+    assert last_page.bounds.has_next_page is False
+    assert filtered_last_page.bounds is not None
+    assert filtered_last_page.bounds.rows_total_in_scope is None
+    assert filtered_last_page.bounds.has_next_page is False
+
+
+@pytest.mark.asyncio
+async def test_query_view_coalesces_concurrent_identical_misses() -> None:
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockingQueryClient(FakeQueryClient):
+        async def query(self, sources, filters, *, view):
+            self.calls.append((tuple(source.source_id for source in sources), view))
+            entered.set()
+            await release.wait()
+            return self.results
+
+    inventory = _inventory([_source()])
+    discovery = FakeDiscoveryClient(inventory)
+    query = BlockingQueryClient([_agent_rows_result()])
+    service = ObserveService(
+        discovery_client=discovery,
+        query_client=query,
+        runtime=FakeRuntime(),
+        clock=FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+        cache=ObserveCache(ttl_seconds=CACHE_TTL_SECONDS),
+    )
+
+    first_task = asyncio.create_task(
+        service.query_view(_scope(), _filters(), view="agents")
+    )
+    await entered.wait()
+    second_task = asyncio.create_task(
+        service.query_view(_scope(), _filters(), view="agents")
+    )
+    await asyncio.sleep(0)
+    assert len(query.calls) == 1
+    release.set()
+    first, second = await asyncio.gather(first_task, second_task)
+
+    assert {first.cache_status, second.cache_status} == {"miss", "hit"}
+    assert first.data == second.data
+
+
+@pytest.mark.asyncio
 async def test_query_view_refresh_bypasses_cache_and_requeries() -> None:
     clock = FakeDatetimeClock(
         datetime(2024, 1, 1, tzinfo=timezone.utc), step=timedelta(seconds=1)
@@ -2425,7 +2607,7 @@ async def test_query_view_refresh_bypasses_cache_and_requeries() -> None:
 
 
 @pytest.mark.asyncio
-async def test_query_view_expires_after_ttl() -> None:
+async def test_query_view_serves_stale_after_ttl_and_refreshes_in_background() -> None:
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     cache = ObserveCache(ttl_seconds=CACHE_TTL_SECONDS, clock=lambda: cache_clock.now)
     cache_clock = FakeDatetimeClock(
@@ -2449,8 +2631,10 @@ async def test_query_view_expires_after_ttl() -> None:
 
     await service.query_view(_scope(), _filters(), view="agents")
     float_clock.value += CACHE_TTL_SECONDS + 1
-    await service.query_view(_scope(), _filters(), view="agents")
+    stale = await service.query_view(_scope(), _filters(), view="agents")
+    await asyncio.gather(*service._background_tasks)
 
+    assert stale.cache_status == "stale"
     assert len(query.calls) == 2
 
 

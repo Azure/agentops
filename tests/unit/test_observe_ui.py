@@ -708,6 +708,22 @@ def test_render_agents_table_shows_source_kind_and_identity_badges() -> None:
     assert "source-a" in html
 
 
+def test_observe_badges_use_filled_high_contrast_treatment() -> None:
+    css = ui._OBSERVE_STYLES
+    assert "min-height: 24px;" in css
+    assert "font-size: 12px;" in css
+    assert "font-weight: 700;" in css
+    assert ".observe-badge.observe-tone-ok {" in css
+    assert (
+        "background: color-mix(in srgb, var(--observe-ok) 16%, "
+        "var(--observe-card-bg));"
+    ) in css
+    assert (
+        "border-color: color-mix(in srgb, var(--observe-ok) 52%, "
+        "var(--observe-border));"
+    ) in css
+
+
 def test_render_agents_table_missing_agent_id_shows_identity_unavailable() -> None:
     html = ui.render_agents_table([_agent(agent_id=None, agent_name=None)])
     assert "Identity unavailable" in html
@@ -2135,7 +2151,7 @@ def test_script_apply_button_is_the_only_place_draft_becomes_applied() -> None:
     script = ui._OBSERVE_SCRIPT
     assert "appliedFilters = draftFilters;" in script
     # Ensure this assignment only happens inside the submit handler block.
-    submit_block = script.split('addEventListener("submit"')[1]
+    submit_block = script.split('form.addEventListener("submit"')[1]
     assert "appliedFilters = draftFilters;" in submit_block
 
 
@@ -2174,6 +2190,27 @@ def test_script_observe_query_payload_matches_observe_query_schema() -> None:
     assert "start: appliedFilters.start" in payload_block
     assert "end: appliedFilters.end" in payload_block
     assert "refresh: manual === true" in payload_block
+    assert "page: currentPage" in payload_block
+    assert "page_size: currentPageSize" in payload_block
+    assert "search: currentSearch || null" in payload_block
+    assert "sort_by: currentSortBy || null" in payload_block
+    assert "sort_direction: currentSortDirection" in payload_block
+
+
+def test_script_pages_large_views_and_round_trips_safe_state_in_url() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert "function paginationToolbar(bounds)" in script
+    assert "No rows are available on page " in script
+    assert " from the highest-ranked results" in script
+    assert '"Search this view"' in script
+    assert '"Previous"' in script
+    assert '"Next"' in script
+    assert 'params.set("page", String(currentPage))' in script
+    assert 'params.set("page_size", String(currentPageSize))' in script
+    assert 'params.set("search", currentSearch)' in script
+    assert 'params.set("sort_by", currentSortBy)' in script
+    assert "SERVER_SORT_KEYS" in script
+    assert '"p95 latency": "p95_latency_ms"' in script
 
 
 def test_script_manual_refresh_sets_refresh_true_and_auto_refresh_sets_refresh_false() -> None:
@@ -2185,7 +2222,7 @@ def test_script_manual_refresh_sets_refresh_true_and_auto_refresh_sets_refresh_f
     assert "fetchObserveData(false);" in script
     refresh_button_block = script.split('getElementById("observe-refresh-now")')[1].split("}")[0]
     assert "fetchObserveData(true);" in refresh_button_block
-    submit_block = script.split('addEventListener("submit"')[1].split("});")[0]
+    submit_block = script.split('form.addEventListener("submit"')[1].split("});")[0]
     assert "fetchObserveData(true);" in submit_block
 
 
@@ -2275,7 +2312,9 @@ def test_script_runtime_kind_tones_mirror_all_six_python_badges() -> None:
 
 def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states() -> None:
     script = ui._OBSERVE_SCRIPT
-    agents_block = script.split("function renderAgents(data, diagnostics) {")[1].split("\n  }\n")[0]
+    agents_block = script.split("function renderAgents(data, diagnostics, bounds) {")[1].split(
+        "\n  }\n"
+    )[0]
     assert 'sourceCell.title = agent.source_id || ""' in agents_block
     for function_name, source_field, empty_copy in (
         (
@@ -2326,8 +2365,8 @@ def test_script_defines_response_parsing_and_render_dispatch_functions() -> None
     for name in (
         "function renderObserveResponse(body)",
         "function renderOverview(data, diagnostics)",
-        "function renderAgents(data, diagnostics)",
-        "function renderUsage(data, diagnostics)",
+        "function renderAgents(data, diagnostics, bounds)",
+        "function renderUsage(data, diagnostics, bounds)",
         "function renderTools(data, diagnostics, bounds)",
         "function renderRuns(data, diagnostics, bounds)",
         "function internalViewFromWire(view)",
@@ -2377,8 +2416,8 @@ def test_script_render_dispatch_routes_each_view_to_its_own_renderer_and_field()
     )[0]
     assert "var view = internalViewFromWire(body.view) || currentView;" in dispatch_block
     assert "renderOverview(body.data, body.diagnostics);" in dispatch_block
-    assert "renderAgents(body.data, body.diagnostics);" in dispatch_block
-    assert "renderUsage(body.data, body.diagnostics);" in dispatch_block
+    assert "renderAgents(body.data, body.diagnostics, body.bounds);" in dispatch_block
+    assert "renderUsage(body.data, body.diagnostics, body.bounds);" in dispatch_block
     assert "renderTools(body.data, body.diagnostics, body.bounds);" in dispatch_block
     assert "renderRuns(body.data, body.diagnostics, body.bounds);" in dispatch_block
     assert "renderCoverage(" not in dispatch_block
@@ -2475,7 +2514,8 @@ def test_script_nav_link_click_fetches_the_newly_selected_view() -> None:
     nav_block = script.split(
         'document.querySelectorAll("[data-observe-nav-link]").forEach(function (link) {'
     )[2].split("    });", 1)[0]
-    assert "activateView(link.getAttribute" in script
+    assert 'var nextView = link.getAttribute("data-observe-nav-link");' in nav_block
+    assert "activateView(nextView);" in nav_block
     assert "event.preventDefault();" in script
     assert "pushUrl();" in nav_block
     assert "fetchObserveData(false);" in nav_block
@@ -2588,7 +2628,7 @@ def test_script_defines_agent_detail_functions() -> None:
 
 def test_script_renders_agents_table_with_details_column_and_button() -> None:
     script = ui._OBSERVE_SCRIPT
-    fn_block = script.split("function renderAgents(data, diagnostics) {")[1].split(
+    fn_block = script.split("function renderAgents(data, diagnostics, bounds) {")[1].split(
         "\n  }\n"
     )[0]
     assert '"Details"' in fn_block

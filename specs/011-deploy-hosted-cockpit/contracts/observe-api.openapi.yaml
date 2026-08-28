@@ -244,12 +244,32 @@ components:
       required: [view, filters]
       properties:
         view:
-          enum: [overview, agents, models, coverage]
+          enum: [overview, agents, models, coverage, tools, runs, cost]
         filters:
           $ref: "#/components/schemas/ObserveFilters"
         refresh:
           type: boolean
           default: false
+        page:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+        search:
+          type: [string, "null"]
+          maxLength: 200
+        sort_by:
+          type: [string, "null"]
+          maxLength: 64
+          pattern: "^[a-z][a-z0-9_]*$"
+        sort_direction:
+          enum: [asc, desc]
+          default: desc
     AgentDetailRequest:
       type: object
       additionalProperties: false
@@ -276,6 +296,30 @@ components:
           type: [string, "null"]
         model:
           type: [string, "null"]
+        tool_name:
+          type: [string, "null"]
+          maxLength: 256
+        run_key:
+          type: [string, "null"]
+          maxLength: 256
+        cost_period_id:
+          type: [string, "null"]
+          maxLength: 64
+        cost_breakdown:
+          type: [string, "null"]
+          enum: [agents, tools, runs, null]
+        cost_component_id:
+          type: [string, "null"]
+          maxLength: 64
+        cost_agent_key:
+          type: [string, "null"]
+          maxLength: 512
+        user_filter_token:
+          type: [string, "null"]
+          maxLength: 1024
+        department_filter_token:
+          type: [string, "null"]
+          maxLength: 1024
         start:
           type: string
           format: date-time
@@ -286,11 +330,11 @@ components:
       type: object
       additionalProperties: false
       required:
-        [view, data, trends, portal_links, coverage, partial_failures, diagnostics,
-         refreshed_at, cache_status]
+        [view, data, coverage, partial_failures, diagnostics, bounds, refreshed_at,
+         cache_status]
       properties:
         view:
-          enum: [overview, agents, models, coverage]
+          enum: [overview, agents, models, coverage, tools, runs, cost]
         data:
           oneOf:
             - type: object
@@ -306,11 +350,15 @@ components:
             $ref: "#/components/schemas/QuerySourceFailure"
         diagnostics:
           $ref: "#/components/schemas/QueryDiagnostics"
+        bounds:
+          oneOf:
+            - $ref: "#/components/schemas/ResultBounds"
+            - type: "null"
         refreshed_at:
           type: string
           format: date-time
         cache_status:
-          enum: [hit, miss, bypass]
+          enum: [hit, miss, bypass, stale]
     AgentDetailResponse:
       type: object
       additionalProperties: false
@@ -377,6 +425,9 @@ components:
         - started_at
         - completed_at
         - duration_ms
+        - discovery_duration_ms
+        - query_duration_ms
+        - normalization_duration_ms
         - source_count
         - successful_sources
         - partial_sources
@@ -392,10 +443,18 @@ components:
         duration_ms:
           type: integer
           minimum: 0
+        discovery_duration_ms:
+          type: integer
+          minimum: 0
+        query_duration_ms:
+          type: integer
+          minimum: 0
+        normalization_duration_ms:
+          type: integer
+          minimum: 0
         source_count:
           type: integer
           minimum: 0
-          maximum: 10
         successful_sources:
           type: integer
           minimum: 0
@@ -407,6 +466,41 @@ components:
           minimum: 0
         cache_status:
           enum: [hit, miss, bypass]
+    ResultBounds:
+      type: object
+      additionalProperties: false
+      required:
+        - rows_shown
+        - rows_total_in_scope
+        - truncated
+        - page
+        - page_size
+        - has_previous_page
+        - has_next_page
+      properties:
+        rows_shown:
+          type: integer
+          minimum: 0
+          maximum: 5000
+        rows_total_in_scope:
+          type: [integer, "null"]
+          minimum: 0
+        truncated:
+          type: boolean
+          default: false
+        page:
+          type: [integer, "null"]
+          minimum: 1
+        page_size:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100
+        has_previous_page:
+          type: boolean
+          default: false
+        has_next_page:
+          type: boolean
+          default: false
     SourceFailure:
       type: object
       additionalProperties: false

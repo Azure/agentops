@@ -251,16 +251,16 @@ def test_attribution_filter_tokens_are_nullable_trimmed_and_url_safe() -> None:
 
 def test_result_bounds_enforce_total_and_truncation_invariants() -> None:
     assert ResultBounds(rows_shown=0).rows_total_in_scope is None
-    assert ResultBounds(rows_shown=500, rows_total_in_scope=501, truncated=True)
+    assert ResultBounds(rows_shown=5000, rows_total_in_scope=5001, truncated=True)
 
     with pytest.raises(ValidationError, match="less than"):
         ResultBounds(rows_shown=2, rows_total_in_scope=1)
-    with pytest.raises(ValidationError, match="MAX_ROWS_PER_QUERY"):
-        ResultBounds(rows_shown=499, truncated=True)
+    with pytest.raises(ValidationError, match="page and page_size"):
+        ResultBounds(rows_shown=50, page=1)
     with pytest.raises(ValidationError):
         ResultBounds(rows_shown=1, unexpected=True)
     with pytest.raises(ValidationError):
-        ResultBounds(rows_shown=501)
+        ResultBounds(rows_shown=5001)
 
 
 def test_observe_api_requests_are_strict_and_canonical() -> None:
@@ -287,6 +287,9 @@ def test_observe_api_requests_are_strict_and_canonical() -> None:
     )
 
     assert query.refresh is False
+    assert query.page == 1
+    assert query.page_size == 50
+    assert query.sort_direction == "desc"
     assert "cost" in get_args(ObserveView)
     assert ObserveQueryRequest(view="cost", filters=filters).view == "cost"
     assert ObserveQueryRequest(view="tools", filters=filters).view == "tools"
@@ -297,6 +300,8 @@ def test_observe_api_requests_are_strict_and_canonical() -> None:
     assert content.source_resource_id == PROJECT.lower()
     with pytest.raises(ValidationError):
         ObserveQueryRequest(view="unknown", filters=filters)
+    with pytest.raises(ValidationError):
+        ObserveQueryRequest(view="agents", filters=filters, page_size=101)
     with pytest.raises(ValidationError):
         ObserveDrilldownRequest(
             view="tools",

@@ -47,8 +47,11 @@ CoverageState = Literal[
     "protected_or_unavailable",
 ]
 
-# This mirrors the bounded Observe query contract without coupling core to agent code.
-MAX_ROWS_PER_QUERY = 500
+# Aggregate queries can retain enough rows for large fleets while API responses
+# remain independently page-bounded.
+MAX_ROWS_PER_QUERY = 5000
+DEFAULT_PAGE_SIZE = 50
+MAX_PAGE_SIZE = 100
 
 _SUBSCRIPTION_RE = re.compile(r"^/subscriptions/[^/]+$", re.IGNORECASE)
 _RESOURCE_GROUP_RE = re.compile(
@@ -426,6 +429,23 @@ class ObserveQueryRequest(ContractModel):
     view: ObserveView
     filters: ObserveFilterState
     refresh: bool = False
+    page: int = Field(default=1, ge=1, le=1000)
+    page_size: int = Field(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE)
+    search: str | None = Field(default=None, max_length=200)
+    sort_by: str | None = Field(
+        default=None,
+        max_length=64,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+    sort_direction: Literal["asc", "desc"] = "desc"
+
+    @field_validator("search")
+    @classmethod
+    def _normalize_search(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class AgentDetailRequest(ContractModel):
@@ -482,7 +502,10 @@ class QueryDiagnostics(ContractModel):
     started_at: datetime
     completed_at: datetime
     duration_ms: int = Field(ge=0)
-    source_count: int = Field(ge=0, le=10)
+    discovery_duration_ms: int = Field(default=0, ge=0)
+    query_duration_ms: int = Field(default=0, ge=0)
+    normalization_duration_ms: int = Field(default=0, ge=0)
+    source_count: int = Field(ge=0)
     successful_sources: int = Field(ge=0)
     partial_sources: int = Field(ge=0)
     failed_sources: int = Field(ge=0)
@@ -629,6 +652,10 @@ class ResultBounds(ContractModel):
     rows_shown: int = Field(ge=0, le=MAX_ROWS_PER_QUERY)
     rows_total_in_scope: int | None = Field(default=None, ge=0)
     truncated: bool = False
+    page: int | None = Field(default=None, ge=1)
+    page_size: int | None = Field(default=None, ge=1, le=MAX_PAGE_SIZE)
+    has_previous_page: bool = False
+    has_next_page: bool = False
 
     @model_validator(mode="after")
     def _validate_bounds(self) -> "ResultBounds":
@@ -637,10 +664,8 @@ class ResultBounds(ContractModel):
             and self.rows_total_in_scope < self.rows_shown
         ):
             raise ValueError("rows_total_in_scope cannot be less than rows_shown")
-        if self.truncated and self.rows_shown != MAX_ROWS_PER_QUERY:
-            raise ValueError(
-                "truncated results must show exactly MAX_ROWS_PER_QUERY rows"
-            )
+        if (self.page is None) != (self.page_size is None):
+            raise ValueError("page and page_size must be reported together")
         return self
 
 

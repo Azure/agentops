@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 from pathlib import Path
@@ -5861,15 +5862,33 @@ def create_app(
         filters = payload.filters
         if effective_scope is not None:
             filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        return JSONResponse(
-            await _service_call(
-                "query",
-                view=payload.view,
-                filters=filters.model_dump(mode="json"),
-                refresh=payload.refresh,
-                user_context=user_context,
-            )
+        request_started = time.perf_counter()
+        body = await _service_call(
+            "query",
+            view=payload.view,
+            filters=filters.model_dump(mode="json"),
+            refresh=payload.refresh,
+            page=payload.page,
+            page_size=payload.page_size,
+            search=payload.search,
+            sort_by=payload.sort_by,
+            sort_direction=payload.sort_direction,
+            user_context=user_context,
         )
+        total_ms = (time.perf_counter() - request_started) * 1000
+        diagnostics = body.get("diagnostics", {}) if isinstance(body, dict) else {}
+        cache_status = body.get("cache_status", "miss") if isinstance(body, dict) else "miss"
+        timings = [f'total;dur={total_ms:.1f}', f'cache;desc="{cache_status}"']
+        if cache_status not in {"hit", "stale"} and isinstance(diagnostics, dict):
+            for name, field in (
+                ("discovery", "discovery_duration_ms"),
+                ("monitor", "query_duration_ms"),
+                ("normalize", "normalization_duration_ms"),
+            ):
+                duration = diagnostics.get(field)
+                if isinstance(duration, (int, float)):
+                    timings.append(f"{name};dur={max(float(duration), 0):.1f}")
+        return JSONResponse(body, headers={"Server-Timing": ", ".join(timings)})
 
     @app.post("/api/observe/attribution")
     async def _api_observe_attribution(

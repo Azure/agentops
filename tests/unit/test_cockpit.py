@@ -1675,6 +1675,11 @@ class _CostIsolationObserveService:
         filters,
         refresh=False,
         user_context=None,
+        page=1,
+        page_size=50,
+        search=None,
+        sort_by=None,
+        sort_direction="desc",
     ):
         return {
             "view": view,
@@ -1708,6 +1713,71 @@ class _AttributionObserveService(_CostIsolationObserveService):
             "rows": [],
             "raw_identity": None,
         }
+
+
+def test_observe_query_forwards_paging_and_reports_server_timing(tmp_path: Path) -> None:
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    class TimingObserveService:
+        def __init__(self) -> None:
+            self.request: dict = {}
+
+        async def query(self, **kwargs):
+            self.request = kwargs
+            return {
+                "view": kwargs["view"],
+                "data": [],
+                "cache_status": "miss",
+                "diagnostics": {
+                    "discovery_duration_ms": 12.5,
+                    "query_duration_ms": 34.5,
+                    "normalization_duration_ms": 2.0,
+                },
+            }
+
+    service = TimingObserveService()
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/query",
+        json={
+            "view": "agents",
+            "filters": _OBSERVE_FILTERS,
+            "page": 3,
+            "page_size": 25,
+            "search": "planner",
+            "sort_by": "invocations",
+            "sort_direction": "asc",
+        },
+    )
+
+    assert response.status_code == 200
+    assert service.request["page"] == 3
+    assert service.request["page_size"] == 25
+    assert service.request["search"] == "planner"
+    assert service.request["sort_by"] == "invocations"
+    assert service.request["sort_direction"] == "asc"
+    timing = response.headers["server-timing"]
+    assert "total;dur=" in timing
+    assert "discovery;dur=12.5" in timing
+    assert "monitor;dur=34.5" in timing
+    assert "normalize;dur=2.0" in timing
 
 
 _OBSERVE_FILTERS = {

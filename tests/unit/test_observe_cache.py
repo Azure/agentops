@@ -36,6 +36,20 @@ def test_ttl_identity_keying_refresh_and_eviction() -> None:
     assert cache.get("c") == 3
 
 
+def test_lookup_distinguishes_fresh_stale_and_miss() -> None:
+    clock = FakeClock()
+    cache = ObserveCache(ttl_seconds=10, clock=clock)
+    cache.set("key", {"value": 1})
+
+    assert cache.lookup("key").state == "fresh"
+    clock.now += 11
+    stale = cache.lookup("key", max_stale_seconds=5)
+    assert stale.state == "stale"
+    assert stale.value == {"value": 1}
+    clock.now += 5
+    assert cache.lookup("key", max_stale_seconds=5).state == "miss"
+
+
 @pytest.mark.parametrize(
     "value",
     [
