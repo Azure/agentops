@@ -124,6 +124,7 @@ class FakeQueryClient:
         self.query_calls: list[str] = []
         self.attribution_filters: list[Any] = []
         self.detail_calls = 0
+        self.detail_source_ids: list[str] = []
         self.closed = False
 
     async def query(self, sources, filters, *, view):
@@ -133,8 +134,11 @@ class FakeQueryClient:
             for source in sources
         ]
 
-    async def query_agent_detail(self, sources, filters, *, agent_key):
+    async def query_agent_detail(
+        self, sources, filters, *, agent_key, project_resource_id=None
+    ):
         self.detail_calls += 1
+        self.detail_source_ids = [source.source_id for source in sources]
         if self.detail_results is not None:
             return list(self.detail_results)
         return [
@@ -1346,7 +1350,9 @@ class FakeMixedQueryClient:
                 )
         return results
 
-    async def query_agent_detail(self, sources, filters, *, agent_key):
+    async def query_agent_detail(
+        self, sources, filters, *, agent_key, project_resource_id=None
+    ):
         return await self.query(sources, filters, view="agent-detail")
 
     async def aclose(self) -> None:
@@ -1510,6 +1516,30 @@ async def test_agent_detail_includes_bounded_trends_and_portal_links() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_detail_trends_use_only_the_agent_rows_exact_source() -> None:
+    source_one = _source(source_id="source-1")
+    source_two = _source(source_id="source-2")
+    query_client = FakeQueryClient(rows=[_agent_row()])
+    fac = _make_facade(
+        discovery_client=FakeDiscoveryClient(_inventory([source_one, source_two])),
+        query_client=query_client,
+    )
+
+    result = await fac.agent_detail(
+        agent_key="agent-1",
+        source_id="source-1",
+        project_resource_id=_PROJECT_ID.lower(),
+        filters=_filters(),
+        user_context={},
+    )
+
+    assert result is not None
+    assert result["data"][0]["source_id"] == "source-1"
+    assert result["data"][0]["project_resource_id"] == _PROJECT_ID.lower()
+    assert query_client.detail_source_ids == ["source-1"]
+
+
+@pytest.mark.asyncio
 async def test_agent_detail_no_matching_sources_falls_back_to_available_sources() -> None:
     # source has no foundry_resource_id/project overlap with the agent, so
     # the narrowing match is empty and the fallback-to-available-sources
@@ -1539,7 +1569,10 @@ def test_build_trend_series_ignores_failed_sources_and_bounds_points() -> None:
     trends = _build_trend_series(results)
     assert trends
     for trend in trends:
-        assert len(trend["series"][0]["points"]) <= MAX_TREND_POINTS
+        points = trend["series"][0]["points"]
+        assert len(points) <= MAX_TREND_POINTS
+        assert points[0][0] == (_NOW - timedelta(hours=MAX_TREND_POINTS + 49)).isoformat()
+        assert points[-1][0] == _NOW.isoformat()
 
 
 # ---------------------------------------------------------------------------

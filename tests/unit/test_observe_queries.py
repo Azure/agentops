@@ -145,14 +145,15 @@ def _usage(invocations: int) -> AttributionUsage:
 
 
 # ---------------------------------------------------------------------------
-# T037: KQL builders - bounds, early filters, 24h defaults.
+# T037: KQL builders - bounds, early filters, seven-day defaults.
 # ---------------------------------------------------------------------------
 
 
-def test_default_lookback_window_is_24_hours() -> None:
+def test_default_lookback_window_is_seven_days() -> None:
     now = datetime(2024, 5, 1, 12, 0, tzinfo=timezone.utc)
     start, end = default_lookback_window(now=now)
     assert end == now
+    assert DEFAULT_LOOKBACK_HOURS == 7 * 24
     assert end - start == timedelta(hours=DEFAULT_LOOKBACK_HOURS)
 
 
@@ -755,14 +756,31 @@ def test_trends_query_is_bucketed_and_ordered() -> None:
 
 
 def test_agent_detail_query_filters_to_single_agent_key() -> None:
-    query = build_agent_detail_query(_filters(), agent_key="agent-42")
+    query = build_agent_detail_query(
+        _filters(), agent_key="agent-42", project_resource_id="/subscriptions/sub/projects/p"
+    )
     assert "agent_key == 'agent-42'" in query
+    assert "tolower(project_resource_id) == '/subscriptions/sub/projects/p'" in query
+    assert 'operation_name == "invoke_agent"' in query
+    assert "has_request" in query
+    assert "is_request_invocation" in query
     assert "order by TimeGenerated asc" in query
 
 
 def test_agent_detail_query_requires_agent_key() -> None:
     with pytest.raises(ValueError):
         build_agent_detail_query(_filters(), agent_key="")
+
+
+def test_agent_detail_query_coarsens_bucket_for_very_long_ranges() -> None:
+    filters = _filters(
+        start=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        end=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    query = build_agent_detail_query(filters, agent_key="agent-42")
+
+    assert "bin(TimeGenerated, 6309s)" in query
 
 
 def test_kql_string_filters_are_escaped_against_injection() -> None:

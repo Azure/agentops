@@ -450,8 +450,14 @@ class ObserveQueryRequest(ContractModel):
 
 class AgentDetailRequest(ContractModel):
     agent_key: str = Field(min_length=1)
+    source_id: str | None = Field(default=None, min_length=1, max_length=2048)
+    project_resource_id: str | None = None
     filters: ObserveFilterState
     refresh: bool = False
+
+    _canonicalize_project = field_validator("project_resource_id", mode="before")(
+        lambda value: canonical_arm_id(value) if isinstance(value, str) else value
+    )
 
 
 class ObserveDrilldownSelector(ContractModel):

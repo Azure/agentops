@@ -35,7 +35,7 @@ PROJECT = (
 
 
 def test_default_range_and_refresh_constants() -> None:
-    assert ui.DEFAULT_RANGE_HOURS == 24
+    assert ui.DEFAULT_RANGE_HOURS == 7 * 24
     assert ui.AUTO_REFRESH_MS == 5 * 60 * 1000
 
 
@@ -671,7 +671,8 @@ def test_render_agents_table_empty_shows_no_data_found() -> None:
 def test_render_agents_table_renders_expected_columns() -> None:
     html = ui.render_agents_table([_agent()])
     for heading in (
-        "Agent",
+        "Name",
+        "Agent ID",
         "Source",
         "Model",
         "Last seen",
@@ -701,10 +702,15 @@ def test_render_agents_table_uses_seconds_and_totals_reported_columns() -> None:
     assert ">275<" in html
 
 
-def test_render_agents_table_shows_source_kind_and_identity_badges() -> None:
+def test_render_agents_table_separates_name_agent_id_and_plain_source_kind() -> None:
     html = ui.render_agents_table([_agent()])
+    assert ">Name<" in html
+    assert ">Agent ID" in html
     assert "Foundry Hosted" in html
-    assert "Identity available" in html
+    assert 'class="observe-source-kind"' in html
+    assert "observe-source-kind-badge" not in html
+    assert "Stable technical identifier reported by agent telemetry." in html
+    assert "agent-a" in html
     assert "source-a" in html
 
 
@@ -724,10 +730,11 @@ def test_observe_badges_use_filled_high_contrast_treatment() -> None:
     ) in css
 
 
-def test_render_agents_table_missing_agent_id_shows_identity_unavailable() -> None:
+def test_render_agents_table_missing_name_and_agent_id_uses_dashes() -> None:
     html = ui.render_agents_table([_agent(agent_id=None, agent_name=None)])
-    assert "Identity unavailable" in html
-    assert "Identity not reported" not in html
+    assert "Agent ID reported" not in html
+    assert "Agent ID missing" not in html
+    assert html.count("metric-missing") >= 3
 
 
 def test_render_agents_table_zero_invocations_distinct_from_missing_latency() -> None:
@@ -1523,22 +1530,23 @@ def test_render_runs_table_empty_is_explained_without_unknown_total() -> None:
 
 
 @pytest.mark.parametrize(
-    ("source_kind", "label", "tone"),
+    ("source_kind", "label"),
     [
-        ("foundry_hosted", "Foundry Hosted", "ok"),
-        ("foundry_prompt", "Foundry Prompt", "ok"),
-        ("external_registered", "External Registered", "warn"),
-        ("external_unregistered", "External Unregistered", "warn"),
-        ("copilot_studio", "Copilot Studio", "warn"),
-        ("unknown", "Unclassified", "muted"),
+        ("foundry_hosted", "Foundry Hosted"),
+        ("foundry_prompt", "Foundry Prompt"),
+        ("external_registered", "External Registered"),
+        ("external_unregistered", "External Unregistered"),
+        ("copilot_studio", "Copilot Studio"),
+        ("unknown", "Unclassified"),
     ],
 )
-def test_source_kind_badge_covers_all_refined_runtime_kinds(
-    source_kind: str, label: str, tone: str
+def test_source_kind_label_covers_all_refined_runtime_kinds(
+    source_kind: str, label: str
 ) -> None:
     html = ui._render_source_kind_badge(source_kind)
     assert label in html
-    assert f"observe-tone-{tone}" in html
+    assert 'class="observe-source-kind"' in html
+    assert "observe-badge" not in html
 
 
 def test_unclassified_source_kind_explains_missing_attribution() -> None:
@@ -1742,7 +1750,7 @@ def test_render_trend_chart_tooltip_has_exact_value() -> None:
         [{"label": "agent-a", "points": [("2024-01-01T00:00:00Z", 123.456)]}],
         unit=" ms",
     )
-    assert "<title>agent-a \u2013 2024-01-01T00:00:00Z: 123.46 ms</title>" in html
+    assert "<title>agent-a \u2013 2024-01-01 00:00:00 UTC: 0.123 s</title>" in html
 
 
 def test_render_trend_chart_is_responsive_via_viewbox_not_fixed_size() -> None:
@@ -2126,11 +2134,22 @@ def test_script_auto_refreshes_every_five_minutes() -> None:
     assert "AUTO_REFRESH_MS = 300000" in script
 
 
-def test_script_computes_default_24_hour_range_when_missing_from_url() -> None:
+def test_script_computes_default_seven_day_range_when_missing_from_url() -> None:
     script = ui._OBSERVE_SCRIPT
-    assert "DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000" in script
+    assert "DEFAULT_RANGE_MS = 7 * 24 * 60 * 60 * 1000" in script
     assert 'value = local.toISOString().slice(0, 16);' in script
     assert "value = isNaN(moment.getTime()) ? \"\" : moment.toISOString();" in script
+
+
+def test_missing_overview_metric_is_visually_subordinate_to_reported_values() -> None:
+    styles = ui._OBSERVE_STYLES
+    assert ".observe-card-value {" in styles
+    assert "font-size: 30px;" in styles
+    missing_rule = styles.split(".observe-card-value .metric-missing {", 1)[1].split(
+        "}", 1
+    )[0]
+    assert "font-size: 17px;" in missing_rule
+    assert "font-weight: 600;" in missing_rule
 
 
 def test_script_uses_history_replace_state_not_push_state_for_url_sync() -> None:
@@ -2294,20 +2313,15 @@ def test_regression_usage_view_id_and_label_unchanged_while_wire_payload_uses_mo
     assert 'usage: "models"' in script
 
 
-def test_script_runtime_kind_tones_mirror_all_six_python_badges() -> None:
+def test_script_runtime_kind_labels_are_plain_text() -> None:
     script = ui._OBSERVE_SCRIPT
-    tone_block = script.split("var tones = {")[1].split("};")[0]
-    expected_tones = {
-        "foundry_hosted": "ok",
-        "foundry_prompt": "ok",
-        "external_registered": "warn",
-        "external_unregistered": "warn",
-        "copilot_studio": "warn",
-        "unknown": "muted",
-    }
-    for kind, tone in expected_tones.items():
-        assert f"{kind}: \"{tone}\"" in tone_block
-    assert 'var tone = tones[kind] || "muted";' in script
+    fn_block = script.split("function renderSourceKindBadge(kind) {")[1].split(
+        "\n  }\n", 1
+    )[0]
+    assert 'makeEl("span", "observe-source-kind", label)' in fn_block
+    assert 'source.textContent = "Unclassified";' in fn_block
+    assert "renderBadgeJs" not in fn_block
+    assert "observe-tone-" not in fn_block
 
 
 def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states() -> None:
@@ -2483,7 +2497,8 @@ def test_script_seconds_formatter_preserves_three_decimals_for_whole_seconds() -
     assert "minimumFractionDigits === undefined" in script
     assert "maximumFractionDigits === undefined" in script
     assert 'entry.model || "\\u2014"' not in script
-    assert 'entry.model || "\u2014"' in script
+    assert "primaryCellWithAction(" in script
+    assert "entry.model," in script
 
 
 def test_script_coverage_state_and_dimension_labels_mirror_python_constants() -> None:
@@ -2621,18 +2636,21 @@ def test_script_defines_agent_detail_functions() -> None:
         "function renderPortalLinksNode(links)",
         "function agentDetailFrom(body)",
         "function renderAgentDetail(agentKey, body)",
-        "function fetchAgentDetail(agentKey, manual)",
+        "function fetchAgentDetail(agentKey, sourceId, projectResourceId, manual)",
     ):
         assert name in script
 
 
-def test_script_renders_agents_table_with_details_column_and_button() -> None:
+def test_script_renders_agent_details_action_below_name_without_extra_column() -> None:
     script = ui._OBSERVE_SCRIPT
     fn_block = script.split("function renderAgents(data, diagnostics, bounds) {")[1].split(
         "\n  }\n"
     )[0]
-    assert '"Details"' in fn_block
+    assert '"Details"' not in fn_block
+    assert "primaryCellWithAction(agent.agent_name, [" in fn_block
     assert "buildAgentDetailButton(agent)" in fn_block
+    assert 'buildDrilldownButton(\n            "agents"' in fn_block
+    assert '"View activity"' in fn_block
 
 
 def test_script_agent_key_for_prefers_key_then_falls_back() -> None:
@@ -2647,8 +2665,13 @@ def test_script_build_agent_detail_button_disables_when_no_key_resolves() -> Non
         "\n  }\n"
     )[0]
     assert 'button.setAttribute("data-observe-agent-key", key);' in fn_block
+    assert 'button.setAttribute("data-observe-source-id", agent.source_id || "");' in fn_block
+    assert (
+        'button.setAttribute("data-observe-project-resource-id", '
+        'agent.project_resource_id || "");'
+    ) in fn_block
     assert "button.disabled = true;" in fn_block
-    assert "fetchAgentDetail(key, false);" in fn_block
+    assert "agent.project_resource_id || \"\"" in fn_block
 
 
 def test_script_agent_detail_uses_independent_abort_state_from_main_query() -> None:
@@ -2657,7 +2680,9 @@ def test_script_agent_detail_uses_independent_abort_state_from_main_query() -> N
     script = ui._OBSERVE_SCRIPT
     assert "var agentDetailToken = 0;" in script
     assert "var agentDetailController = null;" in script
-    fn_block = script.split("function fetchAgentDetail(agentKey, manual) {")[1].split(
+    fn_block = script.split(
+        "function fetchAgentDetail(agentKey, sourceId, projectResourceId, manual) {"
+    )[1].split(
         "\n  }\n"
     )[0]
     assert "requestToken" not in fn_block
@@ -2672,7 +2697,9 @@ def test_script_agent_detail_uses_independent_abort_state_from_main_query() -> N
 
 def test_script_fetch_agent_detail_posts_json_with_agent_key_filters_and_refresh() -> None:
     script = ui._OBSERVE_SCRIPT
-    fn_block = script.split("function fetchAgentDetail(agentKey, manual) {")[1].split(
+    fn_block = script.split(
+        "function fetchAgentDetail(agentKey, sourceId, projectResourceId, manual) {"
+    )[1].split(
         "\n  }\n"
     )[0]
     assert 'fetch("/api/observe/agent-detail", {' in fn_block
@@ -2680,6 +2707,8 @@ def test_script_fetch_agent_detail_posts_json_with_agent_key_filters_and_refresh
     assert '"Content-Type": "application/json"' in fn_block
     assert "body: JSON.stringify(agentDetailPayload)," in fn_block
     assert "agent_key: agentKey," in fn_block
+    assert "source_id: sourceId || null," in fn_block
+    assert "project_resource_id: projectResourceId || null," in fn_block
     assert "refresh: manual === true," in fn_block
     # The request must only ever carry the stable identifier and the
     # currently-applied filters -- never a raw-content field.
@@ -2689,7 +2718,9 @@ def test_script_fetch_agent_detail_posts_json_with_agent_key_filters_and_refresh
 
 def test_script_fetch_agent_detail_suppresses_stale_response_and_handles_not_found() -> None:
     script = ui._OBSERVE_SCRIPT
-    fn_block = script.split("function fetchAgentDetail(agentKey, manual) {")[1].split(
+    fn_block = script.split(
+        "function fetchAgentDetail(agentKey, sourceId, projectResourceId, manual) {"
+    )[1].split(
         "\n  }\n\n  function renderUsage"
     )[0]
     assert fn_block.count("myToken !== agentDetailToken") == 2
@@ -2778,6 +2809,33 @@ def test_script_render_agent_detail_uses_safe_dom_construction_only() -> None:
     assert "clearChildren(panel);" in fn_block
     assert "makeEl(" in fn_block
     assert "innerHTML" not in fn_block
-    assert "renderLastSeenJs(agent.last_seen)" in fn_block
-    assert "renderSourceKindBadge(agent.source_kind)" in fn_block
-    assert "renderIdentityAvailabilityBadge(agent.agent_id)" in fn_block
+    assert "renderAgentSummaryNode(agent)" in fn_block
+
+    summary_block = script.split("function renderAgentSummaryNode(agent) {")[1].split(
+        "\n  }\n"
+    )[0]
+    assert "renderLastSeenJs(agent.last_seen)" in summary_block
+    assert "renderSourceKindBadge(agent.source_kind)" in summary_block
+    assert "renderMillisecondsAsSeconds(agent.p95_latency_ms)" in summary_block
+
+
+def test_script_agent_detail_extracts_first_agent_from_serialized_result_data() -> None:
+    script = ui._OBSERVE_SCRIPT
+    fn_block = script.split("function agentDetailFrom(body) {")[1].split("\n  }\n")[0]
+    assert "Array.isArray(body.data) ? body.data[0] : body.data" in fn_block
+    assert "agent: body.agent || dataAgent || {}" in fn_block
+
+
+def test_script_places_view_details_below_primary_identifier_in_every_table() -> None:
+    script = ui._OBSERVE_SCRIPT
+    assert "function primaryCellWithAction(value, action)" in script
+    assert "primaryCellWithAction(agent.agent_name, [" in script
+    assert "buildAgentDetailButton(agent)" in script
+    for function_name, primary_value in (
+        ("renderUsage", "entry.model"),
+        ("renderTools", "tool.tool_name"),
+        ("renderRuns", "run.run_key"),
+    ):
+        fn_block = script.split(f"function {function_name}(")[1].split("\n  }\n")[0]
+        assert "primaryCellWithAction(" in fn_block
+        assert primary_value in fn_block

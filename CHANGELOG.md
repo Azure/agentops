@@ -27,6 +27,17 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   addresses, phone numbers, or webhooks.
 
 ### Changed
+- **Observe defaults to the last seven days and de-emphasizes missing KPI
+  values.** New sessions open with a seven-day telemetry window instead of 24
+  hours. Overview cards keep reported values prominent while rendering
+  `Not reported` at a smaller, balanced size. Source kinds now render as plain
+  text instead of status-like badges, while the Agents table separates the
+  human-readable name from the stable technical Agent ID. Row-detail actions
+  now sit below each table's primary identifier instead of consuming or
+  overloading metric columns, and agent details retain identity, model,
+  activity, latency, token, and portal-link context. Hourly trends are now
+  restricted to the selected agent row's telemetry source, preventing totals
+  from being mixed with a same-key agent in another source.
 - **Renamed the `[agent]` packaging extra to `[cockpit]` with no compatibility
   alias.** Install Doctor and Cockpit dependencies with
   `agentops-accelerator[cockpit]`. All docs, README, workflow and pipeline

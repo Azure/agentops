@@ -398,6 +398,12 @@
   letter-spacing: -0.02em;
   color: var(--observe-fg);
 }
+.observe-card-value .metric-missing {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
 .observe-metric-card.observe-tone-ok .observe-card-value { color: var(--observe-ok); }
 .observe-metric-card.observe-tone-warn .observe-card-value { color: var(--observe-warn); }
 .observe-metric-card.observe-tone-crit .observe-card-value { color: var(--observe-crit); }
@@ -545,6 +551,26 @@ tfoot td {
   outline: 2px solid var(--observe-accent);
   outline-offset: 3px;
 }
+.observe-primary-cell {
+  display: flex;
+  min-width: 120px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.observe-primary-value {
+  color: var(--observe-fg);
+  font-weight: 600;
+}
+.observe-row-action {
+  font-size: 12px;
+  font-weight: 600;
+}
+.observe-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
 .observe-drilldown-row > td {
   background: color-mix(in srgb, var(--observe-accent) 4%, var(--observe-surface));
   padding: 14px;
@@ -552,6 +578,58 @@ tfoot td {
 .observe-drilldown-panel {
   border-left: 3px solid var(--observe-accent);
   padding-left: 12px;
+}
+.observe-agent-detail {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--observe-border);
+  border-radius: 12px;
+  background: var(--observe-card-bg);
+}
+.observe-agent-detail > h3,
+.observe-agent-detail > h2 {
+  margin: 0 0 14px;
+}
+.observe-agent-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 0 0 20px;
+  overflow: hidden;
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  background: var(--observe-border);
+}
+.observe-agent-detail-summary > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--observe-card-bg);
+}
+.observe-agent-detail-summary dt {
+  margin-bottom: 4px;
+  color: var(--observe-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.observe-agent-detail-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.observe-agent-detail-trends {
+  display: grid;
+  gap: 16px;
+}
+.observe-agent-trend-title { margin: 0 0 8px; }
+.observe-portal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 14px 0 0;
+  margin: 0;
+  list-style: none;
 }
 .observe-drilldown-panel > p { margin: 0 0 10px; }
 .observe-drilldown-table {
@@ -760,7 +838,7 @@ tfoot td {
   <section id="overview" data-observe-panel role="tabpanel"
            aria-labelledby="observe-tab-overview">
     <h2 id="overview-heading">Overview</h2>
-    <div id="overview-content" data-observe-view-content="overview"><div class="observe-overview-cards"><div class="observe-card observe-metric-card observe-tone-info" role="group" aria-label="Invocations"><h3 class="observe-card-title">Invocations</h3><p class="observe-card-value"><span class="observe-metric metric-value">580</span></p><span class="observe-card-delta observe-tone-ok" data-direction="up"><span class="observe-card-delta-glyph" aria-hidden="true">↑</span> +12% <span class="observe-card-delta-label">vs prior</span></span><p class="observe-card-caption">Last 24 hours</p><div class="observe-card-spark"><figure class="observe-chart"><figcaption>Invocations trend</figcaption><svg class="observe-chart-svg" viewBox="0 0 240 64" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Invocations trend"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="212" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="30.00" x2="212" y2="30.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="32.00" x2="212" y2="32.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="34.00" x2="212" y2="34.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="36.00" x2="212" y2="36.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,36.00 28.00,36.00 89.33,33.23 150.67,31.38 212.00,28.00 212.00,36.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,36.00 89.33,33.23 150.67,31.38 212.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>Invocations – Mon: 120</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="36.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Tue: 138</title><text class="observe-chart-marker observe-chart-marker-circle" x="89.33" y="33.23" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Wed: 150</title><text class="observe-chart-marker observe-chart-marker-circle" x="150.67" y="31.38" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Thu: 172</title><text class="observe-chart-marker observe-chart-marker-circle" x="212.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> Invocations</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Invocations trend</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">Invocations</th><td>Mon</td><td>120</td></tr><tr><th scope="row">Invocations</th><td>Tue</td><td>138</td></tr><tr><th scope="row">Invocations</th><td>Wed</td><td>150</td></tr><tr><th scope="row">Invocations</th><td>Thu</td><td>172</td></tr></tbody></table></figure></div></div><div class="observe-card observe-metric-card observe-tone-ok" role="group" aria-label="Failure rate"><h3 class="observe-card-title">Failure rate</h3><p class="observe-card-value"><span class="observe-metric metric-value">1.40%</span></p><span class="observe-card-delta observe-tone-ok" data-direction="down"><span class="observe-card-delta-glyph" aria-hidden="true">↓</span> -0.3pp</span><p class="observe-card-caption">Errors / invocations</p></div><div class="observe-card observe-metric-card observe-tone-warn" role="group" aria-label="p95 latency"><h3 class="observe-card-title">p95 latency</h3><p class="observe-card-value"><span class="observe-metric metric-value">820 ms</span></p><span class="observe-card-delta observe-tone-warn" data-direction="up"><span class="observe-card-delta-glyph" aria-hidden="true">↑</span> +40 ms</span><p class="observe-card-caption">95th percentile</p></div><div class="observe-card observe-metric-card observe-tone-muted" role="group" aria-label="Tokens"><h3 class="observe-card-title">Tokens</h3><p class="observe-card-value"><span class="observe-metric metric-value">1,240,000</span></p><p class="observe-card-caption">Input + output</p></div></div><section class="observe-overview-trends" aria-label="Operational trends"><h3 class="observe-overview-trends-title aos-section-title">Trends</h3><div class="observe-trend-grid"><div class="observe-trend-tile"><figure class="observe-chart"><figcaption>Invocations &amp; failures</figcaption><svg class="observe-chart-svg" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Invocations &amp; failures"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient><linearGradient id="observe-gradient-1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-2)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-2)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="572" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="64.00" x2="572" y2="64.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="100.00" x2="572" y2="100.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="136.00" x2="572" y2="136.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="172.00" x2="572" y2="172.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,172.00 28.00,72.05 209.33,56.80 390.67,46.64 572.00,28.00 572.00,172.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,72.05 209.33,56.80 390.67,46.64 572.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>Invocations – Mon: 120</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="72.05" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Tue: 138</title><text class="observe-chart-marker observe-chart-marker-circle" x="209.33" y="56.80" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Wed: 150</title><text class="observe-chart-marker observe-chart-marker-circle" x="390.67" y="46.64" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Thu: 172</title><text class="observe-chart-marker observe-chart-marker-circle" x="572.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><polygon class="observe-chart-area" points="28.00,172.00 28.00,171.15 209.33,172.00 390.67,170.31 572.00,172.00 572.00,172.00" fill="url(#observe-gradient-1)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,171.15 209.33,172.00 390.67,170.31 572.00,172.00" fill="none" stroke="var(--observe-series-2)" stroke-width="2" /><g class="observe-chart-point"><title>Failures – Mon: 3</title><text class="observe-chart-marker observe-chart-marker-square" x="28.00" y="171.15" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Tue: 2</title><text class="observe-chart-marker observe-chart-marker-square" x="209.33" y="172.00" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Wed: 4</title><text class="observe-chart-marker observe-chart-marker-square" x="390.67" y="170.31" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Thu: 2</title><text class="observe-chart-marker observe-chart-marker-square" x="572.00" y="172.00" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> Invocations</li><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-square" style="color:var(--observe-series-2)" aria-hidden="true">■</span> Failures</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Invocations &amp; failures</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">Invocations</th><td>Mon</td><td>120</td></tr><tr><th scope="row">Invocations</th><td>Tue</td><td>138</td></tr><tr><th scope="row">Invocations</th><td>Wed</td><td>150</td></tr><tr><th scope="row">Invocations</th><td>Thu</td><td>172</td></tr><tr><th scope="row">Failures</th><td>Mon</td><td>3</td></tr><tr><th scope="row">Failures</th><td>Tue</td><td>2</td></tr><tr><th scope="row">Failures</th><td>Wed</td><td>4</td></tr><tr><th scope="row">Failures</th><td>Thu</td><td>2</td></tr></tbody></table></figure></div><div class="observe-trend-tile"><figure class="observe-chart"><figcaption>Latency (p95, ms)</figcaption><svg class="observe-chart-svg" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Latency (p95, ms)"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="572" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="64.00" x2="572" y2="64.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="100.00" x2="572" y2="100.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="136.00" x2="572" y2="136.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="172.00" x2="572" y2="172.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,172.00 28.00,172.00 209.33,100.00 390.67,52.00 572.00,28.00 572.00,172.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,172.00 209.33,100.00 390.67,52.00 572.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>p95 – Mon: 760 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="172.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Tue: 790 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="209.33" y="100.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Wed: 810 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="390.67" y="52.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Thu: 820 ms</title><text class="observe-chart-marker observe-chart-marker-circle" x="572.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> p95</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Latency (p95, ms)</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">p95</th><td>Mon</td><td>760 ms</td></tr><tr><th scope="row">p95</th><td>Tue</td><td>790 ms</td></tr><tr><th scope="row">p95</th><td>Wed</td><td>810 ms</td></tr><tr><th scope="row">p95</th><td>Thu</td><td>820 ms</td></tr></tbody></table></figure></div></div></section></div>
+    <div id="overview-content" data-observe-view-content="overview"><div class="observe-overview-cards"><div class="observe-card observe-metric-card observe-tone-info" role="group" aria-label="Invocations"><h3 class="observe-card-title">Invocations</h3><p class="observe-card-value"><span class="observe-metric metric-value">580</span></p><span class="observe-card-delta observe-tone-ok" data-direction="up"><span class="observe-card-delta-glyph" aria-hidden="true">↑</span> +12% <span class="observe-card-delta-label">vs prior</span></span><p class="observe-card-caption">Last 7 days</p><div class="observe-card-spark"><figure class="observe-chart"><figcaption>Invocations trend</figcaption><svg class="observe-chart-svg" viewBox="0 0 240 64" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Invocations trend"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="212" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="30.00" x2="212" y2="30.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="32.00" x2="212" y2="32.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="34.00" x2="212" y2="34.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="36.00" x2="212" y2="36.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,36.00 28.00,36.00 89.33,33.23 150.67,31.38 212.00,28.00 212.00,36.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,36.00 89.33,33.23 150.67,31.38 212.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>Invocations – Mon: 120</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="36.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Tue: 138</title><text class="observe-chart-marker observe-chart-marker-circle" x="89.33" y="33.23" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Wed: 150</title><text class="observe-chart-marker observe-chart-marker-circle" x="150.67" y="31.38" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Thu: 172</title><text class="observe-chart-marker observe-chart-marker-circle" x="212.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> Invocations</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Invocations trend</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">Invocations</th><td>Mon</td><td>120</td></tr><tr><th scope="row">Invocations</th><td>Tue</td><td>138</td></tr><tr><th scope="row">Invocations</th><td>Wed</td><td>150</td></tr><tr><th scope="row">Invocations</th><td>Thu</td><td>172</td></tr></tbody></table></figure></div></div><div class="observe-card observe-metric-card observe-tone-ok" role="group" aria-label="Failure rate"><h3 class="observe-card-title">Failure rate</h3><p class="observe-card-value"><span class="observe-metric metric-value">1.40%</span></p><span class="observe-card-delta observe-tone-ok" data-direction="down"><span class="observe-card-delta-glyph" aria-hidden="true">↓</span> -0.3pp</span><p class="observe-card-caption">Errors / invocations</p></div><div class="observe-card observe-metric-card observe-tone-warn" role="group" aria-label="p95 latency"><h3 class="observe-card-title">p95 latency</h3><p class="observe-card-value"><span class="observe-metric metric-value">820 ms</span></p><span class="observe-card-delta observe-tone-warn" data-direction="up"><span class="observe-card-delta-glyph" aria-hidden="true">↑</span> +40 ms</span><p class="observe-card-caption">95th percentile</p></div><div class="observe-card observe-metric-card observe-tone-muted" role="group" aria-label="Tokens"><h3 class="observe-card-title">Tokens</h3><p class="observe-card-value"><span class="observe-metric metric-value">1,240,000</span></p><p class="observe-card-caption">Input + output</p></div></div><section class="observe-overview-trends" aria-label="Operational trends"><h3 class="observe-overview-trends-title aos-section-title">Trends</h3><div class="observe-trend-grid"><div class="observe-trend-tile"><figure class="observe-chart"><figcaption>Invocations &amp; failures</figcaption><svg class="observe-chart-svg" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Invocations &amp; failures"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient><linearGradient id="observe-gradient-1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-2)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-2)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="572" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="64.00" x2="572" y2="64.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="100.00" x2="572" y2="100.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="136.00" x2="572" y2="136.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="172.00" x2="572" y2="172.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,172.00 28.00,72.05 209.33,56.80 390.67,46.64 572.00,28.00 572.00,172.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,72.05 209.33,56.80 390.67,46.64 572.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>Invocations – Mon: 120</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="72.05" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Tue: 138</title><text class="observe-chart-marker observe-chart-marker-circle" x="209.33" y="56.80" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Wed: 150</title><text class="observe-chart-marker observe-chart-marker-circle" x="390.67" y="46.64" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>Invocations – Thu: 172</title><text class="observe-chart-marker observe-chart-marker-circle" x="572.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><polygon class="observe-chart-area" points="28.00,172.00 28.00,171.15 209.33,172.00 390.67,170.31 572.00,172.00 572.00,172.00" fill="url(#observe-gradient-1)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,171.15 209.33,172.00 390.67,170.31 572.00,172.00" fill="none" stroke="var(--observe-series-2)" stroke-width="2" /><g class="observe-chart-point"><title>Failures – Mon: 3</title><text class="observe-chart-marker observe-chart-marker-square" x="28.00" y="171.15" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Tue: 2</title><text class="observe-chart-marker observe-chart-marker-square" x="209.33" y="172.00" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Wed: 4</title><text class="observe-chart-marker observe-chart-marker-square" x="390.67" y="170.31" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g><g class="observe-chart-point"><title>Failures – Thu: 2</title><text class="observe-chart-marker observe-chart-marker-square" x="572.00" y="172.00" fill="var(--observe-series-2)" text-anchor="middle" dominant-baseline="central">■</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> Invocations</li><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-square" style="color:var(--observe-series-2)" aria-hidden="true">■</span> Failures</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Invocations &amp; failures</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">Invocations</th><td>Mon</td><td>120</td></tr><tr><th scope="row">Invocations</th><td>Tue</td><td>138</td></tr><tr><th scope="row">Invocations</th><td>Wed</td><td>150</td></tr><tr><th scope="row">Invocations</th><td>Thu</td><td>172</td></tr><tr><th scope="row">Failures</th><td>Mon</td><td>3</td></tr><tr><th scope="row">Failures</th><td>Tue</td><td>2</td></tr><tr><th scope="row">Failures</th><td>Wed</td><td>4</td></tr><tr><th scope="row">Failures</th><td>Thu</td><td>2</td></tr></tbody></table></figure></div><div class="observe-trend-tile"><figure class="observe-chart"><figcaption>Latency (p95, ms)</figcaption><svg class="observe-chart-svg" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Trend chart: Latency (p95, ms)"><desc>Solid line per series; markers use distinct shapes (circle, square, triangle, diamond) so series remain distinguishable without color.</desc><defs><linearGradient id="observe-gradient-0" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--observe-series-1)" stop-opacity="0.25" /><stop offset="100%" stop-color="var(--observe-series-1)" stop-opacity="0" /></linearGradient></defs><line class="observe-chart-grid" x1="28" y1="28.00" x2="572" y2="28.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="64.00" x2="572" y2="64.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="100.00" x2="572" y2="100.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="136.00" x2="572" y2="136.00" aria-hidden="true" /><line class="observe-chart-grid" x1="28" y1="172.00" x2="572" y2="172.00" aria-hidden="true" /><polygon class="observe-chart-area" points="28.00,172.00 28.00,172.00 209.33,100.00 390.67,52.00 572.00,28.00 572.00,172.00" fill="url(#observe-gradient-0)" aria-hidden="true" /><polyline class="observe-chart-line" points="28.00,172.00 209.33,100.00 390.67,52.00 572.00,28.00" fill="none" stroke="var(--observe-series-1)" stroke-width="2" /><g class="observe-chart-point"><title>p95 – Mon: 0.760 s</title><text class="observe-chart-marker observe-chart-marker-circle" x="28.00" y="172.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Tue: 0.790 s</title><text class="observe-chart-marker observe-chart-marker-circle" x="209.33" y="100.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Wed: 0.810 s</title><text class="observe-chart-marker observe-chart-marker-circle" x="390.67" y="52.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g><g class="observe-chart-point"><title>p95 – Thu: 0.820 s</title><text class="observe-chart-marker observe-chart-marker-circle" x="572.00" y="28.00" fill="var(--observe-series-1)" text-anchor="middle" dominant-baseline="central">●</text></g></svg><ul class="observe-chart-legend"><li class="observe-chart-legend-item"><span class="observe-chart-legend-marker observe-chart-legend-marker-circle" style="color:var(--observe-series-1)" aria-hidden="true">●</span> p95</li></ul><table class="observe-chart-data visually-hidden"><caption>Exact values for Latency (p95, ms)</caption><thead><tr><th scope="col">Series</th><th scope="col">Point</th><th scope="col">Value</th></tr></thead><tbody><tr><th scope="row">p95</th><td>Mon</td><td>0.760 s</td></tr><tr><th scope="row">p95</th><td>Tue</td><td>0.790 s</td></tr><tr><th scope="row">p95</th><td>Wed</td><td>0.810 s</td></tr><tr><th scope="row">p95</th><td>Thu</td><td>0.820 s</td></tr></tbody></table></figure></div></div></section></div>
   </section>
   <section id="agents" data-observe-panel role="tabpanel"
            aria-labelledby="observe-tab-agents" hidden>
@@ -837,20 +915,19 @@ tfoot td {
   var COST_BREAKDOWN_WARNING = "Agent, tool, and run breakdowns are alternative reconciliations of the same billed pools; do not add them together.";
   var ATTRIBUTION_COST_UNAVAILABLE = "Cost attribution is unavailable. Configure a valid cost model and allocatable cost before selecting Cost.";
   var AUTO_REFRESH_MS = 300000; // five minutes
-  var DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000; // trailing 24 hours
+  var DEFAULT_RANGE_MS = 7 * 24 * 60 * 60 * 1000; // trailing seven days
   var CACHE_WINDOW_MS = 60 * 1000; // align default windows across browser sessions
-  // Mirrors MAX_TREND_POINTS in ui.py: even though the backend is expected
-  // to already bound each trend series (T053), the client re-bounds
-  // defensively so a chart never renders unbounded markup regardless of
-  // what a given backend implementation actually sends.
-  var MAX_TREND_POINTS = 60;
+  // Mirrors MAX_TREND_POINTS in ui.py and observe/facade.py. The trailing seven-day
+  // default can contain 168 hourly buckets, all of which must remain visible
+  // so count trends reconcile with the selected row's totals.
+  var MAX_TREND_POINTS = 200;
   // Maps each internal view identifier to the `ObserveQuery.view` wire value
   // from contracts/observe-api.openapi.yaml (mirrors OBSERVE_VIEW_WIRE_NAMES
   // in ui.py -- the internal "usage" id is spelled "models" on the wire).
   var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", tools: "tools", runs: "runs" };
   var SERVER_SORT_KEYS = {
     "observe-agents-table": {
-      "Agent": "agent_name", "Source": "source_kind", "Model": "model",
+      "Name": "agent_name", "Agent ID": "agent_id", "Source": "source_kind", "Model": "model",
       "Last seen": "last_seen", "Invocations": "invocations",
       "Failure rate": "failure_rate", "p95 latency": "p95_latency_ms",
       "Input tokens": "input_tokens", "Output tokens": "output_tokens",
@@ -1395,32 +1472,18 @@ tfoot td {
 
   function renderSourceKindBadge(kind) {
     kind = kind || "unknown";
-    var tones = {
-      foundry_hosted: "ok",
-      foundry_prompt: "ok",
-      external_registered: "warn",
-      external_unregistered: "warn",
-      copilot_studio: "warn",
-      unknown: "muted",
-    };
-    var tone = tones[kind] || "muted";
     var label = String(kind).split("_").map(function (part) {
       return part.charAt(0).toUpperCase() + part.slice(1);
     }).join(" ");
+    var source = makeEl("span", "observe-source-kind", label);
     if (kind !== "unknown") {
-      return renderBadgeJs(label, tone, "observe-source-kind-badge");
+      return source;
     }
+    source.textContent = "Unclassified";
     var help = makeEl("span", "observe-inline-help");
     help.title = "Source kind could not be classified from the available telemetry attributes.";
-    help.appendChild(renderBadgeJs("Unclassified", tone, "observe-source-kind-badge"));
+    help.appendChild(source);
     return help;
-  }
-
-  function renderIdentityAvailabilityBadge(agentId) {
-    if (agentId) {
-      return renderBadgeJs("Identity available", "ok", "observe-identity-badge");
-    }
-    return renderBadgeJs("Identity unavailable", "muted", "observe-identity-badge");
   }
 
   function emptyStateNode(message) {
@@ -1747,7 +1810,7 @@ tfoot td {
   function buildDrilldownButton(view, selector, value, label) {
     var button = makeEl(
       "button",
-      "observe-drilldown-button",
+      "observe-drilldown-button observe-row-action",
       value === undefined || value === null ? "View" : String(value)
     );
     button.type = "button";
@@ -1757,6 +1820,24 @@ tfoot td {
       toggleDrilldown(button, view, selector);
     });
     return button;
+  }
+
+  function primaryCellWithAction(value, action) {
+    var cell = makeEl("div", "observe-primary-cell");
+    cell.appendChild(makeEl("span", "observe-primary-value", value || "—"));
+    if (action) {
+      var actions = Array.isArray(action) ? action : [action];
+      var actionGroup = makeEl("div", "observe-row-actions");
+      actions.forEach(function (item) {
+        if (item) {
+          actionGroup.appendChild(item);
+        }
+      });
+      if (actionGroup.childNodes.length) {
+        cell.appendChild(actionGroup);
+      }
+    }
+    return cell;
   }
 
   // The exact key(s) each per-view renderer reads from `data` are a
@@ -1971,27 +2052,28 @@ tfoot td {
     }
     var rows = agents.map(function (agent) {
       agent = agent || {};
-      var nameCell = [
-        document.createTextNode((agent.agent_name || agent.agent_id || "—") + " "),
-        renderIdentityAvailabilityBadge(agent.agent_id),
-      ];
       var sourceCell = renderSourceKindBadge(agent.source_kind);
       sourceCell.title = agent.source_id || "";
+      var agentLabel = agent.agent_name || agent.agent_id || agent.key || "this agent";
       return [
-        nameCell,
+        primaryCellWithAction(agent.agent_name, [
+          buildAgentDetailButton(agent),
+          buildDrilldownButton(
+            "agents",
+            {
+              source_id: agent.source_id,
+              project_resource_id: agent.project_resource_id || null,
+              agent_key: agentKeyFor(agent),
+            },
+            "View activity",
+            "View activity for " + agentLabel
+          ),
+        ]),
+        agent.agent_id || "—",
         sourceCell,
         agent.model || "—",
         renderLastSeenJs(agent.last_seen),
-        buildDrilldownButton(
-          "agents",
-          {
-            source_id: agent.source_id,
-            project_resource_id: agent.project_resource_id || null,
-            agent_key: agentKeyFor(agent),
-          },
-          agent.invocations,
-          "View " + String(agent.invocations || 0) + " invocations for " + (agent.agent_name || agent.agent_id || "this agent")
-        ),
+        renderMaybeMissing(agent.invocations, { missingText: "—" }),
         renderFailureRate(agent.invocations, agent.failures),
         renderMillisecondsAsSeconds(agent.p95_latency_ms),
         renderMaybeMissing(agent.input_tokens, { missingText: "—" }),
@@ -2000,7 +2082,6 @@ tfoot td {
         renderMaybeMissing(agent.cache_read_tokens, { missingText: "—" }),
         renderMaybeMissing(agent.cache_write_tokens, { missingText: "—" }),
         renderMaybeMissing(agent.reasoning_tokens, { missingText: "—" }),
-        buildAgentDetailButton(agent),
       ];
     });
     var totalInvocations = sumReported(agents, "invocations");
@@ -2012,7 +2093,8 @@ tfoot td {
       "observe-agents-table",
       "Agents observed in the selected range",
       [
-        "Agent",
+        "Name",
+        { label: "Agent ID", help: "Stable technical identifier reported by agent telemetry." },
         "Source",
         { label: "Model", help: "Model identifier reported by response telemetry." },
         { label: "Last seen", help: "Most recent telemetry in the selected range; not agent lifecycle status." },
@@ -2024,12 +2106,12 @@ tfoot td {
         { label: "Total tokens", help: tokenHelp },
         { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
         { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
-        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp },
-        "Details"
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp }
       ],
       rows,
       [
         [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "—",
         "—",
         "—",
         "—",
@@ -2041,8 +2123,7 @@ tfoot td {
         renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "—" }),
         renderMaybeMissing(sumReported(agents, "cache_read_tokens"), { missingText: "—" }),
         renderMaybeMissing(sumReported(agents, "cache_write_tokens"), { missingText: "—" }),
-        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "—" }),
-        "—"
+        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "—" })
       ]
     );
     setViewContent("agents", [controls, notice, table]);
@@ -2065,14 +2146,25 @@ tfoot td {
 
   function buildAgentDetailButton(agent) {
     var key = agentKeyFor(agent);
-    var button = makeEl("button", "observe-agent-detail-button", "View details");
+    var button = makeEl(
+      "button",
+      "observe-agent-detail-button observe-drilldown-button observe-row-action",
+      "View details"
+    );
     button.type = "button";
     var label = agent && (agent.agent_name || agent.agent_id);
     button.setAttribute("aria-label", "View details for " + (label || "this agent"));
     if (key) {
       button.setAttribute("data-observe-agent-key", key);
+      button.setAttribute("data-observe-source-id", agent.source_id || "");
+      button.setAttribute("data-observe-project-resource-id", agent.project_resource_id || "");
       button.addEventListener("click", function () {
-        fetchAgentDetail(key, false);
+        fetchAgentDetail(
+          key,
+          agent.source_id || "",
+          agent.project_resource_id || "",
+          false
+        );
       });
     } else {
       button.disabled = true;
@@ -2118,6 +2210,15 @@ tfoot td {
   // by series name).
   function renderAgentTrendsNode(trends) {
     var wrap = makeEl("div", "observe-agent-detail-trends");
+    if (Array.isArray(trends) && trends.length) {
+      wrap.appendChild(
+        makeEl(
+          "p",
+          "observe-hint",
+          "Totals above cover the full selected range. Each point below is one time bucket from the same agent, project, and telemetry source."
+        )
+      );
+    }
     (Array.isArray(trends) ? trends : []).forEach(function (trend) {
       trend = trend || {};
       var unit = trend.unit || "";
@@ -2130,10 +2231,18 @@ tfoot td {
         boundTrendPoints(series.points).forEach(function (point) {
           var xLabel = Array.isArray(point) ? point[0] : "";
           var value = Array.isArray(point) ? point[1] : null;
+          var renderedValue;
+          if (unit === "ms") {
+            renderedValue = renderMillisecondsAsSeconds(value);
+          } else {
+            renderedValue = renderMaybeMissing(value, {
+              suffix: unit && unit !== "count" ? " " + unit : ""
+            });
+          }
           rows.push([
             label,
-            xLabel === undefined || xLabel === null ? "" : String(xLabel),
-            renderMaybeMissing(value, { suffix: unit }),
+            renderTimestampJs(xLabel),
+            renderedValue,
           ]);
         });
       });
@@ -2211,11 +2320,40 @@ tfoot td {
   // the documented primary key with a couple of reasonable fallbacks.
   function agentDetailFrom(body) {
     body = body && typeof body === "object" ? body : {};
+    var dataAgent = Array.isArray(body.data) ? body.data[0] : body.data;
     return {
-      agent: body.agent || body.data || {},
+      agent: body.agent || dataAgent || {},
       trends: Array.isArray(body.trends) ? body.trends : [],
       portalLinks: body.portal_links || body.portalLinks || body.links || {},
     };
+  }
+
+  function appendAgentDetailItem(list, label, value) {
+    var item = document.createElement("div");
+    item.appendChild(makeEl("dt", null, label));
+    var description = document.createElement("dd");
+    appendCellContent(description, value);
+    item.appendChild(description);
+    list.appendChild(item);
+  }
+
+  function renderAgentSummaryNode(agent) {
+    var summary = makeEl("dl", "observe-agent-detail-summary");
+    var totalTokens = observedTokenTotal(agent.input_tokens, agent.output_tokens);
+    appendAgentDetailItem(summary, "Agent ID", agent.agent_id || "—");
+    appendAgentDetailItem(summary, "Source", renderSourceKindBadge(agent.source_kind));
+    appendAgentDetailItem(summary, "Model", agent.model || "—");
+    appendAgentDetailItem(summary, "Last seen", renderLastSeenJs(agent.last_seen));
+    appendAgentDetailItem(summary, "Invocations", renderMaybeMissing(agent.invocations, { missingText: "—" }));
+    appendAgentDetailItem(summary, "Failure rate", renderFailureRate(agent.invocations, agent.failures));
+    appendAgentDetailItem(summary, "p95 latency", renderMillisecondsAsSeconds(agent.p95_latency_ms));
+    appendAgentDetailItem(summary, "Input tokens", renderMaybeMissing(agent.input_tokens, { missingText: "—" }));
+    appendAgentDetailItem(summary, "Output tokens", renderMaybeMissing(agent.output_tokens, { missingText: "—" }));
+    appendAgentDetailItem(summary, "Total tokens", renderMaybeMissing(totalTokens, { missingText: "—" }));
+    appendAgentDetailItem(summary, "Cache read", renderMaybeMissing(agent.cache_read_tokens, { missingText: "—" }));
+    appendAgentDetailItem(summary, "Cache write", renderMaybeMissing(agent.cache_write_tokens, { missingText: "—" }));
+    appendAgentDetailItem(summary, "Reasoning", renderMaybeMissing(agent.reasoning_tokens, { missingText: "—" }));
+    return summary;
   }
 
   function renderAgentDetail(agentKey, body) {
@@ -2228,15 +2366,8 @@ tfoot td {
     clearChildren(panel);
     var section = makeEl("section", "observe-agent-detail");
     section.setAttribute("aria-label", "Agent detail: " + (agent.agent_name || agent.agent_id || agentKey || "agent"));
-    section.appendChild(makeEl("h3", null, agent.agent_name || agent.agent_id || "Unknown agent"));
-    var identityLine = makeEl("p", "observe-agent-detail-identity");
-    identityLine.appendChild(renderSourceKindBadge(agent.source_kind));
-    identityLine.appendChild(document.createTextNode(" "));
-    identityLine.appendChild(renderIdentityAvailabilityBadge(agent.agent_id));
-    section.appendChild(identityLine);
-    var lastSeenLine = makeEl("p", "observe-agent-detail-last-seen");
-    lastSeenLine.appendChild(renderLastSeenJs(agent.last_seen));
-    section.appendChild(lastSeenLine);
+    section.appendChild(makeEl("h3", null, agent.agent_name || agent.agent_id || agentKey || "Agent details"));
+    section.appendChild(renderAgentSummaryNode(agent));
     section.appendChild(renderAgentTrendsNode(parsed.trends));
     var linksNode = renderPortalLinksNode(parsed.portalLinks);
     if (linksNode) {
@@ -2245,7 +2376,7 @@ tfoot td {
     panel.appendChild(section);
   }
 
-  function fetchAgentDetail(agentKey, manual) {
+  function fetchAgentDetail(agentKey, sourceId, projectResourceId, manual) {
     // Explicit, click-triggered only: this function is only ever invoked
     // from a "click" listener on an agent row's details button (T053/FR-038
     // -- agent details load only when the user opens/selects them, never
@@ -2261,13 +2392,15 @@ tfoot td {
     agentDetailController = controller;
     setAgentDetailStatus("Loading agent detail…");
 
-    // POST /api/observe/agent-detail with `{agent_key, filters, refresh}`
+    // POST /api/observe/agent-detail with row identity and current filters.
     // per contracts/observe-api.openapi.yaml. `filters` reuses the same
     // applied scope/time-range filters as the main query so returned trends
     // match whatever the user is currently looking at. Only the stable
-    // `agent_key` identifier is ever sent -- no raw protected content.
+    // agent and source identifiers are sent -- never raw protected content.
     var agentDetailPayload = {
       agent_key: agentKey,
+      source_id: sourceId || null,
+      project_resource_id: projectResourceId || null,
       filters: {
         foundry_resource_id: appliedFilters.foundry_resource_id || null,
         project_resource_id: appliedFilters.project_resource_id || null,
@@ -2329,19 +2462,22 @@ tfoot td {
     var rows = usage.map(function (entry) {
       entry = entry || {};
       return [
-        entry.model || "—",
-        entry.deployment || "—",
-        buildDrilldownButton(
-          "models",
-          {
-            source_id: entry.source_id,
-            project_resource_id: entry.project_resource_id || null,
-            model: entry.model || null,
-            deployment: entry.deployment || null,
-          },
-          entry.requests,
-          "View " + String(entry.requests || 0) + " requests for " + (entry.model || entry.deployment || "this model")
+        primaryCellWithAction(
+          entry.model,
+          buildDrilldownButton(
+            "models",
+            {
+              source_id: entry.source_id,
+              project_resource_id: entry.project_resource_id || null,
+              model: entry.model || null,
+              deployment: entry.deployment || null,
+            },
+            "View details",
+            "View activity details for " + (entry.model || entry.deployment || "this model")
+          )
         ),
+        entry.deployment || "—",
+        renderMaybeMissing(entry.requests, { missingText: "—" }),
         renderFailureRate(entry.requests, entry.failures),
         renderMillisecondsAsSeconds(entry.p95_latency_ms),
         renderMaybeMissing(entry.input_tokens, { missingText: "—" }),
@@ -2415,22 +2551,25 @@ tfoot td {
     var rows = tools.map(function (tool) {
       tool = tool || {};
       return [
-        tool.tool_name || "—",
+        primaryCellWithAction(
+          tool.tool_name,
+          buildDrilldownButton(
+            "tools",
+            {
+              source_id: tool.source_id,
+              project_resource_id: tool.project_resource_id || null,
+              tool_name: tool.tool_name,
+              agent_key: tool.agent_key || null,
+            },
+            "View details",
+            "View activity details for " + (tool.tool_name || "this tool")
+          )
+        ),
         tool.agent_name || tool.agent_id || tool.agent_key || "—",
         tool.source_id || "—",
         renderSourceKindBadge(tool.source_kind),
         renderLastSeenJs(tool.last_seen),
-        buildDrilldownButton(
-          "tools",
-          {
-            source_id: tool.source_id,
-            project_resource_id: tool.project_resource_id || null,
-            tool_name: tool.tool_name,
-            agent_key: tool.agent_key || null,
-          },
-          tool.invocations,
-          "View " + String(tool.invocations || 0) + " invocations for " + (tool.tool_name || "this tool")
-        ),
+        renderMaybeMissing(tool.invocations, { missingText: "—" }),
         renderMaybeMissing(tool.failures, { missingText: "—" }),
         renderMillisecondsAsSeconds(tool.p95_latency_ms),
       ];
@@ -2480,7 +2619,20 @@ tfoot td {
     var rows = runs.map(function (run) {
       run = run || {};
       return [
-        run.run_key || "—",
+        primaryCellWithAction(
+          run.run_key,
+          buildDrilldownButton(
+            "runs",
+            {
+              source_id: run.source_id,
+              project_resource_id: run.project_resource_id || null,
+              run_key: run.run_key,
+              agent_key: run.agent_key || null,
+            },
+            "View details",
+            "View activity details for run " + (run.run_key || "")
+          )
+        ),
         run.run_key_kind || "—",
         run.agent_name || run.agent_id || run.agent_key || "—",
         run.source_id || "—",
@@ -2488,17 +2640,7 @@ tfoot td {
         renderTimestampJs(run.started_at),
         renderMillisecondsAsSeconds(run.duration_ms),
         run.status || "—",
-        buildDrilldownButton(
-          "runs",
-          {
-            source_id: run.source_id,
-            project_resource_id: run.project_resource_id || null,
-            run_key: run.run_key,
-            agent_key: run.agent_key || null,
-          },
-          run.turns,
-          "View activity for run " + (run.run_key || "")
-        ),
+        renderMaybeMissing(run.turns, { missingText: "—" }),
         renderMaybeMissing(run.tool_invocations, { missingText: "—" }),
         renderMaybeMissing(run.input_tokens, { missingText: "—" }),
         renderMaybeMissing(run.output_tokens, { missingText: "—" }),

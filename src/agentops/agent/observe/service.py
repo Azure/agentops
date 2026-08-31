@@ -2071,6 +2071,7 @@ class ObserveService:
         search: str | None = None,
         sort_by: str | None = None,
         sort_direction: Literal["asc", "desc"] = "desc",
+        unpaged: bool = False,
     ) -> ObserveResult:
         """Return the normalized, coverage-annotated response for *view*."""
         filters.validate_scope(scope)
@@ -2083,6 +2084,8 @@ class ObserveService:
         )
         if cached.state == "fresh" and cached.value is not None:
             result = self._cached_result(cached.value, cache_status="hit")
+            if unpaged:
+                return result
             return _page_observe_result(
                 result,
                 page=page,
@@ -2103,6 +2106,8 @@ class ObserveService:
                 ),
             )
             result = self._cached_result(cached.value, cache_status="stale")
+            if unpaged:
+                return result
             return _page_observe_result(
                 result,
                 page=page,
@@ -2126,6 +2131,8 @@ class ObserveService:
             response = result
         else:
             response = replace(result, cache_status="hit")
+        if unpaged:
+            return response
         return _page_observe_result(
             response,
             page=page,
@@ -3723,13 +3730,30 @@ class ObserveService:
         filters: ObserveFilterState,
         *,
         agent_key: str,
+        source_id: str | None = None,
+        project_resource_id: str | None = None,
         refresh: bool = False,
     ) -> ObserveResult | None:
         """Return the ``agents`` view narrowed to one agent, or ``None`` if unseen."""
         if not agent_key:
             raise ValueError("agent_key is required")
-        result = await self.query_view(scope, filters, view="agents", refresh=refresh)
-        agents = [agent for agent in result.data if agent.key == agent_key]
+        result = await self.query_view(
+            scope,
+            filters,
+            view="agents",
+            refresh=refresh,
+            unpaged=True,
+        )
+        agents = [
+            agent
+            for agent in result.data
+            if agent.key == agent_key
+            and (source_id is None or agent.source_id.casefold() == source_id.casefold())
+            and (
+                project_resource_id is None
+                or agent.project_resource_id == project_resource_id
+            )
+        ]
         if not agents:
             return None
         return ObserveResult(

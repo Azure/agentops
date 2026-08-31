@@ -5978,6 +5978,8 @@ def create_app(
         result = await _service_call(
             "agent_detail",
             agent_key=payload.agent_key,
+            source_id=payload.source_id,
+            project_resource_id=payload.project_resource_id,
             filters=filters.model_dump(mode="json"),
             refresh=payload.refresh,
             user_context=user_context,

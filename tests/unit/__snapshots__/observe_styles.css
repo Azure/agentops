@@ -392,6 +392,12 @@
   letter-spacing: -0.02em;
   color: var(--observe-fg);
 }
+.observe-card-value .metric-missing {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
 .observe-metric-card.observe-tone-ok .observe-card-value { color: var(--observe-ok); }
 .observe-metric-card.observe-tone-warn .observe-card-value { color: var(--observe-warn); }
 .observe-metric-card.observe-tone-crit .observe-card-value { color: var(--observe-crit); }
@@ -539,6 +545,26 @@ tfoot td {
   outline: 2px solid var(--observe-accent);
   outline-offset: 3px;
 }
+.observe-primary-cell {
+  display: flex;
+  min-width: 120px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.observe-primary-value {
+  color: var(--observe-fg);
+  font-weight: 600;
+}
+.observe-row-action {
+  font-size: 12px;
+  font-weight: 600;
+}
+.observe-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
 .observe-drilldown-row > td {
   background: color-mix(in srgb, var(--observe-accent) 4%, var(--observe-surface));
   padding: 14px;
@@ -546,6 +572,58 @@ tfoot td {
 .observe-drilldown-panel {
   border-left: 3px solid var(--observe-accent);
   padding-left: 12px;
+}
+.observe-agent-detail {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--observe-border);
+  border-radius: 12px;
+  background: var(--observe-card-bg);
+}
+.observe-agent-detail > h3,
+.observe-agent-detail > h2 {
+  margin: 0 0 14px;
+}
+.observe-agent-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 0 0 20px;
+  overflow: hidden;
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  background: var(--observe-border);
+}
+.observe-agent-detail-summary > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--observe-card-bg);
+}
+.observe-agent-detail-summary dt {
+  margin-bottom: 4px;
+  color: var(--observe-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.observe-agent-detail-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.observe-agent-detail-trends {
+  display: grid;
+  gap: 16px;
+}
+.observe-agent-trend-title { margin: 0 0 8px; }
+.observe-portal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 14px 0 0;
+  margin: 0;
+  list-style: none;
 }
 .observe-drilldown-panel > p { margin: 0 0 10px; }
 .observe-drilldown-table {

@@ -278,6 +278,12 @@ components:
         agent_key:
           type: string
           minLength: 1
+        source_id:
+          type: [string, "null"]
+          minLength: 1
+          maxLength: 2048
+        project_resource_id:
+          type: [string, "null"]
         filters:
           $ref: "#/components/schemas/ObserveFilters"
         refresh:
