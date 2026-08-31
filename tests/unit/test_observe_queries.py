@@ -145,15 +145,16 @@ def _usage(invocations: int) -> AttributionUsage:
 
 
 # ---------------------------------------------------------------------------
-# T037: KQL builders - bounds, early filters, 24h defaults.
+# T037: KQL builders - bounds, early filters, 7-day defaults.
 # ---------------------------------------------------------------------------
 
 
-def test_default_lookback_window_is_24_hours() -> None:
+def test_default_lookback_window_is_7_days() -> None:
     now = datetime(2024, 5, 1, 12, 0, tzinfo=timezone.utc)
     start, end = default_lookback_window(now=now)
     assert end == now
     assert end - start == timedelta(hours=DEFAULT_LOOKBACK_HOURS)
+    assert end - start == timedelta(days=7)
 
 
 def test_overview_query_is_bounded_to_time_window_and_tables() -> None:

@@ -33,7 +33,7 @@ from agentops.core.observe import (
 MAX_SOURCES_PER_BATCH = 10
 SOURCE_TIMEOUT_SECONDS = 30
 DEFAULT_REQUEST_DEADLINE_SECONDS = 10
-DEFAULT_LOOKBACK_HOURS = 24
+DEFAULT_LOOKBACK_HOURS = 24 * 7
 
 _TELEMETRY_TABLES = "union withsource=TelemetryTable AppDependencies, AppRequests"
 _APPGENAI_TABLE = "AppGenAIContent"
@@ -91,7 +91,7 @@ def _iso(value: datetime) -> str:
 def default_lookback_window(
     *, now: datetime | None = None, hours: int = DEFAULT_LOOKBACK_HOURS
 ) -> tuple[datetime, datetime]:
-    """Return a bounded ``(start, end)`` window defaulting to 24 hours."""
+    """Return a bounded ``(start, end)`` window defaulting to 7 days."""
     end = now or datetime.now(timezone.utc)
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)

@@ -21,7 +21,7 @@ Design constraints carried over from the spec/plan (see FR-022..FR-053):
   content, evaluation explanations) is **never** written to the URL, to
   ``localStorage``/``sessionStorage``, or to cookies -- see
   :data:`_OBSERVE_SCRIPT` and the safety tests in ``test_observe_ui.py``.
-* The default time range is the trailing 24 hours; refresh happens
+* The default time range is the trailing 7 days; refresh happens
   automatically every five minutes and can also be triggered manually. Every
   fetch is issued with an ``AbortController`` and a monotonically increasing
   request token so that a response for a superseded request is silently
@@ -139,7 +139,10 @@ COST_BREAKDOWN_WARNING = (
 )
 
 #: Default lookback window, in hours, applied when no range is in the URL.
-DEFAULT_RANGE_HOURS: int = 24
+#: Mirrors ``DEFAULT_LOOKBACK_HOURS`` in ``agentops.agent.observe.queries``;
+#: this module deliberately imports nothing from the query layer, so the two
+#: constants are kept in sync by convention (and by tests).
+DEFAULT_RANGE_HOURS: int = 24 * 7
 
 #: Automatic refresh interval, in milliseconds (five minutes).
 AUTO_REFRESH_MS: int = 5 * 60 * 1000
@@ -885,7 +888,7 @@ def render_filter_bar(scope_label: Optional[str] = None) -> str:
     read the *draft* values only when the user explicitly submits the form;
     nothing here is auto-applied on change/input. Filters default to "All"
     (an empty value), and the date/time fields default (client-side) to the
-    trailing 24 hours -- see :data:`_OBSERVE_SCRIPT`.
+    trailing 7 days -- see :data:`_OBSERVE_SCRIPT`.
     """
     scope_html = (
         f'<p class="observe-scope"><span class="observe-hint">Scope:</span> '
@@ -3290,7 +3293,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   var COST_BREAKDOWN_WARNING = "Agent, tool, and run breakdowns are alternative reconciliations of the same billed pools; do not add them together.";
   var ATTRIBUTION_COST_UNAVAILABLE = "Cost attribution is unavailable. Configure a valid cost model and allocatable cost before selecting Cost.";
   var AUTO_REFRESH_MS = 300000; // five minutes
-  var DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000; // trailing 24 hours
+  var DEFAULT_RANGE_MS = 7 * 24 * 60 * 60 * 1000; // trailing 7 days
   var CACHE_WINDOW_MS = 60 * 1000; // align default windows across browser sessions
   // Mirrors MAX_TREND_POINTS in ui.py: even though the backend is expected
   // to already bound each trend series (T053), the client re-bounds

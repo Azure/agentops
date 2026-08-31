@@ -35,7 +35,7 @@ PROJECT = (
 
 
 def test_default_range_and_refresh_constants() -> None:
-    assert ui.DEFAULT_RANGE_HOURS == 24
+    assert ui.DEFAULT_RANGE_HOURS == 24 * 7
     assert ui.AUTO_REFRESH_MS == 5 * 60 * 1000
 
 
@@ -2126,9 +2126,9 @@ def test_script_auto_refreshes_every_five_minutes() -> None:
     assert "AUTO_REFRESH_MS = 300000" in script
 
 
-def test_script_computes_default_24_hour_range_when_missing_from_url() -> None:
+def test_script_computes_default_7_day_range_when_missing_from_url() -> None:
     script = ui._OBSERVE_SCRIPT
-    assert "DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000" in script
+    assert "DEFAULT_RANGE_MS = 7 * 24 * 60 * 60 * 1000" in script
     assert 'value = local.toISOString().slice(0, 16);' in script
     assert "value = isNaN(moment.getTime()) ? \"\" : moment.toISOString();" in script
 
