@@ -109,9 +109,9 @@ _SUPPORTED_QUERY_VIEWS: frozenset[str] = _NATIVE_QUERY_VIEWS | {"coverage", "cos
 #: unbounded even if a caller requests a very wide filter window.
 MAX_TREND_POINTS = 200
 _TREND_METRICS: tuple[tuple[str, str, str], ...] = (
-    ("invocations", "Invocations", "count"),
-    ("failures", "Failures", "count"),
-    ("p95_latency_ms", "P95 Latency", "ms"),
+    ("invocations", "Invocations over time", "count"),
+    ("failures", "Failures over time", "count"),
+    ("p95_latency_ms", "P95 latency over time", "ms"),
 )
 
 
@@ -304,7 +304,9 @@ def _build_trend_series(source_results: Sequence[SourceResult]) -> list[dict[str
             continue
         rows.extend(result.tables or [])
     rows.sort(key=_trend_bucket_label)
-    rows = rows[:MAX_TREND_POINTS]
+    if len(rows) > MAX_TREND_POINTS:
+        step = (len(rows) - 1) / (MAX_TREND_POINTS - 1)
+        rows = [rows[round(index * step)] for index in range(MAX_TREND_POINTS)]
 
     trends: list[dict[str, Any]] = []
     for field, title, unit in _TREND_METRICS:
@@ -749,6 +751,8 @@ class ObserveFacade:
         self,
         *,
         agent_key: str,
+        source_id: str | None = None,
+        project_resource_id: str | None = None,
         filters: Mapping[str, Any],
         refresh: bool = False,
         user_context: Mapping[str, Any] | None = None,
@@ -761,7 +765,12 @@ class ObserveFacade:
         """
         filter_state = ObserveFilterState.model_validate(dict(filters))
         result = await self._service.agent_detail(
-            self._scope, filter_state, agent_key=agent_key, refresh=refresh
+            self._scope,
+            filter_state,
+            agent_key=agent_key,
+            source_id=source_id,
+            project_resource_id=project_resource_id,
+            refresh=refresh,
         )
         if result is None:
             return None
@@ -783,18 +792,30 @@ class ObserveFacade:
     ) -> tuple[list[dict[str, Any]], dict[str, str]]:
         inventory = await self._service.get_inventory(self._scope)
         available = [s for s in inventory.telemetry_sources if s.state == "available"]
+        exact_source = [
+            source
+            for source in available
+            if source.source_id.casefold() == agent.source_id.casefold()
+        ]
         matching = [
             source
             for source in available
             if (agent.foundry_resource_id and source.foundry_resource_id == agent.foundry_resource_id)
             or (agent.project_resource_id and agent.project_resource_id in source.project_resource_ids)
         ]
-        sources = matching or available
+        # Agent rows are source-specific. Querying every source in the same
+        # project can mix unrelated agents that happen to share an agent key.
+        sources = exact_source or matching or available
 
         trends: list[dict[str, Any]] = []
         query_agent_detail = getattr(self._query_client, "query_agent_detail", None)
         if sources and callable(query_agent_detail):
-            source_results = await query_agent_detail(sources, filters, agent_key=agent_key)
+            source_results = await query_agent_detail(
+                sources,
+                filters,
+                agent_key=agent_key,
+                project_resource_id=agent.project_resource_id,
+            )
             trends = _build_trend_series(source_results)
 
         portal_links = _agent_detail_portal_links(agent, sources)

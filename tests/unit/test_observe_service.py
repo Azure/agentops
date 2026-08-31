@@ -2906,6 +2906,54 @@ async def test_agent_detail_narrows_to_matching_agent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_detail_finds_agent_beyond_default_first_page() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    rows = [
+        {
+            **_agent_rows_result().tables[0],
+            "agent_key": f"agent-{index}",
+            "agent_id": f"agent-{index}",
+        }
+        for index in range(60)
+    ]
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=rows)],
+        clock=clock,
+    )
+
+    detail = await service.agent_detail(
+        _scope(), _filters(), agent_key="agent-55", source_id="src-1"
+    )
+
+    assert detail is not None
+    assert detail.data[0].key == "agent-55"
+
+
+@pytest.mark.asyncio
+async def test_agent_detail_narrows_same_key_to_selected_source() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source("src-1"), _source("src-2")])
+    service, _discovery, _query = _service(
+        inventory=inventory,
+        results=[_agent_rows_result("src-1"), _agent_rows_result("src-2")],
+        clock=clock,
+    )
+
+    detail = await service.agent_detail(
+        _scope(),
+        _filters(),
+        agent_key="agent-1",
+        source_id="src-2",
+        project_resource_id=_PROJECT_ID,
+    )
+
+    assert detail is not None
+    assert len(detail.data) == 1
+    assert detail.data[0].source_id == "src-2"
+
+
+@pytest.mark.asyncio
 async def test_agent_detail_propagates_partial_failures_from_underlying_query() -> None:
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory([_source("src-1"), _source("src-2")])

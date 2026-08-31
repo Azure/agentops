@@ -10,6 +10,7 @@ lightweight fakes and production code can inject the real async
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 import time
 from dataclasses import dataclass
@@ -33,7 +34,7 @@ from agentops.core.observe import (
 MAX_SOURCES_PER_BATCH = 10
 SOURCE_TIMEOUT_SECONDS = 30
 DEFAULT_REQUEST_DEADLINE_SECONDS = 10
-DEFAULT_LOOKBACK_HOURS = 24
+DEFAULT_LOOKBACK_HOURS = 7 * 24
 
 _TELEMETRY_TABLES = "union withsource=TelemetryTable AppDependencies, AppRequests"
 _APPGENAI_TABLE = "AppGenAIContent"
@@ -91,7 +92,7 @@ def _iso(value: datetime) -> str:
 def default_lookback_window(
     *, now: datetime | None = None, hours: int = DEFAULT_LOOKBACK_HOURS
 ) -> tuple[datetime, datetime]:
-    """Return a bounded ``(start, end)`` window defaulting to 24 hours."""
+    """Return a bounded ``(start, end)`` window defaulting to seven days."""
     end = now or datetime.now(timezone.utc)
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
@@ -935,7 +936,11 @@ def build_trends_query(
     scope_source: TelemetrySource | None = None,
 ) -> str:
     """Bounded time-bucketed invocation/latency trend query."""
-    bucket_expr = f"{max(int(bucket.total_seconds()), 1)}s"
+    range_seconds = max(int((filters.end - filters.start).total_seconds()), 1)
+    minimum_bucket_seconds = math.ceil(range_seconds / (MAX_ROWS_PER_QUERY - 1))
+    bucket_expr = (
+        f"{max(int(bucket.total_seconds()), minimum_bucket_seconds, 1)}s"
+    )
     lines = [
         _TELEMETRY_TABLES,
         _time_window_clause(filters),
@@ -1088,27 +1093,52 @@ def build_agent_detail_query(
     filters: ObserveFilterState,
     *,
     agent_key: str,
+    project_resource_id: str | None = None,
     bucket: timedelta = timedelta(hours=1),
     scope_source: TelemetrySource | None = None,
 ) -> str:
     """Bounded single-agent trend query used by the agent detail view."""
     if not agent_key:
         raise ValueError("agent_key is required for agent detail queries")
-    bucket_expr = f"{max(int(bucket.total_seconds()), 1)}s"
-    lines = [
+    range_seconds = max(int((filters.end - filters.start).total_seconds()), 1)
+    minimum_bucket_seconds = math.ceil(range_seconds / (MAX_ROWS_PER_QUERY - 1))
+    bucket_expr = (
+        f"{max(int(bucket.total_seconds()), minimum_bucket_seconds, 1)}s"
+    )
+    candidate_lines = [
         _TELEMETRY_TABLES,
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
-        '| extend agent_key = tostring(coalesce(Properties["gen_ai.agent.id"], '
-        'Properties["gen_ai.agent.name"], "unknown"))',
+        *_agent_extend_clauses(),
         f"| where agent_key == '{_kql_escape(agent_key)}'",
-        "| summarize invocations = count(), "
-        "failures = countif(Success == false), "
-        f"p95_latency_ms = percentile(DurationMs, 95) by bin(TimeGenerated, {bucket_expr})",
-        "| order by TimeGenerated asc",
-        f"| take {MAX_ROWS_PER_QUERY}",
+        '| extend is_request_invocation = TelemetryTable endswith "AppRequests" and '
+        'operation_name == "invoke_agent", '
+        'is_dependency_invocation = TelemetryTable endswith "AppDependencies" and '
+        'operation_name == "invoke_agent"',
+        "| where is_request_invocation or is_dependency_invocation",
     ]
-    return "\n".join(lines)
+    if project_resource_id:
+        candidate_lines.append(
+            "| where tolower(project_resource_id) == "
+            f"'{_kql_escape(project_resource_id.lower())}'"
+        )
+    return "\n".join(
+        [
+            f"let candidates = materialize({candidate_lines[0]}",
+            *candidate_lines[1:],
+            ");",
+            "let has_request = toscalar("
+            "candidates | where is_request_invocation | count) > 0;",
+            "candidates",
+            "| where (has_request and is_request_invocation) or "
+            "(not(has_request) and is_dependency_invocation)",
+            "| summarize invocations = count(), "
+            "failures = countif(Success == false), "
+            f"p95_latency_ms = percentile(DurationMs, 95) by bin(TimeGenerated, {bucket_expr})",
+            "| order by TimeGenerated asc",
+            f"| take {MAX_ROWS_PER_QUERY}",
+        ]
+    )
 
 
 def build_appgenai_content_query(*, trace_id: str, span_id: str | None = None) -> str:

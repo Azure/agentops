@@ -21,7 +21,7 @@ Design constraints carried over from the spec/plan (see FR-022..FR-053):
   content, evaluation explanations) is **never** written to the URL, to
   ``localStorage``/``sessionStorage``, or to cookies -- see
   :data:`_OBSERVE_SCRIPT` and the safety tests in ``test_observe_ui.py``.
-* The default time range is the trailing 24 hours; refresh happens
+* The default time range is the trailing seven days; refresh happens
   automatically every five minutes and can also be triggered manually. Every
   fetch is issued with an ``AbortController`` and a monotonically increasing
   request token so that a response for a superseded request is silently
@@ -139,7 +139,7 @@ COST_BREAKDOWN_WARNING = (
 )
 
 #: Default lookback window, in hours, applied when no range is in the URL.
-DEFAULT_RANGE_HOURS: int = 24
+DEFAULT_RANGE_HOURS: int = 7 * 24
 
 #: Automatic refresh interval, in milliseconds (five minutes).
 AUTO_REFRESH_MS: int = 5 * 60 * 1000
@@ -147,7 +147,7 @@ AUTO_REFRESH_MS: int = 5 * 60 * 1000
 #: Maximum number of points ever drawn for a single chart series. Longer
 #: series are downsampled (see :func:`_bound_points`) so that "bounded agent
 #: trends" (T053) never render unbounded SVG markup for a long time range.
-MAX_TREND_POINTS: int = 60
+MAX_TREND_POINTS: int = 200
 
 #: Copy shown for each of the eight ``CoverageState`` values understood by
 #: ``agentops.core.observe.CoverageState``. ``"error"`` is not part of the
@@ -745,6 +745,19 @@ def render_trend_chart(
     legend_parts: list[str] = []
     table_parts: list[str] = []
 
+    def _display_point(value: Any) -> str:
+        moment = _coerce_datetime(value)
+        return _format_compact_timestamp(moment) if moment is not None else str(value)
+
+    def _display_value(value: Any) -> str:
+        normalized_unit = unit.strip()
+        if normalized_unit == "ms":
+            return _format_seconds(value)
+        if normalized_unit == "count":
+            return _format_number(value)
+        suffix = f" {normalized_unit}" if normalized_unit else ""
+        return f"{_format_number(value)}{suffix}"
+
     # Subtle, decorative, aria-hidden horizontal gridlines.
     grid_lines = 4
     for i in range(grid_lines + 1):
@@ -794,7 +807,9 @@ def render_trend_chart(
             if value is None:
                 continue
             x, y = _x_for(i, len(points)), _y_for(float(value))
-            tooltip = f"{label} \u2013 {html_escape(x_label)}: {_format_number(value)}{unit}"
+            point_label = _display_point(x_label)
+            value_label = _display_value(value)
+            tooltip = f"{label} \u2013 {html_escape(point_label)}: {html_escape(value_label)}"
             body_parts.append(
                 '<g class="observe-chart-point">'
                 f"<title>{tooltip}</title>"
@@ -805,7 +820,7 @@ def render_trend_chart(
             )
             table_parts.append(
                 f"<tr><th scope=\"row\">{html_escape(label)}</th>"
-                f"<td>{html_escape(x_label)}</td><td>{_format_number(value)}{html_escape(unit)}</td></tr>"
+                f"<td>{html_escape(point_label)}</td><td>{html_escape(value_label)}</td></tr>"
             )
 
         legend_parts.append(
@@ -885,7 +900,7 @@ def render_filter_bar(scope_label: Optional[str] = None) -> str:
     read the *draft* values only when the user explicitly submits the form;
     nothing here is auto-applied on change/input. Filters default to "All"
     (an empty value), and the date/time fields default (client-side) to the
-    trailing 24 hours -- see :data:`_OBSERVE_SCRIPT`.
+    trailing seven days -- see :data:`_OBSERVE_SCRIPT`.
     """
     scope_html = (
         f'<p class="observe-scope"><span class="observe-hint">Scope:</span> '
@@ -1093,29 +1108,15 @@ def render_overview_cards(
 
 def _render_source_kind_badge(source_kind: Any) -> str:
     kind = source_kind or "unknown"
-    tone = {
-        "foundry_hosted": "ok",
-        "foundry_prompt": "ok",
-        "external_registered": "warn",
-        "external_unregistered": "warn",
-        "copilot_studio": "warn",
-        "unknown": "muted",
-    }.get(kind, "muted")
     label = "Unclassified" if kind == "unknown" else str(kind).replace("_", " ").title()
-    badge = _render_badge(label, tone, extra_class="observe-source-kind-badge")
+    source = f'<span class="observe-source-kind">{html_escape(label)}</span>'
     if kind != "unknown":
-        return badge
+        return source
     return (
         '<span class="observe-inline-help" '
         'title="Source kind could not be classified from the available telemetry attributes.">'
-        f"{badge}</span>"
+        f"{source}</span>"
     )
-
-
-def _render_identity_availability(agent_id: Any) -> str:
-    if agent_id:
-        return _render_badge("Identity available", "ok", extra_class="observe-identity-badge")
-    return _render_badge("Identity unavailable", "muted", extra_class="observe-identity-badge")
 
 
 def render_agents_table(
@@ -1123,7 +1124,7 @@ def render_agents_table(
     *,
     diagnostics: Optional[Mapping[str, Any]] = None,
 ) -> str:
-    """Render the Agents table with zero-vs-missing metrics and source badges.
+    """Render the Agents table with zero-vs-missing metrics and source labels.
 
     Accepts a sequence of mappings or ``ObservedAgent``-shaped objects with
     ``agent_name``/``agent_id``, ``source_kind``, ``model``, ``last_seen``,
@@ -1137,15 +1138,16 @@ def render_agents_table(
         )
     rows = []
     for agent in agents:
-        name = _get(agent, "agent_name") or _get(agent, "agent_id") or "\u2014"
-        input_tokens = _get(agent, "input_tokens")
-        output_tokens = _get(agent, "output_tokens")
-        rows.append(
-            "<tr>"
-            f"<td>{html_escape(name)} "
-            f"{_render_identity_availability(_get(agent, 'agent_id'))}</td>"
-            f'<td title="{html_escape(_get(agent, "source_id") or "")}">'
-            f"{_render_source_kind_badge(_get(agent, 'source_kind'))}</td>"
+            name = _get(agent, "agent_name") or "\u2014"
+            agent_id = _get(agent, "agent_id") or "\u2014"
+            input_tokens = _get(agent, "input_tokens")
+            output_tokens = _get(agent, "output_tokens")
+            rows.append(
+                "<tr>"
+                f"<td>{html_escape(name)}</td>"
+                f"<td>{html_escape(agent_id)}</td>"
+                f'<td title="{html_escape(_get(agent, "source_id") or "")}">'
+                f"{_render_source_kind_badge(_get(agent, 'source_kind'))}</td>"
             f"<td>{html_escape(_get(agent, 'model') or '—')}</td>"
             f"<td>{render_last_seen(_get(agent, 'last_seen'))}</td>"
             f"<td>{_render_maybe_missing(_get(agent, 'invocations'), missing_text='—')}</td>"
@@ -1166,6 +1168,7 @@ def render_agents_table(
     footer = _render_totals_footer(
         (
             f'Totals {_render_info_icon("Totals cover the rows currently displayed.")}',
+            "\u2014",
             "\u2014",
             "\u2014",
             "\u2014",
@@ -1194,7 +1197,8 @@ def render_agents_table(
   <caption class="visually-hidden">Agents observed in the selected range</caption>
   <thead>
     <tr>
-      {_render_header_cell("Agent")}
+      {_render_header_cell("Name")}
+      {_render_header_cell("Agent ID", "Stable technical identifier reported by agent telemetry.")}
       {_render_header_cell("Source")}
       {_render_header_cell("Model", "Model identifier reported by response telemetry.")}
       {_render_header_cell("Last seen", "Most recent telemetry in the selected range; not agent lifecycle status.")}
@@ -2566,6 +2570,25 @@ def render_agent_detail_shell(
 ) -> str:
     """Render the agent-detail shell: identity, bounded trends, portal links."""
     name = _get(agent, "agent_name") or _get(agent, "agent_id") or "Unknown agent"
+    input_tokens = _get(agent, "input_tokens")
+    output_tokens = _get(agent, "output_tokens")
+    summary = (
+        '<dl class="observe-agent-detail-summary">'
+        f"<div><dt>Agent ID</dt><dd>{html_escape(_get(agent, 'agent_id') or '—')}</dd></div>"
+        f"<div><dt>Source</dt><dd>{_render_source_kind_badge(_get(agent, 'source_kind'))}</dd></div>"
+        f"<div><dt>Model</dt><dd>{html_escape(_get(agent, 'model') or '—')}</dd></div>"
+        f"<div><dt>Last seen</dt><dd>{render_last_seen(_get(agent, 'last_seen'))}</dd></div>"
+        f"<div><dt>Invocations</dt><dd>{_render_maybe_missing(_get(agent, 'invocations'), missing_text='—')}</dd></div>"
+        f"<div><dt>Failure rate</dt><dd>{_render_failure_rate(_get(agent, 'invocations'), _get(agent, 'failures'))}</dd></div>"
+        f"<div><dt>p95 latency</dt><dd>{_render_seconds(_get(agent, 'p95_latency_ms'))}</dd></div>"
+        f"<div><dt>Input tokens</dt><dd>{_render_maybe_missing(input_tokens, missing_text='—')}</dd></div>"
+        f"<div><dt>Output tokens</dt><dd>{_render_maybe_missing(output_tokens, missing_text='—')}</dd></div>"
+        f"<div><dt>Total tokens</dt><dd>{_render_maybe_missing(_observed_token_total(input_tokens, output_tokens), missing_text='—')}</dd></div>"
+        f"<div><dt>Cache read</dt><dd>{_render_maybe_missing(_get(agent, 'cache_read_tokens'), missing_text='—')}</dd></div>"
+        f"<div><dt>Cache write</dt><dd>{_render_maybe_missing(_get(agent, 'cache_write_tokens'), missing_text='—')}</dd></div>"
+        f"<div><dt>Reasoning</dt><dd>{_render_maybe_missing(_get(agent, 'reasoning_tokens'), missing_text='—')}</dd></div>"
+        "</dl>"
+    )
     charts = "".join(
         render_trend_chart(str(t.get("title", "")), t.get("series", []), unit=str(t.get("unit", "")))
         for t in trends
@@ -2574,8 +2597,7 @@ def render_agent_detail_shell(
     return f"""
 <section class="observe-agent-detail" aria-label="Agent detail: {html_escape(name)}">
   <h2>{html_escape(name)}</h2>
-  <p>{_render_source_kind_badge(_get(agent, 'source_kind'))} {_render_identity_availability(_get(agent, 'agent_id'))}</p>
-  <p>{render_last_seen(_get(agent, 'last_seen'))}</p>
+  {summary}
   <div class="observe-agent-detail-trends">{charts}</div>
   {links_html}
 </section>
@@ -2953,6 +2975,12 @@ _OBSERVE_COMPONENT_CSS = """
   letter-spacing: -0.02em;
   color: var(--observe-fg);
 }
+.observe-card-value .metric-missing {
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
 .observe-metric-card.observe-tone-ok .observe-card-value { color: var(--observe-ok); }
 .observe-metric-card.observe-tone-warn .observe-card-value { color: var(--observe-warn); }
 .observe-metric-card.observe-tone-crit .observe-card-value { color: var(--observe-crit); }
@@ -3100,6 +3128,26 @@ tfoot td {
   outline: 2px solid var(--observe-accent);
   outline-offset: 3px;
 }
+.observe-primary-cell {
+  display: flex;
+  min-width: 120px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.observe-primary-value {
+  color: var(--observe-fg);
+  font-weight: 600;
+}
+.observe-row-action {
+  font-size: 12px;
+  font-weight: 600;
+}
+.observe-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
 .observe-drilldown-row > td {
   background: color-mix(in srgb, var(--observe-accent) 4%, var(--observe-surface));
   padding: 14px;
@@ -3107,6 +3155,58 @@ tfoot td {
 .observe-drilldown-panel {
   border-left: 3px solid var(--observe-accent);
   padding-left: 12px;
+}
+.observe-agent-detail {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid var(--observe-border);
+  border-radius: 12px;
+  background: var(--observe-card-bg);
+}
+.observe-agent-detail > h3,
+.observe-agent-detail > h2 {
+  margin: 0 0 14px;
+}
+.observe-agent-detail-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 0 0 20px;
+  overflow: hidden;
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  background: var(--observe-border);
+}
+.observe-agent-detail-summary > div {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--observe-card-bg);
+}
+.observe-agent-detail-summary dt {
+  margin-bottom: 4px;
+  color: var(--observe-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.observe-agent-detail-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.observe-agent-detail-trends {
+  display: grid;
+  gap: 16px;
+}
+.observe-agent-trend-title { margin: 0 0 8px; }
+.observe-portal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  padding: 14px 0 0;
+  margin: 0;
+  list-style: none;
 }
 .observe-drilldown-panel > p { margin: 0 0 10px; }
 .observe-drilldown-table {
@@ -3290,20 +3390,19 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   var COST_BREAKDOWN_WARNING = "Agent, tool, and run breakdowns are alternative reconciliations of the same billed pools; do not add them together.";
   var ATTRIBUTION_COST_UNAVAILABLE = "Cost attribution is unavailable. Configure a valid cost model and allocatable cost before selecting Cost.";
   var AUTO_REFRESH_MS = 300000; // five minutes
-  var DEFAULT_RANGE_MS = 24 * 60 * 60 * 1000; // trailing 24 hours
+  var DEFAULT_RANGE_MS = 7 * 24 * 60 * 60 * 1000; // trailing seven days
   var CACHE_WINDOW_MS = 60 * 1000; // align default windows across browser sessions
-  // Mirrors MAX_TREND_POINTS in ui.py: even though the backend is expected
-  // to already bound each trend series (T053), the client re-bounds
-  // defensively so a chart never renders unbounded markup regardless of
-  // what a given backend implementation actually sends.
-  var MAX_TREND_POINTS = 60;
+  // Mirrors MAX_TREND_POINTS in ui.py and observe/facade.py. The trailing seven-day
+  // default can contain 168 hourly buckets, all of which must remain visible
+  // so count trends reconcile with the selected row's totals.
+  var MAX_TREND_POINTS = 200;
   // Maps each internal view identifier to the `ObserveQuery.view` wire value
   // from contracts/observe-api.openapi.yaml (mirrors OBSERVE_VIEW_WIRE_NAMES
   // in ui.py -- the internal "usage" id is spelled "models" on the wire).
   var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", tools: "tools", runs: "runs" };
   var SERVER_SORT_KEYS = {
     "observe-agents-table": {
-      "Agent": "agent_name", "Source": "source_kind", "Model": "model",
+      "Name": "agent_name", "Agent ID": "agent_id", "Source": "source_kind", "Model": "model",
       "Last seen": "last_seen", "Invocations": "invocations",
       "Failure rate": "failure_rate", "p95 latency": "p95_latency_ms",
       "Input tokens": "input_tokens", "Output tokens": "output_tokens",
@@ -3848,32 +3947,18 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
 
   function renderSourceKindBadge(kind) {
     kind = kind || "unknown";
-    var tones = {
-      foundry_hosted: "ok",
-      foundry_prompt: "ok",
-      external_registered: "warn",
-      external_unregistered: "warn",
-      copilot_studio: "warn",
-      unknown: "muted",
-    };
-    var tone = tones[kind] || "muted";
     var label = String(kind).split("_").map(function (part) {
       return part.charAt(0).toUpperCase() + part.slice(1);
     }).join(" ");
+    var source = makeEl("span", "observe-source-kind", label);
     if (kind !== "unknown") {
-      return renderBadgeJs(label, tone, "observe-source-kind-badge");
+      return source;
     }
+    source.textContent = "Unclassified";
     var help = makeEl("span", "observe-inline-help");
     help.title = "Source kind could not be classified from the available telemetry attributes.";
-    help.appendChild(renderBadgeJs("Unclassified", tone, "observe-source-kind-badge"));
+    help.appendChild(source);
     return help;
-  }
-
-  function renderIdentityAvailabilityBadge(agentId) {
-    if (agentId) {
-      return renderBadgeJs("Identity available", "ok", "observe-identity-badge");
-    }
-    return renderBadgeJs("Identity unavailable", "muted", "observe-identity-badge");
   }
 
   function emptyStateNode(message) {
@@ -4200,7 +4285,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   function buildDrilldownButton(view, selector, value, label) {
     var button = makeEl(
       "button",
-      "observe-drilldown-button",
+      "observe-drilldown-button observe-row-action",
       value === undefined || value === null ? "View" : String(value)
     );
     button.type = "button";
@@ -4210,6 +4295,24 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       toggleDrilldown(button, view, selector);
     });
     return button;
+  }
+
+  function primaryCellWithAction(value, action) {
+    var cell = makeEl("div", "observe-primary-cell");
+    cell.appendChild(makeEl("span", "observe-primary-value", value || "\u2014"));
+    if (action) {
+      var actions = Array.isArray(action) ? action : [action];
+      var actionGroup = makeEl("div", "observe-row-actions");
+      actions.forEach(function (item) {
+        if (item) {
+          actionGroup.appendChild(item);
+        }
+      });
+      if (actionGroup.childNodes.length) {
+        cell.appendChild(actionGroup);
+      }
+    }
+    return cell;
   }
 
   // The exact key(s) each per-view renderer reads from `data` are a
@@ -4424,27 +4527,28 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     }
     var rows = agents.map(function (agent) {
       agent = agent || {};
-      var nameCell = [
-        document.createTextNode((agent.agent_name || agent.agent_id || "\u2014") + " "),
-        renderIdentityAvailabilityBadge(agent.agent_id),
-      ];
       var sourceCell = renderSourceKindBadge(agent.source_kind);
       sourceCell.title = agent.source_id || "";
+      var agentLabel = agent.agent_name || agent.agent_id || agent.key || "this agent";
       return [
-        nameCell,
+        primaryCellWithAction(agent.agent_name, [
+          buildAgentDetailButton(agent),
+          buildDrilldownButton(
+            "agents",
+            {
+              source_id: agent.source_id,
+              project_resource_id: agent.project_resource_id || null,
+              agent_key: agentKeyFor(agent),
+            },
+            "View activity",
+            "View activity for " + agentLabel
+          ),
+        ]),
+        agent.agent_id || "\u2014",
         sourceCell,
         agent.model || "\u2014",
         renderLastSeenJs(agent.last_seen),
-        buildDrilldownButton(
-          "agents",
-          {
-            source_id: agent.source_id,
-            project_resource_id: agent.project_resource_id || null,
-            agent_key: agentKeyFor(agent),
-          },
-          agent.invocations,
-          "View " + String(agent.invocations || 0) + " invocations for " + (agent.agent_name || agent.agent_id || "this agent")
-        ),
+        renderMaybeMissing(agent.invocations, { missingText: "\u2014" }),
         renderFailureRate(agent.invocations, agent.failures),
         renderMillisecondsAsSeconds(agent.p95_latency_ms),
         renderMaybeMissing(agent.input_tokens, { missingText: "\u2014" }),
@@ -4453,7 +4557,6 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         renderMaybeMissing(agent.cache_read_tokens, { missingText: "\u2014" }),
         renderMaybeMissing(agent.cache_write_tokens, { missingText: "\u2014" }),
         renderMaybeMissing(agent.reasoning_tokens, { missingText: "\u2014" }),
-        buildAgentDetailButton(agent),
       ];
     });
     var totalInvocations = sumReported(agents, "invocations");
@@ -4465,7 +4568,8 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       "observe-agents-table",
       "Agents observed in the selected range",
       [
-        "Agent",
+        "Name",
+        { label: "Agent ID", help: "Stable technical identifier reported by agent telemetry." },
         "Source",
         { label: "Model", help: "Model identifier reported by response telemetry." },
         { label: "Last seen", help: "Most recent telemetry in the selected range; not agent lifecycle status." },
@@ -4477,12 +4581,12 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         { label: "Total tokens", help: tokenHelp },
         { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
         { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
-        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp },
-        "Details"
+        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp }
       ],
       rows,
       [
         [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+        "\u2014",
         "\u2014",
         "\u2014",
         "\u2014",
@@ -4494,8 +4598,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "\u2014" }),
         renderMaybeMissing(sumReported(agents, "cache_read_tokens"), { missingText: "\u2014" }),
         renderMaybeMissing(sumReported(agents, "cache_write_tokens"), { missingText: "\u2014" }),
-        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "\u2014" }),
-        "\u2014"
+        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "\u2014" })
       ]
     );
     setViewContent("agents", [controls, notice, table]);
@@ -4518,14 +4621,25 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
 
   function buildAgentDetailButton(agent) {
     var key = agentKeyFor(agent);
-    var button = makeEl("button", "observe-agent-detail-button", "View details");
+    var button = makeEl(
+      "button",
+      "observe-agent-detail-button observe-drilldown-button observe-row-action",
+      "View details"
+    );
     button.type = "button";
     var label = agent && (agent.agent_name || agent.agent_id);
     button.setAttribute("aria-label", "View details for " + (label || "this agent"));
     if (key) {
       button.setAttribute("data-observe-agent-key", key);
+      button.setAttribute("data-observe-source-id", agent.source_id || "");
+      button.setAttribute("data-observe-project-resource-id", agent.project_resource_id || "");
       button.addEventListener("click", function () {
-        fetchAgentDetail(key, false);
+        fetchAgentDetail(
+          key,
+          agent.source_id || "",
+          agent.project_resource_id || "",
+          false
+        );
       });
     } else {
       button.disabled = true;
@@ -4571,6 +4685,15 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   // by series name).
   function renderAgentTrendsNode(trends) {
     var wrap = makeEl("div", "observe-agent-detail-trends");
+    if (Array.isArray(trends) && trends.length) {
+      wrap.appendChild(
+        makeEl(
+          "p",
+          "observe-hint",
+          "Totals above cover the full selected range. Each point below is one time bucket from the same agent, project, and telemetry source."
+        )
+      );
+    }
     (Array.isArray(trends) ? trends : []).forEach(function (trend) {
       trend = trend || {};
       var unit = trend.unit || "";
@@ -4583,10 +4706,18 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         boundTrendPoints(series.points).forEach(function (point) {
           var xLabel = Array.isArray(point) ? point[0] : "";
           var value = Array.isArray(point) ? point[1] : null;
+          var renderedValue;
+          if (unit === "ms") {
+            renderedValue = renderMillisecondsAsSeconds(value);
+          } else {
+            renderedValue = renderMaybeMissing(value, {
+              suffix: unit && unit !== "count" ? " " + unit : ""
+            });
+          }
           rows.push([
             label,
-            xLabel === undefined || xLabel === null ? "" : String(xLabel),
-            renderMaybeMissing(value, { suffix: unit }),
+            renderTimestampJs(xLabel),
+            renderedValue,
           ]);
         });
       });
@@ -4664,11 +4795,40 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   // the documented primary key with a couple of reasonable fallbacks.
   function agentDetailFrom(body) {
     body = body && typeof body === "object" ? body : {};
+    var dataAgent = Array.isArray(body.data) ? body.data[0] : body.data;
     return {
-      agent: body.agent || body.data || {},
+      agent: body.agent || dataAgent || {},
       trends: Array.isArray(body.trends) ? body.trends : [],
       portalLinks: body.portal_links || body.portalLinks || body.links || {},
     };
+  }
+
+  function appendAgentDetailItem(list, label, value) {
+    var item = document.createElement("div");
+    item.appendChild(makeEl("dt", null, label));
+    var description = document.createElement("dd");
+    appendCellContent(description, value);
+    item.appendChild(description);
+    list.appendChild(item);
+  }
+
+  function renderAgentSummaryNode(agent) {
+    var summary = makeEl("dl", "observe-agent-detail-summary");
+    var totalTokens = observedTokenTotal(agent.input_tokens, agent.output_tokens);
+    appendAgentDetailItem(summary, "Agent ID", agent.agent_id || "\u2014");
+    appendAgentDetailItem(summary, "Source", renderSourceKindBadge(agent.source_kind));
+    appendAgentDetailItem(summary, "Model", agent.model || "\u2014");
+    appendAgentDetailItem(summary, "Last seen", renderLastSeenJs(agent.last_seen));
+    appendAgentDetailItem(summary, "Invocations", renderMaybeMissing(agent.invocations, { missingText: "\u2014" }));
+    appendAgentDetailItem(summary, "Failure rate", renderFailureRate(agent.invocations, agent.failures));
+    appendAgentDetailItem(summary, "p95 latency", renderMillisecondsAsSeconds(agent.p95_latency_ms));
+    appendAgentDetailItem(summary, "Input tokens", renderMaybeMissing(agent.input_tokens, { missingText: "\u2014" }));
+    appendAgentDetailItem(summary, "Output tokens", renderMaybeMissing(agent.output_tokens, { missingText: "\u2014" }));
+    appendAgentDetailItem(summary, "Total tokens", renderMaybeMissing(totalTokens, { missingText: "\u2014" }));
+    appendAgentDetailItem(summary, "Cache read", renderMaybeMissing(agent.cache_read_tokens, { missingText: "\u2014" }));
+    appendAgentDetailItem(summary, "Cache write", renderMaybeMissing(agent.cache_write_tokens, { missingText: "\u2014" }));
+    appendAgentDetailItem(summary, "Reasoning", renderMaybeMissing(agent.reasoning_tokens, { missingText: "\u2014" }));
+    return summary;
   }
 
   function renderAgentDetail(agentKey, body) {
@@ -4681,15 +4841,8 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     clearChildren(panel);
     var section = makeEl("section", "observe-agent-detail");
     section.setAttribute("aria-label", "Agent detail: " + (agent.agent_name || agent.agent_id || agentKey || "agent"));
-    section.appendChild(makeEl("h3", null, agent.agent_name || agent.agent_id || "Unknown agent"));
-    var identityLine = makeEl("p", "observe-agent-detail-identity");
-    identityLine.appendChild(renderSourceKindBadge(agent.source_kind));
-    identityLine.appendChild(document.createTextNode(" "));
-    identityLine.appendChild(renderIdentityAvailabilityBadge(agent.agent_id));
-    section.appendChild(identityLine);
-    var lastSeenLine = makeEl("p", "observe-agent-detail-last-seen");
-    lastSeenLine.appendChild(renderLastSeenJs(agent.last_seen));
-    section.appendChild(lastSeenLine);
+    section.appendChild(makeEl("h3", null, agent.agent_name || agent.agent_id || agentKey || "Agent details"));
+    section.appendChild(renderAgentSummaryNode(agent));
     section.appendChild(renderAgentTrendsNode(parsed.trends));
     var linksNode = renderPortalLinksNode(parsed.portalLinks);
     if (linksNode) {
@@ -4698,7 +4851,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     panel.appendChild(section);
   }
 
-  function fetchAgentDetail(agentKey, manual) {
+  function fetchAgentDetail(agentKey, sourceId, projectResourceId, manual) {
     // Explicit, click-triggered only: this function is only ever invoked
     // from a "click" listener on an agent row's details button (T053/FR-038
     // -- agent details load only when the user opens/selects them, never
@@ -4714,13 +4867,15 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     agentDetailController = controller;
     setAgentDetailStatus("Loading agent detail\u2026");
 
-    // POST /api/observe/agent-detail with `{agent_key, filters, refresh}`
+    // POST /api/observe/agent-detail with row identity and current filters.
     // per contracts/observe-api.openapi.yaml. `filters` reuses the same
     // applied scope/time-range filters as the main query so returned trends
     // match whatever the user is currently looking at. Only the stable
-    // `agent_key` identifier is ever sent -- no raw protected content.
+    // agent and source identifiers are sent -- never raw protected content.
     var agentDetailPayload = {
       agent_key: agentKey,
+      source_id: sourceId || null,
+      project_resource_id: projectResourceId || null,
       filters: {
         foundry_resource_id: appliedFilters.foundry_resource_id || null,
         project_resource_id: appliedFilters.project_resource_id || null,
@@ -4782,19 +4937,22 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     var rows = usage.map(function (entry) {
       entry = entry || {};
       return [
-        entry.model || "\u2014",
-        entry.deployment || "\u2014",
-        buildDrilldownButton(
-          "models",
-          {
-            source_id: entry.source_id,
-            project_resource_id: entry.project_resource_id || null,
-            model: entry.model || null,
-            deployment: entry.deployment || null,
-          },
-          entry.requests,
-          "View " + String(entry.requests || 0) + " requests for " + (entry.model || entry.deployment || "this model")
+        primaryCellWithAction(
+          entry.model,
+          buildDrilldownButton(
+            "models",
+            {
+              source_id: entry.source_id,
+              project_resource_id: entry.project_resource_id || null,
+              model: entry.model || null,
+              deployment: entry.deployment || null,
+            },
+            "View details",
+            "View activity details for " + (entry.model || entry.deployment || "this model")
+          )
         ),
+        entry.deployment || "\u2014",
+        renderMaybeMissing(entry.requests, { missingText: "\u2014" }),
         renderFailureRate(entry.requests, entry.failures),
         renderMillisecondsAsSeconds(entry.p95_latency_ms),
         renderMaybeMissing(entry.input_tokens, { missingText: "\u2014" }),
@@ -4868,22 +5026,25 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     var rows = tools.map(function (tool) {
       tool = tool || {};
       return [
-        tool.tool_name || "\u2014",
+        primaryCellWithAction(
+          tool.tool_name,
+          buildDrilldownButton(
+            "tools",
+            {
+              source_id: tool.source_id,
+              project_resource_id: tool.project_resource_id || null,
+              tool_name: tool.tool_name,
+              agent_key: tool.agent_key || null,
+            },
+            "View details",
+            "View activity details for " + (tool.tool_name || "this tool")
+          )
+        ),
         tool.agent_name || tool.agent_id || tool.agent_key || "\u2014",
         tool.source_id || "\u2014",
         renderSourceKindBadge(tool.source_kind),
         renderLastSeenJs(tool.last_seen),
-        buildDrilldownButton(
-          "tools",
-          {
-            source_id: tool.source_id,
-            project_resource_id: tool.project_resource_id || null,
-            tool_name: tool.tool_name,
-            agent_key: tool.agent_key || null,
-          },
-          tool.invocations,
-          "View " + String(tool.invocations || 0) + " invocations for " + (tool.tool_name || "this tool")
-        ),
+        renderMaybeMissing(tool.invocations, { missingText: "\u2014" }),
         renderMaybeMissing(tool.failures, { missingText: "\u2014" }),
         renderMillisecondsAsSeconds(tool.p95_latency_ms),
       ];
@@ -4933,7 +5094,20 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     var rows = runs.map(function (run) {
       run = run || {};
       return [
-        run.run_key || "\u2014",
+        primaryCellWithAction(
+          run.run_key,
+          buildDrilldownButton(
+            "runs",
+            {
+              source_id: run.source_id,
+              project_resource_id: run.project_resource_id || null,
+              run_key: run.run_key,
+              agent_key: run.agent_key || null,
+            },
+            "View details",
+            "View activity details for run " + (run.run_key || "")
+          )
+        ),
         run.run_key_kind || "\u2014",
         run.agent_name || run.agent_id || run.agent_key || "\u2014",
         run.source_id || "\u2014",
@@ -4941,17 +5115,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         renderTimestampJs(run.started_at),
         renderMillisecondsAsSeconds(run.duration_ms),
         run.status || "\u2014",
-        buildDrilldownButton(
-          "runs",
-          {
-            source_id: run.source_id,
-            project_resource_id: run.project_resource_id || null,
-            run_key: run.run_key,
-            agent_key: run.agent_key || null,
-          },
-          run.turns,
-          "View activity for run " + (run.run_key || "")
-        ),
+        renderMaybeMissing(run.turns, { missingText: "\u2014" }),
         renderMaybeMissing(run.tool_invocations, { missingText: "\u2014" }),
         renderMaybeMissing(run.input_tokens, { missingText: "\u2014" }),
         renderMaybeMissing(run.output_tokens, { missingText: "\u2014" }),

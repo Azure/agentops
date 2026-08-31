@@ -52,7 +52,7 @@ def _overview_metrics() -> list[dict]:
             "title": "Invocations",
             "value": 580,
             "tone": "info",
-            "caption": "Last 24 hours",
+            "caption": "Last 7 days",
             "delta": {"value": "+12%", "direction": "up", "tone": "ok", "label": "vs prior"},
             "series": spark,
         },

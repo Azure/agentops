@@ -1022,12 +1022,16 @@ class AzureQueryClient:
         filters: ObserveFilterState,
         *,
         agent_key: str,
+        project_resource_id: str | None = None,
     ) -> list[SourceResult]:
         """Bounded single-agent trend query batch (T053 facade enrichment)."""
         return await self._run(
             sources,
             lambda source: build_agent_detail_query(
-                filters, agent_key=agent_key, scope_source=source
+                filters,
+                agent_key=agent_key,
+                project_resource_id=project_resource_id,
+                scope_source=source,
             ),
         )
 
