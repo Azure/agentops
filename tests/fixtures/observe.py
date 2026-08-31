@@ -123,6 +123,220 @@ def make_run_usage_row(index: int = 0, **overrides: Any) -> dict[str, Any]:
     return row
 
 
+def make_scope_facet_option_row(
+    index: int = 0,
+    *,
+    dimension: str = "agent",
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Return one facet enumeration row as the scope-options query returns it.
+
+    A facet row carries the selectable value, the label the console displays for
+    it, and the observed activity the enumeration orders by. Labels stay to
+    identifiers and names: no facet fixture may carry model input, model output,
+    or prompt text, because a facet label reaches the console address.
+    """
+    index = _fixture_index(index)
+    row: dict[str, Any] = {
+        "value": f"{dimension}-{index + 1}",
+        "label": f"{dimension.capitalize()} {index + 1}",
+        # Descending activity is what the enumeration orders by, so the fixture
+        # is built descending to make an unordered implementation visible.
+        "activity": (OBSERVE_FIXTURE_ROW_LIMIT - index) * 10,
+    }
+    row.update(overrides)
+    return row
+
+
+def make_run_model_usage_row(
+    index: int = 0,
+    *,
+    model: str = "gpt-5-nano",
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Return one run-to-model row carrying that model's own five token counts.
+
+    This is the inner grouping of the runs query: one row per run *per model*,
+    which is what lets a multi-model run be priced at each model's own rates
+    instead of one model's rates applied to a combined total.
+    """
+    index = _fixture_index(index)
+    row: dict[str, Any] = {
+        "project_resource_id": OBSERVE_FIXTURE_PROJECT,
+        "run_key": f"conversation-{index + 1}",
+        "agent_key": f"agent-{index + 1}",
+        "model": model,
+        "input_tokens": 30 + index,
+        "output_tokens": 12 + index,
+        "cache_read_tokens": 6 + index,
+        "cache_write_tokens": 1 + index,
+        "reasoning_tokens": 4 + index,
+    }
+    row.update(overrides)
+    return row
+
+
+def make_multi_model_run_rows(
+    index: int = 0,
+    *,
+    models: tuple[str, ...] = ("gpt-5-nano", "gpt-5-mini"),
+) -> list[dict[str, Any]]:
+    """Return the per-model rows of a single run that used more than one model.
+
+    Every row shares one ``run_key`` and carries different token counts, so
+    pricing them at one model's rates produces a different figure than pricing
+    each at its own — which is what makes FR-035a testable.
+    """
+    index = _fixture_index(index)
+    return [
+        make_run_model_usage_row(
+            index,
+            model=model,
+            input_tokens=30 + index + (position * 100),
+            output_tokens=12 + index + (position * 50),
+        )
+        for position, model in enumerate(models)
+    ]
+
+
+def make_price_entry(
+    *,
+    model: str = "gpt-5-nano",
+    token_class: str = "input",
+    unit_price: str = "0.05",
+    currency: str = "USD",
+    per_tokens: int = 1_000_000,
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Return one priced entry of a list-price reference.
+
+    ``unit_price`` is a decimal *string* rather than a float: a binary float
+    cannot represent a published price exactly, and a cost figure derived from
+    one drifts in a way an operator cannot account for.
+    """
+    entry: dict[str, Any] = {
+        "model": model,
+        "token_class": token_class,
+        "unit_price": unit_price,
+        "currency": currency,
+        "per_tokens": per_tokens,
+    }
+    entry.update(overrides)
+    return entry
+
+
+def make_price_reference_payload(
+    *,
+    version: str = "fixture-v1",
+    effective_date: str = "2026-08-01",
+    source: str = "Published list prices (fixture)",
+    entries: list[dict[str, Any]] | None = None,
+    **overrides: Any,
+) -> dict[str, Any]:
+    """Return a complete price reference payload for the pure parser.
+
+    The default reference prices one model across the three token classes the
+    spec names at minimum, leaving ``gpt-5-mini`` unpriced so the *not priced*
+    path stays reachable from the default fixture without extra setup.
+    """
+    if entries is None:
+        entries = [
+            make_price_entry(token_class="input", unit_price="0.05"),
+            make_price_entry(token_class="output", unit_price="0.40"),
+            make_price_entry(token_class="cache_read", unit_price="0.005"),
+        ]
+    payload: dict[str, Any] = {
+        "version": version,
+        "effective_date": effective_date,
+        "source": source,
+        "entries": entries,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def make_scope_facet_option_rows_at_scale(
+    count: int = 1000,
+    *,
+    dimension: str = "agent",
+) -> list[dict[str, Any]]:
+    """Return enough distinct facet rows to exercise the enumeration bound.
+
+    Deliberately not bounded by ``OBSERVE_FIXTURE_ROW_LIMIT``: the point of this
+    builder is to exceed the roughly fifty-option display bound and the
+    thousand-distinct-value performance budget.
+    """
+    if count < 0:
+        raise ValueError("count must be non-negative")
+    return [
+        {
+            "value": f"{dimension}-{index + 1}",
+            "label": f"{dimension.capitalize()} {index + 1}",
+            "activity": count - index,
+        }
+        for index in range(count)
+    ]
+
+
+def make_run_usage_rows_at_scale(count: int = 1000) -> list[dict[str, Any]]:
+    """Return enough distinct run rows to exercise the scale budgets.
+
+    Used by the timed tests to assert a thousand-run scope resolves within
+    budget and by the render test to assert the row bound renders without an
+    unbounded per-row cost.
+    """
+    if count < 0:
+        raise ValueError("count must be non-negative")
+    started_at = OBSERVE_FIXTURE_TIME - timedelta(days=1)
+    return [
+        {
+            "project_resource_id": OBSERVE_FIXTURE_PROJECT,
+            "run_key": f"conversation-{index + 1}",
+            "run_key_kind": "conversation",
+            "agent_key": f"agent-{(index % 50) + 1}",
+            "agent_id": f"agent-{(index % 50) + 1}",
+            "operation_name": "credit.consume",
+            "started_at": started_at + timedelta(seconds=index),
+            "last_activity_at": started_at + timedelta(seconds=index + 30),
+            "duration_ms": 30_000.0,
+            "turns": 2,
+            "failed_turns": 0,
+            "tool_invocations": 1,
+            "tool_failures": 0,
+            "input_tokens": 30,
+            "output_tokens": 12,
+            "cache_read_tokens": 6,
+            "cache_write_tokens": 1,
+            "reasoning_tokens": 4,
+            "credits": "1.5",
+            "credit_events": 1,
+        }
+        for index in range(count)
+    ]
+
+
+def make_agent_usage_rows_at_scale(count: int = 1000) -> list[dict[str, Any]]:
+    """Return enough distinct agent rows to exercise the Overview budget."""
+    if count < 0:
+        raise ValueError("count must be non-negative")
+    return [
+        {
+            "project_resource_id": OBSERVE_FIXTURE_PROJECT,
+            "agent_key": f"agent-{index + 1}",
+            "agent_id": f"agent-{index + 1}",
+            "agent_name": f"Agent {index + 1}",
+            "model": "gpt-5-nano",
+            "invocations": 4,
+            "failures": 0,
+            "p95_latency_ms": 80.0,
+            "input_tokens": 40,
+            "output_tokens": 20,
+            "last_seen": OBSERVE_FIXTURE_TIME,
+        }
+        for index in range(count)
+    ]
+
+
 def make_attribution_user_key(index: int = 0, *, generation: int = 1) -> str:
     """Return a syntactically valid deterministic pseudonymous fixture key."""
     if index < 0:

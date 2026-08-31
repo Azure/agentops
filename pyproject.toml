@@ -71,6 +71,7 @@ where = ["src"]
   "cockpit-hosted/infra/*",
 ]
 "agentops.agent.knowledge" = ["*.csv"]
+"agentops.agent.observe.pricing" = ["*.json"]
 
 [dependency-groups]
 dev = [

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import get_args
 from uuid import uuid4
 
@@ -799,6 +799,8 @@ def test_observed_run_validates_counters_times_and_success() -> None:
     assert run.reasoning_tokens is None
     assert run.credits is None
     assert run.credit_events is None
+    assert run.model_usage == []
+    assert run.estimated_cost is None
 
     zero_usage = ObservedRun(
         **(
@@ -837,6 +839,85 @@ def test_observed_run_validates_counters_times_and_success() -> None:
     for changes in invalid_fields:
         with pytest.raises(ValidationError):
             ObservedRun(**(fields | changes))
+
+
+def test_observed_run_model_usage_reconciles_without_replacing_run_totals() -> None:
+    now = datetime.now(timezone.utc)
+    fields = {
+        "source_id": "source-a",
+        "run_key": "conversation-a",
+        "run_key_kind": "conversation",
+        "agent_key": "agent-a",
+        "source_kind": "foundry_prompt",
+        "started_at": now - timedelta(minutes=1),
+        "last_activity_at": now,
+        "status": "succeeded",
+        "turns": 2,
+        "failed_turns": 0,
+        "tool_invocations": 0,
+        "tool_failures": 0,
+        "input_tokens": 30,
+        "output_tokens": 12,
+        "model_usage": [
+            {"model": "model-a", "input_tokens": 10, "output_tokens": 5},
+            {"model": "model-b", "input_tokens": 20, "output_tokens": 7},
+        ],
+    }
+    run = ObservedRun(**fields)
+    assert run.input_tokens == 30
+    assert run.output_tokens == 12
+    assert [usage.model for usage in run.model_usage] == ["model-a", "model-b"]
+
+    with pytest.raises(ValidationError, match="reconcile"):
+        ObservedRun(**(fields | {"input_tokens": 31}))
+    with pytest.raises(ValidationError, match="at most one entry"):
+        ObservedRun(
+            **(fields | {"model_usage": [fields["model_usage"][0]] * 2})
+        )
+
+    truncated = ObservedRun(
+        **(
+            fields
+            | {
+                "input_tokens": 31,
+                "model_usage": [fields["model_usage"][0]],
+                "model_usage_truncated": True,
+            }
+        )
+    )
+    assert truncated.input_tokens == 31
+
+
+def test_cost_estimate_guards_completeness_coverage_and_provenance() -> None:
+    from agentops.core.observe import CostEstimate
+
+    complete = CostEstimate(
+        amount="0",
+        currency="USD",
+        completeness="complete",
+        covered_run_count=2,
+        scope_run_count=2,
+        unpriced_run_count=0,
+        price_reference_version="v1",
+        price_reference_effective_date=date(2026, 8, 1),
+    )
+    assert str(complete.amount) == "0"
+
+    with pytest.raises(ValidationError, match="covered_run_count"):
+        CostEstimate(
+            amount="1",
+            currency="USD",
+            completeness="complete",
+            covered_run_count=1,
+            scope_run_count=2,
+            unpriced_run_count=0,
+            price_reference_version="v1",
+            price_reference_effective_date=date(2026, 8, 1),
+        )
+    with pytest.raises(ValidationError, match="require a reason"):
+        CostEstimate(completeness="not_priced")
+    with pytest.raises(ValidationError, match="price-reference provenance"):
+        CostEstimate(amount="1", currency="USD", completeness="complete")
 
 
 @pytest.mark.parametrize(

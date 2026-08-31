@@ -843,6 +843,26 @@ async def test_azure_query_client_dispatches_tools_and_runs_to_registered_builde
 
 
 @pytest.mark.asyncio
+async def test_azure_query_client_dispatches_scope_options_off_view_path() -> None:
+    client = AzureQueryClient(credential="fake-credential")
+    fake_logs_client = _FakeLogsClient()
+    client._logs_client = fake_logs_client
+
+    await client.query_scope_options(
+        [_make_source("source-1")],
+        _make_filters(),
+        dimension="agent",
+        search="planner",
+        limit=25,
+    )
+
+    (request,) = fake_logs_client.batches[0]
+    assert "| summarize activity = count()" in request.query
+    assert "| where option_value contains 'planner'" in request.query
+    assert "| take 25" in request.query
+
+
+@pytest.mark.asyncio
 async def test_azure_query_client_query_agent_detail_uses_bounded_trend_query() -> None:
     client = AzureQueryClient(credential="fake-credential")
     fake_logs_client = _FakeLogsClient()

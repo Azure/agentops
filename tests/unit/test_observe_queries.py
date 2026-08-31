@@ -13,6 +13,7 @@ import pytest
 from agentops.agent.observe.queries import (
     DEFAULT_LOOKBACK_HOURS,
     MAX_ROWS_PER_QUERY,
+    MAX_SCOPE_SEARCH_LENGTH,
     MAX_SOURCES_PER_BATCH,
     SOURCE_TIMEOUT_SECONDS,
     TOKEN_CLASS_ALIASES,
@@ -26,6 +27,7 @@ from agentops.agent.observe.queries import (
     build_models_query,
     build_overview_query,
     build_runs_query,
+    build_scope_options_query,
     build_trends_query,
     build_tools_query,
     build_usage_query,
@@ -46,9 +48,12 @@ from agentops.core.attribution import (
 )
 from agentops.core.cost import CostComponent
 from agentops.core.observe import (
+    MAX_SCOPE_OPTIONS,
+    SCOPE_DIMENSION_ORDER,
     GenerativeAIContent,
     ObserveFilterState,
     TelemetrySource,
+    UNATTRIBUTED_MODEL,
 )
 
 
@@ -173,6 +178,12 @@ def test_overview_query_is_bounded_to_time_window_and_tables() -> None:
     assert "p95_latency_ms = percentile(DurationMs, 95)" in query
     assert "max(p95_latency_ms)" not in query
     assert "| project invocations, failures, avg_latency_ms, p95_latency_ms" in query
+    assert "run_count = dcount(run_key)" in query
+    assert "agent_count = dcountif(agent_key" in query
+    assert "model_count = dcountif(model" in query
+    assert "let tool_rows = materialize(candidates" in query
+    assert "tool_invocations = toscalar(tool_rows | count)" in query
+    assert "token_reports = countif(" in query
 
 
 def test_agents_query_applies_dimension_filters_and_bounds_rows() -> None:
@@ -199,6 +210,15 @@ def test_agents_query_applies_dimension_filters_and_bounds_rows() -> None:
     assert 'Properties["gen_ai.system"]' in query
     # Dimension filters must appear before the summarize (early filters).
     assert query.index("gen_ai.agent.id") < query.index("summarize")
+
+
+def test_agents_query_projects_tool_name_before_semantic_tool_scope() -> None:
+    query = build_agents_query(_filters(tool_name="search"))
+
+    projection = '| extend tool_name = tostring(Properties["gen_ai.tool.name"])'
+    tool_filter = "| where tool_name == 'search'"
+    assert projection in query
+    assert query.index(projection) < query.index(tool_filter)
 
 
 def test_agent_and_model_queries_preserve_project_for_shared_workspace() -> None:
@@ -256,6 +276,35 @@ def test_bounded_aggregate_queries_count_scope_then_take_max_rows(builder) -> No
     assert query.index("let total_in_scope") < query.index("\nagg\n")
     assert f"| take {MAX_ROWS_PER_QUERY}" in query
     assert "| extend total_in_scope = total_in_scope" in query
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [
+        build_overview_query,
+        build_agents_query,
+        build_models_query,
+        build_runs_query,
+        build_tools_query,
+    ],
+)
+def test_all_view_builders_apply_multi_tool_and_run_scope_before_summarizing(
+    builder,
+) -> None:
+    query = builder(
+        _filters(
+            tool_name=("search", "grounding"),
+            run_key=("run-a", "run-b"),
+        )
+    )
+
+    assert "tool_name in ('search', 'grounding')" in query
+    assert "run_key in ('run-a', 'run-b')" in query
+    assert "| distinct project_resource_id, run_key" in query
+    assert query.index("run_key in ('run-a', 'run-b')") < query.index("| summarize")
+    assert query.index("tool_name in ('search', 'grounding')") < query.index(
+        "| summarize"
+    )
 
 
 def test_token_class_aliases_are_unique_and_limited_to_usage_attributes() -> None:
@@ -380,10 +429,35 @@ def test_agents_query_aggregates_standard_granular_token_classes() -> None:
     assert "bag_keys(Properties)" not in query
 
 
-def test_combined_usage_query_remains_limited_to_input_and_output_tokens() -> None:
+def test_agent_and_model_rollups_are_server_aggregated_with_run_coverage() -> None:
+    agents = build_agents_query(_filters())
+    models = build_models_query(_filters())
+
+    assert "let agent_model_usage = base" in agents
+    assert "by project_resource_id, agent_key, model" in agents
+    assert "model_usage = make_bag(pack(model, pack(" in agents
+    assert "model_usage_truncated = model_usage_count > 32" in agents
+    assert "scope_run_count = dcount(run_key)" in agents
+    assert agents.count("union withsource=TelemetryTable AppDependencies, AppRequests") == 1
+    assert "scope_run_count = dcount(run_key)" in models
+    assert "let agent_run_model_usage = base" in agents
+    assert "let agent_pricing_runs = agent_run_model_usage" in agents
+    assert "by project_resource_id, agent_key, run_key, model" in agents
+    assert '"run_key", run_key, "model_usage", model_usage' in agents
+    assert "let model_run_scope = model_events" in models
+    assert "let run_model_usage = model_events" in models
+    assert "let model_run_usage = model_run_scope" in models
+    assert "let model_pricing_runs = model_run_usage" in models
+    assert "by project_resource_id, run_key, usage_model = model" in models
+    assert "| join kind=inner run_model_usage on project_resource_id, run_key" in models
+    assert '"run_key", run_key, "model_usage", model_usage' in models
+    assert models.count("union withsource=TelemetryTable AppDependencies, AppRequests") == 1
+
+
+def test_combined_usage_query_includes_priceable_standard_token_classes() -> None:
     query = build_usage_query(_filters())
     for token_class in ("cache_read_tokens", "cache_write_tokens", "reasoning_tokens"):
-        assert token_class not in query
+        assert token_class in query
     assert "extra_token_classes" not in query
     assert "bag_keys(Properties)" not in query
 
@@ -799,7 +873,7 @@ def test_tools_query_uses_tool_metadata_without_reading_tool_content() -> None:
     query = build_tools_query(_filters(tool_name="lookup'o''ticket"))
 
     assert query.startswith(
-        "let base = materialize(\n"
+        "let base_unfiltered = materialize(\n"
         "union withsource=TelemetryTable AppDependencies, AppRequests"
     )
     assert 'Properties["gen_ai.tool.name"]' in query
@@ -866,6 +940,49 @@ def test_runs_query_projects_granular_tokens_with_reporting_counts() -> None:
         ) in query
 
 
+def test_runs_query_attributes_models_internally_then_returns_one_row_per_run() -> None:
+    query = build_runs_query(_filters())
+
+    assert "let base = materialize(" in query
+    assert (
+        "by project_resource_id, agent_key, run_key, run_key_kind, model" in query
+    )
+    assert "model_usage = make_bag(pack(model, pack(" in query
+    assert "let run_summary = base" in query
+    assert "let run_model_usage = run_model_summary" in query
+    assert (
+        "| join kind=leftouter run_model_usage "
+        "on project_resource_id, agent_key, run_key, run_key_kind" in query
+    )
+    assert "model_usage_truncated = model_usage_count > 32" in query
+    assert "let total_in_scope = toscalar(agg | count);" in query
+    # The outer bound remains one aggregate row per run. Run-level totals are
+    # still calculated by run_summary rather than re-summed from the bounded bag.
+    assert query.count(
+        "by project_resource_id, agent_key, run_key, run_key_kind;"
+    ) == 1
+    assert "run_summary = base\n| summarize started_at" in query
+    assert "input_tokens = sum(input_tokens)" in query
+    assert query.count("union withsource=TelemetryTable AppDependencies, AppRequests") == 1
+
+
+def test_usage_query_projects_all_priceable_token_classes_and_run_scope() -> None:
+    query = build_usage_query(_filters())
+
+    assert "by agent_key, model" in query
+    assert "scope_run_count = dcount(run_key)" in query
+    for field in (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "reasoning_tokens",
+    ):
+        assert f"{field} = sum({field})" in query
+        assert f"isnotnull({field})" in query
+        assert f"long(null), {field})" in query
+
+
 def test_runs_query_projects_only_direct_non_negative_credit_signals() -> None:
     query = build_runs_query(_filters())
 
@@ -904,6 +1021,35 @@ def test_runs_query_uses_exact_period_boundaries_and_retains_bounds() -> None:
     assert "let total_in_scope = toscalar(agg | count);" in query
     assert f"| take {MAX_ROWS_PER_QUERY}" in query
     assert "| extend total_in_scope = total_in_scope" in query
+
+
+def test_runs_query_keeps_token_usage_without_model_attribution() -> None:
+    query = build_runs_query(_filters())
+
+    assert (
+        "| where isnotempty(model) or isnotnull(input_tokens) or "
+        "isnotnull(output_tokens)"
+    ) in query
+    assert f"iff(isempty(model), '{UNATTRIBUTED_MODEL}', model)" in query
+    per_model = query.split("let run_model_summary = base", 1)[1].split(
+        "let run_model_usage", 1
+    )[0]
+    assert "| where isnotempty(model)\n" not in per_model
+
+
+def test_runs_query_normalizes_offset_boundaries_to_utc() -> None:
+    pacific = timezone(timedelta(hours=-8))
+    query = build_runs_query(
+        _filters(
+            start=datetime(2024, 3, 10, 1, 30, tzinfo=pacific),
+            end=datetime(2024, 3, 10, 3, 30, tzinfo=timezone(timedelta(hours=-7))),
+        )
+    )
+
+    assert "TimeGenerated >= datetime(2024-03-10T09:30:00.000000Z)" in query
+    assert "TimeGenerated < datetime(2024-03-10T10:30:00.000000Z)" in query
+    assert "-08:00" not in query
+    assert "-07:00" not in query
 
 
 def test_runs_query_excludes_protected_content_and_payload_fields() -> None:
@@ -1159,3 +1305,156 @@ def test_execute_source_batch_rejects_mismatched_response_count() -> None:
     client = FakeBatchClient(responses=[_FakeBatchItem()])
     with pytest.raises(ValueError):
         asyncio.run(execute_source_batch(queries, client=client))
+
+
+# ---------------------------------------------------------------------------
+# Scope option facet enumeration (T009/T010, FR-007a)
+# ---------------------------------------------------------------------------
+
+
+def _scope_filters() -> ObserveFilterState:
+    """Return filters with every cascade dimension selected at once.
+
+    Every test below asks what survives into the query, so starting from a fully
+    constrained state is what makes an omission visible rather than incidental.
+    """
+    return _filters(
+        foundry_resource_id=_FOUNDRY_ARM_ID,
+        project_resource_id=_PROJECT_ARM_ID,
+        agent_id="agent-a",
+        model="gpt-4o",
+        tool_name="search",
+        run_key="conversation-1",
+    )
+
+
+def test_scope_options_query_is_bounded_to_the_option_limit() -> None:
+    query = build_scope_options_query("agent", _filters())
+    assert f"| take {MAX_SCOPE_OPTIONS}" in query
+    # A facet is a picker, not an export, so it must never inherit the page bound
+    # used by the data tables.
+    assert f"| take {MAX_ROWS_PER_QUERY}" not in query
+
+
+def test_scope_options_query_reports_the_unbounded_distinct_total() -> None:
+    query = build_scope_options_query("model", _filters())
+    assert "let total_in_scope = toscalar(agg | count);" in query
+    assert "| extend total_in_scope = total_in_scope" in query
+    # The total is counted before the bound, otherwise it could only ever equal
+    # the number of rows returned and would never reveal truncation.
+    assert query.index("toscalar(agg | count)") < query.index("| take")
+
+
+def test_scope_options_query_orders_by_observed_activity() -> None:
+    query = build_scope_options_query("tool", _filters())
+    assert "| summarize activity = count()" in query
+    assert query.index("| sort by activity desc") < query.index("| take")
+
+
+def test_scope_options_query_excludes_empty_values() -> None:
+    for dimension in SCOPE_DIMENSION_ORDER:
+        assert "| where isnotempty(option_value)" in build_scope_options_query(
+            dimension, _filters()
+        )
+
+
+@pytest.mark.parametrize(
+    ("dimension", "expected_applied"),
+    [
+        ("foundry_resource", ()),
+        ("project", ("foundry",)),
+        ("agent", ("foundry", "project")),
+        ("model", ("foundry", "project", "agent")),
+        ("tool", ("foundry", "project", "agent", "model")),
+        ("run_key", ("foundry", "project", "agent", "model", "tool")),
+    ],
+)
+def test_scope_options_query_applies_only_left_hand_cascade_selections(
+    dimension: str, expected_applied: tuple[str, ...]
+) -> None:
+    """A dimension is enumerated against its left, never against itself or its right.
+
+    Filtering by the requested dimension would return only what is already
+    selected, and filtering by anything to its right would hide values the
+    operator is entitled to widen into.
+    """
+    query = build_scope_options_query(dimension, _scope_filters())
+    markers = {
+        "foundry": _FOUNDRY_ARM_ID.lower(),
+        "project": _PROJECT_ARM_ID.lower(),
+        "agent": "== 'agent-a'",
+        "model": "== 'gpt-4o'",
+        "tool": "== 'search'",
+        "run_key": "conversation-1",
+    }
+    for name, marker in markers.items():
+        assert (marker in query) is (name in expected_applied), (
+            f"{name} selection should "
+            f"{'be' if name in expected_applied else 'not be'} applied when "
+            f"enumerating {dimension}"
+        )
+
+
+def test_scope_options_search_reaches_the_query_not_the_returned_page() -> None:
+    query = build_scope_options_query("agent", _filters(), search="gpt")
+    assert "contains 'gpt'" in query
+    # Searching after the bound would only ever search the fifty most active
+    # values, which is exactly the failure FR-007a exists to prevent.
+    assert query.index("contains 'gpt'") < query.index("| take")
+    assert query.index("contains 'gpt'") < query.index("toscalar(agg | count)")
+
+
+def test_scope_options_search_is_trimmed_and_escaped() -> None:
+    assert "contains 'gpt'" in build_scope_options_query(
+        "model", _filters(), search="  gpt  "
+    )
+    assert "contains 'o\\'brien'" in build_scope_options_query(
+        "model", _filters(), search="o'brien"
+    )
+
+
+def test_scope_options_blank_search_is_not_a_filter() -> None:
+    for blank in (None, "", "   "):
+        assert "contains" not in build_scope_options_query(
+            "agent", _filters(), search=blank
+        )
+
+
+def test_scope_options_query_rejects_unusable_arguments() -> None:
+    with pytest.raises(ValueError):
+        build_scope_options_query("department", _filters())
+    with pytest.raises(ValueError):
+        build_scope_options_query("agent", _filters(), limit=0)
+    with pytest.raises(ValueError):
+        build_scope_options_query("agent", _filters(), limit=MAX_SCOPE_OPTIONS + 1)
+    with pytest.raises(ValueError):
+        build_scope_options_query(
+            "agent", _filters(), search="x" * (MAX_SCOPE_SEARCH_LENGTH + 1)
+        )
+
+
+def test_scope_options_query_honours_the_resolved_window() -> None:
+    query = build_scope_options_query(
+        "agent",
+        _filters(
+            start=datetime(2026, 3, 1, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 8, tzinfo=timezone.utc),
+        ),
+    )
+    assert "datetime(2026-03-01T00:00:00.000000Z)" in query
+    assert "datetime(2026-03-08T00:00:00.000000Z)" in query
+
+
+def test_scope_options_query_falls_back_to_the_console_scope() -> None:
+    """An unselected dimension still narrows to the source the console is scoped to."""
+    source = TelemetrySource(
+        source_id="source-1",
+        resource_id="/subscriptions/11111111-1111-1111-1111-111111111111/"
+        "resourceGroups/rg/providers/Microsoft.OperationalInsights/workspaces/law",
+        foundry_resource_id=_FOUNDRY_ARM_ID,
+        project_resource_ids=[_PROJECT_ARM_ID],
+        workspace_id="workspace-1",
+        state="available",
+    )
+    query = build_scope_options_query("agent", _filters(), scope_source=source)
+    assert _PROJECT_ARM_ID.lower() in query

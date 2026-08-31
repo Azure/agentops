@@ -22,9 +22,14 @@ from agentops.core.attribution import AttributionConfiguration
 from agentops.core.cost import CostComponent
 from agentops.core.observe import (
     MAX_ROWS_PER_QUERY,
+    MAX_SCOPE_OPTIONS,
+    SCOPE_DIMENSION_ORDER,
     GenerativeAIContent,
     ObserveFilterState,
+    ScopeDimension,
     TelemetrySource,
+    UNATTRIBUTED_MODEL,
+    scope_cascade_position,
 )
 
 # ---------------------------------------------------------------------------
@@ -83,6 +88,20 @@ def _kql_escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
+def _filter_values(value: str | Sequence[str] | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    return (value,) if isinstance(value, str) else tuple(value)
+
+
+def _equals_or_in(expression: str, value: str | Sequence[str]) -> str:
+    values = _filter_values(value)
+    if len(values) == 1:
+        return f"{expression} == '{_kql_escape(values[0])}'"
+    rendered = ", ".join(f"'{_kql_escape(item)}'" for item in values)
+    return f"{expression} in ({rendered})"
+
+
 def _iso(value: datetime) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
@@ -121,12 +140,16 @@ def _dimension_filters(
     """Build early, bounded per-dimension filter clauses (T043)."""
     clauses: list[str] = []
     if filters.foundry_resource_id:
-        value = _kql_escape(filters.foundry_resource_id)
-        clauses.append(
-            '| where tolower(tostring(Properties["gen_ai.foundry.resource.id"])) '
-            f"== '{value}' or tolower({_PROJECT_RESOURCE_ID}) startswith "
-            f"'{value}/projects/'"
-        )
+        values = _filter_values(filters.foundry_resource_id)
+        predicates = [
+            "("
+            'tolower(tostring(Properties["gen_ai.foundry.resource.id"])) '
+            f"== '{_kql_escape(value)}' or tolower({_PROJECT_RESOURCE_ID}) startswith "
+            f"'{_kql_escape(value)}/projects/'"
+            ")"
+            for value in values
+        ]
+        clauses.append("| where " + " or ".join(predicates))
     elif scope_source and scope_source.foundry_resource_id:
         value = _kql_escape(scope_source.foundry_resource_id)
         clauses.append(
@@ -135,8 +158,12 @@ def _dimension_filters(
             f"'{value}/projects/'"
         )
     if filters.project_resource_id:
-        value = _kql_escape(filters.project_resource_id)
-        clauses.append(f"| where tolower({_PROJECT_RESOURCE_ID}) == '{value}'")
+        clauses.append(
+            "| where "
+            + _equals_or_in(
+                f"tolower({_PROJECT_RESOURCE_ID})", filters.project_resource_id
+            )
+        )
     elif scope_source and scope_source.project_resource_ids:
         values = ", ".join(
             f"'{_kql_escape(project_id)}'"
@@ -144,18 +171,22 @@ def _dimension_filters(
         )
         clauses.append(f"| where tolower({_PROJECT_RESOURCE_ID}) in ({values})")
     if filters.agent_id:
-        value = _kql_escape(filters.agent_id)
         clauses.append(
-            '| where tostring(coalesce(Properties["gen_ai.agent.id"], '
-            'Properties["gen_ai.agent.name"])) '
-            f"== '{value}'"
+            "| where "
+            + _equals_or_in(
+                'tostring(coalesce(Properties["gen_ai.agent.id"], '
+                'Properties["gen_ai.agent.name"]))',
+                filters.agent_id,
+            )
         )
     if filters.model:
-        value = _kql_escape(filters.model)
         clauses.append(
-            '| where tostring(coalesce(Properties["gen_ai.response.model"], '
-            'Properties["gen_ai.request.model"])) '
-            f"== '{value}'"
+            "| where "
+            + _equals_or_in(
+                'tostring(coalesce(Properties["gen_ai.response.model"], '
+                'Properties["gen_ai.request.model"]))',
+                filters.model,
+            )
         )
     return clauses
 
@@ -178,6 +209,55 @@ def _agent_extend_clauses() -> list[str]:
         '| extend input_tokens = toint(Properties["gen_ai.usage.input_tokens"])',
         '| extend output_tokens = toint(Properties["gen_ai.usage.output_tokens"])',
     ]
+
+
+def _semantic_scope_prelude(
+    source_lines: Sequence[str],
+    filters: ObserveFilterState,
+    *,
+    relation: str,
+) -> list[str]:
+    """Materialize rows in selected runs before a view summarizes them.
+
+    A tool name normally exists only on tool spans. Filtering those rows
+    directly would erase the invoke/model spans needed by the other aggregates,
+    so tool scope is expressed as a semi-join through the correlated run.
+    """
+    if not filters.tool_name and not filters.run_key:
+        return [f"let {relation} = materialize(", *source_lines, ");"]
+
+    unfiltered = f"{relation}_unfiltered"
+    run_scoped = f"{relation}_run_scoped"
+    lines = [f"let {unfiltered} = materialize(", *source_lines, ");"]
+    if filters.run_key:
+        lines.extend(
+            [
+                f"let {run_scoped} = materialize({unfiltered}",
+                "| where " + _equals_or_in("run_key", filters.run_key),
+                ");",
+            ]
+        )
+    else:
+        lines.append(f"let {run_scoped} = {unfiltered};")
+
+    if not filters.tool_name:
+        lines.append(f"let {relation} = {run_scoped};")
+        return lines
+
+    matching_runs = f"{relation}_matching_tool_runs"
+    lines.extend(
+        [
+            f"let {matching_runs} = materialize({run_scoped}",
+            "| where " + _equals_or_in("tool_name", filters.tool_name),
+            "| distinct project_resource_id, run_key",
+            ");",
+            f"let {relation} = materialize({run_scoped}",
+            f"| join kind=inner {matching_runs} on project_resource_id, run_key",
+            "| project-away project_resource_id1, run_key1",
+            ");",
+        ]
+    )
+    return lines
 
 
 def _cost_component_filter_clauses(
@@ -260,38 +340,203 @@ def _token_class_extend_clauses() -> list[str]:
     return clauses
 
 
+# The expression that yields the selectable value for each dimension. Each one
+# is written to match the predicate that ``_dimension_filters`` (or the runs and
+# tools builders) applies for the same dimension, because an option the operator
+# picks must filter to exactly the rows it was counted from.
+_SCOPE_OPTION_EXPRESSIONS: dict[str, str] = {
+    "foundry_resource": (
+        'coalesce(tostring(Properties["gen_ai.foundry.resource.id"]), '
+        f'extract(@"^(.*)/[Pp]rojects/[^/]+$", 1, {_PROJECT_RESOURCE_ID}))'
+    ),
+    "project": _PROJECT_RESOURCE_ID,
+    "agent": (
+        'tostring(coalesce(Properties["gen_ai.agent.id"], '
+        'Properties["gen_ai.agent.name"]))'
+    ),
+    "model": (
+        'tostring(coalesce(Properties["gen_ai.response.model"], '
+        'Properties["gen_ai.request.model"]))'
+    ),
+    "tool": 'tostring(Properties["gen_ai.tool.name"])',
+    "run_key": (
+        'iff(isnotempty(tostring(Properties["gen_ai.conversation.id"])), '
+        'tostring(Properties["gen_ai.conversation.id"]), '
+        'iff(isnotempty(tostring(Properties["gen_ai.thread.id"])), '
+        'tostring(Properties["gen_ai.thread.id"]), tostring(OperationId)))'
+    ),
+}
+
+MAX_SCOPE_SEARCH_LENGTH = 128
+
+
+def _cascade_filters(
+    dimension: ScopeDimension, filters: ObserveFilterState
+) -> ObserveFilterState:
+    """Return ``filters`` with every selection at or right of ``dimension`` cleared.
+
+    Enumerating a dimension against its own selection would only ever return
+    what is already selected, and enumerating it against the dimensions to its
+    right would hide values the operator is entitled to widen into. Clearing
+    them here is what makes the cascade strictly left-to-right.
+    """
+    position = scope_cascade_position(dimension)
+    cleared = {
+        field: None
+        for field, name in (
+            ("foundry_resource_id", "foundry_resource"),
+            ("project_resource_id", "project"),
+            ("agent_id", "agent"),
+            ("model", "model"),
+            ("tool_name", "tool"),
+            ("run_key", "run_key"),
+        )
+        if scope_cascade_position(name) >= position  # type: ignore[arg-type]
+    }
+    return filters.model_copy(update=cleared)
+
+
+def build_scope_options_query(
+    dimension: ScopeDimension,
+    filters: ObserveFilterState,
+    *,
+    scope_source: TelemetrySource | None = None,
+    search: str | None = None,
+    limit: int = MAX_SCOPE_OPTIONS,
+) -> str:
+    """Build a bounded, activity-ordered facet enumeration for one dimension.
+
+    The result is the picker's contents: the distinct values actually present in
+    the current scope and window, most active first, capped at ``limit``. The
+    unbounded distinct count travels alongside it so the console can say how much
+    of the truth it is showing rather than implying it is showing all of it.
+    """
+    if dimension not in SCOPE_DIMENSION_ORDER:
+        raise ValueError(f"unknown scope dimension: {dimension}")
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    if limit > MAX_SCOPE_OPTIONS:
+        raise ValueError(f"limit must not exceed {MAX_SCOPE_OPTIONS}")
+
+    cascade = _cascade_filters(dimension, filters)
+    aggregate_lines = [
+        _TELEMETRY_TABLES,
+        _time_window_clause(cascade),
+        *_dimension_filters(cascade, scope_source),
+        # ``_dimension_filters`` stops at model, so the tool selection has to be
+        # applied here for it to reach the one dimension sitting to its right.
+        *(
+            [
+                "| where "
+                + _equals_or_in(
+                    'tostring(Properties["gen_ai.tool.name"])',
+                    cascade.tool_name,
+                )
+            ]
+            if cascade.tool_name
+            else []
+        ),
+        f"| extend option_value = {_SCOPE_OPTION_EXPRESSIONS[dimension]}",
+        "| where isnotempty(option_value)",
+        "| summarize activity = count(), last_seen = max(TimeGenerated) "
+        "by option_value",
+    ]
+    if search is not None:
+        fragment = search.strip()
+        if fragment:
+            if len(fragment) > MAX_SCOPE_SEARCH_LENGTH:
+                raise ValueError(
+                    "scope option search must be at most "
+                    f"{MAX_SCOPE_SEARCH_LENGTH} characters"
+                )
+            # Applied inside the aggregate, so both the returned page and the
+            # distinct total describe the searched set. Filtering the page after
+            # the bound would silently search only the fifty most active values.
+            aggregate_lines.append(
+                f"| where option_value contains '{_kql_escape(fragment)}'"
+            )
+
+    return "\n".join(
+        [
+            f"let agg = {aggregate_lines[0]}",
+            *aggregate_lines[1:-1],
+            f"{aggregate_lines[-1]};",
+            "let total_in_scope = toscalar(agg | count);",
+            "agg",
+            "| sort by activity desc, last_seen desc, option_value asc",
+            f"| take {limit}",
+            "| extend total_in_scope = total_in_scope",
+        ]
+    )
+
+
 def build_overview_query(
     filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
 ) -> str:
-    """Aggregate agent invocations without counting internal HTTP/model spans."""
+    """Aggregate all Overview families in one telemetry retrieval."""
     base_lines = [
         _TELEMETRY_TABLES,
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
         *_token_class_extend_clauses(),
-        '| where operation_name == "invoke_agent"',
+        '| extend tool_name = tostring(Properties["gen_ai.tool.name"]), '
+        'conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
         '| extend is_request_invocation = TelemetryTable endswith "AppRequests", '
         'is_dependency_invocation = TelemetryTable endswith "AppDependencies"',
-        "| where is_request_invocation or is_dependency_invocation",
     ]
+    candidate_prelude = _semantic_scope_prelude(
+        base_lines, filters, relation="candidates"
+    )
+    tool_filter = (
+        ["| where " + _equals_or_in("tool_name", filters.tool_name)]
+        if filters.tool_name
+        else []
+    )
     return "\n".join(
         [
-            f"let candidates = materialize({base_lines[0]}",
-            *base_lines[1:],
+            *candidate_prelude,
+            "let invoke_candidates = materialize(candidates",
+            '| where operation_name == "invoke_agent"',
+            "| where is_request_invocation or is_dependency_invocation",
             ");",
-            "let preferences = candidates",
+            "let preferences = invoke_candidates",
             "| summarize has_request = countif(is_request_invocation) > 0 "
             "by project_resource_id, agent_key;",
-            "candidates",
+            "let invocations = materialize(invoke_candidates",
             "| join kind=leftouter preferences on project_resource_id, agent_key",
             "| where (has_request and is_request_invocation) or "
             "(not(has_request) and is_dependency_invocation)",
+            ");",
+            "let tool_rows = materialize(candidates",
+            '| where isnotempty(tool_name) or operation_name == "execute_tool"',
+            *tool_filter,
+            ");",
+            "invocations",
             "| summarize invocations = count(), "
             "failures = countif(Success == false), "
             "avg_latency_ms = avg(DurationMs), "
-            "p95_latency_ms = percentile(DurationMs, 95)",
-            "| project invocations, failures, avg_latency_ms, p95_latency_ms",
+            "p95_latency_ms = percentile(DurationMs, 95), "
+            "run_count = dcount(run_key), "
+            'agent_count = dcountif(agent_key, agent_key != "unknown"), '
+            "model_count = dcountif(model, isnotempty(model)), "
+            "model_invocations = countif(isnotempty(model)), "
+            "input_tokens = sum(input_tokens), "
+            "output_tokens = sum(output_tokens), "
+            "token_reports = countif(isnotnull(input_tokens) or isnotnull(output_tokens))",
+            "| extend input_tokens = iff(token_reports == 0, long(null), input_tokens), "
+            "output_tokens = iff(token_reports == 0, long(null), output_tokens), "
+            "tool_count = toscalar(tool_rows | summarize value = dcountif(tool_name, "
+            "isnotempty(tool_name)) | project value), "
+            "tool_invocations = toscalar(tool_rows | count), "
+            "tool_failures = toscalar(tool_rows | summarize value = "
+            "countif(Success == false) | project value)",
+            "| project invocations, failures, avg_latency_ms, p95_latency_ms, "
+            "run_count, agent_count, model_count, model_invocations, "
+            "input_tokens, output_tokens, tool_count, tool_invocations, tool_failures",
         ]
     )
 
@@ -300,16 +545,24 @@ def build_agents_query(
     filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
 ) -> str:
     """Bounded per-agent summary query (agent id/name, model, tokens, last seen)."""
-    aggregate_lines = [
+    base_lines = [
         _TELEMETRY_TABLES,
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
         *_token_class_extend_clauses(),
+        '| extend tool_name = tostring(Properties["gen_ai.tool.name"]), '
+        'conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
         '| extend is_request_invocation = TelemetryTable endswith "AppRequests" and '
         'operation_name == "invoke_agent", '
         'is_dependency_invocation = TelemetryTable endswith "AppDependencies" and '
         'operation_name == "invoke_agent"',
+    ]
+    base_prelude = _semantic_scope_prelude(base_lines, filters, relation="base")
+    summary_lines = [
         "| summarize request_invocations = countif(is_request_invocation), "
         "dependency_invocations = countif(is_dependency_invocation), "
         "request_failures = countif(is_request_invocation and Success == false), "
@@ -331,7 +584,8 @@ def build_agents_query(
         "agent_name = take_anyif(agent_name, isnotempty(agent_name)), "
         "provider_name = take_anyif(provider_name, isnotempty(provider_name)), "
         "system = take_anyif(system, isnotempty(system)), "
-        "model = take_anyif(model, isnotempty(model)) "
+        "model = take_anyif(model, isnotempty(model)), "
+        "scope_run_count = dcount(run_key) "
         "by project_resource_id, agent_key",
         "| extend invocations = iff(request_invocations > 0, "
         "request_invocations, dependency_invocations), "
@@ -350,7 +604,103 @@ def build_agents_query(
         "cache_write_reporting_records, reasoning_reporting_records",
         "| where invocations > 0",
     ]
-    return _bounded_aggregate(aggregate_lines, order_by="invocations")
+    model_summary_lines = [
+        "| where isnotempty(model) or isnotnull(input_tokens) or "
+        "isnotnull(output_tokens) or isnotnull(cache_read_tokens) or "
+        "isnotnull(cache_write_tokens) or isnotnull(reasoning_tokens)",
+        f"| extend model = iff(isempty(model), '{_kql_escape(UNATTRIBUTED_MODEL)}', model)",
+        "| summarize input_tokens = sum(input_tokens), "
+        "output_tokens = sum(output_tokens), "
+        "cache_read_tokens = sum(cache_read_tokens), "
+        "cache_write_tokens = sum(cache_write_tokens), "
+        "reasoning_tokens = sum(reasoning_tokens), "
+        "run_count = dcount(run_key), "
+        "input_reports = countif(isnotnull(input_tokens)), "
+        "output_reports = countif(isnotnull(output_tokens)), "
+        "cache_read_reports = countif(isnotnull(cache_read_tokens)), "
+        "cache_write_reports = countif(isnotnull(cache_write_tokens)), "
+        "reasoning_reports = countif(isnotnull(reasoning_tokens)) "
+        "by project_resource_id, agent_key, model",
+        "| extend input_tokens = iff(input_reports == 0, long(null), input_tokens), "
+        "output_tokens = iff(output_reports == 0, long(null), output_tokens), "
+        "cache_read_tokens = iff(cache_read_reports == 0, long(null), cache_read_tokens), "
+        "cache_write_tokens = iff(cache_write_reports == 0, long(null), cache_write_tokens), "
+        "reasoning_tokens = iff(reasoning_reports == 0, long(null), reasoning_tokens)",
+        "| project-away input_reports, output_reports, cache_read_reports, "
+        "cache_write_reports, reasoning_reports",
+    ]
+    run_model_summary_lines = [
+        "| where isnotempty(model) or isnotnull(input_tokens) or "
+        "isnotnull(output_tokens) or isnotnull(cache_read_tokens) or "
+        "isnotnull(cache_write_tokens) or isnotnull(reasoning_tokens)",
+        f"| extend model = iff(isempty(model), '{_kql_escape(UNATTRIBUTED_MODEL)}', model)",
+        "| summarize input_tokens = sum(input_tokens), "
+        "output_tokens = sum(output_tokens), "
+        "cache_read_tokens = sum(cache_read_tokens), "
+        "cache_write_tokens = sum(cache_write_tokens), "
+        "reasoning_tokens = sum(reasoning_tokens), "
+        "input_reports = countif(isnotnull(input_tokens)), "
+        "output_reports = countif(isnotnull(output_tokens)), "
+        "cache_read_reports = countif(isnotnull(cache_read_tokens)), "
+        "cache_write_reports = countif(isnotnull(cache_write_tokens)), "
+        "reasoning_reports = countif(isnotnull(reasoning_tokens)) "
+        "by project_resource_id, agent_key, run_key, model",
+        "| extend input_tokens = iff(input_reports == 0, long(null), input_tokens), "
+        "output_tokens = iff(output_reports == 0, long(null), output_tokens), "
+        "cache_read_tokens = iff(cache_read_reports == 0, long(null), cache_read_tokens), "
+        "cache_write_tokens = iff(cache_write_reports == 0, long(null), cache_write_tokens), "
+        "reasoning_tokens = iff(reasoning_reports == 0, long(null), reasoning_tokens)",
+        "| project-away input_reports, output_reports, cache_read_reports, "
+        "cache_write_reports, reasoning_reports",
+    ]
+    model_usage_limit = 32
+    return "\n".join(
+        [
+            *base_prelude,
+            "let agent_summary = base",
+            *summary_lines,
+            ";",
+            "let agent_model_usage = base",
+            *model_summary_lines,
+            "| summarize model_usage_count = dcount(model), "
+            "model_usage = make_bag(pack(model, pack("
+            '"model", model, "input_tokens", input_tokens, '
+            '"output_tokens", output_tokens, "cache_read_tokens", cache_read_tokens, '
+            '"cache_write_tokens", cache_write_tokens, '
+            '"reasoning_tokens", reasoning_tokens, "run_count", run_count'
+            ")), 32) by project_resource_id, agent_key;",
+            "let agent_run_model_usage = base",
+            *run_model_summary_lines,
+            "| summarize model_usage_count = count(), "
+            "model_usage = make_list(pack("
+            '"model", model, "input_tokens", input_tokens, '
+            '"output_tokens", output_tokens, "cache_read_tokens", cache_read_tokens, '
+            '"cache_write_tokens", cache_write_tokens, '
+            '"reasoning_tokens", reasoning_tokens'
+            f"), {model_usage_limit}) by project_resource_id, agent_key, run_key",
+            f"| extend model_usage_truncated = model_usage_count > {model_usage_limit};",
+            "let agent_pricing_runs = agent_run_model_usage",
+            "| summarize pricing_run_count = count(), "
+            "pricing_runs = make_list(pack("
+            '"run_key", run_key, "model_usage", model_usage, '
+            '"model_usage_truncated", model_usage_truncated'
+            f"), {MAX_ROWS_PER_QUERY}) by project_resource_id, agent_key;",
+            "let agg = agent_summary",
+            "| join kind=leftouter agent_model_usage on project_resource_id, agent_key",
+            "| project-away project_resource_id1, agent_key1",
+            "| extend model_usage = iff(isnull(model_usage), dynamic({}), model_usage), "
+            "model_usage_truncated = model_usage_count > 32",
+            "| join kind=leftouter agent_pricing_runs on project_resource_id, agent_key",
+            "| project-away project_resource_id1, agent_key1",
+            "| extend pricing_runs = iff(isnull(pricing_runs), dynamic([]), pricing_runs), "
+            f"pricing_runs_truncated = pricing_run_count > {MAX_ROWS_PER_QUERY};",
+            "let total_in_scope = toscalar(agg | count);",
+            "agg",
+            "| sort by invocations desc",
+            f"| take {MAX_ROWS_PER_QUERY}",
+            "| extend total_in_scope = total_in_scope",
+        ]
+    )
 
 
 def build_models_query(
@@ -362,12 +712,18 @@ def build_models_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
+        '| extend tool_name = tostring(Properties["gen_ai.tool.name"]), '
+        'conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
         '| extend deployment = tostring(coalesce('
         'Properties["gen_ai.request.deployment"], Properties["gen_ai.request.model"]))',
         *_token_class_extend_clauses(),
-        "| where isnotempty(model) or isnotempty(deployment)",
-        '| where operation_name !in ("invoke_agent", "execute_tool")',
     ]
+    scope_prelude = _semantic_scope_prelude(
+        event_lines, filters, relation="model_scope"
+    )
     summary_lines = [
         "| summarize requests = count(), "
         "failures = countif(Success == false), "
@@ -384,6 +740,7 @@ def build_models_query(
         "cache_write_reporting_records = countif(isnotnull(cache_write_tokens)), "
         "reasoning_tokens = sum(reasoning_tokens), "
         "reasoning_reporting_records = countif(isnotnull(reasoning_tokens)), "
+        "scope_run_count = dcount(run_key), "
         "last_seen = max(TimeGenerated) "
         "by project_resource_id, model, deployment",
         "| extend "
@@ -403,20 +760,68 @@ def build_models_query(
         "| project-away token_reporting_records, cache_read_reporting_records, "
         "cache_write_reporting_records, reasoning_reporting_records",
     ]
+    run_model_summary_lines = [
+        "| summarize input_tokens = sum(input_tokens), "
+        "output_tokens = sum(output_tokens), "
+        "cache_read_tokens = sum(cache_read_tokens), "
+        "cache_write_tokens = sum(cache_write_tokens), "
+        "reasoning_tokens = sum(reasoning_tokens), "
+        "input_reports = countif(isnotnull(input_tokens)), "
+        "output_reports = countif(isnotnull(output_tokens)), "
+        "cache_read_reports = countif(isnotnull(cache_read_tokens)), "
+        "cache_write_reports = countif(isnotnull(cache_write_tokens)), "
+        "reasoning_reports = countif(isnotnull(reasoning_tokens)) "
+        "by project_resource_id, run_key, usage_model = model",
+        "| extend input_tokens = iff(input_reports == 0, long(null), input_tokens), "
+        "output_tokens = iff(output_reports == 0, long(null), output_tokens), "
+        "cache_read_tokens = iff(cache_read_reports == 0, long(null), cache_read_tokens), "
+        "cache_write_tokens = iff(cache_write_reports == 0, long(null), cache_write_tokens), "
+        "reasoning_tokens = iff(reasoning_reports == 0, long(null), reasoning_tokens)",
+        "| project-away input_reports, output_reports, cache_read_reports, "
+        "cache_write_reports, reasoning_reports",
+    ]
     excluded_names = (
         "gen_ai.usage.input_tokens",
         "gen_ai.usage.output_tokens",
         *sorted(TOKEN_CLASS_ALIAS_NAMES),
     )
     excluded = ", ".join(f'"{name}"' for name in excluded_names)
+    model_usage_limit = 32
     return "\n".join(
         [
-            "let model_events = materialize(",
-            *event_lines,
+            *scope_prelude,
+            "let model_events = materialize(model_scope",
+            "| where isnotempty(model) or isnotempty(deployment) or "
+            "isnotnull(input_tokens) or isnotnull(output_tokens) or "
+            "isnotnull(cache_read_tokens) or isnotnull(cache_write_tokens) or "
+            "isnotnull(reasoning_tokens)",
+            f"| extend model = iff(isempty(model), '{_kql_escape(UNATTRIBUTED_MODEL)}', model)",
+            '| where operation_name !in ("invoke_agent", "execute_tool")',
             ");",
             "let model_summary = model_events",
             *summary_lines,
             ";",
+            "let model_run_scope = model_events",
+            "| summarize by project_resource_id, model, deployment, run_key;",
+            "let run_model_usage = model_events",
+            *run_model_summary_lines,
+            ";",
+            "let model_run_usage = model_run_scope",
+            "| join kind=inner run_model_usage on project_resource_id, run_key",
+            "| summarize model_usage_count = count(), "
+            "model_usage = make_list(pack("
+            '"model", usage_model, "input_tokens", input_tokens, '
+            '"output_tokens", output_tokens, "cache_read_tokens", cache_read_tokens, '
+            '"cache_write_tokens", cache_write_tokens, '
+            '"reasoning_tokens", reasoning_tokens'
+            f"), {model_usage_limit}) by project_resource_id, model, deployment, run_key",
+            f"| extend model_usage_truncated = model_usage_count > {model_usage_limit};",
+            "let model_pricing_runs = model_run_usage",
+            "| summarize pricing_run_count = count(), "
+            "pricing_runs = make_list(pack("
+            '"run_key", run_key, "model_usage", model_usage, '
+            '"model_usage_truncated", model_usage_truncated'
+            f"), {MAX_ROWS_PER_QUERY}) by project_resource_id, model, deployment;",
             "let extra_class_summary = model_events",
             "| mv-expand token_class_name = bag_keys(Properties)",
             "| extend token_class_name = tostring(token_class_name)",
@@ -433,6 +838,11 @@ def build_models_query(
             "| join kind=leftouter extra_class_summary "
             "on project_resource_id, model, deployment",
             "| project-away project_resource_id1, model1, deployment1",
+            "| join kind=leftouter model_pricing_runs "
+            "on project_resource_id, model, deployment",
+            "| project-away project_resource_id1, model1, deployment1",
+            "| extend pricing_runs = iff(isnull(pricing_runs), dynamic([]), pricing_runs), "
+            f"pricing_runs_truncated = pricing_run_count > {MAX_ROWS_PER_QUERY}",
             ";",
             "let total_in_scope = toscalar(agg | count);",
             "agg",
@@ -454,7 +864,12 @@ def build_tools_query(
         *_agent_extend_clauses(),
         '| extend tool_name = tostring(Properties["gen_ai.tool.name"])',
         '| extend operation_name = tostring(Properties["gen_ai.operation.name"])',
+        '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
     ]
+    base_prelude = _semantic_scope_prelude(base_lines, filters, relation="base")
     aggregate_lines = [
         "base",
         "| where isnotempty(tool_name)",
@@ -470,7 +885,7 @@ def build_tools_query(
     ]
     if filters.tool_name:
         aggregate_lines.append(
-            f"| where tool_name == '{_kql_escape(filters.tool_name)}'"
+            "| where " + _equals_or_in("tool_name", filters.tool_name)
         )
     aggregate_lines.append(
         "| summarize invocations = count(), "
@@ -490,9 +905,7 @@ def build_tools_query(
     )
     return "\n".join(
         [
-            "let base = materialize(",
-            *base_lines,
-            ");",
+            *base_prelude,
             "let runtime_evidence = base",
             '| where operation_name == "invoke_agent"',
             "| summarize "
@@ -527,7 +940,7 @@ def build_runs_query(
     filters: ObserveFilterState, *, scope_source: TelemetrySource | None = None
 ) -> str:
     """Build a bounded aggregate of conversation- or trace-correlated runs."""
-    aggregate_lines = [
+    base_lines = [
         _TELEMETRY_TABLES,
         _period_time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
@@ -549,11 +962,9 @@ def build_runs_query(
         "| extend run_key_kind = iff(isnotempty(conversation_id) or isnotempty(foundry_thread_id), "
         '"conversation", "trace")',
     ]
-    if filters.run_key:
-        aggregate_lines.append(f"| where run_key == '{_kql_escape(filters.run_key)}'")
-    aggregate_lines.extend(
-        [
-            "| summarize started_at = min(TimeGenerated), "
+    base_prelude = _semantic_scope_prelude(base_lines, filters, relation="base")
+    run_summary_lines = [
+        "| summarize started_at = min(TimeGenerated), "
             "last_activity_at = max(TimeGenerated), "
             "turns = dcount(OperationId), "
             "failed_turns = dcountif(OperationId, Success == false), "
@@ -592,9 +1003,67 @@ def build_runs_query(
             "cache_read_token_reports, cache_write_token_reports, "
             "reasoning_token_reports, credit_reports, credit_event_reports",
             '| extend duration_ms = todouble(datetime_diff("millisecond", last_activity_at, started_at))',
+    ]
+    per_model_lines = [
+        "| where isnotempty(model) or isnotnull(input_tokens) or "
+        "isnotnull(output_tokens) or isnotnull(cache_read_tokens) or "
+        "isnotnull(cache_write_tokens) or isnotnull(reasoning_tokens)",
+        f"| extend model = iff(isempty(model), '{_kql_escape(UNATTRIBUTED_MODEL)}', model)",
+        "| summarize "
+        "input_tokens = sum(input_tokens), "
+        "output_tokens = sum(output_tokens), "
+        "cache_read_tokens = sum(cache_read_tokens), "
+        "cache_write_tokens = sum(cache_write_tokens), "
+        "reasoning_tokens = sum(reasoning_tokens), "
+        "input_token_reports = countif(isnotnull(input_tokens)), "
+        "output_token_reports = countif(isnotnull(output_tokens)), "
+        "cache_read_token_reports = countif(isnotnull(cache_read_tokens)), "
+        "cache_write_token_reports = countif(isnotnull(cache_write_tokens)), "
+        "reasoning_token_reports = countif(isnotnull(reasoning_tokens)) "
+        "by project_resource_id, agent_key, run_key, run_key_kind, model",
+        "| extend "
+        "input_tokens = iff(input_token_reports == 0, long(null), input_tokens), "
+        "output_tokens = iff(output_token_reports == 0, long(null), output_tokens), "
+        "cache_read_tokens = iff(cache_read_token_reports == 0, long(null), cache_read_tokens), "
+        "cache_write_tokens = iff(cache_write_token_reports == 0, long(null), cache_write_tokens), "
+        "reasoning_tokens = iff(reasoning_token_reports == 0, long(null), reasoning_tokens)",
+        "| project-away input_token_reports, output_token_reports, "
+        "cache_read_token_reports, cache_write_token_reports, reasoning_token_reports",
+    ]
+    model_usage_limit = 32
+    return "\n".join(
+        [
+            *base_prelude,
+            "let run_summary = base",
+            *run_summary_lines,
+            ";",
+            "let run_model_summary = base",
+            *per_model_lines,
+            ";",
+            "let run_model_usage = run_model_summary",
+            "| summarize model_usage_count = dcount(model), "
+            "model_usage = make_bag(pack(model, pack("
+            '"model", model, '
+            '"input_tokens", input_tokens, '
+            '"output_tokens", output_tokens, '
+            '"cache_read_tokens", cache_read_tokens, '
+            '"cache_write_tokens", cache_write_tokens, '
+            '"reasoning_tokens", reasoning_tokens'
+            f")), {model_usage_limit}) "
+            "by project_resource_id, agent_key, run_key, run_key_kind;",
+            "let agg = run_summary",
+            "| join kind=leftouter run_model_usage "
+            "on project_resource_id, agent_key, run_key, run_key_kind",
+            "| project-away project_resource_id1, agent_key1, run_key1, run_key_kind1",
+            "| extend model_usage = iff(isnull(model_usage), dynamic({}), model_usage), "
+            f"model_usage_truncated = model_usage_count > {model_usage_limit};",
+            "let total_in_scope = toscalar(agg | count);",
+            "agg",
+            "| sort by last_activity_at desc",
+            f"| take {MAX_ROWS_PER_QUERY}",
+            "| extend total_in_scope = total_in_scope",
         ]
     )
-    return _bounded_aggregate(aggregate_lines, order_by="last_activity_at")
 
 
 def build_drilldown_query(
@@ -711,10 +1180,31 @@ def build_usage_query(
         _time_window_clause(filters),
         *_dimension_filters(filters, scope_source),
         *_agent_extend_clauses(),
+        *_token_class_extend_clauses(),
+        '| extend conversation_id = tostring(Properties["gen_ai.conversation.id"]), '
+        'foundry_thread_id = tostring(Properties["gen_ai.thread.id"])',
+        "| extend run_key = iff(isnotempty(conversation_id), conversation_id, "
+        "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
         "| summarize input_tokens = sum(input_tokens), "
         "output_tokens = sum(output_tokens), "
+        "cache_read_tokens = sum(cache_read_tokens), "
+        "cache_write_tokens = sum(cache_write_tokens), "
+        "reasoning_tokens = sum(reasoning_tokens), "
+        "input_token_reports = countif(isnotnull(input_tokens)), "
+        "output_token_reports = countif(isnotnull(output_tokens)), "
+        "cache_read_token_reports = countif(isnotnull(cache_read_tokens)), "
+        "cache_write_token_reports = countif(isnotnull(cache_write_tokens)), "
+        "reasoning_token_reports = countif(isnotnull(reasoning_tokens)), "
+        "scope_run_count = dcount(run_key), "
         "requests = count() "
         "by agent_key, model",
+        "| extend input_tokens = iff(input_token_reports == 0, long(null), input_tokens), "
+        "output_tokens = iff(output_token_reports == 0, long(null), output_tokens), "
+        "cache_read_tokens = iff(cache_read_token_reports == 0, long(null), cache_read_tokens), "
+        "cache_write_tokens = iff(cache_write_token_reports == 0, long(null), cache_write_tokens), "
+        "reasoning_tokens = iff(reasoning_token_reports == 0, long(null), reasoning_tokens)",
+        "| project-away input_token_reports, output_token_reports, "
+        "cache_read_token_reports, cache_write_token_reports, reasoning_token_reports",
         f"| top {MAX_ROWS_PER_QUERY} by requests desc",
     ]
     return "\n".join(lines)
@@ -796,9 +1286,9 @@ def build_department_usage_query(
         "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
     ]
     if filters.tool_name:
-        base_lines.append(f"| where tool_name == '{_kql_escape(filters.tool_name)}'")
+        base_lines.append("| where " + _equals_or_in("tool_name", filters.tool_name))
     if filters.run_key:
-        base_lines.append(f"| where run_key == '{_kql_escape(filters.run_key)}'")
+        base_lines.append("| where " + _equals_or_in("run_key", filters.run_key))
     base_lines.extend(_cost_component_filter_clauses(cost_component, scope_source))
 
     canonical_prefix = _kql_escape(
@@ -1012,9 +1502,9 @@ def build_user_usage_query(
         "iff(isnotempty(foundry_thread_id), foundry_thread_id, tostring(OperationId)))",
     ]
     if filters.tool_name:
-        base.append(f"| where tool_name == '{_kql_escape(filters.tool_name)}'")
+        base.append("| where " + _equals_or_in("tool_name", filters.tool_name))
     if filters.run_key:
-        base.append(f"| where run_key == '{_kql_escape(filters.run_key)}'")
+        base.append("| where " + _equals_or_in("run_key", filters.run_key))
     base.extend(_cost_component_filter_clauses(cost_component, scope_source))
     predicates: list[str] = []
     if selected_user_key is not None:

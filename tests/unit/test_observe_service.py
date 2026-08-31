@@ -10,7 +10,12 @@ faked; nothing here imports azure.monitor.query or azure.mgmt.resourcegraph.
 
 from __future__ import annotations
 
+import ast
 import asyncio
+import inspect
+import json
+from time import perf_counter
+import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -19,6 +24,7 @@ from typing import Any, Sequence
 import pytest
 
 import agentops.agent.observe.service as observe_service_module
+from agentops.agent import cockpit as cockpit_module
 from agentops.agent.observe.cache import ObserveCache, SensitiveValueError
 from agentops.agent.observe.queries import MAX_ROWS_PER_QUERY, SourceResult
 from agentops.agent.observe.service import (
@@ -27,6 +33,7 @@ from agentops.agent.observe.service import (
     ObserveService,
     PartialFailure,
     TokenClassInventory,
+    _scope_option_cache_key,
     _merge_user_attribution_coverage,
     _result_bounds,
     _source_attribution_coverage,
@@ -39,6 +46,8 @@ from agentops.agent.observe.service import (
     normalize_model_row,
     normalize_run_row,
     normalize_tool_row,
+    estimate_token_cost,
+    resolve_window_selection,
     safe_failure_reason,
     token_class_inventory,
     token_reporting_state,
@@ -64,13 +73,28 @@ from agentops.core.cost import (
 )
 from agentops.core.observe import (
     AttributionQueryRequest,
+    EntitySummary,
+    MAX_SCOPE_OPTIONS,
     ModelUsage,
     ObserveFilterState,
     ObserveQueryRequest,
     ObserveScope,
     ResourceInventory,
+    ScopeFilterOption,
     TelemetrySource,
+    UNATTRIBUTED_MODEL,
     UserAttributionCoverage,
+    CustomWindowSelection,
+    PresetWindowSelection,
+    RunModelUsage,
+    SummaryFigure,
+)
+from agentops.core.observe_pricing import load_price_reference
+from fixtures.observe import (
+    make_price_entry,
+    make_price_reference_payload,
+    make_run_usage_rows_at_scale,
+    make_scope_facet_option_rows_at_scale,
 )
 
 _PROJECT_ID = (
@@ -79,6 +103,9 @@ _PROJECT_ID = (
     "/projects/proj"
 )
 _PROJECT_ID_TWO = _PROJECT_ID.removesuffix("/proj") + "/proj-two"
+SCALE_FIXTURE_COUNT = 1_000
+SC_011_THOUSAND_RUN_BUDGET_SECONDS = 3.0
+SC_013_THOUSAND_AGENT_BUDGET_SECONDS = 1.0
 
 
 def _scope() -> ObserveScope:
@@ -187,6 +214,27 @@ class FakeQueryClient:
             return self.results_by_view.get(view, [])
         return self.results
 
+    async def query_scope_options(
+        self,
+        sources: Sequence[TelemetrySource],
+        filters: ObserveFilterState,
+        *,
+        dimension: str,
+        search: str | None = None,
+        limit: int = MAX_SCOPE_OPTIONS,
+    ) -> list[SourceResult]:
+        self.calls.append(
+            (
+                tuple(source.source_id for source in sources),
+                "scope_options",
+                dimension,
+                search,
+                limit,
+                filters,
+            )
+        )
+        return self.results
+
     async def query_department_usage(
         self,
         sources: Sequence[TelemetrySource],
@@ -265,9 +313,363 @@ def _service(
     return service, discovery, query
 
 
+def test_observe_feature_routes_are_structurally_read_only() -> None:
+    """Observe route handlers may delegate only to read/query operations."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(cockpit_module.create_app)))
+    expected = {
+        "/observe": ("get", set()),
+        "/api/observe/query": ("post", {"query"}),
+        "/api/observe/scope-options": ("post", {"scope_options"}),
+    }
+    found: dict[str, tuple[str, set[str], set[str]]] = {}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if (
+                not isinstance(decorator, ast.Call)
+                or not isinstance(decorator.func, ast.Attribute)
+                or not decorator.args
+                or not isinstance(decorator.args[0], ast.Constant)
+            ):
+                continue
+            path = decorator.args[0].value
+            if path not in expected:
+                continue
+            calls = [
+                call
+                for statement in node.body
+                for call in ast.walk(statement)
+                if isinstance(call, ast.Call)
+            ]
+            operations = {
+                call.args[0].value
+                for call in calls
+                if isinstance(call.func, ast.Name)
+                and call.func.id == "_service_call"
+                and call.args
+                and isinstance(call.args[0], ast.Constant)
+            }
+            call_names = {
+                call.func.attr
+                if isinstance(call.func, ast.Attribute)
+                else call.func.id
+                for call in calls
+                if isinstance(call.func, (ast.Attribute, ast.Name))
+            }
+            found[path] = (decorator.func.attr, operations, call_names)
+
+    assert set(found) == set(expected)
+    mutation_names = {"create", "delete", "patch", "put", "set", "update", "upload", "write"}
+    for path, (method, operations) in expected.items():
+        actual_method, actual_operations, call_names = found[path]
+        assert actual_method == method
+        assert actual_operations == operations
+        assert call_names.isdisjoint(mutation_names)
+
+
+@pytest.mark.asyncio
+async def test_observe_scale_fixtures_resolve_within_named_budgets(
+    request: pytest.FixtureRequest,
+) -> None:
+    run_service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {**row, "project_resource_id": _PROJECT_ID}
+                    for row in make_run_usage_rows_at_scale(SCALE_FIXTURE_COUNT)
+                ],
+            )
+        ],
+        clock=FakeDatetimeClock(datetime(2026, 8, 31, tzinfo=timezone.utc)),
+    )
+    started = perf_counter()
+    runs = await run_service.query_view(
+        _scope(),
+        _filters(
+            start=datetime(2026, 8, 20, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 22, tzinfo=timezone.utc),
+        ),
+        view="runs",
+    )
+    run_seconds = perf_counter() - started
+
+    facet_service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=make_scope_facet_option_rows_at_scale(SCALE_FIXTURE_COUNT),
+            )
+        ],
+        clock=FakeDatetimeClock(datetime(2026, 8, 31, tzinfo=timezone.utc)),
+    )
+    started = perf_counter()
+    options = await facet_service.query_scope_options(
+        _scope(), _filters(), dimension="agent"
+    )
+    facet_seconds = perf_counter() - started
+
+    request.node.user_properties.extend(
+        [
+            ("sc_011_thousand_run_seconds", f"{run_seconds:.6f}"),
+            ("sc_013_thousand_agent_options_seconds", f"{facet_seconds:.6f}"),
+        ]
+    )
+    assert runs.bounds is not None
+    assert len(runs.data) == runs.bounds.page_size == 50
+    assert runs.bounds.has_next_page is True
+    assert len(options.options) == MAX_SCOPE_OPTIONS
+    assert run_seconds < SC_011_THOUSAND_RUN_BUDGET_SECONDS
+    assert facet_seconds < SC_013_THOUSAND_AGENT_BUDGET_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# T013: cached, merged scope facets and cascade invalidation.
+# ---------------------------------------------------------------------------
+
+
+def _facet_result(
+    source_id: str,
+    rows: list[dict[str, Any]] | None = None,
+    *,
+    status: str = "success",
+    reason: str | None = None,
+) -> SourceResult:
+    return SourceResult(
+        source_id=source_id,
+        status=status,
+        tables=rows,
+        reason=reason,
+    )
+
+
+@pytest.mark.asyncio
+async def test_scope_options_cache_uses_inventory_ttl() -> None:
+    @dataclass
+    class FloatClock:
+        now: float = 0.0
+
+        def __call__(self) -> float:
+            return self.now
+
+    cache_clock = FloatClock()
+    inventory_cache = ObserveCache(ttl_seconds=15 * 60, clock=cache_clock)
+    query = FakeQueryClient(
+        [_facet_result("src-1", [{"option_value": "agent-a", "activity": 3}])]
+    )
+    service = ObserveService(
+        discovery_client=FakeDiscoveryClient(_inventory([_source()])),
+        query_client=query,
+        runtime=FakeRuntime(),
+        clock=FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+        cache=ObserveCache(ttl_seconds=CACHE_TTL_SECONDS, clock=cache_clock),
+        inventory_cache=inventory_cache,
+    )
+
+    first = await service.query_scope_options(_scope(), _filters(), dimension="agent")
+    cache_clock.now = CACHE_TTL_SECONDS + 1
+    second = await service.query_scope_options(_scope(), _filters(), dimension="agent")
+
+    assert second == first
+    assert [call[1] for call in query.calls].count("scope_options") == 1
+
+
+@pytest.mark.asyncio
+async def test_scope_options_merge_sources_deduplicated_and_ordered_by_activity() -> None:
+    sources = [_source("src-1"), _source("src-2")]
+    service, _discovery, _query = _service(
+        inventory=_inventory(sources),
+        results=[
+            _facet_result(
+                "src-1",
+                [
+                    {"option_value": "shared", "option_label": "Shared", "activity": 4},
+                    {"option_value": "quiet", "option_label": "Quiet", "activity": 2},
+                ],
+            ),
+            _facet_result(
+                "src-2",
+                [
+                    {"option_value": "busy", "option_label": "Busy", "activity": 8},
+                    {"option_value": "shared", "option_label": "Shared", "activity": 5},
+                ],
+            ),
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_scope_options(_scope(), _filters(), dimension="agent")
+
+    assert result.options == (
+        ScopeFilterOption(value="shared", label="Shared", dimension="agent"),
+        ScopeFilterOption(value="busy", label="Busy", dimension="agent"),
+        ScopeFilterOption(value="quiet", label="Quiet", dimension="agent"),
+    )
+    assert result.total_observed == 3
+
+
+@pytest.mark.asyncio
+async def test_scope_options_propagates_truncation_from_any_source() -> None:
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source("src-1"), _source("src-2")]),
+        results=[
+            _facet_result(
+                "src-1",
+                [{"option_value": "agent-a", "activity": 2, "total_in_scope": 2}],
+            ),
+            _facet_result(
+                "src-2",
+                [{"option_value": "agent-b", "activity": 1, "total_in_scope": 57}],
+            ),
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_scope_options(_scope(), _filters(), dimension="agent")
+
+    assert result.truncated is True
+
+
+@pytest.mark.asyncio
+async def test_scope_options_only_drops_unreachable_values_for_the_returned_dimension() -> (
+    None
+):
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source()]),
+        results=[
+            _facet_result(
+                "src-1",
+                [{"option_value": "reachable-agent", "activity": 1}],
+            )
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+    )
+    filters = _filters(
+        project_resource_id=_PROJECT_ID_TWO,
+        agent_id=("reachable-agent", "stale-agent"),
+        model="stale-model",
+    )
+
+    expanded_scope = ObserveScope(
+        mode="projects",
+        project_resource_ids=[_PROJECT_ID, _PROJECT_ID_TWO],
+    )
+    result = await service.query_scope_options(
+        expanded_scope, filters, dimension="agent"
+    )
+
+    assert result.filters.agent_id == "reachable-agent"
+    assert result.filters.model == "stale-model"
+    assert result.invalidated_selections == ("stale-agent",)
+
+
+@pytest.mark.asyncio
+async def test_scope_options_preset_re_resolves_absolute_filter_window() -> None:
+    now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[_facet_result("src-1", [{"option_value": "agent-a", "activity": 1}])],
+        clock=FakeDatetimeClock(now),
+    )
+
+    await service.query_scope_options(
+        _scope(),
+        _filters(),
+        dimension="agent",
+        window=PresetWindowSelection(kind="preset", preset="1d"),
+    )
+
+    sent_filters = query.calls[0][5]
+    assert sent_filters.start == now - timedelta(days=1)
+    assert sent_filters.end == now
+
+
+def test_scope_search_cache_key_never_contains_raw_search_text() -> None:
+    raw_search = "customer secret project phrase"
+    key = _scope_option_cache_key(
+        "local:user",
+        _scope(),
+        "agent",
+        _filters(),
+        search=raw_search,
+        limit=MAX_SCOPE_OPTIONS,
+    )
+
+    assert raw_search not in repr(key)
+    assert raw_search.casefold() not in repr(key)
+    assert len(key[-2]) == 64
+
+
+@pytest.mark.asyncio
+async def test_scope_options_degrades_gracefully_when_one_source_times_out() -> None:
+    service, _discovery, _query = _service(
+        inventory=_inventory([_source("src-1"), _source("src-2")]),
+        results=[
+            _facet_result(
+                "src-1",
+                [{"option_value": "agent-a", "activity": 4}],
+            ),
+            _facet_result(
+                "src-2",
+                status="timeout",
+                reason="request timed out",
+            ),
+        ],
+        clock=FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc)),
+    )
+
+    result = await service.query_scope_options(_scope(), _filters(), dimension="agent")
+
+    assert [option.value for option in result.options] == ["agent-a"]
+    assert result.coverage_state == "partial"
+
+
 # ---------------------------------------------------------------------------
 # T045: normalization, source attribution, token-reporting semantics.
 # ---------------------------------------------------------------------------
+
+
+def test_window_preset_re_resolves_while_custom_window_stays_fixed() -> None:
+    first_now = datetime(2026, 8, 31, 12, tzinfo=timezone.utc)
+    second_now = first_now + timedelta(minutes=5)
+    preset = PresetWindowSelection(kind="preset", preset="1d")
+    custom = CustomWindowSelection(
+        kind="custom",
+        start=first_now - timedelta(days=2),
+        end=first_now - timedelta(days=1),
+    )
+
+    first_preset = resolve_window_selection(preset, now=first_now)
+    second_preset = resolve_window_selection(preset, now=second_now)
+
+    assert second_preset[0] - first_preset[0] == timedelta(minutes=5)
+    assert second_preset[1] - first_preset[1] == timedelta(minutes=5)
+    assert resolve_window_selection(custom, now=first_now) == (
+        custom.start,
+        custom.end,
+    )
+    assert resolve_window_selection(custom, now=second_now) == (
+        custom.start,
+        custom.end,
+    )
+
+
+@pytest.mark.parametrize("preset", ["30m", "1h", "6h", "12h", "1d", "3d", "7d", "30d"])
+def test_window_selection_accepts_all_named_presets(preset: str) -> None:
+    selection = PresetWindowSelection(kind="preset", preset=preset)
+    assert selection.preset == preset
+
+
+def test_custom_window_rejects_unordered_boundaries() -> None:
+    now = datetime(2026, 8, 31, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="end must be after start"):
+        CustomWindowSelection(kind="custom", start=now, end=now)
 
 
 @pytest.mark.parametrize(
@@ -730,6 +1132,168 @@ def test_normalize_run_row_uses_settling_margin_and_sticky_failure() -> None:
     assert in_progress.input_tokens is None
     assert in_progress.output_tokens == 0
     assert failed.status == "failed"
+
+
+def _price_reference(*entries: dict[str, Any], effective_date: str = "2026-08-01"):
+    return load_price_reference(
+        json.dumps(
+            make_price_reference_payload(
+                version="test-v1",
+                effective_date=effective_date,
+                entries=list(entries),
+            )
+        )
+    )
+
+
+def test_estimate_token_cost_prices_each_model_with_decimal_arithmetic() -> None:
+    reference = _price_reference(
+        make_price_entry(
+            model="model-a", token_class="input", unit_price="2", per_tokens=1
+        ),
+        make_price_entry(
+            model="model-b", token_class="output", unit_price="3", per_tokens=1
+        ),
+    )
+    estimate = estimate_token_cost(
+        [
+            RunModelUsage(model="model-a", input_tokens=10),
+            RunModelUsage(model="model-b", output_tokens=4),
+        ],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+    )
+
+    assert estimate.amount == Decimal("32")
+    assert estimate.currency == "USD"
+    assert estimate.completeness == "partial"
+    assert "output tokens not reported" in estimate.excluded_components
+    assert not isinstance(estimate.amount, float)
+
+
+def test_estimate_token_cost_distinguishes_zero_unpriced_and_exclusions() -> None:
+    reference = _price_reference(
+        make_price_entry(
+            model="model-a", token_class="input", unit_price="2", per_tokens=1
+        )
+    )
+    zero = estimate_token_cost(
+        [
+            RunModelUsage(
+                model="model-a",
+                input_tokens=0,
+                output_tokens=0,
+                cache_read_tokens=0,
+                cache_write_tokens=0,
+                reasoning_tokens=0,
+            )
+        ],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+    )
+    absent_model = estimate_token_cost(
+        [],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+    )
+    unpriced = estimate_token_cost(
+        [RunModelUsage(model="unknown", input_tokens=1)],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+    )
+    unpriced_token_class = estimate_token_cost(
+        [RunModelUsage(model="model-a", input_tokens=1, output_tokens=1)],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+    )
+    truncated = estimate_token_cost(
+        [RunModelUsage(model="model-a", input_tokens=1)],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+        model_usage_truncated=True,
+        excluded_components=("hosted-agent compute",),
+    )
+
+    # An observed zero is not "not reported": it is a real zero-price result.
+    assert zero.amount == Decimal("0")
+    assert zero.completeness == "complete"
+    assert absent_model.completeness == "not_priced"
+    assert absent_model.amount is None
+    assert unpriced.completeness == "not_priced"
+    assert unpriced.amount is None
+    assert unpriced_token_class.completeness == "not_priced"
+    assert unpriced_token_class.amount is None
+    assert truncated.amount == Decimal("2")
+    assert truncated.completeness == "partial"
+    assert "hosted-agent compute" in truncated.excluded_components
+    assert "model-attributed token usage was truncated" in truncated.excluded_components
+
+
+def test_estimate_token_cost_never_sums_currencies_and_stale_reference_remains_usable() -> None:
+    reference = _price_reference(
+        make_price_entry(
+            model="model-a",
+            token_class="input",
+            unit_price="2",
+            currency="USD",
+            per_tokens=1,
+        ),
+        make_price_entry(
+            model="model-b",
+            token_class="input",
+            unit_price="3",
+            currency="EUR",
+            per_tokens=1,
+        ),
+        effective_date="2026-05-31",
+    )
+    estimate = estimate_token_cost(
+        [
+            RunModelUsage(model="model-a", input_tokens=1),
+            RunModelUsage(model="model-b", input_tokens=1),
+        ],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+    )
+    stale = estimate_token_cost(
+        [RunModelUsage(model="model-a", input_tokens=1)],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+    )
+
+    assert estimate.amount is None
+    assert estimate.completeness == "not_priced"
+    assert "multiple currencies" in (estimate.reason or "")
+    assert stale.amount == Decimal("2")
+    assert stale.is_stale is True
+    assert stale.reference_age_days == 92
+
+
+def test_group_estimate_reports_full_scope_and_downgrades_unknown_coverage() -> None:
+    reference = _price_reference(
+        make_price_entry(
+            model="model-a", token_class="input", unit_price="2", per_tokens=1
+        )
+    )
+    usage = [RunModelUsage(model="model-a", input_tokens=3, run_count=5)]
+    complete_coverage = estimate_token_cost(
+        usage,
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+        scope_run_count=5,
+        group=True,
+    )
+    unknown_coverage = estimate_token_cost(
+        usage,
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+        group=True,
+    )
+
+    assert complete_coverage.covered_run_count == 5
+    assert complete_coverage.scope_run_count == 5
+    assert unknown_coverage.completeness == "partial"
+    assert "full-scope run coverage was not reported" in unknown_coverage.excluded_components
 
 
 def test_normalize_cost_run_observation_preserves_null_zero_and_safe_fields() -> None:
@@ -2327,6 +2891,236 @@ async def test_query_view_runs_normalizes_window_scoped_status_and_coverage() ->
 
 
 @pytest.mark.asyncio
+async def test_runs_view_preserves_totals_and_adds_model_attributed_estimate() -> None:
+    clock = FakeDatetimeClock(datetime(2026, 8, 31, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    run = {
+        "run_key": "conversation-1",
+        "run_key_kind": "conversation",
+        "agent_key": "agent-1",
+        "started_at": datetime(2026, 8, 30, 8, tzinfo=timezone.utc),
+        "last_activity_at": datetime(2026, 8, 30, 8, 1, tzinfo=timezone.utc),
+        "turns": 1,
+        "failed_turns": 0,
+        "tool_invocations": 0,
+        "tool_failures": 0,
+        "input_tokens": 30,
+        "output_tokens": 12,
+        "cache_read_tokens": 6,
+        "cache_write_tokens": None,
+        "reasoning_tokens": None,
+        "model_usage": {
+            "gpt-5-nano": {
+                "model": "gpt-5-nano",
+                "input_tokens": 30,
+                "output_tokens": 12,
+                "cache_read_tokens": 6,
+                "cache_write_tokens": None,
+                "reasoning_tokens": None,
+            }
+        },
+        "model_usage_truncated": False,
+        "total_in_scope": 1,
+    }
+    service, _, _ = _service(
+        inventory=inventory,
+        results=[SourceResult(source_id="src-1", status="success", tables=[run])],
+        clock=clock,
+    )
+
+    observed = await service.query_view(_scope(), _filters(), view="runs")
+    normalized = observed.data[0]
+
+    assert normalized.input_tokens == 30
+    assert normalized.output_tokens == 12
+    assert normalized.cache_read_tokens == 6
+    assert normalized.model_usage[0].model == "gpt-5-nano"
+    assert normalized.estimated_cost.amount == Decimal("0.00000633")
+    assert normalized.estimated_cost.currency == "USD"
+    assert normalized.estimated_cost.completeness == "partial"
+
+
+@pytest.mark.asyncio
+async def test_runs_view_retains_unattributed_model_tokens_as_not_priced() -> None:
+    run = {
+        "run_key": "conversation-unattributed",
+        "run_key_kind": "conversation",
+        "agent_key": "agent-1",
+        "started_at": datetime(2026, 8, 30, 8, tzinfo=timezone.utc),
+        "last_activity_at": datetime(2026, 8, 30, 8, 1, tzinfo=timezone.utc),
+        "turns": 1,
+        "failed_turns": 0,
+        "tool_invocations": 0,
+        "tool_failures": 0,
+        "input_tokens": 30,
+        "output_tokens": 12,
+        "model_usage": {
+            UNATTRIBUTED_MODEL: {
+                "model": UNATTRIBUTED_MODEL,
+                "input_tokens": 30,
+                "output_tokens": 12,
+            }
+        },
+        "model_usage_truncated": False,
+        "total_in_scope": 1,
+    }
+    service, _, _ = _service(
+        inventory=_inventory([_source()]),
+        results=[SourceResult(source_id="src-1", status="success", tables=[run])],
+        clock=FakeDatetimeClock(datetime(2026, 8, 31, tzinfo=timezone.utc)),
+    )
+
+    observed = await service.query_view(_scope(), _filters(), view="runs")
+
+    assert len(observed.data) == 1
+    assert observed.data[0].model_usage[0].model == UNATTRIBUTED_MODEL
+    assert observed.data[0].estimated_cost.completeness == "not_priced"
+    assert observed.data[0].estimated_cost.amount is None
+    assert "model attribution not reported" in (
+        observed.data[0].estimated_cost.excluded_components
+    )
+
+
+@pytest.mark.asyncio
+async def test_agent_rollup_uses_server_aggregate_and_reports_scope_coverage() -> None:
+    clock = FakeDatetimeClock(datetime(2026, 8, 31, tzinfo=timezone.utc))
+    inventory = _inventory([_source()])
+    row = {
+        "project_resource_id": _PROJECT_ID,
+        "agent_key": "agent-1",
+        "agent_id": "agent-1",
+        "agent_name": "Agent 1",
+        "model": "gpt-5-nano",
+        "invocations": 4,
+        "failures": 0,
+        "last_seen": datetime(2026, 8, 30, tzinfo=timezone.utc),
+        "input_tokens": 40,
+        "output_tokens": 20,
+        "model_usage": {
+            "gpt-5-nano": {
+                "model": "gpt-5-nano",
+                "input_tokens": 40,
+                "output_tokens": 20,
+                "run_count": 4,
+            }
+        },
+        "scope_run_count": 4,
+        "total_in_scope": MAX_ROWS_PER_QUERY + 1,
+    }
+    rows = [
+        {
+            **row,
+            "agent_key": f"agent-{index}",
+            "agent_id": f"agent-{index}",
+            "model_usage": {
+                "gpt-5-nano": {
+                    "model": "gpt-5-nano",
+                    "input_tokens": 40,
+                    "output_tokens": 20,
+                    "run_count": 4,
+                }
+            },
+        }
+        for index in range(MAX_ROWS_PER_QUERY)
+    ]
+    service, _, _ = _service(
+        inventory=inventory,
+        results=[SourceResult(source_id="src-1", status="success", tables=rows)],
+        clock=clock,
+    )
+
+    result = await service.query_view(_scope(), _filters(), view="agents")
+    estimate = result.data[0].estimated_cost
+    assert result.bounds is not None
+    assert result.bounds.truncated is True
+    assert estimate.covered_run_count == estimate.scope_run_count == 4
+    assert estimate.unpriced_run_count == 0
+    assert estimate.amount == Decimal("0.000010")
+
+
+def test_group_estimate_sums_priced_models_and_counts_unpriced_runs() -> None:
+    reference = _price_reference(
+        make_price_entry(
+            model="model-a", token_class="input", unit_price="2", per_tokens=1
+        )
+    )
+    estimate = estimate_token_cost(
+        [
+            RunModelUsage(model="model-a", input_tokens=3, run_count=3),
+            RunModelUsage(model="unpriced", input_tokens=4, run_count=2),
+        ],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+        scope_run_count=5,
+        group=True,
+    )
+
+    assert estimate.amount == Decimal("6")
+    assert estimate.completeness == "partial"
+    assert estimate.covered_run_count == estimate.scope_run_count == 5
+    assert estimate.unpriced_run_count == 2
+
+
+def test_group_estimate_excludes_partial_components_of_unpriced_runs() -> None:
+    reference = _price_reference(
+        make_price_entry(
+            model="model-a", token_class="input", unit_price="2", per_tokens=1
+        )
+    )
+    estimate = estimate_token_cost(
+        [
+            RunModelUsage(
+                model="model-a",
+                input_tokens=3,
+                output_tokens=4,
+                run_count=1,
+            )
+        ],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+        scope_run_count=1,
+        group=True,
+    )
+
+    assert estimate.completeness == "not_priced"
+    assert estimate.amount is None
+    assert estimate.unpriced_run_count == 1
+
+
+def test_group_estimate_does_not_combine_currency_buckets() -> None:
+    reference = _price_reference(
+        make_price_entry(
+            model="model-a",
+            token_class="input",
+            unit_price="2",
+            currency="USD",
+            per_tokens=1,
+        ),
+        make_price_entry(
+            model="model-b",
+            token_class="input",
+            unit_price="3",
+            currency="EUR",
+            per_tokens=1,
+        ),
+    )
+    estimate = estimate_token_cost(
+        [
+            RunModelUsage(model="model-a", input_tokens=1, run_count=1),
+            RunModelUsage(model="model-b", input_tokens=1, run_count=1),
+        ],
+        price_reference=reference,
+        as_of=datetime(2026, 8, 31, tzinfo=timezone.utc),
+        scope_run_count=2,
+        group=True,
+    )
+
+    assert estimate.completeness == "not_priced"
+    assert estimate.amount is None
+    assert "multiple currencies" in (estimate.reason or "")
+
+
+@pytest.mark.asyncio
 async def test_query_view_caches_bounds_and_keeps_them_stable_on_cache_hits() -> None:
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory([_source()])
@@ -2671,6 +3465,38 @@ async def test_query_view_cache_keys_are_scoped_by_identity_and_filters() -> Non
 
 
 @pytest.mark.asyncio
+async def test_window_timezone_label_never_changes_utc_query_or_cache_identity() -> None:
+    now = datetime(2024, 3, 10, 10, 30, tzinfo=timezone.utc)
+    start = datetime(2024, 3, 10, 9, 30, tzinfo=timezone.utc)
+    service, _discovery, query = _service(
+        inventory=_inventory([_source()]),
+        results=[_agent_rows_result()],
+        clock=FakeDatetimeClock(now),
+    )
+    local_label = CustomWindowSelection(
+        kind="custom",
+        start=start,
+        end=now,
+        timezone_label="America/Los_Angeles",
+    )
+    utc_label = local_label.model_copy(update={"timezone_label": "UTC"})
+
+    first = await service.query_view(
+        _scope(), _filters(), view="agents", window=local_label
+    )
+    second = await service.query_view(
+        _scope(), _filters(), view="agents", window=utc_label
+    )
+
+    assert first.cache_status == "miss"
+    assert second.cache_status == "hit"
+    assert len(query.calls) == 1
+    assert query.calls[0][2:] == (start, now)
+    assert query.calls[0][2].utcoffset() == timedelta(0)
+    assert query.calls[0][3].utcoffset() == timedelta(0)
+
+
+@pytest.mark.asyncio
 async def test_query_view_rejects_filters_outside_scope() -> None:
     clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
     inventory = _inventory([_source()])
@@ -2850,7 +3676,7 @@ async def test_query_view_models_and_overview_normalize_correctly() -> None:
     models = await service.query_view(_scope(), _filters(), view="models")
     assert models.data[0].deployment == "gpt-4o-prod"
 
-    overview_service, _discovery2, _query2 = _service(
+    overview_service, _discovery2, overview_query = _service(
         inventory=inventory,
         results=[
             SourceResult(
@@ -2862,6 +3688,15 @@ async def test_query_view_models_and_overview_normalize_correctly() -> None:
                         "failures": 1,
                         "avg_latency_ms": 100.0,
                         "p95_latency_ms": 180.0,
+                        "run_count": 3,
+                        "agent_count": 2,
+                        "model_count": 1,
+                        "model_invocations": 5,
+                        "tool_count": 1,
+                        "tool_invocations": 2,
+                        "tool_failures": 0,
+                        "input_tokens": 30,
+                        "output_tokens": 10,
                     }
                 ],
             )
@@ -2869,12 +3704,101 @@ async def test_query_view_models_and_overview_normalize_correctly() -> None:
         clock=clock,
     )
     overview = await overview_service.query_view(_scope(), _filters(), view="overview")
-    assert overview.data == {
+    assert {key: overview.data[key] for key in (
+        "invocations", "failures", "avg_latency_ms", "p95_latency_ms"
+    )} == {
         "invocations": 5,
         "failures": 1,
         "avg_latency_ms": 100.0,
         "p95_latency_ms": 180.0,
     }
+    summaries = overview.data["summaries"]
+    assert [summary.entity_family for summary in summaries] == [
+        "Runs",
+        "Agents",
+        "Models",
+        "Tools",
+    ]
+    assert next(
+        figure.value
+        for figure in summaries[0].figures
+        if figure.label == "Run tokens consumed"
+    ) == 40
+    assert len(overview_query.calls) == 1
+
+
+def test_entity_summary_contract_binds_every_figure_to_its_family() -> None:
+    summary = EntitySummary(
+        entity_family="Runs",
+        label="Runs",
+        figures=[
+            SummaryFigure(label="Run failures", value=0, tone="warn"),
+            SummaryFigure(label="Run tokens consumed", value=None, unit="tokens"),
+        ],
+        coverage_state="partial",
+    )
+    assert summary.figures[0].value == 0
+    assert summary.figures[1].value is None
+
+    with pytest.raises(ValueError, match="must name its run entity"):
+        EntitySummary(
+            entity_family="Runs",
+            label="Runs",
+            figures=[SummaryFigure(label="Failures", value=0)],
+            coverage_state="available",
+        )
+
+
+@pytest.mark.asyncio
+async def test_overview_degrades_secondary_summaries_before_runs() -> None:
+    clock = FakeDatetimeClock(datetime(2024, 1, 1, tzinfo=timezone.utc))
+    inventory = _inventory([_source("src-1"), _source("src-2")])
+    service, _discovery, query = _service(
+        inventory=inventory,
+        results=[
+            SourceResult(
+                source_id="src-1",
+                status="success",
+                tables=[
+                    {
+                        "invocations": 2,
+                        "failures": 0,
+                        "avg_latency_ms": 10.0,
+                        "p95_latency_ms": 12.0,
+                        "run_count": 1,
+                        "agent_count": 1,
+                        "model_count": 1,
+                        "model_invocations": 2,
+                        "tool_count": 1,
+                        "tool_invocations": 1,
+                        "tool_failures": 0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                    }
+                ],
+            ),
+            SourceResult(
+                source_id="src-2",
+                status="timeout",
+                tables=[],
+                reason="request timed out",
+            ),
+        ],
+        clock=clock,
+    )
+
+    overview = await service.query_view(_scope(), _filters(), view="overview")
+
+    assert overview.data["invocations"] == 2
+    assert [item.entity_family for item in overview.data["summaries"]] == ["Runs"]
+    assert overview.data["summaries"][0].coverage_state == "partial"
+    tokens = next(
+        figure
+        for figure in overview.data["summaries"][0].figures
+        if figure.label == "Run tokens consumed"
+    )
+    assert tokens.value == 0
+    assert len(query.calls) == 1
 
 
 @pytest.mark.asyncio
