@@ -9,13 +9,21 @@ semantics (including zero-versus-missing rendering).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
+import inspect
+from zoneinfo import ZoneInfo
+
+import re
 
 import pytest
 
 from agentops.agent.observe import ui
+from agentops.agent.observe.queries import MAX_ROWS_PER_QUERY
+from agentops.agent import ui_theme
 from agentops.core.cost import CostPeriodRef
-from agentops.core.observe import CoverageResult, GenerativeAIContent, ModelUsage
+from agentops.core.observe import CostEstimate, CoverageResult, GenerativeAIContent, ModelUsage
+from fixtures.observe import make_run_usage_rows_at_scale
 
 
 def _dt(hour: int = 0) -> datetime:
@@ -40,7 +48,7 @@ def test_default_range_and_refresh_constants() -> None:
 
 
 def test_observe_views_and_labels_cover_all_required_surfaces() -> None:
-    assert ui.OBSERVE_VIEWS == ("overview", "agents", "usage", "tools", "runs")
+    assert ui.OBSERVE_VIEWS == ("overview", "runs", "agents", "usage", "tools")
     for view in ui.OBSERVE_VIEWS:
         assert view in ui.OBSERVE_VIEW_LABELS
 
@@ -52,10 +60,10 @@ def test_observe_view_wire_names_map_internal_ids_to_openapi_view_enum() -> None
     # building the outgoing wire payload.
     assert ui.OBSERVE_VIEW_WIRE_NAMES == {
         "overview": "overview",
+        "runs": "runs",
         "agents": "agents",
         "usage": "models",
         "tools": "tools",
-        "runs": "runs",
     }
     for view in ui.OBSERVE_VIEWS:
         assert view in ui.OBSERVE_VIEW_WIRE_NAMES
@@ -79,6 +87,7 @@ def test_filter_query_keys_exclude_raw_content_fields() -> None:
         "model",
         "tool_name",
         "run_key",
+        "window_preset",
         "start",
         "end",
     )
@@ -115,6 +124,10 @@ def test_render_observe_nav_renders_every_view_once() -> None:
     for view in ui.OBSERVE_VIEWS:
         assert html.count(f'data-observe-nav-link="{view}"') == 1
     assert 'data-observe-nav-link="cost"' not in html
+    positions = [
+        html.index(f'data-observe-nav-link="{view}"') for view in ui.OBSERVE_VIEWS
+    ]
+    assert positions == sorted(positions)
 
 
 def test_render_observe_nav_only_adds_cost_when_enabled() -> None:
@@ -357,7 +370,10 @@ def test_user_selector_and_script_preserve_only_opaque_user_state() -> None:
     assert '<option value="user" selected>Users in selected department</option>' in controls
     script = ui._OBSERVE_SCRIPT
     assert 'group_by: appliedFilters.attribution_group_by || "department"' in script
-    assert "user_filter_token: appliedFilters.user_filter_token || null" in script
+    assert (
+        "filters.user_filter_token = appliedFilters.user_filter_token || null"
+        in script
+    )
     assert "localStorage.setItem" not in script
     assert "sessionStorage.setItem" not in script
     sync_url = script.split("function syncUrl() {")[1].split("\n  }\n")[0]
@@ -491,12 +507,206 @@ def test_filter_bar_renders_optional_scope_label() -> None:
 
 def test_filter_bar_omits_scope_paragraph_when_absent() -> None:
     html = ui.render_filter_bar()
-    assert "observe-scope" not in html
+    assert '<p class="observe-scope">' not in html
+
+
+# ---------------------------------------------------------------------------
+# Faceted multi-select scope controls (T018 / spec 014)
+# ---------------------------------------------------------------------------
+
+
+SCOPE_DIMENSIONS = (
+    "foundry_resource_id",
+    "project_resource_id",
+    "agent_id",
+    "model",
+    "tool_name",
+    "run_key",
+)
+
+
+def test_scope_multiselect_changes_remain_draft_until_apply() -> None:
+    html = ui.render_filter_bar()
+    script = ui._OBSERVE_SCRIPT
+
+    for dimension in SCOPE_DIMENSIONS:
+        assert f'data-scope-dimension="{dimension}"' in html
+    assert "draftFilters" in script
+    assert "appliedFilters" in script
+    assert 'document.getElementById("observe-filter-form")' in script
+    assert re.search(
+        r'addEventListener\("submit",[\s\S]+?appliedFilters\s*=\s*'
+        r'(?:Object\.assign\([^;]*draftFilters|draftFilters)',
+        script,
+    )
+    # Editing a scope checkbox may refresh downstream facets, but only Apply
+    # may run the view query. Other existing selectors intentionally refresh.
+    scope_renderer = script[
+        script.index("function renderScopeOptions(") :
+        script.index("function loadScopeOptions(")
+    ]
+    assert 'addEventListener("change"' in scope_renderer
+    assert "fetchObserveData(" not in scope_renderer
+
+
+def test_scope_multiselect_round_trips_repeated_values_through_allowlisted_url_keys() -> None:
+    script = ui._OBSERVE_SCRIPT
+
+    assert "FILTER_KEYS.forEach" in script
+    assert "params.getAll(key)" in script
+    assert "params.append(key," in script
+    for dimension in SCOPE_DIMENSIONS:
+        assert dimension in ui.OBSERVE_FILTER_QUERY_KEYS
+
+
+def test_unopened_scope_picker_preserves_url_selected_values_on_apply() -> None:
+    script = ui._OBSERVE_SCRIPT
+    draft_reader = script[
+        script.index("function readDraftFromForm(") :
+        script.index("function populateFormFromApplied(")
+    ]
+
+    assert "selectedValues = selectedScopeValues(scope);" in draft_reader
+    assert draft_reader.index("selectedScopeValues(scope)") < draft_reader.index(
+        "delete draft[key]"
+    )
+
+
+def test_preset_requests_send_absolute_filters_and_relative_window_intent() -> None:
+    script = ui._OBSERVE_SCRIPT
+    scope_loader = script[
+        script.index("function loadScopeOptions(") :
+        script.index("function refreshScopeOptionsToTheRight(")
+    ]
+    query_fetch = script[
+        script.index("function fetchObserveData(") :
+        script.index("function scheduleAutoRefresh(")
+    ]
+
+    assert "start: bounds.start" in script
+    assert "end: bounds.end" in script
+    assert "filters: observeFiltersForRequest(appliedFilters)" in query_fetch
+    assert "payload.window = windowSelectionForRequest(appliedFilters);" in query_fetch
+    assert "var filters = observeFiltersForRequest(draft);" in scope_loader
+    assert "window: windowSelectionForRequest(draft)" in scope_loader
+
+
+def test_truncated_scope_option_set_states_shown_count_against_total_only_when_bounded() -> None:
+    script = ui._OBSERVE_SCRIPT
+
+    assert "optionSet.truncated" in script
+    assert "optionSet.total_observed" in script
+    assert re.search(
+        r"optionSet\.options\.length[\s\S]{0,240}?optionSet\.total_observed",
+        script,
+    )
+    # The ratio is conditional: complete/unbounded sets must not imply truncation.
+    assert re.search(
+        r"if\s*\(\s*optionSet\.truncated[\s\S]{0,500}?"
+        r"(?:textContent|innerText)",
+        script,
+    )
+
+
+def test_zero_scope_selections_leave_dimension_unrestricted() -> None:
+    script = ui._OBSERVE_SCRIPT
+
+    assert re.search(
+        r"(?:checked|selectedValues)[\s\S]{0,300}?"
+        r"(?:length|filter)[\s\S]{0,300}?"
+        r"(?:delete|undefined|null|\[\])",
+        script,
+    )
+
+
+def test_scope_options_failure_or_timeout_reveals_free_text_fallback() -> None:
+    html = ui.render_filter_bar()
+    script = ui._OBSERVE_SCRIPT
+
+    assert "/api/observe/scope-options" in script
+    assert "AbortController" in script
+    assert re.search(r"(?:setTimeout|timeout)", script, re.IGNORECASE)
+    assert "data-scope-fallback" in html
+    assert re.search(
+        r"(?:catch|response\.ok)[\s\S]{0,800}?scope[\s-]?fallback",
+        script,
+        re.IGNORECASE,
+    )
+
+
+def test_scope_cascade_preserves_reachable_values_and_announces_named_removals() -> None:
+    html = ui.render_filter_bar()
+    script = ui._OBSERVE_SCRIPT
+    cascade = script[
+        script.index("function refreshScopeOptionsToTheRight(") :
+        script.index("function initializeScopeControls(")
+    ]
+    renderer = script[
+        script.index("function renderScopeOptions(") :
+        script.index("function loadScopeOptions(")
+    ]
+
+    assert 'id="observe-scope-status"' in html
+    assert 'role="status" aria-live="polite"' in html
+    assert "scope.dataset.selectedValues = \"[]\";" not in cascade
+    assert "downstream.reduce" in cascade
+    assert "optionSet.invalidated_selections" in renderer
+    assert "availableValues.indexOf(scopeOptionKey(dimension, value)) >= 0" in renderer
+    assert "Removed unavailable selections: " in script
+
+
+def test_scope_multiselect_controls_are_keyboard_operable() -> None:
+    html = ui.render_filter_bar()
+
+    assert 'type="checkbox"' in html
+    assert 'id="observe-apply-filters"' in html
+    assert 'type="submit"' in html
+    assert "onclick=" not in html
+    assert re.search(r"<(?:fieldset|div)[^>]+data-scope-dimension=", html)
+    assert re.search(r"<(?:legend|label)\b", html)
+
+
+def test_scope_option_labels_and_selections_cannot_add_generative_url_fields() -> None:
+    script = ui._OBSERVE_SCRIPT
+    url_writer = script[script.index("function buildStateUrl()") : script.index(
+        "function syncUrl()"
+    )]
+    generative_fields = (
+        "input_messages",
+        "output_messages",
+        "system_instructions",
+        "tool_content",
+        "evaluation_explanation",
+        "prompt",
+        "response",
+    )
+
+    assert "FILTER_KEYS.forEach" in url_writer
+    assert "label" not in url_writer
+    for field in generative_fields:
+        assert field not in url_writer
+        assert field not in ui.OBSERVE_FILTER_QUERY_KEYS
 
 
 # ---------------------------------------------------------------------------
 # Source labels / refreshed-at / last-seen (T052)
 # ---------------------------------------------------------------------------
+
+
+def test_window_presets_default_round_trip_and_custom_validation() -> None:
+    html = ui.render_filter_bar()
+    script = ui._OBSERVE_SCRIPT
+
+    assert '<option value="7d" selected>7 days</option>' in html
+    assert '<option value="custom">Custom</option>' in html
+    assert 'data-custom-window hidden' in html
+    assert '"window_preset"' in script
+    assert 'applied.window_preset = "7d"' in script
+    assert 'params.append(key, value)' in script
+    assert 'windowPreset.addEventListener("change"' in script
+    assert "Custom window end must be after start." in script
+    assert "if (!validateDraftWindow(form, draftFilters)) return;" in script
+    assert 'id="observe-filter-window_preset"' in html
 
 
 def test_render_source_label_from_plain_string() -> None:
@@ -521,7 +731,7 @@ def test_render_refreshed_at_with_datetime() -> None:
     html = ui.render_refreshed_at(_dt(5))
     assert "<time" in html
     assert "2024-01-01T05:00:00Z" in html
-    assert "Refreshed" in html
+    assert "Refreshed: Jan 1, 2024, 05:00 +00:00" in html
 
 
 def test_render_refreshed_at_missing() -> None:
@@ -532,8 +742,91 @@ def test_render_refreshed_at_missing() -> None:
 def test_render_last_seen_uses_compact_utc_timestamp() -> None:
     html = ui.render_last_seen(_dt(3))
     assert 'datetime="2024-01-01T03:00:00Z"' in html
-    assert ">2024-01-01 03:00:00 UTC<" in html
+    assert ">2024-01-01 03:00:00 +00:00<" in html
     assert "not agent lifecycle status" not in html
+
+
+def test_time_presentation_defaults_local_and_is_one_accessible_page_control() -> None:
+    html = ui.render_observe_page()
+
+    assert html.split("<script>", 1)[0].count('data-observe-timezone-basis') == 1
+    assert '<option value="local" selected>Local</option>' in html
+    assert '<option value="utc">UTC</option>' in html
+    assert 'for="observe-timezone-basis"' in html
+    assert 'aria-describedby="observe-timezone-help"' in html
+    assert 'presentationTimeBasis = "local"' in html
+    assert 'timezoneBasis.addEventListener("change"' in html
+
+
+def test_timezone_change_rerenders_every_time_without_persisting_selection() -> None:
+    script = ui._OBSERVE_SCRIPT
+
+    assert script.index("function inputValueToUtcIso") < script.index(
+        "function rerenderTemporalSurface"
+    )
+    assert script.index("function utcIsoToInputValue") < script.index(
+        "function rerenderTemporalSurface"
+    )
+    assert 'document.querySelectorAll("[data-observe-time]").forEach(updatePresentedTime)' in script
+    assert "rerenderTemporalSurface();" in script
+    assert '"data-observe-timezone-basis"' in script
+    assert '"timezone"' not in script.split("var FILTER_KEYS =", 1)[1].split(";", 1)[0]
+    assert "localStorage" not in script
+    assert "sessionStorage" not in script
+    assert "document.cookie" not in script
+
+
+def test_refresh_status_follows_time_controls_and_starts_honestly() -> None:
+    html = ui.render_filter_bar()
+
+    assert html.index('id="observe-timezone-basis"') < html.index(
+        'id="observe-refresh-status"'
+    )
+    assert ">Not yet refreshed</span>" in html
+    assert ".observe-refresh-status {" in ui._OBSERVE_STYLES
+    assert "margin-left: auto;" in ui._OBSERVE_STYLES
+    refreshed = ui.render_refreshed_at(_dt(5))
+    assert 'data-observe-time-style="compact"' in refreshed
+    assert "Jan 1, 2024" in refreshed
+
+
+def test_timezone_selection_does_not_enter_address_or_query_identity() -> None:
+    script = ui._OBSERVE_SCRIPT
+    filter_declaration = script.split("var FILTER_KEYS =", 1)[1].split(";", 1)[0]
+    state_url = script.split("function buildStateUrl()", 1)[1].split(
+        "function syncUrl()", 1
+    )[0]
+    query_payload = script.split("function windowSelectionForRequest(", 1)[1].split(
+        "function observeFiltersForRequest(", 1
+    )[0]
+
+    assert "timezone" not in filter_declaration
+    assert "timezone" not in state_url
+    assert query_payload.count('timezone_label: "UTC"') == 2
+    assert "presentationTimeBasis" not in query_payload
+    assert "resolvedOptions" not in query_payload
+    assert 'if (!isNaN(moment.getTime())) applied[key] = moment.toISOString();' in script
+
+
+def test_python_and_javascript_time_formatters_share_fixed_utc_contract() -> None:
+    assert ui._format_full_timestamp(_dt(5)) == "2024-01-01 05:00:00 +00:00"
+    assert ui._format_compact_timestamp(_dt(5)) == "Jan 1, 2024, 05:00 +00:00"
+    script = ui._OBSERVE_SCRIPT
+    assert 'function formatPresentationTimestamp(value, style, timeZoneOverride)' in script
+    assert 'var compact = style === "compact";' in script
+    assert 'hourCycle: "h23"' in script
+    assert 'timeZoneName: "shortOffset"' in script
+    assert 'return timePart(parts, "year") + "-" + timePart(parts, "month")' in script
+
+
+def test_time_formatter_observes_daylight_saving_boundaries() -> None:
+    pacific = ZoneInfo("America/Los_Angeles")
+    before = datetime(2024, 3, 10, 9, 59, tzinfo=timezone.utc)
+    after = datetime(2024, 3, 10, 10, 1, tzinfo=timezone.utc)
+
+    assert ui._format_full_timestamp(before, pacific) == "2024-03-10 01:59:00 -08:00"
+    assert ui._format_full_timestamp(after, pacific) == "2024-03-10 03:01:00 -07:00"
+    assert 'new Intl.DateTimeFormat("en-US", options)' in ui._OBSERVE_SCRIPT
 
 
 def test_render_last_seen_missing_uses_metric_missing_class() -> None:
@@ -629,12 +922,87 @@ def test_render_overview_cards_zero_value_is_distinct_from_missing() -> None:
     assert "metric-missing" in html_missing
 
 
+def _overview_summaries() -> list[dict[str, object]]:
+    return [
+        {
+            "entity_family": "Runs",
+            "label": "Runs",
+            "coverage_state": "available",
+            "figures": [
+                {"label": "Runs observed", "value": 3, "unit": None, "tone": "info"},
+                {
+                    "label": "Run tokens consumed",
+                    "value": 0,
+                    "unit": "tokens",
+                    "tone": "info",
+                },
+            ],
+        },
+        {
+            "entity_family": "Agents",
+            "label": "Agents",
+            "coverage_state": "available",
+            "figures": [
+                {"label": "Agents observed", "value": 2, "unit": None, "tone": "info"}
+            ],
+        },
+        {
+            "entity_family": "Models",
+            "label": "Models",
+            "coverage_state": "no_data",
+            "figures": [
+                {"label": "Models observed", "value": 0, "unit": None, "tone": "info"}
+            ],
+        },
+        {
+            "entity_family": "Tools",
+            "label": "Tools",
+            "coverage_state": "available",
+            "figures": [
+                {"label": "Tool failures", "value": None, "unit": None, "tone": "warn"}
+            ],
+        },
+    ]
+
+
+def test_render_overview_groups_entity_headlines_with_runs_first() -> None:
+    html = ui.render_overview_cards(list(reversed(_overview_summaries())))
+    positions = [html.index(f'data-entity-family="{family}"') for family in (
+        "runs", "agents", "models", "tools"
+    )]
+    assert positions == sorted(positions)
+    assert "Run tokens consumed" in html
+    assert "0 tokens" in html
+    assert 'role="list"' in html
+    assert html.count('role="listitem"') == 4
+    assert "@media (max-width: 760px)" in ui._OBSERVE_STYLES
+    assert "@media (max-width: 420px)" in ui._OBSERVE_STYLES
+
+
+def test_render_overview_family_empty_state_is_not_a_reported_zero() -> None:
+    html = ui.render_overview_cards(_overview_summaries())
+    models = html.split('data-entity-family="models"', 1)[1].split("</section>", 1)[0]
+    tools = html.split('data-entity-family="tools"', 1)[1].split("</section>", 1)[0]
+    assert "No models data found for the selected scope and window." in models
+    assert "metric-zero" not in models
+    assert "Not reported" in tools
+    assert "metric-missing" in tools
+
+
 def test_script_overview_renders_aggregate_response_as_kpi_cards() -> None:
     script = ui._OBSERVE_SCRIPT
     block = script.split("function overviewMetricsFrom(data) {")[1].split("\n  }\n")[0]
-    for title in ("Invocations", "Failures", "Success rate", "Average latency", "p95 latency"):
+    for title in (
+        "Run invocations",
+        "Run failures",
+        "Run success rate",
+        "Average run latency",
+        "p95 run latency",
+    ):
         assert f'title: "{title}"' in block
     assert "data.invocations !== undefined" in block
+    assert "Array.isArray(data.summaries)" in block
+    assert 'var familyOrder = ["Runs", "Agents", "Models", "Tools"];' in script
 
 
 # ---------------------------------------------------------------------------
@@ -1063,13 +1431,13 @@ def test_script_cost_renderer_matches_server_fields_and_safe_dom_construction() 
     assert "innerHTML" not in script
 
 
-def test_script_cost_payload_sends_only_cost_selectors() -> None:
+def test_script_cost_payload_includes_required_absolute_filter_envelope() -> None:
     script = ui._OBSERVE_SCRIPT
     block = script.split("function buildCostPayload(manual) {")[1].split("\n  }\n")[0]
     for key in ui.COST_FILTER_QUERY_KEYS:
-        assert f"{key}:" in block
-    for shared in ui.OBSERVE_FILTER_QUERY_KEYS:
-        assert f"{shared}:" not in block
+        assert f"filters.{key} =" in block
+    assert "var filters = observeFiltersForRequest(appliedFilters);" in block
+    assert "window: windowSelectionForRequest(appliedFilters)" in block
     assert 'view: "cost"' in block
     assert "refresh: manual === true" in block
     fetch_block = script.split("function fetchObserveData(manual) {")[1].split(
@@ -1082,7 +1450,7 @@ def test_script_cost_selectors_round_trip_url_without_changing_shared_keys() -> 
     script = ui._OBSERVE_SCRIPT
     assert (
         'var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", '
-        '"model", "tool_name", "run_key", "start", "end"];'
+        '"model", "tool_name", "run_key", "window_preset", "start", "end"];'
     ) in script
     assert (
         'var COST_FILTER_KEYS = ["cost_period_id", "cost_component_id", '
@@ -1154,9 +1522,10 @@ def test_clean_url_cost_uses_first_typed_server_period_for_initial_request() -> 
     payload = script.split("function buildCostPayload(manual) {")[1].split(
         "\n  }\n"
     )[0]
-    assert "cost_period_id: appliedFilters.cost_period_id || null" in payload
-    for shared in ui.OBSERVE_FILTER_QUERY_KEYS:
-        assert f"{shared}:" not in payload
+    assert (
+        "filters.cost_period_id = appliedFilters.cost_period_id || null" in payload
+    )
+    assert "observeFiltersForRequest(appliedFilters)" in payload
 
 
 def test_cost_tool_and_run_grains_are_alternative_non_additive_reconciliations() -> None:
@@ -1451,6 +1820,20 @@ def _run(**overrides: object) -> dict[str, object]:
     return payload
 
 
+def _estimated_cost(**overrides: object) -> CostEstimate:
+    payload: dict[str, object] = {
+        "amount": Decimal("0.00042"),
+        "currency": "USD",
+        "completeness": "complete",
+        "price_reference_version": "test-v1",
+        "price_reference_effective_date": date(2026, 8, 1),
+        "is_stale": False,
+        "reference_age_days": 30,
+    }
+    payload.update(overrides)
+    return CostEstimate.model_validate(payload)
+
+
 def test_render_tools_table_shows_source_latency_and_known_bounds() -> None:
     html = ui.render_tools_table(
         [_tool()],
@@ -1483,7 +1866,7 @@ def test_render_tools_table_empty_is_explained_without_unknown_total() -> None:
     assert "Tool attribution may not be reported" in html
 
 
-def test_render_runs_table_shows_correlation_range_scope_source_and_tokens() -> None:
+def test_render_runs_table_shows_correlation_scope_source_and_tokens() -> None:
     html = ui.render_runs_table(
         [_run()],
         bounds={"rows_shown": 1, "rows_total_in_scope": 4, "truncated": True},
@@ -1492,13 +1875,14 @@ def test_render_runs_table_shows_correlation_range_scope_source_and_tokens() -> 
         "Run key",
         "Correlation",
         "Source",
-        "Started in range",
-        "Duration in range",
-        "Turns in range",
+        "Started",
+        "Duration",
+        "Turns",
         "Tool invocations",
         "Input tokens",
         "Output tokens",
         "Total tokens",
+        "Estimated cost",
     ):
         assert f'data-label="{heading}"' in html
     assert "conversation-123" in html
@@ -1508,6 +1892,90 @@ def test_render_runs_table_shows_correlation_range_scope_source_and_tokens() -> 
     assert "Showing 1 of 4 rows in scope." in html
     assert "60.000 s" in html
     assert "<tfoot>" in html
+
+
+def test_estimated_cost_requires_status_disclaimer_currency_and_provenance() -> None:
+    html = ui.render_runs_table([_run(estimated_cost=_estimated_cost())])
+
+    assert "USD 0.00042" in html
+    assert "Completeness: complete" in html
+    assert "Price reference test-v1, effective 2026-08-01" in html
+    assert ui.ESTIMATED_COST_DISCLAIMER in html
+    assert 'data-completeness="complete"' in html
+    assert "This result uses price reference test-v1, effective 2026-08-01." in html
+
+
+def test_unpriced_is_not_zero_and_stale_estimate_remains_visible() -> None:
+    unpriced = CostEstimate(
+        completeness="not_priced",
+        reason="No published model price.",
+    )
+    stale = _estimated_cost(
+        amount=Decimal("0"),
+        is_stale=True,
+        reference_age_days=91,
+    )
+    html = ui.render_runs_table(
+        [
+            _run(run_key="unpriced", estimated_cost=unpriced),
+            _run(run_key="stale", estimated_cost=stale),
+        ],
+        bounds={"rows_shown": 2, "rows_total_in_scope": 2, "truncated": False},
+    )
+
+    assert "Not priced" in html
+    assert "No published model price." in html
+    assert "USD 0" in html
+    assert "Stale price reference (91 days old)" in html
+    assert html.count(ui.ESTIMATED_COST_DISCLAIMER) >= 2
+
+
+def test_agent_and_model_rollups_name_unpriced_runs_and_never_sum_billed_cost() -> None:
+    rollup = _estimated_cost(
+        completeness="partial",
+        excluded_components=["unpriced model"],
+        unpriced_run_count=2,
+        covered_run_count=10,
+        scope_run_count=10,
+    )
+    agent_html = ui.render_agents_table([_agent(estimated_cost=rollup)])
+    model = ModelUsage(
+        model="gpt-5-nano",
+        requests=10,
+        failures=0,
+        estimated_cost=rollup,
+        scope_run_count=10,
+    )
+    model_html = ui.render_models_usage_table([model])
+
+    for html in (agent_html, model_html):
+        assert "USD 0.00042" in html
+        assert "10 of 10 runs covered; 2 runs not priced" in html
+        assert "Completeness: partial" in html
+        assert ui.ESTIMATED_COST_DISCLAIMER in html
+    assert ui.ESTIMATED_COST_DISCLAIMER != ui.COST_DISCLAIMER
+    script = ui._OBSERVE_SCRIPT
+    assert "estimatedCostNode" in script
+    assert "renderCostAmountNode" in script
+    assert "estimated_cost +" not in script
+    assert "allocated_amount +" not in script
+
+
+def test_estimate_presentation_has_no_credential_commerce_or_outbound_dependency() -> None:
+    import agentops.agent.knowledge.pricing as pricing_loader
+    import agentops.core.observe_pricing as pricing_core
+
+    source = inspect.getsource(pricing_core) + inspect.getsource(pricing_loader)
+    for forbidden in (
+        "DefaultAzureCredential",
+        "azure.identity",
+        "requests.",
+        "httpx.",
+        "billing",
+        "commerce",
+    ):
+        assert forbidden not in source
+    assert "fetch(" not in source
 
 
 def test_render_runs_table_marks_absent_tokens_with_dash_and_escapes_values() -> None:
@@ -1554,6 +2022,348 @@ def test_unclassified_source_kind_explains_missing_attribution() -> None:
     assert "Unclassified" in html
     assert "could not be classified" in html
     assert ">Unknown<" not in html
+
+
+# ---------------------------------------------------------------------------
+# Runs table column declaration (T006/T007, FR-030)
+# ---------------------------------------------------------------------------
+
+
+def _js_array(name: str) -> tuple[str, ...]:
+    match = re.search(rf"var {name} = \[(.*?)\];", ui._OBSERVE_SCRIPT, re.DOTALL)
+    assert match, f"the embedded script must declare {name}"
+    return tuple(re.findall(r'"([^"]+)"', match.group(1)))
+
+
+def _js_string_map(name: str) -> dict[str, str]:
+    match = re.search(rf"var {name} = \{{(.*?)\}};", ui._OBSERVE_SCRIPT, re.DOTALL)
+    assert match, f"the embedded script must declare {name}"
+    return dict(re.findall(r'([a-z_]+):\s*"([^"]+)"', match.group(1)))
+
+
+def _js_label_tone_map(name: str) -> dict[str, dict[str, str]]:
+    match = re.search(rf"var {name} = \{{(.*?)\n  \}};", ui._OBSERVE_SCRIPT, re.DOTALL)
+    assert match, f"the embedded script must declare {name}"
+    entries = re.findall(
+        r'^\s*([a-z_]+): \{ label: "([^"]+)", tone: "([^"]+)" \},$',
+        match.group(1),
+        re.MULTILINE,
+    )
+    assert len(entries) == len({key for key, _label, _tone in entries}), (
+        f"{name} must not repeat a key"
+    )
+    return {
+        key: {"label": label, "tone": tone}
+        for key, label, tone in entries
+    }
+
+
+def _js_runs_table_columns() -> list[tuple[str, str, str | None, str, int]]:
+    block = re.search(
+        r"var RUNS_TABLE_COLUMNS = \[(.*?)\n  \];", ui._OBSERVE_SCRIPT, re.DOTALL
+    )
+    assert block, "the embedded script must declare RUNS_TABLE_COLUMNS"
+
+    columns: list[tuple[str, str, str | None, str, int]] = []
+    for line in block.group(1).splitlines():
+        if not line.strip():
+            continue
+        parsed = re.search(
+            r'\{ id: "([^"]+)", label: "([^"]+)", sortKey: (?:"([^"]+)"|null)'
+            r'(?:, help: (.*?))?(?:, priority: (\d+))? \}',
+            line.strip().rstrip(","),
+        )
+        assert parsed, f"could not parse JS Runs column declaration: {line}"
+        identifier, label, sort_key, help_expr, priority = parsed.groups()
+        if not help_expr:
+            help_text = ""
+        elif help_expr == "RUNS_TOKEN_HELP":
+            help_text = ui._RUNS_TOKEN_HELP
+        elif help_expr == "ESTIMATED_COST_HELP":
+            help_text = ui._ESTIMATED_COST_HELP
+        elif " + RUNS_TOKEN_HELP" in help_expr:
+            prefix = help_expr.split(" + RUNS_TOKEN_HELP", 1)[0].strip('"')
+            help_text = prefix + ui._RUNS_TOKEN_HELP
+        else:
+            help_text = help_expr.strip('"')
+        columns.append((identifier, label, sort_key, help_text, int(priority or 0)))
+    return columns
+
+
+def test_renaming_a_column_label_leaves_sorting_filtering_and_help_intact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Reword one label and prove nothing that keys off the column moves.
+
+    This is the whole point of the identifier/label split: the displayed prose
+    is editorial, so US3 can reword any heading without a reviewer having to
+    re-verify that sorting still works. The assertion is deliberately made
+    against the rendered markup rather than against the declaration, because
+    the markup is what the browser actually keys off.
+    """
+    original = ui.RUNS_TABLE_COLUMNS
+    target = next(c for c in original if c.identifier == "duration_ms")
+    assert target.help_text, "the column under test must carry help text"
+
+    renamed = tuple(
+        column.model_copy(update={"label": "Wall clock (renamed)"})
+        if column.identifier == "duration_ms"
+        else column
+        for column in original
+    )
+    monkeypatch.setattr(ui, "RUNS_TABLE_COLUMNS", renamed)
+
+    html = ui.render_runs_table([_run()])
+
+    # Identity is unchanged, so the sort key and the script lookup are too.
+    assert 'data-column-id="duration_ms"' in html
+    # The new prose is displayed, and the old prose is gone from the header.
+    assert 'data-label="Wall clock (renamed)"' in html
+    assert 'data-label="Duration"' not in html
+    # Help travels with the column, not with its old name.
+    assert target.help_text in html
+    # Every other column is untouched.
+    rendered_ids = re.findall(r'data-column-id="([^"]+)"', html)
+    assert rendered_ids == [column.identifier for column in original]
+
+
+def test_python_and_embedded_js_column_declarations_agree_on_identifiers() -> None:
+    """The two copies of the Runs table declaration must not drift.
+
+    ``ui.py`` declares the columns twice on purpose -- once for the
+    server-rendered first paint and once for the script that re-renders after a
+    fetch. Nothing in the language stops those from diverging, so this test is
+    the only thing that does. It compares identifiers, labels, sort keys, and
+    help text so either renderer exposes the same table contract.
+    """
+    js_columns = _js_runs_table_columns()
+    py_columns = [
+        (c.identifier, c.label, c.sort_key, c.help_text or "", c.priority)
+        for c in ui.RUNS_TABLE_COLUMNS
+    ]
+    assert js_columns == py_columns
+
+    # Every declared sort key is the identifier itself, which is what lets the
+    # script derive its lookup from the declaration instead of restating it.
+    for column in ui.RUNS_TABLE_COLUMNS:
+        assert column.sort_key is None or column.sort_key == column.identifier
+
+
+def test_every_python_and_embedded_javascript_duplicate_agrees() -> None:
+    """Pin every server/client constant that must remain duplicated in ``ui.py``."""
+    assert tuple(_js_string_map("VIEW_WIRE_NAMES")) == ui.OBSERVE_VIEWS
+    assert _js_string_map("VIEW_WIRE_NAMES") == ui.OBSERVE_VIEW_WIRE_NAMES
+    assert _js_array("FILTER_KEYS") == ui.OBSERVE_FILTER_QUERY_KEYS
+    assert _js_array("COST_FILTER_KEYS") == ui.COST_FILTER_QUERY_KEYS
+    assert _js_array("ATTRIBUTION_FILTER_KEYS") == ui.ATTRIBUTION_FILTER_QUERY_KEYS
+
+    refresh = re.search(r"var AUTO_REFRESH_MS = (\d+);", ui._OBSERVE_SCRIPT)
+    default_days = re.search(
+        r"var DEFAULT_RANGE_MS = (\d+) \* 24 \* 60 \* 60 \* 1000;",
+        ui._OBSERVE_SCRIPT,
+    )
+    assert refresh and int(refresh.group(1)) == ui.AUTO_REFRESH_MS
+    assert default_days
+    assert int(default_days.group(1)) * 24 == ui.DEFAULT_RANGE_HOURS
+
+    assert _js_label_tone_map("COVERAGE_STATE_LABELS") == ui.COVERAGE_STATE_LABELS
+    assert _js_string_map("SOURCE_KIND_LABELS") == ui.SOURCE_KIND_LABELS
+    assert _js_runs_table_columns() == [
+        (column.identifier, column.label, column.sort_key, column.help_text or "", column.priority)
+        for column in ui.RUNS_TABLE_COLUMNS
+    ]
+
+
+def test_runs_identifiers_are_abbreviated_and_full_values_remain_copyable() -> None:
+    run_key = "1234567890abcdef"
+    source_id = (
+        "/subscriptions/sub/resourceGroups/rg/providers/"
+        "Microsoft.MachineLearningServices/workspaces/production-workspace"
+    )
+
+    html = ui.render_runs_table(
+        [_run(run_key=run_key, source_id=source_id)],
+        bounds={"rows_shown": 1, "rows_total_in_scope": 2, "truncated": True},
+    )
+
+    assert "12345678\u2026" in html
+    assert ">production-workspace<" in html
+    assert f'data-copy-value="{run_key}"' in html
+    assert f'data-copy-value="{source_id}"' in html
+    assert f'value="{run_key}"' in html
+    assert f'value="{source_id}"' in html
+    assert 'aria-label="Copy full run key"' in html
+    assert 'aria-label="Copy full source resource ID"' in html
+    assert 'role="status" aria-live="polite"' in html
+
+    short_html = ui.render_runs_table(
+        [_run(run_key="run-1234")],
+        bounds={"rows_shown": 1, "rows_total_in_scope": 2, "truncated": True},
+    )
+    assert "run-1234\u2026" not in short_html
+    assert ">run-1234<" in short_html
+
+    script = ui._OBSERVE_SCRIPT
+    assert (
+        f"var RUN_IDENTIFIER_VISIBLE_CHARS = {ui.RUN_IDENTIFIER_VISIBLE_CHARS};"
+        in script
+    )
+    assert "abbreviateRunIdentifier(run.run_key)" in script
+    assert "sourceWorkspaceName(run.source_id)" in script
+
+
+def test_runs_copy_progressive_enhancement_has_clipboard_and_manual_fallback() -> None:
+    script = ui._OBSERVE_SCRIPT
+    block = script.split("function bindCopyControl(control) {")[1].split(
+        "\n  }\n", 1
+    )[0]
+    assert "navigator.clipboard.writeText(value)" in block
+    assert "input.select()" in block
+    assert 'details.open = true' in block
+    assert 'feedback.textContent = "Copied.";' in block
+    assert '"Copy failed. Select the full value below."' in block
+    assert "enhanceCopyControls(document);" in script
+
+
+def test_runs_labels_drop_in_range_without_changing_stable_sort_keys() -> None:
+    html = ui.render_runs_table([_run()])
+
+    assert "in range" not in html.lower()
+    for identifier, label in (
+        ("started_at", "Started"),
+        ("duration_ms", "Duration"),
+        ("turns", "Turns"),
+    ):
+        assert f'data-column-id="{identifier}"' in html
+        assert f'data-label="{label}"' in html
+        column = next(c for c in ui.RUNS_TABLE_COLUMNS if c.identifier == identifier)
+        assert column.sort_key == identifier
+
+
+def test_runs_suppress_singleton_dimensions_only_for_proven_complete_scope() -> None:
+    bounds = {"rows_shown": 2, "rows_total_in_scope": 2, "truncated": False}
+    html = ui.render_runs_table(
+        [_run(run_key="run-a"), _run(run_key="run-b")],
+        bounds=bounds,
+        diagnostics={"partial_sources": 0, "failed_sources": 0},
+    )
+
+    for identifier in ("run_key_kind", "agent_name", "source_id", "source_kind", "status"):
+        assert f'data-column-id="{identifier}"' not in html
+    assert 'aria-label="Values shared by every run in scope"' in html
+    assert "<dt>Correlation</dt><dd>conversation</dd>" in html
+    assert "<dt>Agent</dt><dd>Agent A</dd>" in html
+
+    expected_cells = len(ui.RUNS_TABLE_COLUMNS) - 5
+    thead = re.search(r"<thead>.*?</thead>", html, re.DOTALL)
+    tbody_main = re.search(r'<tr data-observe-run-row="true".*?</tr>', html, re.DOTALL)
+    tfoot = re.search(r"<tfoot>.*?</tfoot>", html, re.DOTALL)
+    assert thead and tbody_main and tfoot
+    assert thead.group(0).count("<th ") == expected_cells
+    assert tbody_main.group(0).count("<td") == expected_cells
+    assert (
+        tfoot.group(0).count("<th ") + tfoot.group(0).count("<td")
+        == expected_cells
+    )
+    assert f'colspan="{expected_cells}"' in html
+
+
+def test_runs_restore_dimension_when_second_value_appears() -> None:
+    html = ui.render_runs_table(
+        [
+            _run(run_key="run-a", status="succeeded"),
+            _run(run_key="run-b", status="failed"),
+        ],
+        bounds={"rows_shown": 2, "rows_total_in_scope": 2, "truncated": False},
+        diagnostics={"partial_sources": 0, "failed_sources": 0},
+    )
+
+    assert 'data-column-id="status"' in html
+    assert 'data-column-id="agent_name"' not in html
+
+
+@pytest.mark.parametrize(
+    ("bounds", "diagnostics"),
+    [
+        ({"rows_shown": 1, "rows_total_in_scope": 2, "truncated": True}, {}),
+        (
+            {
+                "rows_shown": 1,
+                "rows_total_in_scope": 2,
+                "truncated": False,
+                "has_next_page": True,
+            },
+            {},
+        ),
+        (
+            {"rows_shown": 1, "rows_total_in_scope": 1, "truncated": False},
+            {"partial_sources": 1, "failed_sources": 0},
+        ),
+        (
+            {"rows_shown": 1, "rows_total_in_scope": 1, "truncated": False},
+            {"partial_sources": 0, "failed_sources": 1},
+        ),
+        (None, {}),
+    ],
+)
+def test_runs_never_suppress_dimensions_for_incomplete_scope(
+    bounds: dict[str, object] | None,
+    diagnostics: dict[str, object],
+) -> None:
+    html = ui.render_runs_table([_run()], bounds=bounds, diagnostics=diagnostics)
+
+    for identifier in ("run_key_kind", "agent_name", "source_id", "source_kind", "status"):
+        assert f'data-column-id="{identifier}"' in html
+    assert "Hidden because every run" not in html
+
+
+def test_client_runs_suppression_has_the_same_completeness_guards() -> None:
+    script = ui._OBSERVE_SCRIPT
+    complete = script.split("function runsScopeIsComplete(")[1].split(
+        "\n  }\n", 1
+    )[0]
+    suppress = script.split("function suppressedRunDimensions(")[1].split(
+        "\n  }\n", 1
+    )[0]
+
+    assert "bounds.truncated" in complete
+    assert "bounds.has_previous_page" in complete
+    assert "bounds.has_next_page" in complete
+    assert "Number(bounds.rows_total_in_scope) !== runs.length" in complete
+    assert "diagnostics.partial_sources" in complete
+    assert "diagnostics.failed_sources" in complete
+    assert "values.some(function (value) { return !value; })" in suppress
+    assert "value.raw === first.raw" in suppress
+
+
+def test_runs_do_not_suppress_an_unreported_dimension() -> None:
+    html = ui.render_runs_table(
+        [_run(run_key="run-a", source_id=None), _run(run_key="run-b", source_id=None)],
+        bounds={"rows_shown": 2, "rows_total_in_scope": 2, "truncated": False},
+        diagnostics={"partial_sources": 0, "failed_sources": 0},
+    )
+
+    assert 'data-column-id="source_id"' in html
+
+
+def test_runs_help_and_details_are_keyboard_reachable_progressive_controls() -> None:
+    html = ui.render_runs_table([_run()])
+
+    assert 'class="observe-header-help"' in html
+    assert 'class="observe-header-help-trigger"' in html
+    assert 'aria-expanded="false"' in html
+    assert 'aria-controls="observe-runs-help-run_key_kind"' in html
+    assert 'id="observe-runs-help-run_key_kind"' in html
+    assert '<details class="observe-run-detail"' in html
+    assert "<summary>Run details for conversa\u2026</summary>" in html
+    assert "<dt>Full run key</dt>" in html
+    assert "<dt>Full source resource ID</dt>" in html
+
+    script = ui._OBSERVE_SCRIPT
+    assert 'event.key !== "Escape"' in script
+    assert 'button.setAttribute("aria-expanded", "false")' in script
+    assert '"Run details for " + abbreviateRunIdentifier(run.run_key)' in script
+    assert '"Full source resource ID", copyValueNode(' in script
 
 
 # ---------------------------------------------------------------------------
@@ -1750,7 +2560,9 @@ def test_render_trend_chart_tooltip_has_exact_value() -> None:
         [{"label": "agent-a", "points": [("2024-01-01T00:00:00Z", 123.456)]}],
         unit=" ms",
     )
-    assert "<title>agent-a \u2013 2024-01-01 00:00:00 UTC: 0.123 s</title>" in html
+    assert 'data-observe-time="2024-01-01T00:00:00Z"' in html
+    assert 'data-observe-time-prefix="agent-a \u2013 "' in html
+    assert 'data-observe-time-suffix=": 0.123 s"' in html
 
 
 def test_render_trend_chart_is_responsive_via_viewbox_not_fixed_size() -> None:
@@ -2137,8 +2949,8 @@ def test_script_auto_refreshes_every_five_minutes() -> None:
 def test_script_computes_default_seven_day_range_when_missing_from_url() -> None:
     script = ui._OBSERVE_SCRIPT
     assert "DEFAULT_RANGE_MS = 7 * 24 * 60 * 60 * 1000" in script
-    assert 'value = local.toISOString().slice(0, 16);' in script
-    assert "value = isNaN(moment.getTime()) ? \"\" : moment.toISOString();" in script
+    assert 'return local.toISOString().slice(0, 16);' in script
+    assert 'return isNaN(moment.getTime()) ? "" : moment.toISOString();' in script
 
 
 def test_missing_overview_metric_is_visually_subordinate_to_reported_values() -> None:
@@ -2152,10 +2964,15 @@ def test_missing_overview_metric_is_visually_subordinate_to_reported_values() ->
     assert "font-weight: 600;" in missing_rule
 
 
-def test_script_uses_history_replace_state_not_push_state_for_url_sync() -> None:
+def test_apply_pushes_filter_state_into_browser_history() -> None:
     script = ui._OBSERVE_SCRIPT
     assert "history.replaceState" in script
     assert "history.pushState" in script
+    submit_block = script.split('form.addEventListener("submit"', 1)[1].split(
+        'var costForm = document.getElementById("observe-cost-filter-form")', 1
+    )[0]
+    assert "pushUrl();" in submit_block
+    assert "syncUrl();" not in submit_block
 
 
 def test_script_protected_content_is_only_loaded_on_explicit_click() -> None:
@@ -2199,15 +3016,22 @@ def test_script_observe_query_payload_matches_observe_query_schema() -> None:
     # start (required), end (required)}, refresh?}.
     script = ui._OBSERVE_SCRIPT
     payload_block = script.split("var payload = {")[1].split("};")[0]
+    filter_builder = script.split("function observeFiltersForRequest(", 1)[1].split(
+        "function rerenderTemporalSurface(", 1
+    )[0]
     assert "view: VIEW_WIRE_NAMES[currentView] || currentView" in payload_block
-    assert "foundry_resource_id: appliedFilters.foundry_resource_id || null" in payload_block
-    assert "project_resource_id: appliedFilters.project_resource_id || null" in payload_block
-    assert "agent_id: appliedFilters.agent_id || null" in payload_block
-    assert "model: appliedFilters.model || null" in payload_block
-    assert "tool_name: appliedFilters.tool_name || null" in payload_block
-    assert "run_key: appliedFilters.run_key || null" in payload_block
-    assert "start: appliedFilters.start" in payload_block
-    assert "end: appliedFilters.end" in payload_block
+    assert "filters: observeFiltersForRequest(appliedFilters)" in payload_block
+    for key in (
+        "foundry_resource_id",
+        "project_resource_id",
+        "agent_id",
+        "model",
+        "tool_name",
+        "run_key",
+    ):
+        assert f"{key}: filters.{key} || null" in filter_builder
+    assert "start: bounds.start" in filter_builder
+    assert "end: bounds.end" in filter_builder
     assert "refresh: manual === true" in payload_block
     assert "page: currentPage" in payload_block
     assert "page_size: currentPageSize" in payload_block
@@ -2275,8 +3099,8 @@ def test_script_view_wire_names_translate_internal_usage_id_to_models() -> None:
     # internal "usage" view as "models".
     script = ui._OBSERVE_SCRIPT
     assert (
-        'var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", '
-        'tools: "tools", runs: "runs" };'
+        'var VIEW_WIRE_NAMES = { overview: "overview", runs: "runs", agents: "agents", '
+        'usage: "models", tools: "tools" };'
     ) in script
 
 
@@ -2338,7 +3162,7 @@ def test_script_tools_and_runs_render_sources_bounds_and_explained_empty_states(
         ),
         (
             "function renderRuns(data, diagnostics, bounds)",
-            "run.source_id || \"\u2014\"",
+            "sourceWorkspaceName(run.source_id)",
             "No runs could be correlated for the selected filters.",
         ),
     ):
@@ -2399,7 +3223,7 @@ def test_script_fetch_success_parses_json_and_dispatches_to_render_before_updati
     # announces a refresh.
     render_index = then_block.index("renderObserveResponse(body);")
     status_index = then_block.index(
-        'setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));'
+        'setRefreshStatus("Refreshed", new Date().toISOString());'
     )
     assert render_index < status_index
 
@@ -2566,6 +3390,30 @@ def test_generated_html_never_contains_raw_content_field_names_outside_trace_det
         assert field not in html
 
 
+def test_console_address_builder_never_serializes_generative_content() -> None:
+    script = ui._OBSERVE_SCRIPT
+    address_builder = script.split("function buildStateUrl() {")[1].split(
+        "\n  }\n", 1
+    )[0]
+    generative_fields = {
+        "input_messages",
+        "output_messages",
+        "system_instructions",
+        "tool_content",
+        "evaluation_explanation",
+        "prompt",
+        "response",
+    }
+
+    assert "FILTER_KEYS.forEach(function (key)" in address_builder
+    assert "params.append(key, value)" in address_builder
+    assert "data-copy-value" not in address_builder
+    assert "scopeSearch" not in address_builder
+    assert set(ui.OBSERVE_FILTER_QUERY_KEYS).isdisjoint(generative_fields)
+    for field in generative_fields:
+        assert field not in address_builder
+
+
 def test_styles_use_explicit_themes_not_prefers_color_scheme() -> None:
     """Observe must theme explicitly (via ``data-theme``) so it never drifts
     from the Cockpit through an independent OS-preference media query."""
@@ -2582,6 +3430,34 @@ def test_styles_use_explicit_themes_not_prefers_color_scheme() -> None:
     assert "--observe-series-1" in styles
 
 
+def test_new_controls_use_shared_tokens_in_both_themes_without_new_color_literals() -> None:
+    styles = ui._OBSERVE_STYLES
+    for tokens in (ui_theme.DARK_TOKENS, ui_theme.LIGHT_TOKENS):
+        assert set(tokens) == set(ui_theme.TOKEN_NAMES)
+        for name, value in tokens.items():
+            assert f"{name}: {value};" in styles
+
+    themed_selectors = (
+        ".observe-scope-trigger",
+        ".observe-scope-panel",
+        ".observe-window-filter select",
+        ".observe-header-help-trigger",
+        ".observe-header-help-panel",
+        ".observe-copy-fallback[open] label",
+        ".observe-run-detail-row td",
+    )
+    for selector in themed_selectors:
+        rule = re.search(rf"{re.escape(selector)}[^{{]*\{{([^}}]+)\}}", styles)
+        assert rule, f"missing themed rule for {selector}"
+        assert "var(--observe" in rule.group(1) or "color-mix(" in rule.group(1)
+
+    # The fourth legacy chart-series value predates these controls. New control
+    # styles must consume theme tokens instead of extending this literal set.
+    assert set(re.findall(r"#[0-9a-fA-F]{3,8}", ui._OBSERVE_COMPONENT_CSS)) == {
+        "#bc8cff"
+    }
+
+
 def test_page_uses_shared_url_theme_control_without_browser_storage() -> None:
     html = ui.render_observe_page()
     assert 'data-aos-theme-toggle' in html
@@ -2591,6 +3467,41 @@ def test_page_uses_shared_url_theme_control_without_browser_storage() -> None:
     assert "localStorage" not in html
     assert "sessionStorage" not in html
     assert "document.cookie" not in html
+
+
+def test_runs_table_structural_budgets_hold_at_standard_and_maximum_scale() -> None:
+    standard_rows = make_run_usage_rows_at_scale(4)
+    standard = ui.render_runs_table(
+        standard_rows,
+        bounds={
+            "rows_shown": len(standard_rows),
+            "rows_total_in_scope": len(standard_rows),
+            "truncated": False,
+        },
+        diagnostics={"partial_sources": 0, "failed_sources": 0},
+    )
+    header = re.search(r"<thead>.*?</thead>", standard, re.DOTALL)
+    assert header
+    assert header.group(0).count("<th ") <= ui.RUNS_TABLE_COLUMN_BUDGET
+    assert ui.RUNS_TABLE_COLUMN_BUDGET * 72 <= ui.RUNS_TABLE_STANDARD_VIEWPORT_PX
+    assert ".observe-runs-table { table-layout: fixed; }" in ui._OBSERVE_COMPONENT_CSS
+    assert "table { border-collapse: collapse; width: 100%;" in ui._OBSERVE_COMPONENT_CSS
+    assert "overflow-x" not in ui._OBSERVE_COMPONENT_CSS
+
+    bounded_rows = make_run_usage_rows_at_scale(MAX_ROWS_PER_QUERY)
+    bounded = ui.render_runs_table(
+        bounded_rows,
+        bounds={
+            "rows_shown": MAX_ROWS_PER_QUERY,
+            "rows_total_in_scope": MAX_ROWS_PER_QUERY + 1,
+            "truncated": True,
+        },
+    )
+    assert bounded.count('data-observe-run-row="true"') == MAX_ROWS_PER_QUERY
+    assert bounded.count('data-observe-run-detail-row="true"') == MAX_ROWS_PER_QUERY
+    assert f"Showing {MAX_ROWS_PER_QUERY} of {MAX_ROWS_PER_QUERY + 1} rows in scope." in bounded
+    assert "1 row is not displayed." in bounded
+    assert len(bounded) / MAX_ROWS_PER_QUERY < 4_200
 
 
 def test_get_accessor_supports_both_mapping_and_object() -> None:
@@ -2834,8 +3745,10 @@ def test_script_places_view_details_below_primary_identifier_in_every_table() ->
     for function_name, primary_value in (
         ("renderUsage", "entry.model"),
         ("renderTools", "tool.tool_name"),
-        ("renderRuns", "run.run_key"),
     ):
         fn_block = script.split(f"function {function_name}(")[1].split("\n  }\n")[0]
         assert "primaryCellWithAction(" in fn_block
         assert primary_value in fn_block
+    runs_block = script.split("function renderRuns(")[1].split("\n  }\n")[0]
+    assert "detail: runDetailNode(run)" in runs_block
+    assert "abbreviateRunIdentifier(run.run_key)" in runs_block

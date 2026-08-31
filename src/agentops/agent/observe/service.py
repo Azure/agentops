@@ -18,6 +18,7 @@ aggregates are ever passed to :meth:`ObserveCache.set`.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import time
@@ -41,6 +42,7 @@ from agentops.agent.observe.attribution import (
     zero_usage,
 )
 from agentops.agent.observe.cost_allocation import allocate_cost_period
+from agentops.agent.knowledge.pricing import load_packaged_price_reference
 from agentops.agent.observe.queries import (
     MAX_ROWS_PER_QUERY,
     TOKEN_CLASS_ALIASES,
@@ -74,10 +76,14 @@ from agentops.core.attribution import (
     validate_user_filter_token,
 )
 from agentops.core.observe import (
+    MAX_SCOPE_OPTIONS,
+    SCOPE_DIMENSION_ORDER,
     AttributionQueryRequest,
     AttributionResponse,
     CoverageResult,
     CoverageState,
+    CostEstimate,
+    EntitySummary,
     ModelUsage,
     ObserveFilterState,
     ObserveScope,
@@ -89,10 +95,18 @@ from agentops.core.observe import (
     ResultBounds,
     ResourceInventory,
     RuntimeKind,
+    RunModelUsage,
+    ScopeDimension,
+    ScopeFilterOption,
+    ScopeFilterOptionSet,
+    SummaryFigure,
     TelemetrySource,
+    UNATTRIBUTED_MODEL,
     UserAttributionCoverage,
+    WindowSelection,
     canonical_arm_id,
 )
+from agentops.core.observe_pricing import PriceReferenceLoadResult
 
 #: Identity/scope/filter cache entries stay fresh for two minutes (T046).
 CACHE_TTL_SECONDS = 120.0
@@ -102,6 +116,27 @@ VIEW_STALE_TTL_SECONDS = 5 * 60.0
 logger = logging.getLogger(__name__)
 
 View = Literal["overview", "agents", "models", "tools", "runs", "cost"]
+
+_WINDOW_PRESET_DELTAS = {
+    "30m": timedelta(minutes=30),
+    "1h": timedelta(hours=1),
+    "6h": timedelta(hours=6),
+    "12h": timedelta(hours=12),
+    "1d": timedelta(days=1),
+    "3d": timedelta(days=3),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+}
+
+
+def resolve_window_selection(
+    selection: WindowSelection, *, now: datetime
+) -> tuple[datetime, datetime]:
+    """Resolve relative intent at request time while custom windows stay fixed."""
+    if selection.kind == "custom":
+        return selection.start, selection.end
+    end = now
+    return end - _WINDOW_PRESET_DELTAS[selection.preset], end
 
 
 class Clock(Protocol):
@@ -125,6 +160,16 @@ class QueryClient(Protocol):
         filters: ObserveFilterState,
         *,
         view: View,
+    ) -> list[SourceResult]: ...
+
+    async def query_scope_options(
+        self,
+        sources: Sequence[TelemetrySource],
+        filters: ObserveFilterState,
+        *,
+        dimension: ScopeDimension,
+        search: str | None = None,
+        limit: int = MAX_SCOPE_OPTIONS,
     ) -> list[SourceResult]: ...
 
     async def query_department_usage(
@@ -192,6 +237,19 @@ class ObserveResult:
     bounds: ResultBounds | None
     refreshed_at: datetime
     cache_status: Literal["hit", "miss", "bypass", "stale"]
+
+
+@dataclass(frozen=True)
+class ScopeOptionsResult:
+    """A cache-safe facet response plus any invalidated applied selections."""
+
+    dimension: ScopeDimension
+    options: tuple[ScopeFilterOption, ...]
+    truncated: bool
+    total_observed: int | None
+    coverage_state: CoverageState
+    filters: ObserveFilterState
+    invalidated_selections: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -538,6 +596,352 @@ def _nullable_int(row: Mapping[str, Any], *, field: str) -> int | None:
     return None if value is None else int(value)
 
 
+_PRICEABLE_TOKEN_FIELDS: tuple[tuple[str, str], ...] = (
+    ("input", "input_tokens"),
+    ("output", "output_tokens"),
+    ("cache_read", "cache_read_tokens"),
+    ("cache_write", "cache_write_tokens"),
+    ("reasoning", "reasoning_tokens"),
+)
+
+
+def _normalize_model_usage(value: Any) -> list[RunModelUsage]:
+    if isinstance(value, str) and value.strip():
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("model_usage must be a JSON object or array") from exc
+    if value in (None, ""):
+        return []
+    if isinstance(value, Mapping):
+        candidates = list(value.values())
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        candidates = list(value)
+    else:
+        raise ValueError("model_usage must be a JSON object or array")
+    usage: list[RunModelUsage] = []
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            raise ValueError("model_usage entries must be objects")
+        usage.append(RunModelUsage.model_validate(candidate))
+    return usage
+
+
+@dataclass(frozen=True)
+class _RunPricingUsage:
+    model_usage: tuple[RunModelUsage, ...]
+    model_usage_truncated: bool = False
+
+
+def _normalize_pricing_runs(value: Any) -> list[_RunPricingUsage]:
+    if isinstance(value, str) and value.strip():
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError("pricing_runs must be a JSON object or array") from exc
+    if value in (None, ""):
+        return []
+    if isinstance(value, Mapping):
+        candidates = list(value.values())
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        candidates = list(value)
+    else:
+        raise ValueError("pricing_runs must be a JSON object or array")
+
+    runs: list[_RunPricingUsage] = []
+    for candidate in candidates:
+        if not isinstance(candidate, Mapping):
+            raise ValueError("pricing_runs entries must be objects")
+        truncated = candidate.get("model_usage_truncated") is True or (
+            isinstance(candidate.get("model_usage_truncated"), str)
+            and candidate["model_usage_truncated"].strip().lower() == "true"
+        )
+        runs.append(
+            _RunPricingUsage(
+                model_usage=tuple(_normalize_model_usage(candidate.get("model_usage"))),
+                model_usage_truncated=truncated,
+            )
+        )
+    return runs
+
+
+def estimate_token_cost(
+    model_usage: Sequence[RunModelUsage],
+    *,
+    price_reference: PriceReferenceLoadResult,
+    as_of: datetime,
+    model_usage_truncated: bool = False,
+    excluded_components: Sequence[str] = (),
+    scope_run_count: int | None = None,
+    group: bool = False,
+) -> CostEstimate:
+    """Price model-attributed tokens using exact decimals and one currency."""
+    def group_counts(unpriced: int) -> dict[str, int | None]:
+        if not group or scope_run_count is None:
+            return {}
+        return {
+            "unpriced_run_count": min(unpriced, scope_run_count),
+            "covered_run_count": scope_run_count,
+            "scope_run_count": scope_run_count,
+        }
+
+    if price_reference.state != "valid" or price_reference.reference is None:
+        return CostEstimate(
+            completeness="not_priced",
+            reason=price_reference.message
+            or "The packaged list-price reference is unavailable.",
+            **group_counts(scope_run_count or 0),
+        )
+    reference = price_reference.reference
+    if not model_usage:
+        return CostEstimate(
+            completeness="not_priced",
+            reason="No model-attributed token usage was reported for this run.",
+            price_reference_version=reference.version,
+            price_reference_effective_date=reference.effective_date,
+            is_stale=reference.is_stale(as_of.date()),
+            reference_age_days=reference.age_days(as_of.date()),
+            **group_counts(scope_run_count or 0),
+        )
+
+    prices = reference.prices_by_model()
+    amounts: dict[str, Decimal] = {}
+    excluded = list(dict.fromkeys(str(item) for item in excluded_components if item))
+    unpriced_runs = 0
+    any_reported = False
+    usage_run_count_total = 0
+    for usage in model_usage:
+        model_prices = prices.get(usage.model, {})
+        usage_unpriced = False
+        usage_amounts: dict[str, Decimal] = {}
+        usage_run_count = usage.run_count or scope_run_count or 0
+        usage_run_count_total += usage_run_count
+        for token_class, field in _PRICEABLE_TOKEN_FIELDS:
+            count = getattr(usage, field)
+            if count is None:
+                excluded.append(f"{token_class.replace('_', ' ')} tokens not reported")
+                continue
+            any_reported = True
+            if count == 0:
+                continue
+            price = model_prices.get(token_class)
+            if price is None:
+                usage_unpriced = True
+                if usage.model == UNATTRIBUTED_MODEL:
+                    excluded.append("model attribution not reported")
+                else:
+                    excluded.append(
+                        f"no {token_class.replace('_', ' ')} price for {usage.model}"
+                    )
+                continue
+            usage_amounts[price.currency] = usage_amounts.get(
+                price.currency, Decimal(0)
+            ) + (
+                Decimal(count) * price.unit_price / Decimal(price.per_tokens)
+            )
+        if len(usage_amounts) > 1:
+            usage_unpriced = True
+            excluded.append(f"multiple price currencies for {usage.model}")
+        if usage_unpriced:
+            if not group:
+                return CostEstimate(
+                    completeness="not_priced",
+                    reason=(
+                        f"No published price covers every reported token class for "
+                        f"{usage.model}."
+                    ),
+                    excluded_components=list(dict.fromkeys(excluded)),
+                    price_reference_version=reference.version,
+                    price_reference_effective_date=reference.effective_date,
+                    is_stale=reference.is_stale(as_of.date()),
+                    reference_age_days=reference.age_days(as_of.date()),
+                )
+            unpriced_runs += usage_run_count
+            continue
+        if not usage_amounts and any(
+            getattr(usage, field) is not None for _, field in _PRICEABLE_TOKEN_FIELDS
+        ):
+            zero_currencies = {entry.currency for entry in model_prices.values()}
+            if len(zero_currencies) == 1:
+                usage_amounts[next(iter(zero_currencies))] = Decimal(0)
+        for currency, usage_amount in usage_amounts.items():
+            amounts[currency] = amounts.get(currency, Decimal(0)) + usage_amount
+
+    if model_usage_truncated:
+        excluded.append("model-attributed token usage was truncated")
+    excluded = list(dict.fromkeys(excluded))
+    if group and unpriced_runs and (
+        scope_run_count is None or usage_run_count_total > scope_run_count
+    ):
+        return CostEstimate(
+            completeness="not_priced",
+            reason=(
+                "No total was calculated because priced and unpriced model usage "
+                "overlap within the same runs."
+            ),
+            excluded_components=excluded,
+            price_reference_version=reference.version,
+            price_reference_effective_date=reference.effective_date,
+            is_stale=reference.is_stale(as_of.date()),
+            reference_age_days=reference.age_days(as_of.date()),
+            **group_counts(scope_run_count or unpriced_runs),
+        )
+    if not any_reported or not amounts:
+        return CostEstimate(
+            completeness="not_priced",
+            reason=(
+                "No token usage could be priced."
+                if any_reported
+                else "Token usage was not reported by model."
+            ),
+            excluded_components=excluded,
+            price_reference_version=reference.version,
+            price_reference_effective_date=reference.effective_date,
+            is_stale=reference.is_stale(as_of.date()),
+            reference_age_days=reference.age_days(as_of.date()),
+            **group_counts(unpriced_runs or (scope_run_count or 0)),
+        )
+    if len(amounts) != 1:
+        return CostEstimate(
+            completeness="not_priced",
+            reason="Observed prices use multiple currencies; no combined total was calculated.",
+            excluded_components=excluded,
+            price_reference_version=reference.version,
+            price_reference_effective_date=reference.effective_date,
+            is_stale=reference.is_stale(as_of.date()),
+            reference_age_days=reference.age_days(as_of.date()),
+        )
+    currency, amount = next(iter(amounts.items()))
+    if scope_run_count is None:
+        covered_run_count = unpriced_count = reported_scope_count = None
+        if group:
+            excluded.append("full-scope run coverage was not reported")
+    else:
+        covered_run_count = reported_scope_count = scope_run_count
+        unpriced_count = min(unpriced_runs, scope_run_count)
+    completeness: Literal["complete", "partial"] = (
+        "partial" if excluded or unpriced_runs else "complete"
+    )
+    return CostEstimate(
+        amount=amount,
+        currency=currency,
+        completeness=completeness,
+        reason="Some observed cost components were excluded." if completeness == "partial" else None,
+        excluded_components=list(dict.fromkeys(excluded)),
+        unpriced_run_count=unpriced_count,
+        covered_run_count=covered_run_count,
+        scope_run_count=reported_scope_count,
+        price_reference_version=reference.version,
+        price_reference_effective_date=reference.effective_date,
+        is_stale=reference.is_stale(as_of.date()),
+        reference_age_days=reference.age_days(as_of.date()),
+    )
+
+
+def _estimate_rollup_token_cost(
+    pricing_runs: Sequence[_RunPricingUsage],
+    *,
+    price_reference: PriceReferenceLoadResult,
+    as_of: datetime,
+    pricing_runs_truncated: bool,
+    excluded_components: Sequence[str],
+    scope_run_count: int | None,
+) -> CostEstimate:
+    """Sum only whole-run estimates so an unpriced model excludes its entire run."""
+    complete_run_estimates = [
+        estimate_token_cost(
+            run.model_usage,
+            price_reference=price_reference,
+            as_of=as_of,
+        )
+        for run in pricing_runs
+        if not run.model_usage_truncated
+    ]
+    priced = [
+        estimate
+        for estimate in complete_run_estimates
+        if estimate.amount is not None
+    ]
+    unpriced_run_count = len(pricing_runs) - len(priced)
+    excluded = [
+        *(str(item) for item in excluded_components if item),
+        *(
+            component
+            for estimate in complete_run_estimates
+            for component in estimate.excluded_components
+        ),
+    ]
+    if any(run.model_usage_truncated for run in pricing_runs):
+        excluded.append("model-attributed token usage was truncated for some runs")
+    if pricing_runs_truncated:
+        excluded.append("run-level pricing usage was truncated")
+    if scope_run_count is None:
+        excluded.append("full-scope run coverage was not reported")
+    elif len(pricing_runs) < scope_run_count:
+        unpriced_run_count += scope_run_count - len(pricing_runs)
+        excluded.append("model-attributed token usage was not reported for some runs")
+    excluded = list(dict.fromkeys(excluded))
+
+    reference = price_reference.reference
+    provenance = {
+        "price_reference_version": reference.version if reference else None,
+        "price_reference_effective_date": reference.effective_date if reference else None,
+        "is_stale": reference.is_stale(as_of.date()) if reference else False,
+        "reference_age_days": reference.age_days(as_of.date()) if reference else None,
+    }
+    counts = (
+        {
+            "unpriced_run_count": min(unpriced_run_count, scope_run_count),
+            "covered_run_count": scope_run_count,
+            "scope_run_count": scope_run_count,
+        }
+        if scope_run_count is not None
+        else {}
+    )
+    if not priced:
+        reason = next(
+            (
+                estimate.reason
+                for estimate in complete_run_estimates
+                if estimate.reason is not None
+            ),
+            "No token usage could be priced.",
+        )
+        return CostEstimate(
+            completeness="not_priced",
+            reason=reason,
+            excluded_components=excluded,
+            **counts,
+            **provenance,
+        )
+
+    currencies = {
+        estimate.currency for estimate in priced if estimate.currency is not None
+    }
+    if len(currencies) != 1:
+        return CostEstimate(
+            completeness="not_priced",
+            reason="Observed prices use multiple currencies; no combined total was calculated.",
+            excluded_components=excluded,
+            **counts,
+            **provenance,
+        )
+    amount = sum(
+        (estimate.amount for estimate in priced if estimate.amount is not None),
+        Decimal(0),
+    )
+    incomplete = bool(excluded or unpriced_run_count)
+    return CostEstimate(
+        amount=amount,
+        currency=next(iter(currencies)),
+        completeness="partial" if incomplete else "complete",
+        reason="Some observed cost components were excluded." if incomplete else None,
+        excluded_components=excluded,
+        **counts,
+        **provenance,
+    )
+
+
 def _row_runtime(
     row: Mapping[str, Any],
     *,
@@ -637,6 +1041,14 @@ def normalize_run_row(
         "reasoning_tokens": _nullable_int(row, field="reasoning_tokens"),
         "credits": None if row.get("credits") is None else str(row["credits"]),
         "credit_events": _nullable_int(row, field="credit_events"),
+        "model_usage": _normalize_model_usage(row.get("model_usage")),
+        "model_usage_truncated": (
+            row.get("model_usage_truncated") is True
+            or (
+                isinstance(row.get("model_usage_truncated"), str)
+                and row["model_usage_truncated"].strip().lower() == "true"
+            )
+        ),
     }
     # These fields are additive in the cost contract. Keeping this conditional
     # lets the service remain compatible while the Observe contract rolls out.
@@ -1439,6 +1851,218 @@ def _cache_key(
     return key
 
 
+_SCOPE_FILTER_FIELDS: tuple[tuple[ScopeDimension, str], ...] = (
+    ("foundry_resource", "foundry_resource_id"),
+    ("project", "project_resource_id"),
+    ("agent", "agent_id"),
+    ("model", "model"),
+    ("tool", "tool_name"),
+    ("run_key", "run_key"),
+)
+
+
+def _scope_option_cache_filters(
+    dimension: ScopeDimension, filters: ObserveFilterState
+) -> ObserveFilterState:
+    """Keep only selections left of the requested cascade dimension."""
+    position = SCOPE_DIMENSION_ORDER.index(dimension)
+    return filters.model_copy(
+        update={
+            field: None
+            for candidate, field in _SCOPE_FILTER_FIELDS
+            if SCOPE_DIMENSION_ORDER.index(candidate) >= position
+        }
+    )
+
+
+def _scope_option_cache_key(
+    identity: str,
+    scope: ObserveScope,
+    dimension: ScopeDimension,
+    filters: ObserveFilterState,
+    *,
+    search: str | None,
+    limit: int,
+) -> tuple[Any, ...]:
+    normalized_search = search.strip().casefold() if search and search.strip() else None
+    search_digest = (
+        hashlib.sha256(normalized_search.encode("utf-8")).hexdigest()
+        if normalized_search is not None
+        else None
+    )
+    return (
+        identity,
+        "scope-options",
+        scope.model_dump_json(),
+        dimension,
+        _scope_option_cache_filters(dimension, filters).model_dump_json(),
+        search_digest,
+        limit,
+    )
+
+
+def _scope_option_row_value(row: Mapping[str, Any]) -> str | None:
+    raw = row.get("option_value", row.get("value"))
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    return value or None
+
+
+def _merge_scope_options(
+    dimension: ScopeDimension,
+    results: Sequence[SourceResult],
+    *,
+    limit: int,
+) -> ScopeFilterOptionSet:
+    """Merge per-source facets without claiming completeness we cannot prove."""
+    merged: dict[str, dict[str, Any]] = {}
+    successful = [result for result in results if result.status in {"success", "partial"}]
+    source_truncated = False
+    single_source_total: int | None = None
+
+    for result in successful:
+        rows = [row for row in list(result.tables or []) if isinstance(row, Mapping)]
+        source_totals = {
+            int(total)
+            for row in rows
+            if (total := row.get("total_in_scope")) is not None
+            and not isinstance(total, bool)
+            and int(total) >= 0
+        }
+        if len(source_totals) == 1:
+            total = next(iter(source_totals))
+            source_truncated = source_truncated or total > len(rows)
+            if len(successful) == 1:
+                single_source_total = total
+        elif result.status == "partial":
+            source_truncated = True
+
+        for row in rows:
+            value = _scope_option_row_value(row)
+            if value is None:
+                continue
+            activity = row.get("activity", 0)
+            if isinstance(activity, bool) or not isinstance(activity, (int, float)):
+                activity = 0
+            last_seen = row.get("last_seen")
+            current = merged.get(value)
+            if current is None:
+                merged[value] = {
+                    "label": str(
+                        row.get("option_label") or row.get("label") or value
+                    ).strip()
+                    or value,
+                    "activity": activity,
+                    "last_seen": last_seen,
+                }
+                continue
+            current["activity"] += activity
+            if last_seen is not None and (
+                current["last_seen"] is None or last_seen > current["last_seen"]
+            ):
+                current["last_seen"] = last_seen
+
+    ordered = list(merged.items())
+    ordered.sort(key=lambda item: item[0])
+    ordered.sort(
+        key=lambda item: (
+            "" if item[1]["last_seen"] is None else str(item[1]["last_seen"])
+        ),
+        reverse=True,
+    )
+    ordered.sort(key=lambda item: item[1]["activity"], reverse=True)
+    merged_truncated = len(ordered) > limit
+    options = tuple(
+        ScopeFilterOption(
+            value=value,
+            label=metadata["label"],
+            dimension=dimension,
+        )
+        for value, metadata in ordered[:limit]
+    )
+    failed = any(result.status in {"timeout", "throttled", "error"} for result in results)
+    truncated = source_truncated or merged_truncated
+    if failed:
+        coverage_state: CoverageState = "partial" if successful else "error"
+    elif not options:
+        coverage_state = "no_data"
+    elif truncated:
+        coverage_state = "partial"
+    else:
+        coverage_state = "available"
+
+    if len(successful) == 1 and single_source_total is not None:
+        total_observed = max(single_source_total, len(options))
+    elif successful and not source_truncated:
+        total_observed = len(ordered)
+    else:
+        total_observed = None
+    return ScopeFilterOptionSet(
+        dimension=dimension,
+        options=options,
+        truncated=truncated,
+        total_observed=total_observed,
+        coverage_state=coverage_state,
+    )
+
+
+def _reconcile_scope_selection(
+    dimension: ScopeDimension,
+    filters: ObserveFilterState,
+    option_set: ScopeFilterOptionSet,
+    *,
+    search: str | None,
+) -> tuple[ObserveFilterState, tuple[str, ...]]:
+    """Drop only selections proven unreachable for the enumerated dimension."""
+    field = dict(_SCOPE_FILTER_FIELDS)[dimension]
+    selected = getattr(filters, field)
+    values = (selected,) if isinstance(selected, str) else selected or ()
+    if (
+        not values
+        or bool(search and search.strip())
+        or option_set.coverage_state in {"partial", "error"}
+        or option_set.truncated
+    ):
+        return filters, ()
+
+    def comparison_key(value: str) -> str:
+        if dimension in {"foundry_resource", "project"}:
+            return value.strip().rstrip("/").casefold()
+        return value
+
+    reachable = {comparison_key(option.value) for option in option_set.options}
+    retained = tuple(value for value in values if comparison_key(value) in reachable)
+    invalidated = tuple(value for value in values if comparison_key(value) not in reachable)
+    if not invalidated:
+        return filters, ()
+    replacement: str | tuple[str, ...] | None
+    if not retained:
+        replacement = None
+    elif len(retained) == 1:
+        replacement = retained[0]
+    else:
+        replacement = retained
+    return filters.model_copy(update={field: replacement}), invalidated
+
+
+def _scope_options_result(
+    option_set: ScopeFilterOptionSet,
+    *,
+    filters: ObserveFilterState,
+    invalidated_selections: tuple[str, ...],
+) -> ScopeOptionsResult:
+    return ScopeOptionsResult(
+        dimension=option_set.dimension,
+        options=option_set.options,
+        truncated=option_set.truncated,
+        total_observed=option_set.total_observed,
+        coverage_state=option_set.coverage_state,
+        filters=filters,
+        invalidated_selections=invalidated_selections,
+    )
+
+
 def _cost_cache_key(
     identity: str,
     scope: ObserveScope,
@@ -1947,6 +2571,165 @@ def _apply_group_overage_coverage(
     ]
 
 
+def _assemble_overview_summaries(
+    totals: Mapping[str, int | float | None],
+    results: Sequence[SourceResult],
+) -> list[EntitySummary]:
+    """Project the single Overview aggregate into ordered entity families.
+
+    A partial or failed source makes secondary-family cardinalities unsafe to
+    present as fleet totals. In that case those summaries are dropped first and
+    the Runs summary, backed by the legacy Overview figures, survives.
+    """
+
+    invocations = int(totals.get("invocations") or 0)
+    failures = int(totals.get("failures") or 0)
+    run_count = totals.get("run_count")
+    input_tokens = totals.get("input_tokens")
+    output_tokens = totals.get("output_tokens")
+    total_tokens = (
+        None
+        if input_tokens is None and output_tokens is None
+        else int(input_tokens or 0) + int(output_tokens or 0)
+    )
+    degraded = any(result.status != "success" for result in results)
+    usable_result = any(
+        result.status in ("success", "partial") and bool(result.tables)
+        for result in results
+    )
+
+    if degraded:
+        run_state: CoverageState = "partial" if usable_result else "error"
+    elif invocations == 0 and int(run_count or 0) == 0:
+        run_state = "no_data"
+    elif run_count is None or total_tokens is None:
+        run_state = "partial"
+    else:
+        run_state = "available"
+
+    success_rate = (
+        None
+        if invocations == 0
+        else round(((invocations - failures) / invocations) * 100, 1)
+    )
+    summaries = [
+        EntitySummary(
+            entity_family="Runs",
+            label="Runs",
+            coverage_state=run_state,
+            figures=[
+                SummaryFigure(label="Runs observed", value=run_count, tone="info"),
+                SummaryFigure(
+                    label="Run invocations", value=invocations, tone="info"
+                ),
+                SummaryFigure(label="Run failures", value=failures, tone="warn"),
+                SummaryFigure(
+                    label="Run success rate",
+                    value=success_rate,
+                    unit="%",
+                    tone="ok",
+                ),
+                SummaryFigure(
+                    label="Average run latency",
+                    value=totals.get("avg_latency_ms"),
+                    unit="ms",
+                    tone="info",
+                ),
+                SummaryFigure(
+                    label="P95 run latency",
+                    value=totals.get("p95_latency_ms"),
+                    unit="ms",
+                    tone="info",
+                ),
+                SummaryFigure(
+                    label="Run tokens consumed",
+                    value=total_tokens,
+                    unit="tokens",
+                    tone="info",
+                ),
+            ],
+        )
+    ]
+    if degraded:
+        return summaries
+
+    agent_count = totals.get("agent_count")
+    agent_state: CoverageState
+    if invocations == 0 and int(agent_count or 0) == 0:
+        agent_state = "no_data"
+    elif agent_count is None or int(agent_count) == 0:
+        agent_state = "partial"
+    else:
+        agent_state = "available"
+    model_count = totals.get("model_count")
+    model_invocations = totals.get("model_invocations")
+    if invocations == 0 and int(model_count or 0) == 0:
+        model_state: CoverageState = "no_data"
+    elif model_count is None or int(model_count) == 0:
+        model_state = "partial"
+    else:
+        model_state = "available"
+    tool_count = totals.get("tool_count")
+    tool_invocations = totals.get("tool_invocations")
+    if int(tool_invocations or 0) == 0 and int(tool_count or 0) == 0:
+        tool_state: CoverageState = "no_data"
+    elif tool_count is None or int(tool_count) == 0:
+        tool_state = "partial"
+    else:
+        tool_state = "available"
+
+    summaries.extend(
+        [
+            EntitySummary(
+                entity_family="Agents",
+                label="Agents",
+                coverage_state=agent_state,
+                figures=[
+                    SummaryFigure(
+                        label="Agents observed", value=agent_count, tone="info"
+                    )
+                ],
+            ),
+            EntitySummary(
+                entity_family="Models",
+                label="Models",
+                coverage_state=model_state,
+                figures=[
+                    SummaryFigure(
+                        label="Models observed", value=model_count, tone="info"
+                    ),
+                    SummaryFigure(
+                        label="Model invocations",
+                        value=model_invocations,
+                        tone="info",
+                    ),
+                ],
+            ),
+            EntitySummary(
+                entity_family="Tools",
+                label="Tools",
+                coverage_state=tool_state,
+                figures=[
+                    SummaryFigure(
+                        label="Tools observed", value=tool_count, tone="info"
+                    ),
+                    SummaryFigure(
+                        label="Tool invocations",
+                        value=tool_invocations,
+                        tone="info",
+                    ),
+                    SummaryFigure(
+                        label="Tool failures",
+                        value=totals.get("tool_failures"),
+                        tone="warn",
+                    ),
+                ],
+            ),
+        ]
+    )
+    return summaries
+
+
 class ObserveService:
     """Coordinates discovery, bounded querying, normalization, and caching.
 
@@ -1968,7 +2751,9 @@ class ObserveService:
         clock: Clock,
         cache: ObserveCache,
         inventory_cache: ObserveCache | None = None,
+        facet_cache: ObserveCache | None = None,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        price_reference: PriceReferenceLoadResult | None = None,
     ) -> None:
         self._discovery_client = discovery_client
         self._query_client = query_client
@@ -1976,7 +2761,11 @@ class ObserveService:
         self._clock = clock
         self._cache = cache
         self._inventory_cache = inventory_cache or cache
+        self._facet_cache = facet_cache or inventory_cache or ObserveCache(
+            ttl_seconds=INVENTORY_CACHE_TTL_SECONDS
+        )
         self._monotonic_clock = monotonic_clock
+        self._price_reference = price_reference or load_packaged_price_reference()
         self._inflight: dict[Hashable, asyncio.Task[Any]] = {}
         self._inflight_lock = asyncio.Lock()
         self._background_tasks: set[asyncio.Task[Any]] = set()
@@ -2072,8 +2861,12 @@ class ObserveService:
         sort_by: str | None = None,
         sort_direction: Literal["asc", "desc"] = "desc",
         unpaged: bool = False,
+        window: WindowSelection | None = None,
     ) -> ObserveResult:
         """Return the normalized, coverage-annotated response for *view*."""
+        if window is not None:
+            start, end = resolve_window_selection(window, now=self._clock())
+            filters = filters.model_copy(update={"start": start, "end": end})
         filters.validate_scope(scope)
         identity = _identity_key(self._runtime)
         key = _cache_key(identity, scope, view, filters)
@@ -2094,6 +2887,7 @@ class ObserveService:
                 sort_by=sort_by,
                 sort_direction=sort_direction,
             )
+
         if cached.state == "stale" and cached.value is not None:
             self._schedule_refresh(
                 key,
@@ -2140,6 +2934,75 @@ class ObserveService:
             search=search,
             sort_by=sort_by,
             sort_direction=sort_direction,
+        )
+
+    async def query_scope_options(
+        self,
+        scope: ObserveScope,
+        filters: ObserveFilterState,
+        *,
+        dimension: ScopeDimension,
+        search: str | None = None,
+        limit: int = MAX_SCOPE_OPTIONS,
+        refresh: bool = False,
+        window: WindowSelection | None = None,
+    ) -> ScopeOptionsResult:
+        """Return a bounded facet independently of the view render path."""
+        if window is not None:
+            start, end = resolve_window_selection(window, now=self._clock())
+            filters = filters.model_copy(update={"start": start, "end": end})
+        filters.validate_scope(scope)
+        if dimension not in SCOPE_DIMENSION_ORDER:
+            raise ValueError(f"unknown scope dimension: {dimension}")
+        if limit < 1 or limit > MAX_SCOPE_OPTIONS:
+            raise ValueError(f"limit must be between 1 and {MAX_SCOPE_OPTIONS}")
+
+        identity = _identity_key(self._runtime)
+        key = _scope_option_cache_key(
+            identity,
+            scope,
+            dimension,
+            filters,
+            search=search,
+            limit=limit,
+        )
+        cached = self._facet_cache.get(key, bypass=refresh)
+        if cached is not None:
+            reconciled_filters, invalidated_selections = _reconcile_scope_selection(
+                dimension, filters, cached, search=search
+            )
+            return _scope_options_result(
+                cached,
+                filters=reconciled_filters,
+                invalidated_selections=invalidated_selections,
+            )
+
+        async def retrieve() -> ScopeFilterOptionSet:
+            inventory = await self.get_inventory(scope)
+            available_sources = [
+                source
+                for source in inventory.telemetry_sources
+                if source.state == "available"
+            ]
+            results = await self._query_client.query_scope_options(
+                available_sources,
+                filters,
+                dimension=dimension,
+                search=search,
+                limit=limit,
+            )
+            option_set = _merge_scope_options(dimension, results, limit=limit)
+            self._facet_cache.set(key, option_set)
+            return option_set
+
+        option_set, _owner = await self._run_coalesced(key, retrieve)
+        reconciled_filters, invalidated_selections = _reconcile_scope_selection(
+            dimension, filters, option_set, search=search
+        )
+        return _scope_options_result(
+            option_set,
+            filters=reconciled_filters,
+            invalidated_selections=invalidated_selections,
         )
 
     async def _query_view_uncached(
@@ -3806,8 +4669,63 @@ class ObserveService:
                 rows = list(result.tables or [])
                 for row in rows:
                     try:
+                        agent = normalize_agent_row(
+                            row, source=source, inventory=inventory
+                        )
+                        aggregate_usage = _normalize_model_usage(row.get("model_usage"))
+                        pricing_runs = _normalize_pricing_runs(row.get("pricing_runs"))
+                        scope_run_count = _nullable_int(row, field="scope_run_count")
+                        if not aggregate_usage and agent.model:
+                            aggregate_usage = [
+                                RunModelUsage(
+                                    model=agent.model,
+                                    input_tokens=agent.input_tokens,
+                                    output_tokens=agent.output_tokens,
+                                    cache_read_tokens=agent.cache_read_tokens,
+                                    cache_write_tokens=agent.cache_write_tokens,
+                                    reasoning_tokens=agent.reasoning_tokens,
+                                    run_count=scope_run_count,
+                                )
+                            ]
+                        estimate = (
+                            _estimate_rollup_token_cost(
+                                pricing_runs,
+                                price_reference=self._price_reference,
+                                as_of=refreshed_at,
+                                pricing_runs_truncated=(
+                                    row.get("pricing_runs_truncated") is True
+                                    or str(
+                                        row.get("pricing_runs_truncated") or ""
+                                    ).lower()
+                                    == "true"
+                                ),
+                                excluded_components=(),
+                                scope_run_count=scope_run_count,
+                            )
+                            if pricing_runs
+                            else estimate_token_cost(
+                                aggregate_usage,
+                                price_reference=self._price_reference,
+                                as_of=refreshed_at,
+                                model_usage_truncated=(
+                                    row.get("model_usage_truncated") is True
+                                    or str(
+                                        row.get("model_usage_truncated") or ""
+                                    ).lower()
+                                    == "true"
+                                ),
+                                scope_run_count=scope_run_count,
+                                group=True,
+                            )
+                        )
                         agents.append(
-                            normalize_agent_row(row, source=source, inventory=inventory)
+                            agent.model_copy(
+                                update={
+                                    "model_usage": aggregate_usage,
+                                    "scope_run_count": scope_run_count,
+                                    "estimated_cost": estimate,
+                                }
+                            )
                         )
                     except ValueError as exc:
                         coverage.append(
@@ -3867,6 +4785,52 @@ class ObserveService:
                 for row in rows:
                     try:
                         model_usage = normalize_model_row(row, source=source)
+                        scope_run_count = _nullable_int(row, field="scope_run_count")
+                        pricing_runs = _normalize_pricing_runs(row.get("pricing_runs"))
+                        attributed_usage = (
+                            [
+                                RunModelUsage(
+                                    model=model_usage.model,
+                                    input_tokens=model_usage.input_tokens,
+                                    output_tokens=model_usage.output_tokens,
+                                    cache_read_tokens=model_usage.cache_read_tokens,
+                                    cache_write_tokens=model_usage.cache_write_tokens,
+                                    reasoning_tokens=model_usage.reasoning_tokens,
+                                    run_count=scope_run_count,
+                                )
+                            ]
+                            if model_usage.model
+                            else []
+                        )
+                        model_usage = model_usage.model_copy(
+                            update={
+                                "scope_run_count": scope_run_count,
+                                "estimated_cost": (
+                                    _estimate_rollup_token_cost(
+                                        pricing_runs,
+                                        price_reference=self._price_reference,
+                                        as_of=refreshed_at,
+                                        pricing_runs_truncated=(
+                                            row.get("pricing_runs_truncated") is True
+                                            or str(
+                                                row.get("pricing_runs_truncated") or ""
+                                            ).lower()
+                                            == "true"
+                                        ),
+                                        excluded_components=(),
+                                        scope_run_count=scope_run_count,
+                                    )
+                                    if pricing_runs
+                                    else estimate_token_cost(
+                                        attributed_usage,
+                                        price_reference=self._price_reference,
+                                        as_of=refreshed_at,
+                                        scope_run_count=scope_run_count,
+                                        group=True,
+                                    )
+                                ),
+                            }
+                        )
                         models.append(model_usage)
                         source_models.append(model_usage)
                     except ValueError as exc:
@@ -4017,6 +4981,22 @@ class ObserveService:
                             window_end=window_end,
                             inventory=inventory,
                         )
+                        excluded_components: list[str] = []
+                        if run.source_kind == "foundry_hosted":
+                            excluded_components.append("hosted-agent compute")
+                        if run.tool_invocations > 0:
+                            excluded_components.append("tool-side services")
+                        run = run.model_copy(
+                            update={
+                                "estimated_cost": estimate_token_cost(
+                                    run.model_usage,
+                                    price_reference=self._price_reference,
+                                    as_of=refreshed_at,
+                                    model_usage_truncated=run.model_usage_truncated,
+                                    excluded_components=excluded_components,
+                                )
+                            }
+                        )
                         runs.append(run)
                         attributed_rows += 1
                     except ValueError as exc:
@@ -4055,10 +5035,30 @@ class ObserveService:
             "failures": 0,
             "avg_latency_ms": None,
             "p95_latency_ms": None,
+            "run_count": None,
+            "agent_count": None,
+            "model_count": None,
+            "model_invocations": None,
+            "tool_count": None,
+            "tool_invocations": None,
+            "tool_failures": None,
+            "input_tokens": None,
+            "output_tokens": None,
         }
         weighted_latency = 0.0
         latency_invocations = 0
         source_p95_values: list[float] = []
+        optional_count_fields = (
+            "run_count",
+            "agent_count",
+            "model_count",
+            "model_invocations",
+            "tool_count",
+            "tool_invocations",
+            "tool_failures",
+            "input_tokens",
+            "output_tokens",
+        )
         for result in results:
             rows = list(result.tables or [])
             for row in rows:
@@ -4074,6 +5074,10 @@ class ObserveService:
                 p95 = row.get("p95_latency_ms")
                 if p95 is not None:
                     source_p95_values.append(float(p95))
+                for field in optional_count_fields:
+                    value = row.get(field)
+                    if value is not None:
+                        totals[field] = int(totals[field] or 0) + int(value)
             coverage.append(
                 classify_query_coverage(
                     source_id=result.source_id,
@@ -4090,7 +5094,12 @@ class ObserveService:
             # A percentile cannot be recomputed from per-source aggregates. The
             # maximum is a conservative cross-source operational signal.
             totals["p95_latency_ms"] = max(source_p95_values)
-        return totals, coverage
+        response: dict[str, Any] = {
+            key: totals[key]
+            for key in ("invocations", "failures", "avg_latency_ms", "p95_latency_ms")
+        }
+        response["summaries"] = _assemble_overview_summaries(totals, results)
+        return response, coverage
 
     def _build_diagnostics(
         self,

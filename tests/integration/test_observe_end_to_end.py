@@ -18,7 +18,7 @@ from agentops.agent.observe import facade as facade_module
 from agentops.agent.observe.cache import ObserveCache
 from agentops.agent.observe.queries import SourceResult
 from agentops.agent.observe.service import ObserveService
-from agentops.agent.observe.ui import render_models_usage_table
+from agentops.agent.observe.ui import render_models_usage_table, render_overview_cards
 from agentops.core.attribution import (
     AttributionTokenValidationError,
     load_attribution_config,
@@ -29,6 +29,7 @@ from agentops.core.cost import (
 )
 from agentops.core.observe import (
     AttributionQueryRequest,
+    ObserveFilterState,
     ObserveScope,
     ResourceInventory,
     TelemetrySource,
@@ -111,6 +112,82 @@ class _AttributionQuery:
         ]
 
 
+class _OverviewQuery:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def query(self, sources, filters, *, view):
+        self.calls.append({"sources": sources, "filters": filters, "view": view})
+        return [
+            SourceResult(
+                source_id=source.source_id,
+                status="success",
+                tables=[
+                    {
+                        "invocations": 4,
+                        "failures": 0,
+                        "avg_latency_ms": 25.0,
+                        "p95_latency_ms": 40.0,
+                        "run_count": 2,
+                        "agent_count": 1,
+                        "model_count": 1,
+                        "model_invocations": 4,
+                        "tool_count": 1,
+                        "tool_invocations": 2,
+                        "tool_failures": 0,
+                        "input_tokens": 20,
+                        "output_tokens": 10,
+                    }
+                ],
+                duration_ms=1,
+            )
+            for source in sources
+        ]
+
+
+@pytest.mark.asyncio
+async def test_overview_summaries_flow_from_one_query_to_accessible_ui() -> None:
+    scope = ObserveScope(
+        mode="projects",
+        project_resource_ids=[FOUNDRY_RESOURCE_ID + "/projects/project-a"],
+    )
+    query = _OverviewQuery()
+    service = ObserveService(
+        discovery_client=_AttributionDiscovery(scope),
+        query_client=query,
+        runtime=type(
+            "Runtime",
+            (),
+            {"mode": "hosted", "credential_identity": "synthetic-aggregate"},
+        )(),
+        clock=lambda: datetime(2026, 8, 25, tzinfo=timezone.utc),
+        cache=ObserveCache(ttl_seconds=60),
+    )
+    result = await service.query_view(
+        scope,
+        ObserveFilterState(
+            start=datetime(2026, 8, 24, tzinfo=timezone.utc),
+            end=datetime(2026, 8, 25, tzinfo=timezone.utc),
+        ),
+        view="overview",
+    )
+
+    html = render_overview_cards(result.data["summaries"])
+    assert len(query.calls) == 1
+    assert query.calls[0]["view"] == "overview"
+    assert [item.entity_family for item in result.data["summaries"]] == [
+        "Runs",
+        "Agents",
+        "Models",
+        "Tools",
+    ]
+    assert html.index('data-entity-family="runs"') < html.index(
+        'data-entity-family="agents"'
+    )
+    assert "Run tokens consumed" in html
+    assert 'aria-label="Overview by entity family"' in html
+
+
 def _production_attribution_service(
     rows: list[dict[str, Any]],
 ) -> tuple[ObserveService, ObserveScope, _AttributionQuery]:
@@ -166,6 +243,22 @@ class _Service:
                 "cache_status": "miss",
             },
             "refreshed_at": "2026-08-21T00:00:00Z",
+        }
+
+    def scope_options(
+        self, *, dimension: str, filters: dict[str, Any], **_: Any
+    ) -> dict[str, Any]:
+        return {
+            "dimension": dimension,
+            "options": [
+                {"value": "agent-a", "label": "Agent A", "dimension": dimension},
+                {"value": "agent-b", "label": "Agent B", "dimension": dimension},
+            ],
+            "truncated": False,
+            "total_observed": 2,
+            "coverage_state": "available",
+            "filters": filters,
+            "invalidated_selections": [],
         }
 
     def agent_detail(
@@ -563,6 +656,40 @@ def test_observe_discovery_and_all_views() -> None:
         payload = response.json()
         assert payload["view"] == view
         assert payload["diagnostics"]["source_count"] == 0
+
+
+def test_scope_select_apply_and_tab_switch_preserve_multi_selection() -> None:
+    client = _hosted_client()
+    headers = {"x-ms-client-principal": "allowed"}
+    filters = {
+        "agent_id": ["agent-a", "agent-b"],
+        "start": "2026-08-20T00:00:00Z",
+        "end": "2026-08-21T00:00:00Z",
+    }
+
+    options = client.post(
+        "/api/observe/scope-options",
+        headers=headers,
+        json={"dimension": "agent", "filters": filters},
+    )
+    first_tab = client.post(
+        "/api/observe/query",
+        headers=headers,
+        json={"view": "agents", "filters": filters},
+    )
+    second_tab = client.post(
+        "/api/observe/query",
+        headers=headers,
+        json={"view": "runs", "filters": filters},
+    )
+
+    assert options.status_code == first_tab.status_code == second_tab.status_code == 200
+    assert [item["value"] for item in options.json()["options"]] == [
+        "agent-a",
+        "agent-b",
+    ]
+    assert first_tab.json()["data"]["filters"]["agent_id"] == ["agent-a", "agent-b"]
+    assert second_tab.json()["data"]["filters"]["agent_id"] == ["agent-a", "agent-b"]
 
 
 def test_granular_models_payload_renders_end_to_end() -> None:

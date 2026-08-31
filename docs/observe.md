@@ -38,7 +38,8 @@ request to ten telemetry sources, applies filters before aggregation, and keeps
 successful source results when another source is denied, throttled, or times
 out.
 
-The standard six views share the same explicit filter state:
+The five primary views share the same explicit filter state, in the order
+**Overview**, **Runs**, **Agents**, **Models and usage**, and **Tools**:
 
 - **Overview** shows bounded aggregate activity, latency, errors, and observed
   token usage.
@@ -65,13 +66,19 @@ selectors instead of the shared Observe time, source, project, model, tool, and
 run filters. This prevents a display filter from silently changing an allocation
 denominator.
 
-The default range is the last seven days. Draft filters do not query until **Apply** is
-selected. Applied filters are bookmarkable in the URL, refresh every five
-minutes, and may be refreshed manually. Raw trace content is never part of that
-URL or browser persistence. Alongside the existing agent, model, and time-range
-filters, **Tools** accepts `tool_name` and **Runs** accepts `run_key`. Both only
-narrow results; blank values are rejected, and values are escaped before they
-reach telemetry queries.
+Each scope dimension—Foundry resource, project, agent, model, tool, and run
+key—offers a checkable multi-select list of values observed in the active
+window. Options cascade from left to right, initially show the most active
+values, and search the full server-side set on demand. A failed option lookup
+falls back to free-text entry. Changes remain drafts until **Apply** is selected.
+
+The window offers presets for 30 minutes, 1 hour, 6 hours, 12 hours, 1 day,
+3 days, 7 days, and 30 days, plus a **Custom** fixed interval. Seven days is the
+default. Relative presets are recalculated on every manual or automatic refresh;
+custom boundaries remain fixed. Applied scope and window are bookmarkable in
+the URL and refresh every five minutes. The URL allowlist carries identifiers
+and boundaries only—not option-search text or raw generative content—and
+Observe uses no browser storage or cookies.
 
 ### Large inventories
 
@@ -592,6 +599,14 @@ choice in memory only for the current page — it never writes `localStorage`,
 `sessionStorage`, cookies, or any other browser persistence, preserving the
 privacy guarantees.
 
+### One stated time basis
+
+Observe keeps UTC on the wire and converts displayed window boundaries, row
+timestamps, and the refresh indicator to the selected presentation basis. The
+default is the viewer's local timezone; UTC remains available. The page states
+the basis once beside the window controls. Before the first successful refresh,
+the compact indicator explicitly says that the page has not yet refreshed.
+
 ### Executive overview and first-class trends
 
 The Overview is an executive summary: compact KPI cards with a value, a
@@ -609,6 +624,37 @@ drill-down tables. Status and classification badges use filled semantic surfaces
 high-contrast borders, 12-pixel bold text, and the same minimum height as nearby
 controls in both themes, avoiding the thin low-resolution treatment used
 previously.
+
+The Overview also groups entity-qualified summaries for runs, agents, models,
+and tools. Runs appear first and include observed token consumption. Missing
+telemetry reads **Not reported**, which remains distinct from a reported zero.
+These summaries reuse the existing Overview aggregation and do not add a
+telemetry round-trip.
+
+### Readable Runs and list-price estimates
+
+Runs abbreviates long run keys and displays the Log Analytics workspace name
+instead of a full source resource ID. Copy controls retain each full value and
+fall back to a selectable text field when clipboard access is unavailable.
+Header explanations are themed, keyboard-accessible panels; row details expand
+inline. Headers use the concise labels **Started**, **Duration**, and **Turns**.
+When every in-scope row shares a reported dimension, Observe states it once
+above the table instead of repeating a column; it never does this when results
+are truncated or the dimension is unreported.
+
+Estimated cost is calculated from observed per-model token counts and the
+published list-price reference packaged with AgentOps. Every estimate shows its
+currency, completeness, reference version and effective date, and states that
+it is a list-price estimate—not an invoice or billed amount. Missing model or
+token prices produce **Not priced**, not zero; known exclusions produce a
+partial estimate. References older than 90 days remain usable but are marked
+stale with their age. Agent and model roll-ups cover the full server-side scope
+and report unpriced runs.
+
+Estimated cost is separate from the optional declared-billed-total allocation.
+Observe never substitutes one for the other, adds them together, or combines
+different currencies. The packaged price reference is read-only and requires no
+billing credential or commerce API.
 
 ### Intentional states
 

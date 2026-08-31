@@ -1715,6 +1715,78 @@ class _AttributionObserveService(_CostIsolationObserveService):
         }
 
 
+def test_observe_scope_options_route_is_deferred_read_only_and_forwards_request(
+    tmp_path: Path,
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from agentops.agent.cockpit import create_app
+
+    class ScopeOptionsService:
+        def __init__(self) -> None:
+            self.request: dict = {}
+
+        async def scope_options(self, **kwargs):
+            self.request = kwargs
+            return {
+                "dimension": kwargs["dimension"],
+                "options": [
+                    {
+                        "value": "agent-a",
+                        "label": "Agent A",
+                        "dimension": "agent",
+                    }
+                ],
+                "truncated": False,
+                "total_observed": 1,
+                "coverage_state": "available",
+                "filters": kwargs["filters"],
+                "invalidated_selections": [],
+            }
+
+    service = ScopeOptionsService()
+    client = TestClient(
+        create_app(
+            tmp_path,
+            mode="local",
+            observe_scope={
+                "version": 1,
+                "mode": "projects",
+                "project_resource_ids": [
+                    "/subscriptions/sub/resourceGroups/rg/providers/"
+                    "Microsoft.CognitiveServices/accounts/a/projects/p"
+                ],
+            },
+            observe_service=service,
+        )
+    )
+
+    response = client.post(
+        "/api/observe/scope-options",
+        json={
+            "dimension": "agent",
+            "filters": _OBSERVE_FILTERS,
+            "window": {
+                "kind": "preset",
+                "preset": "1d",
+                "timezone_label": "UTC",
+            },
+            "search": " plan ",
+            "limit": 25,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["options"][0]["value"] == "agent-a"
+    assert service.request["dimension"] == "agent"
+    assert service.request["search"] == "plan"
+    assert service.request["limit"] == 25
+    assert service.request["refresh"] is False
+    assert service.request["window"]["kind"] == "preset"
+    assert service.request["window"]["preset"] == "1d"
+    assert "user_context" in service.request
+
+
 def test_observe_query_forwards_paging_and_reports_server_timing(tmp_path: Path) -> None:
     from fastapi.testclient import TestClient
 
@@ -1759,6 +1831,11 @@ def test_observe_query_forwards_paging_and_reports_server_timing(tmp_path: Path)
         json={
             "view": "agents",
             "filters": _OBSERVE_FILTERS,
+            "window": {
+                "kind": "preset",
+                "preset": "7d",
+                "timezone_label": "UTC",
+            },
             "page": 3,
             "page_size": 25,
             "search": "planner",
@@ -1773,6 +1850,7 @@ def test_observe_query_forwards_paging_and_reports_server_timing(tmp_path: Path)
     assert service.request["search"] == "planner"
     assert service.request["sort_by"] == "invocations"
     assert service.request["sort_direction"] == "asc"
+    assert service.request["window"]["preset"] == "7d"
     timing = response.headers["server-timing"]
     assert "total;dur=" in timing
     assert "discovery;dur=12.5" in timing

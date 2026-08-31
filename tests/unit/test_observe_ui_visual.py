@@ -39,44 +39,51 @@ FROZEN = datetime(2026, 8, 21, 12, 0, tzinfo=timezone.utc)
 # ---------------------------------------------------------------------------
 
 
-def _overview_metrics() -> list[dict]:
-    """Executive KPI cards with tone, delta chip, caption and sparkline."""
-    spark = [
-        {
-            "label": "Invocations",
-            "points": [("Mon", 120), ("Tue", 138), ("Wed", 150), ("Thu", 172)],
-        }
-    ]
+def _overview_summaries() -> list[dict]:
+    """Entity-owned headlines with runs first and explicit token consumption."""
     return [
         {
-            "title": "Invocations",
-            "value": 580,
-            "tone": "info",
-            "caption": "Last 7 days",
-            "delta": {"value": "+12%", "direction": "up", "tone": "ok", "label": "vs prior"},
-            "series": spark,
+            "entity_family": "Runs",
+            "label": "Runs",
+            "coverage_state": "available",
+            "figures": [
+                {"label": "Runs observed", "value": 172, "unit": None, "tone": "info"},
+                {"label": "Run invocations", "value": 580, "unit": None, "tone": "info"},
+                {"label": "Run failures", "value": 8, "unit": None, "tone": "warn"},
+                {"label": "Run success rate", "value": 98.6, "unit": "%", "tone": "ok"},
+                {"label": "P95 run latency", "value": 820, "unit": "ms", "tone": "warn"},
+                {
+                    "label": "Run tokens consumed",
+                    "value": 1_240_000,
+                    "unit": "tokens",
+                    "tone": "info",
+                },
+            ],
         },
         {
-            "title": "Failure rate",
-            "value": 1.4,
-            "unit": "%",
-            "tone": "ok",
-            "caption": "Errors / invocations",
-            "delta": {"value": "-0.3pp", "direction": "down", "tone": "ok"},
+            "entity_family": "Agents",
+            "label": "Agents",
+            "coverage_state": "available",
+            "figures": [
+                {"label": "Agents observed", "value": 6, "unit": None, "tone": "info"}
+            ],
         },
         {
-            "title": "p95 latency",
-            "value": 820,
-            "unit": " ms",
-            "tone": "warn",
-            "caption": "95th percentile",
-            "delta": {"value": "+40 ms", "direction": "up", "tone": "warn"},
+            "entity_family": "Models",
+            "label": "Models",
+            "coverage_state": "available",
+            "figures": [
+                {"label": "Models observed", "value": 3, "unit": None, "tone": "info"},
+                {"label": "Model invocations", "value": 580, "unit": None, "tone": "info"},
+            ],
         },
         {
-            "title": "Tokens",
-            "value": 1_240_000,
-            "tone": "muted",
-            "caption": "Input + output",
+            "entity_family": "Tools",
+            "label": "Tools",
+            "coverage_state": "no_data",
+            "figures": [
+                {"label": "Tools observed", "value": 0, "unit": None, "tone": "info"}
+            ],
         },
     ]
 
@@ -106,7 +113,7 @@ def _render_full_page() -> str:
     return ui.render_observe_page(
         active_view="overview",
         scope_label="Foundry project: project-a",
-        overview_metrics=_overview_metrics(),
+        overview_summaries=_overview_summaries(),
         overview_trends=_overview_trends(),
     )
 
@@ -120,7 +127,7 @@ def _assert_snapshot(name: str, content: str) -> None:
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
     path = SNAPSHOT_DIR / name
     if _UPDATE or not path.exists():
-        path.write_text(content, encoding="utf-8")
+        path.write_text(content, encoding="utf-8", newline="\n")
         if not _UPDATE:
             pytest.skip(f"golden snapshot created: {path.name} (re-run to compare)")
         return
@@ -251,13 +258,13 @@ def test_overview_page_charts_expose_accessible_names() -> None:
     assert html.count('role="img"') >= len(_overview_trends())
 
 
-def test_kpi_cards_are_grouped_and_labelled() -> None:
+def test_entity_summary_cards_are_grouped_and_labelled() -> None:
     html = _render_full_page()
-    assert 'class="observe-card observe-metric-card' in html
+    assert 'class="observe-entity-summary"' in html
+    assert 'aria-label="Overview by entity family"' in html
+    assert 'role="listitem"' in html
     assert 'role="group"' in html
-    # Delta chips are not color-only: they carry a direction glyph + value.
-    assert "observe-card-delta" in html
-    assert 'data-direction="up"' in html
+    assert "Run tokens consumed" in html
 
 
 # ---------------------------------------------------------------------------

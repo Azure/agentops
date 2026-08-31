@@ -58,21 +58,26 @@ from typing import Any, Mapping, Optional, Sequence
 from urllib.parse import urlencode
 
 from agentops.agent import ui_theme
+from agentops.core.observe import (
+    ENTITY_SUMMARY_FAMILY_ORDER,
+    TableColumn,
+    validate_column_declarations,
+)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
 
 #: Views exposed by the Observe navigation, in display order.
-OBSERVE_VIEWS: tuple[str, ...] = ("overview", "agents", "usage", "tools", "runs")
+OBSERVE_VIEWS: tuple[str, ...] = ("overview", "runs", "agents", "usage", "tools")
 
 #: Human-readable labels for each view, used by the nav and page title.
 OBSERVE_VIEW_LABELS: dict[str, str] = {
     "overview": "Overview",
+    "runs": "Runs",
     "agents": "Agents",
     "usage": "Models and usage",
     "tools": "Tools",
-    "runs": "Runs",
 }
 
 #: Maps each internal ``OBSERVE_VIEWS`` identifier to the ``ObserveQuery.view``
@@ -84,11 +89,135 @@ OBSERVE_VIEW_LABELS: dict[str, str] = {
 #: renaming every internal identifier.
 OBSERVE_VIEW_WIRE_NAMES: dict[str, str] = {
     "overview": "overview",
+    "runs": "runs",
     "agents": "agents",
     "usage": "models",
     "tools": "tools",
-    "runs": "runs",
 }
+
+#: Token help text shared by every observed-token column in the Runs table.
+_RUNS_TOKEN_HELP = "Observed token usage from telemetry; this is not billing data."
+ESTIMATED_COST_DISCLAIMER = (
+    "Estimated at published list prices; not an invoice or billed amount."
+)
+_ESTIMATED_COST_HELP = (
+    "Observed tokens are multiplied by the published unit price for their model "
+    "and token type, then summed. Each figure states the price-reference version "
+    f"and effective date. {ESTIMATED_COST_DISCLAIMER}"
+)
+
+#: Opaque run identifiers stay recognisable without taking over the table width.
+RUN_IDENTIFIER_VISIBLE_CHARS = 8
+
+#: Structural Runs-table budget for a standard 1366px laptop viewport. The
+#: table is fixed to the viewport and wraps cell content rather than creating a
+#: horizontal scrolling region.
+RUNS_TABLE_STANDARD_VIEWPORT_PX = 1366
+RUNS_TABLE_COLUMN_BUDGET = 18
+
+#: Categorical Runs columns that may be stated once above a complete table.
+_RUNS_SUPPRESSIBLE_COLUMN_IDS: tuple[str, ...] = (
+    "run_key_kind",
+    "agent_name",
+    "source_id",
+    "source_kind",
+    "status",
+)
+
+#: The Runs table declared once, in display order.
+#:
+#: Every reader of a Runs column -- the server-rendered header, the
+#: ``data-column-id`` attribute, and the embedded script's sort lookup --
+#: resolves a column through ``identifier``. ``label`` is displayed prose and
+#: carries no behaviour, so rewording a column cannot change how it sorts
+#: (FR-030). The mirror of this declaration in the embedded script is
+#: ``RUNS_TABLE_COLUMN_IDS``; the two are asserted to agree by test.
+RUNS_TABLE_COLUMNS: tuple[TableColumn, ...] = validate_column_declarations(
+    (
+        TableColumn(identifier="run_key", label="Run key", sort_key="run_key"),
+        TableColumn(
+            identifier="run_key_kind",
+            label="Correlation",
+            sort_key="run_key_kind",
+            help_text="Telemetry key used to group this run.",
+        ),
+        TableColumn(identifier="agent_name", label="Agent", sort_key="agent_name"),
+        TableColumn(identifier="source_id", label="Source", sort_key="source_id"),
+        TableColumn(identifier="source_kind", label="Runtime", sort_key="source_kind"),
+        TableColumn(
+            identifier="started_at",
+            label="Started",
+            sort_key="started_at",
+            help_text="First observed activity within the selected range.",
+        ),
+        TableColumn(
+            identifier="duration_ms",
+            label="Duration",
+            sort_key="duration_ms",
+            help_text=(
+                "Elapsed time between first and last observed activity in the "
+                "selected range."
+            ),
+        ),
+        TableColumn(identifier="status", label="Status", sort_key="status"),
+        TableColumn(
+            identifier="turns",
+            label="Turns",
+            sort_key="turns",
+            help_text="Turns observed within the selected range.",
+        ),
+        TableColumn(
+            identifier="tool_invocations",
+            label="Tool invocations",
+            sort_key="tool_invocations",
+        ),
+        TableColumn(
+            identifier="input_tokens",
+            label="Input tokens",
+            sort_key="input_tokens",
+            help_text=_RUNS_TOKEN_HELP,
+        ),
+        TableColumn(
+            identifier="output_tokens",
+            label="Output tokens",
+            sort_key="output_tokens",
+            help_text=_RUNS_TOKEN_HELP,
+        ),
+        TableColumn(
+            identifier="total_tokens",
+            label="Total tokens",
+            sort_key="total_tokens",
+            help_text=_RUNS_TOKEN_HELP,
+        ),
+        TableColumn(
+            identifier="estimated_cost",
+            label="Estimated cost",
+            help_text=_ESTIMATED_COST_HELP,
+            priority=1,
+        ),
+        TableColumn(
+            identifier="cache_read_tokens",
+            label="Cache read",
+            sort_key="cache_read_tokens",
+            help_text=f"Tokens served from the prompt cache. {_RUNS_TOKEN_HELP}",
+        ),
+        TableColumn(
+            identifier="cache_write_tokens",
+            label="Cache write",
+            sort_key="cache_write_tokens",
+            help_text=f"Tokens written to the prompt cache. {_RUNS_TOKEN_HELP}",
+        ),
+        TableColumn(
+            identifier="reasoning_tokens",
+            label="Reasoning",
+            sort_key="reasoning_tokens",
+            help_text=(
+                "Reasoning tokens reported by the model provider. "
+                f"{_RUNS_TOKEN_HELP}"
+            ),
+        ),
+    )
+)
 
 #: The *only* filter keys that may ever be written to the URL query string.
 #: This list intentionally excludes every raw generative-AI content field
@@ -101,6 +230,7 @@ OBSERVE_FILTER_QUERY_KEYS: tuple[str, ...] = (
     "model",
     "tool_name",
     "run_key",
+    "window_preset",
     "start",
     "end",
 )
@@ -189,6 +319,16 @@ PROTECTION_STATE_LABELS: dict[str, dict[str, str]] = {
     "not_configured": {"label": "Not configured", "tone": "muted"},
 }
 
+#: Labels shared by the server-rendered and client-rendered runtime columns.
+SOURCE_KIND_LABELS: dict[str, str] = {
+    "foundry_hosted": "Foundry Hosted",
+    "foundry_prompt": "Foundry Prompt",
+    "external_registered": "External Registered",
+    "external_unregistered": "External Unregistered",
+    "copilot_studio": "Copilot Studio",
+    "unknown": "Unclassified",
+}
+
 #: Best-effort, human-friendly labels for *documented* portal link keys.
 #: Any key not listed here still renders (title-cased) rather than being
 #: dropped -- this is the "best-effort labeling for undocumented portal
@@ -219,10 +359,13 @@ __all__ = [
     "COST_BREAKDOWN_WARNING",
     "DEFAULT_RANGE_HOURS",
     "AUTO_REFRESH_MS",
+    "RUNS_TABLE_STANDARD_VIEWPORT_PX",
+    "RUNS_TABLE_COLUMN_BUDGET",
     "MAX_TREND_POINTS",
     "COVERAGE_STATE_LABELS",
     "COVERAGE_DIMENSION_LABELS",
     "PROTECTION_STATE_LABELS",
+    "SOURCE_KIND_LABELS",
     "html_escape",
     "render_source_label",
     "render_refreshed_at",
@@ -307,10 +450,52 @@ def _format_iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _format_compact_timestamp(value: datetime) -> str:
+def _format_compact_timestamp(
+    value: datetime, presentation_timezone: Any = timezone.utc
+) -> str:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    shown = value.astimezone(presentation_timezone)
+    offset = shown.strftime("%z")
+    offset = f"{offset[:3]}:{offset[3:]}"
+    return f"{shown:%b} {shown.day}, {shown:%Y, %H:%M} {offset}"
+
+
+def _format_full_timestamp(
+    value: datetime, presentation_timezone: Any = timezone.utc
+) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    shown = value.astimezone(presentation_timezone)
+    offset = shown.strftime("%z")
+    offset = f"{offset[:3]}:{offset[3:]}"
+    return f"{shown:%Y-%m-%d %H:%M:%S} {offset}"
+
+
+def _render_presented_timestamp(
+    value: Any,
+    *,
+    compact: bool = False,
+    prefix: str = "",
+    suffix: str = "",
+) -> str:
+    """Render one canonical UTC instant for presentation-time enhancement."""
+    moment = _coerce_datetime(value)
+    if moment is None:
+        return ""
+    iso = _format_iso(moment)
+    display = (
+        _format_compact_timestamp(moment) if compact else _format_full_timestamp(moment)
+    )
+    style = "compact" if compact else "full"
+    return (
+        f'<time datetime="{html_escape(iso)}" title="{html_escape(iso)}" '
+        f'data-observe-time="{html_escape(iso)}" '
+        f'data-observe-time-style="{style}" '
+        f'data-observe-time-prefix="{html_escape(prefix)}" '
+        f'data-observe-time-suffix="{html_escape(suffix)}">'
+        f"{html_escape(prefix + display + suffix)}</time>"
+    )
 
 
 def _format_seconds(milliseconds: Any) -> str:
@@ -356,6 +541,41 @@ def _render_header_cell(label: str, help_text: str | None = None) -> str:
     return (
         f'<th scope="col" data-label="{html_escape(label)}">'
         f"{html_escape(label)}{icon}</th>"
+    )
+
+
+def _render_column_header(column: TableColumn) -> str:
+    """Render one ``<th>`` from a column declaration.
+
+    Emits ``data-column-id`` alongside the existing ``data-label`` so the
+    embedded script can resolve a column by its stable identity rather than by
+    the prose it happens to display.
+    """
+    help_panel = (
+        f" {_render_header_help(column.identifier, column.label, column.help_text)}"
+        if column.help_text
+        else ""
+    )
+    help_attr = (
+        f' data-help="{html_escape(column.help_text)}"' if column.help_text else ""
+    )
+    return (
+        f'<th scope="col" data-column-id="{html_escape(column.identifier)}" '
+        f'data-label="{html_escape(column.label)}"{help_attr}>'
+        f"{html_escape(column.label)}{help_panel}</th>"
+    )
+
+
+def _render_header_help(identifier: str, label: str, help_text: str) -> str:
+    """Render a themed header explanation instead of a native title tooltip."""
+    panel_id = f"observe-runs-help-{identifier}"
+    return (
+        '<span class="observe-header-help" data-observe-header-help>'
+        f'<button type="button" class="observe-header-help-trigger" '
+        f'aria-label="Explain {html_escape(label)}" aria-expanded="false" '
+        f'aria-controls="{panel_id}">i</button>'
+        f'<span class="observe-header-help-panel" id="{panel_id}" role="tooltip">'
+        f"{html_escape(help_text)}</span></span>"
     )
 
 
@@ -410,13 +630,10 @@ def render_refreshed_at(value: Any, *, label: str = "Refreshed") -> str:
             '<time class="observe-refreshed-at observe-refreshed-at-unknown">'
             f"{html_escape(label)}: not yet refreshed</time>"
         )
-    iso = _format_iso(moment)
-    compact = _format_compact_timestamp(moment)
-    return (
-        f'<time class="observe-refreshed-at" datetime="{html_escape(iso)}" '
-        f'title="{html_escape(iso)}">'
-        f"{html_escape(label)}: {html_escape(compact)}</time>"
+    rendered = _render_presented_timestamp(
+        moment, compact=True, prefix=f"{label}: "
     )
+    return rendered.replace("<time ", '<time class="observe-refreshed-at" ', 1)
 
 
 def render_last_seen(value: Any) -> str:
@@ -427,12 +644,9 @@ def render_last_seen(value: Any) -> str:
             '<span class="observe-last-seen observe-last-seen-missing metric-missing">'
             "\u2014</span>"
         )
-    iso = _format_iso(moment)
-    compact = _format_compact_timestamp(moment)
     return (
         '<span class="observe-last-seen">'
-        f'<time datetime="{html_escape(iso)}" title="{html_escape(iso)}">'
-        f"{html_escape(compact)}</time></span>"
+        f"{_render_presented_timestamp(moment)}</span>"
     )
 
 
@@ -440,12 +654,7 @@ def _render_timestamp(value: Any) -> str:
     moment = _coerce_datetime(value)
     if moment is None:
         return '<span class="observe-metric metric-missing">\u2014</span>'
-    iso = _format_iso(moment)
-    compact = _format_compact_timestamp(moment)
-    return (
-        f'<time datetime="{html_escape(iso)}" title="{html_escape(iso)}">'
-        f"{html_escape(compact)}</time>"
-    )
+    return _render_presented_timestamp(moment)
 
 
 def _render_maybe_missing(
@@ -747,7 +956,7 @@ def render_trend_chart(
 
     def _display_point(value: Any) -> str:
         moment = _coerce_datetime(value)
-        return _format_compact_timestamp(moment) if moment is not None else str(value)
+        return _format_full_timestamp(moment) if moment is not None else str(value)
 
     def _display_value(value: Any) -> str:
         normalized_unit = unit.strip()
@@ -810,9 +1019,23 @@ def render_trend_chart(
             point_label = _display_point(x_label)
             value_label = _display_value(value)
             tooltip = f"{label} \u2013 {html_escape(point_label)}: {html_escape(value_label)}"
+            point_moment = _coerce_datetime(x_label)
+            if point_moment is not None:
+                point_iso = _format_iso(point_moment)
+                title_html = (
+                    f'<title data-observe-time="{html_escape(point_iso)}" '
+                    'data-observe-time-style="full" '
+                    f'data-observe-time-prefix="{html_escape(label + " – ")}" '
+                    f'data-observe-time-suffix="{html_escape(": " + value_label)}">'
+                    f"{tooltip}</title>"
+                )
+                point_cell = _render_presented_timestamp(point_moment)
+            else:
+                title_html = f"<title>{tooltip}</title>"
+                point_cell = html_escape(point_label)
             body_parts.append(
                 '<g class="observe-chart-point">'
-                f"<title>{tooltip}</title>"
+                f"{title_html}"
                 f'<text class="observe-chart-marker observe-chart-marker-{shape_name}" '
                 f'x="{x:.2f}" y="{y:.2f}" fill="{color_var}" '
                 'text-anchor="middle" dominant-baseline="central">'
@@ -820,7 +1043,7 @@ def render_trend_chart(
             )
             table_parts.append(
                 f"<tr><th scope=\"row\">{html_escape(label)}</th>"
-                f"<td>{html_escape(point_label)}</td><td>{html_escape(value_label)}</td></tr>"
+                f"<td>{point_cell}</td><td>{html_escape(value_label)}</td></tr>"
             )
 
         legend_parts.append(
@@ -908,47 +1131,93 @@ def render_filter_bar(scope_label: Optional[str] = None) -> str:
         if scope_label
         else ""
     )
+    def scope_control(key: str, label: str, placeholder: str) -> str:
+        return f"""
+    <fieldset class="observe-scope-filter" data-scope-dimension="{key}"
+              data-draft-filter="{key}">
+      <legend>{html_escape(label)}</legend>
+      <button type="button" class="observe-scope-trigger" data-scope-trigger
+              aria-expanded="false" aria-controls="observe-scope-options-{key}">
+        <span data-scope-summary>All</span>
+      </button>
+      <div id="observe-scope-options-{key}" class="observe-scope-panel" data-scope-panel hidden>
+        <label class="observe-scope-search-label">Search
+          <input type="search" data-scope-search autocomplete="off"
+                 placeholder="Search all available values" />
+        </label>
+        <div class="observe-scope-options" data-scope-options role="group"
+             aria-label="{html_escape(label)} options">
+          <span class="observe-hint">Loading options...</span>
+        </div>
+        <p class="observe-scope-count" data-scope-count aria-live="polite"></p>
+        <label class="observe-scope-fallback" data-scope-fallback hidden>
+          Enter {html_escape(label.lower())}
+          <input type="text" placeholder="{html_escape(placeholder)}" autocomplete="off" />
+        </label>
+      </div>
+      <template data-scope-option-template>
+        <label><input type="checkbox" /><span></span></label>
+      </template>
+    </fieldset>""".rstrip()
+
+    scope_controls = "\n".join(
+        (
+            scope_control(
+                "foundry_resource_id", "Foundry resource", "All in current scope"
+            ),
+            scope_control("project_resource_id", "Project", "All in current scope"),
+            scope_control("agent_id", "Agent", "All agents"),
+            scope_control("model", "Model", "All models"),
+            scope_control("tool_name", "Tool", "All tools"),
+            scope_control("run_key", "Run key", "All runs"),
+        )
+    )
     return f"""
 <form class="observe-filter-bar" id="observe-filter-form" aria-label="Observe filters">
   {scope_html}
   <div class="observe-filter-fields">
-    <label for="observe-filter-foundry_resource_id">Foundry resource
-      <input type="text" id="observe-filter-foundry_resource_id" name="foundry_resource_id"
-             data-draft-filter="foundry_resource_id" placeholder="All in current scope" autocomplete="off" />
-    </label>
-    <label for="observe-filter-project_resource_id">Project
-      <input type="text" id="observe-filter-project_resource_id" name="project_resource_id"
-             data-draft-filter="project_resource_id" placeholder="All in current scope" autocomplete="off" />
-    </label>
-    <label for="observe-filter-agent_id">Agent
-      <input type="text" id="observe-filter-agent_id" name="agent_id"
-             data-draft-filter="agent_id" placeholder="All agents" autocomplete="off" />
-    </label>
-    <label for="observe-filter-model">Model
-      <input type="text" id="observe-filter-model" name="model"
-             data-draft-filter="model" placeholder="All models" autocomplete="off" />
-    </label>
-    <label for="observe-filter-tool_name">Tool
-      <input type="text" id="observe-filter-tool_name" name="tool_name"
-             data-draft-filter="tool_name" placeholder="All tools" autocomplete="off" />
-    </label>
-    <label for="observe-filter-run_key">Run key
-      <input type="text" id="observe-filter-run_key" name="run_key"
-             data-draft-filter="run_key" placeholder="All runs" autocomplete="off" />
-    </label>
-    <label for="observe-filter-start">Start
-      <input type="datetime-local" id="observe-filter-start" name="start"
-             data-draft-filter="start" />
-    </label>
-    <label for="observe-filter-end">End
-      <input type="datetime-local" id="observe-filter-end" name="end"
-             data-draft-filter="end" />
+{scope_controls}
+    <fieldset class="observe-window-filter">
+      <legend>Window</legend>
+      <select id="observe-filter-window_preset" name="window_preset"
+              data-draft-filter="window_preset">
+        <option value="30m">30 minutes</option><option value="1h">1 hour</option>
+        <option value="6h">6 hours</option><option value="12h">12 hours</option>
+        <option value="1d">1 day</option><option value="3d">3 days</option>
+        <option value="7d" selected>7 days</option><option value="30d">30 days</option>
+        <option value="custom">Custom</option>
+      </select>
+    </fieldset>
+    <div class="observe-custom-window" data-custom-window hidden>
+      <label for="observe-filter-start">Start
+        <input type="datetime-local" id="observe-filter-start" name="start"
+               data-draft-filter="start" data-observe-time-input />
+      </label>
+      <label for="observe-filter-end">End
+        <input type="datetime-local" id="observe-filter-end" name="end"
+               data-draft-filter="end" data-observe-time-input />
+      </label>
+    </div>
+    <label class="observe-timezone-control" for="observe-timezone-basis">
+      Timezone
+      <select id="observe-timezone-basis" data-observe-timezone-basis
+              aria-describedby="observe-timezone-help">
+        <option value="local" selected>Local</option>
+        <option value="utc">UTC</option>
+      </select>
+      <span id="observe-timezone-help" class="visually-hidden">
+        Changes presentation only; query boundaries remain UTC.
+      </span>
     </label>
   </div>
   <div class="observe-filter-actions">
     <button type="submit" id="observe-apply-filters" class="observe-apply-button">Apply filters</button>
     <button type="button" id="observe-refresh-now" class="observe-refresh-button">Refresh now</button>
-    <span id="observe-refresh-status" class="observe-refresh-status" role="status" aria-live="polite"></span>
+    <span id="observe-refresh-status" class="observe-refresh-status" role="status"
+          aria-live="polite">Not yet refreshed</span>
+    <span id="observe-scope-status" class="observe-scope-status observe-hint"
+          role="status" aria-live="polite" hidden></span>
+    <span id="observe-window-error" class="observe-window-error" role="alert" hidden></span>
   </div>
 </form>
 """.strip()
@@ -1029,13 +1298,83 @@ def _render_metric_card(
     )
 
 
+def _render_entity_summaries(summaries: Sequence[Any]) -> str:
+    order = {family: index for index, family in enumerate(ENTITY_SUMMARY_FAMILY_ORDER)}
+    ordered = sorted(
+        summaries,
+        key=lambda summary: order.get(str(_get(summary, "entity_family") or ""), 99),
+    )
+    families: list[str] = []
+    for summary in ordered:
+        family = str(_get(summary, "entity_family") or "")
+        if family not in order:
+            continue
+        family_key = family.lower()
+        state = str(_get(summary, "coverage_state") or "not_reported")
+        copy = COVERAGE_STATE_LABELS.get(state, COVERAGE_STATE_LABELS["not_reported"])
+        heading_id = f"observe-summary-{family_key}-heading"
+        badge = _render_badge(
+            copy["label"],
+            copy["tone"],
+            extra_class=f"observe-summary-coverage observe-coverage-state-{html_escape(state)}",
+        )
+        body: str
+        if state == "no_data":
+            body = (
+                f'<p class="observe-family-empty" role="status">'
+                f"No {html_escape(family_key)} data found for the selected scope and window."
+                "</p>"
+            )
+        elif state in ("error", "inaccessible", "protected_or_unavailable"):
+            body = (
+                f'<p class="observe-family-empty" role="status">'
+                f"{html_escape(family)} summary data is unavailable for the selected scope and window."
+                "</p>"
+            )
+        else:
+            figures: list[str] = []
+            for figure in _get(summary, "figures", ()) or ():
+                label = str(_get(figure, "label") or "")
+                unit = _get(figure, "unit")
+                suffix = "" if unit is None else ("%" if unit == "%" else f" {unit}")
+                tone = str(_get(figure, "tone") or "info")
+                figures.append(
+                    f'<div class="observe-summary-figure observe-tone-{html_escape(tone)}" '
+                    f'role="group" aria-label="{html_escape(label)}">'
+                    f"<dt>{html_escape(label)}</dt>"
+                    f"<dd>{_render_maybe_missing(_get(figure, 'value'), suffix=suffix)}</dd>"
+                    "</div>"
+                )
+            body = (
+                f'<dl class="observe-summary-figures">{"".join(figures)}</dl>'
+                if figures
+                else (
+                    '<p class="observe-family-empty" role="status">'
+                    f"{html_escape(family)} figures were not reported."
+                    "</p>"
+                )
+            )
+        families.append(
+            f'<section class="observe-entity-summary" data-entity-family="{family_key}" '
+            f'role="listitem" aria-labelledby="{heading_id}">'
+            '<div class="observe-summary-header">'
+            f'<h3 id="{heading_id}">{html_escape(family)}</h3>{badge}'
+            f"</div>{body}</section>"
+        )
+    return (
+        '<div class="observe-overview-summaries" role="list" '
+        'aria-label="Overview by entity family">'
+        f'{"".join(families)}</div>'
+    )
+
+
 def render_overview_cards(
-    metrics: Sequence[Mapping[str, Any]],
+    metrics: Sequence[Any],
     *,
     diagnostics: Optional[Mapping[str, Any]] = None,
     trends: Optional[Sequence[Mapping[str, Any]]] = None,
 ) -> str:
-    """Render the Overview executive dashboard: KPI cards plus trend charts.
+    """Render entity-owned Overview summaries, with legacy KPI compatibility.
 
     Each entry in ``metrics`` is a mapping with ``title``, ``value``
     (rendered through the zero-vs-missing helper unless ``value_html`` is
@@ -1049,13 +1388,16 @@ def render_overview_cards(
     matching :func:`render_trend_chart`. Invocation, failure, latency, token and
     coverage trends are surfaced here.
     """
+    summaries = [item for item in metrics if _get(item, "entity_family")]
     if not metrics and not trends:
         return (
             '<div class="observe-overview-cards observe-empty-state">'
             "<p class=\"observe-empty\">No data found for the selected filters.</p></div>"
         )
     cards = []
-    for metric in metrics:
+    for metric in metrics if not summaries else ():
+        if not isinstance(metric, Mapping):
+            continue
         title = str(metric.get("title", ""))
         unit = str(metric.get("unit", ""))
         if "value_html" in metric:
@@ -1076,7 +1418,13 @@ def render_overview_cards(
             )
         )
     cards_html = (
-        f'<div class="observe-overview-cards">{"".join(cards)}</div>' if cards else ""
+        _render_entity_summaries(summaries)
+        if summaries
+        else (
+            f'<div class="observe-overview-cards">{"".join(cards)}</div>'
+            if cards
+            else ""
+        )
     )
     trends_html = ""
     if trends:
@@ -1108,7 +1456,7 @@ def render_overview_cards(
 
 def _render_source_kind_badge(source_kind: Any) -> str:
     kind = source_kind or "unknown"
-    label = "Unclassified" if kind == "unknown" else str(kind).replace("_", " ").title()
+    label = SOURCE_KIND_LABELS.get(kind, str(kind).replace("_", " ").title())
     source = f'<span class="observe-source-kind">{html_escape(label)}</span>'
     if kind != "unknown":
         return source
@@ -1117,6 +1465,79 @@ def _render_source_kind_badge(source_kind: Any) -> str:
         'title="Source kind could not be classified from the available telemetry attributes.">'
         f"{source}</span>"
     )
+
+
+def render_estimated_cost(estimate: Any, *, grouped: bool = False) -> str:
+    """Render one list-price estimate with mandatory status and provenance."""
+    completeness = str(_get(estimate, "completeness") or "not_priced")
+    amount = _get(estimate, "amount")
+    currency = _get(estimate, "currency")
+    reason = _get(estimate, "reason")
+    version = _get(estimate, "price_reference_version")
+    effective_date = _get(estimate, "price_reference_effective_date")
+    excluded = _get(estimate, "excluded_components") or []
+    if amount is None:
+        value = '<strong class="metric-missing">Not priced</strong>'
+    else:
+        value = (
+            f'<strong class="observe-estimated-cost-amount">'
+            f"{html_escape(currency)} {html_escape(format(amount, 'f') if hasattr(amount, 'as_tuple') else str(amount))}"
+            "</strong>"
+        )
+    details = [
+        f'<span class="observe-estimated-cost-state">Completeness: {html_escape(completeness.replace("_", " "))}</span>'
+    ]
+    if version and effective_date:
+        details.append(
+            '<span class="observe-estimated-cost-reference">'
+            f"Price reference {html_escape(version)}, effective {html_escape(effective_date)}"
+            "</span>"
+        )
+    if _get(estimate, "is_stale"):
+        age = _get(estimate, "reference_age_days")
+        details.append(
+            '<span class="observe-estimated-cost-stale">'
+            f"Stale price reference ({html_escape(age)} days old)"
+            "</span>"
+        )
+    if grouped:
+        covered = _get(estimate, "covered_run_count")
+        scope = _get(estimate, "scope_run_count")
+        unpriced = _get(estimate, "unpriced_run_count")
+        if covered is not None and scope is not None and unpriced is not None:
+            details.append(
+                '<span class="observe-estimated-cost-coverage">'
+                f"{html_escape(covered)} of {html_escape(scope)} runs covered; "
+                f"{html_escape(unpriced)} runs not priced"
+                "</span>"
+            )
+    if reason:
+        details.append(
+            f'<span class="observe-estimated-cost-reason">{html_escape(reason)}</span>'
+        )
+    if excluded:
+        details.append(
+            '<span class="observe-estimated-cost-exclusions">Excluded: '
+            f"{html_escape(', '.join(str(item) for item in excluded))}</span>"
+        )
+    details.append(
+        f'<span class="observe-estimated-cost-disclaimer">{html_escape(ESTIMATED_COST_DISCLAIMER)}</span>'
+    )
+    return (
+        f'<div class="observe-estimated-cost" data-completeness="{html_escape(completeness)}">'
+        f"{value}{''.join(details)}</div>"
+    )
+
+
+def _estimated_cost_help(estimate: Any) -> str:
+    version = _get(estimate, "price_reference_version")
+    effective_date = _get(estimate, "price_reference_effective_date")
+    if version and effective_date:
+        return (
+            f"{_ESTIMATED_COST_HELP} This result uses price reference {version}, "
+            f"effective {effective_date}."
+        )
+    return _ESTIMATED_COST_HELP
 
 
 def render_agents_table(
@@ -1159,6 +1580,7 @@ def render_agents_table(
             f"<td>{_render_maybe_missing(_get(agent, 'cache_read_tokens'), missing_text='—')}</td>"
             f"<td>{_render_maybe_missing(_get(agent, 'cache_write_tokens'), missing_text='—')}</td>"
             f"<td>{_render_maybe_missing(_get(agent, 'reasoning_tokens'), missing_text='—')}</td>"
+            f"<td>{render_estimated_cost(_get(agent, 'estimated_cost'), grouped=True)}</td>"
             "</tr>"
         )
     total_invocations = _sum_reported(agents, "invocations")
@@ -1189,6 +1611,7 @@ def render_agents_table(
             _render_maybe_missing(
                 _sum_reported(agents, "reasoning_tokens"), missing_text="\u2014"
             ),
+            "\u2014",
         )
     )
     token_help = "Observed token usage from telemetry; this is not billing data."
@@ -1211,6 +1634,7 @@ def render_agents_table(
       {_render_header_cell("Cache read", token_help)}
       {_render_header_cell("Cache write", token_help)}
       {_render_header_cell("Reasoning", token_help)}
+      {_render_header_cell("Estimated cost", _ESTIMATED_COST_HELP)}
     </tr>
   </thead>
   <tbody>{"".join(rows)}</tbody>
@@ -1762,14 +2186,21 @@ def _render_cost_usage_share(row: Any) -> str:
 
 def _render_cost_period(cost: Any) -> str:
     period = _get(cost, "period", {}) or {}
-    starts_at = _get(period, "starts_at") or "Not reported"
-    ends_at = _get(period, "ends_at") or "Not reported"
+    starts_at = _render_presented_timestamp(_get(period, "starts_at")) or "Not reported"
+    ends_at = _render_presented_timestamp(_get(period, "ends_at")) or "Not reported"
+    calculated_at = (
+        _render_presented_timestamp(_get(cost, "calculated_at")) or "Not reported"
+    )
+    latest_observed_at = (
+        _render_presented_timestamp(_get(cost, "latest_observed_at"))
+        or "Not reported"
+    )
     return (
         '<dl class="observe-cost-period">'
         f"<div><dt>Period</dt><dd>{html_escape(_get(period, 'id') or 'Not reported')}</dd></div>"
-        f"<div><dt>Observation window</dt><dd>{html_escape(starts_at)} to {html_escape(ends_at)}</dd></div>"
-        f"<div><dt>Calculated at</dt><dd>{html_escape(_get(cost, 'calculated_at') or 'Not reported')}</dd></div>"
-        f"<div><dt>Latest observed</dt><dd>{html_escape(_get(cost, 'latest_observed_at') or 'Not reported')}</dd></div>"
+        f"<div><dt>Observation window</dt><dd>{starts_at} to {ends_at}</dd></div>"
+        f"<div><dt>Calculated at</dt><dd>{calculated_at}</dd></div>"
+        f"<div><dt>Latest observed</dt><dd>{latest_observed_at}</dd></div>"
         "</dl>"
     )
 
@@ -1918,11 +2349,11 @@ def _render_cost_row_evidence(row: Any, cost: Any) -> str:
         f"{_get(row_boundary, 'label') or _get(row_boundary, 'value') or 'Not reported'}"
     )
     period_id = _get(row, "period_id") or _get(period, "id") or "Not reported"
-    starts_at = _get(row, "period_starts_at") or _get(period, "starts_at") or "Not reported"
-    ends_at = _get(row, "period_ends_at") or _get(period, "ends_at") or "Not reported"
+    starts_at = _get(row, "period_starts_at") or _get(period, "starts_at")
+    ends_at = _get(row, "period_ends_at") or _get(period, "ends_at")
     details = (
         ("Period", period_id),
-        ("Observation window", f"{starts_at} to {ends_at}"),
+        ("Observation window", (starts_at, ends_at)),
         ("Billing boundary", boundary),
         ("Source resource", _get(row, "source_resource_id") or "Not reported"),
         ("Project resource", _get(row, "project_resource_id") or "Not reported"),
@@ -1940,13 +2371,25 @@ def _render_cost_row_evidence(row: Any, cost: Any) -> str:
         ("Confidence", _cost_label(_get(row, "confidence"))),
         ("Coverage", _cost_label(_get(row, "coverage_state"))),
         ("Coverage reason", _get(row, "coverage_reason") or "No incomplete-coverage reason reported."),
-        ("Calculated at", _get(row, "calculated_at") or "Not reported"),
-        ("Latest observed", _get(row, "latest_observed_at") or "Not reported"),
+        ("Calculated at", _get(row, "calculated_at")),
+        ("Latest observed", _get(row, "latest_observed_at")),
     )
-    return '<dl class="observe-cost-row-evidence">' + "".join(
-        f"<div><dt>{html_escape(label)}</dt><dd>{html_escape(value)}</dd></div>"
-        for label, value in details
-    ) + "</dl>"
+    rendered_details = []
+    for label, value in details:
+        if label == "Observation window":
+            start, end = value
+            shown = (
+                f"{_render_presented_timestamp(start) or 'Not reported'} to "
+                f"{_render_presented_timestamp(end) or 'Not reported'}"
+            )
+        elif label in {"Calculated at", "Latest observed"}:
+            shown = _render_presented_timestamp(value) or "Not reported"
+        else:
+            shown = html_escape(value)
+        rendered_details.append(
+            f"<div><dt>{html_escape(label)}</dt><dd>{shown}</dd></div>"
+        )
+    return '<dl class="observe-cost-row-evidence">' + "".join(rendered_details) + "</dl>"
 
 
 def _render_cost_rows(rows: Sequence[Any], cost: Any) -> str:
@@ -2132,6 +2575,10 @@ def _render_bounds_notice(bounds: Any, *, rows_shown: int) -> str:
         text = f"Showing {rows_shown} rows."
     else:
         text = f"Showing {rows_shown} of {total} rows in scope."
+        omitted = max(int(total) - rows_shown, 0)
+        if bool(_get(bounds, "truncated")) and omitted:
+            noun = "row is" if omitted == 1 else "rows are"
+            text += f" {omitted} {noun} not displayed."
     return f'<p class="observe-hint observe-bounds-notice">{html_escape(text)}</p>'
 
 
@@ -2205,6 +2652,196 @@ def render_tools_table(
 """.strip()
 
 
+def _abbreviate_run_identifier(value: str) -> str:
+    if len(value) <= RUN_IDENTIFIER_VISIBLE_CHARS:
+        return value
+    return f"{value[:RUN_IDENTIFIER_VISIBLE_CHARS]}\u2026"
+
+
+def _workspace_name(source_id: str) -> str:
+    """Return the final ARM path segment used as the logs workspace name."""
+    parts = [part for part in source_id.replace("\\", "/").split("/") if part]
+    return parts[-1] if parts else source_id
+
+
+def _render_copy_affordance(full_value: str, *, label: str) -> str:
+    escaped_value = html_escape(full_value)
+    escaped_label = html_escape(label)
+    return (
+        '<span class="observe-copy-control" data-observe-copy '
+        f'data-copy-value="{escaped_value}">'
+        '<details class="observe-copy-fallback">'
+        f'<summary aria-label="Copy full {escaped_label}">Copy</summary>'
+        f'<label>Full {escaped_label}'
+        f'<input type="text" readonly value="{escaped_value}" '
+        f'aria-label="Full {escaped_label} for manual selection"></label>'
+        "</details>"
+        '<span class="observe-copy-feedback" role="status" aria-live="polite"></span>'
+        "</span>"
+    )
+
+
+def _render_copy_value(full_value: str, visible_value: str, *, label: str) -> str:
+    return (
+        '<span class="observe-copy-value">'
+        f'<span class="observe-copy-visible">{html_escape(visible_value)}</span>'
+        f"{_render_copy_affordance(full_value, label=label)}"
+        "</span>"
+    )
+
+
+def _runs_scope_is_complete(
+    runs: Sequence[Any],
+    *,
+    bounds: Any,
+    diagnostics: Optional[Mapping[str, Any]],
+) -> bool:
+    """Return whether displayed rows provably cover the whole successful scope."""
+    if bounds is None or bool(_get(bounds, "truncated")):
+        return False
+    if bool(_get(bounds, "has_previous_page")) or bool(_get(bounds, "has_next_page")):
+        return False
+    total = _get(bounds, "rows_total_in_scope")
+    shown = _get(bounds, "rows_shown")
+    if total is None or int(total) != len(runs):
+        return False
+    if shown is not None and int(shown) != len(runs):
+        return False
+    if diagnostics and (
+        int(_get(diagnostics, "partial_sources") or 0) > 0
+        or int(_get(diagnostics, "failed_sources") or 0) > 0
+    ):
+        return False
+    return True
+
+
+def _run_dimension_value(run: Any, identifier: str) -> tuple[str | None, str | None]:
+    if identifier == "run_key_kind":
+        value = _get(run, "run_key_kind")
+    elif identifier == "agent_name":
+        raw = _get(run, "agent_key") or _get(run, "agent_id") or _get(run, "agent_name")
+        shown = _get(run, "agent_name") or _get(run, "agent_id") or _get(run, "agent_key")
+        return (
+            str(raw) if raw not in (None, "") else None,
+            str(shown) if shown not in (None, "") else None,
+        )
+    elif identifier == "source_id":
+        value = _get(run, "source_id")
+        return (
+            str(value) if value not in (None, "") else None,
+            _workspace_name(str(value)) if value not in (None, "") else None,
+        )
+    elif identifier == "source_kind":
+        value = _get(run, "source_kind")
+    elif identifier == "status":
+        value = _get(run, "status")
+    else:
+        return None, None
+    return (
+        str(value) if value not in (None, "") else None,
+        str(value) if value not in (None, "") else None,
+    )
+
+
+def _suppressed_run_dimensions(
+    runs: Sequence[Any],
+    *,
+    bounds: Any,
+    diagnostics: Optional[Mapping[str, Any]],
+) -> dict[str, tuple[str, str]]:
+    if not _runs_scope_is_complete(runs, bounds=bounds, diagnostics=diagnostics):
+        return {}
+    suppressed: dict[str, tuple[str, str]] = {}
+    for identifier in _RUNS_SUPPRESSIBLE_COLUMN_IDS:
+        values = [_run_dimension_value(run, identifier) for run in runs]
+        if any(raw is None or shown is None for raw, shown in values):
+            continue
+        raw_values = {raw for raw, _ in values}
+        if len(raw_values) == 1:
+            raw, shown = values[0]
+            suppressed[identifier] = (raw or "", shown or "")
+    return suppressed
+
+
+def _render_runs_scope_summary(
+    suppressed: Mapping[str, tuple[str, str]],
+) -> str:
+    if not suppressed:
+        return ""
+    by_id = {column.identifier: column for column in RUNS_TABLE_COLUMNS}
+    items: list[str] = []
+    for identifier in _RUNS_SUPPRESSIBLE_COLUMN_IDS:
+        if identifier not in suppressed:
+            continue
+        raw, shown = suppressed[identifier]
+        value_html = (
+            _render_copy_value(raw, shown, label="source resource ID")
+            if identifier == "source_id"
+            else html_escape(shown)
+        )
+        items.append(
+            f"<div><dt>{html_escape(by_id[identifier].label)}</dt>"
+            f"<dd>{value_html}</dd></div>"
+        )
+    return (
+        '<dl class="observe-runs-scope-summary" '
+        'aria-label="Values shared by every run in scope">'
+        f"{''.join(items)}</dl>"
+    )
+
+
+def _render_run_detail(run: Any, *, colspan: int) -> str:
+    details = (
+        (
+            "Full run key",
+            _render_copy_value(
+                str(_get(run, "run_key") or ""),
+                str(_get(run, "run_key") or "\u2014"),
+                label="run key",
+            ),
+        ),
+        ("Correlation", html_escape(_get(run, "run_key_kind") or "\u2014")),
+        (
+            "Agent",
+            html_escape(
+                _get(run, "agent_name")
+                or _get(run, "agent_id")
+                or _get(run, "agent_key")
+                or "\u2014"
+            ),
+        ),
+        (
+            "Full source resource ID",
+            _render_copy_value(
+                str(_get(run, "source_id") or ""),
+                str(_get(run, "source_id") or "\u2014"),
+                label="source resource ID",
+            ),
+        ),
+        ("Runtime", _render_source_kind_badge(_get(run, "source_kind"))),
+        ("Status", html_escape(_get(run, "status") or "\u2014")),
+        ("Last activity", _render_timestamp(_get(run, "last_activity_at"))),
+        (
+            "Failed turns",
+            _render_maybe_missing(_get(run, "failed_turns"), missing_text="\u2014"),
+        ),
+        (
+            "Tool failures",
+            _render_maybe_missing(_get(run, "tool_failures"), missing_text="\u2014"),
+        ),
+    )
+    body = "".join(
+        f"<div><dt>{html_escape(label)}</dt><dd>{value}</dd></div>"
+        for label, value in details
+    )
+    return (
+        '<tr class="observe-run-detail-row" data-observe-run-detail-row="true">'
+        f'<td colspan="{colspan}"><details class="observe-run-detail">'
+        f'<summary>Run details for {html_escape(_abbreviate_run_identifier(str(_get(run, "run_key") or "")))}</summary>'
+        f'<dl>{body}</dl></details></td></tr>'
+    )
+
+
 def render_runs_table(
     runs: Sequence[Any],
     *,
@@ -2219,7 +2856,26 @@ def render_runs_table(
             '<p class="observe-empty">No runs could be correlated for the selected filters. '
             'Run correlation may not be reported for this selection.</p></div>'
         )
-    rows = []
+
+    suppressed = _suppressed_run_dimensions(
+        runs,
+        bounds=bounds,
+        diagnostics=diagnostics,
+    )
+    visible_columns = tuple(
+        column
+        for column in RUNS_TABLE_COLUMNS
+        if column.identifier not in suppressed
+    )
+    first_estimate = _get(runs[0], "estimated_cost")
+    visible_columns = tuple(
+        column.model_copy(update={"help_text": _estimated_cost_help(first_estimate)})
+        if column.identifier == "estimated_cost"
+        else column
+        for column in visible_columns
+    )
+    scope_summary = _render_runs_scope_summary(suppressed)
+    rows: list[str] = []
     for run in runs:
         agent = (
             _get(run, "agent_name")
@@ -2229,81 +2885,109 @@ def render_runs_table(
         )
         input_tokens = _get(run, "input_tokens")
         output_tokens = _get(run, "output_tokens")
+        run_key = str(_get(run, "run_key") or "")
+        source_id = str(_get(run, "source_id") or "")
+        cells = {
+            "run_key": (
+                _render_copy_value(
+                    run_key,
+                    _abbreviate_run_identifier(run_key),
+                    label="run key",
+                )
+                if run_key
+                else "\u2014"
+            ),
+            "run_key_kind": html_escape(_get(run, "run_key_kind") or "\u2014"),
+            "agent_name": html_escape(agent),
+            "source_id": (
+                _render_copy_value(
+                    source_id,
+                    _workspace_name(source_id),
+                    label="source resource ID",
+                )
+                if source_id
+                else "\u2014"
+            ),
+            "source_kind": _render_source_kind_badge(_get(run, "source_kind")),
+            "started_at": _render_timestamp(_get(run, "started_at")),
+            "duration_ms": _render_seconds(_get(run, "duration_ms")),
+            "status": html_escape(_get(run, "status") or "\u2014"),
+            "turns": _render_maybe_missing(_get(run, "turns"), missing_text="\u2014"),
+            "tool_invocations": _render_maybe_missing(
+                _get(run, "tool_invocations"), missing_text="\u2014"
+            ),
+            "input_tokens": _render_maybe_missing(input_tokens, missing_text="\u2014"),
+            "output_tokens": _render_maybe_missing(output_tokens, missing_text="\u2014"),
+            "total_tokens": _render_maybe_missing(
+                _observed_token_total(input_tokens, output_tokens),
+                missing_text="\u2014",
+            ),
+            "estimated_cost": render_estimated_cost(_get(run, "estimated_cost")),
+            "cache_read_tokens": _render_maybe_missing(
+                _get(run, "cache_read_tokens"), missing_text="\u2014"
+            ),
+            "cache_write_tokens": _render_maybe_missing(
+                _get(run, "cache_write_tokens"), missing_text="\u2014"
+            ),
+            "reasoning_tokens": _render_maybe_missing(
+                _get(run, "reasoning_tokens"), missing_text="\u2014"
+            ),
+        }
         rows.append(
-            "<tr>"
-            f"<td>{html_escape(_get(run, 'run_key') or '—')}</td>"
-            f"<td>{html_escape(_get(run, 'run_key_kind') or '—')}</td>"
-            f"<td>{html_escape(agent)}</td>"
-            f"<td>{html_escape(_get(run, 'source_id') or '—')}</td>"
-            f"<td>{_render_source_kind_badge(_get(run, 'source_kind'))}</td>"
-            f"<td>{_render_timestamp(_get(run, 'started_at'))}</td>"
-            f"<td>{_render_seconds(_get(run, 'duration_ms'))}</td>"
-            f"<td>{html_escape(_get(run, 'status') or '—')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'turns'), missing_text='—')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'tool_invocations'), missing_text='—')}</td>"
-            f"<td>{_render_maybe_missing(input_tokens, missing_text='—')}</td>"
-            f"<td>{_render_maybe_missing(output_tokens, missing_text='—')}</td>"
-            f"<td>{_render_maybe_missing(_observed_token_total(input_tokens, output_tokens), missing_text='—')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'cache_read_tokens'), missing_text='—')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'cache_write_tokens'), missing_text='—')}</td>"
-            f"<td>{_render_maybe_missing(_get(run, 'reasoning_tokens'), missing_text='—')}</td>"
-            "</tr>"
+            '<tr data-observe-run-row="true">'
+            + "".join(
+                f"<td>{cells[column.identifier]}</td>" for column in visible_columns
+            )
+            + "</tr>"
+            + _render_run_detail(run, colspan=len(visible_columns))
         )
     total_input = _sum_reported(runs, "input_tokens")
     total_output = _sum_reported(runs, "output_tokens")
+    footer_by_id = {
+        "run_key": f'Totals {_render_info_icon("Totals cover the rows currently displayed.")}',
+        "run_key_kind": "\u2014",
+        "agent_name": "\u2014",
+        "source_id": "\u2014",
+        "source_kind": "\u2014",
+        "started_at": "\u2014",
+        "duration_ms": _render_seconds(_sum_reported(runs, "duration_ms")),
+        "status": "\u2014",
+        "turns": _render_maybe_missing(
+            _sum_reported(runs, "turns"), missing_text="\u2014"
+        ),
+        "tool_invocations": _render_maybe_missing(
+            _sum_reported(runs, "tool_invocations"), missing_text="\u2014"
+        ),
+        "input_tokens": _render_maybe_missing(total_input, missing_text="\u2014"),
+        "output_tokens": _render_maybe_missing(total_output, missing_text="\u2014"),
+        "total_tokens": _render_maybe_missing(
+            _observed_token_total(total_input, total_output), missing_text="\u2014"
+        ),
+        "estimated_cost": "\u2014",
+        "cache_read_tokens": _render_maybe_missing(
+            _sum_reported(runs, "cache_read_tokens"), missing_text="\u2014"
+        ),
+        "cache_write_tokens": _render_maybe_missing(
+            _sum_reported(runs, "cache_write_tokens"), missing_text="\u2014"
+        ),
+        "reasoning_tokens": _render_maybe_missing(
+            _sum_reported(runs, "reasoning_tokens"), missing_text="\u2014"
+        ),
+    }
     footer = _render_totals_footer(
-        (
-            f'Totals {_render_info_icon("Totals cover the rows currently displayed.")}',
-            "\u2014",
-            "\u2014",
-            "\u2014",
-            "\u2014",
-            "\u2014",
-            _render_seconds(_sum_reported(runs, "duration_ms")),
-            "\u2014",
-            _render_maybe_missing(_sum_reported(runs, "turns"), missing_text="\u2014"),
-            _render_maybe_missing(
-                _sum_reported(runs, "tool_invocations"), missing_text="\u2014"
-            ),
-            _render_maybe_missing(total_input, missing_text="\u2014"),
-            _render_maybe_missing(total_output, missing_text="\u2014"),
-            _render_maybe_missing(
-                _observed_token_total(total_input, total_output), missing_text="\u2014"
-            ),
-            _render_maybe_missing(
-                _sum_reported(runs, "cache_read_tokens"), missing_text="\u2014"
-            ),
-            _render_maybe_missing(
-                _sum_reported(runs, "cache_write_tokens"), missing_text="\u2014"
-            ),
-            _render_maybe_missing(
-                _sum_reported(runs, "reasoning_tokens"), missing_text="\u2014"
-            ),
-        )
+        tuple(footer_by_id[column.identifier] for column in visible_columns)
     )
-    token_help = "Observed token usage from telemetry; this is not billing data."
+    header_cells = "\n      ".join(
+        _render_column_header(column) for column in visible_columns
+    )
     return f"""
 {notice}
+{scope_summary}
 <table class="observe-runs-table" aria-label="Runs observed in the selected range">
   <caption class="visually-hidden">Runs observed in the selected range; start, duration, and turns are range-scoped.</caption>
   <thead>
     <tr>
-      {_render_header_cell("Run key")}
-      {_render_header_cell("Correlation", "Telemetry key used to group this run.")}
-      {_render_header_cell("Agent")}
-      {_render_header_cell("Source")}
-      {_render_header_cell("Runtime")}
-      {_render_header_cell("Started in range", "First observed activity within the selected range.")}
-      {_render_header_cell("Duration in range", "Elapsed time between first and last observed activity in the selected range.")}
-      {_render_header_cell("Status")}
-      {_render_header_cell("Turns in range", "Turns observed within the selected range.")}
-      {_render_header_cell("Tool invocations")}
-      {_render_header_cell("Input tokens", token_help)}
-      {_render_header_cell("Output tokens", token_help)}
-      {_render_header_cell("Total tokens", token_help)}
-      {_render_header_cell("Cache read", token_help)}
-      {_render_header_cell("Cache write", token_help)}
-      {_render_header_cell("Reasoning", token_help)}
+      {header_cells}
     </tr>
   </thead>
   <tbody>{"".join(rows)}</tbody>
@@ -2352,6 +3036,7 @@ def render_models_usage_table(
             f"<td>{_render_maybe_missing(_get(entry, 'cache_write_tokens'), missing_text='—')}</td>"
             f"<td>{_render_maybe_missing(_get(entry, 'reasoning_tokens'), missing_text='—')}</td>"
             f"<td>{_render_additional_token_classes(entry)}</td>"
+            f"<td>{render_estimated_cost(_get(entry, 'estimated_cost'), grouped=True)}</td>"
             f"<td>{render_last_seen(_get(entry, 'last_seen'))}</td>"
             "</tr>"
         )
@@ -2382,6 +3067,7 @@ def render_models_usage_table(
             ),
             "\u2014",
             "\u2014",
+            "\u2014",
         )
     )
     token_help = "Observed token usage from telemetry; this is not billing data."
@@ -2404,6 +3090,7 @@ def render_models_usage_table(
       {_render_header_cell("Cache write", f"Tokens written to the prompt cache. {token_help}")}
       {_render_header_cell("Reasoning", f"Reasoning tokens reported by the model provider. {token_help}")}
       {_render_header_cell("Other token classes", "Additional gen_ai.usage.* classes. A row information icon means some telemetry records omitted token-class attributes.")}
+      {_render_header_cell("Estimated cost", _ESTIMATED_COST_HELP)}
       {_render_header_cell("Last seen", "Most recent telemetry in the selected range.")}
     </tr>
   </thead>
@@ -2858,12 +3545,88 @@ _OBSERVE_COMPONENT_CSS = """
   outline-offset: 1px;
   border-color: var(--observe-accent);
 }
+.observe-scope-filter,
+.observe-window-filter {
+  position: relative;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.observe-window-filter select,
+.observe-timezone-control select {
+  width: 100%;
+  font: inherit;
+  color: var(--observe-fg);
+  background: var(--bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  padding: 6px 9px;
+}
+.observe-window-filter select:focus-visible,
+.observe-timezone-control select:focus-visible {
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 1px;
+  border-color: var(--observe-accent);
+}
+.observe-custom-window { display: contents; }
+.observe-window-error { color: var(--observe-crit); font-size: 12px; }
+.observe-scope-filter legend,
+.observe-scope-search-label,
+.observe-scope-fallback {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--observe-faint);
+}
+.observe-scope-trigger {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 9px;
+  text-align: left;
+  color: var(--observe-fg);
+  background: var(--bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+}
+.observe-scope-panel {
+  position: absolute;
+  z-index: 20;
+  width: min(360px, calc(100vw - 32px));
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px;
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bg) 65%, transparent);
+}
+.observe-scope-options {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.observe-scope-options label {
+  flex-direction: row;
+  align-items: flex-start;
+  text-transform: none;
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+}
+.observe-scope-options input { width: auto; }
+.observe-scope-count { margin: 8px 0 0; color: var(--observe-muted); font-size: 11px; }
+.observe-scope-fallback { margin-top: 8px; }
 .observe-filter-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
+}
+.observe-refresh-status {
+  margin-left: auto;
+  color: var(--observe-muted);
+  font-size: 12px;
+  white-space: nowrap;
 }
 .observe-apply-button,
 .observe-refresh-button {
@@ -2941,9 +3704,73 @@ _OBSERVE_COMPONENT_CSS = """
 .observe-cost-period dt { font-weight: 600; }
 .observe-cost-period dd { margin: 0; }
 .observe-cost-disclaimer { border-left: 3px solid var(--observe-warn); padding: 0.75rem; color: var(--observe-muted); background: color-mix(in srgb, var(--observe-warn) 8%, transparent); border-radius: 0 8px 8px 0; }
+.observe-estimated-cost { display: flex; flex-direction: column; gap: 0.2rem; min-width: 12rem; }
+.observe-estimated-cost span { font-size: 0.75rem; color: var(--observe-muted); }
+.observe-estimated-cost .observe-estimated-cost-stale { color: var(--observe-warn); font-weight: 600; }
+.observe-estimated-cost .observe-estimated-cost-disclaimer { max-width: 24rem; }
 .observe-cost-view table { margin-bottom: 1rem; }
 
 /* --- Overview KPI cards -------------------------------------------------- */
+.observe-overview-summaries {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.observe-entity-summary {
+  min-width: 0;
+  padding: 16px 18px;
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 14px;
+}
+.observe-entity-summary[data-entity-family="runs"] { grid-column: 1 / -1; }
+.observe-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.observe-summary-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--observe-fg);
+}
+.observe-summary-figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+.observe-summary-figure {
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 2px solid currentColor;
+}
+.observe-summary-figure dt {
+  color: var(--observe-faint);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.observe-summary-figure dd {
+  margin: 5px 0 0;
+  color: var(--observe-fg);
+  font-size: 24px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.observe-summary-figure dd .metric-missing {
+  font-size: 14px;
+  font-weight: 600;
+}
+.observe-family-empty {
+  margin: 0;
+  color: var(--observe-muted);
+  font-size: 13px;
+}
 .observe-overview-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -3009,6 +3836,13 @@ _OBSERVE_COMPONENT_CSS = """
   font-size: 11px;
   color: var(--observe-faint);
 }
+@media (max-width: 760px) {
+  .observe-overview-summaries { grid-template-columns: 1fr; }
+  .observe-entity-summary[data-entity-family="runs"] { grid-column: auto; }
+}
+@media (max-width: 420px) {
+  .observe-summary-figures { grid-template-columns: 1fr; }
+}
 
 /* --- Trends ------------------------------------------------------------- */
 .observe-overview-trends { margin-top: 26px; }
@@ -3026,6 +3860,9 @@ _OBSERVE_COMPONENT_CSS = """
 
 /* --- Tables (drill-down views) ------------------------------------------ */
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.observe-runs-table { table-layout: fixed; }
+.observe-runs-table th,
+.observe-runs-table td { overflow-wrap: anywhere; }
 caption { text-align: left; }
 th, td {
   border-bottom: 1px solid var(--observe-border);
@@ -3101,6 +3938,151 @@ th[aria-sort="descending"] .observe-sort-button::after {
   outline: 2px solid var(--observe-accent);
   outline-offset: 2px;
 }
+.observe-header-help {
+  display: inline-block;
+  margin-left: 5px;
+  position: relative;
+  text-transform: none;
+}
+.observe-header-help-trigger {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--observe-muted);
+  cursor: help;
+  display: inline-flex;
+  font: inherit;
+  font-size: 9px;
+  height: 16px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 16px;
+}
+.observe-header-help-trigger:focus-visible {
+  color: var(--observe-accent);
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
+.observe-header-help-panel {
+  background: var(--observe-card-hi);
+  border: 1px solid var(--observe-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--observe-bg) 70%, transparent);
+  color: var(--observe-fg);
+  display: none;
+  font-size: 12px;
+  font-weight: 500;
+  left: 0;
+  letter-spacing: normal;
+  line-height: 1.45;
+  max-width: min(320px, 75vw);
+  min-width: 220px;
+  padding: 9px 11px;
+  position: absolute;
+  text-align: left;
+  text-transform: none;
+  top: calc(100% + 7px);
+  white-space: normal;
+  z-index: 20;
+}
+.observe-header-help:hover .observe-header-help-panel,
+.observe-header-help:focus-within .observe-header-help-panel,
+.observe-header-help[data-open="true"] .observe-header-help-panel {
+  display: block;
+}
+.observe-copy-value {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.observe-copy-visible { overflow-wrap: anywhere; }
+.observe-copy-control { align-items: center; display: inline-flex; gap: 6px; }
+.observe-copy-fallback { display: inline-block; margin: 0; position: relative; }
+.observe-copy-fallback summary {
+  color: var(--observe-accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  list-style: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.observe-copy-fallback summary::-webkit-details-marker { display: none; }
+.observe-copy-fallback summary:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
+.observe-copy-fallback[open] label {
+  background: var(--observe-card-hi);
+  border: 1px solid var(--observe-border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--observe-bg) 70%, transparent);
+  color: var(--observe-fg);
+  display: grid;
+  font-size: 12px;
+  gap: 6px;
+  left: 0;
+  min-width: min(340px, 75vw);
+  padding: 9px;
+  position: absolute;
+  text-transform: none;
+  top: calc(100% + 6px);
+  z-index: 21;
+}
+.observe-copy-fallback input {
+  background: var(--observe-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 5px;
+  color: var(--observe-fg);
+  font: 12px ui-monospace, SFMono-Regular, Consolas, monospace;
+  padding: 6px;
+  width: 100%;
+}
+.observe-copy-feedback { color: var(--observe-muted); font-size: 11px; }
+.observe-runs-scope-summary {
+  align-items: center;
+  background: var(--observe-card-bg);
+  border: 1px solid var(--observe-border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin: 10px 0;
+  padding: 9px 12px;
+}
+.observe-runs-scope-summary div { align-items: center; display: flex; gap: 5px; }
+.observe-runs-scope-summary dt { color: var(--observe-muted); font-size: 12px; font-weight: 700; }
+.observe-runs-scope-summary dd { margin: 0; }
+.observe-run-detail-row td {
+  background: color-mix(in srgb, var(--observe-card-bg) 95%, var(--observe-accent));
+  padding: 0 10px 9px;
+}
+.observe-run-detail summary {
+  color: var(--observe-accent);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+  padding: 6px 0;
+}
+.observe-run-detail summary:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--observe-accent);
+  outline-offset: 2px;
+}
+.observe-run-detail dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 2px 0 4px;
+}
+.observe-run-detail dl div { display: grid; gap: 2px; }
+.observe-run-detail dt { color: var(--observe-muted); font-size: 11px; font-weight: 700; }
+.observe-run-detail dd { margin: 0; }
 tbody tr:hover td { background: color-mix(in srgb, var(--observe-fg) 4%, transparent); }
 tfoot th,
 tfoot td {
@@ -3370,7 +4352,7 @@ _OBSERVE_STYLES = "\n\n".join(
 #   * Only OBSERVE_FILTER_QUERY_KEYS (foundry_resource_id, project_resource_id,
 #     agent_id, model, tool_name, run_key, start, end), the active `view`, and
 #     the non-sensitive `theme` preference are read from or written to the URL
-#     query string via history.replaceState.
+#     query string via the History API.
 #   * Raw generative-AI content fields (input_messages, output_messages,
 #     system_instructions, tool_content, evaluation_explanation) are NEVER
 #     placed in the URL, and this script never calls localStorage,
@@ -3383,7 +4365,8 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
 (function () {
   "use strict";
 
-  var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", "model", "tool_name", "run_key", "start", "end"];
+  var FILTER_KEYS = ["foundry_resource_id", "project_resource_id", "agent_id", "model", "tool_name", "run_key", "window_preset", "start", "end"];
+  var SCOPE_FILTER_KEYS = FILTER_KEYS.slice(0, 6);
   var COST_FILTER_KEYS = ["cost_period_id", "cost_component_id", "cost_breakdown", "cost_agent_key"];
   var ATTRIBUTION_FILTER_KEYS = ["department_filter_token", "user_filter_token", "attribution_group_by", "attribution_metric", "attribution_cost_period_id", "attribution_cost_component_id"];
   var COST_DISCLAIMER = "Operational cost allocation from declared billed totals and observed usage; not an invoice or billing-accurate charge.";
@@ -3392,6 +4375,16 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   var AUTO_REFRESH_MS = 300000; // five minutes
   var DEFAULT_RANGE_MS = 7 * 24 * 60 * 60 * 1000; // trailing seven days
   var CACHE_WINDOW_MS = 60 * 1000; // align default windows across browser sessions
+  var WINDOW_PRESET_MS = {
+    "30m": 30 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "6h": 6 * 60 * 60 * 1000,
+    "12h": 12 * 60 * 60 * 1000,
+    "1d": 24 * 60 * 60 * 1000,
+    "3d": 3 * 24 * 60 * 60 * 1000,
+    "7d": DEFAULT_RANGE_MS,
+    "30d": 30 * 24 * 60 * 60 * 1000,
+  };
   // Mirrors MAX_TREND_POINTS in ui.py and observe/facade.py. The trailing seven-day
   // default can contain 168 hourly buckets, all of which must remain visible
   // so count trends reconcile with the selected row's totals.
@@ -3399,7 +4392,49 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   // Maps each internal view identifier to the `ObserveQuery.view` wire value
   // from contracts/observe-api.openapi.yaml (mirrors OBSERVE_VIEW_WIRE_NAMES
   // in ui.py -- the internal "usage" id is spelled "models" on the wire).
-  var VIEW_WIRE_NAMES = { overview: "overview", agents: "agents", usage: "models", tools: "tools", runs: "runs" };
+  var VIEW_WIRE_NAMES = { overview: "overview", runs: "runs", agents: "agents", usage: "models", tools: "tools" };
+  // Token help shared by every observed-token column in the Runs table
+  // (mirrors _RUNS_TOKEN_HELP in ui.py).
+  var RUNS_TOKEN_HELP = "Observed token usage from telemetry; this is not billing data.";
+  var ESTIMATED_COST_DISCLAIMER = "Estimated at published list prices; not an invoice or billed amount.";
+  var ESTIMATED_COST_HELP = "Observed tokens are multiplied by the published unit price for their model and token type, then summed. Each figure states the price-reference version and effective date. " + ESTIMATED_COST_DISCLAIMER;
+  var RUN_IDENTIFIER_VISIBLE_CHARS = 8;
+  var RUNS_SUPPRESSIBLE_COLUMN_IDS = [
+    "run_key_kind", "agent_name", "source_id", "source_kind", "status"
+  ];
+  // The Runs table declared once for the script, mirroring RUNS_TABLE_COLUMNS
+  // in ui.py. `id` is the stable identity: it is what the sort lookup, the
+  // rendered data attribute, and the server-rendered header all agree on, so
+  // rewording `label` cannot change behaviour. A unit test asserts this list
+  // and the Python declaration agree on ids and labels.
+  var RUNS_TABLE_COLUMNS = [
+    { id: "run_key", label: "Run key", sortKey: "run_key" },
+    { id: "run_key_kind", label: "Correlation", sortKey: "run_key_kind", help: "Telemetry key used to group this run." },
+    { id: "agent_name", label: "Agent", sortKey: "agent_name" },
+    { id: "source_id", label: "Source", sortKey: "source_id" },
+    { id: "source_kind", label: "Runtime", sortKey: "source_kind" },
+    { id: "started_at", label: "Started", sortKey: "started_at", help: "First observed activity within the selected range." },
+    { id: "duration_ms", label: "Duration", sortKey: "duration_ms", help: "Elapsed time between first and last observed activity in the selected range." },
+    { id: "status", label: "Status", sortKey: "status" },
+    { id: "turns", label: "Turns", sortKey: "turns", help: "Turns observed within the selected range." },
+    { id: "tool_invocations", label: "Tool invocations", sortKey: "tool_invocations" },
+    { id: "input_tokens", label: "Input tokens", sortKey: "input_tokens", help: RUNS_TOKEN_HELP },
+    { id: "output_tokens", label: "Output tokens", sortKey: "output_tokens", help: RUNS_TOKEN_HELP },
+    { id: "total_tokens", label: "Total tokens", sortKey: "total_tokens", help: RUNS_TOKEN_HELP },
+    { id: "estimated_cost", label: "Estimated cost", sortKey: null, help: ESTIMATED_COST_HELP, priority: 1 },
+    { id: "cache_read_tokens", label: "Cache read", sortKey: "cache_read_tokens", help: "Tokens served from the prompt cache. " + RUNS_TOKEN_HELP },
+    { id: "cache_write_tokens", label: "Cache write", sortKey: "cache_write_tokens", help: "Tokens written to the prompt cache. " + RUNS_TOKEN_HELP },
+    { id: "reasoning_tokens", label: "Reasoning", sortKey: "reasoning_tokens", help: "Reasoning tokens reported by the model provider. " + RUNS_TOKEN_HELP }
+  ];
+  function runsTableSortKeys() {
+    var map = {};
+    RUNS_TABLE_COLUMNS.forEach(function (column) {
+      if (column.sortKey) {
+        map[column.id] = column.sortKey;
+      }
+    });
+    return map;
+  }
   var SERVER_SORT_KEYS = {
     "observe-agents-table": {
       "Name": "agent_name", "Agent ID": "agent_id", "Source": "source_kind", "Model": "model",
@@ -3423,16 +4458,21 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       "Invocations": "invocations", "Failures": "failures",
       "p95 latency": "p95_latency_ms"
     },
-    "observe-runs-table": {
-      "Run key": "run_key", "Correlation": "run_key_kind", "Agent": "agent_name",
-      "Source": "source_id", "Runtime": "source_kind", "Started in range": "started_at",
-      "Duration in range": "duration_ms", "Status": "status", "Turns in range": "turns",
-      "Tool invocations": "tool_invocations", "Input tokens": "input_tokens",
-      "Output tokens": "output_tokens", "Total tokens": "total_tokens",
-      "Cache read": "cache_read_tokens",
-      "Cache write": "cache_write_tokens", "Reasoning": "reasoning_tokens"
-    }
+    // Keyed by column identifier, not by displayed label -- see
+    // RUNS_TABLE_COLUMNS above. The other three tables are still label-keyed
+    // and are read only through the label fallback in buildDataTable.
+    "observe-runs-table": runsTableSortKeys()
   };
+  // Returns the sort-key map declared for `table`, matched by its class.
+  function serverSortKeysFor(table) {
+    var classNames = Object.keys(SERVER_SORT_KEYS);
+    for (var index = 0; index < classNames.length; index += 1) {
+      if (table.classList && table.classList.contains(classNames[index])) {
+        return SERVER_SORT_KEYS[classNames[index]];
+      }
+    }
+    return {};
+  }
   // Best-effort, human-friendly labels for *documented* portal link keys
   // (mirrors _KNOWN_PORTAL_LABELS in ui.py). Any key not listed here still
   // renders (title-cased) rather than being dropped -- the "best-effort
@@ -3465,14 +4505,157 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   // auto-refresh/manual-refresh fetches, and vice versa.
   var agentDetailToken = 0;
   var agentDetailController = null;
+  // Presentation-only state. It is deliberately absent from FILTER_KEYS,
+  // URL state, request payloads, and browser storage.
+  var presentationTimeBasis = "local";
+
+  function presentationTimeZone() {
+    return presentationTimeBasis === "utc" ? "UTC" : undefined;
+  }
+
+  function timePart(parts, type) {
+    var match = parts.find(function (part) { return part.type === type; });
+    return match ? match.value : "";
+  }
+
+  function normalizeOffset(value) {
+    if (value === "GMT" || value === "UTC") return "+00:00";
+    var match = /^GMT([+-])(\\d{1,2})(?::(\\d{2}))?$/.exec(value || "");
+    if (!match) return value || "";
+    return match[1] + match[2].padStart(2, "0") + ":" + (match[3] || "00");
+  }
+
+  function formatPresentationTimestamp(value, style, timeZoneOverride) {
+    if (!value) return "";
+    var moment = new Date(value);
+    if (isNaN(moment.getTime())) return String(value);
+    var compact = style === "compact";
+    var options = {
+      year: "numeric",
+      month: compact ? "short" : "2-digit",
+      day: compact ? "numeric" : "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: compact ? undefined : "2-digit",
+      hourCycle: "h23",
+      timeZoneName: "shortOffset",
+    };
+    var timeZone = timeZoneOverride === undefined
+      ? presentationTimeZone()
+      : timeZoneOverride;
+    if (timeZone) options.timeZone = timeZone;
+    var parts = new Intl.DateTimeFormat("en-US", options).formatToParts(moment);
+    var zone = normalizeOffset(timePart(parts, "timeZoneName"));
+    if (compact) {
+      return timePart(parts, "month") + " " + timePart(parts, "day") + ", " +
+        timePart(parts, "year") + ", " + timePart(parts, "hour") + ":" +
+        timePart(parts, "minute") + (zone ? " " + zone : "");
+    }
+    return timePart(parts, "year") + "-" + timePart(parts, "month") + "-" +
+      timePart(parts, "day") + " " + timePart(parts, "hour") + ":" +
+      timePart(parts, "minute") + ":" + timePart(parts, "second") +
+      (zone ? " " + zone : "");
+  }
+
+  function updatePresentedTime(node) {
+    var value = node.getAttribute("data-observe-time");
+    var prefix = node.getAttribute("data-observe-time-prefix") || "";
+    var suffix = node.getAttribute("data-observe-time-suffix") || "";
+    node.textContent = prefix + formatPresentationTimestamp(
+      value,
+      node.getAttribute("data-observe-time-style") || "full"
+    ) + suffix;
+  }
+
+  function inputValueToUtcIso(value) {
+    if (!value) return "";
+    var moment = new Date(
+      presentationTimeBasis === "utc" && !/[zZ]|[+-]\\d\\d:\\d\\d$/.test(value)
+        ? value + "Z"
+        : value
+    );
+    return isNaN(moment.getTime()) ? "" : moment.toISOString();
+  }
+
+  function utcIsoToInputValue(value) {
+    var moment = new Date(value);
+    if (isNaN(moment.getTime())) return "";
+    if (presentationTimeBasis === "utc") {
+      return moment.toISOString().slice(0, 16);
+    }
+    var local = new Date(moment.getTime() - moment.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function resolveWindowBounds(filters) {
+    if (filters.window_preset) {
+      var end = new Date(Math.floor(Date.now() / CACHE_WINDOW_MS) * CACHE_WINDOW_MS);
+      return {
+        start: new Date(
+          end.getTime() - (WINDOW_PRESET_MS[filters.window_preset] || DEFAULT_RANGE_MS)
+        ).toISOString(),
+        end: end.toISOString(),
+      };
+    }
+    return {
+      start: filters.start || "",
+      end: filters.end || "",
+    };
+  }
+
+  function windowSelectionForRequest(filters) {
+    var bounds = resolveWindowBounds(filters);
+    return filters.window_preset ? {
+      kind: "preset",
+      preset: filters.window_preset,
+      timezone_label: "UTC",
+    } : {
+      kind: "custom",
+      start: bounds.start,
+      end: bounds.end,
+      timezone_label: "UTC",
+    };
+  }
+
+  function observeFiltersForRequest(filters) {
+    var bounds = resolveWindowBounds(filters);
+    return {
+      foundry_resource_id: filters.foundry_resource_id || null,
+      project_resource_id: filters.project_resource_id || null,
+      agent_id: filters.agent_id || null,
+      model: filters.model || null,
+      tool_name: filters.tool_name || null,
+      run_key: filters.run_key || null,
+      start: bounds.start,
+      end: bounds.end,
+    };
+  }
+
+  function rerenderTemporalSurface() {
+    document.querySelectorAll("[data-observe-time]").forEach(updatePresentedTime);
+    document.querySelectorAll("[data-observe-time-input]").forEach(function (field) {
+      var value = field.getAttribute("data-observe-time-value");
+      if (value) field.value = utcIsoToInputValue(value);
+    });
+    var selector = document.getElementById("observe-timezone-basis");
+    if (selector) {
+      var localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Local";
+      selector.options[0].textContent = "Local (" + localZone + ")";
+      selector.value = presentationTimeBasis;
+    }
+    document.documentElement.setAttribute(
+      "data-observe-timezone-basis",
+      presentationTimeBasis
+    );
+  }
 
   function readAppliedFromUrl() {
     var params = new URLSearchParams(window.location.search);
     var applied = {};
     FILTER_KEYS.forEach(function (key) {
-      var value = params.get(key);
-      if (value) {
-        applied[key] = value;
+      var values = params.getAll(key).filter(function (value) { return Boolean(value); });
+      if (values.length) {
+        applied[key] = SCOPE_FILTER_KEYS.indexOf(key) >= 0 ? values : values[0];
       }
     });
     if (document.getElementById("cost")) {
@@ -3505,7 +4688,14 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     currentSearch = String(params.get("search") || "").slice(0, 200);
     currentSortBy = String(params.get("sort_by") || "").slice(0, 64);
     currentSortDirection = params.get("sort_direction") === "asc" ? "asc" : "desc";
-    if (!applied.start || !applied.end) {
+    if (!applied.window_preset && (!applied.start || !applied.end)) {
+      applied.window_preset = "7d";
+    }
+    if (applied.window_preset) {
+      var presetBounds = resolveWindowBounds(applied);
+      applied.start = presetBounds.start;
+      applied.end = presetBounds.end;
+    } else if (!applied.start || !applied.end) {
       var end = applied.end
         ? new Date(applied.end)
         : new Date(Math.floor(Date.now() / CACHE_WINDOW_MS) * CACHE_WINDOW_MS);
@@ -3515,14 +4705,29 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       applied.start = start.toISOString();
       applied.end = end.toISOString();
     }
+    if (!applied.window_preset) {
+      ["start", "end"].forEach(function (key) {
+        var moment = new Date(applied[key]);
+        if (!isNaN(moment.getTime())) applied[key] = moment.toISOString();
+      });
+    }
     return applied;
   }
 
   function buildStateUrl() {
     var params = new URLSearchParams();
     FILTER_KEYS.forEach(function (key) {
-      if (appliedFilters[key]) {
-        params.set(key, appliedFilters[key]);
+      if (appliedFilters.window_preset && (key === "start" || key === "end")) {
+        return;
+      }
+      var values = Array.isArray(appliedFilters[key])
+        ? appliedFilters[key]
+        : (appliedFilters[key] ? [appliedFilters[key]] : []);
+      values.forEach(function (value) {
+        params.append(key, value);
+      });
+      if (!values.length) {
+        params.delete(key);
       }
     });
     if (document.getElementById("cost")) {
@@ -3579,31 +4784,298 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   function readDraftFromForm(form) {
     var draft = {};
     FILTER_KEYS.forEach(function (key) {
+      if (SCOPE_FILTER_KEYS.indexOf(key) >= 0) {
+        var scope = form.querySelector('[data-scope-dimension="' + key + '"]');
+        var selectedValues = scope ? Array.from(
+          scope.querySelectorAll('[data-scope-options] input[type="checkbox"]:checked')
+        ).map(function (field) { return field.value; }).filter(Boolean) : [];
+        if (!selectedValues.length && scope) {
+          selectedValues = selectedScopeValues(scope);
+        }
+        var fallback = scope && scope.querySelector("[data-scope-fallback] input");
+        if (!selectedValues.length && fallback && !fallback.closest("[hidden]") && fallback.value.trim()) {
+          selectedValues = [fallback.value.trim()];
+        }
+        if (selectedValues.length) {
+          draft[key] = selectedValues;
+        } else {
+          delete draft[key];
+        }
+        return;
+      }
       var field = form.querySelector('[data-draft-filter="' + key + '"]');
       var value = field && field.value ? field.value : "";
       if ((key === "start" || key === "end") && value) {
-        var moment = new Date(value);
-        value = isNaN(moment.getTime()) ? "" : moment.toISOString();
+        value = inputValueToUtcIso(value);
       }
       draft[key] = value;
     });
+    if (draft.window_preset && draft.window_preset !== "custom") {
+      var bounds = resolveWindowBounds(draft);
+      draft.start = bounds.start;
+      draft.end = bounds.end;
+    } else {
+      delete draft.window_preset;
+    }
     return draft;
   }
 
   function populateFormFromApplied(form) {
     FILTER_KEYS.forEach(function (key) {
+      if (SCOPE_FILTER_KEYS.indexOf(key) >= 0) {
+        var scope = form.querySelector('[data-scope-dimension="' + key + '"]');
+        if (scope) {
+          scope.dataset.selectedValues = JSON.stringify(
+            Array.isArray(appliedFilters[key])
+              ? appliedFilters[key]
+              : (appliedFilters[key] ? [appliedFilters[key]] : [])
+          );
+          updateScopeSummary(scope);
+        }
+        return;
+      }
       var field = form.querySelector('[data-draft-filter="' + key + '"]');
       if (field) {
         var value = appliedFilters[key] || "";
         if ((key === "start" || key === "end") && value) {
-          var moment = new Date(value);
-          if (!isNaN(moment.getTime())) {
-            var local = new Date(moment.getTime() - moment.getTimezoneOffset() * 60000);
-            value = local.toISOString().slice(0, 16);
-          }
+          field.setAttribute("data-observe-time-value", value);
+          value = utcIsoToInputValue(value);
+        } else if (key === "start" || key === "end") {
+          field.removeAttribute("data-observe-time-value");
         }
         field.value = value;
       }
+    });
+    var preset = form.querySelector('[data-draft-filter="window_preset"]');
+    var custom = form.querySelector("[data-custom-window]");
+    if (preset) preset.value = appliedFilters.window_preset || "custom";
+    if (custom) custom.hidden = Boolean(appliedFilters.window_preset);
+  }
+
+  function validateDraftWindow(form, draft) {
+    var error = document.getElementById("observe-window-error");
+    var valid = Boolean(draft.window_preset)
+      || (Boolean(draft.start) && Boolean(draft.end)
+        && new Date(draft.end).getTime() > new Date(draft.start).getTime());
+    if (error) {
+      error.hidden = valid;
+      error.textContent = valid ? "" : "Custom window end must be after start.";
+    }
+    return valid;
+  }
+
+  function selectedScopeValues(scope) {
+    try {
+      var values = JSON.parse(scope.dataset.selectedValues || "[]");
+      return Array.isArray(values) ? values.filter(Boolean) : [];
+    } catch (_error) {
+      return [];
+    }
+  }
+
+  function updateScopeSummary(scope) {
+    var checked = Array.from(
+      scope.querySelectorAll('[data-scope-options] input[type="checkbox"]:checked')
+    ).map(function (field) { return field.value; });
+    var selectedValues = checked.length ? checked : selectedScopeValues(scope);
+    scope.dataset.selectedValues = JSON.stringify(selectedValues);
+    var summary = scope.querySelector("[data-scope-summary]");
+    if (summary) {
+      summary.textContent = selectedValues.length
+        ? String(selectedValues.length) + " selected"
+        : "All";
+    }
+  }
+
+  function showScopeFallback(scope) {
+    var options = scope.querySelector("[data-scope-options]");
+    var fallback = scope.querySelector("[data-scope-fallback]");
+    if (options) options.hidden = true;
+    if (fallback) {
+      fallback.hidden = false;
+      fallback.removeAttribute("hidden");
+    }
+    scope.classList.add("scope-fallback");
+  }
+
+  function scopeValueArray(value) {
+    if (Array.isArray(value)) return value.filter(Boolean);
+    return value ? [value] : [];
+  }
+
+  function scopeOptionKey(dimension, value) {
+    var text = String(value || "");
+    return dimension === "foundry_resource_id" || dimension === "project_resource_id"
+      ? text.replace(/\\/+$/, "").toLowerCase()
+      : text;
+  }
+
+  function resetScopeStatus() {
+    var status = document.getElementById("observe-scope-status");
+    if (!status) return;
+    status.dataset.removedValues = "[]";
+    status.textContent = "";
+    status.hidden = true;
+  }
+
+  function announceInvalidatedSelections(values) {
+    var status = document.getElementById("observe-scope-status");
+    if (!status || !values.length) return;
+    var removed = [];
+    try {
+      removed = JSON.parse(status.dataset.removedValues || "[]");
+    } catch (_error) {
+      removed = [];
+    }
+    values.forEach(function (value) {
+      if (removed.indexOf(value) < 0) removed.push(value);
+    });
+    status.dataset.removedValues = JSON.stringify(removed);
+    status.textContent = "Removed unavailable selections: " + removed.join(", ") + ".";
+    status.hidden = false;
+  }
+
+  function renderScopeOptions(scope, optionSet) {
+    var optionsNode = scope.querySelector("[data-scope-options]");
+    var countNode = scope.querySelector("[data-scope-count]");
+    var selected = selectedScopeValues(scope);
+    var dimension = scope.dataset.scopeDimension;
+    var invalidated = scopeValueArray(optionSet.invalidated_selections);
+    if (
+      optionSet.filters &&
+      Object.prototype.hasOwnProperty.call(optionSet.filters, dimension)
+    ) {
+      selected = scopeValueArray(optionSet.filters[dimension]);
+    }
+    var availableValues = (optionSet.options || []).map(function (option) {
+      return scopeOptionKey(dimension, option.value);
+    });
+    var search = scope.querySelector("[data-scope-search]");
+    var hasSearch = Boolean(search && search.value.trim());
+    if (
+      !hasSearch &&
+      !optionSet.truncated &&
+      optionSet.coverage_state !== "partial" &&
+      optionSet.coverage_state !== "error"
+    ) {
+      selected = selected.filter(function (value) {
+        return availableValues.indexOf(scopeOptionKey(dimension, value)) >= 0;
+      });
+    }
+    selected = selected.filter(function (value) {
+      return invalidated.indexOf(value) < 0;
+    });
+    scope.dataset.selectedValues = JSON.stringify(selected);
+    optionsNode.replaceChildren();
+    (optionSet.options || []).forEach(function (option) {
+      var label = makeEl("label");
+      var checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = option.value;
+      checkbox.checked = selected.indexOf(option.value) >= 0;
+      checkbox.addEventListener("change", function () {
+        var selectedValues = Array.from(
+          optionsNode.querySelectorAll('input[type="checkbox"]:checked')
+        ).map(function (field) { return field.value; });
+        if (selectedValues.length) {
+          scope.dataset.selectedValues = JSON.stringify(selectedValues);
+        } else {
+          scope.dataset.selectedValues = "[]";
+          delete draftFilters[scope.dataset.scopeDimension];
+        }
+        updateScopeSummary(scope);
+        refreshScopeOptionsToTheRight(scope.dataset.scopeDimension);
+      });
+      label.appendChild(checkbox);
+      label.appendChild(document.createTextNode(option.label || option.value));
+      optionsNode.appendChild(label);
+    });
+    optionsNode.hidden = false;
+    scope.classList.remove("scope-fallback");
+    var fallback = scope.querySelector("[data-scope-fallback]");
+    if (fallback) fallback.hidden = true;
+    if (countNode) {
+      countNode.textContent = "";
+      if (optionSet.truncated && optionSet.total_observed !== null) {
+        countNode.textContent = String(optionSet.options.length) + " of "
+          + String(optionSet.total_observed) + " available values shown";
+      }
+    }
+    announceInvalidatedSelections(invalidated);
+    updateScopeSummary(scope);
+  }
+
+  function loadScopeOptions(scope) {
+    var dimension = scope.dataset.scopeDimension;
+    var controller = new AbortController();
+    var timeout = window.setTimeout(function () { controller.abort(); }, 5000);
+    var draft = readDraftFromForm(document.getElementById("observe-filter-form"));
+    var filters = observeFiltersForRequest(draft);
+    return fetch("/api/observe/scope-options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        dimension: ({
+          foundry_resource_id: "foundry_resource",
+          project_resource_id: "project",
+          agent_id: "agent",
+          model: "model",
+          tool_name: "tool",
+          run_key: "run_key",
+        })[dimension],
+        filters: filters,
+        window: windowSelectionForRequest(draft),
+        search: (scope.querySelector("[data-scope-search]") || {}).value || null,
+      }),
+      signal: controller.signal,
+    }).then(function (response) {
+      if (!response.ok) throw new Error("scope options unavailable");
+      return response.json();
+    }).then(function (optionSet) {
+      renderScopeOptions(scope, optionSet);
+    }).catch(function () {
+      showScopeFallback(scope);
+    }).finally(function () {
+      window.clearTimeout(timeout);
+    });
+  }
+
+  function refreshScopeOptionsToTheRight(dimension) {
+    var position = SCOPE_FILTER_KEYS.indexOf(dimension);
+    var downstream = Array.from(
+      document.querySelectorAll("[data-scope-dimension]")
+    ).filter(function (scope) {
+      return SCOPE_FILTER_KEYS.indexOf(scope.dataset.scopeDimension) > position;
+    });
+    resetScopeStatus();
+    return downstream.reduce(function (pending, scope) {
+      return pending.then(function () {
+        scope.dataset.loaded = "true";
+        return loadScopeOptions(scope);
+      });
+    }, Promise.resolve());
+  }
+
+  function initializeScopeControls(form) {
+    form.querySelectorAll("[data-scope-dimension]").forEach(function (scope) {
+      var trigger = scope.querySelector("[data-scope-trigger]");
+      var panel = scope.querySelector("[data-scope-panel]");
+      var search = scope.querySelector("[data-scope-search]");
+      trigger.addEventListener("click", function () {
+        var opening = panel.hidden;
+        panel.hidden = !opening;
+        trigger.setAttribute("aria-expanded", opening ? "true" : "false");
+        if (opening && !scope.dataset.loaded) {
+          scope.dataset.loaded = "true";
+          loadScopeOptions(scope);
+        }
+      });
+      search.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          loadScopeOptions(scope);
+        }
+      });
     });
   }
 
@@ -3645,10 +5117,19 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     });
   }
 
-  function setRefreshStatus(text) {
+  function setRefreshStatus(text, timestamp) {
     var status = document.getElementById("observe-refresh-status");
     if (status) {
-      status.textContent = text;
+      clearChildren(status);
+      if (!timestamp) {
+        status.textContent = text;
+        return;
+      }
+      var time = renderTimestampJs(timestamp);
+      time.setAttribute("data-observe-time-style", "compact");
+      time.setAttribute("data-observe-time-prefix", text + " ");
+      updatePresentedTime(time);
+      status.appendChild(time);
     }
   }
 
@@ -3672,8 +5153,17 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     not_configured: { label: "Not configured", tone: "muted" },
     inaccessible: { label: "Inaccessible", tone: "crit" },
     protected_or_unavailable: { label: "Protected or unavailable", tone: "warn" },
-    ambiguous: { label: "Ambiguous", tone: "warn" },
     error: { label: "Error", tone: "crit" },
+  };
+
+  // Mirrors SOURCE_KIND_LABELS in ui.py.
+  var SOURCE_KIND_LABELS = {
+    foundry_hosted: "Foundry Hosted",
+    foundry_prompt: "Foundry Prompt",
+    external_registered: "External Registered",
+    external_unregistered: "External Unregistered",
+    copilot_studio: "Copilot Studio",
+    unknown: "Unclassified",
   };
 
   // Mirrors COVERAGE_DIMENSION_LABELS in ui.py.
@@ -3764,13 +5254,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   }
 
   function compactTimestamp(value) {
-    if (!value) return "";
-    var moment = new Date(value);
-    if (isNaN(moment.getTime())) return String(value);
-    function pad(part) { return String(part).padStart(2, "0"); }
-    return moment.getUTCFullYear() + "-" + pad(moment.getUTCMonth() + 1) + "-" +
-      pad(moment.getUTCDate()) + " " + pad(moment.getUTCHours()) + ":" +
-      pad(moment.getUTCMinutes()) + ":" + pad(moment.getUTCSeconds()) + " UTC";
+    return formatPresentationTimestamp(value, "compact");
   }
 
   function renderTimestampJs(value) {
@@ -3780,8 +5264,26 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     var time = document.createElement("time");
     time.setAttribute("datetime", value);
     time.title = String(value);
-    time.textContent = compactTimestamp(value);
+    time.setAttribute("data-observe-time", value);
+    time.setAttribute("data-observe-time-style", "full");
+    time.setAttribute("data-observe-time-prefix", "");
+    time.setAttribute("data-observe-time-suffix", "");
+    updatePresentedTime(time);
     return time;
+  }
+
+  function renderTimestampOrMissingJs(value) {
+    return value
+      ? renderTimestampJs(value)
+      : makeEl("span", "observe-metric metric-missing", "Not reported");
+  }
+
+  function renderTimeRangeJs(start, end) {
+    var wrap = makeEl("span", "observe-time-range");
+    wrap.appendChild(renderTimestampOrMissingJs(start));
+    wrap.appendChild(document.createTextNode(" to "));
+    wrap.appendChild(renderTimestampOrMissingJs(end));
+    return wrap;
   }
 
   function sumReported(rows, field) {
@@ -3802,6 +5304,126 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     icon.setAttribute("aria-label", helpText);
     icon.title = helpText;
     return icon;
+  }
+
+  function bindHeaderHelp(wrapper) {
+    if (!wrapper || wrapper.dataset.enhanced === "true") return;
+    wrapper.dataset.enhanced = "true";
+    var trigger = wrapper.querySelector(".observe-header-help-trigger");
+    if (!trigger) return;
+    trigger.addEventListener("click", function () {
+      var open = wrapper.dataset.open !== "true";
+      wrapper.dataset.open = open ? "true" : "false";
+      trigger.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    wrapper.addEventListener("keydown", function (event) {
+      if (event.key !== "Escape") return;
+      wrapper.dataset.open = "false";
+      trigger.setAttribute("aria-expanded", "false");
+      trigger.focus();
+      event.stopPropagation();
+    });
+  }
+
+  function headerHelp(helpText, identifier, label) {
+    var wrapper = makeEl("span", "observe-header-help");
+    wrapper.dataset.observeHeaderHelp = "true";
+    var panelId = "observe-header-help-" + String(identifier || "column")
+      .replace(/[^a-zA-Z0-9_-]/g, "-");
+    var trigger = makeEl("button", "observe-header-help-trigger", "i");
+    trigger.type = "button";
+    trigger.setAttribute("aria-label", "Explain " + (label || "column"));
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.setAttribute("aria-controls", panelId);
+    var panel = makeEl("span", "observe-header-help-panel", helpText);
+    panel.id = panelId;
+    panel.setAttribute("role", "tooltip");
+    wrapper.appendChild(trigger);
+    wrapper.appendChild(panel);
+    bindHeaderHelp(wrapper);
+    return wrapper;
+  }
+
+  function abbreviateRunIdentifier(value) {
+    value = String(value || "");
+    return value.length <= RUN_IDENTIFIER_VISIBLE_CHARS
+      ? value
+      : value.slice(0, RUN_IDENTIFIER_VISIBLE_CHARS) + "\u2026";
+  }
+
+  function sourceWorkspaceName(sourceId) {
+    var parts = String(sourceId || "").replace(/\\\\/g, "/").split("/").filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : String(sourceId || "");
+  }
+
+  function bindCopyControl(control) {
+    if (!control || control.dataset.enhanced === "true") return;
+    control.dataset.enhanced = "true";
+    var details = control.querySelector(".observe-copy-fallback");
+    var summary = details && details.querySelector("summary");
+    var input = details && details.querySelector("input");
+    var feedback = control.querySelector(".observe-copy-feedback");
+    var value = control.dataset.copyValue || "";
+    if (!details || !summary || !input || !feedback) return;
+
+    details.addEventListener("toggle", function () {
+      if (!details.open) return;
+      feedback.textContent = "Select and copy the full value.";
+      input.focus();
+      input.select();
+    });
+    summary.addEventListener("click", function (event) {
+      if (!navigator.clipboard || typeof navigator.clipboard.writeText !== "function") {
+        return;
+      }
+      event.preventDefault();
+      Promise.resolve()
+        .then(function () { return navigator.clipboard.writeText(value); })
+        .then(function () {
+          details.open = false;
+          feedback.textContent = "Copied.";
+        })
+        .catch(function () {
+          details.open = true;
+          feedback.textContent = "Copy failed. Select the full value below.";
+          input.focus();
+          input.select();
+        });
+    });
+  }
+
+  function copyValueNode(fullValue, visibleValue, label) {
+    fullValue = String(fullValue || "");
+    var wrapper = makeEl("span", "observe-copy-value");
+    wrapper.appendChild(makeEl("span", "observe-copy-visible", visibleValue || fullValue || "\u2014"));
+    if (!fullValue) return wrapper;
+    var control = makeEl("span", "observe-copy-control");
+    control.dataset.observeCopy = "true";
+    control.dataset.copyValue = fullValue;
+    var details = makeEl("details", "observe-copy-fallback");
+    var summary = makeEl("summary", null, "Copy");
+    summary.setAttribute("aria-label", "Copy full " + label);
+    var fieldLabel = makeEl("label", null, "Full " + label);
+    var input = makeEl("input");
+    input.type = "text";
+    input.readOnly = true;
+    input.value = fullValue;
+    input.setAttribute("aria-label", "Full " + label + " for manual selection");
+    fieldLabel.appendChild(input);
+    details.appendChild(summary);
+    details.appendChild(fieldLabel);
+    var feedback = makeEl("span", "observe-copy-feedback");
+    feedback.setAttribute("role", "status");
+    feedback.setAttribute("aria-live", "polite");
+    control.appendChild(details);
+    control.appendChild(feedback);
+    wrapper.appendChild(control);
+    bindCopyControl(control);
+    return wrapper;
+  }
+
+  function enhanceCopyControls(root) {
+    (root || document).querySelectorAll("[data-observe-copy]").forEach(bindCopyControl);
   }
 
   // Mirrors `_render_failure_rate`.
@@ -3925,7 +5547,11 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     time.className = "observe-refreshed-at";
     time.setAttribute("datetime", value);
     time.title = String(value);
-    time.textContent = label + ": " + compactTimestamp(value);
+    time.setAttribute("data-observe-time", value);
+    time.setAttribute("data-observe-time-style", "compact");
+    time.setAttribute("data-observe-time-prefix", label + ": ");
+    time.setAttribute("data-observe-time-suffix", "");
+    updatePresentedTime(time);
     return time;
   }
 
@@ -3947,7 +5573,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
 
   function renderSourceKindBadge(kind) {
     kind = kind || "unknown";
-    var label = String(kind).split("_").map(function (part) {
+    var label = SOURCE_KIND_LABELS[kind] || String(kind).split("_").map(function (part) {
       return part.charAt(0).toUpperCase() + part.slice(1);
     }).join(" ");
     var source = makeEl("span", "observe-source-kind", label);
@@ -3979,6 +5605,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       }
     });
     enhanceSortableTables(container);
+    enhanceCopyControls(container);
   }
 
   function sortableCellValue(cell) {
@@ -4011,11 +5638,17 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       return;
     }
     table.dataset.observeSortable = "true";
+    var declaredSortKeys = serverSortKeysFor(table);
     headers.forEach(function (header, columnIndex) {
       var label = header.dataset.label || String(header.textContent || "").trim() ||
         "Column " + (columnIndex + 1);
       var helpText = header.dataset.help || "";
-      var serverSortKey = header.dataset.serverSortKey || "";
+      var columnId = header.dataset.columnId || "";
+      // Resolve by identity first so a reworded label cannot lose the sort key.
+      // Tables that do not yet declare `data-column-id` fall through to the
+      // attribute the script itself wrote during buildDataTable.
+      var serverSortKey = (columnId && declaredSortKeys[columnId]) ||
+        header.dataset.serverSortKey || "";
       clearChildren(header);
       var activeDirection = serverSortKey && currentSortBy === serverSortKey
         ? (currentSortDirection === "asc" ? "ascending" : "descending")
@@ -4050,10 +5683,20 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         });
         var rows = Array.prototype.slice.call(body.rows)
           .filter(function (row) {
-            return row.dataset.observeDrilldownRow !== "true";
+            return row.dataset.observeDrilldownRow !== "true" &&
+              row.dataset.observeRunDetailRow !== "true";
           })
           .map(function (row, index) {
-          return { row: row, index: index, value: sortableCellValue(row.cells[columnIndex] || row) };
+          var detailRow = row.nextElementSibling &&
+              row.nextElementSibling.dataset.observeRunDetailRow === "true"
+            ? row.nextElementSibling
+            : null;
+          return {
+            row: row,
+            detailRow: detailRow,
+            index: index,
+            value: sortableCellValue(row.cells[columnIndex] || row)
+          };
         });
         rows.sort(function (left, right) {
           if (left.value.missing !== right.value.missing) {
@@ -4072,6 +5715,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         });
         rows.forEach(function (entry) {
           body.appendChild(entry.row);
+          if (entry.detailRow) body.appendChild(entry.detailRow);
         });
         button.setAttribute(
           "aria-label",
@@ -4080,7 +5724,15 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       });
       header.appendChild(button);
       if (helpText) {
-        header.appendChild(infoIcon(helpText));
+        header.appendChild(
+          table.classList.contains("observe-runs-table")
+            ? headerHelp(
+                helpText,
+                table.className + "-" + (columnId || String(columnIndex)),
+                label
+              )
+            : infoIcon(helpText)
+        );
       }
     });
   }
@@ -4112,25 +5764,50 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       var th = makeEl("th", null, definition.label);
       th.setAttribute("scope", "col");
       th.dataset.label = definition.label;
+      // Columns that declare an identity carry it through, so the rendered
+      // markup matches what ui.py emits server-side and the sort lookup below
+      // never depends on the displayed prose.
+      if (definition.id) {
+        th.dataset.columnId = definition.id;
+      }
       if (definition.help) {
         th.dataset.help = definition.help;
       }
-      if (sortKeys[definition.label]) {
-        th.dataset.serverSortKey = sortKeys[definition.label];
+      var sortKey = sortKeys[definition.id || definition.label];
+      if (sortKey) {
+        th.dataset.serverSortKey = sortKey;
       }
       headRow.appendChild(th);
     });
     thead.appendChild(headRow);
     table.appendChild(thead);
     var tbody = document.createElement("tbody");
-    rows.forEach(function (cells) {
+    rows.forEach(function (rowDefinition) {
+      var cells = Array.isArray(rowDefinition) ? rowDefinition : rowDefinition.cells;
       var tr = document.createElement("tr");
+      if (!Array.isArray(rowDefinition) && rowDefinition.rowClass) {
+        tr.className = rowDefinition.rowClass;
+      }
+      if (!Array.isArray(rowDefinition) && rowDefinition.rowAttributes) {
+        Object.keys(rowDefinition.rowAttributes).forEach(function (name) {
+          tr.setAttribute(name, rowDefinition.rowAttributes[name]);
+        });
+      }
       cells.forEach(function (cell) {
         var td = document.createElement("td");
         appendCellContent(td, cell);
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
+      if (!Array.isArray(rowDefinition) && rowDefinition.detail) {
+        var detailRow = makeEl("tr", "observe-run-detail-row");
+        detailRow.dataset.observeRunDetailRow = "true";
+        var detailCell = document.createElement("td");
+        detailCell.colSpan = columns.length;
+        appendCellContent(detailCell, rowDefinition.detail);
+        detailRow.appendChild(detailCell);
+        tbody.appendChild(detailRow);
+      }
     });
     table.appendChild(tbody);
     if (footerCells && footerCells.length) {
@@ -4322,28 +5999,29 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   // backend response is rendered correctly under either shape.
   function overviewMetricsFrom(data) {
     if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.summaries)) return data.summaries;
     if (data && Array.isArray(data.metrics)) return data.metrics;
     if (data && Array.isArray(data.cards)) return data.cards;
     if (data && typeof data === "object" && data.invocations !== undefined) {
       var invocations = Number(data.invocations || 0);
       var failures = Number(data.failures || 0);
       return [
-        { title: "Invocations", value: invocations },
-        { title: "Failures", value: failures },
+        { title: "Run invocations", value: invocations },
+        { title: "Run failures", value: failures },
         {
-          title: "Success rate",
+          title: "Run success rate",
           value: invocations > 0 ? Math.round(((invocations - failures) / invocations) * 1000) / 10 : null,
           unit: "%",
         },
         {
-          title: "Average latency",
+          title: "Average run latency",
           value: data.avg_latency_ms === null ? null : Number(data.avg_latency_ms) / 1000,
           unit: " s",
           minimumFractionDigits: 3,
           maximumFractionDigits: 3
         },
         {
-          title: "p95 latency",
+          title: "p95 run latency",
           value: data.p95_latency_ms === null ? null : Number(data.p95_latency_ms) / 1000,
           unit: " s",
           minimumFractionDigits: 3,
@@ -4393,6 +6071,10 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       text += total === null || total === undefined
         ? "."
         : " (" + total + " rows in scope).";
+      if (total !== null && total !== undefined && Number(total) > rowsShown) {
+        var omitted = Number(total) - rowsShown;
+        text += " " + omitted + (omitted === 1 ? " row is" : " rows are") + " not displayed.";
+      }
     } else {
       text = total === null || total === undefined
         ? "Showing rows " + first + "\u2013" + last + "."
@@ -4485,11 +6167,182 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     return toolbar;
   }
 
+  function renderEntitySummaries(summaries) {
+    var familyOrder = ["Runs", "Agents", "Models", "Tools"];
+    var order = {};
+    familyOrder.forEach(function (family, index) { order[family] = index; });
+    summaries = summaries.slice().sort(function (left, right) {
+      var leftOrder = order[left.entity_family] === undefined ? 99 : order[left.entity_family];
+      var rightOrder = order[right.entity_family] === undefined ? 99 : order[right.entity_family];
+      return leftOrder - rightOrder;
+    });
+    var container = makeEl("div", "observe-overview-summaries");
+    container.setAttribute("role", "list");
+    container.setAttribute("aria-label", "Overview by entity family");
+    summaries.forEach(function (summary) {
+      summary = summary || {};
+      var family = String(summary.entity_family || "");
+      if (order[family] === undefined) return;
+      var familyKey = family.toLowerCase();
+      var state = summary.coverage_state || "not_reported";
+      var copy = COVERAGE_STATE_LABELS[state] || COVERAGE_STATE_LABELS.not_reported;
+      var section = makeEl("section", "observe-entity-summary");
+      section.setAttribute("data-entity-family", familyKey);
+      section.setAttribute("role", "listitem");
+      var headingId = "observe-summary-" + familyKey + "-heading";
+      section.setAttribute("aria-labelledby", headingId);
+      var header = makeEl("div", "observe-summary-header");
+      var heading = makeEl("h3", "", family);
+      heading.id = headingId;
+      header.appendChild(heading);
+      header.appendChild(renderBadgeJs(
+        copy.label,
+        copy.tone,
+        "observe-summary-coverage observe-coverage-state-" + state
+      ));
+      section.appendChild(header);
+      if (state === "no_data") {
+        var empty = makeEl(
+          "p",
+          "observe-family-empty",
+          "No " + familyKey + " data found for the selected scope and window."
+        );
+        empty.setAttribute("role", "status");
+        section.appendChild(empty);
+      } else if (state === "error" || state === "inaccessible" ||
+                 state === "protected_or_unavailable") {
+        var unavailable = makeEl(
+          "p",
+          "observe-family-empty",
+          family + " summary data is unavailable for the selected scope and window."
+        );
+        unavailable.setAttribute("role", "status");
+        section.appendChild(unavailable);
+      } else {
+        var list = makeEl("dl", "observe-summary-figures");
+        (summary.figures || []).forEach(function (figure) {
+          figure = figure || {};
+          var label = String(figure.label || "");
+          var item = makeEl(
+            "div",
+            "observe-summary-figure observe-tone-" + String(figure.tone || "info")
+          );
+          item.setAttribute("role", "group");
+          item.setAttribute("aria-label", label);
+          item.appendChild(makeEl("dt", "", label));
+          var value = makeEl("dd", "");
+          var unit = figure.unit;
+          var suffix = unit === null || unit === undefined
+            ? ""
+            : (unit === "%" ? "%" : " " + String(unit));
+          value.appendChild(renderMaybeMissing(figure.value, {
+            missingText: "Not reported",
+            suffix: suffix
+          }));
+          item.appendChild(value);
+          list.appendChild(item);
+        });
+        if (list.childNodes.length) {
+          section.appendChild(list);
+        } else {
+          section.appendChild(makeEl(
+            "p",
+            "observe-family-empty",
+            family + " figures were not reported."
+          ));
+        }
+      }
+      container.appendChild(section);
+    });
+    return container;
+  }
+
   function renderOverview(data, diagnostics) {
     var metrics = overviewMetricsFrom(data);
     if (!metrics.length) {
       setViewContent("overview", [emptyStateNode("No data found for the selected filters.")]);
       return;
+    }
+
+    var summaries = metrics.filter(function (item) {
+      return item && item.entity_family;
+    });
+    if (summaries.length) {
+      setViewContent("overview", [renderEntitySummaries(summaries)]);
+      return;
+    }
+
+    function estimatedCostNode(estimate, grouped) {
+      estimate = estimate || { completeness: "not_priced", reason: "No estimate was reported." };
+      var completeness = estimate.completeness || "not_priced";
+      var node = makeEl("div", "observe-estimated-cost");
+      node.setAttribute("data-completeness", completeness);
+      if (estimate.amount === null || estimate.amount === undefined) {
+        node.appendChild(makeEl("strong", "metric-missing", "Not priced"));
+      } else {
+        node.appendChild(makeEl(
+          "strong",
+          "observe-estimated-cost-amount",
+          String(estimate.currency || "") + " " + String(estimate.amount)
+        ));
+      }
+      node.appendChild(makeEl(
+        "span",
+        "observe-estimated-cost-state",
+        "Completeness: " + String(completeness).replace(/_/g, " ")
+      ));
+      if (estimate.price_reference_version && estimate.price_reference_effective_date) {
+        node.appendChild(makeEl(
+          "span",
+          "observe-estimated-cost-reference",
+          "Price reference " + String(estimate.price_reference_version) +
+            ", effective " + String(estimate.price_reference_effective_date)
+        ));
+      }
+      if (estimate.is_stale) {
+        node.appendChild(makeEl(
+          "span",
+          "observe-estimated-cost-stale",
+          "Stale price reference (" + String(estimate.reference_age_days) + " days old)"
+        ));
+      }
+      if (grouped && estimate.covered_run_count !== null &&
+          estimate.covered_run_count !== undefined &&
+          estimate.scope_run_count !== null && estimate.scope_run_count !== undefined &&
+          estimate.unpriced_run_count !== null && estimate.unpriced_run_count !== undefined) {
+        node.appendChild(makeEl(
+          "span",
+          "observe-estimated-cost-coverage",
+          String(estimate.covered_run_count) + " of " + String(estimate.scope_run_count) +
+            " runs covered; " + String(estimate.unpriced_run_count) + " runs not priced"
+        ));
+      }
+      if (estimate.reason) {
+        node.appendChild(makeEl("span", "observe-estimated-cost-reason", String(estimate.reason)));
+      }
+      if (Array.isArray(estimate.excluded_components) && estimate.excluded_components.length) {
+        node.appendChild(makeEl(
+          "span",
+          "observe-estimated-cost-exclusions",
+          "Excluded: " + estimate.excluded_components.map(String).join(", ")
+        ));
+      }
+      node.appendChild(makeEl(
+        "span",
+        "observe-estimated-cost-disclaimer",
+        ESTIMATED_COST_DISCLAIMER
+      ));
+      return node;
+    }
+
+    function estimatedCostHelp(estimate) {
+      estimate = estimate || {};
+      if (estimate.price_reference_version && estimate.price_reference_effective_date) {
+        return ESTIMATED_COST_HELP + " This result uses price reference " +
+          String(estimate.price_reference_version) + ", effective " +
+          String(estimate.price_reference_effective_date) + ".";
+      }
+      return ESTIMATED_COST_HELP;
     }
     var grid = makeEl("div", "observe-overview-cards");
     metrics.forEach(function (metric) {
@@ -4557,6 +6410,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         renderMaybeMissing(agent.cache_read_tokens, { missingText: "\u2014" }),
         renderMaybeMissing(agent.cache_write_tokens, { missingText: "\u2014" }),
         renderMaybeMissing(agent.reasoning_tokens, { missingText: "\u2014" }),
+        estimatedCostNode(agent.estimated_cost, true),
       ];
     });
     var totalInvocations = sumReported(agents, "invocations");
@@ -4582,6 +6436,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
         { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
         { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp }
+        ,{ label: "Estimated cost", help: ESTIMATED_COST_HELP }
       ],
       rows,
       [
@@ -4598,7 +6453,8 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "\u2014" }),
         renderMaybeMissing(sumReported(agents, "cache_read_tokens"), { missingText: "\u2014" }),
         renderMaybeMissing(sumReported(agents, "cache_write_tokens"), { missingText: "\u2014" }),
-        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "\u2014" })
+        renderMaybeMissing(sumReported(agents, "reasoning_tokens"), { missingText: "\u2014" }),
+        "\u2014"
       ]
     );
     setViewContent("agents", [controls, notice, table]);
@@ -4962,6 +6818,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         renderMaybeMissing(entry.cache_write_tokens, { missingText: "\u2014" }),
         renderMaybeMissing(entry.reasoning_tokens, { missingText: "\u2014" }),
         renderAdditionalTokenClasses(entry),
+        estimatedCostNode(entry.estimated_cost, true),
         renderLastSeenJs(entry.last_seen),
       ];
     });
@@ -4989,6 +6846,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
           label: "Other token classes",
           help: "Additional gen_ai.usage.* classes. A row information icon means some telemetry records omitted token-class attributes."
         },
+        { label: "Estimated cost", help: ESTIMATED_COST_HELP },
         { label: "Last seen", help: "Most recent telemetry in the selected range." }
       ],
       rows,
@@ -5004,6 +6862,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         renderMaybeMissing(sumReported(usage, "cache_read_tokens"), { missingText: "\u2014" }),
         renderMaybeMissing(sumReported(usage, "cache_write_tokens"), { missingText: "\u2014" }),
         renderMaybeMissing(sumReported(usage, "reasoning_tokens"), { missingText: "\u2014" }),
+        "\u2014",
         "\u2014",
         "\u2014"
       ]
@@ -5079,6 +6938,123 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     setViewContent("tools", [controls, notice, table]);
   }
 
+  function runsScopeIsComplete(runs, bounds, diagnostics) {
+    if (!bounds || bounds.truncated || bounds.has_previous_page || bounds.has_next_page) {
+      return false;
+    }
+    if (bounds.rows_total_in_scope === null || bounds.rows_total_in_scope === undefined ||
+        Number(bounds.rows_total_in_scope) !== runs.length) {
+      return false;
+    }
+    if (bounds.rows_shown !== null && bounds.rows_shown !== undefined &&
+        Number(bounds.rows_shown) !== runs.length) {
+      return false;
+    }
+    return !diagnostics ||
+      (Number(diagnostics.partial_sources || 0) === 0 &&
+       Number(diagnostics.failed_sources || 0) === 0);
+  }
+
+  function runDimensionValue(run, identifier) {
+    var value;
+    if (identifier === "run_key_kind") value = run.run_key_kind;
+    else if (identifier === "agent_name") {
+      var rawAgent = run.agent_key || run.agent_id || run.agent_name;
+      var shownAgent = run.agent_name || run.agent_id || run.agent_key;
+      return rawAgent && shownAgent
+        ? { raw: String(rawAgent), shown: String(shownAgent) }
+        : null;
+    } else if (identifier === "source_id") {
+      value = run.source_id;
+      return value
+        ? { raw: String(value), shown: sourceWorkspaceName(value) }
+        : null;
+    } else if (identifier === "source_kind") value = run.source_kind;
+    else if (identifier === "status") value = run.status;
+    else return null;
+    return value === null || value === undefined || value === ""
+      ? null
+      : { raw: String(value), shown: String(value) };
+  }
+
+  function suppressedRunDimensions(runs, bounds, diagnostics) {
+    var suppressed = {};
+    if (!runsScopeIsComplete(runs, bounds, diagnostics)) return suppressed;
+    RUNS_SUPPRESSIBLE_COLUMN_IDS.forEach(function (identifier) {
+      var values = runs.map(function (run) {
+        return runDimensionValue(run || {}, identifier);
+      });
+      if (values.some(function (value) { return !value; })) return;
+      var first = values[0];
+      if (values.every(function (value) { return value.raw === first.raw; })) {
+        suppressed[identifier] = first;
+      }
+    });
+    return suppressed;
+  }
+
+  function runsScopeSummaryNode(suppressed) {
+    var identifiers = RUNS_SUPPRESSIBLE_COLUMN_IDS.filter(function (identifier) {
+      return Boolean(suppressed[identifier]);
+    });
+    if (!identifiers.length) return null;
+    var byId = {};
+    RUNS_TABLE_COLUMNS.forEach(function (column) { byId[column.id] = column; });
+    var summary = makeEl("dl", "observe-runs-scope-summary");
+    summary.setAttribute("aria-label", "Values shared by every run in scope");
+    identifiers.forEach(function (identifier) {
+      var item = document.createElement("div");
+      item.appendChild(makeEl("dt", null, byId[identifier].label));
+      var value = document.createElement("dd");
+      if (identifier === "source_id") {
+        value.appendChild(copyValueNode(
+          suppressed[identifier].raw,
+          suppressed[identifier].shown,
+          "source resource ID"
+        ));
+      } else {
+        value.textContent = suppressed[identifier].shown;
+      }
+      item.appendChild(value);
+      summary.appendChild(item);
+    });
+    return summary;
+  }
+
+  function runDetailNode(run) {
+    var details = makeEl("details", "observe-run-detail");
+    details.appendChild(makeEl(
+      "summary",
+      null,
+      "Run details for " + abbreviateRunIdentifier(run.run_key)
+    ));
+    var list = document.createElement("dl");
+    [
+      ["Full run key", copyValueNode(run.run_key, run.run_key, "run key")],
+      ["Correlation", run.run_key_kind || "\u2014"],
+      ["Agent", run.agent_name || run.agent_id || run.agent_key || "\u2014"],
+      ["Full source resource ID", copyValueNode(
+        run.source_id,
+        run.source_id,
+        "source resource ID"
+      )],
+      ["Runtime", renderSourceKindBadge(run.source_kind)],
+      ["Status", run.status || "\u2014"],
+      ["Last activity", renderTimestampJs(run.last_activity_at)],
+      ["Failed turns", renderMaybeMissing(run.failed_turns, { missingText: "\u2014" })],
+      ["Tool failures", renderMaybeMissing(run.tool_failures, { missingText: "\u2014" })]
+    ].forEach(function (entry) {
+      var item = document.createElement("div");
+      item.appendChild(makeEl("dt", null, entry[0]));
+      var value = document.createElement("dd");
+      appendCellContent(value, entry[1]);
+      item.appendChild(value);
+      list.appendChild(item);
+    });
+    details.appendChild(list);
+    return details;
+  }
+
   function renderRuns(data, diagnostics, bounds) {
     var runs = runsFrom(data);
     var notice = boundsNoticeNode(bounds, runs.length);
@@ -5091,85 +7067,91 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       ]);
       return;
     }
+    var suppressed = suppressedRunDimensions(runs, bounds, diagnostics);
+    var columns = RUNS_TABLE_COLUMNS.filter(function (column) {
+      return !suppressed[column.id];
+    }).map(function (column) {
+      if (column.id !== "estimated_cost") return column;
+      return {
+        id: column.id,
+        label: column.label,
+        sortKey: column.sortKey,
+        help: estimatedCostHelp((runs[0] || {}).estimated_cost),
+        priority: column.priority
+      };
+    });
     var rows = runs.map(function (run) {
       run = run || {};
-      return [
-        primaryCellWithAction(
+      var cellsById = {
+        run_key: copyValueNode(
           run.run_key,
-          buildDrilldownButton(
-            "runs",
-            {
-              source_id: run.source_id,
-              project_resource_id: run.project_resource_id || null,
-              run_key: run.run_key,
-              agent_key: run.agent_key || null,
-            },
-            "View details",
-            "View activity details for run " + (run.run_key || "")
-          )
+          abbreviateRunIdentifier(run.run_key),
+          "run key"
         ),
-        run.run_key_kind || "\u2014",
-        run.agent_name || run.agent_id || run.agent_key || "\u2014",
-        run.source_id || "\u2014",
-        renderSourceKindBadge(run.source_kind),
-        renderTimestampJs(run.started_at),
-        renderMillisecondsAsSeconds(run.duration_ms),
-        run.status || "\u2014",
-        renderMaybeMissing(run.turns, { missingText: "\u2014" }),
-        renderMaybeMissing(run.tool_invocations, { missingText: "\u2014" }),
-        renderMaybeMissing(run.input_tokens, { missingText: "\u2014" }),
-        renderMaybeMissing(run.output_tokens, { missingText: "\u2014" }),
-        renderMaybeMissing(observedTokenTotal(run.input_tokens, run.output_tokens), { missingText: "\u2014" }),
-        renderMaybeMissing(run.cache_read_tokens, { missingText: "\u2014" }),
-        renderMaybeMissing(run.cache_write_tokens, { missingText: "\u2014" }),
-        renderMaybeMissing(run.reasoning_tokens, { missingText: "\u2014" }),
-      ];
+        run_key_kind: run.run_key_kind || "\u2014",
+        agent_name: run.agent_name || run.agent_id || run.agent_key || "\u2014",
+        source_id: copyValueNode(
+          run.source_id,
+          sourceWorkspaceName(run.source_id),
+          "source resource ID"
+        ),
+        source_kind: renderSourceKindBadge(run.source_kind),
+        started_at: renderTimestampJs(run.started_at),
+        duration_ms: renderMillisecondsAsSeconds(run.duration_ms),
+        status: run.status || "\u2014",
+        turns: renderMaybeMissing(run.turns, { missingText: "\u2014" }),
+        tool_invocations: renderMaybeMissing(run.tool_invocations, { missingText: "\u2014" }),
+        input_tokens: renderMaybeMissing(run.input_tokens, { missingText: "\u2014" }),
+        output_tokens: renderMaybeMissing(run.output_tokens, { missingText: "\u2014" }),
+        total_tokens: renderMaybeMissing(
+          observedTokenTotal(run.input_tokens, run.output_tokens),
+          { missingText: "\u2014" }
+        ),
+        estimated_cost: estimatedCostNode(run.estimated_cost, false),
+        cache_read_tokens: renderMaybeMissing(run.cache_read_tokens, { missingText: "\u2014" }),
+        cache_write_tokens: renderMaybeMissing(run.cache_write_tokens, { missingText: "\u2014" }),
+        reasoning_tokens: renderMaybeMissing(run.reasoning_tokens, { missingText: "\u2014" })
+      };
+      return {
+        cells: columns.map(function (column) { return cellsById[column.id]; }),
+        detail: runDetailNode(run),
+        rowAttributes: { "data-observe-run-row": "true" }
+      };
     });
     var totalInput = sumReported(runs, "input_tokens");
     var totalOutput = sumReported(runs, "output_tokens");
-    var tokenHelp = "Observed token usage from telemetry; this is not billing data.";
+    var footerById = {
+      run_key: [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
+      run_key_kind: "\u2014",
+      agent_name: "\u2014",
+      source_id: "\u2014",
+      source_kind: "\u2014",
+      started_at: "\u2014",
+      duration_ms: renderMillisecondsAsSeconds(sumReported(runs, "duration_ms")),
+      status: "\u2014",
+      turns: renderMaybeMissing(sumReported(runs, "turns"), { missingText: "\u2014" }),
+      tool_invocations: renderMaybeMissing(sumReported(runs, "tool_invocations"), { missingText: "\u2014" }),
+      input_tokens: renderMaybeMissing(totalInput, { missingText: "\u2014" }),
+      output_tokens: renderMaybeMissing(totalOutput, { missingText: "\u2014" }),
+      total_tokens: renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "\u2014" }),
+      estimated_cost: "\u2014",
+      cache_read_tokens: renderMaybeMissing(sumReported(runs, "cache_read_tokens"), { missingText: "\u2014" }),
+      cache_write_tokens: renderMaybeMissing(sumReported(runs, "cache_write_tokens"), { missingText: "\u2014" }),
+      reasoning_tokens: renderMaybeMissing(sumReported(runs, "reasoning_tokens"), { missingText: "\u2014" })
+    };
     var table = buildDataTable(
       "observe-runs-table",
       "Runs observed in the selected range",
-      [
-        "Run key",
-        { label: "Correlation", help: "Telemetry key used to group this run." },
-        "Agent",
-        "Source",
-        "Runtime",
-        { label: "Started in range", help: "First observed activity within the selected range." },
-        { label: "Duration in range", help: "Elapsed time between first and last observed activity in the selected range." },
-        "Status",
-        { label: "Turns in range", help: "Turns observed within the selected range." },
-        "Tool invocations",
-        { label: "Input tokens", help: tokenHelp },
-        { label: "Output tokens", help: tokenHelp },
-        { label: "Total tokens", help: tokenHelp },
-        { label: "Cache read", help: "Tokens served from the prompt cache. " + tokenHelp },
-        { label: "Cache write", help: "Tokens written to the prompt cache. " + tokenHelp },
-        { label: "Reasoning", help: "Reasoning tokens reported by the model provider. " + tokenHelp }
-      ],
+      columns,
       rows,
-      [
-        [document.createTextNode("Totals "), infoIcon("Totals cover the rows currently displayed.")],
-        "\u2014",
-        "\u2014",
-        "\u2014",
-        "\u2014",
-        "\u2014",
-        renderMillisecondsAsSeconds(sumReported(runs, "duration_ms")),
-        "\u2014",
-        renderMaybeMissing(sumReported(runs, "turns"), { missingText: "\u2014" }),
-        renderMaybeMissing(sumReported(runs, "tool_invocations"), { missingText: "\u2014" }),
-        renderMaybeMissing(totalInput, { missingText: "\u2014" }),
-        renderMaybeMissing(totalOutput, { missingText: "\u2014" }),
-        renderMaybeMissing(observedTokenTotal(totalInput, totalOutput), { missingText: "\u2014" }),
-        renderMaybeMissing(sumReported(runs, "cache_read_tokens"), { missingText: "\u2014" }),
-        renderMaybeMissing(sumReported(runs, "cache_write_tokens"), { missingText: "\u2014" }),
-        renderMaybeMissing(sumReported(runs, "reasoning_tokens"), { missingText: "\u2014" })
-      ]
+      columns.map(function (column) { return footerById[column.id]; })
     );
-    setViewContent("runs", [controls, notice, table]);
+    setViewContent("runs", [
+      controls,
+      notice,
+      runsScopeSummaryNode(suppressed),
+      table
+    ]);
   }
 
   function costLabel(value) {
@@ -5391,17 +7373,19 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     var dl = makeEl("dl", "observe-cost-period");
     [
       ["Period", period.id],
-      [
-        "Observation window",
-        String(period.starts_at || "Not reported") + " to " +
-          String(period.ends_at || "Not reported"),
-      ],
-      ["Calculated at", data.calculated_at],
-      ["Latest observed", data.latest_observed_at],
+      ["Observation window", renderTimeRangeJs(period.starts_at, period.ends_at)],
+      ["Calculated at", renderTimestampOrMissingJs(data.calculated_at)],
+      ["Latest observed", renderTimestampOrMissingJs(data.latest_observed_at)],
     ].forEach(function (item) {
       var div = document.createElement("div");
       div.appendChild(makeEl("dt", null, item[0]));
-      div.appendChild(makeEl("dd", null, item[1] || "Not reported"));
+      var dd = document.createElement("dd");
+      if (item[1] && item[1].nodeType) {
+        dd.appendChild(item[1]);
+      } else {
+        dd.textContent = item[1] || "Not reported";
+      }
+      div.appendChild(dd);
       dl.appendChild(div);
     });
     return dl;
@@ -5573,11 +7557,10 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     var adjustment = row.rounding_adjustment_minor_units;
     var details = [
       ["Period", row.period_id || period.id],
-      [
-        "Observation window",
-        String(row.period_starts_at || period.starts_at || "Not reported") + " to " +
-          String(row.period_ends_at || period.ends_at || "Not reported"),
-      ],
+      ["Observation window", renderTimeRangeJs(
+        row.period_starts_at || period.starts_at,
+        row.period_ends_at || period.ends_at
+      )],
       [
         "Billing boundary",
         costLabel(boundary.kind) + ": " +
@@ -5598,13 +7581,19 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       ["Confidence", costLabel(row.confidence)],
       ["Coverage", costLabel(row.coverage_state)],
       ["Coverage reason", row.coverage_reason || "No incomplete-coverage reason reported."],
-      ["Calculated at", row.calculated_at],
-      ["Latest observed", row.latest_observed_at],
+      ["Calculated at", renderTimestampOrMissingJs(row.calculated_at)],
+      ["Latest observed", renderTimestampOrMissingJs(row.latest_observed_at)],
     ];
     details.forEach(function (detail) {
       var div = document.createElement("div");
       div.appendChild(makeEl("dt", null, detail[0]));
-      div.appendChild(makeEl("dd", null, detail[1] || "Not reported"));
+      var dd = document.createElement("dd");
+      if (detail[1] && detail[1].nodeType) {
+        dd.appendChild(detail[1]);
+      } else {
+        dd.textContent = detail[1] || "Not reported";
+      }
+      div.appendChild(dd);
       dl.appendChild(div);
     });
     return dl;
@@ -6090,37 +8079,34 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
   }
 
   function buildCostPayload(manual) {
+    var filters = observeFiltersForRequest(appliedFilters);
+    filters.cost_period_id = appliedFilters.cost_period_id || null;
+    filters.cost_component_id = appliedFilters.cost_component_id || null;
+    filters.cost_breakdown = appliedFilters.cost_breakdown || "agents";
+    filters.cost_agent_key = appliedFilters.cost_agent_key || null;
     return {
       view: "cost",
-      filters: {
-        cost_period_id: appliedFilters.cost_period_id || null,
-        cost_component_id: appliedFilters.cost_component_id || null,
-        cost_breakdown: appliedFilters.cost_breakdown || "agents",
-        cost_agent_key: appliedFilters.cost_agent_key || null,
-      },
+      filters: filters,
+      window: windowSelectionForRequest(appliedFilters),
       refresh: manual === true,
     };
   }
 
   function buildAttributionPayload(manual) {
     var metric = appliedFilters.attribution_metric || "usage";
+    var filters = observeFiltersForRequest(appliedFilters);
+    filters.department_filter_token = appliedFilters.department_filter_token || null;
+    filters.user_filter_token = appliedFilters.user_filter_token || null;
+    filters.cost_period_id = metric === "cost"
+      ? (appliedFilters.attribution_cost_period_id || null)
+      : null;
+    filters.cost_component_id = metric === "cost"
+      ? (appliedFilters.attribution_cost_component_id || null)
+      : null;
     return {
       metric: metric,
       group_by: appliedFilters.attribution_group_by || "department",
-      filters: {
-        foundry_resource_id: appliedFilters.foundry_resource_id || null,
-        project_resource_id: appliedFilters.project_resource_id || null,
-        agent_id: appliedFilters.agent_id || null,
-        model: appliedFilters.model || null,
-        tool_name: appliedFilters.tool_name || null,
-        run_key: appliedFilters.run_key || null,
-        start: appliedFilters.start,
-        end: appliedFilters.end,
-        department_filter_token: appliedFilters.department_filter_token || null,
-        user_filter_token: appliedFilters.user_filter_token || null,
-        cost_period_id: metric === "cost" ? (appliedFilters.attribution_cost_period_id || null) : null,
-        cost_component_id: metric === "cost" ? (appliedFilters.attribution_cost_component_id || null) : null,
-      },
+      filters: filters,
       refresh: manual === true,
     };
   }
@@ -6141,7 +8127,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
         return response.json().then(function (body) {
           if (myToken !== requestToken) return null;
           renderObserveResponse(body);
-          setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));
+          setRefreshStatus("Refreshed", new Date().toISOString());
           return body;
         });
       })
@@ -6169,16 +8155,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     // click, requesting the backend bypass any cache for this fetch.
     var payload = {
       view: VIEW_WIRE_NAMES[currentView] || currentView,
-      filters: {
-        foundry_resource_id: appliedFilters.foundry_resource_id || null,
-        project_resource_id: appliedFilters.project_resource_id || null,
-        agent_id: appliedFilters.agent_id || null,
-        model: appliedFilters.model || null,
-        tool_name: appliedFilters.tool_name || null,
-        run_key: appliedFilters.run_key || null,
-        start: appliedFilters.start,
-        end: appliedFilters.end,
-      },
+      filters: observeFiltersForRequest(appliedFilters),
       refresh: manual === true,
       page: currentPage,
       page_size: currentPageSize,
@@ -6186,6 +8163,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       sort_by: currentSortBy || null,
       sort_direction: currentSortDirection,
     };
+    payload.window = windowSelectionForRequest(appliedFilters);
     payload = currentView === "cost" ? buildCostPayload(manual) : payload;
     if (currentView === "departments") {
       return fetchAttributionData(buildAttributionPayload(manual), controller, myToken);
@@ -6218,7 +8196,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
             return null;
           }
           renderObserveResponse(body);
-          setRefreshStatus("Refreshed " + compactTimestamp(new Date().toISOString()));
+          setRefreshStatus("Refreshed", new Date().toISOString());
           return body;
         });
       })
@@ -6267,9 +8245,18 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     var form = document.getElementById("observe-filter-form");
     if (form) {
       populateFormFromApplied(form);
+      initializeScopeControls(form);
+      var windowPreset = form.querySelector('[data-draft-filter="window_preset"]');
+      if (windowPreset) {
+        windowPreset.addEventListener("change", function () {
+          var custom = form.querySelector("[data-custom-window]");
+          if (custom) custom.hidden = windowPreset.value !== "custom";
+        });
+      }
       form.addEventListener("submit", function (event) {
         event.preventDefault();
         draftFilters = readDraftFromForm(form);
+        if (!validateDraftWindow(form, draftFilters)) return;
         var preservedCostFilters = document.getElementById("observe-cost-filter-form") ? {
           cost_period_id: appliedFilters.cost_period_id || "",
           cost_component_id: appliedFilters.cost_component_id || "",
@@ -6300,7 +8287,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
           appliedFilters.attribution_cost_component_id = preservedAttributionFilters.attribution_cost_component_id;
         }
         resetPaging(false);
-        syncUrl();
+        pushUrl();
         fetchObserveData(true);
       });
     }
@@ -6331,7 +8318,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
           appliedFilters[key] = costDraft[key];
         });
         currentView = "cost";
-        syncUrl();
+        pushUrl();
         fetchObserveData(true);
       });
     }
@@ -6358,7 +8345,7 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
           appliedFilters.department_filter_token = "";
         }
         currentView = "departments";
-        syncUrl();
+        pushUrl();
         fetchObserveData(true);
       });
     }
@@ -6366,6 +8353,17 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     if (refreshButton) {
       refreshButton.addEventListener("click", function () {
         fetchObserveData(true);
+      });
+    }
+    var timezoneBasis = document.getElementById("observe-timezone-basis");
+    if (timezoneBasis) {
+      timezoneBasis.addEventListener("change", function () {
+        document.querySelectorAll("[data-observe-time-input]").forEach(function (field) {
+          var canonical = inputValueToUtcIso(field.value);
+          if (canonical) field.setAttribute("data-observe-time-value", canonical);
+        });
+        presentationTimeBasis = timezoneBasis.value === "utc" ? "utc" : "local";
+        rerenderTemporalSurface();
       });
     }
     document.querySelectorAll("[data-observe-load-protected]").forEach(function (button) {
@@ -6395,6 +8393,8 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     activateView(currentView);
     setupAgentOpsThemeToggle();
     enhanceSortableTables(document);
+    enhanceCopyControls(document);
+    rerenderTemporalSurface();
     syncUrl();
     scheduleAutoRefresh();
   }
@@ -6418,6 +8418,7 @@ def render_observe_page(
     active_view: str = "overview",
     scope_label: Optional[str] = None,
     overview_metrics: Sequence[Mapping[str, Any]] = (),
+    overview_summaries: Sequence[Any] = (),
     agents: Sequence[Any] = (),
     usage: Sequence[Any] = (),
     tools: Sequence[Any] = (),
@@ -6462,7 +8463,9 @@ def render_observe_page(
     )
     filters = render_filter_bar(scope_label)
     overview = render_overview_cards(
-        overview_metrics, diagnostics=diagnostics, trends=overview_trends
+        overview_summaries or overview_metrics,
+        diagnostics=diagnostics,
+        trends=overview_trends,
     )
     agents_html = render_agents_table(agents, diagnostics=diagnostics)
     usage_html = render_models_usage_table(usage, diagnostics=diagnostics)
@@ -6558,6 +8561,11 @@ def render_observe_page(
     <h2 id="overview-heading">Overview</h2>
     <div id="overview-content" data-observe-view-content="overview">{overview}</div>
   </section>
+  <section id="runs" data-observe-panel role="tabpanel"
+           aria-labelledby="observe-tab-runs" hidden>
+    <h2 id="runs-heading">Runs</h2>
+    <div id="runs-content" data-observe-view-content="runs">{runs_html}</div>
+  </section>
   <section id="agents" data-observe-panel role="tabpanel"
            aria-labelledby="observe-tab-agents" hidden>
     <h2 id="agents-heading">Agents</h2>
@@ -6573,11 +8581,6 @@ def render_observe_page(
            aria-labelledby="observe-tab-tools" hidden>
     <h2 id="tools-heading">Tools</h2>
     <div id="tools-content" data-observe-view-content="tools">{tools_html}</div>
-  </section>
-  <section id="runs" data-observe-panel role="tabpanel"
-           aria-labelledby="observe-tab-runs" hidden>
-    <h2 id="runs-heading">Runs</h2>
-    <div id="runs-content" data-observe-view-content="runs">{runs_html}</div>
   </section>
   {attribution_section}
   {cost_section}

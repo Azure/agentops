@@ -47,6 +47,7 @@ from agentops.core.observe import (
     ObserveDrilldownRequest,
     ObserveQueryRequest,
     ObserveScope,
+    ScopeOptionsRequest,
     TraceContentRequest,
 )
 from agentops.utils.yaml import load_yaml
@@ -5863,18 +5864,20 @@ def create_app(
         if effective_scope is not None:
             filters.validate_scope(ObserveScope.model_validate(effective_scope))
         request_started = time.perf_counter()
-        body = await _service_call(
-            "query",
-            view=payload.view,
-            filters=filters.model_dump(mode="json"),
-            refresh=payload.refresh,
-            page=payload.page,
-            page_size=payload.page_size,
-            search=payload.search,
-            sort_by=payload.sort_by,
-            sort_direction=payload.sort_direction,
-            user_context=user_context,
-        )
+        query_arguments = {
+            "view": payload.view,
+            "filters": filters.model_dump(mode="json"),
+            "refresh": payload.refresh,
+            "page": payload.page,
+            "page_size": payload.page_size,
+            "search": payload.search,
+            "sort_by": payload.sort_by,
+            "sort_direction": payload.sort_direction,
+            "user_context": user_context,
+        }
+        if payload.window is not None:
+            query_arguments["window"] = payload.window.model_dump(mode="json")
+        body = await _service_call("query", **query_arguments)
         total_ms = (time.perf_counter() - request_started) * 1000
         diagnostics = body.get("diagnostics", {}) if isinstance(body, dict) else {}
         cache_status = body.get("cache_status", "miss") if isinstance(body, dict) else "miss"
@@ -5889,6 +5892,27 @@ def create_app(
                 if isinstance(duration, (int, float)):
                     timings.append(f"{name};dur={max(float(duration), 0):.1f}")
         return JSONResponse(body, headers={"Server-Timing": ", ".join(timings)})
+
+    @app.post("/api/observe/scope-options")
+    async def _api_observe_scope_options(
+        payload: ScopeOptionsRequest,
+        user_context: Dict[str, Any] = Depends(_authorize),
+    ):
+        filters = payload.filters
+        if effective_scope is not None:
+            filters.validate_scope(ObserveScope.model_validate(effective_scope))
+        request_arguments = {
+            "dimension": payload.dimension,
+            "filters": filters.model_dump(mode="json"),
+            "search": payload.search,
+            "limit": payload.limit,
+            "refresh": payload.refresh,
+            "user_context": user_context,
+        }
+        if payload.window is not None:
+            request_arguments["window"] = payload.window.model_dump(mode="json")
+        body = await _service_call("scope_options", **request_arguments)
+        return JSONResponse(body)
 
     @app.post("/api/observe/attribution")
     async def _api_observe_attribution(

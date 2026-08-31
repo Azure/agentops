@@ -35,6 +35,8 @@ from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Callable, Literal, Mapping, Sequence, cast, get_args
 
+from pydantic import TypeAdapter
+
 from agentops.agent.observe import adapters
 from agentops.agent.observe.adapters import AzureDiscoveryClient, AzureQueryClient
 from agentops.agent.observe.auth import (
@@ -81,7 +83,9 @@ from agentops.core.observe import (
     ObservedAgent,
     ObserveFilterState,
     ObserveScope,
+    ScopeDimension,
     TraceContentRequest,
+    WindowSelection,
     canonical_arm_id,
 )
 
@@ -241,9 +245,9 @@ def _serialize_data(data: Any) -> Any:
     if hasattr(data, "model_dump"):
         return data.model_dump(mode="json")
     if isinstance(data, Mapping):
-        return dict(data)
+        return {key: _serialize_data(value) for key, value in data.items()}
     if isinstance(data, (list, tuple)):
-        return [item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in data]
+        return [_serialize_data(item) for item in data]
     return data
 
 
@@ -461,6 +465,7 @@ class ObserveFacade:
         sort_by: str | None = None,
         sort_direction: Literal["asc", "desc"] = "desc",
         user_context: Mapping[str, Any] | None = None,
+        window: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Return one normalized, coverage-annotated Observe view.
 
@@ -486,6 +491,11 @@ class ObserveFacade:
         if view not in _SUPPORTED_QUERY_VIEWS:
             raise ValueError(f"unknown Observe view: {view!r}")
         filter_state = ObserveFilterState.model_validate(dict(filters))
+        window_selection = (
+            TypeAdapter(WindowSelection).validate_python(dict(window))
+            if window is not None
+            else None
+        )
 
         if view == "cost":
             return await self._query_cost(
@@ -495,7 +505,11 @@ class ObserveFacade:
 
         if view == "coverage":
             result = await self._service.query_view(
-                self._scope, filter_state, view="overview", refresh=refresh
+                self._scope,
+                filter_state,
+                view="overview",
+                refresh=refresh,
+                window=window_selection,
             )
             result = replace(result, data=[])
             return _serialize_observe_result(result, view_override="coverage")
@@ -511,8 +525,48 @@ class ObserveFacade:
             search=search,
             sort_by=sort_by,
             sort_direction=sort_direction,
+            window=window_selection,
         )
         return _serialize_observe_result(result)
+
+    async def scope_options(
+        self,
+        *,
+        dimension: str,
+        filters: Mapping[str, Any],
+        window: Mapping[str, Any] | None = None,
+        search: str | None = None,
+        limit: int = 50,
+        refresh: bool = False,
+        user_context: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Return one deferred, bounded scope facet."""
+        del user_context
+        window_selection = (
+            TypeAdapter(WindowSelection).validate_python(dict(window))
+            if window is not None
+            else None
+        )
+        result = await self._service.query_scope_options(
+            self._scope,
+            ObserveFilterState.model_validate(dict(filters)),
+            dimension=cast(ScopeDimension, dimension),
+            search=search,
+            limit=limit,
+            refresh=refresh,
+            window=window_selection,
+        )
+        return {
+            "dimension": result.dimension,
+            "options": [
+                option.model_dump(mode="json") for option in result.options
+            ],
+            "truncated": result.truncated,
+            "total_observed": result.total_observed,
+            "coverage_state": result.coverage_state,
+            "filters": result.filters.model_dump(mode="json"),
+            "invalidated_selections": list(result.invalidated_selections),
+        }
 
     async def attribution(
         self,

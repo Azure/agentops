@@ -27,6 +27,12 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   addresses, phone numbers, or webhooks.
 
 ### Changed
+- **Observe is faster to scope and clearer to read.** Pickable cascading filters,
+  named time presets with one stated timezone, entity-qualified Overview
+  summaries, compact copyable Runs identifiers, inline details, and published
+  list-price cost estimates now work together. Estimates remain explicitly
+  separate from declared billed-total allocations and flag partial, unpriced,
+  or stale price coverage.
 - **Observe defaults to the last seven days and de-emphasizes missing KPI
   values.** New sessions open with a seven-day telemetry window instead of 24
   hours. Overview cards keep reported values prominent while rendering

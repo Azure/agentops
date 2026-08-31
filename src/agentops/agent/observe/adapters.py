@@ -61,6 +61,7 @@ from agentops.agent.observe.queries import (
     build_models_query,
     build_overview_query,
     build_runs_query,
+    build_scope_options_query,
     build_tools_query,
     build_user_usage_query,
     execute_source_batch,
@@ -72,9 +73,11 @@ from agentops.core.attribution import (
 )
 from agentops.core.cost import CostComponent
 from agentops.core.observe import (
+    MAX_SCOPE_OPTIONS,
     ObserveFilterState,
     ObserveScope,
     ResourceInventory,
+    ScopeDimension,
     TelemetrySource,
     UserAttributionCoverage,
 )
@@ -1014,6 +1017,27 @@ class AzureQueryClient:
         builder = _VIEW_QUERY_BUILDERS[view]
         return await self._run(
             sources, lambda source: builder(filters, scope_source=source)
+        )
+
+    async def query_scope_options(
+        self,
+        sources: Sequence[TelemetrySource],
+        filters: ObserveFilterState,
+        *,
+        dimension: ScopeDimension,
+        search: str | None = None,
+        limit: int = MAX_SCOPE_OPTIONS,
+    ) -> list[SourceResult]:
+        """Run one bounded facet query per telemetry source."""
+        return await self._run(
+            sources,
+            lambda source: build_scope_options_query(
+                dimension,
+                filters,
+                scope_source=source,
+                search=search,
+                limit=limit,
+            ),
         )
 
     async def query_agent_detail(
