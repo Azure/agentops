@@ -139,6 +139,25 @@ def test_filter_range_must_be_ordered_and_inside_scope() -> None:
         ).validate_scope(scope)
 
 
+def test_project_scope_accepts_its_parent_foundry_resource_filter() -> None:
+    scope = ObserveScope(mode="projects", project_resource_ids=[PROJECT])
+    foundry_resource = PROJECT.rsplit("/projects/", 1)[0]
+    now = datetime.now(timezone.utc)
+
+    ObserveFilterState(
+        foundry_resource_id=foundry_resource,
+        start=now - timedelta(hours=1),
+        end=now,
+    ).validate_scope(scope)
+
+    with pytest.raises(ValueError, match="outside"):
+        ObserveFilterState(
+            foundry_resource_id=foundry_resource.replace("foundry", "other"),
+            start=now - timedelta(hours=1),
+            end=now,
+        ).validate_scope(scope)
+
+
 def test_narrowing_filters_are_trimmed_and_length_bounded() -> None:
     now = datetime.now(timezone.utc)
     filters = ObserveFilterState(
