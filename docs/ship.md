@@ -205,5 +205,5 @@ The skill that maps to shipping is:
 ## Next
 
 Read the full [GitHub Actions](ci-github-actions.md) reference, score readiness
-after each run on the [Operate](operate.md) page, or see where production signal
-comes from on the [Observe](observe.md) page.
+after each run on the [Operate](operate.md) page, or inspect production signals
+in the [Foundry operations workbook](foundry-ops-workbook.md).

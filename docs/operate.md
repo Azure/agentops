@@ -83,43 +83,6 @@ Start the Cockpit from a configured workspace to review findings, open the
 evidence pack, and jump into the traces behind a finding. It reads the same
 signals as the Doctor, so what you see matches the gate.
 
-### Shared hosted Cockpit and protected content
-
-Teams can deploy an authenticated hosted Cockpit while keeping the local
-command unchanged:
-
-```bash
-agentops cockpit deploy --workspace . --preview
-agentops cockpit deploy --workspace .
-```
-
-The default Observe boundary is the current workspace's Foundry project. Wider
-project, Foundry-account, resource-group, or subscription scope requires an
-explicit selection and a new preview. See
-[Deploy the hosted Cockpit](deploy-hosted-cockpit.md) for prerequisites,
-identity, RBAC, recovery, and rerun behavior.
-
-Aggregate Observe queries run as the hosted application's UAMI with `Reader`
-and `Log Analytics Reader`. Sensitive generative-AI content is never fetched by
-that shared identity. When the operator explicitly opens trace content, the
-application uses the signed-in user's Easy Auth assertion in an on-behalf-of
-flow. Content is returned only when that user has delegated Azure Monitor
-permission for the protected table.
-
-When `protectGenAISensitiveData` routes payloads to `AppGenAIContent`, table
-`protectionLevel` controls standard versus privileged reads. A denied query, or
-a successful protected-table query with zero rows, is shown as
-`protected_or_unavailable` unless independent evidence proves that the table was
-readable and empty. Observe never reconstructs protected content from legacy
-message fields. Raw content is excluded from shared caches, URLs, browser
-preferences, telemetry, diagnostics, and deployment logs, and its HTTP response
-uses `Cache-Control: no-store`.
-
-These protected-table capabilities remain public preview. Revalidate feature
-routing, role behavior, table schema, and the published migration timelines
-before release; current planning dates are September 30, 2026 and September 30,
-2027.
-
 ## Assurance and governance
 
 Readiness is not only quality and latency. A production agent also needs safety
@@ -159,7 +122,8 @@ When re-evaluation shows weak grounding or off-topic answers, the cause is often
 retrieval. To measure and tune search quality directly, see
 [Retrieval optimization](retrieval-optimization.md).
 
-To see the monitoring half of this loop in depth, read [Observe](observe.md).
+To inspect production signals in depth, use the
+[Foundry operations workbook](foundry-ops-workbook.md).
 To see how the gate runs in CI, read [Ship](ship.md).
 
 ## Try it
@@ -217,4 +181,4 @@ The skills that map to operating are:
 
 Browse the full [Doctor checks reference](doctor-checks.md), watch usage and cost
 in the [Foundry operations workbook](foundry-ops-workbook.md), or return to
-[Observe](observe.md) for the signal side of the loop.
+[Ship](ship.md) for the release-gate side of the loop.

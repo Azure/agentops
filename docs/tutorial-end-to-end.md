@@ -1,7 +1,7 @@
 # End-to-end tutorial: release readiness for Foundry agents
 
 This tutorial is the full path. Use it after one of the type-specific tutorials when you
-want to validate the complete develop -> evaluate -> release -> observe loop
+want to validate the complete develop -> evaluate -> release -> operate loop
 across **sandbox**, **dev**, **qa**, and **prod** environments. The two
 type-specific tutorials cover the same loop for a single agent type in a sandbox + dev
 arrangement; this tutorial expands the journey through every release stage.
@@ -31,7 +31,7 @@ review.
 | 5 | Configure release checks | AgentOps CLI and skills | Creates `agentops.yaml` and repo-side release contract. | Release checklist in repo |
 | 6 | Open PR | Generated PR workflow with `--doctor-gate critical` | Routes to the right runner, normalizes proof, and blocks the PR on critical Doctor findings. | PR gate signal |
 | 7 | Merge and deploy to **dev** | Generated dev deploy workflow + your platform | Records candidate version (prompt agents) or commit/image (hosted agents) and re-evaluates after deploy. | Dev environment ready for promotion |
-| 8 | Observe production after promotion | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
+| 8 | Monitor production after promotion | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
 | 9 | Review readiness | AgentOps Doctor, Cockpit, evidence pack | Answers "can we ship it, and where is the proof?" | `evidence.md` |
 | 10 | Learn from traces | Foundry/App Insights exports, AgentOps trace promotion | Turns reviewed traces into regression candidates. | Future eval rows |
 
@@ -166,8 +166,8 @@ evaluation runner, skill guidance, and AgentOps readiness evidence.
 | `Azure/agentops` | Repo-side release readiness, Doctor, Cockpit, and evidence layer. |
 | `microsoft/ai-agent-evals` | Reference for Foundry-native eval Action/task behavior. AgentOps cloud eval is the default prompt-agent gate so threshold failures become normalized PR evidence. |
 | `microsoft/foundry-toolkit` | VS Code create/debug/deploy surface for the Operate/readiness handoff. |
-| `microsoft/azure-skills` | Microsoft Foundry skill guidance for observe, CI/CD monitoring, regression, and trace follow-through. |
-| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference path for Foundry Observe/Optimize/Protect: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
+| `microsoft/azure-skills` | Microsoft Foundry skill guidance for monitoring, CI/CD, regression, and trace follow-through. |
+| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference path for traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
 
 ## 1. Create the Travel Agent target
 

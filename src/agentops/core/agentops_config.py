@@ -663,7 +663,7 @@ class AgentOpsConfig(BaseModel):
         * ``"model:<deployment>"`` - a Foundry model deployment (raw model).
 
         When omitted, the workspace runs in *project-observability-only* mode:
-        Doctor, Cockpit, Observe, and project-level Azure discovery all work,
+        Doctor, Cockpit, and project-level Azure discovery all work,
         while evaluation commands (``eval run``, ``prompt pull``, azd eval
         paths) fail early with exit code 1 until a target is configured.
 
@@ -1138,7 +1138,7 @@ class AgentOpsConfig(BaseModel):
 NO_AGENT_TARGET_MESSAGE = (
     "no evaluation target is configured. Add an 'agent' value to "
     "agentops.yaml or re-run 'agentops init' (or pass --agent) to configure "
-    "one. Doctor, Cockpit, and Observe run without a target."
+    "one. Doctor and Cockpit run without a target."
 )
 
 

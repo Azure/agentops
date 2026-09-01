@@ -594,7 +594,7 @@ def _next_steps(
     ]
     if config_info.status == "observability_only":
         steps = [
-            "No evaluation target is configured; Doctor, Cockpit, and Observe run "
+            "No evaluation target is configured; Doctor and Cockpit run "
             "in project-observability-only mode.",
             "Add an `agent:` value to agentops.yaml (or re-run `agentops init`) when "
             "you are ready to evaluate a target.",

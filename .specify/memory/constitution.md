@@ -1,13 +1,13 @@
 <!--
 Sync Impact Report
-- Version change: 1.0.0 -> 1.1.0
+- Version change: 1.1.0 -> 2.0.0
 - Modified principles:
   - IV. Keep Release Evidence Trustworthy -> IV. Keep Release Evidence Trustworthy
 - Modified sections:
   - Product and Technical Constraints
   - Development Workflow and Quality Gates
 - Added sections: none
-- Removed sections: none
+- Removed constraints: cloud deployment of the Cockpit
 - Follow-up TODOs: none
 -->
 # AgentOps Constitution
@@ -50,15 +50,6 @@ readiness configuration, gates, normalized artifacts, diagnostics, and release
 evidence. Doctor and the running Cockpit experience MUST remain read-only and
 MUST NOT mutate or delete monitored cloud resources.
 
-An explicit operator-invoked Cockpit deployment action MAY provision and
-configure only the hosting infrastructure, application identity,
-authentication boundary, non-secret application settings, and read-only role
-assignments required to run the Cockpit. This action MUST remain separate from
-the Cockpit runtime, MUST preview the planned resources and permissions before
-confirmation, and MUST NOT create or modify Foundry projects, agents, model
-deployments, source telemetry, diagnostic settings, alerts, or gateway
-policies.
-
 `doctor --evidence-pack` MUST project existing signals without introducing
 another exit-code contract. Trace promotion MUST remain review-first;
 self-similarity labels MUST NOT be represented as human-verified correctness.
@@ -84,9 +75,8 @@ before review.
   reproducible and suitable for CI and human review.
 - Foundry remains the system of record for hosted runtime and cloud operations;
   AgentOps MUST not duplicate those responsibilities.
-- A hosted Cockpit MUST remain a read-only projection over authorized Foundry
-  and Azure Monitor data. Its deployment action MAY manage only the Cockpit's
-  own hosting and least-privilege read access.
+- The Cockpit MUST remain a local, read-only projection over workspace evidence
+  and links to authorized Foundry and Azure Monitor data.
 - Changes MUST reuse existing helpers and established repository patterns before
   introducing new abstractions.
 
@@ -94,11 +84,8 @@ before review.
 
 Specifications and implementation plans MUST identify affected public contracts,
 architectural layers, evidence boundaries, and required tests before
-implementation. A Cockpit deployment plan MUST explicitly separate provisioning
-behavior from runtime behavior, enumerate every created resource and role
-assignment, require a pre-deployment preview, and prove that the running
-application has no cloud-mutation capability. Plans MUST record any justified
-exception to a core principle; an unexplained exception blocks implementation.
+implementation. Plans MUST record any justified exception to a core principle;
+an unexplained exception blocks implementation.
 
 Pull requests MUST be focused, include documentation for user-visible behavior,
 and include a changelog entry when the change is user-visible. Review MUST verify
@@ -124,4 +111,4 @@ plan and pull-request review MUST verify compliance. Any necessary violation
 MUST be explicit, narrowly scoped, justified in the plan, and approved by a
 maintainer before implementation.
 
-**Version**: 1.1.0 | **Ratified**: 2026-08-12 | **Last Amended**: 2026-08-20
+**Version**: 2.0.0 | **Ratified**: 2026-08-12 | **Last Amended**: 2026-09-01

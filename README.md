@@ -1,7 +1,7 @@
 <h1 align="center">AgentOps Accelerator</h1>
 
 <p align="center">
-<b>Evaluate. Ship. Observe. Operate.</b>
+<b>Evaluate. Ship. Operate.</b>
 <br/>
 Continuous evaluation, safety testing, observability, and release readiness for Microsoft Foundry agents.
 </p>
@@ -30,7 +30,7 @@ python -m pip install "agentops-accelerator[cockpit]"
 agentops init
 ```
 
-Use the `[cockpit]` option when you want Cockpit, either locally or hosted on Azure.
+Use the `[cockpit]` option when you want the local Cockpit.
 
 To install a specific release directly from GitHub:
 
@@ -137,17 +137,12 @@ Install optional extras as needed: `[cockpit]` for Doctor/Cockpit and `[mcp]` fo
 - `agentops mcp serve` - start the MCP server.
 - `agentops doctor [--evidence-pack]` - run readiness checks.
 - `agentops cockpit` - open the local Cockpit.
-- `agentops cockpit deploy` - preview or deploy the authenticated hosted Cockpit.
 
 ## AgentOps Cockpit
 
 `agentops cockpit` opens a localhost command center for the current workspace.
 It combines eval history, Doctor findings, workflow status, and links to the
 matching Foundry and Azure Monitor views.
-
-`agentops cockpit deploy --preview` plans an authenticated Azure App Service
-Cockpit for the workspace's current Foundry project. Wider Observe scopes require
-explicit ARM resource IDs. See [Deploy the hosted Cockpit](docs/deploy-hosted-cockpit.md).
 
 Cockpit sections, in display order:
 

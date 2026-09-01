@@ -9,14 +9,14 @@ You will do four things:
 
 1. **Evaluate** a prompt agent while you experiment in sandbox.
 2. **Ship** the prompt through GitHub so the same reviewed file deploys to dev.
-3. **Observe** the dev run with traces, telemetry, and Doctor findings.
+3. **Monitor** the dev run with traces, telemetry, and Doctor findings.
 4. **Operate** with release evidence, thresholds, and a Cockpit summary.
 
 ```mermaid
 flowchart LR
     E["<b>Evaluate</b><br/>Author in sandbox<br/>Run evals"]
     S["<b>Ship</b><br/>Move prompt to git<br/>Open PR, deploy to dev"]
-    O["<b>Observe</b><br/>Read traces<br/>Run Doctor"]
+    O["<b>Monitor</b><br/>Read traces<br/>Run Doctor"]
     W["<b>Operate</b><br/>Review evidence<br/>Make the ship call"]
     E --> S --> O --> W
 ```
@@ -270,7 +270,7 @@ it to git. Sandbox saves stay local and never trigger CI.
     The same project's Traces tab will show this run. If Foundry asks to attach
     Application Insights and you have not connected it, do it now or wait for
     step 18. For now, just confirm there is at least one trace to inspect later.
-    Full tour: [Observe](observe.md).
+    Full tour: [Operate](operate.md).
 
 ## 6. Create the dataset
 
@@ -1178,7 +1178,7 @@ evaluation coverage. This is the bridge from "what happened in real traces" to
     Reader (also on the backing Log Analytics workspace if it is workspace-based),
     then wait a few minutes for RBAC to propagate. Trace-to-dataset and intelligent
     sampling are preview features; if your region does not show From traces, treat
-    this section as a product tour. More: [Observe](observe.md).
+    this section as a product tour. More: [Operate](operate.md).
 
 Optional KQL deep dive: Foundry emits evaluation metrics as
 `gen_ai.evaluation.result` events in the `AppEvents` table, which resolves only in
