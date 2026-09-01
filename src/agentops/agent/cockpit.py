@@ -24,7 +24,7 @@ import time
 from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
@@ -34,21 +34,10 @@ from agentops.agent.ui_theme import (
     render_theme_toggle,
     render_theme_variables,
 )
-from agentops.core.attribution import load_attribution_config
-from agentops.core.cost import MAX_COST_COMPONENTS, MAX_COST_PERIODS, load_cost_model
 from agentops.core.governance import (
     REDTEAM_STATE_CANNOT_VERIFY,
     REDTEAM_STATE_READY,
     summarize_redteam_readiness,
-)
-from agentops.core.observe import (
-    AgentDetailRequest,
-    AttributionQueryRequest,
-    ObserveDrilldownRequest,
-    ObserveQueryRequest,
-    ObserveScope,
-    ScopeOptionsRequest,
-    TraceContentRequest,
 )
 from agentops.utils.yaml import load_yaml
 
@@ -85,38 +74,6 @@ _QUALITY_METRICS: List[Tuple[str, str, str]] = [
     ("relevance", "Relevance", "/5"),
     ("avg_latency_seconds", "Latency", "s"),
 ]
-
-
-@dataclass(frozen=True)
-class CockpitRuntimeConfiguration:
-    """Runtime mode and hosted Observe scope loaded from app settings."""
-
-    mode: Literal["local", "hosted"]
-    observe_scope: Optional[Dict[str, Any]]
-
-
-def load_cockpit_runtime_configuration() -> CockpitRuntimeConfiguration:
-    """Load explicit local/hosted mode without changing local defaults."""
-    mode = os.getenv("AGENTOPS_COCKPIT_MODE", "local").strip().lower()
-    if mode not in {"local", "hosted"}:
-        raise ValueError("AGENTOPS_COCKPIT_MODE must be local or hosted.")
-    if mode == "local":
-        return CockpitRuntimeConfiguration(mode="local", observe_scope=None)
-
-    encoded_scope = os.getenv("AGENTOPS_OBSERVE_SCOPE", "").strip()
-    if not encoded_scope:
-        raise ValueError(
-            "AGENTOPS_OBSERVE_SCOPE is required when AGENTOPS_COCKPIT_MODE=hosted."
-        )
-    try:
-        raw_scope = json.loads(encoded_scope)
-    except json.JSONDecodeError as exc:
-        raise ValueError("AGENTOPS_OBSERVE_SCOPE must contain valid JSON.") from exc
-    scope = ObserveScope.model_validate(raw_scope)
-    return CockpitRuntimeConfiguration(
-        mode="hosted",
-        observe_scope=scope.model_dump(mode="json"),
-    )
 
 
 def build_cockpit_payload(
@@ -2281,7 +2238,7 @@ def _build_readiness_checklist(
                 "status": "info",
                 "detail": (
                     "Project observability only — no evaluation target is "
-                    "configured. Doctor, Cockpit, and Observe run against the "
+                    "configured. Doctor and Cockpit run against the "
                     "Foundry project; agent and eval release gates are "
                     "not-applicable. Configure a target with "
                     "<code>agentops init</code> when you are ready to gate an "
@@ -2426,7 +2383,7 @@ def _build_next_actions(
                 "title": "Configure an evaluation target when ready",
                 "detail": (
                     "This workspace runs in project-observability-only mode: "
-                    "Doctor, Cockpit, and Observe work against the Foundry "
+                    "Doctor and Cockpit work against the Foundry "
                     "project with no agent configured. Add an evaluation "
                     "target with <code>agentops init</code> to unlock eval "
                     "and release gates."
@@ -4260,8 +4217,8 @@ def _render_next_actions_section(next_actions: Dict[str, Any]) -> str:
     )
 
 
-#: Canonical design tokens shared with the hosted Observe dashboard. Rendered
-#: once at import time because :func:`render_theme_variables` is pure. Both the
+#: Canonical design tokens for the local Cockpit. Rendered once at import time
+#: because :func:`render_theme_variables` is pure. Both the
 #: loading shell and the full cockpit page embed this so they cannot drift.
 _THEME_VARIABLES = render_theme_variables(default_theme="dark")
 
@@ -4559,10 +4516,6 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     transition: background 0.15s ease, border-color 0.15s ease,
                 color 0.15s ease;
   }}
-  header .observe-link {{
-    color: var(--info); font-size: 13px; font-weight: 600; text-decoration: none;
-  }}
-  header .observe-link:hover {{ text-decoration: underline; }}
   header .powered-by:hover {{
     background: rgba(56, 189, 248, 0.10);
     color: var(--text);
@@ -5331,7 +5284,6 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     </div>
   </div>
   <div class="header-actions">
-    <a class="observe-link" href="/observe" data-theme-link>Open Observe</a>
     {theme_toggle}
   </div>
 </header>
@@ -5432,19 +5384,10 @@ document.querySelectorAll('.sparkline .dot').forEach(function(dot) {{
 # ---------------------------------------------------------------------------
 
 
-def create_app(
-    workspace: Path | None,
-    *,
-    mode: Literal["local", "hosted"] | None = None,
-    observe_scope: Optional[Dict[str, Any]] = None,
-    observe_service: Any = None,
-    auth_context_resolver: Any = None,
-):
-    """Return a local or hosted FastAPI Cockpit application."""
+def create_app(workspace: Path):
+    """Return the read-only local FastAPI Cockpit application."""
     try:
-        from fastapi import Depends, FastAPI, Header, HTTPException, Query
-        from fastapi.exception_handlers import request_validation_exception_handler
-        from fastapi.exceptions import RequestValidationError
+        from fastapi import FastAPI, Query
         from fastapi.responses import HTMLResponse, JSONResponse
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
@@ -5452,602 +5395,47 @@ def create_app(
             "Install with: pip install 'agentops-accelerator[cockpit]'"
         ) from exc
 
-    attribution_config_result = load_attribution_config(
-        os.getenv("AGENTOPS_ATTRIBUTION_CONFIG")
-    )
-    cost_model_result = load_cost_model(os.getenv("AGENTOPS_COST_MODEL"))
-    cost_periods: tuple[dict[str, str | tuple[str, ...]], ...] = ()
-    cost_components: tuple[dict[str, str], ...] = ()
-    if cost_model_result.state == "valid" and cost_model_result.model is not None:
-        model = cost_model_result.model
-        cost_periods = tuple(
-            {
-                "id": period.id,
-                "label": period.id,
-                "component_ids": tuple(
-                    component.id
-                    for component in period.components[:MAX_COST_COMPONENTS]
-                ),
-            }
-            for period in model.periods[:MAX_COST_PERIODS]
-        )
-        if model.periods:
-            cost_components = tuple(
-                {"id": component.id, "label": component.id}
-                for component in model.periods[0].components[:MAX_COST_COMPONENTS]
-            )
-    configured = load_cockpit_runtime_configuration()
-    effective_mode = mode or configured.mode
-    if effective_mode not in {"local", "hosted"}:
-        raise ValueError("Cockpit mode must be local or hosted.")
-    if effective_mode == "local":
-        if workspace is None:
-            raise ValueError("Local Cockpit mode requires a workspace.")
-        workspace = workspace.resolve()
-        scope_payload = observe_scope or configured.observe_scope
-        if scope_payload is None:
-            from agentops.services.cockpit_deployment import WorkspaceProjectResolver
-
-            project_ids = WorkspaceProjectResolver().discover_projects(workspace)
-            if project_ids:
-                scope_payload = {
-                    "version": 1,
-                    "mode": "projects",
-                    "project_resource_ids": project_ids,
-                }
-        effective_scope = (
-            ObserveScope.model_validate(scope_payload).model_dump(mode="json")
-            if scope_payload is not None
-            else None
-        )
-        if observe_service is None and effective_scope is not None:
-            from agentops.agent.observe.facade import create_local_observe_facade
-
-            # Local developer mode: use the developer's ambient Azure sign-in
-            # (DefaultAzureCredential) and require none of the hosted identity
-            # variables. Startup must never crash on Observe wiring -- missing
-            # Azure SDKs, unavailable CLI credentials, or discovery failures
-            # degrade to a graceful 503 (observe_service stays None) rather than
-            # taking down `agentops cockpit`.
-            try:
-                observe_service = create_local_observe_facade(
-                    scope=effective_scope,
-                    cost_model_result=cost_model_result,
-                    attribution_config_result=attribution_config_result,
-                )
-            except Exception:
-                import logging
-
-                logging.getLogger(__name__).debug(
-                    "Local Observe wiring unavailable; continuing without it.",
-                    exc_info=True,
-                )
-                observe_service = None
-    else:
-        scope_payload = observe_scope or configured.observe_scope
-        if scope_payload is None:
-            raise ValueError("Hosted Cockpit mode requires an Observe scope.")
-        effective_scope = ObserveScope.model_validate(scope_payload).model_dump(
-            mode="json"
-        )
-        if auth_context_resolver is None:
-            from agentops.agent.observe.principal import build_easy_auth_resolver
-
-            auth_context_resolver = build_easy_auth_resolver()
-        if observe_service is None:
-            from agentops.agent.observe.facade import create_observe_facade
-
-            observe_service = create_observe_facade(
-                scope=effective_scope,
-                cost_model_result=cost_model_result,
-                attribution_config_result=attribution_config_result,
-            )
-
+    workspace = workspace.resolve()
     app = FastAPI(
         title="AgentOps Cockpit",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
-    app.state.attribution_state = attribution_config_result.state
-    app.state.attribution_enabled = attribution_config_result.state == "valid"
-
-    attribution_selector_fields = {
-        "user_filter_token",
-        "department_filter_token",
-    }
-
-    def _has_attribution_selector(body: Any) -> bool:
-        if not isinstance(body, dict):
-            return False
-        filters = body.get("filters")
-        return isinstance(filters, dict) and any(
-            filters.get(field) is not None for field in attribution_selector_fields
-        )
-
-    def _attribution_problem(
-        *,
-        status_code: int,
-        code: str,
-        message: str,
-        next_action: str,
-        private: bool,
-    ):
-        return JSONResponse(
-            {
-                "code": code,
-                "message": message,
-                "next_action": next_action,
-            },
-            status_code=status_code,
-            headers=(
-                {"Cache-Control": "private, no-store"} if private else None
-            ),
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def _attribution_validation_error(request: Any, exc: Any):
-        if (
-            request.url.path == "/api/observe/attribution"
-            and _has_attribution_selector(exc.body)
-        ):
-            return _attribution_problem(
-                status_code=422,
-                code="attribution_request_invalid",
-                message="The attribution request is invalid.",
-                next_action="Correct the attribution request and retry.",
-                private=True,
-            )
-        return await request_validation_exception_handler(request, exc)
-
-    def _default_auth_context(headers: Any) -> Dict[str, Any]:
-        principal = headers.get("x-ms-client-principal")
-        if not principal:
-            raise PermissionError("Microsoft Entra authentication is required.")
-        return {"tenant_id": None, "user_id": None, "groups": []}
-
-    def _authorize(
-        principal: Optional[str] = Header(None, alias="X-MS-CLIENT-PRINCIPAL"),
-        principal_id: Optional[str] = Header(
-            None, alias="X-MS-CLIENT-PRINCIPAL-ID"
-        ),
-        principal_name: Optional[str] = Header(
-            None, alias="X-MS-CLIENT-PRINCIPAL-NAME"
-        ),
-        access_token: Optional[str] = Header(
-            None, alias="X-MS-TOKEN-AAD-ACCESS-TOKEN"
-        ),
-    ) -> Dict[str, Any]:
-        if effective_mode == "local":
-            return {}
-        resolver = auth_context_resolver or _default_auth_context
-        headers = {
-            "x-ms-client-principal": principal,
-            "x-ms-client-principal-id": principal_id,
-            "x-ms-client-principal-name": principal_name,
-            "x-ms-token-aad-access-token": access_token,
-        }
-        try:
-            context = resolver(headers)
-        except PermissionError as exc:
-            status_code = getattr(exc, "http_status", 401)
-            if status_code not in {401, 403}:
-                status_code = 401
-            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-        if not isinstance(context, dict):
-            model_dump = getattr(context, "model_dump", None)
-            if callable(model_dump):
-                context = model_dump(mode="json")
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Hosted authentication context is invalid.",
-                )
-        return context
-
-    async def _service_call(name: str, **kwargs: Any) -> Any:
-        import inspect
-
-        method = getattr(observe_service, name, None)
-        if not callable(method):
-            raise HTTPException(
-                status_code=503,
-                detail="Observe service is not configured.",
-            )
-        try:
-            result = method(**kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-        except ValueError as exc:
-            from agentops.agent.observe.auth import MissingUserAssertionError
-
-            if isinstance(exc, MissingUserAssertionError):
-                detail: str | dict[str, str] = {
-                    "code": "attribution_delegated_access_unavailable",
-                    "message": "Delegated Azure Monitor access is unavailable for this request.",
-                    "next_action": "Sign in again and verify direct read access to the selected telemetry scope.",
-                }
-                status_code = 403
-            elif isinstance(error_code := getattr(exc, "code", None), str):
-                detail = {
-                    "code": error_code,
-                    "message": str(exc),
-                    "next_action": getattr(
-                        exc,
-                        "next_action",
-                        "Correct the attribution request and retry.",
-                    ),
-                }
-                status_code = getattr(exc, "status_code", 422)
-            else:
-                detail = str(exc)
-                status_code = 422
-            headers = (
-                {"Cache-Control": "private, no-store"}
-                if getattr(exc, "private", False)
-                else None
-            )
-            raise HTTPException(
-                status_code=status_code,
-                detail=detail,
-                headers=headers,
-            ) from exc
-        except Exception as exc:
-            error_code = getattr(exc, "code", None)
-            if not isinstance(error_code, str):
-                raise
-            raise HTTPException(
-                status_code=getattr(exc, "status_code", 503),
-                detail={
-                    "code": error_code,
-                    "message": str(exc),
-                    "next_action": getattr(
-                        exc,
-                        "next_action",
-                        "Retry the attribution query.",
-                    ),
-                },
-                headers=(
-                    {"Cache-Control": "private, no-store"}
-                    if getattr(exc, "private", False)
-                    else None
-                ),
-            ) from exc
-        model_dump = getattr(result, "model_dump", None)
-        return model_dump(mode="json") if callable(model_dump) else result
-
-    def _render_observe_shell():
-        from agentops.agent.observe.ui import render_observe_page
-
-        scope_label = None
-        if effective_scope:
-            scope_mode = str(effective_scope.get("mode", "configured"))
-            if scope_mode == "projects":
-                resource_count = len(effective_scope.get("project_resource_ids", []))
-                scope_label = f"Projects ({resource_count})"
-            else:
-                scope_label = scope_mode.replace("_", " ").title()
-        return HTMLResponse(
-            render_observe_page(
-                scope_label=scope_label,
-                cost_enabled=cost_model_result.state == "valid",
-                cost_periods=cost_periods,
-                cost_components=cost_components,
-                attribution_enabled=attribution_config_result.state == "valid",
-                attribution_cost_available=cost_model_result.state == "valid",
-                attribution_cost_periods=cost_periods,
-                attribution_cost_components=cost_components,
-            )
-        )
 
     @app.get("/", response_class=HTMLResponse)
-    def _index(
-        partial: Optional[str] = Query(None, alias="_partial"),
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        if effective_mode == "hosted":
-            return _render_observe_shell()
-        # Return a tiny shell immediately, then hydrate the local cockpit.
+    def _index(partial: Optional[str] = Query(None, alias="_partial")):
         if not partial:
             return HTMLResponse(_render_loading_shell())
-        assert workspace is not None
         payload = build_cockpit_payload(workspace)
         return HTMLResponse(render_cockpit_html(payload))
 
-    @app.get("/observe", response_class=HTMLResponse)
-    def _observe(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return _render_observe_shell()
-
     @app.get("/favicon.ico")
-    def _favicon(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
+    def _favicon():
         from fastapi.responses import Response
+
         try:
             data = _pkg_files("agentops.templates").joinpath("icon.png").read_bytes()
         except Exception:  # noqa: BLE001
             return Response(status_code=404)
         return Response(content=data, media_type="image/png")
 
-    if effective_mode == "local":
+    @app.get("/api/history")
+    def _api_history(limit: Optional[int] = None):
+        records = load_analysis_history(workspace, limit=limit)
+        return JSONResponse([record.to_dict() for record in records])
 
-        @app.get("/api/history")
-        def _api_history(limit: Optional[int] = None):
-            assert workspace is not None
-            records = load_analysis_history(workspace, limit=limit)
-            return JSONResponse([r.to_dict() for r in records])
+    @app.get("/api/eval-runs")
+    def _api_eval_runs(limit: int = 24):
+        return JSONResponse(_load_eval_runs(workspace, limit=limit))
 
-        @app.get("/api/eval-runs")
-        def _api_eval_runs(limit: int = 24):
-            assert workspace is not None
-            return JSONResponse(_load_eval_runs(workspace, limit=limit))
-
-        @app.get("/api/runs/{run_id}/report", response_class=HTMLResponse)
-        def _api_run_report(run_id: str):
-            assert workspace is not None
-            return HTMLResponse(_render_run_report_html(workspace, run_id))
+    @app.get("/api/runs/{run_id}/report", response_class=HTMLResponse)
+    def _api_run_report(run_id: str):
+        return HTMLResponse(_render_run_report_html(workspace, run_id))
 
     @app.get("/api/telemetry")
-    def _api_telemetry(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
+    def _api_telemetry():
         return JSONResponse(_telemetry_status())
-
-    @app.get("/api/runtime")
-    def _api_runtime(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return JSONResponse(
-            {
-                "mode": effective_mode,
-                "scope": effective_scope or {},
-                "local_history_available": effective_mode == "local",
-                "attribution": {
-                    "state": attribution_config_result.state,
-                    "enabled": attribution_config_result.state == "valid",
-                },
-            }
-        )
-
-    @app.get("/api/auth/context")
-    def _api_auth_context(
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return JSONResponse(
-            {
-                "authenticated": True,
-                "tenant_authorized": bool(user_context.get("tenant_id")),
-            }
-        )
-
-    @app.get("/api/observe/discovery")
-    async def _api_observe_discovery(
-        refresh: bool = False,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return JSONResponse(
-            await _service_call(
-                "discover",
-                refresh=refresh,
-                user_context=user_context,
-            )
-        )
-
-    @app.post("/api/observe/query")
-    async def _api_observe_query(
-        payload: ObserveQueryRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        if payload.view == "cost" and cost_model_result.state != "valid":
-            if cost_model_result.state == "absent":
-                detail = (
-                    "Cost view is unavailable because AGENTOPS_COST_MODEL is not "
-                    "configured. Configure a valid cost model and restart Cockpit."
-                )
-            else:
-                message = cost_model_result.message or (
-                    "Correct AGENTOPS_COST_MODEL and restart Cockpit."
-                )
-                restart_action = (
-                    ""
-                    if "restart cockpit" in message.lower()
-                    else " Correct the configuration and restart Cockpit."
-                )
-                detail = (
-                    "Cost view is unavailable because AGENTOPS_COST_MODEL is invalid. "
-                    f"{message}{restart_action}"
-                )
-            raise HTTPException(status_code=422, detail=detail)
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        request_started = time.perf_counter()
-        query_arguments = {
-            "view": payload.view,
-            "filters": filters.model_dump(mode="json"),
-            "refresh": payload.refresh,
-            "page": payload.page,
-            "page_size": payload.page_size,
-            "search": payload.search,
-            "sort_by": payload.sort_by,
-            "sort_direction": payload.sort_direction,
-            "user_context": user_context,
-        }
-        if payload.window is not None:
-            query_arguments["window"] = payload.window.model_dump(mode="json")
-        body = await _service_call("query", **query_arguments)
-        total_ms = (time.perf_counter() - request_started) * 1000
-        diagnostics = body.get("diagnostics", {}) if isinstance(body, dict) else {}
-        cache_status = body.get("cache_status", "miss") if isinstance(body, dict) else "miss"
-        timings = [f'total;dur={total_ms:.1f}', f'cache;desc="{cache_status}"']
-        if cache_status not in {"hit", "stale"} and isinstance(diagnostics, dict):
-            for name, field in (
-                ("discovery", "discovery_duration_ms"),
-                ("monitor", "query_duration_ms"),
-                ("normalize", "normalization_duration_ms"),
-            ):
-                duration = diagnostics.get(field)
-                if isinstance(duration, (int, float)):
-                    timings.append(f"{name};dur={max(float(duration), 0):.1f}")
-        return JSONResponse(body, headers={"Server-Timing": ", ".join(timings)})
-
-    @app.post("/api/observe/scope-options")
-    async def _api_observe_scope_options(
-        payload: ScopeOptionsRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        request_arguments = {
-            "dimension": payload.dimension,
-            "filters": filters.model_dump(mode="json"),
-            "search": payload.search,
-            "limit": payload.limit,
-            "refresh": payload.refresh,
-            "user_context": user_context,
-        }
-        if payload.window is not None:
-            request_arguments["window"] = payload.window.model_dump(mode="json")
-        body = await _service_call("scope_options", **request_arguments)
-        return JSONResponse(body)
-
-    @app.post("/api/observe/attribution")
-    async def _api_observe_attribution(
-        payload: AttributionQueryRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        protected_request = (
-            payload.group_by == "user"
-            or payload.filters.user_filter_token is not None
-            or payload.filters.department_filter_token is not None
-        )
-        if attribution_config_result.state in {"absent", "disabled"}:
-            return _attribution_problem(
-                status_code=409,
-                code="attribution_not_enabled",
-                message="Attribution is unavailable because it is not enabled.",
-                next_action="Configure AGENTOPS_ATTRIBUTION_CONFIG and restart Cockpit.",
-                private=protected_request,
-            )
-        if attribution_config_result.state == "invalid":
-            return _attribution_problem(
-                status_code=503,
-                code=(
-                    attribution_config_result.error_code
-                    or "attribution_config_invalid"
-                ),
-                message=(
-                    attribution_config_result.message
-                    or "Attribution configuration is invalid."
-                ),
-                next_action="Correct AGENTOPS_ATTRIBUTION_CONFIG and restart Cockpit.",
-                private=protected_request,
-            )
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        delegated_request = (
-            payload.group_by == "user"
-            or payload.filters.user_filter_token is not None
-        )
-        try:
-            result = await _service_call(
-                "attribution",
-                request=payload.model_dump(mode="json"),
-                user_context=user_context,
-            )
-        except HTTPException as exc:
-            private_failure = protected_request or (
-                exc.headers or {}
-            ).get("Cache-Control") == "private, no-store"
-            detail = (
-                exc.detail
-                if isinstance(exc.detail, dict)
-                else {
-                    "code": (
-                        "attribution_delegated_access_unavailable"
-                        if exc.status_code == 403
-                        else "attribution_request_invalid"
-                    ),
-                    "message": str(exc.detail),
-                    "next_action": "Correct the attribution request and retry.",
-                }
-            )
-            if not private_failure:
-                return JSONResponse(detail, status_code=exc.status_code)
-            return JSONResponse(
-                detail,
-                status_code=exc.status_code,
-                headers={"Cache-Control": "private, no-store"},
-            )
-        response = JSONResponse(result)
-        if (
-            delegated_request
-            or result.get("data", {}).get("access_boundary") == "delegated"
-        ):
-            response.headers["Cache-Control"] = "private, no-store"
-        return response
-
-    @app.post("/api/observe/agent-detail")
-    async def _api_observe_agent_detail(
-        payload: AgentDetailRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        result = await _service_call(
-            "agent_detail",
-            agent_key=payload.agent_key,
-            source_id=payload.source_id,
-            project_resource_id=payload.project_resource_id,
-            filters=filters.model_dump(mode="json"),
-            refresh=payload.refresh,
-            user_context=user_context,
-        )
-        if result is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Agent key was not found in the current filter window.",
-            )
-        return JSONResponse(result)
-
-    @app.post("/api/observe/drilldown")
-    async def _api_observe_drilldown(
-        payload: ObserveDrilldownRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        return JSONResponse(
-            await _service_call(
-                "drilldown",
-                view=payload.view,
-                filters=filters.model_dump(mode="json"),
-                selector=payload.selector.model_dump(mode="json"),
-                limit=payload.limit,
-                user_context=user_context,
-            )
-        )
-
-    @app.post("/api/observe/trace-content")
-    async def _api_observe_trace_content(
-        payload: TraceContentRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        response = JSONResponse(
-            await _service_call(
-                "trace_content",
-                request=payload.model_dump(mode="json"),
-                user_context=user_context,
-            )
-        )
-        response.headers["Cache-Control"] = "no-store"
-        return response
 
     @app.get("/healthz")
     def _healthz() -> Dict[str, str]:

@@ -5,8 +5,8 @@ hide:
 
 # Tutorials
 
-Each tutorial is a hands-on, end-to-end walkthrough of the full AgentOps loop,
-evaluate, ship, observe, and operate, on one kind of agent. Pick the one that
+Each tutorial is a hands-on, end-to-end walkthrough of the full AgentOps loop:
+evaluate, ship, monitor, and operate one kind of agent. Pick the one that
 matches how your agent runs. They all teach the same sandbox to PR gate story,
 so once you finish one, the others will feel familiar.
 

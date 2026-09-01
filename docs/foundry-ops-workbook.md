@@ -139,5 +139,5 @@ the resource uses Azure diagnostics or resource-specific tables, which the
 ## Next
 
 Browse the [KQL library](foundry-ops-workbook-kql.md) behind these charts, return
-to [Operate](operate.md) for the readiness loop, or see where the signal comes
-from on the [Observe](observe.md) page.
+to [Operate](operate.md) for the readiness loop, or review the
+[Doctor checks](doctor-checks.md) that consume these signals.

@@ -1,7 +1,7 @@
 # AgentOps configuration — 1.0 flat schema.
 #
 # The only required fields are 'version' and 'dataset'. 'agent' is OPTIONAL:
-# omit it to run project-observability-only (Doctor, Cockpit, Observe against a
+# omit it to run project-observability-only (Doctor and Cockpit against a
 # Foundry project) without committing an evaluation target. Add an 'agent' when
 # you are ready to evaluate. AgentOps infers evaluators from the agent type and
 # dataset columns, so most users only need this much.

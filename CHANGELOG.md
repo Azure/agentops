@@ -92,6 +92,10 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   unchanged.
 
 ### Removed
+- **Removed AgentOps Observe and hosted Cockpit deployment.** The Observe UI,
+  APIs, cost and attribution contracts, packaged pricing data, Azure deployment
+  templates, and `agentops cockpit deploy` command are gone. The local Cockpit,
+  Doctor, readiness checks, history, and evaluation-run views remain available.
 - **The GitHub Actions SHA-pinning finding was dropped.**
   `opex.workflow_action_sha_pinning` flagged every `uses:` reference that pointed
   at a version tag (`@v4`) rather than a 40-character commit id. AgentOps' own

@@ -1,7 +1,7 @@
 """Interactive setup wizard for AgentOps (``agentops init``).
 
 The wizard asks the user one question at a time for the values AgentOps
-needs to evaluate, observe, and analyze a Foundry agent — the project
+needs to evaluate and analyze a Foundry agent — the project
 endpoint, the agent identifier, and the dataset path.
 
 Storage model:
@@ -60,7 +60,7 @@ AZ_CLI_DISCOVERY_TIMEOUT_SECONDS = 5
 AGENT_TITLE = "Evaluation target (optional)"
 AGENT_HELP = (
     "What you want to evaluate. This is OPTIONAL — choose 'Configure later'\n"
-    "to run project observability only (Doctor, Cockpit, Observe) with no\n"
+    "to run project observability only (Doctor and Cockpit) with no\n"
     "target committed. Pick a target kind:\n"
     "  1) Foundry prompt agent   — <name>:<version> (e.g. quickstart-agent:2)\n"
     "  2) Foundry hosted agent    — https://<res>.services.ai.azure.com/"
@@ -83,7 +83,7 @@ AGENT_CHOICE_LATER = "5"
 
 AGENT_LATER_CONFIRMATION = (
     "Project observability only — no evaluation target will be written to "
-    "agentops.yaml. Doctor, Cockpit, and Observe work without one; run "
+    "agentops.yaml. Doctor and Cockpit work without one; run "
     "`agentops init` again (or set `agent:` in agentops.yaml) when you are "
     "ready to evaluate."
 )
