@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-01
+
 ### Added
 - **`agentops init` can discover evaluation targets from your Foundry project.**
   When a project endpoint is known, the wizard lists existing prompt agents,
