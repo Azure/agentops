@@ -27,23 +27,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   addresses, phone numbers, or webhooks.
 
 ### Changed
-- **Observe is faster to scope and clearer to read.** Pickable cascading filters,
-  named time presets with one stated timezone, entity-qualified Overview
-  summaries, compact copyable Runs identifiers, inline details, and published
-  list-price cost estimates now work together. Estimates remain explicitly
-  separate from declared billed-total allocations and flag partial, unpriced,
-  or stale price coverage.
-- **Observe defaults to the last seven days and de-emphasizes missing KPI
-  values.** New sessions open with a seven-day telemetry window instead of 24
-  hours. Overview cards keep reported values prominent while rendering
-  `Not reported` at a smaller, balanced size. Source kinds now render as plain
-  text instead of status-like badges, while the Agents table separates the
-  human-readable name from the stable technical Agent ID. Row-detail actions
-  now sit below each table's primary identifier instead of consuming or
-  overloading metric columns, and agent details retain identity, model,
-  activity, latency, token, and portal-link context. Hourly trends are now
-  restricted to the selected agent row's telemetry source, preventing totals
-  from being mixed with a same-key agent in another source.
 - **Renamed the `[agent]` packaging extra to `[cockpit]` with no compatibility
   alias.** Install Doctor and Cockpit dependencies with
   `agentops-accelerator[cockpit]`. All docs, README, workflow and pipeline
@@ -54,25 +37,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   observability-only mode where eval-dependent readiness checks report `n/a`
   instead of failing. Commands that genuinely require a target fail with a single
   explicit message.
-- **The Cockpit Observe dashboard was redesigned.** Shared design tokens now live
-  in `agentops.agent.ui_theme`; Observe uses an explicit `data-theme` attribute
-  instead of following the OS colour scheme, and the Overview is organised around
-  executive KPI cards. Cockpit and Observe now use the same dark/light control and
-  carry the non-sensitive theme preference in navigation URLs, without browser
-  storage or cookies.
-- **Observe usage tables now present telemetry consistently.** Agents, models,
-  tools, runs, and drill-through details use compact UTC timestamps, seconds for
-  durations, separate cache-read, cache-write, and reasoning-token columns,
-  contextual information icons, and totals for additive metrics. Model deployment
-  falls back to the request model when a deployment attribute is absent, while the
-  response model remains independently visible.
-- **Observe now scales large agent inventories without re-querying Azure Monitor
-  for every table interaction.** Discovery and normalized aggregates use shared
-  single-flight caches with stale-while-revalidate refresh, Azure Monitor batches
-  run with bounded concurrency, and Agents, Models, Tools, Runs, and Coverage add
-  server-side search, sorting, and pagination. Responses expose stage-level timing
-  through diagnostics and the `Server-Timing` header. Status badges also use
-  stronger borders, filled surfaces, and larger type in both themes.
 - **Observability readiness only reports what it can actually verify.** Multi-turn
   coverage is treated as a dataset property and inferred solely from conversation
   rows; rubric evaluators count as ready only when they are both declared and
@@ -92,44 +56,15 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   unchanged.
 
 ### Removed
-- **Removed AgentOps Observe and hosted Cockpit deployment.** The Observe UI,
-  APIs, cost and attribution contracts, packaged pricing data, Azure deployment
-  templates, and `agentops cockpit deploy` command are gone. The local Cockpit,
-  Doctor, readiness checks, history, and evaluation-run views remain available.
-- **The GitHub Actions SHA-pinning finding was dropped.**
-  `opex.workflow_action_sha_pinning` flagged every `uses:` reference that pointed
-  at a version tag (`@v4`) rather than a 40-character commit id. AgentOps' own
-  generated workflows use tags, so the check reliably reported the toolkit's own
-  output as a problem, and commit-id pinning is optional supply-chain hardening
-  rather than a release-readiness signal. The check, its catalog entry, and its
-  WAF checklist row are gone.
+- **Deep observability and agent-lifecycle capabilities move to a separate
+  accelerator.** AgentOps no longer ships Observe, hosted Cockpit deployment,
+  `agentops cockpit deploy`, the legacy `agentops agent` command group, its
+  Copilot Extension server, its Entra Agent ID registration flow, or the
+  unverified trace-sampling, trace-replay, and configuration-text alert
+  detectors. The local Cockpit, Doctor, verified Azure Monitor alert inventory,
+  readiness checks, history, and evaluation-run views remain available here.
 
 ### Fixed
-- **Observe table headers render proper sorting arrows.** CSS Unicode escapes
-  are preserved through Python rendering, replacing the broken control
-  character and trailing `95`, `91`, or `93` text in sortable columns.
-- **Observe tool rows inherit explicit runtime evidence from their agent invocation.**
-  Tool spans that omit provider metadata are now correlated to the matching
-  `invoke_agent` span within the same project, agent, and trace, so Hosted
-  Agents no longer appear as `Unknown` in the Tools table.
-- **Observe now exposes trustworthy aggregates with metadata-only drill-through.**
-  Overview and Agents use workspace-compatible percentile expressions, Models
-  excludes agent and tool spans from inference counts, and sortable counters in
-  Agents, Models, Tools, and Runs expand to bounded operational records without
-  querying prompts, responses, or tool payloads.
-- **Observe distinguishes request and dependency telemetry reliably.** KQL now
-  retains the source table while unioning Application Insights records, so
-  Overview and Agents prefer request-level `invoke_agent` records correctly
-  instead of returning zero totals, and Runs omits uncorrelated internal spans.
-- **Observe now attributes Foundry agents and presents usable telemetry tables.**
-  Hosted and prompt agents are classified from their emitted provider metadata,
-  project attribution recognizes the Foundry project dimension, and Runs returns
-  one correlated execution instead of separate rows for each internal operation.
-  KQL tracks each unioned telemetry table explicitly so Overview and Agents can
-  prefer request records without returning empty totals. Overview counts only
-  agent invocations, token usage is split into sortable columns, and internal
-  connector diagnostics and the redundant Telemetry coverage tab no longer
-  appear in the user-facing dashboard.
 - **Foundry project links now open the configured project instead of the tenant
   landing page.** In project-observability-only mode there is no cloud evaluation
   report from which to recover a portal URL, so Cockpit previously fell back to
@@ -145,18 +80,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   dependency table for finding spans that Cockpit already renders locally and
   could remain in progress for minutes. Doctor findings now stay in the local
   Doctor section; App Insights links are reserved for operational telemetry.
-- **Observe now shows its active time window and keeps source internals out of
-  the Agents inventory.** Start and End previously appeared blank because ISO
-  timestamps were assigned directly to `datetime-local` controls, even though
-  the query used a trailing 24-hour default. Observe now converts the values to
-  the browser's local format and back to UTC when applied. The Agents view no
-  longer shows the connector-health banner (“Sources queried / Successful”),
-  and unselected identity filters now say “All … in current scope”.
-- **Observe navigation now behaves as real tabs instead of page anchors.**
-  Selecting Agents, Models, Tools, Runs, or Coverage now replaces the visible
-  panel in place, marks the active tab for assistive technology, updates the
-  query-string view, and preserves browser back/forward behavior. It no longer
-  scrolls through a long page containing every view.
 - **Next actions no longer imply that Doctor itself is broken.** Finding actions
   now use “Fix: …” and “View finding details” instead of “Fix Doctor: …” and
   “Open Doctor finding”, making it clear that Doctor detected the underlying
@@ -254,11 +177,6 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   that an unpinned URL evaluates whatever is currently deployed, while
   `execution: cloud` requires the explicit version that `agentops eval run`
   already enforces.
-- **The local Cockpit no longer requires hosted authentication for Observe.** A
-  local developer credential path backs Observe when the Cockpit runs on your
-  machine, while delegated-only operations (user attribution and trace content)
-  return an explicit HTTP 409 rather than failing obscurely. The hosted
-  authentication path is unchanged.
 - **Hosted Foundry agent URLs are no longer misclassified as portal URLs.**
   `classify_agent_url_problem` treated every `*.services.ai.azure.com` host as an
   `ai.azure.com` portal link and rejected valid hosted endpoints.
@@ -267,35 +185,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   could be evaluated against the wrong backend.
 - **Undefined Cockpit CSS variables.** The Cockpit referenced `var(--accent)` and
   `var(--fg)` without ever defining them, and its loading splash used drifted
-  token values that caused a visible colour flash on load. Both surfaces now
-  consume the shared token block.
-
-### Removed
-- **Trace sampling and trace replay configuration.** `observability.trace_sampling`
-  and `observability.trace_replay_url` are removed from `agentops.yaml`, along
-  with their readiness checks, Cockpit cards and release-evidence fields. Trace
-  sampling is a Foundry-native concern and AgentOps could not verify either
-  setting. Foundry's own trace-sampling guidance in the skills and tutorial is
-  unchanged.
-- **The unverifiable "Alerts wired" detector.** The Cockpit no longer claims
-  alerting is configured based on an `observability.alerts` key that could never
-  validate, or on Infrastructure-as-Code text matches. Infrastructure-as-Code is
-  retained only as deployment provenance and can never upgrade the card to ready.
-- **The `agentops agent` command group.** Both `agent serve` (the GitHub
-  App-based Copilot Extension server) and `agent register` (Entra Agent ID
-  registration) are removed, along with their `explain` pages. GitHub sunset
-  GitHub App-based Copilot Extensions in November 2025, and Entra Agent ID
-  registration now belongs to the Agent 365 CLI. Use `agentops cockpit` for the
-  read-only Cockpit UI and `agentops mcp serve` to expose AgentOps to code
-  agents.
-- **The Copilot Extension server package** (`agentops.agent.server`), including
-  its request/response protocol and webhook signature validation.
-- **Entra Agent ID registration.** The `agent_identity` registration service,
-  the `agent_identity.*` Doctor checks and their `graph` data source, the
-  `identity:` block in `agentops.yaml` (`AgentIdentityConfig`), the
-  `.agentops/identity/agent-identity.json` local record, agent-identity
-  telemetry attributes, and the agent-identity fields in release evidence.
-- **The `agent-server/` deploy scaffold** template and its packaged assets.
+  token values that caused a visible colour flash on load. The local Cockpit now
+  consumes the shared token block consistently.
 
 ## [0.13.0] - 2026-08-25
 

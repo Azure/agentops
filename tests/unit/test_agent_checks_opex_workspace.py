@@ -361,6 +361,51 @@ def test_workflow_concurrency_silent_when_block_present(workspace: Path) -> None
 
 
 # ---------------------------------------------------------------------------
+# workflow_action_sha_pinning
+# ---------------------------------------------------------------------------
+
+
+def test_workflow_sha_pinning_is_an_info_recommendation_for_tag_refs(
+    workspace: Path,
+) -> None:
+    wf_dir = workspace / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+    (wf_dir / "agentops-pr.yml").write_text(
+        "name: pr\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n"
+        "      - uses: actions/checkout@v4\n"
+        "      - uses: actions/setup-python@v5\n",
+        encoding="utf-8",
+    )
+
+    finding = _finding(
+        run_opex_workspace_check(workspace),
+        "opex.workflow_action_sha_pinning",
+    )
+
+    assert finding.severity == Severity.INFO
+    assert len(finding.evidence["offenders"]) == 2
+    assert "not a release blocker" in finding.summary
+    assert "Dependabot" in finding.recommendation
+
+
+def test_workflow_sha_pinning_silent_for_sha_pinned_and_local_actions(
+    workspace: Path,
+) -> None:
+    wf_dir = workspace / ".github" / "workflows"
+    wf_dir.mkdir(parents=True)
+    (wf_dir / "agentops-pr.yml").write_text(
+        "name: pr\njobs:\n  build:\n    steps:\n"
+        f"      - uses: actions/checkout@{'a' * 40}\n"
+        "      - uses: ./.github/actions/local\n"
+        "      - uses: docker://python:3.12\n",
+        encoding="utf-8",
+    )
+    assert "opex.workflow_action_sha_pinning" not in _ids(
+        run_opex_workspace_check(workspace)
+    )
+
+
+# ---------------------------------------------------------------------------
 # AI.26 output token limit (opex.max_tokens_undefined)
 # ---------------------------------------------------------------------------
 

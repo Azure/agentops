@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
@@ -54,6 +54,7 @@ def run_opex_workspace_check(workspace: Path) -> List[Finding]:
     findings.extend(_check_bundle_versioning(workspace))
     findings.extend(_check_results_dir_bloat(workspace))
     findings.extend(_check_workflow_concurrency(workspace))
+    findings.extend(_check_workflow_sha_pinning(workspace))
     findings.extend(_check_max_tokens_limit(workspace))
     findings.extend(_check_ailz_readiness(workspace))
 
@@ -495,6 +496,63 @@ def _check_workflow_concurrency(workspace: Path) -> List[Finding]:
             ),
             source=SOURCE_NAME,
             evidence={"files": offenders},
+        )
+    ]
+
+
+_SHA40 = re.compile(r"^[0-9a-f]{40}$")
+_USES = re.compile(r'^\s*-?\s*uses\s*:\s*([^\s#]+)\s*(?:#.*)?$', re.IGNORECASE)
+
+
+def _check_workflow_sha_pinning(workspace: Path) -> List[Finding]:
+    """Recommend immutable action references for AgentOps workflows."""
+    workflows_dir = workspace / ".github" / "workflows"
+    if not workflows_dir.is_dir():
+        return []
+
+    offenders: List[Dict[str, Any]] = []
+    for path in sorted(workflows_dir.glob("agentops-*.yml")) + sorted(
+        workflows_dir.glob("agentops-*.yaml")
+    ):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            match = _USES.match(line)
+            if not match:
+                continue
+            ref = match.group(1)
+            if ref.startswith("./") or ref.startswith("docker://") or "@" not in ref:
+                continue
+            _, _, suffix = ref.rpartition("@")
+            if _SHA40.match(suffix):
+                continue
+            offenders.append({"file": path.name, "line": line_no, "ref": ref})
+
+    if not offenders:
+        return []
+
+    return [
+        Finding(
+            id="opex.workflow_action_sha_pinning",
+            severity=Severity.INFO,
+            category=Category.OPERATIONAL_EXCELLENCE,
+            title="CI workflows use version tags for GitHub Actions",
+            summary=(
+                f"{len(offenders)} action(s) in your AgentOps workflows are "
+                "referenced by version tag instead of an exact commit SHA. "
+                "Tags can be repointed, so the same workflow may execute "
+                "different code later. This is a recommendation, not a "
+                "release blocker."
+            ),
+            recommendation=(
+                "Pin each `uses: owner/repo@vN` reference to a full 40-character "
+                "commit SHA and enable Dependabot's `github-actions` ecosystem "
+                "to keep those references current."
+            ),
+            source=SOURCE_NAME,
+            evidence={"offenders": offenders},
         )
     ]
 
