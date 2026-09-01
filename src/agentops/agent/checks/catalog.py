@@ -497,6 +497,17 @@ CHECKS: Tuple[CheckSpec, ...] = (
         requires=("workspace",),
     ),
     CheckSpec(
+        id="opex.workflow_action_sha_pinning",
+        category=Category.OPERATIONAL_EXCELLENCE,
+        title="CI workflows use version tags for GitHub Actions",
+        summary=(
+            "Actions referenced by tag can change underneath you. Pinning "
+            "to a commit SHA is recommended supply-chain hardening."
+        ),
+        severities=(Severity.INFO,),
+        requires=("workspace",),
+    ),
+    CheckSpec(
         id="opex.max_tokens_undefined",
         category=Category.OPERATIONAL_EXCELLENCE,
         title="Output token limit is not set on model / evaluator configuration",
