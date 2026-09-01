@@ -1959,6 +1959,12 @@ def test_agent_and_model_rollups_name_unpriced_runs_and_never_sum_billed_cost() 
     assert "renderCostAmountNode" in script
     assert "estimated_cost +" not in script
     assert "allocated_amount +" not in script
+    assert script.index("function estimatedCostNode(") < script.index(
+        "function renderOverview("
+    )
+    assert script.index("function estimatedCostNode(") < script.index(
+        "function renderAgents("
+    )
 
 
 def test_estimate_presentation_has_no_credential_commerce_or_outbound_dependency() -> None:
