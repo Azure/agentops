@@ -1,27 +1,7 @@
 version: 2
 
-# NOTE on `target-branch` and security updates
-#
-# `target-branch: "develop"` below applies ONLY to scheduled *version* updates.
-# Dependabot *security* updates (the ones opened in response to a Dependabot
-# alert) always target the repository's DEFAULT branch — `main` — and ignore
-# `target-branch`. There is no configuration option that changes this.
-#
-# Because `docs/release-process.md` uses git flow, and `.github/workflows/ci.yml`
-# only triggers on `develop`, a security PR left on `main` would both bypass the
-# release process and run zero tests (only `license/cla`).
-#
-# When a security PR appears against `main`, re-cut it against `develop`:
-#   1. Create a branch from `develop`.
-#   2. Cherry-pick the Dependabot commit (they are lockfile-only, so this is
-#      usually clean).
-#   3. Open a PR to `develop` and close the original with a pointer to it.
-# Do NOT simply `gh pr edit --base develop`: Dependabot resets the base back to
-# `main` the next time it rebases the branch, and retargeting alone does not
-# dispatch a CI run (it fires `edited`, not `synchronize`).
-
+# Security updates always target the default branch; target-branch applies to version updates only.
 updates:
-  # Python dependencies (pyproject.toml)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -29,8 +9,6 @@ updates:
     target-branch: "develop"
     labels:
       - "dependencies"
-
-  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -39,8 +17,6 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
-
-  # VS Code extension (plugins/agentops/package.json)
   - package-ecosystem: "npm"
     directory: "/plugins/agentops"
     schedule:
