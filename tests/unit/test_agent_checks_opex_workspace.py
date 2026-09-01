@@ -20,7 +20,7 @@ def workspace(tmp_path: Path) -> Path:
     # Minimal layout: a valid agentops.yaml so the agent_pinning and
     # thresholds rules don't fire by accident.
     (tmp_path / "agentops.yaml").write_text(
-        "agent: my-agent:1\nthresholds:\n  coherence: '>=3'\n",
+        "agent: my-agent:2\nthresholds:\n  coherence: '>=3'\n",
         encoding="utf-8",
     )
     return tmp_path
@@ -365,7 +365,9 @@ def test_workflow_concurrency_silent_when_block_present(workspace: Path) -> None
 # ---------------------------------------------------------------------------
 
 
-def test_workflow_sha_pinning_emitted_for_tag_refs(workspace: Path) -> None:
+def test_workflow_sha_pinning_is_an_info_recommendation_for_tag_refs(
+    workspace: Path,
+) -> None:
     wf_dir = workspace / ".github" / "workflows"
     wf_dir.mkdir(parents=True)
     (wf_dir / "agentops-pr.yml").write_text(
@@ -374,36 +376,28 @@ def test_workflow_sha_pinning_emitted_for_tag_refs(workspace: Path) -> None:
         "      - uses: actions/setup-python@v5\n",
         encoding="utf-8",
     )
-    finding = next(
-        f
-        for f in run_opex_workspace_check(workspace)
-        if f.id == "opex.workflow_action_sha_pinning"
-    )
-    offenders = finding.evidence.get("offenders", [])
-    assert len(offenders) == 2
-    assert all("@v" in o["ref"] for o in offenders)
 
-
-def test_workflow_sha_pinning_silent_for_sha_pinned(workspace: Path) -> None:
-    wf_dir = workspace / ".github" / "workflows"
-    wf_dir.mkdir(parents=True)
-    pinned_sha = "a" * 40
-    (wf_dir / "agentops-pr.yml").write_text(
-        "name: pr\njobs:\n  build:\n    steps:\n"
-        f"      - uses: actions/checkout@{pinned_sha}\n",
-        encoding="utf-8",
-    )
-    assert "opex.workflow_action_sha_pinning" not in _ids(
-        run_opex_workspace_check(workspace)
+    finding = _finding(
+        run_opex_workspace_check(workspace),
+        "opex.workflow_action_sha_pinning",
     )
 
+    assert finding.severity == Severity.INFO
+    assert len(finding.evidence["offenders"]) == 2
+    assert "not a release blocker" in finding.summary
+    assert "Dependabot" in finding.recommendation
 
-def test_workflow_sha_pinning_skips_local_actions(workspace: Path) -> None:
+
+def test_workflow_sha_pinning_silent_for_sha_pinned_and_local_actions(
+    workspace: Path,
+) -> None:
     wf_dir = workspace / ".github" / "workflows"
     wf_dir.mkdir(parents=True)
     (wf_dir / "agentops-pr.yml").write_text(
         "name: pr\njobs:\n  build:\n    steps:\n"
-        "      - uses: ./.github/actions/local\n",
+        f"      - uses: actions/checkout@{'a' * 40}\n"
+        "      - uses: ./.github/actions/local\n"
+        "      - uses: docker://python:3.12\n",
         encoding="utf-8",
     )
     assert "opex.workflow_action_sha_pinning" not in _ids(

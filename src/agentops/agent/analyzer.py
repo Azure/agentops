@@ -10,7 +10,6 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, TypeVar
 
 from agentops.agent.checks.errors import run_errors_check
 from agentops.agent.checks.foundry_config import run_foundry_config_check
-from agentops.agent.checks.agent_identity import run_agent_identity_check
 from agentops.agent.checks.governance import run_governance_check
 from agentops.agent.checks.latency import run_latency_check
 from agentops.agent.checks.observability import run_observability_check
@@ -46,8 +45,24 @@ from agentops.agent.sources.results_history import (
     ResultsHistory,
     collect_results_history,
 )
+from agentops.utils.yaml import load_yaml
 
 _T = TypeVar("_T")
+
+
+def _workspace_has_evaluation_target(workspace: Path) -> bool:
+    path = workspace / "agentops.yaml"
+    if not path.exists():
+        return False
+    try:
+        config = load_yaml(path)
+    except Exception:
+        return False
+    agent = config.get("agent") if isinstance(config, dict) else None
+    if not isinstance(agent, str):
+        return False
+    text = agent.strip()
+    return bool(text) and text != "my-agent:1"
 
 
 @dataclass
@@ -147,12 +162,19 @@ def analyze(
     findings.extend(run_regression_check(history, config.checks.regression))
     findings.extend(run_latency_check(history, monitor, config.checks.latency))
     findings.extend(run_errors_check(monitor, foundry, config.checks.errors))
-    findings.extend(run_safety_check(history, config.checks.safety, monitor, foundry))
+    findings.extend(
+        run_safety_check(
+            history,
+            config.checks.safety,
+            monitor,
+            foundry,
+            evaluation_configured=_workspace_has_evaluation_target(workspace),
+        )
+    )
     findings.extend(run_posture_check(resources, posture_config))
     findings.extend(run_rbac_openai_data_plane_check(resources))
     findings.extend(run_opex_workspace_check(workspace))
     findings.extend(run_governance_check(workspace))
-    findings.extend(run_agent_identity_check(workspace))
     findings.extend(run_observability_check(workspace))
     findings.extend(run_opex_check(history, config.checks.opex))
     findings.extend(run_release_readiness_check(workspace, history, foundry))

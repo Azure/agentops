@@ -104,7 +104,10 @@ def collect_azure_monitor(
     lookback_days: int,
 ) -> AzureMonitorPayload:
     """Run KQL queries against Application Insights for the lookback window."""
-    diagnostics: Dict[str, Any] = {"enabled": config.enabled}
+    diagnostics: Dict[str, Any] = {
+        "enabled": config.enabled,
+        "lookback_days": int(lookback_days),
+    }
     app_insights_resource_id = config.app_insights_resource_id
 
     if not config.enabled:
@@ -156,7 +159,7 @@ def collect_azure_monitor(
         diagnostics["status"] = "skipped"
         diagnostics["reason"] = (
             "azure-monitor-query / azure-identity not installed "
-            "(install agentops-accelerator[agent])"
+            "(install agentops-accelerator[cockpit])"
         )
         log.info("azure-monitor-query unavailable: %s", exc)
         return AzureMonitorPayload(diagnostics=diagnostics)
@@ -400,7 +403,7 @@ def _collect_application_insights_by_app_id(
         bearer = _acquire_application_insights_token()
     except ImportError as exc:
         diagnostics["status"] = "skipped"
-        diagnostics["reason"] = "azure-identity not installed (install agentops-accelerator[agent])"
+        diagnostics["reason"] = "azure-identity not installed (install agentops-accelerator[cockpit])"
         log.info("azure-identity unavailable: %s", exc)
         return AzureMonitorPayload(diagnostics=diagnostics)
     except Exception as exc:  # pragma: no cover - network / auth errors

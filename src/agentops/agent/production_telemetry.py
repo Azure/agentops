@@ -14,7 +14,7 @@ All work is best-effort:
 
 The KQL hits ``https://api.applicationinsights.io/v1/apps/<appId>/query``
 directly with a ``DefaultAzureCredential`` bearer token, which means no
-extra Azure SDK dependency beyond what the ``[agent]`` extra already
+extra Azure SDK dependency beyond what the ``[cockpit]`` extra already
 installs (``azure-identity``).
 """
 

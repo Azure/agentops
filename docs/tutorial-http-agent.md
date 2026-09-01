@@ -14,7 +14,7 @@ endpoint-based agent:
 flowchart LR
     E["<b>Evaluate</b><br/>Deploy the sandbox<br/>Run evals<br/>Catch weak answers"]
     S["<b>Ship</b><br/>Make the repo yours<br/>Open PR<br/>Deploy to dev"]
-    O["<b>Observe</b><br/>Read traces<br/>Run Doctor<br/>Check telemetry"]
+    O["<b>Monitor</b><br/>Read traces<br/>Run Doctor<br/>Check telemetry"]
     W["<b>Operate</b><br/>Review evidence<br/>Block regressions<br/>Make the call"]
 
     E --> S --> O --> W
@@ -212,7 +212,7 @@ install AgentOps, and install the Copilot skills:
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[agent]"
+python -m pip install "agentops-accelerator[cockpit]"
 agentops --version
 agentops skills install
 ```
@@ -533,7 +533,7 @@ environment, not another dev or sandbox environment.
     The local `report.md` is the fastest way to see why a row passed or failed.
     The `agentops.eval.*` spans are how the same runs show up in Foundry. The
     agent's own request traces are separate runtime telemetry the Doctor reads
-    for latency and errors. See [Observe](observe.md).
+    for latency and errors. See [Operate](operate.md).
 
 ## 11. Score live retrieval
 
@@ -952,7 +952,7 @@ and the [azure/login action](https://github.com/Azure/login).
     want running, delete them so only your `agentops-*` workflows fire. You can
     re-run `agentops workflow generate` any time to regenerate yours.
 
-## 14. Ship, observe, operate
+## 14. Ship, monitor, operate
 
 The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.
@@ -965,8 +965,8 @@ agentops doctor --evidence-pack
   with Azure OIDC, and open a PR so the gate deploys and evaluates the candidate
   in sandbox. See
   [Ship](ship.md).
-- **Observe.** Read traces, telemetry, and Doctor findings for the dev run. See
-  [Observe](observe.md).
+- **Monitor.** Read traces, telemetry, and Doctor findings for the dev run in
+  Foundry and Azure Monitor.
 - **Operate.** Review the evidence pack, decide ship or no-ship, and open Cockpit for
   a single readiness view with `agentops cockpit --workspace .`. See
   [Operate](operate.md).

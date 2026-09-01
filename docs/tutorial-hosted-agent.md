@@ -17,14 +17,14 @@ You will do four things:
 
 1. **Evaluate** the hosted agent while you experiment in sandbox.
 2. **Ship** the code through GitHub so the same reviewed commit deploys to dev.
-3. **Observe** the dev run with server-side traces, telemetry, and Doctor findings.
+3. **Monitor** the dev run with server-side traces, telemetry, and Doctor findings.
 4. **Operate** with release evidence, thresholds, and a Cockpit summary.
 
 ```mermaid
 flowchart LR
     E["<b>Evaluate</b><br/>Deploy to sandbox<br/>Run evals"]
     S["<b>Ship</b><br/>Move code to git<br/>Open PR, deploy to dev"]
-    O["<b>Observe</b><br/>Read server-side traces<br/>Run Doctor"]
+    O["<b>Monitor</b><br/>Read server-side traces<br/>Run Doctor"]
     W["<b>Operate</b><br/>Review evidence<br/>Make the ship call"]
     E --> S --> O --> W
 ```
@@ -41,7 +41,7 @@ stays on the Foundry plus AgentOps flow instead of permission prompts.
 **Foundry projects**
 
 - A Foundry project with a deployed model (for example `gpt-4o-mini`) and the Hosted Agent permissions your user or project identity needs to create and deploy a hosted agent.
-- Application Insights connected to the project, with Reader granted to the project's managed identity. This powers the server-side traces and telemetry that make the Observe step real.
+- Application Insights connected to the project, with Reader granted to the project's managed identity. This powers the server-side traces and telemetry used by the monitoring step.
 
 **Azure**
 
@@ -109,11 +109,11 @@ python -m venv .venv
 Then install AgentOps and confirm the CLI:
 
 ```powershell
-python -m pip install "agentops-accelerator[agent]"
+python -m pip install "agentops-accelerator[cockpit]"
 agentops --help
 ```
 
-The `[agent]` extra is what makes `agentops cockpit` work in step 13. Without
+The `[cockpit]` extra is what makes `agentops cockpit` work in step 13. Without
 it, the CLI installs fine and the eval commands run, but Cockpit raises an
 `ImportError`.
 
@@ -288,7 +288,7 @@ the configured evaluators and thresholds, and writes the result under
 the same command CI runs on the PR candidate later, so a green run here means
 the gate has a working baseline.
 
-## 9. Observe the endpoint in App Insights
+## 9. Monitor the endpoint in App Insights
 
 This is where a hosted agent pays off. Because the Foundry runtime serves the
 request, it emits the trace for you. You do not add `configure_azure_monitor` or

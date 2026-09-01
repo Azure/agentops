@@ -80,6 +80,35 @@ def test_no_thresholds_warning(tmp_path: Path) -> None:
     assert "opex.no_thresholds" in ids
 
 
+def test_no_thresholds_not_applicable_without_evaluation_target(tmp_path: Path) -> None:
+    _write_yaml(tmp_path, """
+        version: 1
+        dataset: data/smoke.jsonl
+    """)
+    findings = run_opex_workspace_check(tmp_path)
+    assert "opex.no_thresholds" not in {f.id for f in findings}
+
+
+def test_no_thresholds_not_applicable_for_legacy_placeholder(tmp_path: Path) -> None:
+    _write_yaml(tmp_path, """
+        version: 1
+        agent: my-agent:1
+        dataset: data/smoke.jsonl
+    """)
+    findings = run_opex_workspace_check(tmp_path)
+    assert "opex.no_thresholds" not in {f.id for f in findings}
+
+
+def test_pr_gate_not_applicable_without_evaluation_target(tmp_path: Path) -> None:
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    _write_yaml(tmp_path, """
+        version: 1
+        dataset: data/smoke.jsonl
+    """)
+    findings = run_opex_workspace_check(tmp_path)
+    assert "opex.no_pr_gate" not in {f.id for f in findings}
+
+
 def test_thresholds_present_passes(tmp_path: Path) -> None:
     _write_yaml(tmp_path, """
         version: 1
@@ -96,6 +125,13 @@ def test_thresholds_present_passes(tmp_path: Path) -> None:
 
 def test_no_pr_gate_when_workflows_dir_exists_but_missing_file(tmp_path: Path) -> None:
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    _write_yaml(tmp_path, """
+        version: 1
+        agent: my-agent:3
+        dataset: data/smoke.jsonl
+        thresholds:
+          coherence: ">=3"
+    """)
     findings = run_opex_workspace_check(tmp_path)
     ids = {f.id for f in findings}
     assert "opex.no_pr_gate" in ids

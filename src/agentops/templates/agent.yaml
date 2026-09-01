@@ -2,12 +2,12 @@
 #
 # Every section is optional — sources auto-skip with a diagnostic note when
 # they are disabled, missing required config, or missing the optional Azure
-# extras (`pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@main"`).
+# extras (`pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@main"`).
 #
 # Run:
 #
 #   agentops doctor
-#   agentops agent serve --no-verify   # local dev
+#   agentops cockpit                    # local read-only UI
 #
 version: 1
 
@@ -60,10 +60,16 @@ checks:
     min_runs: 3
 
   latency:
-    p95_threshold_seconds: 5.0
+    p95_threshold_seconds: 15.0
+    # Ignore the p95 until the window holds a usable sample.
+    min_requests: 20
 
   errors:
     rate_threshold: 0.05
+    # `critical` means "do not ship", so it needs a rate that is
+    # unambiguously broken - not just twice the warning bar.
+    critical_rate_threshold: 0.25
+    min_requests: 20
 
   safety:
     severity_floor: Medium  # Low | Medium | High
@@ -80,8 +86,3 @@ checks:
     # exclude_rules:
     #   - waf.security.diagnostic_settings
     exclude_rules: []
-
-server:
-  # GitHub App client id, used to distinguish the Copilot Extension that
-  # is allowed to call this server. Optional for v1.
-  github_app_client_id: ""

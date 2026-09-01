@@ -824,7 +824,19 @@ def _agentops_signal(root: Path) -> Dict[str, Any]:
         return {}
     try:
         data = load_yaml(path)
-        target = classify_agent(str(data.get("agent", "") or ""), data.get("protocol"))
+        raw_agent = str(data.get("agent", "") or "").strip()
+        if not raw_agent:
+            return {
+                "signal": WorkflowSignal(
+                    "agentops_config",
+                    "AgentOps config",
+                    "agentops.yaml configures project observability only "
+                    "(no evaluation target).",
+                    "agentops.yaml",
+                    confidence="high",
+                )
+            }
+        target = classify_agent(raw_agent, data.get("protocol"))
     except Exception as exc:
         return {
             "signal": WorkflowSignal(

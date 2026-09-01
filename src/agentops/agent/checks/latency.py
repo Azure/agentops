@@ -20,7 +20,9 @@ def run_latency_check(
 
     if monitor and monitor.p95_duration_seconds is not None:
         p95 = monitor.p95_duration_seconds
-        if p95 > threshold:
+        if monitor.request_count < config.min_requests:
+            pass  # sample too small for a percentile to mean anything
+        elif p95 > threshold:
             severity = (
                 Severity.CRITICAL if p95 >= threshold * 2 else Severity.WARNING
             )
@@ -29,10 +31,14 @@ def run_latency_check(
                     id="latency.p95_production",
                     severity=severity,
                     category=Category.PERFORMANCE,
-                    title="Production p95 latency exceeds threshold",
+                    title=(
+                        f"Production p95 latency is {p95:.1f}s, above the "
+                        f"{threshold:.0f}s threshold"
+                    ),
                     summary=(
                         f"Application Insights reports p95 latency of "
-                        f"{p95:.2f}s, above the configured threshold of "
+                        f"{p95:.2f}s across {monitor.request_count} "
+                        f"requests, above the configured threshold of "
                         f"{threshold:.2f}s."
                     ),
                     recommendation=(
@@ -63,7 +69,10 @@ def run_latency_check(
                     id="latency.eval_avg",
                     severity=severity,
                     category=Category.PERFORMANCE,
-                    title="Evaluation average latency above threshold",
+                    title=(
+                        f"Evaluation average latency is {avg_latency:.1f}s, "
+                        f"above the {threshold:.0f}s threshold"
+                    ),
                     summary=(
                         f"Run `{latest.run_id}` averaged "
                         f"{avg_latency:.2f}s per item, above the "

@@ -195,13 +195,13 @@ def test_evaluator_drift_silent_when_bundle_covers_spec(tmp_path: Path) -> None:
 
 
 def test_dataset_drift_flags_missing_dataset(tmp_path: Path) -> None:
-    (tmp_path / ".agentops" / "datasets").mkdir(parents=True)
-    (tmp_path / ".agentops" / "datasets" / "present.yaml").write_text(
-        "version: 1\n", encoding="utf-8"
+    (tmp_path / ".agentops" / "data").mkdir(parents=True)
+    (tmp_path / ".agentops" / "data" / "present.jsonl").write_text(
+        '{"input": "hi"}\n', encoding="utf-8"
     )
     _make_agents_md(
         tmp_path,
-        "# Agent\nUses `missing-dataset.yaml`.\nBody.\nMore body.\nMore.\n",
+        "# Agent\nUses `missing-dataset.jsonl`.\nBody.\nMore body.\nMore.\n",
     )
     findings = run_spec_conformance_check(
         tmp_path, SpecConformanceCheckConfig()
@@ -211,7 +211,26 @@ def test_dataset_drift_flags_missing_dataset(tmp_path: Path) -> None:
         None,
     )
     assert drift is not None
-    assert "missing-dataset.yaml" in drift.evidence["missing_datasets"]
+    assert "missing-dataset.jsonl" in drift.evidence["missing_datasets"]
+
+
+def test_dataset_drift_ignores_config_yaml_files(tmp_path: Path) -> None:
+    """`agentops.yaml` / `eval.yaml` are config, not evaluation data."""
+    (tmp_path / ".agentops" / "data").mkdir(parents=True)
+    (tmp_path / ".agentops" / "data" / "present.jsonl").write_text(
+        '{"input": "hi"}\n', encoding="utf-8"
+    )
+    _make_agents_md(
+        tmp_path,
+        "# Agent\nConfigured via `agentops.yaml` and `eval.yaml`.\n"
+        "Body.\nMore body.\nMore.\n",
+    )
+    findings = run_spec_conformance_check(
+        tmp_path, SpecConformanceCheckConfig()
+    )
+    assert not [
+        f for f in findings if f.id == "opex.spec_conformance.dataset_drift"
+    ]
 
 
 def test_agent_drift_flags_mismatched_agent_id(tmp_path: Path) -> None:

@@ -1,7 +1,7 @@
 <h1 align="center">AgentOps Accelerator</h1>
 
 <p align="center">
-<b>Evaluate. Ship. Observe. Operate.</b>
+<b>Evaluate. Ship. Operate.</b>
 <br/>
 Continuous evaluation, safety testing, observability, and release readiness for Microsoft Foundry agents.
 </p>
@@ -26,16 +26,16 @@ AgentOps Accelerator helps Microsoft Foundry agent teams evaluate quality, prepa
 ## Get started
 
 ```powershell
-python -m pip install "agentops-accelerator[agent]"
+python -m pip install "agentops-accelerator[cockpit]"
 agentops init
 ```
 
-Use the `[agent]` option when you want Cockpit, either locally or hosted on Azure.
+Use the `[cockpit]` option when you want the local Cockpit.
 
 To install a specific release directly from GitHub:
 
 ```powershell
-python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
+python -m pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
 ```
 
 Replace `vX.Y.Z` with the desired release tag.
@@ -119,7 +119,7 @@ The report grows a `Comparison vs Baseline` section with per-metric deltas.
 
 ## Commands
 
-Install optional extras as needed: `[agent]` for Doctor/Cockpit and `[mcp]` for MCP.
+Install optional extras as needed: `[cockpit]` for Doctor/Cockpit and `[mcp]` for MCP.
 
 - `agentops --version` - show installed version.
 - `agentops init` - bootstrap config and seed data.
@@ -137,18 +137,12 @@ Install optional extras as needed: `[agent]` for Doctor/Cockpit and `[mcp]` for 
 - `agentops mcp serve` - start the MCP server.
 - `agentops doctor [--evidence-pack]` - run readiness checks.
 - `agentops cockpit` - open the local Cockpit.
-- `agentops cockpit deploy` - preview or deploy the authenticated hosted Cockpit.
-- `agentops agent serve` - serve Doctor as a Copilot Extension.
 
 ## AgentOps Cockpit
 
 `agentops cockpit` opens a localhost command center for the current workspace.
 It combines eval history, Doctor findings, workflow status, and links to the
 matching Foundry and Azure Monitor views.
-
-`agentops cockpit deploy --preview` plans an authenticated Azure App Service
-Cockpit for the workspace's current Foundry project. Wider Observe scopes require
-explicit ARM resource IDs. See [Deploy the hosted Cockpit](docs/deploy-hosted-cockpit.md).
 
 Cockpit sections, in display order:
 

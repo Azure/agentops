@@ -166,7 +166,11 @@ def _extract_references(text: str) -> Dict[str, List[str]]:
         token = m.group(1).strip()
         if "/" in token and "." in token:
             _push("files", token)
-        elif token.endswith(".jsonl") or token.endswith(".yaml") or token.endswith(".yml"):
+        elif token.endswith(".jsonl"):
             _push("datasets", token)
+        elif token.endswith(".yaml") or token.endswith(".yml"):
+            # `agentops.yaml`, `eval.yaml`, `agent.yaml` are configuration
+            # files, not datasets. Only JSONL rows are evaluation data.
+            _push("files", token)
 
     return refs

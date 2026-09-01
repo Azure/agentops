@@ -43,7 +43,6 @@ The Doctor reaches Azure through six sources, all configured in
 | `azure_monitor` | Application Insights / Log Analytics via REST (KQL) |
 | `foundry_control` | Foundry project / agents / evaluation rules via `azure-ai-projects` |
 | `azure_resources` | Cognitive Services account properties via `azure-mgmt-cognitiveservices`; inferred from explicit config, AZD `.azure/<env>/.env` when present, or Foundry endpoint/account matching |
-| `graph` | Microsoft Entra agent identity blueprints via Microsoft Graph, read-only, and only when `identity.verify` is enabled |
 
 The LLM-judged rules additionally use the Foundry project's OpenAI
 client (auto-discovered) as the judge model.
@@ -65,17 +64,6 @@ stopping the whole run.
 | `waf.security.diagnostic_settings` | warning | `azure_resources` | programmatic | account has ≥1 diagnostic setting with a `workspace_id` |
 | `safety.runtime.content_filter` | warning | `azure_monitor` | programmatic | KQL hits on `gen_ai.response.finish_reasons contains content_filter` |
 | `responsible_ai.llm.prompt_jailbreak_surface` | info / warning | `foundry_control` | llm-judged | judge model scans system prompt for override-phrasing, embedded secrets, unbounded role-play |
-| `agent_identity.not_registered` | warning | `graph` | programmatic | no Entra Agent ID in `.agentops/identity/agent-identity.json` or `AGENTOPS_ENTRA_AGENT_ID` |
-| `agent_identity.not_recorded` | info | `graph` | programmatic | `identity.verify: true` and Graph finds a blueprint, but no local record exists |
-| `agent_identity.lookup_failed` | warning | `graph` | programmatic | `identity.verify: true` and the Graph lookup failed (missing consent, throttling, network) |
-
-!!! info "Identity checks are read-only"
-    The `agent_identity.*` checks never create or modify anything in Microsoft
-    Entra. Registration is an explicit, separate action: `agentops agent
-    register`. Graph is contacted only when `identity.verify` is set to true in
-    `agentops.yaml`; with it off, the check reads local state only and still
-    reports whether an identity exists. See
-    [Agent identity on traces](observe.md#agent-identity-on-traces).
 
 ### ⚙️ Operational Excellence
 
@@ -90,14 +78,12 @@ stopping the whole run.
 | `opex.unversioned_bundle` | warning | `workspace_files` | programmatic | bundle YAMLs lack a top-level `version:` |
 | `opex.results_dir_bloat` | warning | `workspace_files` | programmatic | `.agentops/results/` holds > 50 run folders |
 | `opex.workflow_concurrency_lock` | warning | `workspace_files` | programmatic | AgentOps workflows missing a top-level `concurrency:` block |
-| `opex.workflow_action_sha_pinning` | warning | `workspace_files` | programmatic | `uses:` pinned to tag instead of 40-char SHA |
 | `opex.ailz_readiness` | info | `workspace_files` | programmatic | canonical AI Landing Zone signals detected; reports deployment readiness dimensions |
 | `opex.ailz_gaps` | warning | `workspace_files` | programmatic | AI Landing Zone signals detected but preflight, eval config, azd workflow, or private-runner path needs attention |
 | `opex.release.no_eval_evidence` | warning | `workspace_files` + `results_history` | programmatic | AgentOps workspace detected but no completed eval run is available for release evidence |
 | `opex.release.latest_eval_failed` | critical | `results_history` | programmatic | latest eval run exists but did not pass |
 | `opex.release.no_baseline` | warning | `workspace_files` + `results_history` | programmatic | eval evidence exists but no baseline/comparison is available for regression decisions |
 | `opex.release.no_trace_regression_dataset` | info | `workspace_files` + `results_history` | programmatic | no `.agentops/data/trace-regression-manifest.json` exists yet |
-| `opex.release.no_continuous_eval` | warning | `foundry_control` | programmatic | Foundry control plane is reachable but no enabled continuous evaluation rule was detected |
 | `opex.no_foundry_control_configured` | warning | `foundry_control` | programmatic | Foundry control plane unreachable |
 | `opex.stale_evaluation` | warning / critical | `results_history` | programmatic | latest run older than `stale_after_days` (critical at 2×) |
 | `opex.flaky_metric.<metric>` | warning | `results_history` | programmatic | coefficient of variation across last N runs > `flaky_cv_threshold` |

@@ -14,7 +14,7 @@ hide:
 
 <p class="agentops-banner-tagline">The open-source AgentOps jumpstart for continuous evaluation, safety testing, observability, and release readiness of Microsoft Foundry agents.</p>
 
-<p class="agentops-banner-question">Evaluate. Ship. Observe. Operate.</p>
+<p class="agentops-banner-question">Evaluate. Ship. Operate.</p>
 
 <div class="agentops-banner-actions" markdown>
 [Latest Release {{ latest_release("Azure/agentops") }} :material-tag:](https://github.com/Azure/agentops/releases/latest){ .md-button--pill }
@@ -41,18 +41,17 @@ evidence pack that proves a release is ready for production.
     coding agent.
 
     ```bash
-    pip install "agentops-accelerator[agent]"
+    pip install "agentops-accelerator[cockpit]"
     agentops init
     agentops skills install --platform copilot
     ```
 
-    Use the `[agent]` option when you want Cockpit, either locally or hosted on
-    Azure.
+    Use the `[cockpit]` option when you want the local Cockpit.
 
     To install a specific release directly from GitHub:
 
     ```bash
-    python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
+    python -m pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@vX.Y.Z"
     ```
 
     Replace `vX.Y.Z` with the desired release tag.
@@ -83,10 +82,9 @@ candidate versions become a release. Start with
 </div>
 
 <div class="agentops-card" markdown>
-### :material-radar: Observe
-[Observe](observe.md) covers Foundry traces and Azure Monitor, and how
-production signals inform release readiness. Start with the `agentops-agent`
-skill.
+### :material-radar: Monitor
+The [Foundry operations workbook](foundry-ops-workbook.md) covers production
+signals in Foundry and Azure Monitor. Start with the `agentops-agent` skill.
 </div>
 
 <div class="agentops-card" markdown>

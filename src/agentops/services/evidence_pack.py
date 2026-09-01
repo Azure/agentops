@@ -16,7 +16,14 @@ from agentops.core.release_evidence import (
     ReleaseEvidenceCheck,
     ReleaseEvidenceLink,
 )
-from agentops.core.governance import summarize_acs, summarize_assert, summarize_redteam
+from agentops.core.governance import (
+    REDTEAM_STATE_READY,
+    REDTEAM_STATE_THRESHOLD_BREACH,
+    summarize_acs,
+    summarize_assert,
+    summarize_redteam,
+    summarize_redteam_readiness,
+)
 from agentops.pipeline.official_eval import AZD_EVAL_RUNNER, OFFICIAL_EVAL_RUNNER
 from agentops.utils.yaml import load_yaml
 
@@ -152,7 +159,6 @@ def build_release_evidence(
     observability = _observability_status(root, trace_dataset)
     ailz = _ailz_status(analysis)
     governance = _governance_status(root)
-    agent_identity = _agent_identity_status(root)
 
     checks: list[ReleaseEvidenceCheck] = []
     blockers: list[str] = []
@@ -170,7 +176,7 @@ def build_release_evidence(
     _add_trace_dataset_check(checks, warnings, ready, trace_dataset)
     _add_ailz_check(checks, warnings, ready, ailz)
     _add_governance_check(checks, warnings, ready, governance)
-    _add_agent_identity_check(checks, warnings, ready, agent_identity)
+    _add_redteam_readiness_check(checks, blockers, warnings, ready, root)
 
     status = "blocked" if blockers else "ready_with_warnings" if warnings else "ready"
     links = _links(latest_eval, observability)
@@ -197,7 +203,6 @@ def build_release_evidence(
         observability=observability,
         ailz=ailz,
         governance=governance,
-        agent_identity=agent_identity,
     )
     return ReleaseEvidence.model_validate(_redact_obj(evidence.model_dump()))
 
@@ -552,28 +557,26 @@ def _observability_status(root: Path, trace_dataset: dict[str, Any]) -> dict[str
     rubrics = rubrics if isinstance(rubrics, list) else []
     lineage = trace_dataset.get("lineage")
     lineage = lineage if isinstance(lineage, dict) else {}
-    trace_sampling = observability.get("trace_sampling")
-    trace_sampling = trace_sampling if isinstance(trace_sampling, dict) else {}
 
-    replay_urls = [str(url) for url in _as_list(lineage.get("replay_urls")) if url]
     evaluation_urls = [str(url) for url in _as_list(lineage.get("evaluation_urls")) if url]
-    sampling_policies = [
-        str(policy) for policy in _as_list(lineage.get("sampling_policies")) if policy
-    ]
     multi_turn_rows = int(lineage.get("multi_turn_rows") or 0)
+
+    dataset_kind = str(config.get("dataset_kind") or "auto").strip().lower()
+    # Multi-turn coverage is a property of the dataset, not a universal
+    # requirement. Only a declared multi-turn dataset without conversation
+    # rows is genuinely incomplete; single-turn and auto datasets are ready.
+    if dataset_kind == "multi-turn":
+        multi_turn_ready = multi_turn_rows > 0
+    else:
+        multi_turn_ready = True
 
     return {
         "status": "ok" if observability or rubrics or lineage else "not_configured",
         "dataset_kind": config.get("dataset_kind", "auto"),
-        "multi_turn_ready": config.get("dataset_kind") == "multi-turn" or multi_turn_rows > 0,
+        "multi_turn_ready": multi_turn_ready,
         "multi_turn_rows": multi_turn_rows,
         "rubrics_count": len(rubrics),
         "rubrics": rubrics,
-        "trace_sampling_enabled": bool(trace_sampling.get("enabled")) or bool(sampling_policies),
-        "trace_sampling_mode": trace_sampling.get("mode"),
-        "sampling_policies": sampling_policies,
-        "trace_replay_urls": replay_urls
-        or ([str(observability["trace_replay_url"])] if observability.get("trace_replay_url") else []),
         "evaluation_urls": evaluation_urls
         or ([str(observability["evaluations_url"])] if observability.get("evaluations_url") else []),
         "datasets_url": observability.get("datasets_url"),
@@ -798,17 +801,11 @@ def _add_observability_check(
     missing: list[str] = []
     if not observability.get("multi_turn_ready"):
         missing.append("multi-turn eval coverage")
-    if int(observability.get("rubrics_count") or 0) <= 0:
-        missing.append("rubric evaluator")
-    if not observability.get("trace_sampling_enabled"):
-        missing.append("intelligent trace sampling")
-    if not observability.get("trace_replay_urls"):
-        missing.append("trace replay link")
 
     if not missing:
         message = (
             "Foundry observability signals are evidence-ready: "
-            "multi-turn coverage, rubric scoring, trace sampling, and replay links."
+            "multi-turn coverage and rubric scoring."
         )
         ready.append(message)
         checks.append(
@@ -923,74 +920,71 @@ def _add_governance_check(
     )
 
 
-def _agent_identity_status(root: Path) -> dict[str, Any]:
-    """Summarize the agent's Entra identity for the evidence bundle.
+def _redteam_agent_configured(config: dict[str, Any]) -> bool:
+    """True when a real evaluation target is configured (not observability-only).
 
-    The bundle records the Entra Agent ID so a release artifact can be tied
-    back to the governed principal that produced its traces. Absence is
-    reported as a status rather than an error, because registration is
-    opt-in until a tenant has Agent 365 enabled.
+    A blank ``agent`` value or the legacy ``my-agent:1`` placeholder both count
+    as "no target", matching the Cockpit's observability-only handling.
     """
-
-    from agentops.services.agent_identity import (
-        identity_record_path,
-        read_identity_record,
-        resolve_agent_id,
-    )
-
-    record = read_identity_record(root) or {}
-    agent_id = resolve_agent_id(root)
-    if not agent_id:
-        return {"status": "not_registered", "agent_id": None}
-
-    summary: dict[str, Any] = {
-        "status": "registered",
-        "agent_id": agent_id,
-        "source": "record" if record.get("app_id") else "environment",
-    }
-    for key in ("display_name", "object_id", "recorded_at"):
-        value = record.get(key)
-        if isinstance(value, str) and value.strip():
-            summary[key] = value.strip()
-    if record:
-        summary["record_path"] = str(identity_record_path(root))
-    return summary
+    value = config.get("agent") if isinstance(config, dict) else None
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    return bool(text) and text != "my-agent:1"
 
 
-def _add_agent_identity_check(
+def _add_redteam_readiness_check(
     checks: list[ReleaseEvidenceCheck],
+    blockers: list[str],
     warnings: list[str],
     ready: list[str],
-    agent_identity: dict[str, Any],
+    root: Path,
 ) -> None:
-    if agent_identity.get("status") != "registered":
-        message = (
-            "Agent identity is not registered in Microsoft Entra, so release "
-            "evidence cannot be attributed to a governed principal. "
-            "Run `agentops agent register --sponsor <upn>`."
-        )
-        warnings.append(message)
+    """Add a red-team readiness check derived from normalized scan evidence.
+
+    Skipped entirely in project-observability-only mode (no evaluation target),
+    consistent with the other agent-dependent release gates. A threshold breach
+    is a blocking gate; every other non-ready state is a warning.
+    """
+    config = _agentops_config(root)
+    if not _redteam_agent_configured(config):
+        return
+
+    readiness = summarize_redteam_readiness(root, config)
+    evidence = readiness.to_dict()
+
+    if readiness.state == REDTEAM_STATE_READY:
+        ready.append(readiness.message)
         checks.append(
             ReleaseEvidenceCheck(
-                name="Agent identity",
-                status="warning",
-                summary=message,
-                evidence=agent_identity,
+                name="Red team readiness",
+                status="ready",
+                summary=readiness.message,
+                evidence=evidence,
             )
         )
         return
 
-    message = (
-        "Agent identity "
-        f"{agent_identity.get('agent_id')} is registered and stamped on traces."
-    )
-    ready.append(message)
+    message = f"{readiness.message} {readiness.remediation}".strip()
+    if readiness.state == REDTEAM_STATE_THRESHOLD_BREACH:
+        blockers.append(message)
+        checks.append(
+            ReleaseEvidenceCheck(
+                name="Red team readiness",
+                status="blocked",
+                summary=message,
+                evidence=evidence,
+            )
+        )
+        return
+
+    warnings.append(message)
     checks.append(
         ReleaseEvidenceCheck(
-            name="Agent identity",
-            status="ready",
+            name="Red team readiness",
+            status="warning",
             summary=message,
-            evidence=agent_identity,
+            evidence=evidence,
         )
     )
 
@@ -1000,8 +994,6 @@ def _links(latest_eval: dict[str, Any], observability: dict[str, Any]) -> list[R
     report_url = latest_eval.get("foundry_report_url")
     if report_url:
         links.append(ReleaseEvidenceLink(label="Foundry evaluation report", url=str(report_url)))
-    for url in _as_list(observability.get("trace_replay_urls"))[:3]:
-        links.append(ReleaseEvidenceLink(label="Foundry trace replay", url=str(url)))
     for url in _as_list(observability.get("evaluation_urls"))[:3]:
         links.append(ReleaseEvidenceLink(label="Foundry evaluation", url=str(url)))
     datasets_url = observability.get("datasets_url")

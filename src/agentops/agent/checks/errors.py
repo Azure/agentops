@@ -10,6 +10,18 @@ from agentops.agent.sources.azure_monitor import AzureMonitorPayload
 from agentops.agent.sources.foundry_control import FoundryControlPayload
 
 
+def _monitor_target_name(monitor: AzureMonitorPayload) -> str:
+    target = monitor.diagnostics.get("target")
+    if not isinstance(target, str) or not target.strip():
+        return "connected resource"
+    value = target.strip().rstrip("/")
+    if "/" in value:
+        return value.rsplit("/", 1)[-1]
+    if monitor.diagnostics.get("target_kind") == "application_id":
+        return f"Application ID {value}"
+    return value
+
+
 def run_errors_check(
     monitor: Optional[AzureMonitorPayload],
     foundry: Optional[FoundryControlPayload],
@@ -20,11 +32,20 @@ def run_errors_check(
     if (
         monitor
         and monitor.error_rate is not None
+        and monitor.request_count >= config.min_requests
         and monitor.error_rate > config.rate_threshold
     ):
+        lookback_days = monitor.diagnostics.get("lookback_days")
+        window = (
+            f" over the last {lookback_days} day"
+            f"{'s' if lookback_days != 1 else ''}"
+            if isinstance(lookback_days, int)
+            else ""
+        )
+        target_name = _monitor_target_name(monitor)
         severity = (
             Severity.CRITICAL
-            if monitor.error_rate >= config.rate_threshold * 2
+            if monitor.error_rate >= config.critical_rate_threshold
             else Severity.WARNING
         )
         findings.append(
@@ -32,12 +53,22 @@ def run_errors_check(
                 id="errors.production_rate",
                 severity=severity,
                 category=Category.RELIABILITY,
-                title="Production error rate above threshold",
+                title=(
+                    f"Application Insights `{target_name}` aggregate error rate is "
+                    f"{monitor.error_rate * 100:.1f}% "
+                    f"({monitor.error_count} of {monitor.request_count} records "
+                    f"failed{window}), above {config.rate_threshold * 100:.0f}%; "
+                    "this covers all requests and dependencies in the resource, "
+                    "not one agent"
+                ),
                 summary=(
-                    f"App Insights reports {monitor.error_count} failed "
-                    f"requests over {monitor.request_count} total "
-                    f"({monitor.error_rate * 100:.2f}%), above the "
-                    f"{config.rate_threshold * 100:.2f}% threshold."
+                    f"Application Insights `{target_name}` reports "
+                    f"{monitor.error_count} failed request/dependency records "
+                    f"over {monitor.request_count} total "
+                    f"({monitor.error_rate * 100:.2f}%){window}, above the "
+                    f"{config.rate_threshold * 100:.2f}% threshold. The query "
+                    "covers the whole telemetry resource and does not filter by "
+                    "Foundry project or agent."
                 ),
                 recommendation=(
                     "Open the App Insights resource, group failures by "
@@ -50,6 +81,10 @@ def run_errors_check(
                     "request_count": monitor.request_count,
                     "error_rate": monitor.error_rate,
                     "threshold": config.rate_threshold,
+                    "lookback_days": lookback_days,
+                    "telemetry_target": monitor.diagnostics.get("target"),
+                    "scope": "all requests and dependencies in the telemetry resource",
+                    "agent_filtered": False,
                 },
             )
         )
@@ -267,7 +302,7 @@ def _check_no_runtime_telemetry(
             recommendation=(
                 "Configure `sources.azure_monitor.app_insights_resource_id` "
                 "or set `APPLICATIONINSIGHTS_CONNECTION_STRING` with an "
-                "`ApplicationId`, install the `[agent]` extra, and connect "
+                "`ApplicationId`, install the `[cockpit]` extra, and connect "
                 "Azure Monitor OpenTelemetry on the agent runtime "
                 "(call `configure_azure_monitor()` on startup). "
                 "See `docs/tutorial-end-to-end.md` -> "

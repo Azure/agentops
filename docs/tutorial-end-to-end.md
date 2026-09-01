@@ -1,7 +1,7 @@
 # End-to-end tutorial: release readiness for Foundry agents
 
 This tutorial is the full path. Use it after one of the type-specific tutorials when you
-want to validate the complete develop -> evaluate -> release -> observe loop
+want to validate the complete develop -> evaluate -> release -> operate loop
 across **sandbox**, **dev**, **qa**, and **prod** environments. The two
 type-specific tutorials cover the same loop for a single agent type in a sandbox + dev
 arrangement; this tutorial expands the journey through every release stage.
@@ -31,7 +31,7 @@ review.
 | 5 | Configure release checks | AgentOps CLI and skills | Creates `agentops.yaml` and repo-side release contract. | Release checklist in repo |
 | 6 | Open PR | Generated PR workflow with `--doctor-gate critical` | Routes to the right runner, normalizes proof, and blocks the PR on critical Doctor findings. | PR gate signal |
 | 7 | Merge and deploy to **dev** | Generated dev deploy workflow + your platform | Records candidate version (prompt agents) or commit/image (hosted agents) and re-evaluates after deploy. | Dev environment ready for promotion |
-| 8 | Observe production after promotion | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
+| 8 | Monitor production after promotion | Foundry Operate, Azure Monitor, Application Insights | Checks wiring and links to official dashboards. | Traces, metrics, health |
 | 9 | Review readiness | AgentOps Doctor, Cockpit, evidence pack | Answers "can we ship it, and where is the proof?" | `evidence.md` |
 | 10 | Learn from traces | Foundry/App Insights exports, AgentOps trace promotion | Turns reviewed traces into regression candidates. | Future eval rows |
 
@@ -50,7 +50,7 @@ review.
 For **prompt agents**, each `.env` points at a different Foundry project so
 playground saves in sandbox don't appear in dev. For **hosted agents**, each
 `.env` typically points at the same Foundry project (for observability) but
-the agent URL (`AGENTOPS_AGENT_ENDPOINT`) differs per environment because the
+the agent URL (`AGENTOPS_AGENT`) differs per environment because the
 hosted endpoint itself is the per-environment artifact.
 
 > **Why a separate sandbox?** When authors save in the Foundry playground,
@@ -138,7 +138,7 @@ cd agentops-end-to-end
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
-python -m pip install "agentops-accelerator[agent]" fastapi "uvicorn[standard]"
+python -m pip install "agentops-accelerator[cockpit]" fastapi "uvicorn[standard]"
 az login
 ```
 
@@ -147,7 +147,7 @@ install the aligned reference branch so the CLI, generated workflows, and
 tutorial steps stay in sync:
 
 ```powershell
-python -m pip install "agentops-accelerator[agent] @ git+https://github.com/Azure/agentops.git@develop"
+python -m pip install "agentops-accelerator[cockpit] @ git+https://github.com/Azure/agentops.git@develop"
 ```
 
 You will provide the target values through the interactive `agentops init`
@@ -166,8 +166,8 @@ evaluation runner, skill guidance, and AgentOps readiness evidence.
 | `Azure/agentops` | Repo-side release readiness, Doctor, Cockpit, and evidence layer. |
 | `microsoft/ai-agent-evals` | Reference for Foundry-native eval Action/task behavior. AgentOps cloud eval is the default prompt-agent gate so threshold failures become normalized PR evidence. |
 | `microsoft/foundry-toolkit` | VS Code create/debug/deploy surface for the Operate/readiness handoff. |
-| `microsoft/azure-skills` | Microsoft Foundry skill guidance for observe, CI/CD monitoring, regression, and trace follow-through. |
-| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference path for Foundry Observe/Optimize/Protect: traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
+| `microsoft/azure-skills` | Microsoft Foundry skill guidance for monitoring, CI/CD, regression, and trace follow-through. |
+| `Azure-Samples/microsoft-foundry-e2e-agent-observability-workshop` | Reference path for traces, App Insights, Operate Ask AI, evaluations, and red-team follow-through. |
 
 ## 1. Create the Travel Agent target
 
@@ -712,7 +712,6 @@ Use this loop in the video:
 | Signal | Foundry or Azure Monitor action | AgentOps handoff |
 |---|---|---|
 | App Insights connection | In Foundry, open the project or agent **Traces** view and connect an App Insights resource. Verify it under project connected resources. | Doctor checks whether telemetry wiring is discoverable. |
-| Trace sampling | Configure the project's trace sampling policy in Foundry or the hosted-agent observability settings your team owns. Keep the policy name in `agentops.yaml` under `observability.trace_sampling`. | Doctor/evidence can show reviewers that live-quality sampling exists before traces are promoted. |
 | Live trace | Run one playground prompt for a Prompt Agent, or call the hosted endpoint a few times. Open the agent **Traces** tab, wait 2-5 minutes if needed, and click the Trace ID. In the modal, inspect spans plus the **Input + Output** and **Metadata** tabs. | Evidence and Cockpit link reviewers back to the runtime view. |
 | Operate summary | Switch to **Operate** -> **Overview**, select the same subscription/project, wait for metrics to sync, and use **Ask AI** for dashboard-level questions such as `Help me identify any issues or anomalies in my agent metrics.` | The summary informs the release discussion; AgentOps does not rewrite it. |
 | Eval context | From a Foundry eval run, inspect row-level explanations, rubric scores, and, when available, the trace attached to the interaction. | The repo keeps the exact target, dataset, rubric gate, and evidence together. |

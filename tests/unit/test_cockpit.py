@@ -17,7 +17,6 @@ from agentops.agent.cockpit import (
 from agentops.agent.findings import Category, Finding, Severity
 from agentops.agent.history import append_analysis, build_record
 from agentops.agent.time_range import TimeRange
-from fixtures.observe import make_attribution_config_payload
 
 
 # Tests run against a wide time range so the cockpit filter does not
@@ -29,6 +28,54 @@ _WIDE = TimeRange(
     end=datetime(2100, 1, 1, tzinfo=timezone.utc),
     hours=24 * 365 * 100,
 )
+
+
+def _make_alert_coverage(
+    *,
+    state: str,
+    reason: str | None = None,
+    rules: tuple = (),
+    by_category: dict | None = None,
+    iac_provenance: tuple = (),
+):
+    """Build a deterministic AlertCoverage for cockpit card tests."""
+    from agentops.utils.alert_discovery import AlertCoverage
+
+    categories = by_category or {
+        "quality": "gap",
+        "safety": "gap",
+        "errors": "gap",
+        "latency": "gap",
+    }
+    return AlertCoverage(
+        state=state,
+        reason=reason,
+        rules=rules,
+        by_category=categories,
+        iac_provenance=iac_provenance,
+    )
+
+
+@pytest.fixture(autouse=True)
+def _stub_alert_coverage(monkeypatch):
+    """Keep cockpit alert cards deterministic and offline by default.
+
+    Individual tests override this by patching
+    ``agentops.utils.alert_discovery.discover_alert_coverage`` again. The
+    default mirrors the real ``not_applicable`` path (no endpoint / nothing to
+    verify) while faithfully echoing IaC provenance, so no Azure call is ever
+    made from cockpit tests regardless of the developer's environment.
+    """
+    from agentops.utils import alert_discovery
+
+    def _stub(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_NOT_APPLICABLE,
+            reason="No Foundry project endpoint is configured.",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _stub)
 
 
 def _set_appinsights_env(monkeypatch) -> None:
@@ -120,10 +167,21 @@ def _write_eval_run(
 def test_empty_workspace_yields_empty_state(tmp_path: Path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     assert payload["watchdog"]["has_history"] is False
-    assert len(payload["readiness"]["checks"]) == 13
+    assert len(payload["readiness"]["checks"]) == 8
     html = render_cockpit_html(payload)
     assert "No analysis history yet" in html
-    assert "NO-GO" in html
+    assert "Not assessed" in html
+
+
+def test_cockpit_uses_explicit_url_theme_control(tmp_path: Path):
+    html = render_cockpit_html(build_cockpit_payload(tmp_path, time_range=_WIDE))
+    assert 'id="cockpit-theme-toggle"' in html
+    assert 'data-aos-theme-toggle' in html
+    assert "setupAgentOpsThemeToggle();" in html
+    assert '[data-theme="light"]' in html
+    assert "localStorage" not in html
+    assert "sessionStorage" not in html
+    assert "document.cookie" not in html
 
 
 def test_telemetry_status_reflects_env(tmp_path: Path, monkeypatch):
@@ -340,6 +398,30 @@ def test_connections_only_contains_foundry_and_github(tmp_path: Path, monkeypatc
     assert "Open in GitHub" in html
     assert "Azure tenant" not in html
     assert "Application Insights</div>" not in html
+    assert "View findings in App Insights" not in html
+
+
+def test_foundry_connection_opens_configured_project_without_cloud_run(
+    tmp_path: Path, monkeypatch
+):
+    project_id = (
+        "/subscriptions/sub/resourceGroups/rg/providers/"
+        "Microsoft.CognitiveServices/accounts/account/projects/project"
+    )
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://account.services.ai.azure.com/api/projects/project",
+    )
+    monkeypatch.setenv("AZURE_AI_PROJECT_ID", project_id)
+    monkeypatch.setattr("agentops.agent.cockpit._az_tenant_id", lambda: "tenant")
+
+    payload = build_cockpit_payload(tmp_path)
+    foundry = payload["connections"]["items"][0]
+
+    assert foundry["link"] == (
+        "https://ai.azure.com/foundryProject/overview"
+        f"?wsid={project_id}&tid=tenant"
+    )
 
 
 def test_readiness_splits_connection_and_instrumentation(tmp_path: Path):
@@ -373,7 +455,7 @@ def test_readiness_splits_connection_and_instrumentation(tmp_path: Path):
     assert "App Insights connection" in html
 
 
-def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
+def test_readiness_detects_multiturn_and_threshold_bound_rubric(tmp_path: Path):
     from agentops.agent.cockpit import _build_readiness_checklist
 
     (tmp_path / "agentops.yaml").write_text(
@@ -382,17 +464,29 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
         "dataset: .agentops/data/travel-conversations.jsonl\n"
         "dataset_kind: multi-turn\n"
         "execution: azd\n"
+        "thresholds:\n"
+        "  task_success: \">=0.8\"\n"
         "rubrics:\n"
         "  - name: travel-concierge-quality\n"
         "    evaluator: travel-concierge-quality\n"
         "    dimensions:\n"
         "      - name: task_success\n"
-        "        description: Completes the requested trip plan.\n"
-        "observability:\n"
-        "  trace_sampling:\n"
-        "    enabled: true\n"
-        "    mode: foundry\n"
-        "  trace_replay_url: https://ai.azure.com/traces/replay/abc\n",
+        "        description: Completes the requested trip plan.\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "travel-conversations.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user", "content": "Plan a trip to Rome."},
+                    {"role": "assistant", "content": "Here is a 3-day plan."},
+                ],
+                "expected": "A multi-day Rome itinerary.",
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -404,10 +498,62 @@ def test_readiness_detects_multiturn_rubric_sampling_and_replay(tmp_path: Path):
     )
     by_title = {check["title"]: check for check in readiness["checks"]}
 
+    # Multi-turn coverage is applicable (declared + real conversation rows).
     assert by_title["Multi-turn eval coverage"]["status"] == "ok"
+    # Rubric gates readiness only because a threshold binds one of its metrics.
     assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
-    assert by_title["Trace sampling for live quality"]["status"] == "ok"
-    assert by_title["Trace replay linked to evidence"]["status"] == "ok"
+    # Trace sampling / replay cards were removed entirely.
+    assert "Trace sampling for live quality" not in by_title
+    assert "Trace replay linked to evidence" not in by_title
+
+
+def test_readiness_hides_multiturn_for_single_turn_dataset(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: support-agent:4\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "dataset_kind: single-turn\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    titles = [c["title"] for c in readiness["checks"]]
+    # Single-turn agents are not deficient for being single-turn.
+    assert "Multi-turn eval coverage" not in titles
+
+
+def test_readiness_rubric_declared_without_threshold_is_not_a_gate(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: travel-agent:3\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "rubrics:\n"
+        "  - name: travel-concierge-quality\n"
+        "    evaluator: travel-concierge-quality\n"
+        "    dimensions:\n"
+        "      - name: task_success\n"
+        "        description: Completes the requested trip plan.\n",
+        encoding="utf-8",
+    )
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    # Declared but not threshold-bound -> informational, never a missing gate.
+    assert by_title["Optional rubric evaluator gate"]["status"] == "muted"
 
 
 def test_readiness_detects_hosted_otel_eval_rubric_and_unknown_alerts(
@@ -457,7 +603,9 @@ def test_readiness_detects_hosted_otel_eval_rubric_and_unknown_alerts(
     assert "native tracing" in tracing["detail"]
     assert "no application-side OpenTelemetry setup is required" in tracing["detail"]
     assert "acs_middleware.py" in tracing["detail"]
-    assert by_title["Optional rubric evaluator gate"]["status"] == "ok"
+    # The azd eval recipe declares a rubric evaluator, but no threshold binds
+    # its metrics, so it is informational (muted), not a missing gate.
+    assert by_title["Optional rubric evaluator gate"]["status"] == "muted"
     assert "src/helpdeskbot/eval.yaml" in by_title[
         "Optional rubric evaluator gate"
     ]["detail"]
@@ -493,7 +641,8 @@ def test_readiness_recognizes_prompt_agent_native_tracing(tmp_path: Path):
     assert "Custom spans remain optional" in tracing["detail"]
 
 
-def test_readiness_detects_alerts_declared_as_infrastructure(tmp_path: Path):
+def test_readiness_shows_iac_alerts_as_provenance_not_proof(tmp_path: Path):
+    """IaC markers are provenance only and must never yield a ready card."""
     from agentops.agent.cockpit import _build_readiness_checklist
 
     infra = tmp_path / "infra"
@@ -514,8 +663,165 @@ def test_readiness_detects_alerts_declared_as_infrastructure(tmp_path: Path):
     alerts = next(
         check for check in readiness["checks"] if check["title"] == "Alerts wired"
     )
-    assert alerts["status"] == "ok"
+    # A string in a template is not proof a rule is deployed and enabled.
+    assert alerts["status"] != "ok"
+    # ...but the file is still surfaced as deployment provenance.
     assert "infra/alerts.bicep" in alerts["detail"]
+    assert "provenance only" in alerts["detail"]
+
+
+def test_alerts_wired_card_ready_when_coverage_ready(tmp_path: Path, monkeypatch):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\n"
+        "agent: my-agent:1\n"
+        "dataset: .agentops/data/smoke.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _ready(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_READY,
+            rules=(SimpleNamespace(),),
+            by_category={
+                "quality": "gap",
+                "safety": "gap",
+                "errors": "covered",
+                "latency": "gap",
+            },
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _ready)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "ok"
+    assert "Verified 1 enabled Azure Monitor alert rule" in alerts["detail"]
+    assert "covered: errors" in alerts["detail"]
+
+
+def test_alerts_wired_card_cannot_verify_is_not_absence(
+    tmp_path: Path, monkeypatch
+):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: d.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _cannot(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_CANNOT_VERIFY,
+            reason="insufficient RBAC to list alert rules",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _cannot)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    alerts = next(
+        check for check in readiness["checks"] if check["title"] == "Alerts wired"
+    )
+    assert alerts["status"] == "cannot_verify"
+    assert "does not claim that alerting is absent" in alerts["detail"]
+    assert "Monitoring Reader" in alerts["detail"]
+
+
+def test_alerts_wired_card_not_configured_is_optional(tmp_path: Path, monkeypatch):
+    from agentops.agent.cockpit import _build_readiness_checklist
+    from agentops.utils import alert_discovery
+
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: d.jsonl\n"
+        "project_endpoint: https://foundry.example.com/api/projects/proj\n",
+        encoding="utf-8",
+    )
+
+    def _missing(project_endpoint, *, iac_provenance=(), **_kwargs):
+        return _make_alert_coverage(
+            state=alert_discovery.STATE_NOT_CONFIGURED,
+            reason="no rule scoped to the resource",
+            iac_provenance=tuple(iac_provenance),
+        )
+
+    monkeypatch.setattr(alert_discovery, "discover_alert_coverage", _missing)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "Linked", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+    assert all(
+        check["title"] != "Alerts wired" for check in readiness["checks"]
+    )
+
+
+def test_doctor_sparkline_hover_shows_when_and_quantity():
+    from agentops.agent.cockpit import _sparkline_svg
+
+    svg = _sparkline_svg(
+        [0.0, 1.0, 2.0],
+        labels=["2026-08-27 13:00", "2026-08-27 14:00", "2026-08-27 15:00"],
+        value_label="finding",
+    )
+
+    assert 'data-hover="2026-08-27 13:00 · 0 findings"' in svg
+    assert 'data-hover="2026-08-27 14:00 · 1 finding"' in svg
+    assert 'data-hover="2026-08-27 15:00 · 2 findings"' in svg
+    assert 'tabindex="0"' in svg
+
+
+def test_doctor_history_uses_two_distinct_headline_cards():
+    from agentops.agent.cockpit import _build_watchdog_section
+    from agentops.agent.history import AnalysisRecord
+
+    record = AnalysisRecord(
+        timestamp="2026-08-27T15:30:00Z",
+        findings_total=1,
+        findings_by_severity={"critical": 0, "warning": 1, "info": 0},
+        findings_by_category={},
+        max_severity="warning",
+        sources_enabled=[],
+        lookback_days=1,
+        duration_seconds=1.0,
+        findings=[],
+    )
+
+    section = _build_watchdog_section([record])
+
+    assert [card["label"] for card in section["headline_cards"]] == [
+        "Findings",
+        "Critical",
+    ]
+    assert section["last_analysis_at"] == "2026-08-27T15:30:00Z"
+    assert section["headline_cards"][0]["badge"]["label"] == "latest analysis"
+
+
+def test_cockpit_uses_doctor_not_watchdog_in_visible_copy(tmp_path: Path):
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+
+    assert "watchdog" not in html.lower()
 
 
 def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypatch):
@@ -547,8 +853,12 @@ def test_readiness_non_ready_items_include_remediation(tmp_path: Path, monkeypat
         assert ("<a " in detail) or ("<code>" in detail) or ("Foundry" in detail)
     by_title = {check["title"]: check["detail"] for check in readiness["checks"]}
     assert "OpenTelemetry" in by_title["Agent tracing instrumentation"]
-    assert "agentops eval run" in by_title["Scheduled eval (drift watch)"]
-    assert "safe_agent_baseline.yaml" in by_title["Red team scans"]
+    # Scheduled eval is optional drift-watch context and is hidden entirely
+    # when no cron-scheduled workflow exists, so it must not appear here.
+    assert "Scheduled eval (drift watch)" not in by_title
+    # Red-team readiness is hidden before workspace init (no agentops.yaml),
+    # so the card must not appear on an uninitialized workspace.
+    assert "Red team scans" not in by_title
     assert "does not claim" in by_title["Alerts wired"]
 
 
@@ -648,10 +958,76 @@ def test_next_actions_prioritize_doctor_then_incomplete_readiness():
     )
 
     assert [action["title"] for action in actions["actions"]] == [
-        "Fix Doctor: Answer quality is blocked",
-        "Fix Doctor: Trace coverage is incomplete",
+        "Fix: Answer quality is blocked",
+        "Fix: Trace coverage is incomplete",
         "Complete readiness: Server-side tracing",
     ]
+
+
+def test_next_actions_skip_non_actionable_statuses():
+    """Hidden, not-applicable, informational, muted, and ok statuses must not
+    manufacture any action."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {"title": "Ready", "status": "ok", "detail": "done"},
+                {"title": "Info", "status": "info", "detail": "context"},
+                {"title": "Muted", "status": "muted", "detail": "optional"},
+                {"title": "NotApplicable", "status": "na", "detail": "n/a"},
+                {"title": "Hidden", "status": "hidden", "detail": "hidden"},
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    assert titles == ["All caught up"]
+
+
+def test_next_actions_cannot_verify_uses_softer_wording():
+    """``cannot_verify`` is not a failure, so it yields an "Enable
+    verification" action, never a "Complete readiness" one."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {
+                    "title": "Multi-turn coverage",
+                    "status": "cannot_verify",
+                    "detail": "Dataset not readable yet.",
+                },
+            ],
+        },
+    )
+
+    titles = [action["title"] for action in actions["actions"]]
+    assert titles == ["Enable verification: Multi-turn coverage"]
+    assert not any("Complete readiness" in title for title in titles)
+
+
+def test_next_actions_uninitialized_emits_single_onboarding_action():
+    """Before init, emit exactly one onboarding action regardless of how many
+    readiness checks would otherwise be non-ok."""
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "checks": [
+                {"title": "A", "status": "warn", "detail": "x"},
+                {"title": "B", "status": "warn", "detail": "y"},
+                {"title": "C", "status": "cannot_verify", "detail": "z"},
+            ],
+        },
+        initialized=False,
+    )
+
+    assert len(actions["actions"]) == 1
+    assert actions["actions"][0]["title"] == "Get started: initialize AgentOps"
 
 
 def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
@@ -704,7 +1080,7 @@ def test_readiness_detects_official_eval_workflow_and_evidence(tmp_path: Path):
     assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
         "CI eval gate (workflow on PRs)"
     ]["detail"]
-    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "info"
     assert "official Microsoft Foundry AI Agent Evaluation" in by_title[
         "Scheduled eval (drift watch)"
     ]["detail"]
@@ -765,7 +1141,7 @@ def test_readiness_detects_agentops_cloud_eval_workflow_and_evidence(tmp_path: P
     assert "AgentOps cloud eval" in by_title["CI eval gate (workflow on PRs)"][
         "detail"
     ]
-    assert by_title["Scheduled eval (drift watch)"]["status"] == "ok"
+    assert by_title["Scheduled eval (drift watch)"]["status"] == "info"
     assert "AgentOps cloud eval" in by_title["Scheduled eval (drift watch)"][
         "detail"
     ]
@@ -842,13 +1218,17 @@ def test_readiness_detects_prompt_agent_deploy_workflow(tmp_path: Path):
     assert "evaluates that exact version" in deploy_row["detail"]
 
 
-def test_readiness_continuous_eval_ok_when_doctor_finds_no_problem(
+def test_readiness_continuous_eval_is_not_inferred_from_absent_finding(
     tmp_path: Path,
 ):
-    """A Doctor run that did not emit the continuous-eval findings is
-    treated as confirmation that rules are configured."""
+    """No finding is not positive evidence that a rule is configured."""
     from agentops.agent.cockpit import _build_readiness_checklist
 
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: support-agent:4\n"
+        "dataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
     telemetry = {"enabled": True, "detail": "ok", "portal_url": "https://x"}
     watchdog = {"has_history": True, "latest_findings": []}
 
@@ -859,7 +1239,9 @@ def test_readiness_continuous_eval_ok_when_doctor_finds_no_problem(
         c for c in readiness["checks"]
         if "Continuous evaluation rules" in c["title"]
     )
-    assert cont_row["status"] == "ok"
+    assert cont_row["status"] == "muted"
+    assert "Not verified" in cont_row["detail"]
+    assert "absence of a finding is not proof" in cont_row["detail"]
 
 
 def test_deployments_diagnostic_not_a_git_repo(tmp_path: Path):
@@ -1236,7 +1618,7 @@ def test_app_insights_doctor_findings_query_and_link(monkeypatch, tmp_path):
     payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
     html = render_cockpit_html(payload)
 
-    assert "View findings in App Insights" in html
+    assert "View findings in App Insights" not in html
 
 
 def test_app_insights_eval_runs_query_and_link(monkeypatch, tmp_path):
@@ -1283,583 +1665,126 @@ def test_foundry_project_card_compacts_endpoint_and_exposes_copy(tmp_path, monke
     assert "copy-btn" in html
 
 
-class _CostIsolationObserveService:
-    async def query(
-        self,
-        *,
-        view,
-        filters,
-        refresh=False,
-        user_context=None,
+# ---------------------------------------------------------------------------
+# Project-observability-only mode (agent-less workspace)
+# ---------------------------------------------------------------------------
+
+
+def _write_observability_only_workspace(tmp_path: Path) -> None:
+    """A workspace whose agentops.yaml has a dataset but no agent target."""
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
+
+
+def test_readiness_agentless_workspace_is_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
+
+    _write_observability_only_workspace(tmp_path)
+
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    assert readiness["observability_only"] is True
+    assert readiness["mode_label"] == "Project observability only"
+
+    by_title = {check["title"]: check for check in readiness["checks"]}
+    # An explicit informational "Evaluation target" row is present at index 0.
+    assert readiness["checks"][0]["title"] == "Evaluation target"
+    assert readiness["checks"][0]["status"] == "info"
+    assert "Agent tracing instrumentation" not in by_title
+    assert "Continuous evaluation rules (Foundry)" not in by_title
+    assert "Optional rubric evaluator gate" not in by_title
+    # Agent/eval-dependent release gates are not-applicable, never failed.
+    for title in (
+        "CI eval gate (workflow on PRs)",
+        "CI/CD deploy stage",
+        "Release evidence pack",
     ):
-        return {
-            "view": view,
-            "filters": filters,
-            "refresh": refresh,
-            "marker": "unchanged",
-        }
+        if title in by_title:
+            assert by_title[title]["status"] == "na"
 
 
-class _AttributionObserveService(_CostIsolationObserveService):
-    def __init__(
-        self,
-        *,
-        attribution_result: dict | None = None,
-        attribution_error: ValueError | None = None,
-    ) -> None:
-        self.attribution_calls: list[dict] = []
-        self.attribution_result = attribution_result
-        self.attribution_error = attribution_error
+def test_readiness_legacy_placeholder_is_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
 
-    async def attribution(self, *, request, user_context=None):
-        self.attribution_calls.append(
-            {"request": request, "user_context": user_context}
-        )
-        if self.attribution_error is not None:
-            raise self.attribution_error
-        if self.attribution_result is not None:
-            return self.attribution_result
-        return {
-            "marker": "safe-aggregate",
-            "rows": [],
-            "raw_identity": None,
-        }
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: my-agent:1\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
+    )
+    dataset = tmp_path / ".agentops" / "data" / "smoke.jsonl"
+    dataset.parent.mkdir(parents=True, exist_ok=True)
+    dataset.write_text('{"input":"hi","expected":"hello"}\n', encoding="utf-8")
 
-
-_OBSERVE_FILTERS = {
-    "start": "2026-08-01T00:00:00Z",
-    "end": "2026-09-01T00:00:00Z",
-}
-
-
-@pytest.mark.parametrize(
-    ("raw_model", "expected_reason"),
-    [
-        (None, "not configured"),
-        ('{"version":', "invalid"),
-    ],
-)
-def test_cost_configuration_failure_isolated_from_all_other_observe_views(
-    monkeypatch,
-    tmp_path: Path,
-    raw_model: str | None,
-    expected_reason: str,
-):
-    from fastapi.testclient import TestClient
-
-    from agentops.agent.cockpit import create_app
-
-    if raw_model is None:
-        monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
-    else:
-        monkeypatch.setenv("AGENTOPS_COST_MODEL", raw_model)
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=_CostIsolationObserveService(),
-        )
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
     )
 
-    for view in ("overview", "agents", "models", "tools", "runs", "coverage"):
-        response = client.post(
-            "/api/observe/query",
-            json={"view": view, "filters": _OBSERVE_FILTERS},
-        )
-        assert response.status_code == 200
-        assert response.json() == {
-            "view": view,
-            "filters": {
-                **_OBSERVE_FILTERS,
-                "foundry_resource_id": None,
-                "project_resource_id": None,
-                "agent_id": None,
-                "model": None,
-                "tool_name": None,
-                "run_key": None,
-                "cost_period_id": None,
-                "cost_breakdown": None,
-                "cost_component_id": None,
-                "cost_agent_key": None,
-                "user_filter_token": None,
-                "department_filter_token": None,
-            },
-            "refresh": False,
-            "marker": "unchanged",
-        }
-
-    cost = client.post(
-        "/api/observe/query",
-        json={
-            "view": "cost",
-            "filters": {**_OBSERVE_FILTERS, "cost_period_id": "2026-08"},
-        },
-    )
-    assert cost.status_code == 422
-    assert expected_reason in cost.json()["detail"]
+    # The legacy my-agent:1 placeholder is treated as "no target configured".
+    assert readiness["observability_only"] is True
 
 
-def test_hosted_authentication_precedes_cost_configuration_gating(
-    monkeypatch,
-):
-    from fastapi.testclient import TestClient
+def test_readiness_real_agent_is_not_observability_only(tmp_path: Path):
+    from agentops.agent.cockpit import _build_readiness_checklist
 
-    from agentops.agent.cockpit import create_app
-
-    def _reject(_headers):
-        raise PermissionError("Authentication required.")
-
-    monkeypatch.delenv("AGENTOPS_COST_MODEL", raising=False)
-    client = TestClient(
-        create_app(
-            None,
-            mode="hosted",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=_CostIsolationObserveService(),
-            auth_context_resolver=_reject,
-        )
+    (tmp_path / "agentops.yaml").write_text(
+        "version: 1\nagent: travel-agent:3\ndataset: .agentops/data/smoke.jsonl\n",
+        encoding="utf-8",
     )
 
-    response = client.post(
-        "/api/observe/query",
-        json={
-            "view": "cost",
-            "filters": {**_OBSERVE_FILTERS, "cost_period_id": "2026-08"},
+    readiness = _build_readiness_checklist(
+        tmp_path,
+        {"enabled": True, "detail": "ok", "portal_url": "https://x"},
+        {"has_data": False},
+        watchdog=None,
+    )
+
+    assert readiness["observability_only"] is False
+    titles = [c["title"] for c in readiness["checks"]]
+    assert "Evaluation target" not in titles
+
+
+def test_next_actions_observability_only_emits_single_configure_action():
+    from agentops.agent.cockpit import _build_next_actions
+
+    actions = _build_next_actions(
+        watchdog={"latest_findings": []},
+        readiness={
+            "observability_only": True,
+            "checks": [
+                {"title": "Evaluation target", "status": "info", "detail": "x"},
+                {"title": "CI eval gate (workflow on PRs)", "status": "na", "detail": "y"},
+                {"title": "CI/CD deploy stage", "status": "na", "detail": "z"},
+                {"title": "Release evidence pack", "status": "na", "detail": "w"},
+            ],
         },
     )
 
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Authentication required."
-    assert "AGENTOPS_COST_MODEL" not in response.text
+    titles = [action["title"] for action in actions["actions"]]
+    # Exactly one configure-target action; agent-dependent na checks add none.
+    assert titles == ["Configure an evaluation target when ready"]
 
 
-@pytest.mark.parametrize(
-    ("raw_config", "expected_status", "expected_code"),
-    [
-        (None, 409, "attribution_not_enabled"),
-        (
-            json.dumps(
-                {
-                    "version": 1,
-                    "enabled": False,
-                    "deployment_namespace": None,
-                    "generation": None,
-                    "departments": [],
-                }
-            ),
-            409,
-            "attribution_not_enabled",
-        ),
-        (
-            '{"enabled": true, "secret": "do-not-echo"}',
-            503,
-            "attribution_config_secret_field",
-        ),
-    ],
-)
-def test_attribution_route_fails_closed_without_affecting_existing_views(
-    monkeypatch,
-    tmp_path: Path,
-    raw_config: str | None,
-    expected_status: int,
-    expected_code: str,
-):
-    from fastapi.testclient import TestClient
+def test_cockpit_html_agentless_not_blanket_no_go(tmp_path: Path):
+    _write_observability_only_workspace(tmp_path)
 
-    from agentops.agent.cockpit import create_app
+    payload = build_cockpit_payload(tmp_path, time_range=_WIDE)
+    html = render_cockpit_html(payload)
 
-    if raw_config is None:
-        monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
-    else:
-        monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw_config)
-    service = _AttributionObserveService()
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=service,
-        )
-    )
-
-    response = client.post(
-        "/api/observe/attribution",
-        json={
-            "metric": "usage",
-            "group_by": "department",
-            "filters": _OBSERVE_FILTERS,
-        },
-    )
-
-    assert response.status_code == expected_status
-    assert set(response.json()) == {"code", "message", "next_action"}
-    assert response.json()["code"] == expected_code
-    assert "do-not-echo" not in response.text
-    assert service.attribution_calls == []
-    assert client.post(
-        "/api/observe/query",
-        json={"view": "overview", "filters": _OBSERVE_FILTERS},
-    ).status_code == 200
-
-
-def test_attribution_route_validates_and_dispatches_safe_aggregate_request(
-    monkeypatch,
-    tmp_path: Path,
-):
-    from fastapi.testclient import TestClient
-
-    from agentops.agent.cockpit import create_app
-
-    monkeypatch.setenv(
-        "AGENTOPS_ATTRIBUTION_CONFIG",
-        json.dumps(make_attribution_config_payload()),
-    )
-    service = _AttributionObserveService()
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=service,
-        )
-    )
-    payload = {
-        "metric": "usage",
-        "group_by": "department",
-        "filters": _OBSERVE_FILTERS,
-    }
-
-    response = client.post("/api/observe/attribution", json=payload)
-
-    assert response.status_code == 200
-    assert response.json()["marker"] == "safe-aggregate"
-    assert response.json()["raw_identity"] is None
-    assert len(service.attribution_calls) == 1
-    assert service.attribution_calls[0]["request"]["metric"] == "usage"
-    assert service.attribution_calls[0]["request"]["group_by"] == "department"
-
-    strict = client.post(
-        "/api/observe/attribution",
-        json={**payload, "unexpected": True},
-    )
-    assert strict.status_code == 422
-    assert len(service.attribution_calls) == 1
-
-    missing_cost_selector = client.post(
-        "/api/observe/attribution",
-        json={**payload, "metric": "cost"},
-    )
-    assert missing_cost_selector.status_code == 422
-    assert len(service.attribution_calls) == 1
-
-
-@pytest.mark.parametrize(
-    "selector_field",
-    ["user_filter_token", "department_filter_token"],
-)
-def test_attribution_validation_redacts_protected_selectors(
-    monkeypatch,
-    tmp_path: Path,
-    selector_field: str,
-):
-    from fastapi.testclient import TestClient
-
-    from agentops.agent.cockpit import create_app
-
-    monkeypatch.setenv(
-        "AGENTOPS_ATTRIBUTION_CONFIG",
-        json.dumps(make_attribution_config_payload()),
-    )
-    service = _AttributionObserveService()
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=service,
-        )
-    )
-    raw_token = "raw secret selector value"
-
-    response = client.post(
-        "/api/observe/attribution",
-        json={
-            "metric": "usage",
-            "group_by": "department",
-            "filters": {
-                **_OBSERVE_FILTERS,
-                selector_field: raw_token,
-            },
-        },
-    )
-
-    assert response.status_code == 422
-    assert response.headers["Cache-Control"] == "private, no-store"
-    assert response.json() == {
-        "code": "attribution_request_invalid",
-        "message": "The attribution request is invalid.",
-        "next_action": "Correct the attribution request and retry.",
-    }
-    assert raw_token not in response.text
-    assert "input" not in response.json()
-    assert service.attribution_calls == []
-
-
-@pytest.mark.parametrize(
-    ("raw_config", "expected_status"),
-    [
-        (None, 409),
-        ('{"enabled": true, "token": "raw-config-token"}', 503),
-    ],
-)
-def test_attribution_state_errors_preserve_private_selector_cache_policy(
-    monkeypatch,
-    tmp_path: Path,
-    raw_config: str | None,
-    expected_status: int,
-):
-    from fastapi.testclient import TestClient
-
-    from agentops.agent.cockpit import create_app
-
-    if raw_config is None:
-        monkeypatch.delenv("AGENTOPS_ATTRIBUTION_CONFIG", raising=False)
-    else:
-        monkeypatch.setenv("AGENTOPS_ATTRIBUTION_CONFIG", raw_config)
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=_AttributionObserveService(),
-        )
-    )
-    raw_token = "opaque-protected-selector"
-
-    response = client.post(
-        "/api/observe/attribution",
-        json={
-            "metric": "usage",
-            "group_by": "department",
-            "filters": {
-                **_OBSERVE_FILTERS,
-                "department_filter_token": raw_token,
-            },
-        },
-    )
-
-    assert response.status_code == expected_status
-    assert response.headers["Cache-Control"] == "private, no-store"
-    assert set(response.json()) == {"code", "message", "next_action"}
-    assert raw_token not in response.text
-    assert "raw-config-token" not in response.text
-
-
-def test_delegated_attribution_responses_are_private_and_never_cached(
-    monkeypatch,
-    tmp_path: Path,
-):
-    from fastapi.testclient import TestClient
-
-    from agentops.agent.cockpit import create_app
-
-    monkeypatch.setenv(
-        "AGENTOPS_ATTRIBUTION_CONFIG",
-        json.dumps(make_attribution_config_payload()),
-    )
-    service = _AttributionObserveService(
-        attribution_result={
-            "data": {
-                "access_boundary": "delegated",
-                "rows": [{"kind": "user", "raw_identity": "alice@example.test"}],
-            }
-        }
-    )
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=service,
-        )
-    )
-
-    response = client.post(
-        "/api/observe/attribution",
-        json={
-            "metric": "usage",
-            "group_by": "user",
-            "filters": {
-                **_OBSERVE_FILTERS,
-                "department_filter_token": "at1~department",
-            },
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.headers["Cache-Control"] == "private, no-store"
-
-
-def test_delegated_attribution_failures_are_private_and_redacted(
-    monkeypatch,
-    tmp_path: Path,
-):
-    from fastapi.testclient import TestClient
-
-    from agentops.agent.cockpit import create_app
-    from agentops.core.attribution import AttributionTokenValidationError
-
-    monkeypatch.setenv(
-        "AGENTOPS_ATTRIBUTION_CONFIG",
-        json.dumps(make_attribution_config_payload()),
-    )
-    service = _AttributionObserveService(
-        attribution_error=AttributionTokenValidationError(
-            "invalid_token",
-            "The attribution selector is invalid or no longer current.",
-        )
-    )
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=service,
-        )
-    )
-
-    response = client.post(
-        "/api/observe/attribution",
-        json={
-            "metric": "usage",
-            "group_by": "user",
-            "filters": {
-                **_OBSERVE_FILTERS,
-                "department_filter_token": "copied-secret-token",
-            },
-        },
-    )
-
-    assert response.status_code == 422
-    assert response.headers["Cache-Control"] == "private, no-store"
-    assert response.json() == {
-        "code": "invalid_token",
-        "message": "The attribution selector is invalid or no longer current.",
-        "next_action": "Select the attribution filter again.",
-    }
-    assert "copied-secret-token" not in response.text
-
-
-def test_missing_delegated_assertion_is_private_and_never_retried(
-    monkeypatch,
-    tmp_path: Path,
-):
-    from fastapi.testclient import TestClient
-
-    from agentops.agent.cockpit import create_app
-    from agentops.agent.observe.auth import MissingUserAssertionError
-
-    monkeypatch.setenv(
-        "AGENTOPS_ATTRIBUTION_CONFIG",
-        json.dumps(make_attribution_config_payload()),
-    )
-    service = _AttributionObserveService(
-        attribution_error=MissingUserAssertionError(
-            "Delegated Azure Monitor access is unavailable for this request."
-        )
-    )
-    client = TestClient(
-        create_app(
-            tmp_path,
-            mode="local",
-            observe_scope={
-                "version": 1,
-                "mode": "projects",
-                "project_resource_ids": [
-                    "/subscriptions/sub/resourceGroups/rg/providers/"
-                    "Microsoft.CognitiveServices/accounts/a/projects/p"
-                ],
-            },
-            observe_service=service,
-        )
-    )
-
-    response = client.post(
-        "/api/observe/attribution",
-        json={
-            "metric": "usage",
-            "group_by": "user",
-            "filters": {
-                **_OBSERVE_FILTERS,
-                "department_filter_token": "at1~department",
-            },
-        },
-    )
-
-    assert response.status_code == 403
-    assert response.headers["Cache-Control"] == "private, no-store"
-    assert response.json() == {
-        "code": "attribution_delegated_access_unavailable",
-        "message": "Delegated Azure Monitor access is unavailable for this request.",
-        "next_action": (
-            "Sign in again and verify direct read access to the selected telemetry scope."
-        ),
-    }
-    assert len(service.attribution_calls) == 1
+    # The workspace uses a descriptive monitoring state, not an alarm-style verdict.
+    assert "Project observability only" in html
+    assert "Monitoring only" in html
+    assert "No evaluation target configured" in html
+    assert "OBSERVABILITY ONLY" not in html
+    assert "NO-GO" not in html

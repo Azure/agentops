@@ -34,7 +34,7 @@ class AzureResourcesSourceConfig(BaseModel):
     """Read-only management-plane source for Azure resource posture audits.
 
     Requires ``Reader`` (or stronger) RBAC on the resource group, and the
-    ``[agent]`` extra (which pulls in ``azure-mgmt-cognitiveservices`` and
+    ``[cockpit]`` extra (which pulls in ``azure-mgmt-cognitiveservices`` and
     ``azure-mgmt-monitor``).
     """
 
@@ -80,12 +80,23 @@ class RegressionCheckConfig(BaseModel):
 
 class LatencyCheckConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    p95_threshold_seconds: float = Field(5.0, gt=0)
+    p95_threshold_seconds: float = Field(15.0, gt=0)
+    # A p95 computed from a handful of requests is noise, not a signal:
+    # two slow warm-up calls in a smoke test are enough to blow past the
+    # threshold. Stay quiet until the window holds a usable sample.
+    min_requests: int = Field(20, ge=1)
 
 
 class ErrorsCheckConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rate_threshold: float = Field(0.05, ge=0.0, le=1.0)
+    # Above `rate_threshold` the finding is a warning: something is worth
+    # looking at. `critical` means "do not ship", so it needs a rate that
+    # is unambiguously broken rather than merely twice the warning bar.
+    critical_rate_threshold: float = Field(0.25, ge=0.0, le=1.0)
+    # Same reasoning as LatencyCheckConfig.min_requests: 1 failure out of
+    # 3 requests is a 33% "error rate" that means nothing.
+    min_requests: int = Field(20, ge=1)
 
 
 class SafetyCheckConfig(BaseModel):
@@ -200,11 +211,6 @@ class ChecksConfig(BaseModel):
     llm_assist: LLMAssistCheckConfig = Field(default_factory=LLMAssistCheckConfig)
 
 
-class ServerConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    github_app_client_id: Optional[str] = None
-
-
 class AgentConfig(BaseModel):
     """Root config for ``.agentops/agent.yaml``."""
 
@@ -212,7 +218,6 @@ class AgentConfig(BaseModel):
     version: int = 1
     sources: SourcesConfig = Field(default_factory=SourcesConfig)
     checks: ChecksConfig = Field(default_factory=ChecksConfig)
-    server: ServerConfig = Field(default_factory=ServerConfig)
     lookback_days: int = Field(7, ge=1)
 
 

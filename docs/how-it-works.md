@@ -73,8 +73,7 @@ src/
     │   ├── preflight.py       # Pre-flight checks (workspace, auth, Foundry, App Insights)
     │   └── trace_promotion.py # Trace export → dataset candidates
     │
-    ├── agent/                 # Doctor, Cockpit, and agent server
-    │   └── observe/           # Hosted/local discovery, bounded queries, OBO, and UI
+    ├── agent/                 # Doctor and local Cockpit
     ├── mcp/                   # `agentops mcp serve` Model Context Protocol server
     │
     ├── utils/                 # Shared helpers (yaml load, logging, colors)
@@ -85,8 +84,7 @@ src/
         ├── agent.yaml         # Doctor config seed
         ├── skills/            # Coding agent skill templates
         ├── workflows/         # GitHub Actions workflow templates
-        ├── pipelines/         # Azure DevOps pipeline templates
-        └── agent-server/      # Doctor-as-Copilot-Extension deploy scaffold
+        └── pipelines/         # Azure DevOps pipeline templates
 ```
 
 ### Where to Add New Code
@@ -102,58 +100,6 @@ src/
 | Add a CLI command | `cli/app.py` + a service/pipeline helper |
 | Add a starter template | `templates/` + update `pyproject.toml` package-data |
 | Add a coding agent skill | `templates/skills/<name>/SKILL.md` + sync script |
-| Change hosted Cockpit deployment | `services/cockpit_deployment.py` + `templates/cockpit-hosted/` |
-| Change Observe normalization | `agent/observe/` + pure contracts in `core/observe.py` |
-
-## Hosted Cockpit and Observe flow
-
-`agentops cockpit` remains local and reads workspace history. The explicit
-`agentops cockpit deploy` service resolves the current workspace project,
-validates an existing single-tenant app registration, renders an azd/Bicep and
-RBAC/federation preview, then deploys only after confirmation.
-
-```mermaid
-flowchart LR
-    W["Local workspace project"] --> P["Deployment preview"]
-    P --> A["Linux App Service + UAMI"]
-    A --> EA["Easy Auth tenant/group boundary"]
-    A --> S["Versioned Observe scope"]
-    S --> D["ARG + Foundry connection discovery"]
-    D --> Q["Bounded Azure Monitor queries"]
-    Q --> N["Normalized attributed Observe views"]
-    EA --> OBO["Per-user OBO"]
-    OBO --> C["Explicit protected trace content"]
-```
-
-The hosted runtime is read-only. Aggregate discovery and query submission use a
-dedicated UAMI with only `Reader` and `Log Analytics Reader`. Explicit protected
-trace content uses the signed-in user's delegated permission through OBO and is
-excluded from shared caches. `/healthz` is the only anonymous route and returns
-liveness only. Wider Observe scope is represented by canonical ARM IDs in one
-versioned setting, not by parallel subscription/resource-group variables.
-
-### Granular token usage in Models
-
-The Cockpit **Models** view keeps the observed input and output totals and also
-normalizes three granular token classes when source telemetry emits them:
-**Cache read**, **Cache write**, and **Reasoning**. These values are observed
-usage, not billing data, and AgentOps never derives a missing class from another
-total. A class that was not emitted renders as **Not reported**; an explicitly
-reported `0` renders as zero.
-
-Reporting can be incomplete within a row or across the rows aggregated for a
-telemetry source. An affected model row shows **Partial class coverage**, while
-the coverage panel marks the source's `token_usage` dimension as **partial** and
-identifies the classes that were reported and those that were not. This keeps a
-partially reported aggregate from looking complete without treating missing
-telemetry as zero.
-
-Eligible, unmapped `gen_ai.usage.*` token attributes remain visible under their
-source names. Each row retains at most five, selected deterministically by
-source attribute name in ascending order. If more are present, the row shows
-**Additional classes truncated**; this signal distinguishes omitted classes
-from attributes that source telemetry never reported. Passthrough attributes
-do not change normalized values or token-usage coverage.
 
 ## Request Flow (eval run)
 
@@ -321,12 +267,10 @@ flowchart LR
 | `agentops doctor [--evidence-pack]` | Run the AgentOps Doctor and optionally write release evidence |
 | `agentops doctor explain` | Long-form Doctor manual |
 | `agentops cockpit` | Local read-only Cockpit UI (FastAPI) that links out to Foundry |
-| `agentops cockpit deploy` | Preview or deploy the authenticated hosted Cockpit and explicit Observe scope |
 | `agentops workflow analyze` | Inspect a repo and recommend CI/CD stages/deploy mode before generation |
 | `agentops workflow generate` | Generate CI/CD workflows for GitHub Actions or Azure DevOps |
 | `agentops skills install` | (Re)install coding-agent skills (Copilot or Claude) |
 | `agentops mcp serve` | Run AgentOps as an MCP server for code agents |
-| `agentops agent serve` | Run the Doctor as a Copilot Extension / FastAPI server |
 
 Every command supports `--help` for a terse description; long-form,
 paged documentation is accessible through `agentops explain` (or the
@@ -407,7 +351,7 @@ That's a complete config. AgentOps:
 | Field | Required | Description |
 |---|---|---|
 | `version` | yes | Schema version. Must be `1`. |
-| `agent` | yes | Target identifier. See "Target kinds" below. |
+| `agent` | no | Target identifier. See "Target kinds" below. Omit it to run in project-observability-only mode (Doctor and Cockpit against the Foundry project with no evaluation target). Required for `eval run`, `prompt pull`, and the azd eval paths. |
 | `dataset` | yes | Relative/absolute JSONL path, or canonical Blob/ADLS Gen2 HTTPS object URL, with one evaluation row per line. |
 | `thresholds` | no | Metric gates such as `">=3"` or `"<=10"`. |
 | `protocol` | no | URL protocol: `responses`, `invocations`, or `http-json`. |

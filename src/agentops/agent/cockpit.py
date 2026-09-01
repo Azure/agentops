@@ -3,7 +3,7 @@
 ``agentops cockpit`` boots a tiny FastAPI server that reads the
 analysis history from ``.agentops/agent/history.jsonl`` **and** the
 evaluation history from ``.agentops/results/*/results.json``, then
-serves a single cockpit page in a dark theme. No external frontend
+serves a single cockpit page with explicit dark and light themes. No external frontend
 dependencies (sparklines are inline SVG); no Azure resource required.
 
 The server is intentionally read-only and bound to ``127.0.0.1`` by
@@ -20,22 +20,22 @@ import os
 import re
 import shutil
 import subprocess
-from dataclasses import dataclass
 from importlib.resources import files as _pkg_files
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 from urllib.parse import quote
 
 from agentops.agent.history import AnalysisRecord, load_analysis_history
 from agentops.agent.time_range import TimeRange
-from agentops.core.attribution import load_attribution_config
-from agentops.core.cost import MAX_COST_COMPONENTS, MAX_COST_PERIODS, load_cost_model
-from agentops.core.observe import (
-    AgentDetailRequest,
-    AttributionQueryRequest,
-    ObserveQueryRequest,
-    ObserveScope,
-    TraceContentRequest,
+from agentops.agent.ui_theme import (
+    THEME_TOGGLE_SCRIPT,
+    render_theme_toggle,
+    render_theme_variables,
+)
+from agentops.core.governance import (
+    REDTEAM_STATE_CANNOT_VERIFY,
+    REDTEAM_STATE_READY,
+    summarize_redteam_readiness,
 )
 from agentops.utils.yaml import load_yaml
 
@@ -74,38 +74,6 @@ _QUALITY_METRICS: List[Tuple[str, str, str]] = [
 ]
 
 
-@dataclass(frozen=True)
-class CockpitRuntimeConfiguration:
-    """Runtime mode and hosted Observe scope loaded from app settings."""
-
-    mode: Literal["local", "hosted"]
-    observe_scope: Optional[Dict[str, Any]]
-
-
-def load_cockpit_runtime_configuration() -> CockpitRuntimeConfiguration:
-    """Load explicit local/hosted mode without changing local defaults."""
-    mode = os.getenv("AGENTOPS_COCKPIT_MODE", "local").strip().lower()
-    if mode not in {"local", "hosted"}:
-        raise ValueError("AGENTOPS_COCKPIT_MODE must be local or hosted.")
-    if mode == "local":
-        return CockpitRuntimeConfiguration(mode="local", observe_scope=None)
-
-    encoded_scope = os.getenv("AGENTOPS_OBSERVE_SCOPE", "").strip()
-    if not encoded_scope:
-        raise ValueError(
-            "AGENTOPS_OBSERVE_SCOPE is required when AGENTOPS_COCKPIT_MODE=hosted."
-        )
-    try:
-        raw_scope = json.loads(encoded_scope)
-    except json.JSONDecodeError as exc:
-        raise ValueError("AGENTOPS_OBSERVE_SCOPE must contain valid JSON.") from exc
-    scope = ObserveScope.model_validate(raw_scope)
-    return CockpitRuntimeConfiguration(
-        mode="hosted",
-        observe_scope=scope.model_dump(mode="json"),
-    )
-
-
 def build_cockpit_payload(
     workspace: Path,
     *,
@@ -122,6 +90,7 @@ def build_cockpit_payload(
     )
     next_actions = _build_next_actions(
         watchdog_payload, readiness,
+        initialized=(workspace / "agentops.yaml").exists(),
     )
 
     return {
@@ -406,9 +375,6 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
 
     findings_series = _series(lambda r: r.findings_total)
     critical_series = _series(lambda r: r.findings_by_severity.get("critical", 0))
-    record_labels = [_label_for_record(r) for r in records]
-
-    latest_label, latest_badge = _latest_run_badge(latest)
 
     # Latest findings list. We project the dict directly from the
     # AnalysisRecord (which stores the same Finding.to_dict() payload
@@ -428,6 +394,7 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
     return {
         "has_history": bool(records),
         "history_count": len(records),
+        "last_analysis_at": latest.timestamp if latest else None,
         "headline_cards": [
             {
                 "key": "findings_total",
@@ -464,23 +431,6 @@ def _build_watchdog_section(records: List[AnalysisRecord]) -> Dict[str, Any]:
                     "candidate."
                 ),
                 "source": "Findings tagged as critical severity in the latest analysis.",
-            },
-            {
-                "key": "last_analysis",
-                "label": "Last analysis",
-                "value": latest_label,
-                "unit": "",
-                "value_kind": "text",
-                "series": findings_series[-6:],
-                "labels": record_labels[-6:],
-                "badge": latest_badge,
-                "help": (
-                    "When the most recent watchdog run finished. The "
-                    "badge reflects how stale that analysis is relative "
-                    "to now."
-                ),
-                "meta": _latest_run_meta(latest),
-                "source": "When the most recent watchdog analysis finished.",
             },
         ],
         "latest_findings": latest_findings,
@@ -1015,9 +965,17 @@ def _resolve_foundry_project_url(workspace: Path) -> Optional[str]:
     different directory.
     """
     base = _resolve_foundry_project_root(workspace)
-    if base is None:
-        return _with_tenant("https://ai.azure.com")
-    return _with_tenant(base + "/build/agents")
+    if base is not None:
+        return _with_tenant(base + "/build/agents")
+
+    endpoint = os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+    project_resource_id = _foundry_project_resource_id(endpoint)
+    if project_resource_id:
+        wsid = quote(project_resource_id, safe="/:")
+        return _with_tenant(
+            f"https://ai.azure.com/foundryProject/overview?wsid={wsid}"
+        )
+    return _with_tenant("https://ai.azure.com")
 
 
 def _resolve_foundry_compliance_url(workspace: Path) -> Optional[str]:
@@ -1178,6 +1136,7 @@ def _with_tenant(url: str) -> str:
 
 
 _TENANT_CACHE: Dict[str, Optional[str]] = {}
+_PROJECT_RESOURCE_ID_CACHE: Dict[str, Optional[str]] = {}
 _AZ_ACCOUNT_SHOW_TIMEOUT_SECONDS = 30
 
 
@@ -1208,6 +1167,69 @@ def _az_tenant_id() -> Optional[str]:
         tenant = None
     _TENANT_CACHE["value"] = tenant
     return tenant
+
+
+def _foundry_project_resource_id(endpoint: Optional[str]) -> Optional[str]:
+    """Resolve a Foundry endpoint to its project ARM ID for portal deep-links."""
+    if not isinstance(endpoint, str) or not endpoint.strip():
+        return None
+    endpoint = endpoint.strip()
+
+    match = re.match(
+        r"^https://(?P<account>[^./]+)\.services\.ai\.azure\.com/"
+        r"api/projects/(?P<project>[^/?#]+)",
+        endpoint,
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        _PROJECT_RESOURCE_ID_CACHE[endpoint] = None
+        return None
+
+    account = match.group("account")
+    project = match.group("project")
+    expected_suffix = f"/accounts/{account}/projects/{project}".lower()
+    configured_id = os.getenv("AZURE_AI_PROJECT_ID", "").strip()
+    if configured_id.lower().endswith(expected_suffix):
+        _PROJECT_RESOURCE_ID_CACHE[endpoint] = configured_id
+        return configured_id
+    if endpoint in _PROJECT_RESOURCE_ID_CACHE:
+        return _PROJECT_RESOURCE_ID_CACHE[endpoint]
+
+    project_id: Optional[str] = None
+    az = shutil.which("az") or shutil.which("az.cmd")
+    if az:
+        result = _run_quick(
+            [
+                az,
+                "resource",
+                "list",
+                "--resource-type",
+                "Microsoft.CognitiveServices/accounts/projects",
+                "-o",
+                "json",
+            ],
+            cwd=Path.cwd(),
+            timeout=_AZ_ACCOUNT_SHOW_TIMEOUT_SECONDS,
+        )
+        if result is not None and result.returncode == 0:
+            try:
+                resources = json.loads(result.stdout)
+            except (TypeError, json.JSONDecodeError):
+                resources = []
+            if isinstance(resources, list):
+                expected_name = f"{account}/{project}".lower()
+                for resource in resources:
+                    if not isinstance(resource, dict):
+                        continue
+                    if str(resource.get("name") or "").lower() != expected_name:
+                        continue
+                    candidate = resource.get("id")
+                    if isinstance(candidate, str) and candidate:
+                        project_id = candidate
+                        break
+
+    _PROJECT_RESOURCE_ID_CACHE[endpoint] = project_id
+    return project_id
 
 
 def _render_run_report_html(workspace: Path, run_id: str) -> str:
@@ -1883,6 +1905,35 @@ def _build_open_in_foundry(
     }
 
 
+_LEGACY_AGENT_PLACEHOLDER = "my-agent:1"
+
+_OBSERVABILITY_ONLY_NA_CHECKS = frozenset(
+    {
+        "CI eval gate (workflow on PRs)",
+        "CI/CD deploy stage",
+        "Release evidence pack",
+        "Red team scans",
+    }
+)
+
+
+def _workspace_agent_configured(agentops_config: Dict[str, Any]) -> bool:
+    """True when a real evaluation target is configured.
+
+    A blank value or the legacy ``my-agent:1`` placeholder both count as
+    "no target configured" so pre-existing workspaces that still ship the
+    placeholder are treated as project-observability-only, not as a real
+    agent.
+    """
+    value = agentops_config.get("agent") if isinstance(agentops_config, dict) else None
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text:
+        return False
+    return text != _LEGACY_AGENT_PLACEHOLDER
+
+
 def _build_readiness_checklist(
     workspace: Path,
     telemetry: Dict[str, Any],
@@ -1901,13 +1952,23 @@ def _build_readiness_checklist(
     _ = deployments  # Backwards-compatible input; readiness is repo/Doctor based.
     checks: List[Dict[str, Any]] = []
     agentops_config = _read_agentops_config(workspace)
+    config_present = (workspace / "agentops.yaml").exists()
+    agent_configured = _workspace_agent_configured(agentops_config)
+    observability_only = config_present and not agent_configured
+    agent_checks_applicable = not observability_only
     trace_manifest = _read_trace_regression_manifest(workspace)
     raw_trace_lineage = trace_manifest.get("lineage")
     trace_lineage: Dict[str, Any] = (
         raw_trace_lineage if isinstance(raw_trace_lineage, dict) else {}
     )
-    custom_tracing_path = _detect_custom_tracing(workspace)
-    foundry_runtime = _detect_foundry_agent_runtime(workspace, agentops_config)
+    custom_tracing_path = (
+        _detect_custom_tracing(workspace) if agent_checks_applicable else ""
+    )
+    foundry_runtime = (
+        _detect_foundry_agent_runtime(workspace, agentops_config)
+        if agent_checks_applicable
+        else ""
+    )
 
     tracing_linked = bool(telemetry.get("enabled"))
     checks.append(
@@ -1926,12 +1987,13 @@ def _build_readiness_checklist(
         }
     )
 
-    agent_tracing_ready = bool(foundry_runtime or custom_tracing_path)
-    checks.append(
-        {
-            "title": "Agent tracing instrumentation",
-            "status": "ok" if agent_tracing_ready else "muted",
-            "detail": (
+    if agent_checks_applicable:
+        agent_tracing_ready = bool(foundry_runtime or custom_tracing_path)
+        checks.append(
+            {
+                "title": "Agent tracing instrumentation",
+                "status": "ok" if agent_tracing_ready else "muted",
+                "detail": (
                 f"Microsoft Foundry provides native tracing for this "
                 f"{_html_escape(foundry_runtime)}; no application-side "
                 "OpenTelemetry setup is required."
@@ -1953,101 +2015,75 @@ def _build_readiness_checklist(
                 "external runtimes must configure their own tracer and exporter. "
                 '<a href="https://learn.microsoft.com/azure/ai-foundry/observability/concepts/trace-agent-concept" '
                 'target="_blank" rel="noopener noreferrer">Foundry tracing docs &#x2197;</a>'
-            ),
-        }
-    )
+                ),
+            }
+        )
 
     # Continuous evaluation in Foundry: read the latest Doctor findings
     # rather than probing the SDK again. Doctor's safety check emits
     # ``safety.config.continuous_eval_missing`` /
     # ``safety.config.continuous_eval_disabled`` when the Foundry
     # project lists agents but no continuous-evaluation rules.
-    cont_eval_status, cont_eval_detail = _continuous_eval_status_from_watchdog(watchdog)
-    checks.append(
-        {
-            "title": "Continuous evaluation rules (Foundry)",
-            "status": cont_eval_status,
-            "detail": cont_eval_detail,
-        }
-    )
+    if agent_checks_applicable:
+        cont_eval_status, cont_eval_detail = _continuous_eval_status_from_watchdog(watchdog)
+        checks.append(
+            {
+                "title": "Continuous evaluation rules (Foundry)",
+                "status": cont_eval_status,
+                "detail": cont_eval_detail,
+            }
+        )
 
-    multi_turn_ready = (
-        agentops_config.get("dataset_kind") == "multi-turn"
-        or int(trace_lineage.get("multi_turn_rows") or 0) > 0
+    multi_turn = (
+        _multiturn_readiness(workspace, agentops_config, trace_lineage)
+        if agent_checks_applicable
+        else None
     )
-    checks.append(
-        {
-            "title": "Multi-turn eval coverage",
-            "status": "ok" if multi_turn_ready else "muted",
-            "detail": (
-                "Detected conversation-level evaluation coverage from "
-                "<code>dataset_kind: multi-turn</code> or trace-derived rows."
-                if multi_turn_ready
-                else "<strong>How to complete:</strong> add a conversation "
-                "dataset or promote traces that include <code>messages</code>, "
-                "then set <code>dataset_kind: multi-turn</code> in "
-                "<code>agentops.yaml</code>."
-            ),
-        }
-    )
+    if multi_turn is not None:
+        multi_turn_status, multi_turn_detail = multi_turn
+        checks.append(
+            {
+                "title": "Multi-turn eval coverage",
+                "status": multi_turn_status,
+                "detail": multi_turn_detail,
+            }
+        )
 
-    rubric_ready, rubric_source = _detect_rubric_evaluator(
+    rubric_declared, rubric_bound, rubric_source = _detect_rubric_evaluator(
         workspace,
         agentops_config,
     )
-    checks.append(
-        {
-            "title": "Optional rubric evaluator gate",
-            "status": "ok" if rubric_ready else "muted",
-            "detail": (
-                f"Detected a rubric evaluator in "
-                f"<code>{_html_escape(rubric_source)}</code>. "
-                "Keep thresholds bound only to metric names emitted by the "
-                "corresponding Foundry / azd evaluation run."
-                if rubric_ready
-                else "<strong>How to complete:</strong> optional - add "
-                "<code>rubrics:</code> only after a real Foundry rubric evaluator "
-                "exists and azd emits stable metric names you can bind to "
-                "thresholds."
-            ),
-        }
-    )
-
-    observability = agentops_config.get("observability")
-    observability = observability if isinstance(observability, dict) else {}
-    trace_sampling = observability.get("trace_sampling")
-    trace_sampling = trace_sampling if isinstance(trace_sampling, dict) else {}
-    sampling_ready = bool(trace_sampling.get("enabled")) or bool(trace_lineage.get("sampling_policies"))
-    checks.append(
-        {
-            "title": "Trace sampling for live quality",
-            "status": "ok" if sampling_ready else "muted",
-            "detail": (
-                "Detected trace-sampling intent or sampling lineage in the "
-                "trace-derived dataset manifest."
-                if sampling_ready
-                else "<strong>How to complete:</strong> enable Foundry trace "
-                "sampling or document the policy under "
-                "<code>observability.trace_sampling</code>, then harvest sampled "
-                "traces into dataset candidates."
-            ),
-        }
-    )
-
-    replay_ready = bool(observability.get("trace_replay_url")) or bool(trace_lineage.get("replay_urls"))
-    checks.append(
-        {
-            "title": "Trace replay linked to evidence",
-            "status": "ok" if replay_ready else "muted",
-            "detail": (
-                "Detected a Foundry trace replay link in config or trace lineage."
-                if replay_ready
-                else "<strong>How to complete:</strong> keep a representative "
-                "Foundry replay link in <code>observability.trace_replay_url</code> "
-                "or include replay URLs when promoting traces."
-            ),
-        }
-    )
+    if rubric_declared and rubric_bound:
+        rubric_status = "ok"
+        rubric_detail = (
+            f"Detected a rubric evaluator in "
+            f"<code>{_html_escape(rubric_source)}</code> with a metric bound to a "
+            "configured threshold, so it gates readiness."
+        )
+    elif rubric_declared:
+        rubric_status = "muted"
+        rubric_detail = (
+            f"Detected a rubric evaluator in "
+            f"<code>{_html_escape(rubric_source)}</code>, but no emitted metric is "
+            "bound to a <code>thresholds</code> entry, so it does not gate "
+            "readiness. Bind a threshold to a rubric metric to make it a gate."
+        )
+    else:
+        rubric_status = "muted"
+        rubric_detail = (
+            "<strong>How to complete:</strong> optional - add "
+            "<code>rubrics:</code> only after a real Foundry rubric evaluator "
+            "exists and azd emits stable metric names you can bind to "
+            "thresholds."
+        )
+    if agent_checks_applicable:
+        checks.append(
+            {
+                "title": "Optional rubric evaluator gate",
+                "status": rubric_status,
+                "detail": rubric_detail,
+            }
+        )
 
     eval_workflow = _detect_eval_workflow(workspace)
     cont_eval = bool(eval_workflow.get("present"))
@@ -2119,80 +2155,95 @@ def _build_readiness_checklist(
         }
     )
 
+    # Scheduled evaluations are optional drift-watch context, never a release
+    # requirement. Surface the card only when a cron-scheduled eval workflow
+    # already exists, as informational context (never counted as incomplete).
     scheduled = bool(eval_workflow.get("scheduled"))
     scheduled_runner = str(eval_workflow.get("scheduled_runner") or "")
-    checks.append(
-        {
-            "title": "Scheduled eval (drift watch)",
-            "status": "ok" if scheduled else "muted",
-            "detail": (
-                (
-                    "Detected a cron-scheduled workflow that uses AgentOps "
-                    "cloud eval in Foundry."
-                )
-                if scheduled_runner == "agentops-cloud"
-                else (
-                    "Detected a cron-scheduled workflow that uses the official "
-                    "Microsoft Foundry AI Agent Evaluation runner."
-                )
-                if scheduled_runner == "official-ai-agent-evaluation"
-                else "Detected a cron-scheduled AgentOps eval workflow."
-                if scheduled
-                else "<strong>How to complete:</strong> create a scheduled "
-                "quality gate in CI. Add an <code>on.schedule</code> "
-                "cron trigger to an eval workflow that runs "
-                "<code>agentops eval run</code> or the official Microsoft AI "
-                "Agent Evaluation runner for prompt agents. Commit the workflow "
-                "so regressions are caught even when no PR is open. "
-                '<a href="https://docs.github.com/actions/using-workflows/events-that-trigger-workflows#schedule" '
-                'target="_blank" rel="noopener noreferrer">GitHub schedule docs &#x2197;</a>'
-            ),
-        }
-    )
+    if scheduled:
+        checks.append(
+            {
+                "title": "Scheduled eval (drift watch)",
+                "status": "info",
+                "detail": (
+                    (
+                        "Detected a cron-scheduled workflow that uses AgentOps "
+                        "cloud eval in Foundry."
+                    )
+                    if scheduled_runner == "agentops-cloud"
+                    else (
+                        "Detected a cron-scheduled workflow that uses the official "
+                        "Microsoft Foundry AI Agent Evaluation runner."
+                    )
+                    if scheduled_runner == "official-ai-agent-evaluation"
+                    else "Detected a cron-scheduled AgentOps eval workflow."
+                ),
+            }
+        )
 
-    redteam = _detect_redteam_config(workspace)
-    checks.append(
-        {
-            "title": "Red team scans",
-            "status": "ok" if redteam else "muted",
-            "detail": (
-                "Detected a red-team bundle in <code>.agentops/bundles/</code>."
-                if redteam
-                else "<strong>How to complete:</strong> add adversarial safety "
-                "coverage. In AgentOps, create a safety eval config that uses "
-                "a safety/red-team bundle such as "
-                "<code>safe_agent_baseline.yaml</code> and schedule it in CI. "
-                "In Foundry, also run the native red-team scan from "
-                "<strong>Observability &rarr; Red Teaming</strong>; use "
-                "AgentOps for repeatable repo/CI gates and Foundry for the "
-                "portal drilldown and managed adversarial scans. "
-                '<a href="https://learn.microsoft.com/azure/ai-foundry/concepts/observability" '
-                'target="_blank" rel="noopener noreferrer">Foundry observability docs &#x2197;</a>'
-            ),
-        }
-    )
+    # Red-team readiness is derived exclusively from real, normalized scan
+    # evidence (.agentops/redteam/latest.json or a configured redteam_path).
+    # Before workspace init there is nothing to gate, so the card is hidden.
+    if (workspace / "agentops.yaml").exists():
+        redteam_readiness = summarize_redteam_readiness(workspace, agentops_config)
+        if redteam_readiness.state == REDTEAM_STATE_READY:
+            redteam_status = "ok"
+        elif redteam_readiness.state == REDTEAM_STATE_CANNOT_VERIFY:
+            redteam_status = "cannot_verify"
+        else:
+            redteam_status = "warn"
+        checks.append(
+            {
+                "title": "Red team scans",
+                "status": redteam_status,
+                "detail": _redteam_readiness_detail(redteam_readiness),
+            }
+        )
 
-    alerts, alerts_source = _detect_alert_configuration(
+    alert_status, alert_detail = _build_alert_readiness_row(
         workspace,
         agentops_config,
     )
-    checks.append(
-        {
-            "title": "Alerts wired",
-            "status": "ok" if alerts else "info",
-            "detail": (
-                "Detected Azure Monitor alert configuration in "
-                f"<code>{_html_escape(alerts_source)}</code>."
-                if alerts
-                else "Not verified: Cockpit found no alert definition in repo "
-                "configuration, and the latest Doctor analysis does not inventory "
-                "Azure Monitor alert rules. This does not claim that cloud-side "
-                "alerts are absent. Define alerts as IaC or verify them in Azure Monitor. "
-                '<a href="https://learn.microsoft.com/azure/azure-monitor/alerts/alerts-create-new-alert-rule" '
-                'target="_blank" rel="noopener noreferrer">Alert docs &#x2197;</a>'
-            ),
-        }
-    )
+    if alert_status != "hidden":
+        checks.append(
+            {
+                "title": "Alerts wired",
+                "status": alert_status,
+                "detail": alert_detail,
+            }
+        )
+
+    # Project-observability-only mode: the workspace is initialized
+    # (agentops.yaml exists) but no evaluation target is configured. The
+    # agent- and eval-dependent release gates are then not-applicable rather
+    # than failing, and the cockpit must not blanket NO-GO the workspace.
+    mode_label = ""
+    if observability_only:
+        mode_label = "Project observability only"
+        na_detail = (
+            "Not applicable in project-observability-only mode. This release "
+            "gate applies once an evaluation target is configured. Run "
+            "<code>agentops init</code> to add one."
+        )
+        for check in checks:
+            if check.get("title") in _OBSERVABILITY_ONLY_NA_CHECKS:
+                check["status"] = "na"
+                check["detail"] = na_detail
+        checks.insert(
+            0,
+            {
+                "title": "Evaluation target",
+                "status": "info",
+                "detail": (
+                    "Project observability only — no evaluation target is "
+                    "configured. Doctor and Cockpit run against the "
+                    "Foundry project; agent and eval release gates are "
+                    "not-applicable. Configure a target with "
+                    "<code>agentops init</code> when you are ready to gate an "
+                    "agent."
+                ),
+            },
+        )
 
     passing = sum(1 for c in checks if c["status"] == "ok")
     total = len(checks)
@@ -2201,6 +2252,8 @@ def _build_readiness_checklist(
         "passing": passing,
         "total": total,
         "label": f"{passing}/{total} ready",
+        "observability_only": observability_only,
+        "mode_label": mode_label,
     }
 
 
@@ -2264,18 +2317,28 @@ def _continuous_eval_status_from_watchdog(
             'target="_blank" rel="noopener noreferrer">Foundry monitor docs &#x2197;</a>',
         )
     return (
-        "ok",
-        "Doctor confirmed continuous-evaluation rules are configured for "
-        "your Foundry agents. Production responses are scored against "
-        "quality and safety metrics in Foundry.",
+        "muted",
+        "Not verified. The latest Doctor analysis did not report a missing or "
+        "disabled rule, but absence of a finding is not proof that continuous "
+        "evaluation is configured.",
     )
 
 
 def _build_next_actions(
     watchdog: Dict[str, Any],
     readiness: Dict[str, Any],
+    *,
+    initialized: bool = True,
 ) -> Dict[str, Any]:
-    """Prioritize Doctor findings, then incomplete readiness checks."""
+    """Prioritize Doctor findings, then genuinely-incomplete readiness checks.
+
+    Only statuses that represent real, required, missing work become actions.
+    Hidden, not-applicable, informational, muted, and ``ok`` statuses produce
+    no action. ``cannot_verify`` is not a failure, so it produces a softer
+    "Enable verification" action rather than a "Complete readiness" one. Before
+    the workspace is initialized, emit at most one onboarding action instead of
+    a wall of readiness prompts.
+    """
     actions: List[Dict[str, Any]] = []
     severity_order = {"critical": 0, "warning": 1, "info": 2}
     findings = sorted(
@@ -2286,22 +2349,65 @@ def _build_next_actions(
         recommendation = str(finding.get("recommendation") or finding.get("summary") or "")
         actions.append(
             {
-                "title": f"Fix Doctor: {finding.get('title') or finding.get('id') or 'finding'}",
+                "title": f"Fix: {finding.get('title') or finding.get('id') or 'finding'}",
                 "detail": _render_recommendation_body(recommendation),
-                "cta": "Open Doctor finding",
+                "cta": "View finding details",
                 "anchor": "#section-agentops-doctor",
             }
         )
 
-    readiness_order = {"warn": 0, "muted": 1, "info": 2}
-    incomplete = sorted(
-        (check for check in readiness.get("checks", []) if check.get("status") != "ok"),
-        key=lambda item: readiness_order.get(str(item.get("status") or ""), 3),
-    )
-    for check in incomplete:
+    if not initialized:
+        actions.append(
+            {
+                "title": "Get started: initialize AgentOps",
+                "detail": (
+                    "Run <code>agentops init</code> to scaffold "
+                    "<code>agentops.yaml</code> and the <code>.agentops</code> "
+                    "workspace. Cockpit then tailors readiness to your agent's "
+                    "actual shape instead of showing generic prompts."
+                ),
+                "cta": "Open onboarding",
+                "anchor": "#section-readiness",
+            }
+        )
+        return {"actions": actions}
+
+    checks = readiness.get("checks", [])
+    # Project-observability-only: surface exactly ONE "configure a target"
+    # action instead of one per agent-dependent gate (those are now na).
+    if readiness.get("observability_only"):
+        actions.append(
+            {
+                "title": "Configure an evaluation target when ready",
+                "detail": (
+                    "This workspace runs in project-observability-only mode: "
+                    "Doctor and Cockpit work against the Foundry "
+                    "project with no agent configured. Add an evaluation "
+                    "target with <code>agentops init</code> to unlock eval "
+                    "and release gates."
+                ),
+                "cta": "Configure a target",
+                "anchor": "#section-readiness",
+            }
+        )
+    # Only "warn" is genuinely missing required work; "cannot_verify" is a
+    # softer prompt to enable verification. Everything else (ok/muted/info/na/
+    # hidden) produces no action at all.
+    warn_checks = [c for c in checks if str(c.get("status")) == "warn"]
+    cannot_verify_checks = [c for c in checks if str(c.get("status")) == "cannot_verify"]
+    for check in warn_checks:
         actions.append(
             {
                 "title": f"Complete readiness: {check.get('title') or 'configuration'}",
+                "detail": check.get("detail", ""),
+                "cta": "Open readiness item",
+                "anchor": "#section-readiness",
+            }
+        )
+    for check in cannot_verify_checks:
+        actions.append(
+            {
+                "title": f"Enable verification: {check.get('title') or 'configuration'}",
                 "detail": check.get("detail", ""),
                 "cta": "Open readiness item",
                 "anchor": "#section-readiness",
@@ -2615,14 +2721,144 @@ def _detect_custom_tracing(workspace: Path) -> Optional[str]:
     return None
 
 
+def _multiturn_readiness(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+    trace_lineage: Dict[str, Any],
+) -> Optional[Tuple[str, str]]:
+    """Resolve the multi-turn readiness card as a property of the dataset.
+
+    Returns ``None`` when the card is not applicable and must be hidden
+    (single-turn datasets, single-turn-shaped ``auto`` datasets, or any
+    state we cannot verify without nagging). Otherwise returns a
+    ``(status, detail_html)`` tuple.
+
+    * uninitialized workspace -> hidden (cannot verify, never "missing").
+    * ``dataset_kind: single-turn`` -> hidden (not applicable).
+    * ``dataset_kind: multi-turn`` -> applicable: ``ok`` when conversation
+      coverage exists, ``cannot_verify`` when the dataset is missing/unreadable,
+      ``warn`` only when a readable dataset genuinely lacks conversations.
+    * ``dataset_kind: auto`` (or unset) -> infer only from real content:
+      ``ok`` when conversation rows exist, otherwise hidden.
+    """
+    if not (workspace / "agentops.yaml").exists():
+        return None
+
+    kind = str(agentops_config.get("dataset_kind") or "auto").strip().lower()
+    if kind == "single-turn":
+        return None
+
+    lineage_rows = int(trace_lineage.get("multi_turn_rows") or 0) > 0
+    dataset_state = _dataset_conversation_state(workspace, agentops_config)
+    covered = lineage_rows or dataset_state is True
+
+    covered_detail = (
+        "Detected conversation-level evaluation coverage from dataset rows "
+        "with a <code>messages</code> array or trace-derived multi-turn rows."
+    )
+
+    if kind == "multi-turn":
+        if covered:
+            return ("ok", covered_detail)
+        if dataset_state is None:
+            return (
+                "cannot_verify",
+                "<strong>Cannot verify:</strong> the dataset is missing or "
+                "unreadable, so AgentOps cannot confirm conversation coverage. "
+                "This is not a configuration failure. Point "
+                "<code>dataset</code> at a readable JSONL file to enable "
+                "verification.",
+            )
+        return (
+            "warn",
+            "<strong>How to complete:</strong> <code>dataset_kind: "
+            "multi-turn</code> is declared but the dataset has no rows with a "
+            "<code>messages</code> conversation array. Add conversation rows or "
+            "promote traces that include <code>messages</code>.",
+        )
+
+    # auto / unset: infer applicability only from real conversation content.
+    if covered:
+        return ("ok", covered_detail)
+    return None
+
+
+def _dataset_conversation_state(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+) -> Optional[bool]:
+    """Classify the configured dataset's conversation shape.
+
+    Returns ``True`` when at least one row carries a non-empty
+    ``messages`` array, ``False`` when the dataset is readable but has no
+    such rows, and ``None`` when the dataset is undeclared, remote,
+    missing, or unreadable (the "cannot verify" state).
+    """
+    dataset = agentops_config.get("dataset")
+    if not isinstance(dataset, str) or not dataset.strip():
+        return None
+    if dataset.startswith(("http://", "https://")):
+        return None
+    path = workspace / dataset
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            messages = record.get("messages")
+            if isinstance(messages, list) and len(messages) > 0:
+                return True
+    return False
+
+
 def _detect_rubric_evaluator(
     workspace: Path,
     agentops_config: Dict[str, Any],
-) -> Tuple[bool, str]:
-    """Resolve rubric evidence from AgentOps or azd AI Agent eval config."""
+) -> Tuple[bool, bool, str]:
+    """Resolve rubric evidence from AgentOps or azd AI Agent eval config.
+
+    Returns ``(declared, threshold_bound, source)``. A rubric evaluator only
+    gates readiness when it is both declared (in ``agentops.yaml`` rubrics or
+    an active Foundry/azd eval recipe) *and* emits a metric name that is bound
+    to a configured threshold. When nothing is declared it is not applicable.
+    """
+    thresholds = agentops_config.get("thresholds")
+    threshold_keys = {
+        str(key).strip().lower()
+        for key in (thresholds.keys() if isinstance(thresholds, dict) else [])
+    }
+
+    def _bound(*names: Any) -> bool:
+        for name in names:
+            if isinstance(name, str) and name.strip().lower() in threshold_keys:
+                return True
+        return False
+
     rubrics = agentops_config.get("rubrics")
     if isinstance(rubrics, list) and rubrics:
-        return True, "agentops.yaml"
+        threshold_bound = False
+        for rubric in rubrics:
+            if not isinstance(rubric, dict):
+                continue
+            dimension_names = [
+                dim.get("name")
+                for dim in rubric.get("dimensions", [])
+                if isinstance(dim, dict)
+            ]
+            if _bound(rubric.get("name"), rubric.get("evaluator"), *dimension_names):
+                threshold_bound = True
+                break
+        return True, threshold_bound, "agentops.yaml"
 
     for path in (workspace / "src").glob("**/eval.y*ml"):
         try:
@@ -2632,30 +2868,43 @@ def _detect_rubric_evaluator(
         if not isinstance(payload, dict):
             continue
         evaluators = payload.get("evaluators")
-        if isinstance(evaluators, list) and any(
-            isinstance(evaluator, dict)
-            and bool(evaluator.get("local_uri") or evaluator.get("id"))
-            for evaluator in evaluators
-        ):
-            return True, path.relative_to(workspace).as_posix()
-    return False, ""
+        if isinstance(evaluators, list):
+            rubric_evaluators = [
+                evaluator
+                for evaluator in evaluators
+                if isinstance(evaluator, dict)
+                and bool(evaluator.get("local_uri") or evaluator.get("id"))
+            ]
+            if rubric_evaluators:
+                threshold_bound = any(
+                    _bound(evaluator.get("name"), evaluator.get("id"))
+                    for evaluator in rubric_evaluators
+                )
+                return True, threshold_bound, path.relative_to(workspace).as_posix()
+    return False, False, ""
 
 
-def _detect_alert_configuration(
-    workspace: Path,
-    agentops_config: Dict[str, Any],
-) -> Tuple[bool, str]:
-    """Find explicit alert definitions without claiming cloud state."""
-    observability = agentops_config.get("observability")
-    if isinstance(observability, dict) and observability.get("alerts"):
-        return True, "agentops.yaml"
+_ALERT_IAC_MARKERS = (
+    "microsoft.insights/metricalerts",
+    "microsoft.insights/scheduledqueryrules",
+    "azurerm_monitor_metric_alert",
+    "azurerm_monitor_scheduled_query_rules_alert",
+)
 
-    markers = (
-        "microsoft.insights/metricalerts",
-        "microsoft.insights/scheduledqueryrules",
-        "azurerm_monitor_metric_alert",
-        "azurerm_monitor_scheduled_query_rules_alert",
-    )
+_ALERT_DOCS_LINK = (
+    '<a href="https://learn.microsoft.com/azure/azure-monitor/alerts/'
+    'alerts-create-new-alert-rule" target="_blank" rel="noopener noreferrer">'
+    "Alert docs &#x2197;</a>"
+)
+
+
+def _detect_alert_iac_provenance(workspace: Path) -> Tuple[str, ...]:
+    """Return IaC files that reference alert rules, as provenance only.
+
+    A marker string in a template is *not* proof a rule is deployed and enabled.
+    The returned paths are surfaced solely as deployment provenance in the
+    readiness detail; they never upgrade the card to ``ready``.
+    """
     candidates: List[Path] = []
     for root in (workspace / "infra", workspace / "deploy"):
         if root.is_dir():
@@ -2663,14 +2912,142 @@ def _detect_alert_configuration(
                 candidates.extend(root.glob(pattern))
     for pattern in ("*.bicep", "*.tf"):
         candidates.extend(workspace.glob(pattern))
+
+    found: set[str] = set()
     for path in candidates:
         try:
             text = path.read_text(encoding="utf-8", errors="ignore").lower()
         except OSError:
             continue
-        if any(marker in text for marker in markers):
-            return True, path.relative_to(workspace).as_posix()
-    return False, ""
+        if any(marker in text for marker in _ALERT_IAC_MARKERS):
+            found.add(path.relative_to(workspace).as_posix())
+    return tuple(sorted(found))
+
+
+def _alert_provenance_html(provenance: Tuple[str, ...]) -> str:
+    """Render IaC provenance as an informational, non-proof note."""
+    if not provenance:
+        return ""
+    files = ", ".join(f"<code>{_html_escape(p)}</code>" for p in provenance)
+    return (
+        " Infrastructure references alert rules in "
+        f"{files} — deployment provenance only; it does not prove a rule is "
+        "deployed and enabled in Azure Monitor."
+    )
+
+
+def _alert_category_html(by_category: Dict[str, str]) -> str:
+    """Render per-signal-category coverage without leaking any secrets."""
+    if not by_category:
+        return ""
+    covered = [name for name, state in by_category.items() if state == "covered"]
+    gaps = [name for name, state in by_category.items() if state == "gap"]
+    parts: List[str] = []
+    if covered:
+        parts.append("covered: " + ", ".join(covered))
+    if gaps:
+        parts.append("no rule: " + ", ".join(gaps))
+    if not parts:
+        return ""
+    return " Signal coverage — " + "; ".join(parts) + "."
+
+
+def _build_alert_readiness_row(
+    workspace: Path,
+    agentops_config: Dict[str, Any],
+) -> Tuple[str, str]:
+    """Verify Azure Monitor alert rules read-only; return (status, detail HTML).
+
+    Provenance from IaC is shown for context but never counts as proof. The
+    live query is delegated to :func:`discover_alert_coverage`, which is fully
+    mockable and never mutates any cloud resource.
+    """
+    from agentops.utils.alert_discovery import (
+        STATE_CANNOT_VERIFY,
+        STATE_MISCONFIGURED,
+        STATE_NO_RECENT_SIGNAL,
+        STATE_NOT_CONFIGURED,
+        STATE_READY,
+        discover_alert_coverage,
+    )
+
+    provenance = _detect_alert_iac_provenance(workspace)
+    provenance_html = _alert_provenance_html(provenance)
+
+    project_endpoint = str(
+        agentops_config.get("project_endpoint")
+        or os.getenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT")
+        or ""
+    ).strip()
+
+    coverage = discover_alert_coverage(
+        project_endpoint,
+        iac_provenance=provenance,
+    )
+    reason = _html_escape(coverage.reason or "")
+    category_html = _alert_category_html(dict(coverage.by_category))
+
+    if coverage.state == STATE_READY:
+        rule_count = len(coverage.rules)
+        detail = (
+            f"Verified {rule_count} enabled Azure Monitor alert rule"
+            f"{'s' if rule_count != 1 else ''} scoped to the Foundry "
+            "Application Insights resource, each wired to at least one action "
+            "group." + category_html + provenance_html
+        )
+        return "ok", detail
+
+    if coverage.state == STATE_NO_RECENT_SIGNAL:
+        detail = (
+            "Azure Monitor alert rules are configured and scoped to the "
+            "Foundry Application Insights resource, but no matching telemetry "
+            "was observed in the recent window."
+            + (f" {reason}" if reason else "")
+            + category_html
+            + provenance_html
+        )
+        return "info", detail
+
+    if coverage.state == STATE_NOT_CONFIGURED:
+        detail = (
+            "No Azure Monitor alert rule targets the Foundry Application "
+            "Insights resource. Alerting is optional unless your team has "
+            "defined an operational alert policy." + provenance_html
+        )
+        return "hidden", detail
+
+    if coverage.state == STATE_MISCONFIGURED:
+        detail = (
+            "<strong>How to complete:</strong> Azure Monitor alert rules exist "
+            "but are not release-ready. "
+            + (f"{reason} " if reason else "")
+            + "Enable the rule, confirm it is scoped to the Foundry "
+            "Application Insights resource, and attach an action group. "
+            + _ALERT_DOCS_LINK
+            + provenance_html
+        )
+        return "warn", detail
+
+    if coverage.state == STATE_CANNOT_VERIFY:
+        detail = (
+            "Cockpit could not verify Azure Monitor alert rules"
+            + (f": {reason}" if reason else ".")
+            + " This does not claim that alerting is absent — it means the "
+            "inventory could not be read. Grant <code>Monitoring Reader</code> "
+            "on the Foundry Application Insights resource and re-check. "
+            + _ALERT_DOCS_LINK
+            + provenance_html
+        )
+        return "cannot_verify", detail
+
+    # STATE_NOT_APPLICABLE (or any unexpected state): never claim absence.
+    detail = (
+        "Not verified: no Foundry project endpoint is configured, so Cockpit "
+        "cannot inventory Azure Monitor alert rules. This does not claim that "
+        "cloud-side alerts are absent. Configure a project endpoint to verify "
+        "alerting, or define alerts as IaC. " + _ALERT_DOCS_LINK + provenance_html
+    )
+    return "info", detail
 
 
 def _read_trace_regression_manifest(workspace: Path) -> Dict[str, Any]:
@@ -2746,6 +3123,30 @@ def _release_evidence_status(workspace: Path) -> Dict[str, Any]:
         "official_machine_readable_thresholds": official_eval.get("machine_readable_thresholds"),
         "governance": governance,
     }
+
+
+def _redteam_readiness_detail(readiness: Any) -> str:
+    """Render the Cockpit detail HTML for a red-team readiness state."""
+
+    message = _html_escape(getattr(readiness, "message", ""))
+    if getattr(readiness, "state", "") == REDTEAM_STATE_READY:
+        path = getattr(readiness, "evidence_path", None)
+        suffix = (
+            f" Evidence: <code>{_html_escape(path)}</code>." if path else ""
+        )
+        return f"{message}{suffix}"
+
+    return (
+        f"{message} <strong>How to complete:</strong> run "
+        "<code>agentops redteam run</code> to produce normalized scan evidence "
+        "at <code>.agentops/redteam/latest.json</code>, or point "
+        "<code>redteam_path</code> in agentops.yaml at a normalized export from "
+        "the native Foundry red-team scan (<strong>Observability &rarr; Red "
+        "Teaming</strong>). Use AgentOps for repeatable repo/CI gates and "
+        "Foundry for managed adversarial scans. "
+        '<a href="https://learn.microsoft.com/azure/ai-foundry/concepts/ai-red-teaming-agent" '
+        'target="_blank" rel="noopener noreferrer">Red teaming docs &#x2197;</a>'
+    )
 
 
 def _release_evidence_detail(evidence: Dict[str, Any]) -> str:
@@ -2842,24 +3243,6 @@ def _detect_deployment_workflow(workspace: Path) -> Optional[str]:
     return "placeholder" if detected_placeholder else None
 
 
-def _detect_redteam_config(workspace: Path) -> bool:
-    """True when the workspace ships a safety / red-team bundle."""
-    bundles = workspace / ".agentops" / "bundles"
-    if not bundles.is_dir():
-        return False
-    for entry in bundles.glob("*.y*ml"):
-        name = entry.name.lower()
-        if "safe" in name or "redteam" in name or "red_team" in name or "safety" in name:
-            return True
-        try:
-            text = entry.read_text(encoding="utf-8", errors="ignore").lower()
-        except OSError:
-            continue
-        if "redteam" in text or "red_team" in text:
-            return True
-    return False
-
-
 # ---------------------------------------------------------------------------
 # Badges
 # ---------------------------------------------------------------------------
@@ -2871,9 +3254,13 @@ def _headline_badge_total(series: List[float]) -> Dict[str, str]:
     last = series[-1]
     if last == 0:
         return {"label": "all clear", "tone": "ok"}
+    if len(series) == 1:
+        return {"label": "latest analysis", "tone": "info"}
     if len(series) >= 2 and last > series[-2]:
         return {"label": "trending up", "tone": "warn"}
-    return {"label": "open", "tone": "info"}
+    if last < series[-2]:
+        return {"label": "trending down", "tone": "ok"}
+    return {"label": "unchanged", "tone": "info"}
 
 
 def _headline_badge_critical(series: List[float]) -> Dict[str, str]:
@@ -2948,6 +3335,7 @@ def _render_card(card: Dict[str, Any], *, hero: bool = False) -> str:
         links=card.get("links"),
         alt_links=card.get("alt_links"),
         alt_labels=card.get("alt_labels"),
+        value_label=card.get("hover_value_label") or card.get("label"),
     )
     badge = card["badge"]
     css_class = "card hero" if hero else "card"
@@ -3137,6 +3525,7 @@ def _sparkline_svg(
     links: Optional[List[str]] = None,
     alt_links: Optional[List[Optional[str]]] = None,
     alt_labels: Optional[List[Optional[str]]] = None,
+    value_label: Optional[str] = None,
 ) -> str:
     if not series:
         return ""
@@ -3191,6 +3580,14 @@ def _sparkline_svg(
             f"{value:.2f}" if isinstance(value, float) and not value.is_integer()
             else f"{int(value)}"
         )
+        noun = str(value_label or "value").strip().lower()
+        if formatted_value != "1" and not noun.endswith("s"):
+            noun += "s"
+        hover_text = (
+            f"{label} · {formatted_value} {_html_escape(noun)}"
+            if label
+            else f"{formatted_value} {_html_escape(noun)}"
+        )
         alt_attrs = ""
         if alt_href and alt_label:
             alt_attrs = (
@@ -3199,8 +3596,9 @@ def _sparkline_svg(
             )
         circle = (
             f'<circle class="dot {is_last} {is_clickable}" cx="{x:.1f}" cy="{y:.1f}" r="3.5" '
-            f'fill="currentColor" data-v="{formatted_value}" data-l="{label}"{alt_attrs}>'
-            f'<title>{label}{" - " + formatted_value if label else formatted_value}'
+            f'fill="currentColor" data-v="{formatted_value}" data-l="{label}" '
+            f'data-hover="{hover_text}" tabindex="0"{alt_attrs}>'
+            f'<title>{hover_text}'
             f'{" · click to open" if href else ""}</title>'
             f'</circle>'
         )
@@ -3556,19 +3954,30 @@ def _render_status_cards_section(
     green = sum(1 for c in checks if c.get("status") == "ok")
     total = len(checks)
     readiness_label = readiness.get("label") or f"{green}/{total} ready"
-    if total == 0:
-        readiness_tone = "muted"
-    elif green >= total:
-        readiness_tone = "ok"
+    if readiness.get("observability_only"):
+        # No evaluation target is configured: this is a first-class supported
+        # mode, not a failed release. Do not blanket NO-GO; label it clearly.
+        readiness_card = _card(
+            title="Readiness",
+            value="Monitoring only",
+            tone="info",
+            sub="No evaluation target configured",
+            anchor="#section-readiness",
+        )
     else:
-        readiness_tone = "warn"
-    readiness_card = _card(
-        title="Readiness",
-        value="GO" if readiness_tone == "ok" else "NO-GO",
-        tone=readiness_tone,
-        sub=readiness_label,
-        anchor="#section-readiness",
-    )
+        if total == 0:
+            readiness_tone = "muted"
+        elif green >= total:
+            readiness_tone = "ok"
+        else:
+            readiness_tone = "warn"
+        readiness_card = _card(
+            title="Readiness",
+            value="Ready" if readiness_tone == "ok" else "Needs attention",
+            tone=readiness_tone,
+            sub=readiness_label,
+            anchor="#section-readiness",
+        )
 
     headline = watchdog.get("headline_cards") or []
 
@@ -3583,19 +3992,25 @@ def _render_status_cards_section(
 
     if not watchdog.get("has_history"):
         doctor_tone = "warn"
-        doctor_value = "NO-GO"
-        doctor_sub = "No Doctor run"
+        doctor_value = "Not assessed"
+        doctor_sub = "Run Doctor to assess this workspace"
     else:
         findings_total = _headline_value("findings_total")
         critical = _headline_value("critical")
         if critical > 0:
             doctor_tone = "crit"
+            doctor_value = "Blocked"
         elif findings_total > 0:
             doctor_tone = "warn"
+            doctor_value = "Review findings"
         else:
             doctor_tone = "ok"
-        doctor_value = "GO" if findings_total == 0 else "NO-GO"
-        doctor_sub = f"{critical} critical"
+            doctor_value = "No findings"
+        finding_label = "finding" if findings_total == 1 else "findings"
+        critical_label = "critical finding" if critical == 1 else "critical findings"
+        doctor_sub = (
+            f"{findings_total} {finding_label} · {critical} {critical_label}"
+        )
     doctor_card = _card(
         title="Doctor",
         value=doctor_value,
@@ -3607,8 +4022,8 @@ def _render_status_cards_section(
     cards = readiness_card + doctor_card
     return (
         '<section class="status-cards-section" id="section-status-cards">'
-        '<div class="status-cards-caption">Can I ship? '
-        'Click a card for the full detail below.</div>'
+        '<div class="status-cards-caption">Release overview · '
+        'Select a card to review the supporting detail.</div>'
         f'<div class="grid status-cards-grid">{cards}</div>'
         '</section>'
     )
@@ -3800,6 +4215,12 @@ def _render_next_actions_section(next_actions: Dict[str, Any]) -> str:
     )
 
 
+#: Canonical design tokens for the local Cockpit. Rendered once at import time
+#: because :func:`render_theme_variables` is pure. Both the
+#: loading shell and the full cockpit page embed this so they cannot drift.
+_THEME_VARIABLES = render_theme_variables(default_theme="dark")
+
+
 def _render_loading_shell() -> str:
     """Tiny self-contained HTML shell shown while the full cockpit
     is being built server-side.
@@ -3810,20 +4231,16 @@ def _render_loading_shell() -> str:
     fetches ``/?_partial=1`` to hydrate the real cockpit. The page
     falls back to a plain link for clients with JavaScript disabled.
     """
-    return """<!doctype html>
+    return (
+        """<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>AgentOps Cockpit - Loading...</title>
 <style>
-  :root {
-    --bg: #0b0e14;
-    --card: #11151c;
-    --border: #1f2630;
-    --text: #e6ebf2;
-    --text-dim: #9aa3b2;
-    --accent: #38bdf8;
-  }
+"""
+        + _THEME_VARIABLES
+        + """
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif; }
@@ -3947,32 +4364,26 @@ def _render_loading_shell() -> str:
 </body>
 </html>
 """
+    )
 
 
 def render_cockpit_html(payload: Dict[str, Any]) -> str:
     """Render the cockpit from a payload built by
     :func:`build_cockpit_payload`. Returns a complete HTML document.
     """
-    telemetry = payload["telemetry"]
-
     watchdog = payload["watchdog"]
     watchdog_title = "AgentOps Doctor"
-    doctor_findings_url = (
-        telemetry.get("doctor_findings_url") if isinstance(telemetry, dict) else None
-    )
-    if doctor_findings_url:
-        watchdog_title += (
-            f' <a class="section-link" href="{_html_escape(doctor_findings_url)}" '
-            f'target="_blank" rel="noopener noreferrer">'
-            f'View findings in App Insights →</a>'
-        )
 
     if watchdog["has_history"]:
         watchdog_headline = "".join(
             _render_card(c, hero=True) for c in watchdog["headline_cards"]
         )
+        last_analysis_at = _html_escape(
+            str(watchdog.get("last_analysis_at") or "unknown")
+        )
         findings_list = _render_findings_list(watchdog.get("latest_findings") or [])
         watchdog_body = (
+            f'<p class="muted">Last analyzed: {last_analysis_at}</p>'
             f'<div class="grid">{watchdog_headline}</div>'
             f'{findings_list}'
         )
@@ -4004,6 +4415,7 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
     )
 
     return _COCKPIT_TEMPLATE.format(
+        theme_variables=_THEME_VARIABLES,
         status_cards_section=status_cards_section,
         connections_section=connections_section,
         readiness_section=readiness_section,
@@ -4012,6 +4424,10 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         workspace_display=workspace_display,
         workspace=payload["workspace"],
         icon_uri=_icon_data_uri(),
+        theme_toggle=render_theme_toggle(
+            control_id="cockpit-theme-toggle", extra_class="cockpit-theme-toggle"
+        ),
+        theme_script=THEME_TOGGLE_SCRIPT,
     )
 
 
@@ -4034,22 +4450,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="icon" type="image/png" href="{icon_uri}" />
 <style>
-  :root {{
-    --bg: #08090b;
-    --bg-grad: radial-gradient(1200px 600px at 80% -10%, rgba(56, 189, 248, 0.06), transparent 60%);
-    --card: #161618;
-    --card-hi: #1c1c1f;
-    --border: rgba(255, 255, 255, 0.06);
-    --border-strong: rgba(255, 255, 255, 0.12);
-    --text: #fafafa;
-    --text-dim: #a1a1aa;
-    --text-faint: #71717a;
-    --ok: #4ade80;
-    --info: #38bdf8;
-    --warn: #fbbf24;
-    --crit: #f87171;
-    --muted: #71717a;
-  }}
+{theme_variables}
   * {{ box-sizing: border-box; }}
   html, body {{ margin: 0; padding: 0; background: var(--bg); color: var(--text); }}
   body {{
@@ -4081,6 +4482,22 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
     color: var(--text-dim); font-size: 12px; font-weight: 500;
   }}
+  header .header-actions {{
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }}
+  .aos-btn {{
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 13px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--text); font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }}
+  .aos-btn:hover {{ border-color: var(--border-strong); background: var(--card-hi); }}
+  .aos-btn:focus-visible {{
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }}
+  .aos-theme-toggle .aos-theme-icon {{ font-size: 14px; line-height: 1; }}
   header .stats-counts {{
     display: flex; align-items: center; gap: 18px;
   }}
@@ -4097,10 +4514,6 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     transition: background 0.15s ease, border-color 0.15s ease,
                 color 0.15s ease;
   }}
-  header .observe-link {{
-    color: var(--info); font-size: 13px; font-weight: 600; text-decoration: none;
-  }}
-  header .observe-link:hover {{ text-decoration: underline; }}
   header .powered-by:hover {{
     background: rgba(56, 189, 248, 0.10);
     color: var(--text);
@@ -4712,7 +5125,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
     color: var(--text); font-size: 12px;
     font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
   }}
-  /* Findings list (watchdog section). One stacked card per finding,
+  /* Doctor findings list. One stacked card per finding,
      sorted by severity. Replaces the per-category trend mini-charts. */
   .findings-list {{
     display: flex; flex-direction: column; gap: 10px;
@@ -4868,7 +5281,9 @@ _COCKPIT_TEMPLATE = """<!doctype html>
       <div class="subtitle" title="{workspace}">{workspace_display}</div>
     </div>
   </div>
-  <a class="observe-link" href="/observe">Open Observe</a>
+  <div class="header-actions">
+    {theme_toggle}
+  </div>
 </header>
 
 {status_cards_section}
@@ -4880,6 +5295,8 @@ _COCKPIT_TEMPLATE = """<!doctype html>
 <footer><code>agentops cockpit</code></footer>
 
 <script>
+{theme_script}
+setupAgentOpsThemeToggle();
 // Auto-expand a collapsed <details> section when it is targeted via the
 // URL hash (status cards and Next-actions CTAs link to #section-... ids).
 // Details sections collapse by default now, so anchor navigation must open
@@ -4895,6 +5312,26 @@ function openHashSection() {{
 }}
 window.addEventListener('hashchange', openHashSection);
 openHashSection();
+
+// Every sparkline point exposes its timestamp and measured quantity on hover
+// and keyboard focus. SVG <title> remains as a no-script/native fallback.
+document.querySelectorAll('.sparkline .dot').forEach(function(dot) {{
+  var card = dot.closest('.card');
+  var detail = card ? card.querySelector('.hover-detail') : null;
+  if (!detail) return;
+  var show = function() {{
+    detail.textContent = dot.getAttribute('data-hover') || '';
+    detail.classList.add('active');
+  }};
+  var clear = function() {{
+    detail.innerHTML = '&nbsp;';
+    detail.classList.remove('active');
+  }};
+  dot.addEventListener('mouseenter', show);
+  dot.addEventListener('focus', show);
+  dot.addEventListener('mouseleave', clear);
+  dot.addEventListener('blur', clear);
+}});
 
 // while keeping the visible card label compact.
 (function() {{
@@ -4945,545 +5382,58 @@ openHashSection();
 # ---------------------------------------------------------------------------
 
 
-def create_app(
-    workspace: Path | None,
-    *,
-    mode: Literal["local", "hosted"] | None = None,
-    observe_scope: Optional[Dict[str, Any]] = None,
-    observe_service: Any = None,
-    auth_context_resolver: Any = None,
-):
-    """Return a local or hosted FastAPI Cockpit application."""
+def create_app(workspace: Path):
+    """Return the read-only local FastAPI Cockpit application."""
     try:
-        from fastapi import Depends, FastAPI, Header, HTTPException, Query
-        from fastapi.exception_handlers import request_validation_exception_handler
-        from fastapi.exceptions import RequestValidationError
+        from fastapi import FastAPI, Query
         from fastapi.responses import HTMLResponse, JSONResponse
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
-            "agentops cockpit requires the [agent] extra. "
-            "Install with: pip install 'agentops-accelerator[agent]'"
+            "agentops cockpit requires the [cockpit] extra. "
+            "Install with: pip install 'agentops-accelerator[cockpit]'"
         ) from exc
 
-    attribution_config_result = load_attribution_config(
-        os.getenv("AGENTOPS_ATTRIBUTION_CONFIG")
-    )
-    cost_model_result = load_cost_model(os.getenv("AGENTOPS_COST_MODEL"))
-    cost_periods: tuple[dict[str, str | tuple[str, ...]], ...] = ()
-    cost_components: tuple[dict[str, str], ...] = ()
-    if cost_model_result.state == "valid" and cost_model_result.model is not None:
-        model = cost_model_result.model
-        cost_periods = tuple(
-            {
-                "id": period.id,
-                "label": period.id,
-                "component_ids": tuple(
-                    component.id
-                    for component in period.components[:MAX_COST_COMPONENTS]
-                ),
-            }
-            for period in model.periods[:MAX_COST_PERIODS]
-        )
-        if model.periods:
-            cost_components = tuple(
-                {"id": component.id, "label": component.id}
-                for component in model.periods[0].components[:MAX_COST_COMPONENTS]
-            )
-    configured = load_cockpit_runtime_configuration()
-    effective_mode = mode or configured.mode
-    if effective_mode not in {"local", "hosted"}:
-        raise ValueError("Cockpit mode must be local or hosted.")
-    if effective_mode == "local":
-        if workspace is None:
-            raise ValueError("Local Cockpit mode requires a workspace.")
-        workspace = workspace.resolve()
-        scope_payload = observe_scope or configured.observe_scope
-        if scope_payload is None:
-            from agentops.services.cockpit_deployment import WorkspaceProjectResolver
-
-            project_ids = WorkspaceProjectResolver().discover_projects(workspace)
-            if project_ids:
-                scope_payload = {
-                    "version": 1,
-                    "mode": "projects",
-                    "project_resource_ids": project_ids,
-                }
-        effective_scope = (
-            ObserveScope.model_validate(scope_payload).model_dump(mode="json")
-            if scope_payload is not None
-            else None
-        )
-        if observe_service is None and effective_scope is not None:
-            from agentops.agent.observe.facade import create_observe_facade
-
-            observe_service = create_observe_facade(
-                scope=effective_scope,
-                cost_model_result=cost_model_result,
-                attribution_config_result=attribution_config_result,
-            )
-    else:
-        scope_payload = observe_scope or configured.observe_scope
-        if scope_payload is None:
-            raise ValueError("Hosted Cockpit mode requires an Observe scope.")
-        effective_scope = ObserveScope.model_validate(scope_payload).model_dump(
-            mode="json"
-        )
-        if auth_context_resolver is None:
-            from agentops.agent.observe.principal import build_easy_auth_resolver
-
-            auth_context_resolver = build_easy_auth_resolver()
-        if observe_service is None:
-            from agentops.agent.observe.facade import create_observe_facade
-
-            observe_service = create_observe_facade(
-                scope=effective_scope,
-                cost_model_result=cost_model_result,
-                attribution_config_result=attribution_config_result,
-            )
-
+    workspace = workspace.resolve()
     app = FastAPI(
         title="AgentOps Cockpit",
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
     )
-    app.state.attribution_state = attribution_config_result.state
-    app.state.attribution_enabled = attribution_config_result.state == "valid"
-
-    attribution_selector_fields = {
-        "user_filter_token",
-        "department_filter_token",
-    }
-
-    def _has_attribution_selector(body: Any) -> bool:
-        if not isinstance(body, dict):
-            return False
-        filters = body.get("filters")
-        return isinstance(filters, dict) and any(
-            filters.get(field) is not None for field in attribution_selector_fields
-        )
-
-    def _attribution_problem(
-        *,
-        status_code: int,
-        code: str,
-        message: str,
-        next_action: str,
-        private: bool,
-    ):
-        return JSONResponse(
-            {
-                "code": code,
-                "message": message,
-                "next_action": next_action,
-            },
-            status_code=status_code,
-            headers=(
-                {"Cache-Control": "private, no-store"} if private else None
-            ),
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def _attribution_validation_error(request: Any, exc: Any):
-        if (
-            request.url.path == "/api/observe/attribution"
-            and _has_attribution_selector(exc.body)
-        ):
-            return _attribution_problem(
-                status_code=422,
-                code="attribution_request_invalid",
-                message="The attribution request is invalid.",
-                next_action="Correct the attribution request and retry.",
-                private=True,
-            )
-        return await request_validation_exception_handler(request, exc)
-
-    def _default_auth_context(headers: Any) -> Dict[str, Any]:
-        principal = headers.get("x-ms-client-principal")
-        if not principal:
-            raise PermissionError("Microsoft Entra authentication is required.")
-        return {"tenant_id": None, "user_id": None, "groups": []}
-
-    def _authorize(
-        principal: Optional[str] = Header(None, alias="X-MS-CLIENT-PRINCIPAL"),
-        principal_id: Optional[str] = Header(
-            None, alias="X-MS-CLIENT-PRINCIPAL-ID"
-        ),
-        principal_name: Optional[str] = Header(
-            None, alias="X-MS-CLIENT-PRINCIPAL-NAME"
-        ),
-        access_token: Optional[str] = Header(
-            None, alias="X-MS-TOKEN-AAD-ACCESS-TOKEN"
-        ),
-    ) -> Dict[str, Any]:
-        if effective_mode == "local":
-            return {}
-        resolver = auth_context_resolver or _default_auth_context
-        headers = {
-            "x-ms-client-principal": principal,
-            "x-ms-client-principal-id": principal_id,
-            "x-ms-client-principal-name": principal_name,
-            "x-ms-token-aad-access-token": access_token,
-        }
-        try:
-            context = resolver(headers)
-        except PermissionError as exc:
-            status_code = getattr(exc, "http_status", 401)
-            if status_code not in {401, 403}:
-                status_code = 401
-            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-        if not isinstance(context, dict):
-            model_dump = getattr(context, "model_dump", None)
-            if callable(model_dump):
-                context = model_dump(mode="json")
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail="Hosted authentication context is invalid.",
-                )
-        return context
-
-    async def _service_call(name: str, **kwargs: Any) -> Any:
-        import inspect
-
-        method = getattr(observe_service, name, None)
-        if not callable(method):
-            raise HTTPException(
-                status_code=503,
-                detail="Observe service is not configured.",
-            )
-        try:
-            result = method(**kwargs)
-            if inspect.isawaitable(result):
-                result = await result
-        except ValueError as exc:
-            from agentops.agent.observe.auth import MissingUserAssertionError
-
-            if isinstance(exc, MissingUserAssertionError):
-                detail: str | dict[str, str] = {
-                    "code": "attribution_delegated_access_unavailable",
-                    "message": "Delegated Azure Monitor access is unavailable for this request.",
-                    "next_action": "Sign in again and verify direct read access to the selected telemetry scope.",
-                }
-                status_code = 403
-            elif isinstance(error_code := getattr(exc, "code", None), str):
-                detail = {
-                    "code": error_code,
-                    "message": str(exc),
-                    "next_action": getattr(
-                        exc,
-                        "next_action",
-                        "Correct the attribution request and retry.",
-                    ),
-                }
-                status_code = getattr(exc, "status_code", 422)
-            else:
-                detail = str(exc)
-                status_code = 422
-            headers = (
-                {"Cache-Control": "private, no-store"}
-                if getattr(exc, "private", False)
-                else None
-            )
-            raise HTTPException(
-                status_code=status_code,
-                detail=detail,
-                headers=headers,
-            ) from exc
-        except Exception as exc:
-            error_code = getattr(exc, "code", None)
-            if not isinstance(error_code, str):
-                raise
-            raise HTTPException(
-                status_code=getattr(exc, "status_code", 503),
-                detail={
-                    "code": error_code,
-                    "message": str(exc),
-                    "next_action": getattr(
-                        exc,
-                        "next_action",
-                        "Retry the attribution query.",
-                    ),
-                },
-                headers=(
-                    {"Cache-Control": "private, no-store"}
-                    if getattr(exc, "private", False)
-                    else None
-                ),
-            ) from exc
-        model_dump = getattr(result, "model_dump", None)
-        return model_dump(mode="json") if callable(model_dump) else result
-
-    def _render_observe_shell():
-        from agentops.agent.observe.ui import render_observe_page
-
-        scope_label = None
-        if effective_scope:
-            scope_mode = str(effective_scope.get("mode", "configured"))
-            if scope_mode == "projects":
-                resource_count = len(effective_scope.get("project_resource_ids", []))
-                scope_label = f"Projects ({resource_count})"
-            else:
-                scope_label = scope_mode.replace("_", " ").title()
-        return HTMLResponse(
-            render_observe_page(
-                scope_label=scope_label,
-                cost_enabled=cost_model_result.state == "valid",
-                cost_periods=cost_periods,
-                cost_components=cost_components,
-                attribution_enabled=attribution_config_result.state == "valid",
-                attribution_cost_available=cost_model_result.state == "valid",
-                attribution_cost_periods=cost_periods,
-                attribution_cost_components=cost_components,
-            )
-        )
 
     @app.get("/", response_class=HTMLResponse)
-    def _index(
-        partial: Optional[str] = Query(None, alias="_partial"),
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        if effective_mode == "hosted":
-            return _render_observe_shell()
-        # Return a tiny shell immediately, then hydrate the local cockpit.
+    def _index(partial: Optional[str] = Query(None, alias="_partial")):
         if not partial:
             return HTMLResponse(_render_loading_shell())
-        assert workspace is not None
         payload = build_cockpit_payload(workspace)
         return HTMLResponse(render_cockpit_html(payload))
 
-    @app.get("/observe", response_class=HTMLResponse)
-    def _observe(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return _render_observe_shell()
-
     @app.get("/favicon.ico")
-    def _favicon(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
+    def _favicon():
         from fastapi.responses import Response
+
         try:
             data = _pkg_files("agentops.templates").joinpath("icon.png").read_bytes()
         except Exception:  # noqa: BLE001
             return Response(status_code=404)
         return Response(content=data, media_type="image/png")
 
-    if effective_mode == "local":
+    @app.get("/api/history")
+    def _api_history(limit: Optional[int] = None):
+        records = load_analysis_history(workspace, limit=limit)
+        return JSONResponse([record.to_dict() for record in records])
 
-        @app.get("/api/history")
-        def _api_history(limit: Optional[int] = None):
-            assert workspace is not None
-            records = load_analysis_history(workspace, limit=limit)
-            return JSONResponse([r.to_dict() for r in records])
+    @app.get("/api/eval-runs")
+    def _api_eval_runs(limit: int = 24):
+        return JSONResponse(_load_eval_runs(workspace, limit=limit))
 
-        @app.get("/api/eval-runs")
-        def _api_eval_runs(limit: int = 24):
-            assert workspace is not None
-            return JSONResponse(_load_eval_runs(workspace, limit=limit))
-
-        @app.get("/api/runs/{run_id}/report", response_class=HTMLResponse)
-        def _api_run_report(run_id: str):
-            assert workspace is not None
-            return HTMLResponse(_render_run_report_html(workspace, run_id))
+    @app.get("/api/runs/{run_id}/report", response_class=HTMLResponse)
+    def _api_run_report(run_id: str):
+        return HTMLResponse(_render_run_report_html(workspace, run_id))
 
     @app.get("/api/telemetry")
-    def _api_telemetry(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
+    def _api_telemetry():
         return JSONResponse(_telemetry_status())
-
-    @app.get("/api/runtime")
-    def _api_runtime(
-        _user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return JSONResponse(
-            {
-                "mode": effective_mode,
-                "scope": effective_scope or {},
-                "local_history_available": effective_mode == "local",
-                "attribution": {
-                    "state": attribution_config_result.state,
-                    "enabled": attribution_config_result.state == "valid",
-                },
-            }
-        )
-
-    @app.get("/api/auth/context")
-    def _api_auth_context(
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return JSONResponse(
-            {
-                "authenticated": True,
-                "tenant_authorized": bool(user_context.get("tenant_id")),
-            }
-        )
-
-    @app.get("/api/observe/discovery")
-    async def _api_observe_discovery(
-        refresh: bool = False,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        return JSONResponse(
-            await _service_call(
-                "discover",
-                refresh=refresh,
-                user_context=user_context,
-            )
-        )
-
-    @app.post("/api/observe/query")
-    async def _api_observe_query(
-        payload: ObserveQueryRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        if payload.view == "cost" and cost_model_result.state != "valid":
-            if cost_model_result.state == "absent":
-                detail = (
-                    "Cost view is unavailable because AGENTOPS_COST_MODEL is not "
-                    "configured. Configure a valid cost model and restart Cockpit."
-                )
-            else:
-                message = cost_model_result.message or (
-                    "Correct AGENTOPS_COST_MODEL and restart Cockpit."
-                )
-                restart_action = (
-                    ""
-                    if "restart cockpit" in message.lower()
-                    else " Correct the configuration and restart Cockpit."
-                )
-                detail = (
-                    "Cost view is unavailable because AGENTOPS_COST_MODEL is invalid. "
-                    f"{message}{restart_action}"
-                )
-            raise HTTPException(status_code=422, detail=detail)
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        return JSONResponse(
-            await _service_call(
-                "query",
-                view=payload.view,
-                filters=filters.model_dump(mode="json"),
-                refresh=payload.refresh,
-                user_context=user_context,
-            )
-        )
-
-    @app.post("/api/observe/attribution")
-    async def _api_observe_attribution(
-        payload: AttributionQueryRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        protected_request = (
-            payload.group_by == "user"
-            or payload.filters.user_filter_token is not None
-            or payload.filters.department_filter_token is not None
-        )
-        if attribution_config_result.state in {"absent", "disabled"}:
-            return _attribution_problem(
-                status_code=409,
-                code="attribution_not_enabled",
-                message="Attribution is unavailable because it is not enabled.",
-                next_action="Configure AGENTOPS_ATTRIBUTION_CONFIG and restart Cockpit.",
-                private=protected_request,
-            )
-        if attribution_config_result.state == "invalid":
-            return _attribution_problem(
-                status_code=503,
-                code=(
-                    attribution_config_result.error_code
-                    or "attribution_config_invalid"
-                ),
-                message=(
-                    attribution_config_result.message
-                    or "Attribution configuration is invalid."
-                ),
-                next_action="Correct AGENTOPS_ATTRIBUTION_CONFIG and restart Cockpit.",
-                private=protected_request,
-            )
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        delegated_request = (
-            payload.group_by == "user"
-            or payload.filters.user_filter_token is not None
-        )
-        try:
-            result = await _service_call(
-                "attribution",
-                request=payload.model_dump(mode="json"),
-                user_context=user_context,
-            )
-        except HTTPException as exc:
-            private_failure = protected_request or (
-                exc.headers or {}
-            ).get("Cache-Control") == "private, no-store"
-            detail = (
-                exc.detail
-                if isinstance(exc.detail, dict)
-                else {
-                    "code": (
-                        "attribution_delegated_access_unavailable"
-                        if exc.status_code == 403
-                        else "attribution_request_invalid"
-                    ),
-                    "message": str(exc.detail),
-                    "next_action": "Correct the attribution request and retry.",
-                }
-            )
-            if not private_failure:
-                return JSONResponse(detail, status_code=exc.status_code)
-            return JSONResponse(
-                detail,
-                status_code=exc.status_code,
-                headers={"Cache-Control": "private, no-store"},
-            )
-        response = JSONResponse(result)
-        if (
-            delegated_request
-            or result.get("data", {}).get("access_boundary") == "delegated"
-        ):
-            response.headers["Cache-Control"] = "private, no-store"
-        return response
-
-    @app.post("/api/observe/agent-detail")
-    async def _api_observe_agent_detail(
-        payload: AgentDetailRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        filters = payload.filters
-        if effective_scope is not None:
-            filters.validate_scope(ObserveScope.model_validate(effective_scope))
-        result = await _service_call(
-            "agent_detail",
-            agent_key=payload.agent_key,
-            filters=filters.model_dump(mode="json"),
-            refresh=payload.refresh,
-            user_context=user_context,
-        )
-        if result is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Agent key was not found in the current filter window.",
-            )
-        return JSONResponse(result)
-
-    @app.post("/api/observe/trace-content")
-    async def _api_observe_trace_content(
-        payload: TraceContentRequest,
-        user_context: Dict[str, Any] = Depends(_authorize),
-    ):
-        response = JSONResponse(
-            await _service_call(
-                "trace_content",
-                request=payload.model_dump(mode="json"),
-                user_context=user_context,
-            )
-        )
-        response.headers["Cache-Control"] = "no-store"
-        return response
 
     @app.get("/healthz")
     def _healthz() -> Dict[str, str]:

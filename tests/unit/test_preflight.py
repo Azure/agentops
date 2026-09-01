@@ -12,8 +12,10 @@ from agentops.services.preflight import (
     _check_azure_cli,
     _check_foundry_project,
     _check_workspace,
+    cockpit_doctor_guidance,
     format_report,
     run_preflight,
+    workspace_is_initialized,
 )
 from agentops.utils.foundry_discovery import _summarize_discovery_exception
 
@@ -151,13 +153,16 @@ def test_application_insights_warns_when_env_var_is_invalid(monkeypatch) -> None
     assert "not a valid App Insights connection string" in c.message
 
 
-def test_application_insights_warns_when_unconfigured(monkeypatch) -> None:
+def test_application_insights_skips_when_unconfigured(monkeypatch) -> None:
+    """Issue #452 AC1/AC7: with neither an explicit connection string nor a
+    Foundry endpoint, App Insights is not applicable — it reports ``skip``,
+    not ``warn``, so a fresh directory produces no App Insights warning."""
     monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
     monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
     c = _check_application_insights_env()
-    assert c.status == "warn"
-    assert "production telemetry" in c.message.lower()
+    assert c.status == "skip"
+    assert "telemetry" in c.message.lower()
     assert "App Insights" in c.remediation
 
 
@@ -181,6 +186,71 @@ def test_application_insights_warns_when_foundry_auth_blocks_discovery(monkeypat
     assert "connection-string discovery failed" in c.message.lower()
     assert "no connection string available" not in c.message.lower()
     assert "APPLICATIONINSIGHTS_CONNECTION_STRING" in c.remediation
+
+
+def test_application_insights_warns_when_configured_foundry_lacks_appinsights(
+    monkeypatch,
+) -> None:
+    """Issue #452 AC6: a Foundry project *is* configured but discovery finds
+    no App Insights connection — this is an actionable gap, so ``warn`` (not
+    ``skip``)."""
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.setenv(
+        "AZURE_AI_FOUNDRY_PROJECT_ENDPOINT",
+        "https://x.services.ai.azure.com/api/projects/p",
+    )
+    with mock.patch(
+        "agentops.utils.foundry_discovery."
+        "resolve_appinsights_connection_with_reason",
+        return_value=(
+            None,
+            "Foundry project returned no application insights connection.",
+        ),
+    ):
+        c = _check_application_insights_env()
+    assert c.status == "warn"
+    assert "APPLICATIONINSIGHTS_CONNECTION_STRING" in c.remediation
+
+
+def test_cockpit_doctor_guidance_suppressed_before_init(tmp_path: Path) -> None:
+    """Issue #452 AC2: before ``agentops init`` there is no ``.agentops/``
+    directory, so no Doctor guidance is printed."""
+    assert not workspace_is_initialized(tmp_path)
+    assert cockpit_doctor_guidance(tmp_path) is None
+
+
+def test_cockpit_doctor_guidance_when_initialized_without_findings(
+    tmp_path: Path,
+) -> None:
+    """Issue #452 AC3: initialized workspace with no Doctor history prints the
+    exact state-aware guidance line."""
+    (tmp_path / ".agentops").mkdir()
+    assert workspace_is_initialized(tmp_path)
+    assert cockpit_doctor_guidance(tmp_path) == (
+        "Run agentops doctor to generate readiness findings, "
+        "then refresh Cockpit."
+    )
+
+
+def test_cockpit_doctor_guidance_suppressed_when_findings_exist(
+    tmp_path: Path,
+) -> None:
+    """Issue #452 AC4: once Doctor findings exist, no guidance is printed."""
+    history = tmp_path / ".agentops" / "agent" / "history.jsonl"
+    history.parent.mkdir(parents=True)
+    history.write_text('{"run": 1}\n', encoding="utf-8")
+    assert cockpit_doctor_guidance(tmp_path) is None
+
+
+def test_cockpit_doctor_guidance_prints_when_history_is_empty(
+    tmp_path: Path,
+) -> None:
+    """An empty history file is not a finding — guidance still prints."""
+    history = tmp_path / ".agentops" / "agent" / "history.jsonl"
+    history.parent.mkdir(parents=True)
+    history.write_text("", encoding="utf-8")
+    assert cockpit_doctor_guidance(tmp_path) is not None
 
 
 def test_foundry_discovery_auth_error_is_summarized() -> None:
@@ -220,7 +290,40 @@ def test_run_preflight_collects_all_checks(tmp_path: Path, monkeypatch) -> None:
     names = [c.name for c in report.checks]
     assert names == ["workspace", "azure_auth", "foundry_project", "app_insights"]
     assert not report.has_failures
-    assert report.has_warnings  # app_insights and foundry_project are skip/warn
+    # With no Foundry endpoint and no connection string, foundry_project and
+    # app_insights are both skip — the run has no warnings.
+    assert not report.has_warnings
+    statuses = {c.name: c.status for c in report.checks}
+    assert statuses["foundry_project"] == "skip"
+    assert statuses["app_insights"] == "skip"
+
+
+def test_format_report_counts_app_insights_skip(monkeypatch, tmp_path: Path) -> None:
+    """Issue #452 AC7: an unconfigured App Insights check is counted as
+    ``skipped`` (not ``warning``) in the pre-flight summary, and no App
+    Insights warning is emitted."""
+    (tmp_path / ".agentops").mkdir()
+    monkeypatch.delenv("AZURE_AI_FOUNDRY_PROJECT_ENDPOINT", raising=False)
+    monkeypatch.delenv("APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+    monkeypatch.delenv("AGENTOPS_APPLICATIONINSIGHTS_CONNECTION_STRING", raising=False)
+
+    class _FakeCred:
+        def __init__(self, **_kw):
+            pass
+
+        def get_token(self, _scope):
+            class _T:
+                token = "fake"
+                expires_on = 9999999999
+
+            return _T()
+
+    with mock.patch("azure.identity.DefaultAzureCredential", _FakeCred):
+        report = run_preflight(tmp_path, scope="cockpit")
+    text = format_report(report, color=False)
+    assert "skipped" in text
+    assert "0 warning" not in text  # warning piece is omitted when count is 0
+    assert "warning" not in text
 
 
 def test_format_report_renders_status_glyphs() -> None:

@@ -68,6 +68,7 @@ These rules are critical to maintaining the project's architecture. PRs that vio
 | **No global state** | No singletons, module-level side effects, or hidden shared state. |
 | **Pydantic v2 schemas** | Every config file and output file must be validated by a model in `core/models.py`. |
 | **Exit codes are sacred** | `0` = pass, `2` = threshold failure, `1` = error. Do not change their meaning. |
+| **Local Cockpit only** | Keep `agentops cockpit` read-only and loopback-bound; cloud telemetry remains in Foundry and Azure Monitor. |
 
 ### Where to Put New Code
 

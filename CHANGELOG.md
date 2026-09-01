@@ -5,6 +5,191 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-01
+
+### Added
+- **`agentops init` can discover evaluation targets from your Foundry project.**
+  When a project endpoint is known, the wizard lists existing prompt agents,
+  hosted agents, and model deployments so you can pick one instead of typing a
+  reference by hand. Manual entry stays available, discovery failures degrade to
+  a clear message rather than blocking setup, and `--no-prompt` and
+  non-interactive runs never contact Azure.
+- **Red-team readiness is verified against recorded scan evidence.** Doctor, the
+  Cockpit and release evidence now read the recorded red-team run and compare its
+  target fingerprint, risk categories, attack strategies and failure threshold
+  against the current configuration, reporting `ready`, `threshold_breach`,
+  `missing_categories`, `target_mismatch`, `stale` or `cannot_verify`. A
+  threshold breach blocks release evidence; anything else unverified warns.
+- **Production alerting is verified against Azure Monitor.** The new
+  `agentops.utils.alert_discovery` module resolves the Foundry-linked Application
+  Insights resource and lists metric and scheduled-query alert rules read-only,
+  checking each for enabled state, scope, a firing condition, and at least one
+  enabled action group. Results are reduced to non-sensitive snapshots: action
+  groups are reported as a count and enabled state only, never receiver
+  addresses, phone numbers, or webhooks.
+
+### Changed
+- **Renamed the `[agent]` packaging extra to `[cockpit]` with no compatibility
+  alias.** Install Doctor and Cockpit dependencies with
+  `agentops-accelerator[cockpit]`. All docs, README, workflow and pipeline
+  templates, skills, and plugin docs now reference `[cockpit]`.
+- **The evaluation target is optional.** `agent:` may now be omitted from
+  `agentops.yaml`. `agentops init` offers a guided menu of the five target kinds
+  plus "decide later", and a workspace without a target runs in an
+  observability-only mode where eval-dependent readiness checks report `n/a`
+  instead of failing. Commands that genuinely require a target fail with a single
+  explicit message.
+- **Observability readiness only reports what it can actually verify.** Multi-turn
+  coverage is treated as a dataset property and inferred solely from conversation
+  rows; rubric evaluators count as ready only when they are both declared and
+  threshold-bound; the scheduled-evaluation card is informational and appears only
+  when a cron-scheduled workflow exists. Next Actions are emitted only for `warn`
+  and `cannot_verify` checks, and an uninitialised workspace gets exactly one
+  onboarding action.
+- **`agentops cockpit` points you at Doctor when the workspace needs it.** Startup
+  prints Doctor guidance only when the workspace is initialised and has findings.
+  The Application Insights pre-flight check now warns when a Foundry endpoint is
+  configured without App Insights and skips when neither is set, instead of
+  reporting a hard failure.
+- **The scheduled Doctor workflow propagates Doctor's exit code.** The generated
+  GitHub Actions watchdog uploads artifacts and writes its step summary with
+  `if: always()`, then exits with Doctor's captured code so a failing scheduled run
+  is visible in CI. The Azure DevOps pipeline already failed correctly and is
+  unchanged.
+
+### Removed
+- **Deep observability and agent-lifecycle capabilities move to a separate
+  accelerator.** AgentOps no longer ships Observe, hosted Cockpit deployment,
+  `agentops cockpit deploy`, the legacy `agentops agent` command group, its
+  Copilot Extension server, its Entra Agent ID registration flow, or the
+  unverified trace-sampling, trace-replay, and configuration-text alert
+  detectors. The local Cockpit, Doctor, verified Azure Monitor alert inventory,
+  readiness checks, history, and evaluation-run views remain available here.
+
+### Fixed
+- **Foundry project links now open the configured project instead of the tenant
+  landing page.** In project-observability-only mode there is no cloud evaluation
+  report from which to recover a portal URL, so Cockpit previously fell back to
+  `ai.azure.com/?tid=...`. It now resolves the endpoint to its project ARM ID and
+  opens Foundry's project overview with the correct `wsid` and tenant.
+- **Missing Azure Monitor alerts no longer manufacture readiness work.** An
+  absent alert rule is now treated as optional and hidden rather than producing
+  a “Complete readiness: Alerts wired” action. Existing but broken alert
+  configurations still surface because they represent explicit operational
+  intent that needs repair.
+- **Cockpit no longer opens a redundant, unbounded-feeling Doctor query in App
+  Insights.** The “View findings in App Insights” link queried the high-volume
+  dependency table for finding spans that Cockpit already renders locally and
+  could remain in progress for minutes. Doctor findings now stay in the local
+  Doctor section; App Insights links are reserved for operational telemetry.
+- **Next actions no longer imply that Doctor itself is broken.** Finding actions
+  now use “Fix: …” and “View finding details” instead of “Fix Doctor: …” and
+  “Open Doctor finding”, making it clear that Doctor detected the underlying
+  production or readiness problem.
+- **Doctor charts now explain every data point.** Hovering or focusing a
+  sparkline point shows both the analysis timestamp and the measured quantity,
+  including explicit zero values. Remaining outdated terminology in Cockpit was
+  replaced with “Doctor”.
+- **Cockpit no longer mistakes AgentOps for the monitored agent.** In
+  project-observability-only mode, agent tracing, continuous evaluation, and
+  rubric rows are hidden instead of scanning AgentOps source files as though
+  they were an agent runtime. Continuous evaluation is no longer marked ready
+  merely because the latest Doctor run emitted no related finding.
+- **Doctor summary removes duplicated charts and vague state.** The redundant
+  Last analysis sparkline was removed, its timestamp now appears as section
+  context, and the Findings badge reports an explicit trend instead of “open”.
+- **Cockpit status cards use professional, descriptive states.** Alarm-style
+  all-caps GO/NO-GO labels were replaced with Monitoring only, Ready, Needs
+  attention, Not assessed, Review findings, Blocked, and No findings.
+- **Doctor findings now state the measured value and the threshold that was
+  crossed.** `errors.production_rate`, `latency.p95_production`,
+  `latency.eval_avg` and `opex.no_thresholds` previously said only "above
+  threshold" or "has no explicit thresholds", forcing a trip to the docs to find
+  out which number applied. Each title now carries the observed value, the sample
+  it came from where relevant, and the configured limit. `opex.no_thresholds` is
+  now omitted entirely in project-observability-only workspaces because no eval
+  gate exists until an `agent:` target is configured. The same applicability
+  rule now suppresses PR-gate, release-evidence, and continuous-evaluation
+  findings when no evaluation target exists.
+- **Production error-rate findings now state their telemetry window.** The
+  percentage and request counts come from Application Insights over the last
+  seven days by default, or the period selected with `--lookback-days`; the
+  finding title and evidence now include that period explicitly. They also name
+  the queried Application Insights target and state that the rate aggregates all
+  requests and dependencies in that resource rather than filtering to one agent.
+- **Third-party HTTP logs can no longer break through into the terminal.**
+  `httpx`, `openai`, `httpcore`, `urllib3` and the Azure SDK loggers now get a
+  private `WARNING`-level handler and `propagate = False`, so an `INFO` line such
+  as `HTTP Request: GET .../openai/v1/evals?limit=10` cannot interrupt the Doctor
+  spinner even when a dependency resets the log level, clears our filter, or
+  calls `logging.basicConfig(force=True)`. `--verbose` reverses this and shows
+  every record again. Normal operator mode now globally suppresses all
+  non-actionable `INFO` records, including handlers installed after startup.
+- **The Doctor finding summary no longer leaves an orphan word or short phrase
+  on the last line.** Titles were wrapped at a fixed 110 columns regardless of
+  the real terminal width. Wrapping now uses the actual terminal size and picks
+  the most evenly balanced line lengths.
+- **Doctor only calls an error rate `critical` when it is unambiguously broken.**
+  `errors.production_rate` escalated to `critical` at twice the warning bar, so a
+  13% failure rate on a development workspace was reported as a release blocker.
+  Escalation now uses a dedicated `critical_rate_threshold` (default 25%),
+  configurable per workspace in `agent.yaml`.
+- **`agentops.yaml` and `eval.yaml` are no longer reported as missing datasets.**
+  The spec-kit reference extractor classified any backticked `.yaml`/`.yml`
+  filename as an evaluation dataset, so `opex.spec_conformance.dataset_drift`
+  listed configuration files that were never meant to live under
+  `.agentops/data/`. Only `.jsonl` files are treated as datasets now, and the
+  finding explains in plain language what is missing and how to fix it.
+- **Third-party `INFO` lines no longer break through the Doctor spinner.** The
+  noise filter was installed only on the root handler, which a dependency
+  calling `logging.basicConfig(force=True)` replaces outright, letting
+  `INFO: HTTP Request: ...` back onto the console. The filter now also lives on
+  the noisy loggers themselves, where nothing in the standard library can clear
+  it, and the `llm_assist` temperature-retry notice dropped from `info` to
+  `debug`.
+- **Doctor no longer raises latency and error-rate alarms on tiny samples, and
+  the latency bar is realistic.** `latency.p95_production` and
+  `errors.production_rate` compared an Application Insights p95 and failure ratio
+  against their thresholds regardless of how many requests the lookback window
+  actually held, so a smoke test with three requests could report a "33%
+  production error rate". Both checks now require at least `min_requests`
+  (default 20) requests in the window, configurable per check in `agent.yaml`,
+  and the latency summary states the sample size it graded. The default
+  `checks.latency.p95_threshold_seconds` also moved from 5 to 15 seconds, which
+  matches what an agent turn that calls a model and one or two tools actually
+  costs.
+- **The Doctor LLM judge recovers from models that reject an explicit
+  `temperature`.** Reasoning-family deployments answer `temperature: 0.0` with
+  HTTP 400 `unsupported_value`, which surfaced as repeated
+  `llm_assist: judge call failed` warnings mid-run. The client now detects that
+  specific rejection, caches the capability, and retries once without the
+  parameter.
+- **Doctor no longer prints third-party HTTP chatter over its progress
+  spinner.** `httpx`, `openai`, and Azure SDK `INFO` records were interleaving
+  with the spinner; a handler-level filter now drops sub-warning records from
+  those libraries regardless of which dependency re-enables their log level.
+- **Continuous evaluation is reported once instead of twice.**
+  `opex.release.no_continuous_eval` duplicated
+  `safety.config.continuous_eval_missing` for the same condition. The
+  operational-excellence copy was removed; the responsible-AI finding remains the
+  single owner.
+- **The `agentops init` target menu no longer hides hosted-agent versioning.**
+  Option 2 showed only `.../agents/<name>`, implying a pinned revision was not
+  supported. The menu now shows `.../agents/<name>[/versions/<v>]` and states
+  that an unpinned URL evaluates whatever is currently deployed, while
+  `execution: cloud` requires the explicit version that `agentops eval run`
+  already enforces.
+- **Hosted Foundry agent URLs are no longer misclassified as portal URLs.**
+  `classify_agent_url_problem` treated every `*.services.ai.azure.com` host as an
+  `ai.azure.com` portal link and rejected valid hosted endpoints.
+- **`agent_override` is honoured when resolving the execution backend.**
+  `_resolve_execution_backend` ignored the override, so a per-environment agent
+  could be evaluated against the wrong backend.
+- **Undefined Cockpit CSS variables.** The Cockpit referenced `var(--accent)` and
+  `var(--fg)` without ever defining them, and its loading splash used drifted
+  token values that caused a visible colour flash on load. The local Cockpit now
+  consumes the shared token block consistently.
+
 ## [0.13.0] - 2026-08-25
 
 ### Added

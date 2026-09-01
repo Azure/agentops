@@ -6,8 +6,8 @@ aren't covered by Foundry's Operate -> Compliance surface. Examples:
 
 * Agent string isn't pinned to a version (``my-agent`` instead of
   ``my-agent:3``).
-* ``agentops.yaml`` ships with no ``thresholds:`` block - the gate is
-  loose and depends entirely on auto-defaults.
+* An eval-enabled ``agentops.yaml`` ships with no ``thresholds:`` block - the
+  gate is loose and depends entirely on auto-defaults.
 * Repo has no ``agentops-pr.yml`` CI gate.
 
 Findings live under :class:`Category.OPERATIONAL_EXCELLENCE` with the
@@ -42,11 +42,13 @@ def run_opex_workspace_check(workspace: Path) -> List[Finding]:
 
     config_path = workspace / "agentops.yaml"
     config_data = _safe_load_yaml(config_path)
+    evaluation_configured = _agent_configured(config_data)
 
     findings.extend(_check_agent_pinning(config_data))
     findings.extend(_check_thresholds_block(config_data))
-    findings.extend(_check_pr_gate_workflow(workspace))
-    findings.extend(_check_deploy_gate_workflow(workspace))
+    if evaluation_configured:
+        findings.extend(_check_pr_gate_workflow(workspace))
+        findings.extend(_check_deploy_gate_workflow(workspace))
     findings.extend(_check_results_gitignored(workspace))
     findings.extend(_check_dataset_versioning(workspace))
     findings.extend(_check_bundle_versioning(workspace))
@@ -59,13 +61,23 @@ def run_opex_workspace_check(workspace: Path) -> List[Finding]:
     return findings
 
 
+def _agent_configured(config: Optional[dict]) -> bool:
+    if not isinstance(config, dict):
+        return False
+    agent = config.get("agent")
+    if not isinstance(agent, str):
+        return False
+    text = agent.strip()
+    return bool(text) and text != "my-agent:1"
+
+
 def _check_agent_pinning(config: Optional[dict]) -> List[Finding]:
     """Warn when `agent:` is not pinned to a `:version` (foundry agent)
     or to an explicit URL/model identifier."""
     if not isinstance(config, dict):
         return []
     agent = config.get("agent")
-    if not isinstance(agent, str) or not agent.strip():
+    if not _agent_configured(config) or not isinstance(agent, str):
         return []
 
     # URL targets and model: targets are inherently pinned.
@@ -106,9 +118,10 @@ def _check_agent_pinning(config: Optional[dict]) -> List[Finding]:
 
 
 def _check_thresholds_block(config: Optional[dict]) -> List[Finding]:
-    """Warn when `thresholds:` is absent or empty - auto-defaults are
-    fine for exploration but loose for prod gates."""
+    """Warn when an eval-enabled config has no explicit thresholds."""
     if not isinstance(config, dict):
+        return []
+    if not _agent_configured(config):
         return []
     thresholds = config.get("thresholds")
     if isinstance(thresholds, dict) and thresholds:
@@ -118,7 +131,11 @@ def _check_thresholds_block(config: Optional[dict]) -> List[Finding]:
             id="opex.no_thresholds",
             severity=Severity.WARNING,
             category=Category.OPERATIONAL_EXCELLENCE,
-            title="agentops.yaml has no explicit thresholds",
+            title=(
+                "agentops.yaml has no `thresholds:` block, so the eval "
+                "gate uses auto-defaults instead of pass/fail limits "
+                "your team agreed on"
+            ),
             summary=(
                 "Without a `thresholds:` block, AgentOps relies entirely "
                 "on auto-defaults to decide whether a run passes or "
@@ -488,11 +505,7 @@ _USES = re.compile(r'^\s*-?\s*uses\s*:\s*([^\s#]+)\s*(?:#.*)?$', re.IGNORECASE)
 
 
 def _check_workflow_sha_pinning(workspace: Path) -> List[Finding]:
-    """Warn when AgentOps workflows pin actions by tag instead of SHA.
-
-    WAF AI Reproducible Workflows asks for dependency immutability.
-    Tags can move; commit SHAs cannot.
-    """
+    """Recommend immutable action references for AgentOps workflows."""
     workflows_dir = workspace / ".github" / "workflows"
     if not workflows_dir.is_dir():
         return []
@@ -510,10 +523,7 @@ def _check_workflow_sha_pinning(workspace: Path) -> List[Finding]:
             if not match:
                 continue
             ref = match.group(1)
-            # Skip local actions and docker:// refs.
-            if ref.startswith("./") or ref.startswith("docker://"):
-                continue
-            if "@" not in ref:
+            if ref.startswith("./") or ref.startswith("docker://") or "@" not in ref:
                 continue
             _, _, suffix = ref.rpartition("@")
             if _SHA40.match(suffix):
@@ -526,21 +536,20 @@ def _check_workflow_sha_pinning(workspace: Path) -> List[Finding]:
     return [
         Finding(
             id="opex.workflow_action_sha_pinning",
-            severity=Severity.WARNING,
+            severity=Severity.INFO,
             category=Category.OPERATIONAL_EXCELLENCE,
-            title="AgentOps workflows pin actions by tag, not by commit SHA",
+            title="CI workflows use version tags for GitHub Actions",
             summary=(
-                f"{len(offenders)} `uses:` line(s) across AgentOps "
-                "workflows pin a GitHub Action to a tag (e.g. `@v4`) "
-                "rather than a 40-character commit SHA. Tags are "
-                "mutable; CI runs are not reproducible if the tag "
-                "moves."
+                f"{len(offenders)} action(s) in your AgentOps workflows are "
+                "referenced by version tag instead of an exact commit SHA. "
+                "Tags can be repointed, so the same workflow may execute "
+                "different code later. This is a recommendation, not a "
+                "release blocker."
             ),
             recommendation=(
-                "Replace each `uses: <owner>/<repo>@<tag>` with "
-                "`uses: <owner>/<repo>@<40-char-sha>`. The Dependabot "
-                "`github-actions` ecosystem can keep these pinned "
-                "SHAs current automatically."
+                "Pin each `uses: owner/repo@vN` reference to a full 40-character "
+                "commit SHA and enable Dependabot's `github-actions` ecosystem "
+                "to keep those references current."
             ),
             source=SOURCE_NAME,
             evidence={"offenders": offenders},

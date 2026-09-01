@@ -31,7 +31,6 @@ Read these first for detailed architecture and product context:
 - `agentops doctor [--workspace PATH] [--config PATH] [--out PATH] [--lookback-days N] [--severity-fail SEVERITY] [--evidence-pack] [--evidence-out PATH]`
 - `agentops doctor explain [--no-pager] [--format text|markdown|html] [--out PATH] [--open]`
 - `agentops cockpit [--host HOST] [--port PORT] [--workspace PATH] [--no-preflight]`
-- `agentops agent serve [--host HOST] [--port PORT] [--config PATH] [--no-verify] [--workers N]`
 
 Do not add commands or flags unless the product discussion explicitly calls for
 them. Keep `--help` terse and put long-form manual content under `explain`.

@@ -22,7 +22,9 @@ def test_init_creates_flat_workspace(tmp_path: Path) -> None:
 
     config = load_yaml(agentops_yaml)
     assert config["version"] == 1
-    assert "agent" in config
+    # The seed template is project-observability-only: it never ships a
+    # placeholder evaluation target (issue #456).
+    assert "agent" not in config
     assert "dataset" in config
 
 
