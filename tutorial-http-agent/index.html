@@ -307,23 +307,6 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../observe/" class="md-tabs__link">
-        
-  
-    
-  
-  Observe
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
     
     
       <li class="md-tabs__item">
@@ -733,9 +716,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14-ship-observe-operate" class="md-nav__link">
+  <a href="#14-ship-monitor-operate" class="md-nav__link">
     <span class="md-ellipsis">
-      14. Ship, observe, operate
+      14. Ship, monitor, operate
     </span>
   </a>
   
@@ -1001,26 +984,6 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../observe/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Observe
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
     
     
     
@@ -1034,10 +997,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1048,8 +1011,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             Operate
           </label>
@@ -1067,27 +1030,6 @@
   
   <span class="md-ellipsis">
     Overview
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deploy-hosted-cockpit/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Deploy the Hosted Cockpit
   </span>
   
 
@@ -1228,10 +1170,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1242,8 +1184,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             Contributing
           </label>
@@ -1493,9 +1435,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14-ship-observe-operate" class="md-nav__link">
+  <a href="#14-ship-monitor-operate" class="md-nav__link">
     <span class="md-ellipsis">
-      14. Ship, observe, operate
+      14. Ship, monitor, operate
     </span>
   </a>
   
@@ -1549,7 +1491,7 @@ endpoint-based agent:</p>
 <pre class="mermaid"><code>flowchart LR
     E["&lt;b&gt;Evaluate&lt;/b&gt;&lt;br/&gt;Deploy the sandbox&lt;br/&gt;Run evals&lt;br/&gt;Catch weak answers"]
     S["&lt;b&gt;Ship&lt;/b&gt;&lt;br/&gt;Make the repo yours&lt;br/&gt;Open PR&lt;br/&gt;Deploy to dev"]
-    O["&lt;b&gt;Observe&lt;/b&gt;&lt;br/&gt;Read traces&lt;br/&gt;Run Doctor&lt;br/&gt;Check telemetry"]
+    O["&lt;b&gt;Monitor&lt;/b&gt;&lt;br/&gt;Read traces&lt;br/&gt;Run Doctor&lt;br/&gt;Check telemetry"]
     W["&lt;b&gt;Operate&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Block regressions&lt;br/&gt;Make the call"]
 
     E --&gt; S --&gt; O --&gt; W</code></pre>
@@ -2040,7 +1982,7 @@ optional Classic publish, or <code>execution: azd</code> when an azd eval recipe
 <p>The local <code>report.md</code> is the fastest way to see why a row passed or failed.
 The <code>agentops.eval.*</code> spans are how the same runs show up in Foundry. The
 agent's own request traces are separate runtime telemetry the Doctor reads
-for latency and errors. See <a href="../observe/">Observe</a>.</p>
+for latency and errors. See <a href="../operate/">Operate</a>.</p>
 </div>
 <h2 id="11-score-live-retrieval">11. Score live retrieval<a class="headerlink" href="#11-score-live-retrieval" title="Permanent link">&para;</a></h2>
 <p>Steps 7 to 10 score the answer text only. The judge never sees the passages your
@@ -2471,7 +2413,7 @@ still carries upstream workflows under <code>.github/workflows/</code> that you 
 want running, delete them so only your <code>agentops-*</code> workflows fire. You can
 re-run <code>agentops workflow generate</code> any time to regenerate yours.</p>
 </div>
-<h2 id="14-ship-observe-operate">14. Ship, observe, operate<a class="headerlink" href="#14-ship-observe-operate" title="Permanent link">&para;</a></h2>
+<h2 id="14-ship-monitor-operate">14. Ship, monitor, operate<a class="headerlink" href="#14-ship-monitor-operate" title="Permanent link">&para;</a></h2>
 <p>The repo now carries everything CI needs. Close the loop with the same three
 section pages the other tutorials use.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-37-1" name="__codelineno-37-1" href="#__codelineno-37-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-evidence-pack</span>
@@ -2481,8 +2423,8 @@ section pages the other tutorials use.</p>
   with Azure OIDC, and open a PR so the gate deploys and evaluates the candidate
   in sandbox. See
   <a href="../ship/">Ship</a>.</li>
-<li><strong>Observe.</strong> Read traces, telemetry, and Doctor findings for the dev run. See
-  <a href="../observe/">Observe</a>.</li>
+<li><strong>Monitor.</strong> Read traces, telemetry, and Doctor findings for the dev run in
+  Foundry and Azure Monitor.</li>
 <li><strong>Operate.</strong> Review the evidence pack, decide ship or no-ship, and open Cockpit for
   a single readiness view with <code>agentops cockpit --workspace .</code>. See
   <a href="../operate/">Operate</a>.</li>

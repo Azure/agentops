@@ -307,23 +307,6 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../observe/" class="md-tabs__link">
-        
-  
-    
-  
-  Observe
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
     
     
       <li class="md-tabs__item">
@@ -1064,26 +1047,6 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../observe/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Observe
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
     
     
     
@@ -1097,10 +1060,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1111,8 +1074,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             Operate
           </label>
@@ -1130,27 +1093,6 @@
   
   <span class="md-ellipsis">
     Overview
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deploy-hosted-cockpit/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Deploy the Hosted Cockpit
   </span>
   
 
@@ -1291,10 +1233,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1305,8 +1247,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             Contributing
           </label>
@@ -1672,13 +1614,13 @@ evidence, and Cockpit.</p>
 <ol>
 <li><strong>Evaluate</strong> a prompt agent while you experiment in sandbox.</li>
 <li><strong>Ship</strong> the prompt through GitHub so the same reviewed file deploys to dev.</li>
-<li><strong>Observe</strong> the dev run with traces, telemetry, and Doctor findings.</li>
+<li><strong>Monitor</strong> the dev run with traces, telemetry, and Doctor findings.</li>
 <li><strong>Operate</strong> with release evidence, thresholds, and a Cockpit summary.</li>
 </ol>
 <pre class="mermaid"><code>flowchart LR
     E["&lt;b&gt;Evaluate&lt;/b&gt;&lt;br/&gt;Author in sandbox&lt;br/&gt;Run evals"]
     S["&lt;b&gt;Ship&lt;/b&gt;&lt;br/&gt;Move prompt to git&lt;br/&gt;Open PR, deploy to dev"]
-    O["&lt;b&gt;Observe&lt;/b&gt;&lt;br/&gt;Read traces&lt;br/&gt;Run Doctor"]
+    O["&lt;b&gt;Monitor&lt;/b&gt;&lt;br/&gt;Read traces&lt;br/&gt;Run Doctor"]
     W["&lt;b&gt;Operate&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Make the ship call"]
     E --&gt; S --&gt; O --&gt; W</code></pre>
 <p>The idea is simple: sandbox is for trying things, Git is the source of truth,
@@ -1939,7 +1881,7 @@ it to git. Sandbox saves stay local and never trigger CI.</p>
 <p>The same project's Traces tab will show this run. If Foundry asks to attach
 Application Insights and you have not connected it, do it now or wait for
 step 18. For now, just confirm there is at least one trace to inspect later.
-Full tour: <a href="../observe/">Observe</a>.</p>
+Full tour: <a href="../operate/">Operate</a>.</p>
 </div>
 <h2 id="6-create-the-dataset">6. Create the dataset<a class="headerlink" href="#6-create-the-dataset" title="Permanent link">&para;</a></h2>
 <p>Create a small JSONL dataset that matches the Travel Agent behavior. The
@@ -2772,7 +2714,7 @@ on Application Insights, click Resolve if you can, or ask an admin to grant
 Reader (also on the backing Log Analytics workspace if it is workspace-based),
 then wait a few minutes for RBAC to propagate. Trace-to-dataset and intelligent
 sampling are preview features; if your region does not show From traces, treat
-this section as a product tour. More: <a href="../observe/">Observe</a>.</p>
+this section as a product tour. More: <a href="../operate/">Operate</a>.</p>
 </div>
 <p>Optional KQL deep dive: Foundry emits evaluation metrics as
 <code>gen_ai.evaluation.result</code> events in the <code>AppEvents</code> table, which resolves only in

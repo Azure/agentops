@@ -305,23 +305,6 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../observe/" class="md-tabs__link">
-        
-  
-    
-  
-  Observe
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
     
     
       <li class="md-tabs__item">
@@ -803,26 +786,6 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../observe/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Observe
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
     
     
     
@@ -836,10 +799,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -850,8 +813,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             Operate
           </label>
@@ -869,27 +832,6 @@
   
   <span class="md-ellipsis">
     Overview
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deploy-hosted-cockpit/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Deploy the Hosted Cockpit
   </span>
   
 
@@ -1035,10 +977,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -1049,8 +991,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             Contributing
           </label>
@@ -1121,15 +1063,6 @@
   <a href="#source-code-layout-src-layout" class="md-nav__link">
     <span class="md-ellipsis">
       Source Code Layout (src layout)
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#hosted-cockpit-and-observe-flow" class="md-nav__link">
-    <span class="md-ellipsis">
-      Hosted Cockpit and Observe flow
     </span>
   </a>
   
@@ -1430,15 +1363,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#hosted-cockpit-and-observe-flow" class="md-nav__link">
-    <span class="md-ellipsis">
-      Hosted Cockpit and Observe flow
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#request-flow-eval-run" class="md-nav__link">
     <span class="md-ellipsis">
       Request Flow (eval run)
@@ -1720,19 +1644,18 @@ trace-to-regression promotion, and Cockpit links back to Foundry/Azure Monitor.<
 <a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>    │   ├── preflight.py       # Pre-flight checks (workspace, auth, Foundry, App Insights)
 <a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>    │   └── trace_promotion.py # Trace export → dataset candidates
 <a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>    │
-<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    ├── agent/                 # Doctor and Cockpit
-<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    │   └── observe/           # Hosted/local discovery, bounded queries, OBO, and UI
-<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    ├── mcp/                   # `agentops mcp serve` Model Context Protocol server
-<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    │
-<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    ├── utils/                 # Shared helpers (yaml load, logging, colors)
-<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    │
-<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>    └── templates/             # Starter files for `agentops init`
-<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>        ├── agentops.yaml      # Minimal flat config (the single config file)
-<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>        ├── smoke.jsonl        # Sample dataset
-<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        ├── agent.yaml         # Doctor config seed
-<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>        ├── skills/            # Coding agent skill templates
-<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>        ├── workflows/         # GitHub Actions workflow templates
-<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>        └── pipelines/         # Azure DevOps pipeline templates
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>    ├── agent/                 # Doctor and local Cockpit
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    ├── mcp/                   # `agentops mcp serve` Model Context Protocol server
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    │
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>    ├── utils/                 # Shared helpers (yaml load, logging, colors)
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>    │
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>    └── templates/             # Starter files for `agentops init`
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>        ├── agentops.yaml      # Minimal flat config (the single config file)
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>        ├── smoke.jsonl        # Sample dataset
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>        ├── agent.yaml         # Doctor config seed
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        ├── skills/            # Coding agent skill templates
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>        ├── workflows/         # GitHub Actions workflow templates
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>        └── pipelines/         # Azure DevOps pipeline templates
 </code></pre></div>
 <h3 id="where-to-add-new-code">Where to Add New Code<a class="headerlink" href="#where-to-add-new-code" title="Permanent link">&para;</a></h3>
 <table>
@@ -1779,56 +1702,8 @@ trace-to-regression promotion, and Cockpit links back to Foundry/Azure Monitor.<
 <td>Add a coding agent skill</td>
 <td><code>templates/skills/&lt;name&gt;/SKILL.md</code> + sync script</td>
 </tr>
-<tr>
-<td>Change hosted Cockpit deployment</td>
-<td><code>services/cockpit_deployment.py</code> + <code>templates/cockpit-hosted/</code></td>
-</tr>
-<tr>
-<td>Change Observe normalization</td>
-<td><code>agent/observe/</code> + pure contracts in <code>core/observe.py</code></td>
-</tr>
 </tbody>
 </table>
-<h2 id="hosted-cockpit-and-observe-flow">Hosted Cockpit and Observe flow<a class="headerlink" href="#hosted-cockpit-and-observe-flow" title="Permanent link">&para;</a></h2>
-<p><code>agentops cockpit</code> remains local and reads workspace history. The explicit
-<code>agentops cockpit deploy</code> service resolves the current workspace project,
-validates an existing single-tenant app registration, renders an azd/Bicep and
-RBAC/federation preview, then deploys only after confirmation.</p>
-<pre class="mermaid"><code>flowchart LR
-    W["Local workspace project"] --&gt; P["Deployment preview"]
-    P --&gt; A["Linux App Service + UAMI"]
-    A --&gt; EA["Easy Auth tenant/group boundary"]
-    A --&gt; S["Versioned Observe scope"]
-    S --&gt; D["ARG + Foundry connection discovery"]
-    D --&gt; Q["Bounded Azure Monitor queries"]
-    Q --&gt; N["Normalized attributed Observe views"]
-    EA --&gt; OBO["Per-user OBO"]
-    OBO --&gt; C["Explicit protected trace content"]</code></pre>
-<p>The hosted runtime is read-only. Aggregate discovery and query submission use a
-dedicated UAMI with only <code>Reader</code> and <code>Log Analytics Reader</code>. Explicit protected
-trace content uses the signed-in user's delegated permission through OBO and is
-excluded from shared caches. <code>/healthz</code> is the only anonymous route and returns
-liveness only. Wider Observe scope is represented by canonical ARM IDs in one
-versioned setting, not by parallel subscription/resource-group variables.</p>
-<h3 id="granular-token-usage-in-models">Granular token usage in Models<a class="headerlink" href="#granular-token-usage-in-models" title="Permanent link">&para;</a></h3>
-<p>The Cockpit <strong>Models</strong> view keeps the observed input and output totals and also
-normalizes three granular token classes when source telemetry emits them:
-<strong>Cache read</strong>, <strong>Cache write</strong>, and <strong>Reasoning</strong>. These values are observed
-usage, not billing data, and AgentOps never derives a missing class from another
-total. A class that was not emitted renders as <strong>Not reported</strong>; an explicitly
-reported <code>0</code> renders as zero.</p>
-<p>Reporting can be incomplete within a row or across the rows aggregated for a
-telemetry source. An affected model row shows <strong>Partial class coverage</strong>, while
-the coverage panel marks the source's <code>token_usage</code> dimension as <strong>partial</strong> and
-identifies the classes that were reported and those that were not. This keeps a
-partially reported aggregate from looking complete without treating missing
-telemetry as zero.</p>
-<p>Eligible, unmapped <code>gen_ai.usage.*</code> token attributes remain visible under their
-source names. Each row retains at most five, selected deterministically by
-source attribute name in ascending order. If more are present, the row shows
-<strong>Additional classes truncated</strong>; this signal distinguishes omitted classes
-from attributes that source telemetry never reported. Passthrough attributes
-do not change normalized values or token-usage coverage.</p>
 <h2 id="request-flow-eval-run">Request Flow (eval run)<a class="headerlink" href="#request-flow-eval-run" title="Permanent link">&para;</a></h2>
 <p>For an unfamiliar repo, run <code>agentops eval analyze</code> first. It is a read-only
 triage step: it inspects <code>agentops.yaml</code>, dataset columns, and local project
@@ -2047,10 +1922,6 @@ single prompt to paste into Copilot.</p>
 <td>Local read-only Cockpit UI (FastAPI) that links out to Foundry</td>
 </tr>
 <tr>
-<td><code>agentops cockpit deploy</code></td>
-<td>Preview or deploy the authenticated hosted Cockpit and explicit Observe scope</td>
-</tr>
-<tr>
 <td><code>agentops workflow analyze</code></td>
 <td>Inspect a repo and recommend CI/CD stages/deploy mode before generation</td>
 </tr>
@@ -2163,7 +2034,7 @@ an actionable error.</p>
 <tr>
 <td><code>agent</code></td>
 <td>no</td>
-<td>Target identifier. See "Target kinds" below. Omit it to run in project-observability-only mode (Doctor, Cockpit, and Observe against the Foundry project with no evaluation target). Required for <code>eval run</code>, <code>prompt pull</code>, and the azd eval paths.</td>
+<td>Target identifier. See "Target kinds" below. Omit it to run in project-observability-only mode (Doctor and Cockpit against the Foundry project with no evaluation target). Required for <code>eval run</code>, <code>prompt pull</code>, and the azd eval paths.</td>
 </tr>
 <tr>
 <td><code>dataset</code></td>

@@ -307,23 +307,6 @@
   
   
   
-    <li class="md-tabs__item">
-      <a href="../observe/" class="md-tabs__link">
-        
-  
-    
-  
-  Observe
-
-      </a>
-    </li>
-  
-
-      
-        
-  
-  
-  
     
     
       <li class="md-tabs__item">
@@ -676,9 +659,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-observe-the-endpoint-in-app-insights" class="md-nav__link">
+  <a href="#9-monitor-the-endpoint-in-app-insights" class="md-nav__link">
     <span class="md-ellipsis">
-      9. Observe the endpoint in App Insights
+      9. Monitor the endpoint in App Insights
     </span>
   </a>
   
@@ -1028,26 +1011,6 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../observe/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Observe
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
     
     
     
@@ -1061,10 +1024,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1075,8 +1038,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             Operate
           </label>
@@ -1094,27 +1057,6 @@
   
   <span class="md-ellipsis">
     Overview
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../deploy-hosted-cockpit/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Deploy the Hosted Cockpit
   </span>
   
 
@@ -1255,10 +1197,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1269,8 +1211,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             Contributing
           </label>
@@ -1484,9 +1426,9 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#9-observe-the-endpoint-in-app-insights" class="md-nav__link">
+  <a href="#9-monitor-the-endpoint-in-app-insights" class="md-nav__link">
     <span class="md-ellipsis">
-      9. Observe the endpoint in App Insights
+      9. Monitor the endpoint in App Insights
     </span>
   </a>
   
@@ -1607,13 +1549,13 @@ If your agent runs as a URL service you operate yourself, use the
 <ol>
 <li><strong>Evaluate</strong> the hosted agent while you experiment in sandbox.</li>
 <li><strong>Ship</strong> the code through GitHub so the same reviewed commit deploys to dev.</li>
-<li><strong>Observe</strong> the dev run with server-side traces, telemetry, and Doctor findings.</li>
+<li><strong>Monitor</strong> the dev run with server-side traces, telemetry, and Doctor findings.</li>
 <li><strong>Operate</strong> with release evidence, thresholds, and a Cockpit summary.</li>
 </ol>
 <pre class="mermaid"><code>flowchart LR
     E["&lt;b&gt;Evaluate&lt;/b&gt;&lt;br/&gt;Deploy to sandbox&lt;br/&gt;Run evals"]
     S["&lt;b&gt;Ship&lt;/b&gt;&lt;br/&gt;Move code to git&lt;br/&gt;Open PR, deploy to dev"]
-    O["&lt;b&gt;Observe&lt;/b&gt;&lt;br/&gt;Read server-side traces&lt;br/&gt;Run Doctor"]
+    O["&lt;b&gt;Monitor&lt;/b&gt;&lt;br/&gt;Read server-side traces&lt;br/&gt;Run Doctor"]
     W["&lt;b&gt;Operate&lt;/b&gt;&lt;br/&gt;Review evidence&lt;br/&gt;Make the ship call"]
     E --&gt; S --&gt; O --&gt; W</code></pre>
 <p>The idea is simple: sandbox is for trying things, Git is the source of truth,
@@ -1625,7 +1567,7 @@ stays on the Foundry plus AgentOps flow instead of permission prompts.</p>
 <p><strong>Foundry projects</strong></p>
 <ul>
 <li>A Foundry project with a deployed model (for example <code>gpt-4o-mini</code>) and the Hosted Agent permissions your user or project identity needs to create and deploy a hosted agent.</li>
-<li>Application Insights connected to the project, with Reader granted to the project's managed identity. This powers the server-side traces and telemetry that make the Observe step real.</li>
+<li>Application Insights connected to the project, with Reader granted to the project's managed identity. This powers the server-side traces and telemetry used by the monitoring step.</li>
 </ul>
 <p><strong>Azure</strong></p>
 <ul>
@@ -1843,7 +1785,7 @@ the configured evaluators and thresholds, and writes the result under
 <code>.agentops/results/&lt;timestamp&gt;/results.json</code> with the git SHA attached. This is
 the same command CI runs on the PR candidate later, so a green run here means
 the gate has a working baseline.</p>
-<h2 id="9-observe-the-endpoint-in-app-insights">9. Observe the endpoint in App Insights<a class="headerlink" href="#9-observe-the-endpoint-in-app-insights" title="Permanent link">&para;</a></h2>
+<h2 id="9-monitor-the-endpoint-in-app-insights">9. Monitor the endpoint in App Insights<a class="headerlink" href="#9-monitor-the-endpoint-in-app-insights" title="Permanent link">&para;</a></h2>
 <p>This is where a hosted agent pays off. Because the Foundry runtime serves the
 request, it emits the trace for you. You do not add <code>configure_azure_monitor</code> or
 manual spans to the agent code. Spend a minute in the observability surfaces:</p>

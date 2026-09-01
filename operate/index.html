@@ -15,10 +15,10 @@
         <link rel="canonical" href="https://azure.github.io/agentops/operate/">
       
       
-        <link rel="prev" href="../observe/">
+        <link rel="prev" href="../ci-github-actions/">
       
       
-        <link rel="next" href="../deploy-hosted-cockpit/">
+        <link rel="next" href="../foundry-ops-workbook/">
       
       
       <link rel="icon" href="../media/logo.png">
@@ -298,23 +298,6 @@
         </a>
       </li>
     
-  
-
-      
-        
-  
-  
-  
-    <li class="md-tabs__item">
-      <a href="../observe/" class="md-tabs__link">
-        
-  
-    
-  
-  Observe
-
-      </a>
-    </li>
   
 
       
@@ -801,26 +784,6 @@
       
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../observe/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Observe
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
     
   
   
@@ -841,10 +804,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
         
           
-          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="">
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -855,8 +818,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_7">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
             <span class="md-nav__icon md-icon"></span>
             Operate
           </label>
@@ -1011,27 +974,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../deploy-hosted-cockpit/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Deploy the Hosted Cockpit
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../foundry-ops-workbook/" class="md-nav__link">
         
   
@@ -1156,10 +1098,10 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
         
           
-          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -1170,8 +1112,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_8">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             Contributing
           </label>
@@ -1472,35 +1414,6 @@ and Azure Monitor for the runtime views those surfaces own.</p>
 <p>Start the Cockpit from a configured workspace to review findings, open the
 evidence pack, and jump into the traces behind a finding. It reads the same
 signals as the Doctor, so what you see matches the gate.</p>
-<h3 id="shared-hosted-cockpit-and-protected-content">Shared hosted Cockpit and protected content<a class="headerlink" href="#shared-hosted-cockpit-and-protected-content" title="Permanent link">&para;</a></h3>
-<p>Teams can deploy an authenticated hosted Cockpit while keeping the local
-command unchanged:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span>--workspace<span class="w"> </span>.<span class="w"> </span>--preview
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>agentops<span class="w"> </span>cockpit<span class="w"> </span>deploy<span class="w"> </span>--workspace<span class="w"> </span>.
-</code></pre></div>
-<p>The default Observe boundary is the current workspace's Foundry project. Wider
-project, Foundry-account, resource-group, or subscription scope requires an
-explicit selection and a new preview. See
-<a href="../deploy-hosted-cockpit/">Deploy the hosted Cockpit</a> for prerequisites,
-identity, RBAC, recovery, and rerun behavior.</p>
-<p>Aggregate Observe queries run as the hosted application's UAMI with <code>Reader</code>
-and <code>Log Analytics Reader</code>. Sensitive generative-AI content is never fetched by
-that shared identity. When the operator explicitly opens trace content, the
-application uses the signed-in user's Easy Auth assertion in an on-behalf-of
-flow. Content is returned only when that user has delegated Azure Monitor
-permission for the protected table.</p>
-<p>When <code>protectGenAISensitiveData</code> routes payloads to <code>AppGenAIContent</code>, table
-<code>protectionLevel</code> controls standard versus privileged reads. A denied query, or
-a successful protected-table query with zero rows, is shown as
-<code>protected_or_unavailable</code> unless independent evidence proves that the table was
-readable and empty. Observe never reconstructs protected content from legacy
-message fields. Raw content is excluded from shared caches, URLs, browser
-preferences, telemetry, diagnostics, and deployment logs, and its HTTP response
-uses <code>Cache-Control: no-store</code>.</p>
-<p>These protected-table capabilities remain public preview. Revalidate feature
-routing, role behavior, table schema, and the published migration timelines
-before release; current planning dates are September 30, 2026 and September 30,
-2027.</p>
 <h2 id="assurance-and-governance">Assurance and governance<a class="headerlink" href="#assurance-and-governance" title="Permanent link">&para;</a></h2>
 <p>Readiness is not only quality and latency. A production agent also needs safety
 and adversarial assurance, so AgentOps runs two checks you can gate on and attach
@@ -1523,8 +1436,8 @@ to the evidence pack.</p>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>assert<span class="w"> </span>run
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>agentops<span class="w"> </span>redteam<span class="w"> </span>run
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>agentops<span class="w"> </span>assert<span class="w"> </span>run
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>agentops<span class="w"> </span>redteam<span class="w"> </span>run
 </code></pre></div>
 <p>Use the <code>agentops-governance</code> skill when you want a coding agent to set up
 ASSERT, Azure Content Safety, guardrails, and red-team readiness for you.</p>
@@ -1541,42 +1454,43 @@ decision. Each pass makes the gate reflect more of what the agent actually does.
 <p>When re-evaluation shows weak grounding or off-topic answers, the cause is often
 retrieval. To measure and tune search quality directly, see
 <a href="../retrieval-optimization/">Retrieval optimization</a>.</p>
-<p>To see the monitoring half of this loop in depth, read <a href="../observe/">Observe</a>.
+<p>To inspect production signals in depth, use the
+<a href="../foundry-ops-workbook/">Foundry operations workbook</a>.
 To see how the gate runs in CI, read <a href="../ship/">Ship</a>.</p>
 <h2 id="try-it">Try it<a class="headerlink" href="#try-it" title="Permanent link">&para;</a></h2>
 <p>Score readiness, prove the decision, and add assurance before you promote.</p>
 <ol>
 <li>
 <p>Score readiness across quality, performance, reliability, security, and OpEx.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>doctor
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>agentops<span class="w"> </span>doctor
 </code></pre></div>
 </li>
 <li>
 <p>Turn the run into a ship or no-ship evidence pack.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>--evidence-pack
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>--evidence-pack
 </code></pre></div>
 </li>
 <li>
 <p>Read what a finding means and how the Doctor reasons about it.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>explain
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>agentops<span class="w"> </span>doctor<span class="w"> </span>explain
 </code></pre></div>
 </li>
 <li>
 <p>Open the local Cockpit to browse findings and deep-link into Foundry and Azure Monitor.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>agentops<span class="w"> </span>cockpit
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>agentops<span class="w"> </span>cockpit
 </code></pre></div>
 </li>
 <li>
 <p>Add safety and red-team assurance before you promote.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>agentops<span class="w"> </span>assert<span class="w"> </span>run
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>agentops<span class="w"> </span>redteam<span class="w"> </span>run
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>agentops<span class="w"> </span>assert<span class="w"> </span>run
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>agentops<span class="w"> </span>redteam<span class="w"> </span>run
 </code></pre></div>
 </li>
 </ol>
 <h2 id="run-from-your-coding-agent">Run from your coding agent<a class="headerlink" href="#run-from-your-coding-agent" title="Permanent link">&para;</a></h2>
 <p>Install the AgentOps skills so your coding agent can triage findings and set up
 governance for you.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>agentops<span class="w"> </span>skills<span class="w"> </span>install<span class="w"> </span>--platform<span class="w"> </span>copilot
 </code></pre></div>
 <p>The skills that map to operating are:</p>
 <table>
@@ -1600,7 +1514,7 @@ governance for you.</p>
 <h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
 <p>Browse the full <a href="../doctor-checks/">Doctor checks reference</a>, watch usage and cost
 in the <a href="../foundry-ops-workbook/">Foundry operations workbook</a>, or return to
-<a href="../observe/">Observe</a> for the signal side of the loop.</p>
+<a href="../ship/">Ship</a> for the release-gate side of the loop.</p>
 
 
 
