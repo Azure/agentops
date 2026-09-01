@@ -6257,6 +6257,79 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
     return container;
   }
 
+  function estimatedCostNode(estimate, grouped) {
+    estimate = estimate || { completeness: "not_priced", reason: "No estimate was reported." };
+    var completeness = estimate.completeness || "not_priced";
+    var node = makeEl("div", "observe-estimated-cost");
+    node.setAttribute("data-completeness", completeness);
+    if (estimate.amount === null || estimate.amount === undefined) {
+      node.appendChild(makeEl("strong", "metric-missing", "Not priced"));
+    } else {
+      node.appendChild(makeEl(
+        "strong",
+        "observe-estimated-cost-amount",
+        String(estimate.currency || "") + " " + String(estimate.amount)
+      ));
+    }
+    node.appendChild(makeEl(
+      "span",
+      "observe-estimated-cost-state",
+      "Completeness: " + String(completeness).replace(/_/g, " ")
+    ));
+    if (estimate.price_reference_version && estimate.price_reference_effective_date) {
+      node.appendChild(makeEl(
+        "span",
+        "observe-estimated-cost-reference",
+        "Price reference " + String(estimate.price_reference_version) +
+          ", effective " + String(estimate.price_reference_effective_date)
+      ));
+    }
+    if (estimate.is_stale) {
+      node.appendChild(makeEl(
+        "span",
+        "observe-estimated-cost-stale",
+        "Stale price reference (" + String(estimate.reference_age_days) + " days old)"
+      ));
+    }
+    if (grouped && estimate.covered_run_count !== null &&
+        estimate.covered_run_count !== undefined &&
+        estimate.scope_run_count !== null && estimate.scope_run_count !== undefined &&
+        estimate.unpriced_run_count !== null && estimate.unpriced_run_count !== undefined) {
+      node.appendChild(makeEl(
+        "span",
+        "observe-estimated-cost-coverage",
+        String(estimate.covered_run_count) + " of " + String(estimate.scope_run_count) +
+          " runs covered; " + String(estimate.unpriced_run_count) + " runs not priced"
+      ));
+    }
+    if (estimate.reason) {
+      node.appendChild(makeEl("span", "observe-estimated-cost-reason", String(estimate.reason)));
+    }
+    if (Array.isArray(estimate.excluded_components) && estimate.excluded_components.length) {
+      node.appendChild(makeEl(
+        "span",
+        "observe-estimated-cost-exclusions",
+        "Excluded: " + estimate.excluded_components.map(String).join(", ")
+      ));
+    }
+    node.appendChild(makeEl(
+      "span",
+      "observe-estimated-cost-disclaimer",
+      ESTIMATED_COST_DISCLAIMER
+    ));
+    return node;
+  }
+
+  function estimatedCostHelp(estimate) {
+    estimate = estimate || {};
+    if (estimate.price_reference_version && estimate.price_reference_effective_date) {
+      return ESTIMATED_COST_HELP + " This result uses price reference " +
+        String(estimate.price_reference_version) + ", effective " +
+        String(estimate.price_reference_effective_date) + ".";
+    }
+    return ESTIMATED_COST_HELP;
+  }
+
   function renderOverview(data, diagnostics) {
     var metrics = overviewMetricsFrom(data);
     if (!metrics.length) {
@@ -6272,78 +6345,6 @@ _OBSERVE_SCRIPT = ui_theme.THEME_TOGGLE_SCRIPT + """
       return;
     }
 
-    function estimatedCostNode(estimate, grouped) {
-      estimate = estimate || { completeness: "not_priced", reason: "No estimate was reported." };
-      var completeness = estimate.completeness || "not_priced";
-      var node = makeEl("div", "observe-estimated-cost");
-      node.setAttribute("data-completeness", completeness);
-      if (estimate.amount === null || estimate.amount === undefined) {
-        node.appendChild(makeEl("strong", "metric-missing", "Not priced"));
-      } else {
-        node.appendChild(makeEl(
-          "strong",
-          "observe-estimated-cost-amount",
-          String(estimate.currency || "") + " " + String(estimate.amount)
-        ));
-      }
-      node.appendChild(makeEl(
-        "span",
-        "observe-estimated-cost-state",
-        "Completeness: " + String(completeness).replace(/_/g, " ")
-      ));
-      if (estimate.price_reference_version && estimate.price_reference_effective_date) {
-        node.appendChild(makeEl(
-          "span",
-          "observe-estimated-cost-reference",
-          "Price reference " + String(estimate.price_reference_version) +
-            ", effective " + String(estimate.price_reference_effective_date)
-        ));
-      }
-      if (estimate.is_stale) {
-        node.appendChild(makeEl(
-          "span",
-          "observe-estimated-cost-stale",
-          "Stale price reference (" + String(estimate.reference_age_days) + " days old)"
-        ));
-      }
-      if (grouped && estimate.covered_run_count !== null &&
-          estimate.covered_run_count !== undefined &&
-          estimate.scope_run_count !== null && estimate.scope_run_count !== undefined &&
-          estimate.unpriced_run_count !== null && estimate.unpriced_run_count !== undefined) {
-        node.appendChild(makeEl(
-          "span",
-          "observe-estimated-cost-coverage",
-          String(estimate.covered_run_count) + " of " + String(estimate.scope_run_count) +
-            " runs covered; " + String(estimate.unpriced_run_count) + " runs not priced"
-        ));
-      }
-      if (estimate.reason) {
-        node.appendChild(makeEl("span", "observe-estimated-cost-reason", String(estimate.reason)));
-      }
-      if (Array.isArray(estimate.excluded_components) && estimate.excluded_components.length) {
-        node.appendChild(makeEl(
-          "span",
-          "observe-estimated-cost-exclusions",
-          "Excluded: " + estimate.excluded_components.map(String).join(", ")
-        ));
-      }
-      node.appendChild(makeEl(
-        "span",
-        "observe-estimated-cost-disclaimer",
-        ESTIMATED_COST_DISCLAIMER
-      ));
-      return node;
-    }
-
-    function estimatedCostHelp(estimate) {
-      estimate = estimate || {};
-      if (estimate.price_reference_version && estimate.price_reference_effective_date) {
-        return ESTIMATED_COST_HELP + " This result uses price reference " +
-          String(estimate.price_reference_version) + ", effective " +
-          String(estimate.price_reference_effective_date) + ".";
-      }
-      return ESTIMATED_COST_HELP;
-    }
     var grid = makeEl("div", "observe-overview-cards");
     metrics.forEach(function (metric) {
       metric = metric || {};
