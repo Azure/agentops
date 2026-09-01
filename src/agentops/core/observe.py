@@ -485,13 +485,33 @@ class ObserveFilterState(ContractModel):
         return self
 
     def validate_scope(self, scope: ObserveScope) -> None:
-        for selected in (self.foundry_resource_id, self.project_resource_id):
-            values = (selected,) if isinstance(selected, str) else selected or ()
-            for resource_id in values:
-                if not scope.contains(resource_id):
-                    raise ValueError(
-                        f"filter resource is outside Observe scope: {resource_id}"
-                    )
+        foundry_values = (
+            (self.foundry_resource_id,)
+            if isinstance(self.foundry_resource_id, str)
+            else self.foundry_resource_id or ()
+        )
+        for resource_id in foundry_values:
+            inside_scope = scope.contains(resource_id)
+            if scope.mode == "projects":
+                inside_scope = any(
+                    project_id.startswith(f"{resource_id}/projects/")
+                    for project_id in scope.project_resource_ids
+                )
+            if not inside_scope:
+                raise ValueError(
+                    f"filter resource is outside Observe scope: {resource_id}"
+                )
+
+        project_values = (
+            (self.project_resource_id,)
+            if isinstance(self.project_resource_id, str)
+            else self.project_resource_id or ()
+        )
+        for resource_id in project_values:
+            if not scope.contains(resource_id):
+                raise ValueError(
+                    f"filter resource is outside Observe scope: {resource_id}"
+                )
 
 
 WindowPreset = Literal["30m", "1h", "6h", "12h", "1d", "3d", "7d", "30d"]
