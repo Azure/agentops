@@ -18,7 +18,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 from agentops.core.agentops_config import classify_agent
-from agentops.core.azd_eval import AzdEvalRecipeError, find_eval_yaml
+from agentops.core.azd_eval import (
+    AzdEvalRecipeError,
+    EvalSurface,
+    RecipeResolution,
+    find_eval_yaml,
+    resolve_recipe,
+)
 from agentops.core.config_loader import load_agentops_config
 from agentops.core.evaluators import detect_dataset_shape, select_evaluators
 from agentops.pipeline.azd_runner import (
@@ -26,6 +32,7 @@ from agentops.pipeline.azd_runner import (
     AZD_EXTENSION_NAME,
     AzdBackendError,
     azd_available,
+    probe_extension,
 )
 from agentops.utils.yaml import load_yaml, save_yaml
 
@@ -33,6 +40,7 @@ _DEFAULT_AZD_EVALUATORS = (
     "builtin.coherence",
     "builtin.fluency",
 )
+CURRENT_AZD_EXTENSION_NAME = "azure.ai.evaluations"
 
 _AI_ASSISTED_AZD_EVALUATORS = {
     "builtin.coherence",
@@ -78,6 +86,7 @@ class AzdEvalInitResult:
     evaluator_source: str = "unknown"
     evaluator_signals: tuple[str, ...] = ()
     evaluators: tuple[str, ...] = ()
+    surface: str = EvalSurface.LEGACY.value
 
 
 @dataclass(frozen=True)
@@ -341,24 +350,35 @@ def run_azd_eval_init(
             f"config not found at {resolved_config}. Run `agentops init` first."
         )
 
-    existing_recipe = _find_recipe_if_unambiguous(root)
-    if existing_recipe is not None and not force:
+    existing_resolution = _find_recipe_if_unambiguous(root)
+    if existing_resolution is not None and not force:
         return _persist_recipe(
             config_path=resolved_config,
-            recipe_path=existing_recipe,
+            recipe_path=existing_resolution.path,
             command_ran=False,
+            surface=existing_resolution.surface,
         )
 
     _ensure_prompt_agent_azd_context(root, resolved_config)
 
-    if not azd_available(cwd=root):
+    target_surface = (
+        EvalSurface.CURRENT
+        if _current_surface_extension_available(root)
+        else EvalSurface.LEGACY
+    )
+
+    if target_surface is EvalSurface.LEGACY and not azd_available(cwd=root):
         raise AzdBackendError(
             "azd AI agent evaluation is not available. Install azd and the "
             f"`{AZD_EXTENSION_NAME}` extension (`azd extension install "
             f"{AZD_EXTENSION_NAME}`), then rerun `agentops eval init`."
         )
 
-    base_command = ["azd", "--no-prompt", "ai", "agent", "eval"]
+    base_command = (
+        ["azd", "--no-prompt", "ai", "eval"]
+        if target_surface is EvalSurface.CURRENT
+        else ["azd", "--no-prompt", "ai", "agent", "eval"]
+    )
     arguments: list[str] = []
     project_endpoint = _project_endpoint_from_config_or_env(resolved_config)
     if project_endpoint:
@@ -398,20 +418,42 @@ def run_azd_eval_init(
         for evaluator in evaluator_selection.names:
             arguments.extend(["--evaluator", evaluator])
 
-    completed = _run_eval_subcommand(
-        base_command,
-        arguments,
-        cwd=root,
-        timeout_seconds=timeout_seconds,
-    )
-
-    recipe = find_eval_yaml(root)
-    if recipe is None:
-        raise AzdBackendError(
-            "azd ai agent eval completed, but AgentOps could not find the "
-            "generated eval.yaml. Move it under the workspace root or src/<agent>/ "
-            "and set `eval_recipe:` in agentops.yaml."
+    if target_surface is EvalSurface.CURRENT:
+        completed = _run_current_eval_init(
+            base_command,
+            arguments,
+            cwd=root,
+            timeout_seconds=timeout_seconds,
         )
+        try:
+            resolution = resolve_recipe(root)
+        except AzdEvalRecipeError as exc:
+            raise AzdBackendError(
+                "azd ai eval init completed, but AgentOps could not find the "
+                "generated evals/azure.eval.yaml. Move it under evals/ and set "
+                "`eval_recipe:` in agentops.yaml."
+            ) from exc
+        if resolution.surface is not EvalSurface.CURRENT:
+            raise AzdBackendError(
+                "azd ai eval init completed, but the generated recipe was not a "
+                "current-surface evals/azure.eval.yaml recipe."
+            )
+        recipe = resolution.path
+    else:
+        completed = _run_eval_subcommand(
+            base_command,
+            arguments,
+            cwd=root,
+            timeout_seconds=timeout_seconds,
+        )
+
+        recipe = find_eval_yaml(root)
+        if recipe is None:
+            raise AzdBackendError(
+                "azd ai agent eval completed, but AgentOps could not find the "
+                "generated eval.yaml. Move it under the workspace root or src/<agent>/ "
+                "and set `eval_recipe:` in agentops.yaml."
+            )
 
     result = _persist_recipe(
         config_path=resolved_config,
@@ -420,15 +462,35 @@ def run_azd_eval_init(
         stdout=completed.stdout,
         stderr=completed.stderr,
         evaluator_selection=evaluator_selection,
+        surface=target_surface,
     )
     return result
 
 
-def _find_recipe_if_unambiguous(workspace: Path) -> Optional[Path]:
+def _find_recipe_if_unambiguous(workspace: Path) -> Optional[RecipeResolution]:
     try:
-        return find_eval_yaml(workspace)
+        return resolve_recipe(workspace)
     except AzdEvalRecipeError:
         return None
+
+
+def _current_surface_extension_available(workspace: Path) -> bool:
+    """Return whether the current-surface azd extension is installed.
+
+    The answer is deliberately fail-safe: if availability cannot be determined
+    for any reason, it is reported as unavailable and initialization targets the
+    legacy surface, which is published and installable. Guessing "available"
+    here would generate an ``evals/azure.eval.yaml`` whose very next command
+    fails on a dependency the user cannot install (spec FR-016, SC-010).
+
+    The broad catch is intentional and safe in this direction: a probe that
+    cannot answer must never be read as a green light.
+    """
+
+    try:
+        return bool(probe_extension(CURRENT_AZD_EXTENSION_NAME, cwd=workspace))
+    except Exception:  # noqa: BLE001 - any probe failure means "not available"
+        return False
 
 
 # azd renamed this subcommand in the ``azure.ai.agents`` extension 0.1.40:
@@ -530,6 +592,43 @@ def _run_eval_subcommand(
             f"installed `{AZD_EXTENSION_NAME}` extension"
         )
     raise AzdBackendError(f"azd ai agent eval failed: {detail}")
+
+
+def _run_current_eval_init(
+    base_command: list[str],
+    arguments: list[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float,
+) -> "subprocess.CompletedProcess[str]":
+    command = [*base_command, "init", *arguments]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(cwd),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise AzdBackendError(
+            "azd was not found on PATH. Install the Azure Developer CLI and "
+            f"the `{CURRENT_AZD_EXTENSION_NAME}` extension, then rerun "
+            "`agentops eval init`."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise AzdBackendError(
+            f"{' '.join(command)} timed out after {timeout_seconds:g}s."
+        ) from exc
+
+    if completed.returncode != 0:
+        raise AzdBackendError(
+            f"azd ai eval init failed: {_azd_failure_detail(completed)}"
+        )
+    return completed
 
 
 def _dataset_from_config(config_path: Path) -> Optional[Path]:
@@ -927,6 +1026,7 @@ def _persist_recipe(
     stdout: str = "",
     stderr: str = "",
     evaluator_selection: AzdEvaluatorSelection | None = None,
+    surface: EvalSurface = EvalSurface.LEGACY,
 ) -> AzdEvalInitResult:
     data = load_yaml(config_path)
     recipe_value = _relative_config_path(recipe_path, config_path.parent)
@@ -948,6 +1048,7 @@ def _persist_recipe(
         evaluator_source=(evaluator_selection.source if evaluator_selection else "existing recipe"),
         evaluator_signals=(evaluator_selection.signals if evaluator_selection else ()),
         evaluators=(evaluator_selection.names if evaluator_selection else ()),
+        surface=surface.value,
     )
 
 
