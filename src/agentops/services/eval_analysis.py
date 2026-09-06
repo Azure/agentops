@@ -11,6 +11,12 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from agentops.core.agentops_config import classify_agent
+from agentops.core.azd_eval import (
+    AzdEvalRecipeAmbiguous,
+    AzdEvalRecipeError,
+    RecipeResolution,
+    resolve_recipe,
+)
 from agentops.services.dataset_source import diagnose_dataset_source
 from agentops.utils.yaml import load_yaml
 
@@ -226,6 +232,7 @@ class _ConfigInfo:
     target_kind: Optional[str]
     dataset_exists: bool
     dataset_columns: Set[str]
+    azd_recipe_ready: bool = True
     signals: List[EvalSignal] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
 
@@ -312,12 +319,30 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
                     dataset_source,
                 )
             )
+        azd_recipe_ready = True
+        azd_recipe_warnings: list[str] = []
+        if str(data.get("execution") or "").strip().lower() == "azd":
+            recipe_signals, azd_recipe_warnings, azd_recipe_ready = _azd_recipe_readiness(
+                root=path.parent,
+                explicit_path=(
+                    Path(str(data["eval_recipe"]))
+                    if data.get("eval_recipe") not in (None, "")
+                    else None
+                ),
+            )
+            signals.extend(recipe_signals)
         diagnosis_warnings = (
             [diagnosis.message]
             if diagnosis is not None and diagnosis.status != "ready"
             else []
         )
-        ready = bool(agent and dataset_value and dataset_exists and "input" in dataset_columns)
+        ready = bool(
+            agent
+            and dataset_value
+            and dataset_exists
+            and "input" in dataset_columns
+            and azd_recipe_ready
+        )
         if not agent:
             status = "observability_only"
         elif ready:
@@ -332,8 +357,9 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
             target_kind=target_kind,
             dataset_exists=dataset_exists,
             dataset_columns=dataset_columns,
+            azd_recipe_ready=azd_recipe_ready,
             signals=signals,
-            warnings=diagnosis_warnings,
+            warnings=[*diagnosis_warnings, *azd_recipe_warnings],
         )
     except Exception as exc:
         return _ConfigInfo(
@@ -344,6 +370,7 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
             target_kind=None,
             dataset_exists=False,
             dataset_columns=set(),
+            azd_recipe_ready=False,
             signals=[
                 EvalSignal(
                     "agentops_config",
@@ -355,6 +382,66 @@ def _agentops_config_info(root: Path) -> _ConfigInfo:
             ],
             warnings=[f"agentops.yaml could not be analyzed: {exc}"],
         )
+
+
+def _azd_recipe_readiness(
+    *,
+    root: Path,
+    explicit_path: Optional[Path],
+) -> tuple[list[EvalSignal], list[str], bool]:
+    try:
+        resolution = resolve_recipe(root, explicit_path)
+    except (AzdEvalRecipeAmbiguous, AzdEvalRecipeError) as exc:
+        message = (
+            f"{exc} Required action: create a recipe at evals/azure.eval.yaml "
+            "(current surface) or eval.yaml / src/<agent>/eval.yaml (legacy "
+            "surface), or set `eval_recipe:` to the intended file."
+        )
+        return (
+            [
+                EvalSignal(
+                    "azd_eval_recipe_gap",
+                    "azd eval recipe",
+                    message,
+                    confidence="medium",
+                )
+            ],
+            [message],
+            False,
+        )
+    return (_azd_recipe_resolution_signals(root, resolution), [], True)
+
+
+def _azd_recipe_resolution_signals(
+    root: Path,
+    resolution: RecipeResolution,
+) -> list[EvalSignal]:
+    recipe_path = _rel_text(root, resolution.path)
+    signals = [
+        EvalSignal(
+            "azd_eval_recipe",
+            "azd eval recipe",
+            (
+                f"Resolved {recipe_path} using the {resolution.surface.value} "
+                f"surface ({resolution.extension})."
+            ),
+            recipe_path,
+        )
+    ]
+    for skipped in resolution.skipped:
+        skipped_path = _rel_text(root, skipped)
+        signals.append(
+            EvalSignal(
+                "azd_eval_recipe_skipped",
+                "Skipped azd eval recipe",
+                (
+                    f"Skipped {skipped_path} because the current surface takes "
+                    "precedence over legacy auto-discovery."
+                ),
+                skipped_path,
+            )
+        )
+    return signals
 
 
 def _resolve_dataset_path(config_dir: Path, dataset_value: Any) -> Optional[Path]:
@@ -795,6 +882,9 @@ def _signal_label(key: str, fallback: str) -> str:
         "dataset_columns": "Columns",
         "scenario_hint": "Scenario",
         "azd_project": "azd",
+        "azd_eval_recipe": "azd recipe",
+        "azd_eval_recipe_skipped": "azd skipped",
+        "azd_eval_recipe_gap": "azd gap",
         "container_or_http_app": "Host",
         "rag_signal": "RAG",
         "tool_signal": "Tools",

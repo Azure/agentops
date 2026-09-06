@@ -227,6 +227,40 @@ def test_normalize_to_results_binds_azd_metrics_and_thresholds(tmp_path: Path) -
     }
 
 
+def test_legacy_normalization_remains_aggregate_without_surface_marker(tmp_path: Path) -> None:
+    recipe_path = tmp_path / "eval.yaml"
+    _write_recipe(recipe_path)
+    recipe = load_eval_recipe(recipe_path)
+    config = AgentOpsConfig(
+        version=1,
+        agent="travel-agent:1",
+        dataset="ignored.jsonl",
+        execution="azd",
+    )
+    azd_run = azd_runner.AzdEvalRun(
+        recipe_path=recipe_path,
+        payload={
+            "status": "completed",
+            "metrics": [{"name": "builtin.coherence", "score": 4.2}],
+        },
+        run_id="run-1",
+        status="completed",
+        stdout="{}",
+        stderr="",
+        duration_seconds=1.0,
+    )
+
+    result = azd_runner.normalize_to_results(
+        azd_run,
+        config=config,
+        recipe=recipe,
+        started_at=datetime.now(timezone.utc),
+    )
+
+    assert result.config["result_granularity"] == "aggregate"
+    assert "surface" not in result.config["azd_evaluation"]
+
+
 def test_normalize_to_results_fails_closed_for_unmatched_threshold(tmp_path: Path) -> None:
     recipe_path = tmp_path / "eval.yaml"
     _write_recipe(recipe_path)

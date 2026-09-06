@@ -701,6 +701,86 @@ def test_run_azd_eval_init_surfaces_real_errors_without_fallback(
     assert subcommands == ["generate"]
 
 
+def test_run_azd_eval_init_selects_legacy_when_current_extension_absent(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = _setup_eval_workspace(tmp_path)
+    probes: list[tuple[str, Path | None]] = []
+
+    def fake_probe(extension_name: str, *, cwd: Path | None = None) -> bool:
+        probes.append((extension_name, cwd))
+        return False
+
+    monkeypatch.setattr(azd_eval_init, "probe_extension", fake_probe)
+    monkeypatch.setattr(azd_eval_init, "azd_available", lambda *, cwd=None: True)
+
+    def write_legacy_recipe(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        recipe = Path(kwargs["cwd"]) / "eval.yaml"
+        recipe.write_text("name: travel-agent-eval\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", write_legacy_recipe)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+    )
+
+    assert probes == [(azd_eval_init.CURRENT_AZD_EXTENSION_NAME, tmp_path.resolve())]
+    assert result.surface == "legacy"
+    assert result.recipe_path == (tmp_path / "eval.yaml").resolve()
+    assert not (tmp_path / "evals" / "azure.eval.yaml").exists()
+    assert "eval_recipe: eval.yaml" in config_path.read_text(encoding="utf-8")
+
+
+def test_run_azd_eval_init_selects_current_when_current_extension_present(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config_path = _setup_eval_workspace(tmp_path)
+    monkeypatch.setattr(
+        azd_eval_init,
+        "probe_extension",
+        lambda extension_name, *, cwd=None: extension_name
+        == azd_eval_init.CURRENT_AZD_EXTENSION_NAME,
+    )
+    monkeypatch.setattr(
+        azd_eval_init,
+        "azd_available",
+        lambda *, cwd=None: (_ for _ in ()).throw(
+            AssertionError("legacy availability check must not run")
+        ),
+    )
+
+    seen: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        if command[:3] == ["az", "resource", "list"]:
+            return subprocess.CompletedProcess(command, 0, stdout="[]", stderr="")
+        seen.append(command)
+        assert command[:5] == ["azd", "--no-prompt", "ai", "eval", "init"]
+        recipe = Path(kwargs["cwd"]) / "evals" / "azure.eval.yaml"
+        recipe.parent.mkdir(parents=True)
+        recipe.write_text("evals: []\n", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, stdout="created", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = azd_eval_init.run_azd_eval_init(
+        workspace=tmp_path,
+        config_path=config_path,
+    )
+
+    assert result.surface == "current"
+    assert result.recipe_path == (tmp_path / "evals" / "azure.eval.yaml").resolve()
+    assert seen and seen[0][:5] == ["azd", "--no-prompt", "ai", "eval", "init"]
+    assert "eval_recipe: evals/azure.eval.yaml" in config_path.read_text(encoding="utf-8")
+    assert not (tmp_path / "eval.yaml").exists()
+
+
 def test_eval_subcommand_unsupported_matches_known_messages() -> None:
     assert azd_eval_init._eval_subcommand_unsupported(
         'Error: unknown command "generate" for "azd ai agent eval"'
