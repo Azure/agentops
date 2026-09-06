@@ -66,7 +66,7 @@ separate from the Evaluations page.
 
 !!! note "The azd dataset remains recipe-owned"
     When `execution: azd` is selected, azd continues to read the dataset declared
-    in `eval.yaml`. AgentOps does not rewrite that external recipe from the
+    in the azd recipe. AgentOps does not rewrite that external recipe from the
     `dataset` value in `agentops.yaml`.
 
 ```mermaid
@@ -284,7 +284,9 @@ eval assets.
 
 The `execution:` field decides where the evaluation actually runs. Local is the
 default and works for every target. Cloud runs a Foundry agent server-side. The
-azd recipe path delegates to an existing `azd ai agent eval` flow.
+azd recipe path delegates to an azd evaluation flow — either the current
+`azd ai eval` surface or the legacy `azd ai agent eval` one, chosen by the
+recipe. See [Delegating to azd](#delegating-to-azd) below.
 
 | Target | Cloud (`execution: cloud`) | Local runner | Recommended default |
 |---|---|---|---|
@@ -297,12 +299,77 @@ For prompt-agent CI pipelines that need a merge or deploy gate, prefer cloud
 eval. Foundry executes the managed evaluation and AgentOps enforces thresholds,
 baselines, Doctor readiness, and release evidence.
 
-!!! info "Reusing an azd eval recipe"
-    If a Foundry project already uses the public-preview `azd ai agent eval`
-    recipe, set `execution: azd` and `eval_recipe: eval.yaml`. AgentOps
-    delegates execution to azd, normalizes the metrics, binds thresholds, writes
-    `results.json`, and fails closed for any threshold that has no emitted
-    metric. Rubric evaluator dimensions are treated as first-class metric names.
+## Delegating to azd
+
+`execution: azd` hands the evaluation to the Azure Developer CLI and keeps the
+AgentOps contract around it: normalized `results.json`, `report.md`, threshold
+gating, baseline comparison, and the same exit codes. Foundry runs the
+evaluation; AgentOps decides whether the release is ready.
+
+Two azd evaluation surfaces are supported. **The recipe decides which one is
+used** — there is no extra setting.
+
+| Surface | Recipe location | azd commands | Extension | azd version |
+|---|---|---|---|---|
+| Current | `evals/azure.eval.yaml` | `azd ai eval` | `azure.ai.evaluations` | 1.27.1+ |
+| Legacy | `eval.yaml`, or `src/<agent>/eval.yaml` | `azd ai agent eval` | `azure.ai.agents` | as previously documented |
+
+Classification is by file content, not by filename: a recipe whose root has a
+sequence-valued `evals:` key is current, while a mapping-valued `agent:` key or
+a `dataset_reference:` key is legacy.
+
+!!! warning "`azure.ai.evaluations` is preview and not yet published"
+    As of this writing the extension exists only as an unmerged pull request
+    against `Azure/azure-dev`. It is absent from the default azd extension
+    registry, so `azd extension install azure.ai.evaluations` does not resolve
+    yet. Until it ships, the current surface is only usable where the extension
+    has been built and published into a local azd extension source.
+
+    This affects nobody who does not opt in. The current surface activates only
+    when `evals/azure.eval.yaml` exists. A workspace without it behaves exactly
+    as it did before, and `agentops eval init` keeps generating a legacy recipe
+    while the extension is unavailable.
+
+### Discovery precedence
+
+1. `eval_recipe:` in `agentops.yaml`, when set, wins outright.
+2. If recipes from both surfaces are discoverable, the current surface wins and
+   the run reports which recipe it skipped.
+3. More than one recipe within a single surface is rejected as ambiguous; set
+   `eval_recipe:` to choose.
+4. No recipe is a configuration error naming both supported locations.
+
+### Thresholds against an azd run
+
+Threshold keys bind to the metric names the recipe declares — builtin evaluator
+references such as `builtin.task_adherence` (the bare `task_adherence` alias
+works), evaluator labels, and rubric dimension ids. Binding uses narrow aliases
+only; nothing is fuzzy-matched, because a wrong match here would create a
+false-green gate.
+
+For the current surface, binding happens in two stages:
+
+| Condition | When | Result | Exit code |
+|---|---|---|---|
+| Threshold names a metric no evaluator declares | before any azd command runs | configuration error | `1` |
+| Threshold is ambiguous across declared metrics | before any azd command runs | configuration error | `1` |
+| Declared metric produced no score in the run | after the run | threshold recorded as failed | `2` |
+| Bound threshold not satisfied | after the run | gate failure | `2` |
+
+Catching a typo before submission means a misconfigured threshold never consumes
+a cloud evaluation.
+
+### What the current surface adds
+
+The current surface exposes per-sample output, so AgentOps populates
+`results.json` rows with one entry per sample, including failed and errored
+samples, and computes each aggregate metric as the mean of its per-sample
+scores. The run object itself carries only counts. The legacy surface remains
+aggregate-only.
+
+A run that produced zero samples, no decodable metrics, or a non-`completed`
+terminal status never reports a pass. Raw azd output is retained in the run's
+artifact directory for successful and failed runs alike.
 
 ## Input mapping
 
