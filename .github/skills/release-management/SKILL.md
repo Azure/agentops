@@ -66,7 +66,9 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    - Updates `CHANGELOG.md` (adds versioned section `[0.2.0] - YYYY-MM-DD`)
    - Pushes the branch (triggers staging pipeline automatically)
    - Opens a PR: `release/v0.2.0` → `main`
-4. Wait for staging pipeline to pass (build → TestPyPI → verify).
+4. Wait for staging pipeline to pass (build → TestPyPI → verify), and review
+   the separately protected `marketplace-staging` deployment for the legitimate
+   Marketplace pre-release. The branch push is a real publication attempt.
 5. Get the PR reviewed and merge into `main`.
 6. Tag the release on `main` **and sync `develop` in the same sitting**. Tagging
    publishes to PyPI immediately; there is no approval prompt. Leaving `develop`
@@ -90,8 +92,9 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    `## [0.2.0]` heading above develop's unreleased entries, nesting new work
    inside a shipped version.
 7. Watch the Release workflow finish (build → TestPyPI → verify → publish-pypi →
-   github-release). The `release` environment has no protection rules, so nothing
-   pauses for review.
+   github-release). The Python `release` environment has no protection rules,
+   so PyPI does not pause for review. The separate `marketplace-release`
+   deployment requires review for the stable extension publication.
 8. Delete the release branch:
    ```bash
    git push origin --delete release/v0.2.0
@@ -217,7 +220,7 @@ docs: update changelog for 2.4.2
 chore: prepare release 2.4.2
 ```
 
-## Required Secrets
+## Publishing Authentication
 
 Both `staging.yml` and `release.yml` publish through
 [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) using
@@ -225,7 +228,6 @@ Both `staging.yml` and `release.yml` publish through
 
 | Secret | Scope | Purpose |
 |---|---|---|
-| `VSCE_PAT` | repository | VS Code Marketplace PAT with **Marketplace: Manage**, used by the extension publish jobs in both `staging.yml` and `release.yml` |
 | `RELEASE_PAT` | repository | Used by `cut-release.yml` to open the release PR |
 
 Neither the `staging` nor the `release` environment holds any secret. Confirm with
@@ -234,6 +236,108 @@ Neither the `staging` nor the `release` environment holds any secret. Confirm wi
 Trusted Publishing is configured on the index side (pypi.org and test.pypi.org →
 **Manage → Publishing**) and must match the repository, workflow filename, and
 environment name exactly. A mismatch fails with `403` at upload time.
+
+### Marketplace: dedicated Entra OIDC identity
+
+Marketplace jobs use a **dedicated user-assigned managed identity (UAMI)**,
+`azure/login@v3` with `allow-no-subscriptions: true`, and `id-token: write`.
+No Azure RBAC grant is needed solely to publish. Publisher membership supplies
+that permission. Do not change Python Trusted Publishing, shared `AZURE_*` E2E
+variables, repository-wide OIDC configuration, or the GitHub `RELEASE_PAT`.
+
+Use two **new, separate** GitHub environments, not Python `staging`/`release`.
+Configure required reviewers and selected branch/tag deployment policies
+**before setting variables**:
+
+| Environment | Allowed deployment refs |
+| --- | --- |
+| `marketplace-staging` | Branches `release/*` for legitimate `release/vX.Y.Z` candidates |
+| `marketplace-release` | Tags `v*`; optionally protected `main` for manual dispatch with tag input |
+
+Stable manual job guards allow only `main` or the same release tag as the input.
+An environment subject alone does not restrict branches; protections are essential.
+For an authorized pre-migration-tag retry, explicitly dispatch the **new migrated
+workflow on protected `main`** with a valid release tag. The Marketplace job
+checks out tooling from `github.workflow_sha` at the workspace root and extension
+source from `refs/tags/<tag>` into `release-source/`: old extension source uses
+the new OIDC action/helper. Tag-based dispatch must match the tag input.
+Re-running a historical old workflow still executes its old PAT code, not the
+migrated workflow. A retry is a real publication attempt.
+
+Each new environment needs these variables:
+
+- `MARKETPLACE_AZURE_CLIENT_ID`: UAMI client GUID.
+- `MARKETPLACE_AZURE_TENANT_ID`: approved identity tenant GUID.
+- `MARKETPLACE_PROFILE_ID`: Marketplace `profiles/me` profile `id`,
+  **not** the Entra principal/object ID.
+
+Verify customization read-only with
+`gh api repos/Azure/agentops/actions/oidc/customization/sub`. The verified ordered
+claim keys are `repository_owner_id`, `repository_id`, `context` with
+`use_default: false`. Federation must use:
+
+- Issuer: `https://token.actions.githubusercontent.com`
+- Audience: `api://AzureADTokenExchange`
+- Staging subject: `repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-staging`
+- Release subject: `repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-release`
+
+Resolve the UAMI Marketplace profile using a CLI token for resource
+`499b84ac-1321-427f-aa17-267ca6975798` and a read-only request to
+`https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1`.
+Record only the profile `id`; never print or store token values. A publisher
+Owner must grant that profile **Contributor, not Owner**, on `AgentOpsAccelerator`.
+
+### Shared helper and local publishing
+
+- Requires Python 3.11+ (stdlib), Azure CLI, and Node 22 with `vsce >=3.9.2`
+  for publishing. Workflows pin `npm install -g @vscode/vsce@3.9.2`.
+- `python scripts/marketplace.py check` is read-only: it selects
+  `MARKETPLACE_AZURE_TENANT_ID`, pins the self profile to
+  `MARKETPLACE_PROFILE_ID`, and checks explicit Contributor/Owner/Creator
+  membership with zero deny permissions. A generic HTTP 200 is not sufficient.
+- `python scripts/marketplace.py publish --package-path PATH [--pre-release] [--allow-already-exists]`
+  preflights before uploading. CI opts into already-existing-version handling;
+  local defaults fail. The flag maps to native `vsce --skip-duplicate`
+  (existing-version/409 only), not output substring matching; other errors
+  always propagate. The child environment clears inherited PAT and
+  EnvironmentCredential variables and selects the tenant. **No PAT fallback.**
+- Local staging/release scripts preflight before side effects when `vsce`
+  exists, but then publish. Their prior missing-`vsce` extension-packaging skip
+  remains unchanged and does not prove Marketplace access.
+  Use `check` alone for no-upload validation. First run
+  `az login --tenant <publisher-identity-tenant> --allow-no-subscriptions` and set
+  `MARKETPLACE_AZURE_TENANT_ID` and `MARKETPLACE_PROFILE_ID` for **your interactive
+  publishing identity**, not the UAMI. Your identity needs publisher Contributor
+  or Owner membership. Profile pinning prevents wrong account/tenant publishing.
+- Extension `npm run publish` / `npm run publish:prerelease` package a VSIX
+  before calling the shared helper, which preflights before upload. They require
+  Python 3.11+ and the helper from the repository checkout.
+- CLI profile and role preflight success is **not proof of actual upload**.
+
+### Staged rollout (not completed by merging code)
+
+1. Obtain approval for permanent ownership and production tenant/subscription
+   placement outside code rollout. The earlier non-production
+   personal-subscription probe is feasibility evidence, not policy approval.
+2. Configure the dedicated UAMI, exact federation, publisher Contributor
+   membership, environment reviewers and deployment policies, then variables.
+3. Run an authorized permission-only preflight (`check`, no publishing scripts).
+   No standalone read-only workflow is added by this change. Arrange approved
+   OIDC permission validation before the first release; a local interactive
+   `check` alone does not validate CI federation.
+4. Explicitly authorize and verify a **legitimate** Marketplace pre-release.
+5. Explicitly authorize and verify a **legitimate** stable publication.
+6. **Only then** remove the legacy GitHub `VSCE_PAT`. Its owner must confirm no
+   other consumers before revoking the underlying Azure DevOps PAT.
+   Include historical workflow re-runs in that review; retire old PAT paths
+   and use the migrated workflow on `main` for authorized old-tag retries.
+   **Never touch `RELEASE_PAT`.**
+
+[Prior successful no-upload proof](https://github.com/Azure/agentops/actions/runs/34046045685/attempts/3)
+used temporary resources, all since deleted. Do not claim permanent resources,
+actual publication, or legacy-secret removal are complete based on that proof.
+See [the release guide](../../../docs/release-process.md#104-marketplace-entra-oidc-identity-setup)
+for setup and rollout details.
 
 ## Default Decision Logic
 
@@ -254,3 +358,7 @@ environment name exactly. A mismatch fails with `403` at upload time.
 - Never end a release without running `git log --oneline origin/develop..origin/main`
   and seeing empty output.
 - Never publish without running `python -m pytest tests/ -x -q` first.
+- Never treat release workflows as dry runs or create dummy release branches,
+  tags, or production versions to test them. Staging includes a real Marketplace
+  pre-release attempt. Use local packaging and standalone read-only preflight
+  instead; Marketplace approvals do not pause Python publishing.

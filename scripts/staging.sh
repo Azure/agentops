@@ -16,15 +16,20 @@
 # Prereqs:
 #   - uv installed
 #   - twine: pip install twine (for TestPyPI upload)
-#   - npm + vsce: npm install -g @vscode/vsce
+#   - Node.js 22 + vsce: npm install -g @vscode/vsce@3.9.2
 #   - TESTPYPI_TOKEN env var (API token from test.pypi.org)
-#   - VSCE_PAT env var (VS Code Marketplace PAT)
+#   - Python 3.11+, Azure CLI login in the publisher identity's tenant
+#   - MARKETPLACE_AZURE_TENANT_ID and MARKETPLACE_PROFILE_ID (see docs/release-process.md)
 # ─────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 skip_testpypi=false
 skip_vsix=false
+marketplace_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/marketplace.py"
+if command -v vsce &>/dev/null; then
+    python "$marketplace_script" check
+fi
 
 # ── Step 1: Lint ────────────────────────────────────────────────────
 echo -e "\n>>> [1/7] Linting with ruff..."
@@ -89,7 +94,7 @@ fi
 echo -e "\n>>> [6/7] Building VSIX pre-release..."
 if ! command -v vsce &>/dev/null; then
     echo ">>> vsce not found — skipping VSIX build"
-    echo "    Install with: npm install -g @vscode/vsce"
+    echo "    Install with: npm install -g @vscode/vsce@3.9.2"
     skip_vsix=true
 else
     # Sync version from latest git tag
@@ -126,13 +131,10 @@ fi
 echo -e "\n>>> [7/7] Publishing VSIX pre-release..."
 if $skip_vsix; then
     echo ">>> Skipped (vsce not available)"
-elif [ -z "${VSCE_PAT:-}" ]; then
-    echo ">>> VSCE_PAT not set — skipping Marketplace publish"
-    echo '    Set it with: export VSCE_PAT="your-pat"'
 else
     pushd plugins/agentops >/dev/null
     echo "    VSIX will publish from packagePath (version in VSIX: $base_version)"
-    vsce publish --pre-release --packagePath agentops-skills.vsix -p "$VSCE_PAT"
+    python "$marketplace_script" publish --pre-release --package-path agentops-skills.vsix
     popd >/dev/null
     echo ">>> VSIX pre-release published to Marketplace"
 fi

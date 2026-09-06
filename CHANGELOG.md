@@ -5,6 +5,13 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **Marketplace publishing moves from PATs to Microsoft Entra OIDC.** Dedicated
+  managed-identity environments and a shared tenant/profile-pinned publishing
+  helper replace Marketplace PAT authentication. Permission-only preflight and
+  staged rollout are documented; GitHub `RELEASE_PAT` and PyPI/TestPyPI Trusted
+  Publishing are unchanged.
+
 ## [0.15.0] - 2026-09-06
 
 ### Added

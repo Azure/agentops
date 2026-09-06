@@ -27,19 +27,19 @@
 #   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
 #   and TestPyPI.
 #
-# Required GitHub secrets:
-#   VSCE_PAT — VS Code Marketplace PAT (repository secret, not an environment secret).
-#              MUST have "Marketplace: Manage" scope on the AgentOpsAccelerator publisher.
+# Marketplace uses Entra OIDC, not a PAT. The separate marketplace-staging
+# environment requires protected deployment branches and dedicated identity
+# variables: MARKETPLACE_AZURE_CLIENT_ID, MARKETPLACE_AZURE_TENANT_ID,
+# MARKETPLACE_PROFILE_ID. See docs/release-process.md for custom OIDC subjects.
 #
 # Setup (Trusted Publishing + VSCE):
 #   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
 #   2. GitHub repo → Settings → Environments → Create "staging" (the name must match
 #      the publisher config in step 1). No protection rules are configured today.
-#   3. https://dev.azure.com/ → PAT with Marketplace scope on the AzDO account that
-#      owns the AgentOpsAccelerator publisher → Create VSCE_PAT.
-#      Verify scope with: vsce ls-publishers -p $VSCE_PAT (must list AgentOpsAccelerator).
-#   4. Add VSCE_PAT as a repository secret (Settings → Secrets and variables → Actions)
+#   3. Configure marketplace-staging, federate the dedicated managed identity,
+#      and grant it Contributor on AgentOpsAccelerator (not Azure Contributor).
+#      Python Trusted Publishing and the GitHub RELEASE_PAT are unchanged.
 
 name: Staging
 
@@ -139,8 +139,15 @@ jobs:
   # Runs in parallel with the TestPyPI flow (only needs source checkout).
   publish-vsix-prerelease:
     needs: build # gate on successful lint + test
+    if: startsWith(github.ref, 'refs/heads/release/v')
     runs-on: ubuntu-latest
-    environment: staging
+    environment: marketplace-staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MARKETPLACE_AZURE_TENANT_ID: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
+      MARKETPLACE_PROFILE_ID: ${{ vars.MARKETPLACE_PROFILE_ID }}
     steps:
       - uses: actions/checkout@v7
 
@@ -165,7 +172,19 @@ jobs:
           node-version: "22"
 
       - name: Install vsce
-        run: npm install -g @vscode/vsce
+        run: npm install -g @vscode/vsce@3.9.2
+
+      - name: Set up Python for Marketplace preflight
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Authenticate Marketplace identity
+        uses: ./.github/actions/marketplace-login
+        with:
+          client-id: ${{ vars.MARKETPLACE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
+          profile-id: ${{ vars.MARKETPLACE_PROFILE_ID }}
 
       - name: Copy root assets for VSIX
         run: |
@@ -177,27 +196,12 @@ jobs:
         run: vsce package --pre-release -o agentops-skills.vsix
 
       - name: Publish pre-release to VS Code Marketplace
-        # Tolerate ONLY the "already exists" case (re-run of the same pre-release
-        # version). Any other failure (auth, network, validation) must fail the job
-        # so staging surfaces real publish problems instead of silently green-lighting.
-        working-directory: plugins/agentops
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        # Preflight requires the exact profile and an explicit publishing role.
+        # Only a duplicate-version publish error is tolerated on reruns.
         run: |
-          set -o pipefail
-          if OUTPUT=$(vsce publish --pre-release --packagePath agentops-skills.vsix -p "${VSCE_PAT}" 2>&1); then
-            RC=0
-          else
-            RC=$?
-          fi
-          echo "$OUTPUT"
-          if [ "$RC" -ne 0 ]; then
-            if echo "$OUTPUT" | grep -qi "already exists"; then
-              echo "::warning::VSIX pre-release version already published. Treating as success."
-              exit 0
-            fi
-            exit "$RC"
-          fi
+          python scripts/marketplace.py publish \
+            --package-path plugins/agentops/agentops-skills.vsix \
+            --pre-release --allow-already-exists
 
       - name: Show VSIX info
         working-directory: plugins/agentops
@@ -210,4 +214,3 @@ jobs:
         with:
           name: vsix
           path: plugins/agentops/agentops-skills.vsix
-

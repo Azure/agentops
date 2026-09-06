@@ -1,0 +1,36 @@
+name: Marketplace OIDC login
+description: Authenticate the dedicated publishing identity without Azure roles or stored secrets.
+inputs:
+  client-id:
+    description: Dedicated Marketplace managed identity client ID.
+    required: true
+  tenant-id:
+    description: Approved publishing identity tenant ID.
+    required: true
+  profile-id:
+    description: Marketplace profiles/me ID (not the Entra principal ID).
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Validate Marketplace identity configuration
+      shell: bash
+      env:
+        CLIENT_ID: ${{ inputs.client-id }}
+        TENANT_ID: ${{ inputs.tenant-id }}
+        PROFILE_ID: ${{ inputs.profile-id }}
+      run: |
+        GUID='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        for NAME in CLIENT_ID TENANT_ID PROFILE_ID; do
+          if [[ ! "${!NAME}" =~ $GUID ]]; then
+            echo "::error::Missing or invalid Marketplace $NAME. Configure the protected Marketplace environment variables; see docs/release-process.md."
+            exit 1
+          fi
+        done
+
+    - name: Sign in with Marketplace workload identity
+      uses: azure/login@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        allow-no-subscriptions: true

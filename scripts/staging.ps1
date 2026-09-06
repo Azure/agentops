@@ -15,9 +15,10 @@
 # Prereqs:
 #   - uv installed
 #   - twine: pip install twine (for TestPyPI upload)
-#   - npm + vsce: npm install -g @vscode/vsce
+#   - Node.js 22 + vsce: npm install -g @vscode/vsce@3.9.2
 #   - TESTPYPI_TOKEN env var (API token from test.pypi.org)
-#   - VSCE_PAT env var (VS Code Marketplace PAT)
+#   - Python 3.11+, Azure CLI login in the publisher identity's tenant
+#   - MARKETPLACE_AZURE_TENANT_ID and MARKETPLACE_PROFILE_ID (see docs/release-process.md)
 # ─────────────────────────────────────────────────────────────────────
 
 Set-StrictMode -Version Latest
@@ -25,6 +26,11 @@ $ErrorActionPreference = "Stop"
 
 $skipTestPyPI = $false
 $skipVSIX = $false
+$marketplaceScript = Join-Path $PSScriptRoot "marketplace.py"
+if (Get-Command vsce -ErrorAction SilentlyContinue) {
+    python $marketplaceScript check
+    if ($LASTEXITCODE -ne 0) { throw "Marketplace preflight failed; no staging actions were started." }
+}
 
 # ── Step 1: Lint ────────────────────────────────────────────────────
 Write-Host "`n>>> [1/7] Linting with ruff..." -ForegroundColor Yellow
@@ -92,7 +98,7 @@ Write-Host "`n>>> [6/7] Building VSIX pre-release..." -ForegroundColor Yellow
 $vsceAvailable = Get-Command vsce -ErrorAction SilentlyContinue
 if (-not $vsceAvailable) {
     Write-Host ">>> vsce not found — skipping VSIX build" -ForegroundColor DarkYellow
-    Write-Host "    Install with: npm install -g @vscode/vsce" -ForegroundColor DarkGray
+    Write-Host "    Install with: npm install -g @vscode/vsce@3.9.2" -ForegroundColor DarkGray
     $skipVSIX = $true
 } else {
     # Sync version from latest git tag
@@ -118,12 +124,15 @@ if (-not $vsceAvailable) {
     Copy-Item icon.png plugins/agentops/icon.png -Force -ErrorAction SilentlyContinue
 
     Push-Location plugins/agentops
-    vsce package --pre-release -o agentops-skills.vsix
-    Write-Host ">>> VSIX built: agentops-skills.vsix (v$baseVersion)" -ForegroundColor Green
-    Pop-Location
-
-    # Restore original package.json to prevent version drift
-    Set-Content $pkgPath -Value $pkgOriginal -NoNewline
+    try {
+        vsce package --pre-release -o agentops-skills.vsix
+        if ($LASTEXITCODE -ne 0) { throw "VSIX packaging failed; publication aborted." }
+        Write-Host ">>> VSIX built: agentops-skills.vsix (v$baseVersion)" -ForegroundColor Green
+    } finally {
+        Pop-Location
+        # Restore original package.json even if packaging failed.
+        Set-Content $pkgPath -Value $pkgOriginal -NoNewline
+    }
     Write-Host ">>> package.json restored to committed version" -ForegroundColor DarkGray
 }
 
@@ -131,16 +140,15 @@ if (-not $vsceAvailable) {
 Write-Host "`n>>> [7/7] Publishing VSIX pre-release..." -ForegroundColor Yellow
 if ($skipVSIX) {
     Write-Host ">>> Skipped (vsce not available)" -ForegroundColor DarkYellow
-} elseif (-not $env:VSCE_PAT) {
-    Write-Host ">>> VSCE_PAT not set — skipping Marketplace publish" -ForegroundColor DarkYellow
-    Write-Host "    Set it with: `$env:VSCE_PAT = 'your-pat'" -ForegroundColor DarkGray
 } else {
     Push-Location plugins/agentops
-    # Verify the VSIX contains the expected version before publishing
-    $vsixPkg = Get-Content package.json -Raw | ConvertFrom-Json
-    Write-Host "    VSIX will publish from packagePath (version in VSIX: $baseVersion)" -ForegroundColor DarkGray
-    vsce publish --pre-release --packagePath agentops-skills.vsix -p $env:VSCE_PAT
-    Pop-Location
+    try {
+        Write-Host "    VSIX will publish from packagePath (version in VSIX: $baseVersion)" -ForegroundColor DarkGray
+        python $marketplaceScript publish --pre-release --package-path agentops-skills.vsix
+        if ($LASTEXITCODE -ne 0) { throw "Marketplace pre-release publication failed." }
+    } finally {
+        Pop-Location
+    }
     Write-Host ">>> VSIX pre-release published to Marketplace" -ForegroundColor Green
 }
 
