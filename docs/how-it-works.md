@@ -150,7 +150,7 @@ flowchart TD
     RS --> F
     F --> G["Invoke target per row or submit Foundry cloud eval"]
     G --> H["Run/collect evaluator scores"]
-    E -->|azd| AZD["Call azd ai agent eval using eval.yaml"]
+    E -->|azd| AZD["Call azd (ai eval or ai agent eval) using the discovered recipe"]
     AZD --> H
     H --> I["Evaluate thresholds"]
     I --> J["Write results.json + report.md"]
@@ -181,7 +181,31 @@ federated, workload, managed, or service-principal identity. The identity needs
 tokens, SAS, account keys, connection strings, query strings, fragments, and
 embedded credentials are unsupported. Storage firewall and private-endpoint
 connectivity remain runner responsibilities. `execution: azd` is unchanged and
-continues to use the dataset declared by `eval.yaml`.
+continues to use the dataset declared by the azd recipe.
+
+### The two azd evaluation surfaces
+
+`execution: azd` supports two azd command families. The discovered recipe
+decides which one runs; there is no extra setting.
+
+| Recipe | azd commands | Extension |
+|---|---|---|
+| `evals/azure.eval.yaml` | `azd ai eval` | `azure.ai.evaluations` (preview, azd 1.27.1+) |
+| `eval.yaml`, `src/<agent>/eval.yaml` | `azd ai agent eval` | `azure.ai.agents` |
+
+Recipes are classified by content rather than filename, and when both surfaces
+are discoverable the current one wins with the skipped recipe reported.
+
+For the current surface AgentOps reconciles the evaluation definition, submits
+the run without waiting, polls it to a terminal state under its own timeout, and
+then reads the run object plus every per-sample output item. Submitting without
+waiting is deliberate: azd's blocking mode has an internal wait budget that, on
+expiry, exits zero with an unfinished run and a differently shaped payload.
+
+AgentOps computes aggregate metrics itself for that surface, because the azd run
+object exposes only counts, never scores. It also never passes a failure-gating
+flag to azd — the release gate stays in AgentOps so a gate breach remains
+distinguishable from an operational failure.
 
 ## POC-to-production readiness flow
 

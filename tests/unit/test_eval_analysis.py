@@ -362,3 +362,80 @@ def test_cli_eval_analyze_agentless_exits_zero(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.stdout
     assert "observability" in result.stdout.lower()
+
+
+def _write_azd_analysis_config(root: Path) -> None:
+    (root / "data.jsonl").write_text(
+        '{"input": "hello", "expected": "hi"}\n',
+        encoding="utf-8",
+    )
+    (root / "agentops.yaml").write_text(
+        "version: 1\nagent: travel-agent:1\ndataset: data.jsonl\nexecution: azd\n",
+        encoding="utf-8",
+    )
+
+
+def test_eval_analysis_reports_current_azd_recipe_surface(tmp_path: Path) -> None:
+    _write_azd_analysis_config(tmp_path)
+    recipe = tmp_path / "evals" / "azure.eval.yaml"
+    recipe.parent.mkdir(parents=True)
+    recipe.write_text("evals: []\n", encoding="utf-8")
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.config_status == "ready"
+    signal = next(item for item in analysis.signals if item.key == "azd_eval_recipe")
+    assert signal.path == "evals/azure.eval.yaml"
+    assert "current surface" in signal.detail
+    assert "azure.ai.evaluations" in signal.detail
+
+
+def test_eval_analysis_reports_legacy_azd_recipe_surface(tmp_path: Path) -> None:
+    _write_azd_analysis_config(tmp_path)
+    (tmp_path / "eval.yaml").write_text("name: travel-agent-eval\n", encoding="utf-8")
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.config_status == "ready"
+    signal = next(item for item in analysis.signals if item.key == "azd_eval_recipe")
+    assert signal.path == "eval.yaml"
+    assert "legacy surface" in signal.detail
+    assert "azure.ai.agents" in signal.detail
+
+
+def test_eval_analysis_reports_current_selection_and_skipped_legacy_recipe(
+    tmp_path: Path,
+) -> None:
+    _write_azd_analysis_config(tmp_path)
+    current = tmp_path / "evals" / "azure.eval.yaml"
+    current.parent.mkdir(parents=True)
+    current.write_text("evals: []\n", encoding="utf-8")
+    legacy = tmp_path / "eval.yaml"
+    legacy.write_text("name: travel-agent-eval\n", encoding="utf-8")
+
+    analysis = analyze_eval_project(tmp_path)
+
+    selected = next(item for item in analysis.signals if item.key == "azd_eval_recipe")
+    skipped = next(
+        item for item in analysis.signals if item.key == "azd_eval_recipe_skipped"
+    )
+    assert selected.path == "evals/azure.eval.yaml"
+    assert "current surface" in selected.detail
+    assert skipped.path == "eval.yaml"
+    assert "current surface takes precedence" in skipped.detail
+
+
+def test_eval_analysis_reports_actionable_gap_when_azd_recipe_missing(
+    tmp_path: Path,
+) -> None:
+    _write_azd_analysis_config(tmp_path)
+
+    analysis = analyze_eval_project(tmp_path)
+
+    assert analysis.config_status == "incomplete"
+    signal = next(item for item in analysis.signals if item.key == "azd_eval_recipe_gap")
+    assert "evals/azure.eval.yaml" in signal.detail
+    assert "eval.yaml" in signal.detail
+    assert "src/<agent>/eval.yaml" in signal.detail
+    assert "Required action" in signal.detail
+    assert signal.detail in analysis.warnings

@@ -99,8 +99,25 @@ dataset: .agentops/data/smoke.jsonl
 #   cloud           — Foundry runs the agent and evaluators server-side
 #                     (only valid for 'name:version' Foundry prompt agents;
 #                     implicitly publishes to the New Foundry panel).
+#   azd             — the Azure Developer CLI runs a Foundry-native evaluation
+#                     from a recipe in this repository. Two azd surfaces are
+#                     supported and the recipe decides which one is used:
+#                       evals/azure.eval.yaml -> azd ai eval
+#                                                (azure.ai.evaluations, preview)
+#                       eval.yaml, or src/<agent>/eval.yaml
+#                                             -> azd ai agent eval
+#                                                (azure.ai.agents)
+#                     If both are discoverable, the current surface
+#                     (evals/azure.eval.yaml) wins and the run reports which
+#                     recipe it skipped. Pin one with eval_recipe: below.
 #
 # execution: local
+#
+# Optional. Path to an azd evaluation recipe, for execution: azd. When omitted,
+# AgentOps auto-discovers a single recipe. Set this when you keep the recipe
+# somewhere else, or to pin one surface while both are present.
+#
+# eval_recipe: evals/azure.eval.yaml
 #
 # Optional. Foundry observability readiness metadata. AgentOps reads
 # this for Doctor/Cockpit/evidence; Foundry still owns tracing at runtime.

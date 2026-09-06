@@ -5,6 +5,40 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-06
+
+### Added
+- **`execution: azd` supports the current `azd ai eval` command surface.**
+  AgentOps now discovers `evals/azure.eval.yaml` alongside the legacy
+  `eval.yaml`, classifies the recipe by content, and delegates to the matching
+  azd surface: `azd ai eval` via the `azure.ai.evaluations` extension (azd
+  1.27.1+), or the existing `azd ai agent eval` via `azure.ai.agents`. The
+  evaluation is created, started, polled to a terminal state, and read back
+  per-sample, then normalized into the same `results.json` and `report.md`
+  contract as every other execution mode. Threshold binding, fail-closed
+  behavior, baseline comparison, and the `0`/`2`/`1` exit codes are unchanged.
+  Raw azd output is retained for successful and failed runs alike.
+
+  The current surface fills `results.json` rows with one entry per sample,
+  including failed and errored samples, and computes aggregate metrics as the
+  mean of the per-sample scores, because the azd run object exposes only counts.
+  Threshold keys that name a metric the recipe cannot produce are now rejected
+  *before* the evaluation is submitted, so a typo never consumes a cloud run.
+
+  `azure.ai.evaluations` is in preview and is not yet published to the default
+  azd extension registry. The new surface is strictly opt-in: it activates only
+  when a current-surface recipe exists, and `agentops eval init` continues to
+  generate a legacy recipe while the extension is unavailable, so existing
+  workspaces and fresh clones are unaffected.
+
+### Changed
+- **azd extension detection now reads structured output.** Availability is
+  determined from `azd extension list --installed -o json` and matched on
+  extension id, falling back to the previous text scan only when the structured
+  form is unsupported. The human-readable table also lists uninstalled registry
+  entries, so scanning it could report an extension as available before it was
+  actually installed.
+
 ## [0.14.0] - 2026-09-01
 
 ### Added

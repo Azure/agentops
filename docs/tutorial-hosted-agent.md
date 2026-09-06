@@ -274,6 +274,60 @@ That is expected. A hosted endpoint is evaluated with AgentOps local eval so the
 repo can invoke the endpoint, normalize results, apply thresholds, and keep a
 stable `results.json` contract, in sandbox and in CI alike.
 
+### Optional: delegate the run to azd instead
+
+If your Foundry project already drives evaluations through the Azure Developer
+CLI, you can keep that flow and still get the AgentOps gate around it. Set
+`execution: azd` in `agentops.yaml` and commit an azd recipe. Which azd surface
+runs is decided by the recipe, not by a setting:
+
+| Recipe you commit | azd commands | Extension |
+|---|---|---|
+| `evals/azure.eval.yaml` | `azd ai eval` | `azure.ai.evaluations` (preview, azd 1.27.1+) |
+| `eval.yaml` | `azd ai agent eval` | `azure.ai.agents` |
+
+A minimal current-surface recipe:
+
+```yaml
+# evals/azure.eval.yaml
+datasets:
+  - name: smoke
+    file: ../.agentops/data/smoke.jsonl
+
+evals:
+  - name: hosted-agent-regression
+    dataset: smoke
+    evaluation_level: turn
+    evaluators:
+      - evaluator: builtin.task_adherence
+        initialization_parameters:
+          model: gpt-4o
+    target:
+      type: agent
+      name: <your-agent-name>
+```
+
+Thresholds in `agentops.yaml` bind to the metric names the recipe declares, so
+`task_adherence: ">=4"` gates `builtin.task_adherence`. AgentOps checks that
+binding *before* submitting, so a typo fails immediately with exit code `1`
+instead of burning a cloud run.
+
+!!! warning "The current-surface extension is not published yet"
+    `azure.ai.evaluations` exists today only as an unmerged pull request against
+    `Azure/azure-dev`, so `azd extension install azure.ai.evaluations` does not
+    resolve from the default registry. To exercise this path now you must build
+    and publish the extension into a local azd extension source:
+
+    ```powershell
+    azd extension install microsoft.azd.extensions
+    azd x build; azd x pack; azd x publish
+    azd extension install azure.ai.evaluations --source local
+    ```
+
+    Skip this section entirely if that is not set up. Nothing else in the
+    tutorial depends on it, and a workspace without `evals/azure.eval.yaml` is
+    completely unaffected.
+
 ## 8. Run a local eval
 
 Replay the dataset against the sandbox endpoint and score it:
