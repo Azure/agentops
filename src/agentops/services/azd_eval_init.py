@@ -418,6 +418,7 @@ def run_azd_eval_init(
         for evaluator in evaluator_selection.names:
             arguments.extend(["--evaluator", evaluator])
 
+    recipe: Path
     if target_surface is EvalSurface.CURRENT:
         completed = _run_current_eval_init(
             base_command,
@@ -447,13 +448,14 @@ def run_azd_eval_init(
             timeout_seconds=timeout_seconds,
         )
 
-        recipe = find_eval_yaml(root)
-        if recipe is None:
+        discovered = find_eval_yaml(root)
+        if discovered is None:
             raise AzdBackendError(
                 "azd ai agent eval completed, but AgentOps could not find the "
                 "generated eval.yaml. Move it under the workspace root or src/<agent>/ "
                 "and set `eval_recipe:` in agentops.yaml."
             )
+        recipe = discovered
 
     result = _persist_recipe(
         config_path=resolved_config,
