@@ -592,7 +592,12 @@ def _run_evaluation_azd(
     *,
     options: RunOptions,
 ) -> RunResult:
-    """azd execution: delegate to ``azd ai agent eval`` with no hidden fallback."""
+    """azd execution: delegate to azd with no hidden fallback.
+
+    Two azd evaluation surfaces are supported. The recipe itself decides which
+    one is used: ``evals/azure.eval.yaml`` targets ``azd ai eval``, while
+    ``eval.yaml`` targets the legacy ``azd ai agent eval``.
+    """
 
     started_at = datetime.now(timezone.utc)
     progress = options.progress or (lambda _msg: None)
@@ -608,14 +613,57 @@ def _run_evaluation_azd(
             "Use execution: local for HTTP/JSON, model:, or custom REST targets."
         )
 
+    from agentops.core.azd_eval import EvalSurface, resolve_recipe
+
+    resolution = resolve_recipe(workspace, config.eval_recipe)
+
+    def _display(path: Path) -> str:
+        try:
+            return path.relative_to(workspace).as_posix()
+        except ValueError:
+            return path.name
+
+    for skipped in resolution.skipped:
+        progress(
+            f"{style('note', 'yellow')}: using the current azd evaluation surface; "
+            f"skipping {style(_display(skipped), 'cyan')}. Set "
+            f"{style('eval_recipe:', 'cyan')} in agentops.yaml to pin a different recipe."
+        )
+
+    if resolution.surface is EvalSurface.CURRENT:
+        return _run_evaluation_azd_current(
+            config,
+            options=options,
+            resolution=resolution,
+            workspace=workspace,
+            started_at=started_at,
+            recipe_display=_display(resolution.path),
+        )
+    return _run_evaluation_azd_legacy(
+        config,
+        options=options,
+        recipe_path=resolution.path,
+        workspace=workspace,
+        started_at=started_at,
+        recipe_display=_display(resolution.path),
+    )
+
+
+def _run_evaluation_azd_legacy(
+    config: AgentOpsConfig,
+    *,
+    options: RunOptions,
+    recipe_path: Path,
+    workspace: Path,
+    started_at: datetime,
+    recipe_display: str,
+) -> RunResult:
+    """Legacy surface: ``azd ai agent eval`` via the original adapter."""
+
     from agentops.pipeline import azd_runner
 
-    recipe_path = azd_runner.resolve_eval_recipe(workspace, config)
+    progress = options.progress or (lambda _msg: None)
     recipe = load_eval_recipe(recipe_path)
-    try:
-        recipe_display = recipe_path.relative_to(workspace).as_posix()
-    except ValueError:
-        recipe_display = recipe_path.name
     progress(
         f"execution: {style('azd', 'bold')} - delegating to "
         f"{style('azd ai agent eval', 'cyan')} (recipe "
@@ -647,6 +695,80 @@ def _run_evaluation_azd(
     _persist(result, options.output_dir)
     azd_runner.write_raw_artifacts(azd_run, options.output_dir)
     return result
+
+
+def _run_evaluation_azd_current(
+    config: AgentOpsConfig,
+    *,
+    options: RunOptions,
+    resolution: Any,
+    workspace: Path,
+    started_at: datetime,
+    recipe_display: str,
+) -> RunResult:
+    """Current surface: ``azd ai eval`` via the current-surface adapter."""
+
+    from agentops.core.azd_eval import (
+        current_recipe_metric_names,
+        load_current_eval_recipe,
+    )
+    from agentops.pipeline import azd_eval_runner
+
+    progress = options.progress or (lambda _msg: None)
+    recipe_path = resolution.path
+    recipe = load_current_eval_recipe(recipe_path)
+    evaluation = recipe.primary_eval()
+
+    progress(
+        f"execution: {style('azd', 'bold')} - delegating to "
+        f"{style('azd ai eval', 'cyan')} (recipe "
+        f"{style(recipe_display, 'cyan')}, eval "
+        f"{style(evaluation.name, 'cyan')})."
+    )
+
+    # Bind thresholds against what the recipe declares before anything runs, so
+    # a misconfigured threshold never consumes a cloud evaluation.
+    declared_metrics = current_recipe_metric_names(recipe, recipe_path)
+    metric_binding = azd_eval_runner.preflight_bind_thresholds(
+        config.thresholds.keys(), declared_metrics
+    )
+
+    azd_run = azd_eval_runner.run_current_eval(
+        recipe_path,
+        evaluation,
+        workspace=workspace,
+        progress=progress,
+        timeout_seconds=max(
+            options.timeout_seconds, azd_eval_runner.CURRENT_EVAL_TIMEOUT_SECONDS
+        ),
+        debug_dir=options.output_dir,
+    )
+
+    # Retain raw output before normalizing, so a normalization failure is still
+    # diagnosable without re-running the evaluation.
+    azd_eval_runner.write_raw_artifacts(azd_run, options.output_dir)
+
+    result = azd_eval_runner.normalize_to_results(
+        azd_run,
+        config=config,
+        recipe=recipe,
+        evaluation=evaluation,
+        metric_binding=metric_binding,
+        started_at=started_at,
+        resolution=resolution,
+    )
+
+    if options.baseline_path is not None:
+        baseline = comparison_module.load_baseline(options.baseline_path)
+        result.comparison = comparison_module.build_comparison(
+            current=result,
+            baseline=baseline,
+            baseline_path=options.baseline_path,
+        )
+
+    _persist(result, options.output_dir)
+    return result
+
 
 
 def _publish_to_foundry_safely(
