@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-06
+
 ### Added
 - **`execution: azd` supports the current `azd ai eval` command surface.**
   AgentOps now discovers `evals/azure.eval.yaml` alongside the legacy
