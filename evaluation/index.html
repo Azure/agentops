@@ -862,6 +862,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#delegating-to-azd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delegating to azd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#input-mapping" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1627,6 +1638,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#delegating-to-azd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Delegating to azd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#input-mapping" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1798,7 +1820,7 @@ treats <code>2</code> as a hard fail so a deploy never runs on a regression.</p>
 <div class="admonition note">
 <p class="admonition-title">The azd dataset remains recipe-owned</p>
 <p>When <code>execution: azd</code> is selected, azd continues to read the dataset declared
-in <code>eval.yaml</code>. AgentOps does not rewrite that external recipe from the
+in the azd recipe. AgentOps does not rewrite that external recipe from the
 <code>dataset</code> value in <code>agentops.yaml</code>.</p>
 </div>
 <pre class="mermaid"><code>graph TD
@@ -2056,7 +2078,9 @@ catalog of evaluator names and their required inputs, see
 <h2 id="where-the-run-executes">Where the run executes<a class="headerlink" href="#where-the-run-executes" title="Permanent link">&para;</a></h2>
 <p>The <code>execution:</code> field decides where the evaluation actually runs. Local is the
 default and works for every target. Cloud runs a Foundry agent server-side. The
-azd recipe path delegates to an existing <code>azd ai agent eval</code> flow.</p>
+azd recipe path delegates to an azd evaluation flow — either the current
+<code>azd ai eval</code> surface or the legacy <code>azd ai agent eval</code> one, chosen by the
+recipe. See <a href="#delegating-to-azd">Delegating to azd</a> below.</p>
 <table>
 <thead>
 <tr>
@@ -2096,14 +2120,118 @@ azd recipe path delegates to an existing <code>azd ai agent eval</code> flow.</p
 <p>For prompt-agent CI pipelines that need a merge or deploy gate, prefer cloud
 eval. Foundry executes the managed evaluation and AgentOps enforces thresholds,
 baselines, Doctor readiness, and release evidence.</p>
-<div class="admonition info">
-<p class="admonition-title">Reusing an azd eval recipe</p>
-<p>If a Foundry project already uses the public-preview <code>azd ai agent eval</code>
-recipe, set <code>execution: azd</code> and <code>eval_recipe: eval.yaml</code>. AgentOps
-delegates execution to azd, normalizes the metrics, binds thresholds, writes
-<code>results.json</code>, and fails closed for any threshold that has no emitted
-metric. Rubric evaluator dimensions are treated as first-class metric names.</p>
+<h2 id="delegating-to-azd">Delegating to azd<a class="headerlink" href="#delegating-to-azd" title="Permanent link">&para;</a></h2>
+<p><code>execution: azd</code> hands the evaluation to the Azure Developer CLI and keeps the
+AgentOps contract around it: normalized <code>results.json</code>, <code>report.md</code>, threshold
+gating, baseline comparison, and the same exit codes. Foundry runs the
+evaluation; AgentOps decides whether the release is ready.</p>
+<p>Two azd evaluation surfaces are supported. <strong>The recipe decides which one is
+used</strong> — there is no extra setting.</p>
+<table>
+<thead>
+<tr>
+<th>Surface</th>
+<th>Recipe location</th>
+<th>azd commands</th>
+<th>Extension</th>
+<th>azd version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Current</td>
+<td><code>evals/azure.eval.yaml</code></td>
+<td><code>azd ai eval</code></td>
+<td><code>azure.ai.evaluations</code></td>
+<td>1.27.1+</td>
+</tr>
+<tr>
+<td>Legacy</td>
+<td><code>eval.yaml</code>, or <code>src/&lt;agent&gt;/eval.yaml</code></td>
+<td><code>azd ai agent eval</code></td>
+<td><code>azure.ai.agents</code></td>
+<td>as previously documented</td>
+</tr>
+</tbody>
+</table>
+<p>Classification is by file content, not by filename: a recipe whose root has a
+sequence-valued <code>evals:</code> key is current, while a mapping-valued <code>agent:</code> key or
+a <code>dataset_reference:</code> key is legacy.</p>
+<div class="admonition warning">
+<p class="admonition-title"><code>azure.ai.evaluations</code> is preview and not yet published</p>
+<p>As of this writing the extension exists only as an unmerged pull request
+against <code>Azure/azure-dev</code>. It is absent from the default azd extension
+registry, so <code>azd extension install azure.ai.evaluations</code> does not resolve
+yet. Until it ships, the current surface is only usable where the extension
+has been built and published into a local azd extension source.</p>
+<p>This affects nobody who does not opt in. The current surface activates only
+when <code>evals/azure.eval.yaml</code> exists. A workspace without it behaves exactly
+as it did before, and <code>agentops eval init</code> keeps generating a legacy recipe
+while the extension is unavailable.</p>
 </div>
+<h3 id="discovery-precedence">Discovery precedence<a class="headerlink" href="#discovery-precedence" title="Permanent link">&para;</a></h3>
+<ol>
+<li><code>eval_recipe:</code> in <code>agentops.yaml</code>, when set, wins outright.</li>
+<li>If recipes from both surfaces are discoverable, the current surface wins and
+   the run reports which recipe it skipped.</li>
+<li>More than one recipe within a single surface is rejected as ambiguous; set
+   <code>eval_recipe:</code> to choose.</li>
+<li>No recipe is a configuration error naming both supported locations.</li>
+</ol>
+<h3 id="thresholds-against-an-azd-run">Thresholds against an azd run<a class="headerlink" href="#thresholds-against-an-azd-run" title="Permanent link">&para;</a></h3>
+<p>Threshold keys bind to the metric names the recipe declares — builtin evaluator
+references such as <code>builtin.task_adherence</code> (the bare <code>task_adherence</code> alias
+works), evaluator labels, and rubric dimension ids. Binding uses narrow aliases
+only; nothing is fuzzy-matched, because a wrong match here would create a
+false-green gate.</p>
+<p>For the current surface, binding happens in two stages:</p>
+<table>
+<thead>
+<tr>
+<th>Condition</th>
+<th>When</th>
+<th>Result</th>
+<th>Exit code</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Threshold names a metric no evaluator declares</td>
+<td>before any azd command runs</td>
+<td>configuration error</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td>Threshold is ambiguous across declared metrics</td>
+<td>before any azd command runs</td>
+<td>configuration error</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td>Declared metric produced no score in the run</td>
+<td>after the run</td>
+<td>threshold recorded as failed</td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td>Bound threshold not satisfied</td>
+<td>after the run</td>
+<td>gate failure</td>
+<td><code>2</code></td>
+</tr>
+</tbody>
+</table>
+<p>Catching a typo before submission means a misconfigured threshold never consumes
+a cloud evaluation.</p>
+<h3 id="what-the-current-surface-adds">What the current surface adds<a class="headerlink" href="#what-the-current-surface-adds" title="Permanent link">&para;</a></h3>
+<p>The current surface exposes per-sample output, so AgentOps populates
+<code>results.json</code> rows with one entry per sample, including failed and errored
+samples, and computes each aggregate metric as the mean of its per-sample
+scores. The run object itself carries only counts. The legacy surface remains
+aggregate-only.</p>
+<p>A run that produced zero samples, no decodable metrics, or a non-<code>completed</code>
+terminal status never reports a pass. Raw azd output is retained in the run's
+artifact directory for successful and failed runs alike.</p>
 <h2 id="input-mapping">Input mapping<a class="headerlink" href="#input-mapping" title="Permanent link">&para;</a></h2>
 <p>Every evaluator receives a fixed set of named inputs. <code>input_mapping</code> decides
 which part of the dataset row or the target response feeds each input. AgentOps

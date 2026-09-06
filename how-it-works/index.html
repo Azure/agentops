@@ -2071,7 +2071,7 @@ are wired together.</p>
     RS --&gt; F
     F --&gt; G["Invoke target per row or submit Foundry cloud eval"]
     G --&gt; H["Run/collect evaluator scores"]
-    E --&gt;|azd| AZD["Call azd ai agent eval using eval.yaml"]
+    E --&gt;|azd| AZD["Call azd (ai eval or ai agent eval) using the discovered recipe"]
     AZD --&gt; H
     H --&gt; I["Evaluate thresholds"]
     I --&gt; J["Write results.json + report.md"]
@@ -2098,7 +2098,42 @@ federated, workload, managed, or service-principal identity. The identity needs
 tokens, SAS, account keys, connection strings, query strings, fragments, and
 embedded credentials are unsupported. Storage firewall and private-endpoint
 connectivity remain runner responsibilities. <code>execution: azd</code> is unchanged and
-continues to use the dataset declared by <code>eval.yaml</code>.</p>
+continues to use the dataset declared by the azd recipe.</p>
+<h3 id="the-two-azd-evaluation-surfaces">The two azd evaluation surfaces<a class="headerlink" href="#the-two-azd-evaluation-surfaces" title="Permanent link">&para;</a></h3>
+<p><code>execution: azd</code> supports two azd command families. The discovered recipe
+decides which one runs; there is no extra setting.</p>
+<table>
+<thead>
+<tr>
+<th>Recipe</th>
+<th>azd commands</th>
+<th>Extension</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>evals/azure.eval.yaml</code></td>
+<td><code>azd ai eval</code></td>
+<td><code>azure.ai.evaluations</code> (preview, azd 1.27.1+)</td>
+</tr>
+<tr>
+<td><code>eval.yaml</code>, <code>src/&lt;agent&gt;/eval.yaml</code></td>
+<td><code>azd ai agent eval</code></td>
+<td><code>azure.ai.agents</code></td>
+</tr>
+</tbody>
+</table>
+<p>Recipes are classified by content rather than filename, and when both surfaces
+are discoverable the current one wins with the skipped recipe reported.</p>
+<p>For the current surface AgentOps reconciles the evaluation definition, submits
+the run without waiting, polls it to a terminal state under its own timeout, and
+then reads the run object plus every per-sample output item. Submitting without
+waiting is deliberate: azd's blocking mode has an internal wait budget that, on
+expiry, exits zero with an unfinished run and a differently shaped payload.</p>
+<p>AgentOps computes aggregate metrics itself for that surface, because the azd run
+object exposes only counts, never scores. It also never passes a failure-gating
+flag to azd — the release gate stays in AgentOps so a gate breach remains
+distinguishable from an operational failure.</p>
 <h2 id="poc-to-production-readiness-flow">POC-to-production readiness flow<a class="headerlink" href="#poc-to-production-readiness-flow" title="Permanent link">&para;</a></h2>
 <p>AgentOps does not create a second production gate with a new exit-code
 contract. Instead, it projects the signals already produced by evals, Doctor,

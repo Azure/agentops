@@ -2098,9 +2098,71 @@ cannot read it, run
 <p>That is expected. A hosted endpoint is evaluated with AgentOps local eval so the
 repo can invoke the endpoint, normalize results, apply thresholds, and keep a
 stable <code>results.json</code> contract, in sandbox and in CI alike.</p>
+<h3 id="optional-delegate-the-run-to-azd-instead">Optional: delegate the run to azd instead<a class="headerlink" href="#optional-delegate-the-run-to-azd-instead" title="Permanent link">&para;</a></h3>
+<p>If your Foundry project already drives evaluations through the Azure Developer
+CLI, you can keep that flow and still get the AgentOps gate around it. Set
+<code>execution: azd</code> in <code>agentops.yaml</code> and commit an azd recipe. Which azd surface
+runs is decided by the recipe, not by a setting:</p>
+<table>
+<thead>
+<tr>
+<th>Recipe you commit</th>
+<th>azd commands</th>
+<th>Extension</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>evals/azure.eval.yaml</code></td>
+<td><code>azd ai eval</code></td>
+<td><code>azure.ai.evaluations</code> (preview, azd 1.27.1+)</td>
+</tr>
+<tr>
+<td><code>eval.yaml</code></td>
+<td><code>azd ai agent eval</code></td>
+<td><code>azure.ai.agents</code></td>
+</tr>
+</tbody>
+</table>
+<p>A minimal current-surface recipe:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># evals/azure.eval.yaml</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nt">datasets</span><span class="p">:</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">smoke</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">    </span><span class="nt">file</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">../.agentops/data/smoke.jsonl</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="nt">evals</span><span class="p">:</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">hosted-agent-regression</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">    </span><span class="nt">dataset</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">smoke</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">    </span><span class="nt">evaluation_level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">turn</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">    </span><span class="nt">evaluators</span><span class="p">:</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">evaluator</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">builtin.task_adherence</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">        </span><span class="nt">initialization_parameters</span><span class="p">:</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">          </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">gpt-4o</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">    </span><span class="nt">target</span><span class="p">:</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">      </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">      </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;your-agent-name&gt;</span>
+</code></pre></div>
+<p>Thresholds in <code>agentops.yaml</code> bind to the metric names the recipe declares, so
+<code>task_adherence: "&gt;=4"</code> gates <code>builtin.task_adherence</code>. AgentOps checks that
+binding <em>before</em> submitting, so a typo fails immediately with exit code <code>1</code>
+instead of burning a cloud run.</p>
+<div class="admonition warning">
+<p class="admonition-title">The current-surface extension is not published yet</p>
+<p><code>azure.ai.evaluations</code> exists today only as an unmerged pull request against
+<code>Azure/azure-dev</code>, so <code>azd extension install azure.ai.evaluations</code> does not
+resolve from the default registry. To exercise this path now you must build
+and publish the extension into a local azd extension source:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">azd</span> <span class="n">extension</span> <span class="n">install</span> <span class="n">microsoft</span><span class="p">.</span><span class="n">azd</span><span class="p">.</span><span class="n">extensions</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">azd</span> <span class="n">x</span> <span class="n">build</span><span class="p">;</span> <span class="n">azd</span> <span class="n">x</span> <span class="n">pack</span><span class="p">;</span> <span class="n">azd</span> <span class="n">x</span> <span class="n">publish</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="n">azd</span> <span class="n">extension</span> <span class="n">install</span> <span class="n">azure</span><span class="p">.</span><span class="n">ai</span><span class="p">.</span><span class="n">evaluations</span> <span class="p">-</span><span class="n">-source</span> <span class="n">local</span>
+</code></pre></div>
+<p>Skip this section entirely if that is not set up. Nothing else in the
+tutorial depends on it, and a workspace without <code>evals/azure.eval.yaml</code> is
+completely unaffected.</p>
+</div>
 <h2 id="8-run-a-local-eval">8. Run a local eval<a class="headerlink" href="#8-run-a-local-eval" title="Permanent link">&para;</a></h2>
 <p>Replay the dataset against the sandbox endpoint and score it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span>
 </code></pre></div>
 <p>AgentOps calls the endpoint for each dataset row, records the responses, applies
 the configured evaluators and thresholds, and writes the result under
@@ -2144,11 +2206,11 @@ manual spans to the agent code. Spend a minute in the observability surfaces:</p
 </table>
 <p>To pull the same request from Application Insights <strong>Logs</strong>, filter on the
 operation and wait a couple of minutes if telemetry is not visible yet:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="n">dependencies</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="n">ago</span><span class="p">(</span><span class="mi">1</span><span class="n">h</span><span class="p">)</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="k">has</span><span class="w"> </span><span class="s">"invoke_agent"</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="p">|</span><span class="w"> </span><span class="k">project</span><span class="w"> </span><span class="n">timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Id</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">duration</span><span class="p">,</span><span class="w"> </span><span class="n">customDimensions</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="p">|</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="n">desc</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">dependencies</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="p">&gt;</span><span class="w"> </span><span class="n">ago</span><span class="p">(</span><span class="mi">1</span><span class="n">h</span><span class="p">)</span>
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="p">|</span><span class="w"> </span><span class="k">where</span><span class="w"> </span><span class="n">name</span><span class="w"> </span><span class="k">has</span><span class="w"> </span><span class="s">"invoke_agent"</span>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="p">|</span><span class="w"> </span><span class="k">project</span><span class="w"> </span><span class="n">timestamp</span><span class="p">,</span><span class="w"> </span><span class="n">operation_Id</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">duration</span><span class="p">,</span><span class="w"> </span><span class="n">customDimensions</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="p">|</span><span class="w"> </span><span class="k">order</span><span class="w"> </span><span class="k">by</span><span class="w"> </span><span class="n">timestamp</span><span class="w"> </span><span class="n">desc</span>
 </code></pre></div>
 <p>The division of labor is the same as the prompt-agent tutorial: Foundry and
 Azure Monitor run live observability; AgentOps checks whether those signals are
@@ -2160,7 +2222,7 @@ your last passing run.</p>
 <p>Then change the agent behavior so an answer gets worse (for example, drop the
 day-by-day itinerary from the instructions), redeploy it to sandbox, and rerun
 the eval against that baseline:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">-</span><span class="n">-baseline</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/&lt;</span><span class="n">good-run</span><span class="p">&gt;/</span><span class="n">results</span><span class="p">.</span><span class="n">json</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">agentops</span> <span class="n">eval</span> <span class="n">run</span> <span class="p">-</span><span class="n">-baseline</span> <span class="p">.</span><span class="n">agentops</span><span class="p">/</span><span class="n">results</span><span class="p">/&lt;</span><span class="n">good-run</span><span class="p">&gt;/</span><span class="n">results</span><span class="p">.</span><span class="n">json</span>
 </code></pre></div>
 <p>The report shows the delta between the good baseline and the regressed run, per
 metric, alongside the thresholds. Restore the itinerary behavior, redeploy, and
@@ -2188,7 +2250,7 @@ the dev hosted agent from the merged commit, so the deployed code always matches
 a known git SHA.</p>
 <h2 id="12-generate-the-workflows">12. Generate the workflows<a class="headerlink" href="#12-generate-the-workflows" title="Permanent link">&para;</a></h2>
 <p>Let AgentOps generate the PR gate and deploy workflows:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">agentops</span> <span class="n">workflow</span> <span class="n">generate</span>
 </code></pre></div>
 <p>This writes GitHub Actions workflow files under <code>.github/workflows/</code>. The PR
 gate runs <code>agentops eval run</code> against the dev endpoint and fails the check on a
@@ -2210,7 +2272,7 @@ merged commit, so the running code and the git SHA stay in lockstep.</p>
 <h2 id="15-build-the-evidence-pack">15. Build the evidence pack<a class="headerlink" href="#15-build-the-evidence-pack" title="Permanent link">&para;</a></h2>
 <p>Collect the release evidence that ties a deploy to a known-good evaluation and a
 git SHA:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-workspace</span> <span class="p">.</span> <span class="p">-</span><span class="n">-evidence-pack</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="n">agentops</span> <span class="n">doctor</span> <span class="p">-</span><span class="n">-workspace</span> <span class="p">.</span> <span class="p">-</span><span class="n">-evidence-pack</span>
 </code></pre></div>
 <p>Doctor writes the pack to <code>.agentops/release/latest/evidence.md</code> (and a JSON
 sibling) with the git SHA, the eval result, and the readiness findings. This is
@@ -2218,7 +2280,7 @@ what you cite when someone asks which release is in production and whether it
 passed its gate.</p>
 <h2 id="16-open-cockpit">16. Open Cockpit<a class="headerlink" href="#16-open-cockpit" title="Permanent link">&para;</a></h2>
 <p>Read the whole loop in one place:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">agentops</span> <span class="n">cockpit</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a><span class="n">agentops</span> <span class="n">cockpit</span>
 </code></pre></div>
 <p>Cockpit shows the latest eval, the Doctor findings, and the release evidence for
 the workspace, so you can make the ship call from a single summary instead of
