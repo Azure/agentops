@@ -45,8 +45,19 @@ class AzdEvalRun:
     duration_seconds: float
 
 
-def azd_available(*, cwd: Optional[Path] = None) -> bool:
-    """Return whether azd and the AI agents extension are available."""
+def probe_extension(extension_name: str, *, cwd: Optional[Path] = None) -> bool:
+    """Return whether azd and ``extension_name`` are both available.
+
+    Detection prefers ``azd extension list --installed -o json``, which returns
+    a bare array whose entries carry an ``id``. The human-readable table lists
+    *every* registry extension, including uninstalled ones marked
+    ``Not installed``, so substring scanning it reports a false positive as soon
+    as an extension appears in the registry but before the user installs it. The
+    table is also truncated to terminal width.
+
+    The text scan is retained only as a fallback for azd builds that do not
+    support the structured form, so existing behavior is preserved there.
+    """
 
     try:
         subprocess.run(
@@ -57,6 +68,27 @@ def azd_available(*, cwd: Optional[Path] = None) -> bool:
             timeout=AZD_AVAILABILITY_TIMEOUT_SECONDS,
             check=True,
         )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return False
+
+    try:
+        structured = subprocess.run(
+            ["azd", "extension", "list", "--installed", "-o", "json"],
+            cwd=str(cwd) if cwd else None,
+            text=True,
+            capture_output=True,
+            timeout=AZD_AVAILABILITY_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return False
+
+    if structured.returncode == 0:
+        installed = _installed_extension_ids(structured.stdout)
+        if installed is not None:
+            return extension_name in installed
+
+    try:
         extensions = subprocess.run(
             ["azd", "extension", "list"],
             cwd=str(cwd) if cwd else None,
@@ -67,7 +99,41 @@ def azd_available(*, cwd: Optional[Path] = None) -> bool:
         )
     except (FileNotFoundError, subprocess.SubprocessError):
         return False
-    return AZD_EXTENSION_NAME in (extensions.stdout + extensions.stderr)
+    return extension_name in (extensions.stdout + extensions.stderr)
+
+
+def _installed_extension_ids(payload: str) -> Optional[set[str]]:
+    """Parse installed extension ids from structured azd output.
+
+    Returns ``None`` when the payload is not the expected bare array, so the
+    caller falls back rather than treating an unparseable response as
+    "nothing installed".
+    """
+
+    text = (payload or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, list):
+        return None
+    identifiers: set[str] = set()
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            continue
+        identifier = entry.get("id")
+        if isinstance(identifier, str) and identifier.strip():
+            identifiers.add(identifier.strip())
+    return identifiers
+
+
+def azd_available(*, cwd: Optional[Path] = None) -> bool:
+    """Return whether azd and the AI agents extension are available."""
+
+    return probe_extension(AZD_EXTENSION_NAME, cwd=cwd)
+
 
 
 def resolve_eval_recipe(workspace: Path, config: AgentOpsConfig) -> Path:
