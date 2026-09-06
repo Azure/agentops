@@ -11,3 +11,4 @@
 # Markdown and Python normalize to LF for cross-platform consistency.
 *.md text eol=lf
 *.py text eol=lf
+.github/workflows/*.lock.yml linguist-generated=true
