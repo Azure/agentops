@@ -7,8 +7,8 @@ permissions:
   contents: read
   id-token: write
 jobs:
-  discover:
+  check:
     uses: ./.github/workflows/marketplace-preflight.yml
     with:
       environment: marketplace-validation
-      mode: discover
+      mode: check
