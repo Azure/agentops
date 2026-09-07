@@ -35,7 +35,7 @@ def marketplace(monkeypatch):
 
 
 def assignment(role="Contributor", profile=PROFILE, deny=0):
-    return {"user": {"id": profile}, "role": {"name": role, "denyPermissions": deny}}
+    return {"identity": {"id": profile}, "role": {"name": role, "denyPermissions": deny}}
 
 
 @pytest.mark.parametrize("role", ["Contributor", "Owner", "Creator"])
@@ -127,7 +127,7 @@ def test_read_only_preflight_matches_vsce_auth_without_upload(marketplace, monke
     assert len(calls) == 1
     basic = base64.b64encode(f"OAuth:{TOKEN}".encode()).decode()
     assert requests == [
-        (marketplace.PROFILE_URL, f"Basic {basic}"),
+        (marketplace.PROFILE_URL, "Bearer " + TOKEN),
         (marketplace.ROLES_URL, f"Basic {basic}"),
     ]
     output = capsys.readouterr().out
