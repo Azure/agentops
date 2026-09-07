@@ -1,0 +1,14 @@
+name: Marketplace validation bootstrap
+on:
+  push:
+    branches: [placerda-marketplace-validation-045981b4]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  discover:
+    uses: ./.github/workflows/marketplace-preflight.yml
+    with:
+      environment: marketplace-validation
+      mode: discover
