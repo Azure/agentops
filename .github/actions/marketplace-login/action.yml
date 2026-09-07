@@ -1,0 +1,49 @@
+name: Marketplace OIDC login
+description: Authenticate the dedicated publishing identity without Azure roles or stored secrets.
+inputs:
+  client-id:
+    description: Dedicated Marketplace managed identity client ID.
+    required: true
+  tenant-id:
+    description: Approved publishing identity tenant ID.
+    required: true
+  profile-id:
+    description: Marketplace profiles/me ID (not the Entra principal ID).
+    required: false
+  discover-profile:
+    description: Skip only the profile configuration check when bootstrapping a profile ID.
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Validate Marketplace identity configuration
+      shell: bash
+      env:
+        CLIENT_ID: ${{ inputs.client-id }}
+        TENANT_ID: ${{ inputs.tenant-id }}
+        PROFILE_ID: ${{ inputs.profile-id }}
+        DISCOVER_PROFILE: ${{ inputs.discover-profile }}
+      run: |
+        GUID='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+        DISCOVER_PROFILE="${DISCOVER_PROFILE:-false}"
+        if [[ "$DISCOVER_PROFILE" != "true" && "$DISCOVER_PROFILE" != "false" ]]; then
+          echo "::error::discover-profile must be true or false."
+          exit 1
+        fi
+        NAMES=(CLIENT_ID TENANT_ID)
+        if [[ "$DISCOVER_PROFILE" == "false" ]]; then
+          NAMES+=(PROFILE_ID)
+        fi
+        for NAME in "${NAMES[@]}"; do
+          if [[ ! "${!NAME}" =~ $GUID ]]; then
+            echo "::error::Missing or invalid Marketplace $NAME. Configure the protected Marketplace environment variables; see docs/release-process.md."
+            exit 1
+          fi
+        done
+
+    - name: Sign in with Marketplace workload identity
+      uses: azure/login@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        tenant-id: ${{ inputs.tenant-id }}
+        allow-no-subscriptions: true

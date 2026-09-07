@@ -9,15 +9,14 @@
 #   4. Publish to TestPyPI
 #   5. Verify install from TestPyPI + smoke test
 #   6. Build VSIX pre-release
-#   7. Publish VSIX pre-release to Marketplace
+#   Marketplace publication happens only in the stable release.
 #
 # Usage:  .\scripts\staging.ps1
 # Prereqs:
 #   - uv installed
 #   - twine: pip install twine (for TestPyPI upload)
-#   - npm + vsce: npm install -g @vscode/vsce
+#   - Node.js 22 + vsce: npm install -g @vscode/vsce@3.9.2
 #   - TESTPYPI_TOKEN env var (API token from test.pypi.org)
-#   - VSCE_PAT env var (VS Code Marketplace PAT)
 # ─────────────────────────────────────────────────────────────────────
 
 Set-StrictMode -Version Latest
@@ -27,24 +26,24 @@ $skipTestPyPI = $false
 $skipVSIX = $false
 
 # ── Step 1: Lint ────────────────────────────────────────────────────
-Write-Host "`n>>> [1/7] Linting with ruff..." -ForegroundColor Yellow
+Write-Host "`n>>> [1/6] Linting with ruff..." -ForegroundColor Yellow
 uv run ruff check src/ tests/
 Write-Host ">>> Lint passed" -ForegroundColor Green
 
 # ── Step 2: Test ────────────────────────────────────────────────────
-Write-Host "`n>>> [2/7] Running tests..." -ForegroundColor Yellow
+Write-Host "`n>>> [2/6] Running tests..." -ForegroundColor Yellow
 uv run pytest tests/ -v --tb=short
 Write-Host ">>> Tests passed" -ForegroundColor Green
 
 # ── Step 3: Build ───────────────────────────────────────────────────
-Write-Host "`n>>> [3/7] Building package..." -ForegroundColor Yellow
+Write-Host "`n>>> [3/6] Building package..." -ForegroundColor Yellow
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 uv build
 Write-Host ">>> Build artifacts:" -ForegroundColor Green
 Get-ChildItem dist/ | ForEach-Object { Write-Host "    $_" }
 
 # ── Step 4: Publish to TestPyPI ─────────────────────────────────────
-Write-Host "`n>>> [4/7] Publishing to TestPyPI..." -ForegroundColor Yellow
+Write-Host "`n>>> [4/6] Publishing to TestPyPI..." -ForegroundColor Yellow
 if (-not $env:TESTPYPI_TOKEN) {
     Write-Host ">>> TESTPYPI_TOKEN not set — skipping TestPyPI publish" -ForegroundColor DarkYellow
     Write-Host "    Set it with: `$env:TESTPYPI_TOKEN = 'pypi-...'" -ForegroundColor DarkGray
@@ -55,7 +54,7 @@ if (-not $env:TESTPYPI_TOKEN) {
 }
 
 # ── Step 5: Verify TestPyPI install ─────────────────────────────────
-Write-Host "`n>>> [5/7] Verifying TestPyPI install..." -ForegroundColor Yellow
+Write-Host "`n>>> [5/6] Verifying TestPyPI install..." -ForegroundColor Yellow
 if ($skipTestPyPI) {
     Write-Host ">>> Skipped (no TestPyPI publish)" -ForegroundColor DarkYellow
 } else {
@@ -88,11 +87,11 @@ if ($skipTestPyPI) {
 }
 
 # ── Step 6: Build VSIX ──────────────────────────────────────────────
-Write-Host "`n>>> [6/7] Building VSIX pre-release..." -ForegroundColor Yellow
+Write-Host "`n>>> [6/6] Building VSIX pre-release artifact (no Marketplace upload)..." -ForegroundColor Yellow
 $vsceAvailable = Get-Command vsce -ErrorAction SilentlyContinue
 if (-not $vsceAvailable) {
     Write-Host ">>> vsce not found — skipping VSIX build" -ForegroundColor DarkYellow
-    Write-Host "    Install with: npm install -g @vscode/vsce" -ForegroundColor DarkGray
+    Write-Host "    Install with: npm install -g @vscode/vsce@3.9.2" -ForegroundColor DarkGray
     $skipVSIX = $true
 } else {
     # Sync version from latest git tag
@@ -118,30 +117,16 @@ if (-not $vsceAvailable) {
     Copy-Item icon.png plugins/agentops/icon.png -Force -ErrorAction SilentlyContinue
 
     Push-Location plugins/agentops
-    vsce package --pre-release -o agentops-skills.vsix
-    Write-Host ">>> VSIX built: agentops-skills.vsix (v$baseVersion)" -ForegroundColor Green
-    Pop-Location
-
-    # Restore original package.json to prevent version drift
-    Set-Content $pkgPath -Value $pkgOriginal -NoNewline
+    try {
+        vsce package --pre-release -o agentops-skills.vsix
+        if ($LASTEXITCODE -ne 0) { throw "VSIX packaging failed; publication aborted." }
+        Write-Host ">>> VSIX built: agentops-skills.vsix (v$baseVersion)" -ForegroundColor Green
+    } finally {
+        Pop-Location
+        # Restore original package.json even if packaging failed.
+        Set-Content $pkgPath -Value $pkgOriginal -NoNewline
+    }
     Write-Host ">>> package.json restored to committed version" -ForegroundColor DarkGray
-}
-
-# ── Step 7: Publish VSIX pre-release ────────────────────────────────
-Write-Host "`n>>> [7/7] Publishing VSIX pre-release..." -ForegroundColor Yellow
-if ($skipVSIX) {
-    Write-Host ">>> Skipped (vsce not available)" -ForegroundColor DarkYellow
-} elseif (-not $env:VSCE_PAT) {
-    Write-Host ">>> VSCE_PAT not set — skipping Marketplace publish" -ForegroundColor DarkYellow
-    Write-Host "    Set it with: `$env:VSCE_PAT = 'your-pat'" -ForegroundColor DarkGray
-} else {
-    Push-Location plugins/agentops
-    # Verify the VSIX contains the expected version before publishing
-    $vsixPkg = Get-Content package.json -Raw | ConvertFrom-Json
-    Write-Host "    VSIX will publish from packagePath (version in VSIX: $baseVersion)" -ForegroundColor DarkGray
-    vsce publish --pre-release --packagePath agentops-skills.vsix -p $env:VSCE_PAT
-    Pop-Location
-    Write-Host ">>> VSIX pre-release published to Marketplace" -ForegroundColor Green
 }
 
 # ── Summary ─────────────────────────────────────────────────────────

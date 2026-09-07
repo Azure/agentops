@@ -315,7 +315,16 @@ python -c "from agentops import __version__; print(__version__)"
 
 ## 7. Staging Pipeline (TestPyPI)
 
-The staging pipeline validates a release candidate by publishing to TestPyPI and verifying the installed package works.
+The staging pipeline validates a release candidate by publishing to TestPyPI and
+verifying the installed package works. Its `build-vsix` job produces a VSIX
+artifact for manual evaluation only; it never uploads to Marketplace or reserves
+a Marketplace version. TestPyPI uploads are real, so staging as a whole is not
+a dry run; use only legitimate, authorized release candidates.
+
+**Marketplace publication is stable-only:** the production `vX.Y.Z` tag flow
+publishes the extension after human `marketplace-release` approval. Previously,
+staging could publish pre-release `X.Y.Z`, causing stable publication of the same
+version to skip as a duplicate. Artifact-only staging eliminates that collision.
 
 **Workflow file**: `.github/workflows/staging.yml`
 
@@ -329,8 +338,10 @@ flowchart TD
     build["_build<br/><i>tests + package</i><br/>Version: 0.2.1.dev3 (setuptools-scm)"]
     publish["publish-testpypi<br/><i>Upload to TestPyPI (staging environment)</i><br/>Trusted Publishing (OIDC, no token)"]
     verify["verify-testpypi<br/><i>Install from TestPyPI in fresh environment</i><br/>agentops --version / --help / init"]
+    vsix["build-vsix<br/><i>Package pre-release VSIX artifact for manual evaluation</i><br/>No Marketplace upload or identity"]
 
     push --> build --> publish --> verify
+    push --> vsix
 ```
 
 ### What Gets Validated
@@ -341,6 +352,10 @@ flowchart TD
 4. **Package installs** - `pip install` from TestPyPI resolves all dependencies
 5. **CLI works** - `agentops --version` and `--help` run without errors
 6. **Init works** - `agentops init` creates the expected workspace files
+7. **Extension packages** - `build-vsix` produces an installable pre-release VSIX
+   artifact. Download and install it manually in VS Code to evaluate the candidate.
+   Packaging needs no GitHub environment, `id-token`, Azure login, or Marketplace
+   profile variables, and has no cloud reservation or Marketplace approval.
 
 ### Iterating on a Release Branch
 
@@ -380,99 +395,57 @@ ls .agentops/
 
 ## 8. End-to-End Pipeline Testing
 
-Before cutting a real release, you can validate the entire pipeline end-to-end using a disposable test branch and tag. This is especially useful when:
-
-- You've modified any workflow file (`_build.yml`, `staging.yml`, `release.yml`)
-- You've changed `pyproject.toml` build configuration
-- You've updated setuptools-scm settings
-- A new engineer wants to understand the release process hands-on
+**Release workflows are not dry runs.** Pushing `release/*` triggers a real TestPyPI
+upload and artifact-only VSIX packaging; pushing `v*` triggers production
+publishing. Never create dummy release branches, tags, or Marketplace versions
+to test workflow changes. Deleting a ref does not undo an upload.
 
 ### 8.1 Test the Staging Pipeline
 
-#### Step 1: Create a Test Release Branch
+Before authorizing a real candidate, run the existing tests and package locally
+without publishing:
 
-From the branch that contains your workflow changes (or from `develop`):
-
-```bash
-git checkout develop          # or your feature branch with workflow changes
-git pull origin develop
-git checkout -b release/v0.0.0-test
-git push origin release/v0.0.0-test
+```powershell
+python -m pytest tests/ -x -q
+uv build
+# With Node 22 installed:
+npm install -g @vscode/vsce@3.9.2
+Copy-Item CHANGELOG.md,icon.png -Destination plugins\agentops
+Push-Location plugins\agentops
+npm run package:prerelease
+Pop-Location
 ```
 
-This triggers the `staging.yml` workflow automatically.
+For identity and publisher permissions, use the standalone read-only
+`python scripts/marketplace.py check` after the
+[local identity setup](#local-publishing). Do not invoke a release script merely
+to test credentials: it publishes after preflight. Local `scripts/staging.sh`
+and `scripts/staging.ps1` run lint/tests, Python build, TestPyPI upload and smoke
+verification, then VSIX artifact packaging. They perform no Azure preflight or
+Marketplace publish, but their TestPyPI upload still makes them unsuitable for
+pure no-upload validation.
 
-#### Step 2: Monitor the Pipeline
-
-1. Go to **Actions** tab → find the **Staging** workflow run for `release/v0.0.0-test`
-2. Watch all 3 jobs:
-
-```
-Job 1: build / build        → Should tests pass? Package build?
-Job 2: publish-testpypi     → Does TestPyPI upload succeed?
-Job 3: verify-testpypi      → Can the package install and run?
-```
-
-3. Click into each job to inspect step-level output
-4. If a job fails, read the logs, fix the issue, push again:
-
-```bash
-# Fix and re-push
-git add .
-git commit -m "fix: correct workflow issue"
-git push origin release/v0.0.0-test
-# Pipeline re-runs automatically
-```
-
-#### Step 3: Verify on TestPyPI (Optional)
-
-Confirm the test package appeared on TestPyPI:
-
-```bash
-# Check the version that was published
-python -m setuptools_scm
-
-# Install and test manually
-pip install "agentops-accelerator==$(python -m setuptools_scm)" \
-  --index-url https://test.pypi.org/simple/ \
-  --extra-index-url https://pypi.org/simple/
-
-agentops --version
-agentops --help
-
-# Test init
-cd $(mktemp -d)
-agentops init
-ls .agentops/
-```
-
-#### Step 4: Clean Up the Test Branch
-
-```bash
-# Delete remote branch
-git push origin --delete release/v0.0.0-test
-
-# Switch back and delete local branch
-git checkout develop
-git branch -d release/v0.0.0-test
-```
+When a legitimate release candidate is explicitly authorized, push its
+`release/vX.Y.Z` branch and monitor **Staging** in Actions. Review the TestPyPI
+upload and install verification, and download the `build-vsix` artifact for
+manual extension evaluation. Staging needs no Marketplace environment or
+approval. Re-pushing the branch can upload to TestPyPI again, not Marketplace.
 
 ### 8.2 Test the Full Release Pipeline
 
 > **There is no safe dry run.** The `publish-pypi` job does not pause, so pushing
 > any `v*` tag publishes that version to real PyPI. There is no reject button to
-> catch it. PyPI versions cannot be deleted, only yanked, so a throwaway
-> `v0.0.0-test.1` tag leaves a permanent artifact on the project page.
+> catch it. PyPI versions cannot be deleted, only yanked; a throwaway tag can
+> leave permanent published artifacts.
 
-Test everything except the final publish by pushing a `release/v*` branch, which
-exercises build → TestPyPI → verify (see [8.1](#81-test-the-staging-pipeline)).
-That covers every job the release pipeline runs before `publish-pypi`, using the
-same build and the same `pypa/gh-action-pypi-publish` action.
+Use packaging and the read-only Marketplace preflight in [8.1](#81-test-the-staging-pipeline)
+for no-upload validation. A full end-to-end publish requires an explicitly
+authorized, legitimate release. The `marketplace-release` approval gate is
+separate from PyPI and does not pause `publish-pypi`.
 
-If you genuinely need to validate `publish-pypi` end to end, add required
-reviewers to the `release` environment first (see
-[Enabling a real approval gate](#enabling-a-real-approval-gate)). With reviewers
-attached, the job pauses and you can reject it.
+If a PyPI approval gate is required, configure reviewers on `release` first
+(see [Enabling a real approval gate](#enabling-a-real-approval-gate)).
+Rejecting a deployment proves neither successful authentication nor upload.
 
 #### Verifying the publish path without publishing
 
@@ -491,43 +464,30 @@ tag has already been pushed.
 
 ### 8.3 Quick E2E Test Summary
 
-| What to test           | Command                                                              | What to watch                        |
-| ---------------------- | -------------------------------------------------------------------- | ------------------------------------ |
-| Staging only           | `git push origin release/v0.0.0-test`                                | 3 jobs: build → TestPyPI → verify    |
-| Full release           | `git push origin v0.0.0-test.1`                                      | Publishes to PyPI. No undo. Avoid.   |
-| Cleanup (branch)       | `git push origin --delete release/v0.0.0-test`                       | Branch removed                       |
-| Cleanup (tag)          | `git push origin --delete v0.0.0-test.1 && git tag -d v0.0.0-test.1` | Tag removed, PyPI version remains    |
+| What to validate | Method | What it proves |
+| --- | --- | --- |
+| Tests and packaging | Existing tests, `uv build`, extension `npm run package:prerelease` | Build correctness; no upload or Marketplace version reservation |
+| Marketplace identity and access | `python scripts/marketplace.py check` | Profile and explicit publisher role; no upload |
+| Real staging candidate | Authorized `release/vX.Y.Z` candidate | TestPyPI upload/install and VSIX artifact for manual evaluation; no Marketplace upload |
+| Real stable release | Authorized `vX.Y.Z` tag and Marketplace approval | Production publication; not reversible by deleting the tag |
 
 ### 8.4 Testing Workflow Changes on a Feature Branch
 
-If you're modifying the workflow files on a feature branch (not yet merged to `develop`), you can still test them:
-
-```bash
-# Your workflow changes are on feature/my-ci-changes
-git checkout feature/my-ci-changes
-
-# Create a test release branch directly from your feature branch
-git checkout -b release/v0.0.0-test
-git push origin release/v0.0.0-test
-
-# GitHub Actions uses the workflow files from the pushed branch,
-# so your modifications are what actually runs
-```
-
-This is useful because GitHub Actions reads workflow files from the branch being pushed, not from `main` or `develop`. Your modified workflows execute immediately without needing to merge first.
-
-After testing:
-
-```bash
-# Clean up
-git push origin --delete release/v0.0.0-test
-git checkout feature/my-ci-changes
-git branch -d release/v0.0.0-test
-```
+Run the existing targeted workflow/helper tests and packaging on the feature
+branch. Inspect workflow diffs and environment protections without dispatching
+release workflows. Do not bypass deployment policies or create a dummy
+`release/*` branch to obtain a publishing identity. A standalone, explicitly
+approved read-only preflight can validate federation and publisher access, but
+must not call `publish` or the staging/release scripts.
 
 ## 9. Production Release Pipeline (PyPI)
 
-The production pipeline publishes a final release to PyPI and creates a GitHub Release.
+The production pipeline publishes a final release to PyPI and creates a GitHub
+Release. Its Marketplace stable publish uses the separate protected
+`marketplace-release` environment; this does not change Python publishing.
+The tag publishes Python **before Marketplace approval**. A human must approve
+`marketplace-release`; do not bypass that gate. GitHub Release creation waits
+for successful Marketplace publication.
 
 **Workflow file**: `.github/workflows/release.yml`
 
@@ -542,9 +502,10 @@ flowchart TD
     publishTest["publish-testpypi<br/><i>Final TestPyPI upload (clean version)</i>"]
     verifyTest["verify-testpypi<br/><i>Smoke test from TestPyPI</i>"]
     publishPypi["publish-pypi<br/><i>Publishes to PyPI immediately</i><br/>Trusted Publishing (OIDC, no token)<br/>environment: release (no protection rules)"]
+    vsix["publish-vsix<br/><i>Stable Marketplace publish</i><br/>marketplace-release: review + Entra OIDC"]
     ghRelease["github-release<br/><i>Creates GitHub Release with artifacts</i><br/>Auto-generated release notes"]
 
-    tag --> build --> publishTest --> verifyTest --> publishPypi --> ghRelease
+    tag --> build --> publishTest --> verifyTest --> publishPypi --> vsix --> ghRelease
 
     classDef gate fill:#fff3cd,stroke:#856404,color:#000;
     class tag gate;
@@ -552,7 +513,8 @@ flowchart TD
 
 > **Pushing the tag is the point of no return.** The `publish-pypi` job declares
 > `environment: release`, but that environment currently has **no protection
-> rules**, so nothing pauses for review. Verify for yourself:
+> rules**, so Python publishing does not pause for review. The Marketplace
+> environment is separate. Verify for yourself:
 >
 > ```bash
 > gh api repos/Azure/agentops/environments --jq '.environments[] | {name, protection_rules}'
@@ -594,10 +556,12 @@ The branch push triggers the staging pipeline automatically. Wait for it to pass
 #### Step 3: Monitor Staging
 
 1. Go to **Actions** tab → find the **Staging** workflow run
-2. Verify all 3 jobs pass:
+2. Verify the Python jobs pass:
    - ✅ `build / build` - tests pass, package builds
    - ✅ `publish-testpypi` - uploaded to TestPyPI
    - ✅ `verify-testpypi` - installed and smoke-tested
+3. Verify `build-vsix` passes, then download its pre-release VSIX artifact for
+   manual evaluation. There is no Marketplace upload or approval during staging.
 
 If any job fails, fix the issue on the release branch and push. The pipeline re-runs automatically.
 
@@ -656,11 +620,15 @@ review. Open `CHANGELOG.md` after the merge and confirm that everything under
 #### Step 6: Watch the release pipeline
 
 1. Go to **Actions** tab → find the **Release** workflow run for `v0.2.0`
-2. The pipeline runs build → TestPyPI → verify → **publish-pypi** → github-release
+2. The pipeline runs build → TestPyPI → verify → **publish-pypi** →
+   **publish-vsix** → github-release
 3. `publish-pypi` does not pause. It publishes to PyPI via
    [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) using the
    workflow's OIDC identity, so there is no API token to rotate
-4. `github-release` then creates a GitHub Release with the built artifacts and
+4. After Python publishes, a human approves the `marketplace-release` deployment
+   for stable extension publication. Do not bypass the required approval.
+5. Only after successful Marketplace publication, `github-release` creates a
+   GitHub Release with the built artifacts and
    auto-generated release notes
 
 If the run fails after `publish-pypi` succeeded, the package is already on PyPI.
@@ -710,7 +678,9 @@ This section covers one-time setup required before the pipelines can run.
 
 ### 10.1 GitHub Environments
 
-Create two environments in **Settings → Environments → New environment**:
+Keep the existing Python environments unchanged. Use the **separate
+`marketplace-release` environment** for publishing as described below; do not
+reuse `staging` or `release` for Marketplace authentication.
 
 #### `staging` Environment
 
@@ -726,17 +696,69 @@ Create two environments in **Settings → Environments → New environment**:
   real gate, add required reviewers (see
   [Enabling a real approval gate](#enabling-a-real-approval-gate)).
 - **Deployment branches**: Optionally restrict to `main` branch and `v*` tags
-- **Secrets**: None. `VSCE_PAT` is a **repository** secret, not an environment secret,
-  so it resolves in both `staging.yml` and `release.yml` without being attached here.
+- **Secrets**: None. Python uploads continue to use Trusted Publishing.
+
+#### Marketplace Environments
+
+`marketplace-release` is the only required Marketplace publishing environment.
+Retain its **required human reviewers** and **selected branch/tag deployment
+policies** before enabling its identity variables:
+
+| Environment | Allowed deployment refs | Purpose |
+| --- | --- | --- |
+| `marketplace-release` | Tags `v*`; optionally the protected `main` branch for manual dispatch with a tag input | Stable Marketplace publishing |
+| `marketplace-staging` | Existing selected-ref policy | Optional legacy/read-only preflight diagnostics; not used by staging or packaging |
+| `marketplace-validation` | Existing approved validation-ref policy | Optional read-only preflight diagnostics |
+
+`marketplace-staging` and `marketplace-validation` were created earlier; the
+stable-only flow does not delete them. Neither is required to stage or package
+the extension, and neither introduces an approval into the staging pipeline.
+Manual preflight still offers validation/staging/release contexts and respects
+the selected environment's existing protections.
+
+For manual stable releases, the job guards allow only `main` or the same release
+tag as the input. Do not allow feature branches. An environment-based federated
+subject **does not restrict branches by itself**: these environment protections
+are essential and must exist before enabling the identity.
+
+For an authorized retry of a pre-migration tag, explicitly dispatch the **new
+migrated workflow on protected `main`**, supplying the valid release tag.
+The Marketplace job checks out trusted tooling from `github.workflow_sha` at
+the workspace root and extension source from `refs/tags/<tag>` into
+`release-source/`. This packages the old extension source using the new OIDC
+action/helper. A tag-based dispatch must match the tag input. Re-running a
+historical old workflow run still executes its old PAT code; it does **not**
+adopt the migrated workflow automatically. This is a real release retry, not
+a read-only check.
+
+Set these **environment variables**, not secrets, in `marketplace-release`
+(and in an optional diagnostic environment only when using its preflight):
+
+| Variable | Value |
+| --- | --- |
+| `MARKETPLACE_AZURE_CLIENT_ID` | Dedicated user-assigned managed identity (UAMI) client GUID |
+| `MARKETPLACE_AZURE_TENANT_ID` | Approved identity tenant GUID |
+| `MARKETPLACE_PROFILE_ID` | Marketplace `profiles/me` profile `id`, **not** the Entra principal/object ID |
+
+Publishing and identity-preflight jobs request `id-token: write` and use `azure/login@v3` with
+`allow-no-subscriptions: true`. No Azure RBAC grant is needed solely to publish
+an extension: Marketplace publisher membership supplies that permission.
+Do not change shared `AZURE_*` E2E variables or repository-wide OIDC settings.
+The staging `build-vsix` job has no environment, OIDC permission, Azure login,
+or Marketplace profile variables.
 
 #### Repository secrets
 
 | Secret       | Value                                                | How to get it                                                                   |
 | ------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `VSCE_PAT`   | VS Code Marketplace PAT with **Marketplace: Manage** | [dev.azure.com](https://dev.azure.com) → User settings → Personal access tokens |
 | `RELEASE_PAT`| PAT used by `cut-release.yml` to open the release PR | GitHub → Settings → Developer settings → Personal access tokens                 |
 
-No PyPI API token is stored. Check the current rules and secret locations at any time:
+`RELEASE_PAT` is a **GitHub** PAT and is unchanged by this migration. Marketplace
+publishing has no PAT fallback. The legacy repository `VSCE_PAT` must be retained
+until an actual stable Marketplace publication succeeds and remaining consumers
+are checked; do not interpret this documentation as
+confirmation it has been removed. No PyPI API token is stored. Check the current
+rules and secret names (never secret values) at any time:
 
 ```bash
 gh api repos/Azure/agentops/environments/release --jq '.protection_rules'
@@ -779,6 +801,166 @@ new project name, either upload once manually with a temporary API token, or use
 flow to reserve the name for the workflow. `agentops-accelerator` is already
 registered on both indexes, so this only matters if the package is renamed.
 
+### 10.4 Marketplace Entra OIDC Identity Setup
+
+**Permanent ownership and the approved production tenant/subscription must be
+decided outside the code rollout.** Use a dedicated UAMI, not an E2E identity.
+The earlier non-production personal-subscription probe established feasibility,
+not policy approval or a permanent hosting location.
+
+Verify the existing subject customization read-only before creating federation:
+
+```powershell
+gh api repos/Azure/agentops/actions/oidc/customization/sub
+gh api repos/Azure/agentops --jq '{repository_id: .id, repository_owner_id: .owner.id}'
+```
+
+Verified for this migration: `use_default: false`, with ordered claim keys
+`repository_owner_id`, `repository_id`, `context`; owner ID `6844498` and
+repository ID `1161883340`. Stable publication requires the release federated
+credential; any legacy staging credential is optional for read-only diagnostics:
+
+| Field | Value |
+| --- | --- |
+| Issuer | `https://token.actions.githubusercontent.com` |
+| Audience | `api://AzureADTokenExchange` |
+| Release subject | `repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-release` |
+| Optional legacy staging subject | `repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-staging` |
+
+Do not replace the repository customization with GitHub's default `repo:...`
+subject: that can break other federated consumers. If verification differs,
+stop and reconcile the identity configuration with repository owners.
+
+After authenticating as the UAMI in the approved tenant, obtain a CLI token for
+resource `499b84ac-1321-427f-aa17-267ca6975798` and use it only in the Authorization
+header of a read-only request to
+`https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1`.
+Record only the returned profile `id`. Never print, persist, or paste the token.
+Have an **Owner** of publisher `AgentOpsAccelerator` grant that profile
+**Contributor**, not Owner. Set `MARKETPLACE_PROFILE_ID` to this Marketplace
+profile ID, not the UAMI's Entra principal ID.
+
+### 10.5 Shared Publishing Helper and Local Use
+
+`scripts/marketplace.py` requires Python 3.11+ (standard library only) and the
+Azure CLI. Publishing also requires Node 22 and `vsce` 3.9.2 or newer; workflows
+pin `npm install -g @vscode/vsce@3.9.2`.
+
+```text
+python scripts/marketplace.py check
+python scripts/marketplace.py discover --out marketplace-profile.json
+python scripts/marketplace.py publish --package-path PATH [--pre-release] [--allow-already-exists]
+```
+
+- `check` is **read-only** and never publishes. It selects
+  `MARKETPLACE_AZURE_TENANT_ID`, checks the CLI identity's self profile against
+  `MARKETPLACE_PROFILE_ID`, and requires an explicit publisher
+  Contributor/Owner/Creator role with **zero deny permissions**. A generic HTTP
+  200 response is not sufficient proof of publishing permission.
+- `publish` runs that preflight before uploading the specified package.
+  The child environment clears inherited PAT and EnvironmentCredential variables
+  and selects the tenant so `vsce` uses the intended CLI credential. There is
+  **no PAT fallback**, and token values are never printed.
+- CI passes `--allow-already-exists` to preserve re-run handling. Local defaults
+  fail on an existing version; opt in only when that behavior is intended.
+  This maps to `vsce`'s native `--skip-duplicate` for existing-version/409
+  handling, not output substring matching. Other errors always propagate.
+- Profile pinning prevents a wrong account or tenant from publishing.
+  A successful CLI profile/role preflight is **not proof of an actual upload**.
+- Low-level `--pre-release` support may remain in the helper, but it is not part
+  of the normal release flow. Staging only packages; production publishes stable.
+
+#### Permission-only GitHub workflow
+
+`marketplace-preflight.yml` is separate from the release workflows and never
+publishes. Its `workflow_dispatch` inputs select `discover` or `check` and one
+of `marketplace-validation`, `marketplace-staging`, or `marketplace-release`.
+It also supports `workflow_call` for a reviewed bootstrap workflow.
+
+Use `discover` first: only client/tenant configuration is required. It reads the
+new identity's Marketplace profile without requiring publisher membership and
+uploads only tenant/profile IDs in the seven-day `marketplace-profile` artifact.
+After granting Contributor, set `MARKETPLACE_PROFILE_ID` and run `check`.
+Discovery alone is not proof of publisher access.
+
+The existing optional `marketplace-validation` and legacy `marketplace-staging`
+environments can be used for read-only diagnostics under their configured ref,
+reviewer, and federation policies. Neither is required by `build-vsix` or the
+local staging scripts. Do not change the existing environment policies to admit
+test branches, create dummy release refs, or bypass reviewers.
+An approval pause is a real human handoff, not a reason to use another identity.
+Only the selected context is validated; validation/staging diagnostic success
+does not prove release-context authentication or actual stable publication.
+This flow requires no new diagnostic environment or approval.
+
+#### Local Publishing
+
+The local `scripts/staging.ps1` and `scripts/staging.sh` run lint/tests, Python
+build, TestPyPI upload, smoke verification, and VSIX artifact packaging only.
+They need no Azure preflight, Marketplace identity, or Marketplace approval.
+They never upload the extension. For pure artifact packaging without even a
+TestPyPI upload, use `uv build` and extension `npm run package:prerelease`.
+
+The local `scripts/release.ps1` and `scripts/release.sh` retain stable publishing
+and permission preflight before side effects when `vsce` is available. The
+existing missing-`vsce` extension-packaging skip is not proof of Marketplace
+access. Release scripts are publication scripts, not credential tests.
+
+The extension's `npm run publish` packages a stable VSIX and invokes the shared
+helper. `npm run publish:prerelease` is removed; `npm run package:prerelease`
+remains artifact-only, preserving `package --pre-release` without reserving a
+cloud version. Stable publishing requires Python 3.11+ and
+the helper from a repository checkout, not just a standalone extension folder.
+The helper preflights before upload; `npm run publish` packages before preflight.
+
+Log in with `az login --tenant <publisher-identity-tenant> --allow-no-subscriptions`.
+Set `MARKETPLACE_AZURE_TENANT_ID` and `MARKETPLACE_PROFILE_ID` for **your interactive
+publishing identity**, not the CI UAMI. Resolve your profile using the same
+`profiles/me` endpoint above; your identity needs publisher Contributor or Owner
+membership. Then run `python scripts/marketplace.py check` alone first.
+Only invoke a publishing script or `publish` for an explicitly authorized release.
+
+### 10.6 Staged Rollout Checklist
+
+This is a deployment checklist, **not a claim that permanent resources are
+configured or publication has been tested**.
+
+- [ ] Confirm permanent identity ownership, approved production tenant/subscription
+  placement, and operational responsibility under existing policy; code rollout
+  and earlier feasibility probes do not settle these decisions.
+- [ ] Verify the dedicated UAMI and exact release federated credential; resolve
+  its Marketplace profile and have a publisher Owner grant Contributor.
+- [ ] Verify required reviewers and selected branch/tag deployment policies
+  on `marketplace-release` **before setting its three variables**. Optional
+  legacy diagnostic environments are not staging prerequisites. Preserve
+  Python `staging`/`release`, repository-wide OIDC, shared E2E variables, and
+  `RELEASE_PAT`.
+- [ ] Run a permission-only preflight under the intended federated identity:
+  `python scripts/marketplace.py check`. Verify the pinned profile and explicit
+  role with no deny permissions. Do not call publishing scripts.
+  Use the dedicated `marketplace-preflight.yml` workflow, not staging/release.
+  Its discovery mode resolves the profile before checking publisher membership.
+  A local interactive `check` validates that local identity, not CI federation.
+- [ ] Verify the legitimate staging candidate uploads to TestPyPI and produces a
+  VSIX artifact for manual evaluation without any Marketplace upload.
+- [ ] Obtain explicit authorization for a legitimate stable release, approve its
+  `marketplace-release` deployment, publish it, and verify the Marketplace result.
+  Do not create dummy production versions for validation.
+- [ ] **Only after actual stable Marketplace publication succeeds and remaining
+  consumers are checked**, remove the GitHub `VSCE_PAT` secret. Have its owner
+  revoke the underlying Azure DevOps PAT only after confirming there are no other
+  consumers. No pre-release publication is required for acceptance.
+  **Never remove or revoke `RELEASE_PAT`.**
+  Include historical workflow re-runs in that consumer review: retire old PAT
+  execution paths and use the migrated workflow on `main` for authorized old-tag
+  retries rather than re-running historical workflows.
+
+Prior evidence:
+[successful no-upload preflight, attempt 3](https://github.com/Azure/agentops/actions/runs/34046045685/attempts/3).
+All temporary probe resources were deleted. This proves feasibility only, not
+permanent configuration, policy approval, actual publication, or legacy-secret
+retirement.
+
 ## 11. Workflow File Reference
 
 All workflow files are in `.github/workflows/`:
@@ -809,6 +991,7 @@ Key detail: Uses `fetch-depth: 0` to ensure setuptools-scm has full git history 
 ```
 Trigger: push to release/* branches, or workflow_dispatch
 Flow:    _build → publish-testpypi → verify-testpypi
+         + parallel build-vsix (artifact-only pre-release package)
 Purpose: Validate release candidates before production
 ```
 
@@ -816,13 +999,16 @@ Key details:
 - `skip-existing: true` allows re-pushes without upload failures
 - Verify step uses a retry loop (5 attempts, 30s apart) for TestPyPI index propagation
 - Smoke tests cover `--version`, `--help`, and `agentops init`
+- `build-vsix` packages with `--pre-release` for manual evaluation only. It has
+  no environment, `id-token`, Azure login, profile variables, or Marketplace
+  upload. TestPyPI still uploads; staging is not a disposable-branch dry run.
 
 ### `release.yml` - Production Release
 
 ```
 Trigger: push v* tags, or workflow_dispatch
-Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi → github-release
-Purpose: Publish to PyPI and create GitHub Release
+Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi → publish-vsix → github-release
+Purpose: Publish to PyPI and Marketplace, then create GitHub Release
 ```
 
 Key details:
@@ -830,6 +1016,13 @@ Key details:
 - PyPI upload uses Trusted Publishing (`id-token: write`), not an API token
 - `github-release` uses `gh release create` with `--generate-notes` for automatic release notes
 - Built artifacts (.whl, .tar.gz) are attached to the GitHub Release
+- The extension job separately uses `marketplace-release`, Entra OIDC, and the
+  shared helper with `--allow-already-exists`. Python publishes before its human
+  approval; GitHub Release waits for successful stable Marketplace publication.
+- Marketplace tooling is checked out from `github.workflow_sha` at the root;
+  extension source comes from the requested release tag under `release-source/`.
+  Retry pre-migration tags by dispatching the migrated workflow on protected
+  `main`, not by re-running historical PAT-based workflows.
 
 ### `cut-release.yml` - Cut Release (Manual Dispatch)
 
@@ -847,7 +1040,23 @@ Key details:
 - The branch push triggers `staging.yml` automatically
 - Fails safely if the branch already exists
 - Refuses to run when `## [Unreleased]` is empty, because this workflow only inserts a versioned heading beneath that one and would otherwise publish an empty release section
-- Does NOT auto-tag or auto-publish - tagging remains a manual, intentional step
+- Does NOT auto-tag; stable tagging remains a manual, intentional step. The
+  release-branch push triggers TestPyPI publication and VSIX artifact packaging,
+  never Marketplace publication.
+
+### `marketplace-preflight.yml` - Read-Only Diagnostics
+
+```
+Trigger: workflow_dispatch or reviewed workflow_call
+Inputs:  discover/check; marketplace-validation/marketplace-staging/marketplace-release
+Flow:    selected environment → Entra OIDC → profile discovery or permission check
+Purpose: Diagnose the selected identity context without publishing
+```
+
+Key detail: Existing environment protections apply to the selected diagnostic
+context only. Validation and legacy staging contexts are optional, not staging
+or packaging prerequisites. No preflight result substitutes for verifying an
+actual stable publication.
 
 ## 12. Release Checklist
 
@@ -858,11 +1067,14 @@ Use this checklist when cutting a release:
 - [ ] `CHANGELOG.md` has entries under `## [Unreleased]` for all user-visible changes, including anything Dependabot merged (Cut Release aborts if the section is empty)
 - [ ] Tests pass locally: `uv run pytest tests/ -x -q`
 - [ ] Version from setuptools-scm looks correct: `python -m setuptools_scm`
+- [ ] Marketplace identity, reviewer and deployment protections are ready;
+  read-only preflight passed and a legitimate publication is authorized
 
 **Staging**
 - [ ] Release branch created via **Cut Release** workflow (or manually)
 - [ ] CHANGELOG automatically updated with version and date
-- [ ] Staging pipeline passes: build + TestPyPI + verify (all 3 green)
+- [ ] Staging Python jobs pass: build + TestPyPI + verify
+- [ ] `build-vsix` artifact built and manually evaluated; no Marketplace upload
 - [ ] PR opened: `release/v0.X.Y` → `main`
 
 **Production (tag + sync, do these together)**
@@ -870,6 +1082,7 @@ Use this checklist when cutting a release:
 - [ ] PR merged to `main`
 - [ ] Version tag created and pushed: `v0.X.Y` (this publishes to PyPI immediately)
 - [ ] Release pipeline runs: build + TestPyPI + verify + publish-pypi all green
+- [ ] Marketplace stable deployment approved and legitimate publication verified
 - [ ] **`main` merged back into `develop` and pushed**
 - [ ] **`git log --oneline origin/develop..origin/main` prints nothing**
 - [ ] `CHANGELOG.md` on `develop` shows only genuinely unreleased work under `## [Unreleased]`
@@ -886,7 +1099,7 @@ Use this checklist when cutting a release:
 | Problem                                  | Cause                               | Solution                                      |
 | ---------------------------------------- | ----------------------------------- | --------------------------------------------- |
 | `setuptools_scm` can't determine version | Shallow clone (missing git history) | Ensure `fetch-depth: 0` in checkout step      |
-| Version shows `0.0.0` locally            | Not in a git repo or no tags exist  | Run `git tag v0.0.1` to create an initial tag |
+| Version shows `0.0.0` locally            | Not in a git repo or no tags exist  | Verify the checkout and existing tag history; never create a dummy release tag to test versioning |
 | `ModuleNotFoundError` in tests           | Dependencies not installed          | Run `uv sync --group dev`                     |
 | Tests fail on Windows but pass on Linux  | Path separator issues               | Use `pathlib.Path`, not string concatenation  |
 
@@ -921,8 +1134,10 @@ Use this checklist when cutting a release:
 
 | Problem                           | Cause                               | Solution                                                               |
 | --------------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
-| "Environment not found" error     | GitHub Environment not created      | Create `staging` and `release` environments in Settings → Environments |
-| "Secret not found" error          | Secret not added to the environment | Add secrets to the specific environment, not repository-level secrets  |
+| "Environment not found" error     | Required publishing or selected diagnostic environment unavailable | Preserve Python `staging`/`release`; stable Marketplace publishing requires protected `marketplace-release` only. Staging VSIX packaging requires no Marketplace environment |
+| Marketplace variable missing | Dedicated environment setup incomplete | Configure reviewers and deployment policies first, then all three `MARKETPLACE_*` variables |
+| Marketplace federation fails | Issuer, audience, or customized subject mismatch | Verify repository customization and exact environment subjects; do not change repo-wide OIDC |
+| Marketplace profile/role preflight fails | Wrong tenant/account/profile or missing publisher role/deny permissions | Select the correct tenant, resolve `profiles/me`, and ask the publisher Owner to review Contributor membership; never fall back to a PAT |
 | No one was asked to approve the publish | `release` has no required reviewers | Confirm with `gh api repos/Azure/agentops/environments/release --jq '.protection_rules'` |
 | Reviewer can't approve deployment | Not listed as required reviewer     | Update the environment's required reviewers list                       |
 
@@ -938,6 +1153,7 @@ flowchart TD
     rel --> stagingBuild["_build<br/>test + build"]
     stagingBuild --> stagingTest["TestPyPI publish"]
     stagingTest --> stagingVerify["Verify install"]
+    rel --> stagingVsix["build-vsix<br/>Pre-release VSIX artifact for manual evaluation<br/>No Marketplace upload or identity"]
 
     rel -->|PR| main(["main"])
     main -->|tag| tag(["v0.2.0"])
@@ -946,7 +1162,8 @@ flowchart TD
     relBuild --> relTest["TestPyPI"]
     relTest --> relVerify["Verify"]
     relVerify --> relPypi["PyPI<br/>(no approval gate)"]
-    relPypi --> relGh["GitHub Release"]
+    relPypi --> relVsix["Marketplace stable<br/>marketplace-release: review + Entra OIDC"]
+    relVsix --> relGh["GitHub Release"]
 
     main -->|merge back, REQUIRED| develop
 
@@ -954,6 +1171,7 @@ flowchart TD
         stagingBuild
         stagingTest
         stagingVerify
+        stagingVsix
     end
 
     subgraph Release["Release (release.yml)"]
@@ -961,6 +1179,7 @@ flowchart TD
         relTest
         relVerify
         relPypi
+        relVsix
         relGh
     end
 

@@ -60,7 +60,6 @@
     "vscode:prepublish": "echo 'Declarative extension — no build step required'",
     "package": "vsce package",
     "package:prerelease": "vsce package --pre-release",
-    "publish": "vsce publish",
-    "publish:prerelease": "vsce publish --pre-release"
+    "publish": "vsce package -o agentops-skills.vsix && python ../../scripts/marketplace.py publish --package-path agentops-skills.vsix"
   }
 }
