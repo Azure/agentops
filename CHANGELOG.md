@@ -6,6 +6,9 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 ## [Unreleased]
 
 ### Changed
+- **Extension publication is stable-only.** Staging produces a downloadable
+  VSIX candidate without Marketplace authentication or upload. Only stable
+  releases publish, preventing pre-releases from reserving the stable version.
 - **Marketplace publishing moves from PATs to Microsoft Entra OIDC.** Dedicated
   managed-identity environments and a shared tenant/profile-pinned publishing
   helper replace Marketplace PAT authentication. Permission-only preflight and

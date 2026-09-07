@@ -9,7 +9,7 @@
 #   4. Publish to TestPyPI
 #   5. Verify install from TestPyPI + smoke test
 #   6. Build VSIX pre-release
-#   7. Publish VSIX pre-release to Marketplace
+#   Marketplace publication happens only in the stable release.
 #
 # Usage:  .\scripts\staging.ps1
 # Prereqs:
@@ -17,8 +17,6 @@
 #   - twine: pip install twine (for TestPyPI upload)
 #   - Node.js 22 + vsce: npm install -g @vscode/vsce@3.9.2
 #   - TESTPYPI_TOKEN env var (API token from test.pypi.org)
-#   - Python 3.11+, Azure CLI login in the publisher identity's tenant
-#   - MARKETPLACE_AZURE_TENANT_ID and MARKETPLACE_PROFILE_ID (see docs/release-process.md)
 # ─────────────────────────────────────────────────────────────────────
 
 Set-StrictMode -Version Latest
@@ -26,31 +24,26 @@ $ErrorActionPreference = "Stop"
 
 $skipTestPyPI = $false
 $skipVSIX = $false
-$marketplaceScript = Join-Path $PSScriptRoot "marketplace.py"
-if (Get-Command vsce -ErrorAction SilentlyContinue) {
-    python $marketplaceScript check
-    if ($LASTEXITCODE -ne 0) { throw "Marketplace preflight failed; no staging actions were started." }
-}
 
 # ── Step 1: Lint ────────────────────────────────────────────────────
-Write-Host "`n>>> [1/7] Linting with ruff..." -ForegroundColor Yellow
+Write-Host "`n>>> [1/6] Linting with ruff..." -ForegroundColor Yellow
 uv run ruff check src/ tests/
 Write-Host ">>> Lint passed" -ForegroundColor Green
 
 # ── Step 2: Test ────────────────────────────────────────────────────
-Write-Host "`n>>> [2/7] Running tests..." -ForegroundColor Yellow
+Write-Host "`n>>> [2/6] Running tests..." -ForegroundColor Yellow
 uv run pytest tests/ -v --tb=short
 Write-Host ">>> Tests passed" -ForegroundColor Green
 
 # ── Step 3: Build ───────────────────────────────────────────────────
-Write-Host "`n>>> [3/7] Building package..." -ForegroundColor Yellow
+Write-Host "`n>>> [3/6] Building package..." -ForegroundColor Yellow
 if (Test-Path dist) { Remove-Item dist -Recurse -Force }
 uv build
 Write-Host ">>> Build artifacts:" -ForegroundColor Green
 Get-ChildItem dist/ | ForEach-Object { Write-Host "    $_" }
 
 # ── Step 4: Publish to TestPyPI ─────────────────────────────────────
-Write-Host "`n>>> [4/7] Publishing to TestPyPI..." -ForegroundColor Yellow
+Write-Host "`n>>> [4/6] Publishing to TestPyPI..." -ForegroundColor Yellow
 if (-not $env:TESTPYPI_TOKEN) {
     Write-Host ">>> TESTPYPI_TOKEN not set — skipping TestPyPI publish" -ForegroundColor DarkYellow
     Write-Host "    Set it with: `$env:TESTPYPI_TOKEN = 'pypi-...'" -ForegroundColor DarkGray
@@ -61,7 +54,7 @@ if (-not $env:TESTPYPI_TOKEN) {
 }
 
 # ── Step 5: Verify TestPyPI install ─────────────────────────────────
-Write-Host "`n>>> [5/7] Verifying TestPyPI install..." -ForegroundColor Yellow
+Write-Host "`n>>> [5/6] Verifying TestPyPI install..." -ForegroundColor Yellow
 if ($skipTestPyPI) {
     Write-Host ">>> Skipped (no TestPyPI publish)" -ForegroundColor DarkYellow
 } else {
@@ -94,7 +87,7 @@ if ($skipTestPyPI) {
 }
 
 # ── Step 6: Build VSIX ──────────────────────────────────────────────
-Write-Host "`n>>> [6/7] Building VSIX pre-release..." -ForegroundColor Yellow
+Write-Host "`n>>> [6/6] Building VSIX pre-release artifact (no Marketplace upload)..." -ForegroundColor Yellow
 $vsceAvailable = Get-Command vsce -ErrorAction SilentlyContinue
 if (-not $vsceAvailable) {
     Write-Host ">>> vsce not found — skipping VSIX build" -ForegroundColor DarkYellow
@@ -134,22 +127,6 @@ if (-not $vsceAvailable) {
         Set-Content $pkgPath -Value $pkgOriginal -NoNewline
     }
     Write-Host ">>> package.json restored to committed version" -ForegroundColor DarkGray
-}
-
-# ── Step 7: Publish VSIX pre-release ────────────────────────────────
-Write-Host "`n>>> [7/7] Publishing VSIX pre-release..." -ForegroundColor Yellow
-if ($skipVSIX) {
-    Write-Host ">>> Skipped (vsce not available)" -ForegroundColor DarkYellow
-} else {
-    Push-Location plugins/agentops
-    try {
-        Write-Host "    VSIX will publish from packagePath (version in VSIX: $baseVersion)" -ForegroundColor DarkGray
-        python $marketplaceScript publish --pre-release --package-path agentops-skills.vsix
-        if ($LASTEXITCODE -ne 0) { throw "Marketplace pre-release publication failed." }
-    } finally {
-        Pop-Location
-    }
-    Write-Host ">>> VSIX pre-release published to Marketplace" -ForegroundColor Green
 }
 
 # ── Summary ─────────────────────────────────────────────────────────

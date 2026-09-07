@@ -3,7 +3,7 @@
 # Workflows:
 #   1. ci.yml          — Lint + test on every push/PR; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX pre-release → Marketplace
+#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX artifact only
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
 #   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #

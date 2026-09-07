@@ -291,7 +291,6 @@ def load_workflow(name):
 
 
 @pytest.mark.parametrize("file,job_name,environment,pre_release", [
-    ("staging.yml", "publish-vsix-prerelease", "marketplace-staging", True),
     ("release.yml", "publish-vsix", "marketplace-release", False),
 ])
 def test_workflows_use_dedicated_oidc_environments(file, job_name, environment, pre_release):
@@ -314,6 +313,22 @@ def test_workflows_use_dedicated_oidc_environments(file, job_name, environment, 
     assert steps.index(login) < steps.index(publish)
     assert "VSCE_PAT" not in json.dumps(job)
     assert "continue-on-error" not in json.dumps(job)
+
+
+def test_staging_only_packages_candidate_without_marketplace_credentials():
+    jobs = load_workflow("staging.yml")["jobs"]
+    assert "publish-vsix-prerelease" not in jobs
+    job = jobs["build-vsix"]
+    assert job["permissions"] == {"contents": "read"}
+    assert "environment" not in job
+    assert "env" not in job
+    serialized = json.dumps(job)
+    for forbidden in ("marketplace-login", "marketplace.py", "id-token", "VSCE_PAT", "MARKETPLACE_"):
+        assert forbidden not in serialized
+    steps = job["steps"]
+    assert any(step.get("run") == "vsce package --pre-release -o agentops-skills.vsix" for step in steps)
+    artifact = next(step for step in steps if step.get("uses") == "actions/upload-artifact@v7")
+    assert artifact["with"]["name"] == "vsix"
 
 
 def test_login_does_not_require_subscription_or_shared_e2e_identity():
@@ -358,7 +373,7 @@ def test_python_publishing_and_github_release_contracts_stay_intact():
     assert "secrets.RELEASE_PAT" in cut_release
 
 
-@pytest.mark.parametrize("name", ["release.ps1", "release.sh", "staging.ps1", "staging.sh"])
+@pytest.mark.parametrize("name", ["release.ps1", "release.sh"])
 def test_local_scripts_preflight_before_release_actions(name):
     text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
     assert "VSCE_PAT" not in text
@@ -374,11 +389,20 @@ def test_local_scripts_preflight_before_release_actions(name):
 
 def test_npm_publishing_also_uses_shared_permission_preflight():
     scripts = json.loads((ROOT / "plugins" / "agentops" / "package.json").read_text())["scripts"]
-    for name in ("publish", "publish:prerelease"):
-        assert "scripts/marketplace.py publish" in scripts[name]
-        assert "vsce publish" not in scripts[name]
+    assert "scripts/marketplace.py publish" in scripts["publish"]
+    assert "vsce publish" not in scripts["publish"]
+    assert "publish:prerelease" not in scripts
     assert scripts["package"] == "vsce package"
     assert scripts["package:prerelease"] == "vsce package --pre-release"
+
+
+@pytest.mark.parametrize("name", ["staging.ps1", "staging.sh"])
+def test_local_staging_does_not_require_or_use_marketplace_identity(name):
+    text = (ROOT / "scripts" / name).read_text(encoding="utf-8")
+    for forbidden in ("marketplace.py", "MARKETPLACE_", "VSCE_PAT", "vsce publish"):
+        assert forbidden not in text
+    assert "vsce package --pre-release -o agentops-skills.vsix" in text
+    assert "twine upload --repository testpypi" in text
 
 
 @pytest.mark.parametrize("ref,tag,expected", [

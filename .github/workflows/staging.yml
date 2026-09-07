@@ -1,21 +1,21 @@
-# AgentOps Toolkit — Staging (TestPyPI + VSIX Pre-release)
+# AgentOps Toolkit — Staging (TestPyPI + VSIX Artifact)
 #
 # Workflows:
 #   1. ci.yml          — Lint + test on every push/PR; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX pre-release → Marketplace
+#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX artifact only
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
 #   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
 # Triggered by pushes to release/* branches.
 # Calls the reusable _build.yml, publishes to TestPyPI, verifies the
-# package installs correctly with a CLI smoke test, and publishes the
-# VS Code extension as a pre-release to the Marketplace.
+# package installs correctly with a CLI smoke test, and packages the
+# VS Code extension as a pre-release artifact without publishing to Marketplace.
 #
 # Branch flow:
 #   develop → release/v0.2.0 → push → this workflow
 #     → build → TestPyPI → verify install → ✅ ready to merge and tag
-#     → VSIX pre-release → Marketplace (early access channel)
+#     → VSIX pre-release artifact (download and install manually)
 #
 # Versioning:
 #   Uses setuptools-scm — on a release branch 5 commits after the last tag,
@@ -27,19 +27,15 @@
 #   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
 #   and TestPyPI.
 #
-# Marketplace uses Entra OIDC, not a PAT. The separate marketplace-staging
-# environment requires protected deployment branches and dedicated identity
-# variables: MARKETPLACE_AZURE_CLIENT_ID, MARKETPLACE_AZURE_TENANT_ID,
-# MARKETPLACE_PROFILE_ID. See docs/release-process.md for custom OIDC subjects.
+# Staging does not authenticate to or publish to Marketplace. Only the stable
+# release workflow publishes the extension, avoiding a version collision.
 #
 # Setup (Trusted Publishing + VSCE):
 #   1. https://test.pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=staging.yml, environment=staging
 #   2. GitHub repo → Settings → Environments → Create "staging" (the name must match
 #      the publisher config in step 1). No protection rules are configured today.
-#   3. Configure marketplace-staging, federate the dedicated managed identity,
-#      and grant it Contributor on AgentOpsAccelerator (not Azure Contributor).
-#      Python Trusted Publishing and the GitHub RELEASE_PAT are unchanged.
+#   No Marketplace identity or PAT is required for VSIX packaging.
 
 name: Staging
 
@@ -134,20 +130,13 @@ jobs:
           test -f .azure/config.json
           echo "✅ agentops init succeeded"
 
-  # ── VSIX Pre-release ─────────────────────────────────────────────────
-  # Publish the VS Code extension as a pre-release to the Marketplace.
-  # Runs in parallel with the TestPyPI flow (only needs source checkout).
-  publish-vsix-prerelease:
+  # Package a downloadable candidate; reserve Marketplace versions for stable tags.
+  build-vsix:
     needs: build # gate on successful lint + test
     if: startsWith(github.ref, 'refs/heads/release/v')
     runs-on: ubuntu-latest
-    environment: marketplace-staging
     permissions:
       contents: read
-      id-token: write
-    env:
-      MARKETPLACE_AZURE_TENANT_ID: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
-      MARKETPLACE_PROFILE_ID: ${{ vars.MARKETPLACE_PROFILE_ID }}
     steps:
       - uses: actions/checkout@v7
 
@@ -174,18 +163,6 @@ jobs:
       - name: Install vsce
         run: npm install -g @vscode/vsce@3.9.2
 
-      - name: Set up Python for Marketplace preflight
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Authenticate Marketplace identity
-        uses: ./.github/actions/marketplace-login
-        with:
-          client-id: ${{ vars.MARKETPLACE_AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
-          profile-id: ${{ vars.MARKETPLACE_PROFILE_ID }}
-
       - name: Copy root assets for VSIX
         run: |
           cp CHANGELOG.md plugins/agentops/CHANGELOG.md
@@ -195,19 +172,11 @@ jobs:
         working-directory: plugins/agentops
         run: vsce package --pre-release -o agentops-skills.vsix
 
-      - name: Publish pre-release to VS Code Marketplace
-        # Preflight requires the exact profile and an explicit publishing role.
-        # Only a duplicate-version publish error is tolerated on reruns.
-        run: |
-          python scripts/marketplace.py publish \
-            --package-path plugins/agentops/agentops-skills.vsix \
-            --pre-release --allow-already-exists
-
       - name: Show VSIX info
         working-directory: plugins/agentops
         run: |
           ls -lh agentops-skills.vsix
-          echo "✅ VSIX pre-release published to Marketplace"
+          echo "VSIX candidate packaged only; Marketplace publication is reserved for the stable release."
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
