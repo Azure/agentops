@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-07
+
 ### Changed
 - **Extension publication is stable-only.** Staging produces a downloadable
   VSIX candidate without Marketplace authentication or upload. Only stable
