@@ -5,6 +5,21 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-09-07
+
+### Changed
+- **Extension publication is stable-only.** Staging produces a downloadable
+  VSIX candidate without Marketplace authentication or upload. Only stable
+  releases publish, preventing pre-releases from reserving the stable version.
+- **Marketplace publishing moves from PATs to Microsoft Entra OIDC.** Dedicated
+  managed-identity environments and a shared tenant/profile-pinned publishing
+  helper replace Marketplace PAT authentication. Permission-only preflight and
+  staged rollout are documented; GitHub `RELEASE_PAT` and PyPI/TestPyPI Trusted
+  Publishing are unchanged.
+- **Marketplace permissions can be validated without publishing.** A dedicated
+  discover/check workflow bootstraps the identity's profile ID and verifies its
+  explicit publisher role behind environment approvals, without release uploads.
+
 ## [0.15.0] - 2026-09-06
 
 ### Added
