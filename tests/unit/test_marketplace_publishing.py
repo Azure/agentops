@@ -430,3 +430,65 @@ def test_github_masks_escape_workflow_command_delimiters(marketplace, monkeypatc
     monkeypatch.setenv("GITHUB_ACTIONS", "true")
     marketplace.mask("dummy%\r\nsecret")
     assert capsys.readouterr().out == "::add-mask::dummy%25%0D%0Asecret\n"
+
+
+def test_discovery_bootstraps_without_profile_or_publisher_access(marketplace, monkeypatch, tmp_path, capsys):
+    monkeypatch.delenv("MARKETPLACE_PROFILE_ID", raising=False)
+    monkeypatch.setattr(marketplace, "get_token", lambda *a: TOKEN)
+    requests = []
+
+    def get_json(url, authorization):
+        requests.append(url)
+        assert url == marketplace.PROFILE_URL
+        return {"id": PROFILE, "emailAddress": "not-for-artifacts@example.invalid"}
+
+    monkeypatch.setattr(marketplace, "get_json", get_json)
+    output = tmp_path / "profile.json"
+    assert marketplace.main(["discover", "--out", str(output)]) == 0
+    assert json.loads(output.read_text()) == {"tenant_id": TENANT, "profile_id": PROFILE}
+    assert requests == [marketplace.PROFILE_URL]
+    assert TOKEN not in output.read_text() + capsys.readouterr().out
+
+
+@pytest.mark.parametrize("profile", [{}, {"id": "invalid"}, {"id": None}, {"id": 42}])
+def test_discovery_rejects_invalid_profile(marketplace, monkeypatch, profile):
+    monkeypatch.setattr(marketplace, "get_token", lambda *a: TOKEN)
+    monkeypatch.setattr(marketplace, "get_json", lambda *a: profile)
+    assert marketplace.main(["discover"]) == 1
+
+
+def test_preflight_workflow_has_no_upload_or_mutation_commands():
+    workflow = load_workflow("marketplace-preflight.yml")
+    assert set(workflow["on"]) == {"workflow_dispatch", "workflow_call"}
+    modes = workflow["on"]["workflow_dispatch"]["inputs"]["mode"]["options"]
+    assert modes == ["discover", "check"]
+    job = workflow["jobs"]["preflight"]
+    assert job["permissions"] == {"contents": "read", "id-token": "write"}
+    assert job["environment"] == "${{ inputs.environment }}"
+    steps = job["steps"]
+    runs = "\n".join(step.get("run", "") for step in steps)
+    for forbidden in ("vsce ", "marketplace.py publish", "gh release", "az role", "curl ", "git push"):
+        assert forbidden not in runs
+    assert "python scripts/marketplace.py discover --out marketplace-profile.json" in runs
+    assert "python scripts/marketplace.py check" in runs
+    artifact = next(step for step in steps if step.get("uses") == "actions/upload-artifact@v7")
+    assert artifact["with"]["path"] == "marketplace-profile.json"
+    assert artifact["if"] == "inputs.mode == 'discover'"
+    login = next(step for step in steps if step.get("uses") == "./.github/actions/marketplace-login")
+    assert login["with"]["discover-profile"] == "${{ inputs.mode == 'discover' && 'true' || 'false' }}"
+
+
+@pytest.mark.parametrize("mode,expected", [("true", 0), ("false", 1), ("wrong", 1)])
+def test_profile_bypass_is_explicit_and_only_for_discovery(mode, expected):
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("Bash is not installed")
+    action = YAML(typ="safe").load(
+        (ROOT / ".github" / "actions" / "marketplace-login" / "action.yml").read_text(),
+    )
+    result = subprocess.run(
+        [bash, "-c", action["runs"]["steps"][0]["run"]],
+        env={**os.environ, "CLIENT_ID": OTHER, "TENANT_ID": TENANT, "PROFILE_ID": "", "DISCOVER_PROFILE": mode},
+        capture_output=True, text=True, timeout=15, check=False,
+    )
+    assert result.returncode == expected

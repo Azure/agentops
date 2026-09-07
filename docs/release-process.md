@@ -814,6 +814,7 @@ pin `npm install -g @vscode/vsce@3.9.2`.
 
 ```text
 python scripts/marketplace.py check
+python scripts/marketplace.py discover --out marketplace-profile.json
 python scripts/marketplace.py publish --package-path PATH [--pre-release] [--allow-already-exists]
 ```
 
@@ -832,6 +833,30 @@ python scripts/marketplace.py publish --package-path PATH [--pre-release] [--all
   handling, not output substring matching. Other errors always propagate.
 - Profile pinning prevents a wrong account or tenant from publishing.
   A successful CLI profile/role preflight is **not proof of an actual upload**.
+
+#### Permission-only GitHub workflow
+
+`marketplace-preflight.yml` is separate from the release workflows and never
+publishes. Its `workflow_dispatch` inputs select `discover` or `check` and one
+of `marketplace-validation`, `marketplace-staging`, or `marketplace-release`.
+It also supports `workflow_call` for a reviewed bootstrap workflow.
+
+Use `discover` first: only client/tenant configuration is required. It reads the
+new identity's Marketplace profile without requiring publisher membership and
+uploads only tenant/profile IDs in the seven-day `marketplace-profile` artifact.
+After granting Contributor, set `MARKETPLACE_PROFILE_ID` and run `check`.
+Discovery alone is not proof of publisher access.
+
+Configure a separate `marketplace-validation` environment for pre-merge tests,
+with an exact approved validation branch, required reviewers, and its own
+environment-subject federated credential. Before the workflow is available on
+the default branch, an isolated no-upload push wrapper can call it from a
+reviewed validation branch. Do not change the existing staging/release branch
+policies to admit test branches, create dummy release refs, or bypass reviewers.
+An approval pause is a real human handoff, not a reason to use another identity.
+Only the selected context is validated; staging/release need their own checks
+on allowed refs. Remove the isolated wrapper/branch and its federation when
+validation is retired; never remove shared resources.
 
 #### Local Publishing
 
@@ -869,8 +894,8 @@ configured or publication has been tested**.
 - [ ] Run a permission-only preflight under the intended federated identity:
   `python scripts/marketplace.py check`. Verify the pinned profile and explicit
   role with no deny permissions. Do not call publishing scripts.
-  This change does not add a standalone read-only workflow: arrange an
-  explicitly approved OIDC permission-validation run before the first release.
+  Use the dedicated `marketplace-preflight.yml` workflow, not staging/release.
+  Its discovery mode resolves the profile before checking publisher membership.
   A local interactive `check` validates that local identity, not CI federation.
 - [ ] Obtain explicit authorization for a legitimate pre-release, approve its
   `marketplace-staging` deployment, publish it, and verify the Marketplace result.

@@ -295,6 +295,14 @@ Owner must grant that profile **Contributor, not Owner**, on `AgentOpsAccelerato
   `MARKETPLACE_AZURE_TENANT_ID`, pins the self profile to
   `MARKETPLACE_PROFILE_ID`, and checks explicit Contributor/Owner/Creator
   membership with zero deny permissions. A generic HTTP 200 is not sufficient.
+- `python scripts/marketplace.py discover --out marketplace-profile.json`
+  bootstraps the Marketplace profile without an expected ID or publisher access.
+  Only tenant/profile IDs are written, never tokens.
+- `marketplace-preflight.yml` provides discover/check via manual dispatch or a
+  reviewed reusable-workflow caller. It never publishes. Respect the selected
+  environment's exact ref policy and human review. Pre-merge bootstrap uses a
+  separate protected validation environment/branch, not dummy release refs.
+  A validation-context result is not proof of staging/release authentication.
 - `python scripts/marketplace.py publish --package-path PATH [--pre-release] [--allow-already-exists]`
   preflights before uploading. CI opts into already-existing-version handling;
   local defaults fail. The flag maps to native `vsce --skip-duplicate`
@@ -322,9 +330,9 @@ Owner must grant that profile **Contributor, not Owner**, on `AgentOpsAccelerato
 2. Configure the dedicated UAMI, exact federation, publisher Contributor
    membership, environment reviewers and deployment policies, then variables.
 3. Run an authorized permission-only preflight (`check`, no publishing scripts).
-   No standalone read-only workflow is added by this change. Arrange approved
-   OIDC permission validation before the first release; a local interactive
-   `check` alone does not validate CI federation.
+   Use `marketplace-preflight.yml`: discover the profile, grant Contributor,
+   then check its explicit publishing role. A local interactive `check` alone
+   does not validate CI federation. Do not bypass required human approvals.
 4. Explicitly authorize and verify a **legitimate** Marketplace pre-release.
 5. Explicitly authorize and verify a **legitimate** stable publication.
 6. **Only then** remove the legacy GitHub `VSCE_PAT`. Its owner must confirm no

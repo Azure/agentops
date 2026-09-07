@@ -1,7 +1,8 @@
 """Check Marketplace publishing permission and publish with Entra (never a PAT).
 
-Requires an existing Azure CLI login, MARKETPLACE_AZURE_TENANT_ID, and
-MARKETPLACE_PROFILE_ID. No cloud resources or publisher memberships are mutated.
+Requires an existing Azure CLI login and MARKETPLACE_AZURE_TENANT_ID.
+Check/publish also require MARKETPLACE_PROFILE_ID; discover bootstraps that ID.
+No cloud resources or publisher memberships are mutated.
 """
 
 from __future__ import annotations
@@ -161,14 +162,23 @@ def publishing_role(profile: dict, assignments: dict, expected_profile: str) -> 
     return min(roles)
 
 
-def preflight(tenant: str, expected_profile: str, env: dict[str, str]) -> tuple[str, str]:
+def get_profile(tenant: str, env: dict[str, str]) -> tuple[dict, str, str]:
     token = get_token(tenant, env)
     # Match vsce's Basic OAuth convention, rather than testing only Bearer access.
     basic = base64.b64encode(f"OAuth:{token}".encode()).decode("ascii")
     mask(basic)
     authorization = f"Basic {basic}"
     profile = get_json(PROFILE_URL, authorization)
-    assignments = get_json(ROLES_URL, authorization)
+    try:
+        profile["id"] = str(UUID(profile["id"]))
+    except (KeyError, ValueError, TypeError, AttributeError):
+        raise MarketplaceError("Marketplace returned an invalid profile ID.") from None
+    return profile, token, basic
+
+
+def preflight(tenant: str, expected_profile: str, env: dict[str, str]) -> tuple[str, str]:
+    profile, token, basic = get_profile(tenant, env)
+    assignments = get_json(ROLES_URL, f"Basic {basic}")
     role = publishing_role(profile, assignments, expected_profile)
     print(f"Marketplace preflight passed: {PUBLISHER}, explicit {role} role. No upload performed.")
     return token, basic
@@ -227,6 +237,8 @@ def publish(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    discover = commands.add_parser("discover", help="Read the profile ID; no publisher access required.")
+    discover.add_argument("--out", type=Path, help="Write only the tenant and profile IDs as JSON.")
     commands.add_parser("check", help="Check the selected identity and publishing role; never upload.")
     upload = commands.add_parser("publish", help="Check permission, then publish an existing VSIX.")
     upload.add_argument("--package-path", type=Path, required=True)
@@ -235,8 +247,20 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         tenant = required_guid("MARKETPLACE_AZURE_TENANT_ID")
-        profile = required_guid("MARKETPLACE_PROFILE_ID")
         env = publishing_environment(tenant)
+        if args.command == "discover":
+            discovered, _, _ = get_profile(tenant, env)
+            if args.out:
+                try:
+                    args.out.write_text(
+                        json.dumps({"tenant_id": tenant, "profile_id": discovered["id"]}, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+                except OSError:
+                    raise MarketplaceError("Cannot write the Marketplace profile output file.") from None
+            print(f"Marketplace profile ID: {discovered['id']}. No publisher authorization or upload tested.")
+            return 0
+        profile = required_guid("MARKETPLACE_PROFILE_ID")
         if args.command == "check":
             preflight(tenant, profile, env)
             return 0

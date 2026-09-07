@@ -11,6 +11,9 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   helper replace Marketplace PAT authentication. Permission-only preflight and
   staged rollout are documented; GitHub `RELEASE_PAT` and PyPI/TestPyPI Trusted
   Publishing are unchanged.
+- **Marketplace permissions can be validated without publishing.** A dedicated
+  discover/check workflow bootstraps the identity's profile ID and verifies its
+  explicit publisher role behind environment approvals, without release uploads.
 
 ## [0.15.0] - 2026-09-06
 

@@ -1,0 +1,100 @@
+name: Marketplace permission check
+run-name: Marketplace ${{ inputs.mode }} (${{ inputs.environment }}) - no upload
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Discover the profile ID or check its publishing role (never uploads).
+        type: choice
+        options: [discover, check]
+        default: check
+        required: true
+      environment:
+        description: Protected identity environment to validate.
+        type: choice
+        options: [marketplace-validation, marketplace-staging, marketplace-release]
+        default: marketplace-validation
+        required: true
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: true
+      environment:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MARKETPLACE_AZURE_TENANT_ID: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
+      MARKETPLACE_PROFILE_ID: ${{ vars.MARKETPLACE_PROFILE_ID }}
+      PREFLIGHT_MODE: ${{ inputs.mode }}
+      PREFLIGHT_ENVIRONMENT: ${{ inputs.environment }}
+    steps:
+      - name: Validate read-only request
+        shell: bash
+        run: |
+          case "$PREFLIGHT_MODE" in discover|check) ;; *) echo "::error::Invalid preflight mode"; exit 1 ;; esac
+          case "$PREFLIGHT_ENVIRONMENT" in
+            marketplace-validation|marketplace-staging|marketplace-release) ;;
+            *) echo "::error::Invalid Marketplace environment"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Authenticate the selected identity
+        uses: ./.github/actions/marketplace-login
+        with:
+          client-id: ${{ vars.MARKETPLACE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
+          profile-id: ${{ vars.MARKETPLACE_PROFILE_ID }}
+          discover-profile: ${{ inputs.mode == 'discover' && 'true' || 'false' }}
+
+      - name: Discover profile without publisher access
+        if: inputs.mode == 'discover'
+        run: python scripts/marketplace.py discover --out marketplace-profile.json
+
+      - name: Verify profile and explicit publishing role
+        if: inputs.mode == 'check'
+        run: python scripts/marketplace.py check
+
+      - name: Save non-secret profile IDs
+        if: inputs.mode == 'discover'
+        uses: actions/upload-artifact@v7
+        with:
+          name: marketplace-profile
+          path: marketplace-profile.json
+          retention-days: 7
+
+      - name: Record validation scope
+        shell: bash
+        run: |
+          {
+            echo "## Marketplace permission validation"
+            echo "Environment: \`$PREFLIGHT_ENVIRONMENT\`"
+            echo "Mode: \`$PREFLIGHT_MODE\`"
+            echo "This run did not upload, publish, or change publisher permissions."
+            if [[ "$PREFLIGHT_MODE" == "discover" ]]; then
+              echo "Profile discovered; publishing authorization has not been checked."
+            else
+              echo "Expected profile and explicit publishing role confirmed."
+            fi
+            echo "This proves only the selected environment, not other contexts or production-policy approval."
+          } >> "$GITHUB_STEP_SUMMARY"
