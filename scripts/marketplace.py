@@ -113,8 +113,9 @@ def get_json(url: str, authorization: str) -> dict:
         with build_opener(NoRedirect()).open(request, timeout=30) as response:
             payload = json.load(response)
     except HTTPError as error:
+        operation = "profile lookup" if url == PROFILE_URL else "publisher role lookup"
         raise MarketplaceError(
-            f"Marketplace permission check returned HTTP {error.code}. "
+            f"Marketplace {operation} returned HTTP {error.code}. "
             "Check the identity tenant and ask a publisher Owner to grant Contributor access."
         ) from None
     except (URLError, TimeoutError, OSError):
@@ -140,11 +141,11 @@ def publishing_role(profile: dict, assignments: dict, expected_profile: str) -> 
     for assignment in values:
         if not isinstance(assignment, dict):
             raise MarketplaceError("Marketplace returned an invalid role assignment.")
-        user = assignment.get("user")
-        if not isinstance(user, dict):
-            raise MarketplaceError("Marketplace returned a role assignment without a user.")
-        user_id = user.get("id")
-        if not isinstance(user_id, str) or user_id.lower() != profile_id.lower():
+        identity = assignment.get("identity")
+        if not isinstance(identity, dict):
+            raise MarketplaceError("Marketplace returned a role assignment without an identity.")
+        identity_id = identity.get("id")
+        if not isinstance(identity_id, str) or identity_id.lower() != profile_id.lower():
             continue
         role = assignment.get("role")
         if not isinstance(role, dict) or type(role.get("denyPermissions")) is not int:
@@ -167,8 +168,8 @@ def get_profile(tenant: str, env: dict[str, str]) -> tuple[dict, str, str]:
     # Match vsce's Basic OAuth convention, rather than testing only Bearer access.
     basic = base64.b64encode(f"OAuth:{token}".encode()).decode("ascii")
     mask(basic)
-    authorization = f"Basic {basic}"
-    profile = get_json(PROFILE_URL, authorization)
+    # Profile and Marketplace services use different authentication conventions.
+    profile = get_json(PROFILE_URL, "Bearer " + token)
     try:
         profile["id"] = str(UUID(profile["id"]))
     except (KeyError, ValueError, TypeError, AttributeError):
