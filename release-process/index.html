@@ -2113,7 +2113,15 @@ the next release's CHANGELOG. See
 <li><strong><code>pip install -e .</code> requires <code>.git</code></strong> - editable installs need the git directory present (standard for development).</li>
 </ul>
 <h2 id="7-staging-pipeline-testpypi">7. Staging Pipeline (TestPyPI)<a class="headerlink" href="#7-staging-pipeline-testpypi" title="Permanent link">&para;</a></h2>
-<p>The staging pipeline validates a release candidate by publishing to TestPyPI and verifying the installed package works.</p>
+<p>The staging pipeline validates a release candidate by publishing to TestPyPI and
+verifying the installed package works. Its <code>build-vsix</code> job produces a VSIX
+artifact for manual evaluation only; it never uploads to Marketplace or reserves
+a Marketplace version. TestPyPI uploads are real, so staging as a whole is not
+a dry run; use only legitimate, authorized release candidates.</p>
+<p><strong>Marketplace publication is stable-only:</strong> the production <code>vX.Y.Z</code> tag flow
+publishes the extension after human <code>marketplace-release</code> approval. Previously,
+staging could publish pre-release <code>X.Y.Z</code>, causing stable publication of the same
+version to skip as a duplicate. Artifact-only staging eliminates that collision.</p>
 <p><strong>Workflow file</strong>: <code>.github/workflows/staging.yml</code></p>
 <p><strong>Trigger</strong>: Push to any <code>release/*</code> branch</p>
 <h3 id="pipeline-flow">Pipeline Flow<a class="headerlink" href="#pipeline-flow" title="Permanent link">&para;</a></h3>
@@ -2122,8 +2130,10 @@ the next release's CHANGELOG. See
     build["_build&lt;br/&gt;&lt;i&gt;tests + package&lt;/i&gt;&lt;br/&gt;Version: 0.2.1.dev3 (setuptools-scm)"]
     publish["publish-testpypi&lt;br/&gt;&lt;i&gt;Upload to TestPyPI (staging environment)&lt;/i&gt;&lt;br/&gt;Trusted Publishing (OIDC, no token)"]
     verify["verify-testpypi&lt;br/&gt;&lt;i&gt;Install from TestPyPI in fresh environment&lt;/i&gt;&lt;br/&gt;agentops --version / --help / init"]
+    vsix["build-vsix&lt;br/&gt;&lt;i&gt;Package pre-release VSIX artifact for manual evaluation&lt;/i&gt;&lt;br/&gt;No Marketplace upload or identity"]
 
-    push --&gt; build --&gt; publish --&gt; verify</code></pre>
+    push --&gt; build --&gt; publish --&gt; verify
+    push --&gt; vsix</code></pre>
 <h3 id="what-gets-validated">What Gets Validated<a class="headerlink" href="#what-gets-validated" title="Permanent link">&para;</a></h3>
 <ol>
 <li><strong>Tests pass</strong> - the full test suite runs before building</li>
@@ -2132,6 +2142,10 @@ the next release's CHANGELOG. See
 <li><strong>Package installs</strong> - <code>pip install</code> from TestPyPI resolves all dependencies</li>
 <li><strong>CLI works</strong> - <code>agentops --version</code> and <code>--help</code> run without errors</li>
 <li><strong>Init works</strong> - <code>agentops init</code> creates the expected workspace files</li>
+<li><strong>Extension packages</strong> - <code>build-vsix</code> produces an installable pre-release VSIX
+   artifact. Download and install it manually in VS Code to evaluate the candidate.
+   Packaging needs no GitHub environment, <code>id-token</code>, Azure login, or Marketplace
+   profile variables, and has no cloud reservation or Marketplace approval.</li>
 </ol>
 <h3 id="iterating-on-a-release-branch">Iterating on a Release Branch<a class="headerlink" href="#iterating-on-a-release-branch" title="Permanent link">&para;</a></h3>
 <p>If staging fails, fix the issue and push again:</p>
@@ -2162,88 +2176,55 @@ the next release's CHANGELOG. See
 <p><strong>Note</strong>: <code>--extra-index-url https://pypi.org/simple/</code> is required so that dependencies (typer, pydantic, ruamel.yaml) resolve from the real PyPI.</p>
 </blockquote>
 <h2 id="8-end-to-end-pipeline-testing">8. End-to-End Pipeline Testing<a class="headerlink" href="#8-end-to-end-pipeline-testing" title="Permanent link">&para;</a></h2>
-<p>Before cutting a real release, you can validate the entire pipeline end-to-end using a disposable test branch and tag. This is especially useful when:</p>
-<ul>
-<li>You've modified any workflow file (<code>_build.yml</code>, <code>staging.yml</code>, <code>release.yml</code>)</li>
-<li>You've changed <code>pyproject.toml</code> build configuration</li>
-<li>You've updated setuptools-scm settings</li>
-<li>A new engineer wants to understand the release process hands-on</li>
-</ul>
+<p><strong>Release workflows are not dry runs.</strong> Pushing <code>release/*</code> triggers a real TestPyPI
+upload and artifact-only VSIX packaging; pushing <code>v*</code> triggers production
+publishing. Never create dummy release branches, tags, or Marketplace versions
+to test workflow changes. Deleting a ref does not undo an upload.</p>
 <h3 id="81-test-the-staging-pipeline">8.1 Test the Staging Pipeline<a class="headerlink" href="#81-test-the-staging-pipeline" title="Permanent link">&para;</a></h3>
-<h4 id="step-1-create-a-test-release-branch">Step 1: Create a Test Release Branch<a class="headerlink" href="#step-1-create-a-test-release-branch" title="Permanent link">&para;</a></h4>
-<p>From the branch that contains your workflow changes (or from <code>develop</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w">          </span><span class="c1"># or your feature branch with workflow changes</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
+<p>Before authorizing a real candidate, run the existing tests and package locally
+without publishing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">python</span> <span class="n">-m</span> <span class="n">pytest</span> <span class="n">tests</span><span class="p">/</span> <span class="n">-x</span> <span class="n">-q</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">uv</span> <span class="n">build</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="c"># With Node 22 installed:</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">npm</span> <span class="n">install</span> <span class="n">-g</span> <span class="nv">@vscode</span><span class="p">/</span><span class="n">vsce</span><span class="nv">@3</span><span class="p">.</span><span class="n">9</span><span class="p">.</span><span class="n">2</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="nb">Copy-Item</span> <span class="n">CHANGELOG</span><span class="p">.</span><span class="n">md</span><span class="p">,</span><span class="n">icon</span><span class="p">.</span><span class="n">png</span> <span class="n">-Destination</span> <span class="n">plugins</span><span class="p">\</span><span class="n">agentops</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="nb">Push-Location</span> <span class="n">plugins</span><span class="p">\</span><span class="n">agentops</span>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">npm</span> <span class="n">run</span> <span class="n">package</span><span class="p">:</span><span class="n">prerelease</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="nb">Pop-Location</span>
 </code></pre></div>
-<p>This triggers the <code>staging.yml</code> workflow automatically.</p>
-<h4 id="step-2-monitor-the-pipeline">Step 2: Monitor the Pipeline<a class="headerlink" href="#step-2-monitor-the-pipeline" title="Permanent link">&para;</a></h4>
-<ol>
-<li>Go to <strong>Actions</strong> tab → find the <strong>Staging</strong> workflow run for <code>release/v0.0.0-test</code></li>
-<li>Watch all 3 jobs:</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>Job 1: build / build        → Should tests pass? Package build?
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>Job 2: publish-testpypi     → Does TestPyPI upload succeed?
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>Job 3: verify-testpypi      → Can the package install and run?
-</code></pre></div>
-<ol>
-<li>Click into each job to inspect step-level output</li>
-<li>If a job fails, read the logs, fix the issue, push again:</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Fix and re-push</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>git<span class="w"> </span>add<span class="w"> </span>.
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"fix: correct workflow issue"</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="c1"># Pipeline re-runs automatically</span>
-</code></pre></div>
-<h4 id="step-3-verify-on-testpypi-optional">Step 3: Verify on TestPyPI (Optional)<a class="headerlink" href="#step-3-verify-on-testpypi-optional" title="Permanent link">&para;</a></h4>
-<p>Confirm the test package appeared on TestPyPI:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Check the version that was published</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Install and test manually</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">"agentops-accelerator==</span><span class="k">$(</span>python<span class="w"> </span>-m<span class="w"> </span>setuptools_scm<span class="k">)</span><span class="s2">"</span><span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a><span class="w">  </span>--index-url<span class="w"> </span>https://test.pypi.org/simple/<span class="w"> </span><span class="se">\</span>
-<a id="__codelineno-15-7" name="__codelineno-15-7" href="#__codelineno-15-7"></a><span class="w">  </span>--extra-index-url<span class="w"> </span>https://pypi.org/simple/
-<a id="__codelineno-15-8" name="__codelineno-15-8" href="#__codelineno-15-8"></a>
-<a id="__codelineno-15-9" name="__codelineno-15-9" href="#__codelineno-15-9"></a>agentops<span class="w"> </span>--version
-<a id="__codelineno-15-10" name="__codelineno-15-10" href="#__codelineno-15-10"></a>agentops<span class="w"> </span>--help
-<a id="__codelineno-15-11" name="__codelineno-15-11" href="#__codelineno-15-11"></a>
-<a id="__codelineno-15-12" name="__codelineno-15-12" href="#__codelineno-15-12"></a><span class="c1"># Test init</span>
-<a id="__codelineno-15-13" name="__codelineno-15-13" href="#__codelineno-15-13"></a><span class="nb">cd</span><span class="w"> </span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
-<a id="__codelineno-15-14" name="__codelineno-15-14" href="#__codelineno-15-14"></a>agentops<span class="w"> </span>init
-<a id="__codelineno-15-15" name="__codelineno-15-15" href="#__codelineno-15-15"></a>ls<span class="w"> </span>.agentops/
-</code></pre></div>
-<h4 id="step-4-clean-up-the-test-branch">Step 4: Clean Up the Test Branch<a class="headerlink" href="#step-4-clean-up-the-test-branch" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Delete remote branch</span>
-<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
-<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># Switch back and delete local branch</span>
-<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
-</code></pre></div>
+<p>For identity and publisher permissions, use the standalone read-only
+<code>python scripts/marketplace.py check</code> after the
+<a href="#local-publishing">local identity setup</a>. Do not invoke a release script merely
+to test credentials: it publishes after preflight. Local <code>scripts/staging.sh</code>
+and <code>scripts/staging.ps1</code> run lint/tests, Python build, TestPyPI upload and smoke
+verification, then VSIX artifact packaging. They perform no Azure preflight or
+Marketplace publish, but their TestPyPI upload still makes them unsuitable for
+pure no-upload validation.</p>
+<p>When a legitimate release candidate is explicitly authorized, push its
+<code>release/vX.Y.Z</code> branch and monitor <strong>Staging</strong> in Actions. Review the TestPyPI
+upload and install verification, and download the <code>build-vsix</code> artifact for
+manual extension evaluation. Staging needs no Marketplace environment or
+approval. Re-pushing the branch can upload to TestPyPI again, not Marketplace.</p>
 <h3 id="82-test-the-full-release-pipeline">8.2 Test the Full Release Pipeline<a class="headerlink" href="#82-test-the-full-release-pipeline" title="Permanent link">&para;</a></h3>
 <blockquote>
 <p><strong>There is no safe dry run.</strong> The <code>publish-pypi</code> job does not pause, so pushing
 any <code>v*</code> tag publishes that version to real PyPI. There is no reject button to
-catch it. PyPI versions cannot be deleted, only yanked, so a throwaway
-<code>v0.0.0-test.1</code> tag leaves a permanent artifact on the project page.</p>
+catch it. PyPI versions cannot be deleted, only yanked; a throwaway tag can
+leave permanent published artifacts.</p>
 </blockquote>
-<p>Test everything except the final publish by pushing a <code>release/v*</code> branch, which
-exercises build → TestPyPI → verify (see <a href="#81-test-the-staging-pipeline">8.1</a>).
-That covers every job the release pipeline runs before <code>publish-pypi</code>, using the
-same build and the same <code>pypa/gh-action-pypi-publish</code> action.</p>
-<p>If you genuinely need to validate <code>publish-pypi</code> end to end, add required
-reviewers to the <code>release</code> environment first (see
-<a href="#enabling-a-real-approval-gate">Enabling a real approval gate</a>). With reviewers
-attached, the job pauses and you can reject it.</p>
+<p>Use packaging and the read-only Marketplace preflight in <a href="#81-test-the-staging-pipeline">8.1</a>
+for no-upload validation. A full end-to-end publish requires an explicitly
+authorized, legitimate release. The <code>marketplace-release</code> approval gate is
+separate from PyPI and does not pause <code>publish-pypi</code>.</p>
+<p>If a PyPI approval gate is required, configure reviewers on <code>release</code> first
+(see <a href="#enabling-a-real-approval-gate">Enabling a real approval gate</a>).
+Rejecting a deployment proves neither successful authentication nor upload.</p>
 <h4 id="verifying-the-publish-path-without-publishing">Verifying the publish path without publishing<a class="headerlink" href="#verifying-the-publish-path-without-publishing" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Confirm the release environment's protection rules (empty = no gate).</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.protection_rules'</span>
-<a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>
-<a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="c1"># Confirm the workflow requests an OIDC token instead of using an API key.</span>
-<a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">"id-token\|gh-action-pypi-publish"</span><span class="w"> </span>.github/workflows/release.yml
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Confirm the release environment's protection rules (empty = no gate).</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.protection_rules'</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="c1"># Confirm the workflow requests an OIDC token instead of using an API key.</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>grep<span class="w"> </span>-n<span class="w"> </span><span class="s2">"id-token\|gh-action-pypi-publish"</span><span class="w"> </span>.github/workflows/release.yml
 </code></pre></div>
 <p>Trusted Publishing must also be configured on the PyPI side under
 <strong>Manage project → Publishing</strong>, matching the repository, workflow filename, and
@@ -2253,55 +2234,48 @@ tag has already been pushed.</p>
 <table>
 <thead>
 <tr>
-<th>What to test</th>
-<th>Command</th>
-<th>What to watch</th>
+<th>What to validate</th>
+<th>Method</th>
+<th>What it proves</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Staging only</td>
-<td><code>git push origin release/v0.0.0-test</code></td>
-<td>3 jobs: build → TestPyPI → verify</td>
+<td>Tests and packaging</td>
+<td>Existing tests, <code>uv build</code>, extension <code>npm run package:prerelease</code></td>
+<td>Build correctness; no upload or Marketplace version reservation</td>
 </tr>
 <tr>
-<td>Full release</td>
-<td><code>git push origin v0.0.0-test.1</code></td>
-<td>Publishes to PyPI. No undo. Avoid.</td>
+<td>Marketplace identity and access</td>
+<td><code>python scripts/marketplace.py check</code></td>
+<td>Profile and explicit publisher role; no upload</td>
 </tr>
 <tr>
-<td>Cleanup (branch)</td>
-<td><code>git push origin --delete release/v0.0.0-test</code></td>
-<td>Branch removed</td>
+<td>Real staging candidate</td>
+<td>Authorized <code>release/vX.Y.Z</code> candidate</td>
+<td>TestPyPI upload/install and VSIX artifact for manual evaluation; no Marketplace upload</td>
 </tr>
 <tr>
-<td>Cleanup (tag)</td>
-<td><code>git push origin --delete v0.0.0-test.1 &amp;&amp; git tag -d v0.0.0-test.1</code></td>
-<td>Tag removed, PyPI version remains</td>
+<td>Real stable release</td>
+<td>Authorized <code>vX.Y.Z</code> tag and Marketplace approval</td>
+<td>Production publication; not reversible by deleting the tag</td>
 </tr>
 </tbody>
 </table>
 <h3 id="84-testing-workflow-changes-on-a-feature-branch">8.4 Testing Workflow Changes on a Feature Branch<a class="headerlink" href="#84-testing-workflow-changes-on-a-feature-branch" title="Permanent link">&para;</a></h3>
-<p>If you're modifying the workflow files on a feature branch (not yet merged to <code>develop</code>), you can still test them:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Your workflow changes are on feature/my-ci-changes</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># Create a test release branch directly from your feature branch</span>
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a>
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="c1"># GitHub Actions uses the workflow files from the pushed branch,</span>
-<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="c1"># so your modifications are what actually runs</span>
-</code></pre></div>
-<p>This is useful because GitHub Actions reads workflow files from the branch being pushed, not from <code>main</code> or <code>develop</code>. Your modified workflows execute immediately without needing to merge first.</p>
-<p>After testing:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Clean up</span>
-<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.0.0-test
-<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>git<span class="w"> </span>checkout<span class="w"> </span>feature/my-ci-changes
-<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.0.0-test
-</code></pre></div>
+<p>Run the existing targeted workflow/helper tests and packaging on the feature
+branch. Inspect workflow diffs and environment protections without dispatching
+release workflows. Do not bypass deployment policies or create a dummy
+<code>release/*</code> branch to obtain a publishing identity. A standalone, explicitly
+approved read-only preflight can validate federation and publisher access, but
+must not call <code>publish</code> or the staging/release scripts.</p>
 <h2 id="9-production-release-pipeline-pypi">9. Production Release Pipeline (PyPI)<a class="headerlink" href="#9-production-release-pipeline-pypi" title="Permanent link">&para;</a></h2>
-<p>The production pipeline publishes a final release to PyPI and creates a GitHub Release.</p>
+<p>The production pipeline publishes a final release to PyPI and creates a GitHub
+Release. Its Marketplace stable publish uses the separate protected
+<code>marketplace-release</code> environment; this does not change Python publishing.
+The tag publishes Python <strong>before Marketplace approval</strong>. A human must approve
+<code>marketplace-release</code>; do not bypass that gate. GitHub Release creation waits
+for successful Marketplace publication.</p>
 <p><strong>Workflow file</strong>: <code>.github/workflows/release.yml</code></p>
 <p><strong>Trigger</strong>: Push a <code>v*</code> tag (e.g. <code>v0.2.0</code>)</p>
 <h3 id="pipeline-flow_1">Pipeline Flow<a class="headerlink" href="#pipeline-flow_1" title="Permanent link">&para;</a></h3>
@@ -2311,17 +2285,19 @@ tag has already been pushed.</p>
     publishTest["publish-testpypi&lt;br/&gt;&lt;i&gt;Final TestPyPI upload (clean version)&lt;/i&gt;"]
     verifyTest["verify-testpypi&lt;br/&gt;&lt;i&gt;Smoke test from TestPyPI&lt;/i&gt;"]
     publishPypi["publish-pypi&lt;br/&gt;&lt;i&gt;Publishes to PyPI immediately&lt;/i&gt;&lt;br/&gt;Trusted Publishing (OIDC, no token)&lt;br/&gt;environment: release (no protection rules)"]
+    vsix["publish-vsix&lt;br/&gt;&lt;i&gt;Stable Marketplace publish&lt;/i&gt;&lt;br/&gt;marketplace-release: review + Entra OIDC"]
     ghRelease["github-release&lt;br/&gt;&lt;i&gt;Creates GitHub Release with artifacts&lt;/i&gt;&lt;br/&gt;Auto-generated release notes"]
 
-    tag --&gt; build --&gt; publishTest --&gt; verifyTest --&gt; publishPypi --&gt; ghRelease
+    tag --&gt; build --&gt; publishTest --&gt; verifyTest --&gt; publishPypi --&gt; vsix --&gt; ghRelease
 
     classDef gate fill:#fff3cd,stroke:#856404,color:#000;
     class tag gate;</code></pre>
 <blockquote>
 <p><strong>Pushing the tag is the point of no return.</strong> The <code>publish-pypi</code> job declares
 <code>environment: release</code>, but that environment currently has <strong>no protection
-rules</strong>, so nothing pauses for review. Verify for yourself:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.environments[] | {name, protection_rules}'</span>
+rules</strong>, so Python publishing does not pause for review. The Marketplace
+environment is separate. Verify for yourself:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.environments[] | {name, protection_rules}'</span>
 </code></pre></div>
 <p>PyPI does not allow re-uploading a version, so a bad release can only be
 yanked, never replaced. Do all your verification on TestPyPI (staging) before
@@ -2343,11 +2319,11 @@ if you want the pipeline to stop for a human.</p>
 - Opens a PR: <code>release/v0.2.0</code> → <code>main</code></p>
 <blockquote>
 <p><strong>Alternative (manual)</strong>: If you prefer to create the release branch locally:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.2.0
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="c1"># Edit CHANGELOG.md manually</span>
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"chore: prepare release 0.2.0"</span>
-<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>-b<span class="w"> </span>release/v0.2.0
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="c1"># Edit CHANGELOG.md manually</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a>git<span class="w"> </span>commit<span class="w"> </span>-m<span class="w"> </span><span class="s2">"chore: prepare release 0.2.0"</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>release/v0.2.0
 </code></pre></div></p>
 </blockquote>
 <h4 id="step-2-wait-for-staging">Step 2: Wait for Staging<a class="headerlink" href="#step-2-wait-for-staging" title="Permanent link">&para;</a></h4>
@@ -2355,10 +2331,12 @@ if you want the pipeline to stop for a human.</p>
 <h4 id="step-3-monitor-staging">Step 3: Monitor Staging<a class="headerlink" href="#step-3-monitor-staging" title="Permanent link">&para;</a></h4>
 <ol>
 <li>Go to <strong>Actions</strong> tab → find the <strong>Staging</strong> workflow run</li>
-<li>Verify all 3 jobs pass:</li>
+<li>Verify the Python jobs pass:</li>
 <li>✅ <code>build / build</code> - tests pass, package builds</li>
 <li>✅ <code>publish-testpypi</code> - uploaded to TestPyPI</li>
 <li>✅ <code>verify-testpypi</code> - installed and smoke-tested</li>
+<li>Verify <code>build-vsix</code> passes, then download its pre-release VSIX artifact for
+   manual evaluation. There is no Marketplace upload or approval during staging.</li>
 </ol>
 <p>If any job fails, fix the issue on the release branch and push. The pipeline re-runs automatically.</p>
 <h4 id="step-4-merge-to-main">Step 4: Merge to Main<a class="headerlink" href="#step-4-merge-to-main" title="Permanent link">&para;</a></h4>
@@ -2372,21 +2350,21 @@ if you want the pipeline to stop for a human.</p>
 <h4 id="step-5-tag-the-release-and-sync-develop">Step 5: Tag the release <strong>and</strong> sync <code>develop</code><a class="headerlink" href="#step-5-tag-the-release-and-sync-develop" title="Permanent link">&para;</a></h4>
 <p>These are one step, not two. Tagging publishes to PyPI; syncing <code>develop</code> keeps
 the next release's CHANGELOG correct. Run all of it in one sitting.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="c1"># 1. Tag main. This publishes to PyPI with no approval prompt.</span>
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.2.0
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.2.0
-<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>
-<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="c1"># 2. Immediately sync main back into develop.</span>
-<a id="__codelineno-22-8" name="__codelineno-22-8" href="#__codelineno-22-8"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
-<a id="__codelineno-22-9" name="__codelineno-22-9" href="#__codelineno-22-9"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-22-10" name="__codelineno-22-10" href="#__codelineno-22-10"></a>git<span class="w"> </span>merge<span class="w"> </span>main
-<a id="__codelineno-22-11" name="__codelineno-22-11" href="#__codelineno-22-11"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
-<a id="__codelineno-22-12" name="__codelineno-22-12" href="#__codelineno-22-12"></a>
-<a id="__codelineno-22-13" name="__codelineno-22-13" href="#__codelineno-22-13"></a><span class="c1"># 3. Verify the sync. This MUST print nothing.</span>
-<a id="__codelineno-22-14" name="__codelineno-22-14" href="#__codelineno-22-14"></a>git<span class="w"> </span>fetch<span class="w"> </span>origin
-<a id="__codelineno-22-15" name="__codelineno-22-15" href="#__codelineno-22-15"></a>git<span class="w"> </span>log<span class="w"> </span>--oneline<span class="w"> </span>origin/develop..origin/main
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># 1. Tag main. This publishes to PyPI with no approval prompt.</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>git<span class="w"> </span>checkout<span class="w"> </span>main
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>main
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a>git<span class="w"> </span>tag<span class="w"> </span>v0.2.0
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>v0.2.0
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>
+<a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="c1"># 2. Immediately sync main back into develop.</span>
+<a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a>git<span class="w"> </span>checkout<span class="w"> </span>develop
+<a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a>git<span class="w"> </span>pull<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-16-10" name="__codelineno-16-10" href="#__codelineno-16-10"></a>git<span class="w"> </span>merge<span class="w"> </span>main
+<a id="__codelineno-16-11" name="__codelineno-16-11" href="#__codelineno-16-11"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>develop
+<a id="__codelineno-16-12" name="__codelineno-16-12" href="#__codelineno-16-12"></a>
+<a id="__codelineno-16-13" name="__codelineno-16-13" href="#__codelineno-16-13"></a><span class="c1"># 3. Verify the sync. This MUST print nothing.</span>
+<a id="__codelineno-16-14" name="__codelineno-16-14" href="#__codelineno-16-14"></a>git<span class="w"> </span>fetch<span class="w"> </span>origin
+<a id="__codelineno-16-15" name="__codelineno-16-15" href="#__codelineno-16-15"></a>git<span class="w"> </span>log<span class="w"> </span>--oneline<span class="w"> </span>origin/develop..origin/main
 </code></pre></div>
 <p>If step 3 prints any commits, <code>develop</code> is behind <code>main</code> and the next release
 will be built from a stale CHANGELOG. Fix it before you walk away.</p>
@@ -2409,11 +2387,15 @@ review. Open <code>CHANGELOG.md</code> after the merge and confirm that everythi
 <h4 id="step-6-watch-the-release-pipeline">Step 6: Watch the release pipeline<a class="headerlink" href="#step-6-watch-the-release-pipeline" title="Permanent link">&para;</a></h4>
 <ol>
 <li>Go to <strong>Actions</strong> tab → find the <strong>Release</strong> workflow run for <code>v0.2.0</code></li>
-<li>The pipeline runs build → TestPyPI → verify → <strong>publish-pypi</strong> → github-release</li>
+<li>The pipeline runs build → TestPyPI → verify → <strong>publish-pypi</strong> →
+   <strong>publish-vsix</strong> → github-release</li>
 <li><code>publish-pypi</code> does not pause. It publishes to PyPI via
    <a href="https://docs.pypi.org/trusted-publishers/">Trusted Publishing</a> using the
    workflow's OIDC identity, so there is no API token to rotate</li>
-<li><code>github-release</code> then creates a GitHub Release with the built artifacts and
+<li>After Python publishes, a human approves the <code>marketplace-release</code> deployment
+   for stable extension publication. Do not bypass the required approval.</li>
+<li>Only after successful Marketplace publication, <code>github-release</code> creates a
+   GitHub Release with the built artifacts and
    auto-generated release notes</li>
 </ol>
 <p>If the run fails after <code>publish-pypi</code> succeeded, the package is already on PyPI.
@@ -2423,22 +2405,22 @@ Fix forward with a new patch version rather than retrying the tag.</p>
 reviewers attached, so it is a label rather than a gate. To make the pause real,
 a repo admin adds required reviewers:</p>
 <p><strong>Settings → Environments → <code>release</code> → Required reviewers</strong>, then confirm:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.protection_rules'</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.protection_rules'</span>
 </code></pre></div>
 <p>Once reviewers exist, <code>publish-pypi</code> stops on <strong>"Waiting for review"</strong> and a
 reviewer approves via <strong>Review deployments → release → Approve and deploy</strong>. No
 workflow change is needed; <code>environment: release</code> is already declared.</p>
 <h4 id="step-7-delete-the-release-branch">Step 7: Delete the release branch<a class="headerlink" href="#step-7-delete-the-release-branch" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.2.0
-<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.2.0
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>git<span class="w"> </span>push<span class="w"> </span>origin<span class="w"> </span>--delete<span class="w"> </span>release/v0.2.0
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>git<span class="w"> </span>branch<span class="w"> </span>-d<span class="w"> </span>release/v0.2.0
 </code></pre></div>
 <h4 id="step-8-verify-the-published-package">Step 8: Verify the Published Package<a class="headerlink" href="#step-8-verify-the-published-package" title="Permanent link">&para;</a></h4>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="c1"># Install from PyPI</span>
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>pip<span class="w"> </span>install<span class="w"> </span>agentops-accelerator<span class="o">==</span><span class="m">0</span>.2.0
-<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>
-<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a><span class="c1"># Verify</span>
-<a id="__codelineno-25-5" name="__codelineno-25-5" href="#__codelineno-25-5"></a>agentops<span class="w"> </span>--version<span class="w">    </span><span class="c1"># Should show 0.2.0</span>
-<a id="__codelineno-25-6" name="__codelineno-25-6" href="#__codelineno-25-6"></a>agentops<span class="w"> </span>--help
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Install from PyPI</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>pip<span class="w"> </span>install<span class="w"> </span>agentops-accelerator<span class="o">==</span><span class="m">0</span>.2.0
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># Verify</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>agentops<span class="w"> </span>--version<span class="w">    </span><span class="c1"># Should show 0.2.0</span>
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>agentops<span class="w"> </span>--help
 </code></pre></div>
 <p>Check the published package:
 - PyPI: https://pypi.org/project/agentops-accelerator/0.2.0/
@@ -2446,7 +2428,9 @@ workflow change is needed; <code>environment: release</code> is already declared
 <h2 id="10-infrastructure-setup">10. Infrastructure Setup<a class="headerlink" href="#10-infrastructure-setup" title="Permanent link">&para;</a></h2>
 <p>This section covers one-time setup required before the pipelines can run.</p>
 <h3 id="101-github-environments">10.1 GitHub Environments<a class="headerlink" href="#101-github-environments" title="Permanent link">&para;</a></h3>
-<p>Create two environments in <strong>Settings → Environments → New environment</strong>:</p>
+<p>Keep the existing Python environments unchanged. Use the <strong>separate
+<code>marketplace-release</code> environment</strong> for publishing as described below; do not
+reuse <code>staging</code> or <code>release</code> for Marketplace authentication.</p>
 <h4 id="staging-environment"><code>staging</code> Environment<a class="headerlink" href="#staging-environment" title="Permanent link">&para;</a></h4>
 <ul>
 <li><strong>Purpose</strong>: Controls access to TestPyPI publishing</li>
@@ -2461,9 +2445,86 @@ workflow change is needed; <code>environment: release</code> is already declared
   real gate, add required reviewers (see
   <a href="#enabling-a-real-approval-gate">Enabling a real approval gate</a>).</li>
 <li><strong>Deployment branches</strong>: Optionally restrict to <code>main</code> branch and <code>v*</code> tags</li>
-<li><strong>Secrets</strong>: None. <code>VSCE_PAT</code> is a <strong>repository</strong> secret, not an environment secret,
-  so it resolves in both <code>staging.yml</code> and <code>release.yml</code> without being attached here.</li>
+<li><strong>Secrets</strong>: None. Python uploads continue to use Trusted Publishing.</li>
 </ul>
+<h4 id="marketplace-environments">Marketplace Environments<a class="headerlink" href="#marketplace-environments" title="Permanent link">&para;</a></h4>
+<p><code>marketplace-release</code> is the only required Marketplace publishing environment.
+Retain its <strong>required human reviewers</strong> and <strong>selected branch/tag deployment
+policies</strong> before enabling its identity variables:</p>
+<table>
+<thead>
+<tr>
+<th>Environment</th>
+<th>Allowed deployment refs</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>marketplace-release</code></td>
+<td>Tags <code>v*</code>; optionally the protected <code>main</code> branch for manual dispatch with a tag input</td>
+<td>Stable Marketplace publishing</td>
+</tr>
+<tr>
+<td><code>marketplace-staging</code></td>
+<td>Existing selected-ref policy</td>
+<td>Optional legacy/read-only preflight diagnostics; not used by staging or packaging</td>
+</tr>
+<tr>
+<td><code>marketplace-validation</code></td>
+<td>Existing approved validation-ref policy</td>
+<td>Optional read-only preflight diagnostics</td>
+</tr>
+</tbody>
+</table>
+<p><code>marketplace-staging</code> and <code>marketplace-validation</code> were created earlier; the
+stable-only flow does not delete them. Neither is required to stage or package
+the extension, and neither introduces an approval into the staging pipeline.
+Manual preflight still offers validation/staging/release contexts and respects
+the selected environment's existing protections.</p>
+<p>For manual stable releases, the job guards allow only <code>main</code> or the same release
+tag as the input. Do not allow feature branches. An environment-based federated
+subject <strong>does not restrict branches by itself</strong>: these environment protections
+are essential and must exist before enabling the identity.</p>
+<p>For an authorized retry of a pre-migration tag, explicitly dispatch the <strong>new
+migrated workflow on protected <code>main</code></strong>, supplying the valid release tag.
+The Marketplace job checks out trusted tooling from <code>github.workflow_sha</code> at
+the workspace root and extension source from <code>refs/tags/&lt;tag&gt;</code> into
+<code>release-source/</code>. This packages the old extension source using the new OIDC
+action/helper. A tag-based dispatch must match the tag input. Re-running a
+historical old workflow run still executes its old PAT code; it does <strong>not</strong>
+adopt the migrated workflow automatically. This is a real release retry, not
+a read-only check.</p>
+<p>Set these <strong>environment variables</strong>, not secrets, in <code>marketplace-release</code>
+(and in an optional diagnostic environment only when using its preflight):</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MARKETPLACE_AZURE_CLIENT_ID</code></td>
+<td>Dedicated user-assigned managed identity (UAMI) client GUID</td>
+</tr>
+<tr>
+<td><code>MARKETPLACE_AZURE_TENANT_ID</code></td>
+<td>Approved identity tenant GUID</td>
+</tr>
+<tr>
+<td><code>MARKETPLACE_PROFILE_ID</code></td>
+<td>Marketplace <code>profiles/me</code> profile <code>id</code>, <strong>not</strong> the Entra principal/object ID</td>
+</tr>
+</tbody>
+</table>
+<p>Publishing and identity-preflight jobs request <code>id-token: write</code> and use <code>azure/login@v3</code> with
+<code>allow-no-subscriptions: true</code>. No Azure RBAC grant is needed solely to publish
+an extension: Marketplace publisher membership supplies that permission.
+Do not change shared <code>AZURE_*</code> E2E variables or repository-wide OIDC settings.
+The staging <code>build-vsix</code> job has no environment, OIDC permission, Azure login,
+or Marketplace profile variables.</p>
 <h4 id="repository-secrets">Repository secrets<a class="headerlink" href="#repository-secrets" title="Permanent link">&para;</a></h4>
 <table>
 <thead>
@@ -2475,21 +2536,21 @@ workflow change is needed; <code>environment: release</code> is already declared
 </thead>
 <tbody>
 <tr>
-<td><code>VSCE_PAT</code></td>
-<td>VS Code Marketplace PAT with <strong>Marketplace: Manage</strong></td>
-<td><a href="https://dev.azure.com">dev.azure.com</a> → User settings → Personal access tokens</td>
-</tr>
-<tr>
 <td><code>RELEASE_PAT</code></td>
 <td>PAT used by <code>cut-release.yml</code> to open the release PR</td>
 <td>GitHub → Settings → Developer settings → Personal access tokens</td>
 </tr>
 </tbody>
 </table>
-<p>No PyPI API token is stored. Check the current rules and secret locations at any time:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.protection_rules'</span>
-<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release/secrets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.secrets[].name'</span>
-<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/actions/secrets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.secrets[].name'</span>
+<p><code>RELEASE_PAT</code> is a <strong>GitHub</strong> PAT and is unchanged by this migration. Marketplace
+publishing has no PAT fallback. The legacy repository <code>VSCE_PAT</code> must be retained
+until an actual stable Marketplace publication succeeds and remaining consumers
+are checked; do not interpret this documentation as
+confirmation it has been removed. No PyPI API token is stored. Check the current
+rules and secret names (never secret values) at any time:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.protection_rules'</span>
+<a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release/secrets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.secrets[].name'</span>
+<a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/actions/secrets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.secrets[].name'</span>
 </code></pre></div>
 <h3 id="102-pypi-and-testpypi-trusted-publishing">10.2 PyPI and TestPyPI Trusted Publishing<a class="headerlink" href="#102-pypi-and-testpypi-trusted-publishing" title="Permanent link">&para;</a></h3>
 <p>Both <code>staging.yml</code> and <code>release.yml</code> use
@@ -2521,45 +2582,213 @@ new project name, either upload once manually with a temporary API token, or use
 <a href="https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/">PyPI's pending publisher</a>
 flow to reserve the name for the workflow. <code>agentops-accelerator</code> is already
 registered on both indexes, so this only matters if the package is renamed.</p>
+<h3 id="104-marketplace-entra-oidc-identity-setup">10.4 Marketplace Entra OIDC Identity Setup<a class="headerlink" href="#104-marketplace-entra-oidc-identity-setup" title="Permanent link">&para;</a></h3>
+<p><strong>Permanent ownership and the approved production tenant/subscription must be
+decided outside the code rollout.</strong> Use a dedicated UAMI, not an E2E identity.
+The earlier non-production personal-subscription probe established feasibility,
+not policy approval or a permanent hosting location.</p>
+<p>Verify the existing subject customization read-only before creating federation:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="n">gh</span> <span class="n">api</span> <span class="n">repos</span><span class="p">/</span><span class="n">Azure</span><span class="p">/</span><span class="n">agentops</span><span class="p">/</span><span class="n">actions</span><span class="p">/</span><span class="n">oidc</span><span class="p">/</span><span class="n">customization</span><span class="p">/</span><span class="n">sub</span>
+<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="n">gh</span> <span class="n">api</span> <span class="n">repos</span><span class="p">/</span><span class="n">Azure</span><span class="p">/</span><span class="n">agentops</span> <span class="p">-</span><span class="n">-jq</span> <span class="s1">'{repository_id: .id, repository_owner_id: .owner.id}'</span>
+</code></pre></div>
+<p>Verified for this migration: <code>use_default: false</code>, with ordered claim keys
+<code>repository_owner_id</code>, <code>repository_id</code>, <code>context</code>; owner ID <code>6844498</code> and
+repository ID <code>1161883340</code>. Stable publication requires the release federated
+credential; any legacy staging credential is optional for read-only diagnostics:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Issuer</td>
+<td><code>https://token.actions.githubusercontent.com</code></td>
+</tr>
+<tr>
+<td>Audience</td>
+<td><code>api://AzureADTokenExchange</code></td>
+</tr>
+<tr>
+<td>Release subject</td>
+<td><code>repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-release</code></td>
+</tr>
+<tr>
+<td>Optional legacy staging subject</td>
+<td><code>repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-staging</code></td>
+</tr>
+</tbody>
+</table>
+<p>Do not replace the repository customization with GitHub's default <code>repo:...</code>
+subject: that can break other federated consumers. If verification differs,
+stop and reconcile the identity configuration with repository owners.</p>
+<p>After authenticating as the UAMI in the approved tenant, obtain a CLI token for
+resource <code>499b84ac-1321-427f-aa17-267ca6975798</code> and use it only in the Authorization
+header of a read-only request to
+<code>https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1</code>.
+Record only the returned profile <code>id</code>. Never print, persist, or paste the token.
+Have an <strong>Owner</strong> of publisher <code>AgentOpsAccelerator</code> grant that profile
+<strong>Contributor</strong>, not Owner. Set <code>MARKETPLACE_PROFILE_ID</code> to this Marketplace
+profile ID, not the UAMI's Entra principal ID.</p>
+<h3 id="105-shared-publishing-helper-and-local-use">10.5 Shared Publishing Helper and Local Use<a class="headerlink" href="#105-shared-publishing-helper-and-local-use" title="Permanent link">&para;</a></h3>
+<p><code>scripts/marketplace.py</code> requires Python 3.11+ (standard library only) and the
+Azure CLI. Publishing also requires Node 22 and <code>vsce</code> 3.9.2 or newer; workflows
+pin <code>npm install -g @vscode/vsce@3.9.2</code>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>python scripts/marketplace.py check
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a>python scripts/marketplace.py discover --out marketplace-profile.json
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>python scripts/marketplace.py publish --package-path PATH [--pre-release] [--allow-already-exists]
+</code></pre></div>
+<ul>
+<li><code>check</code> is <strong>read-only</strong> and never publishes. It selects
+  <code>MARKETPLACE_AZURE_TENANT_ID</code>, checks the CLI identity's self profile against
+  <code>MARKETPLACE_PROFILE_ID</code>, and requires an explicit publisher
+  Contributor/Owner/Creator role with <strong>zero deny permissions</strong>. A generic HTTP
+  200 response is not sufficient proof of publishing permission.</li>
+<li><code>publish</code> runs that preflight before uploading the specified package.
+  The child environment clears inherited PAT and EnvironmentCredential variables
+  and selects the tenant so <code>vsce</code> uses the intended CLI credential. There is
+  <strong>no PAT fallback</strong>, and token values are never printed.</li>
+<li>CI passes <code>--allow-already-exists</code> to preserve re-run handling. Local defaults
+  fail on an existing version; opt in only when that behavior is intended.
+  This maps to <code>vsce</code>'s native <code>--skip-duplicate</code> for existing-version/409
+  handling, not output substring matching. Other errors always propagate.</li>
+<li>Profile pinning prevents a wrong account or tenant from publishing.
+  A successful CLI profile/role preflight is <strong>not proof of an actual upload</strong>.</li>
+<li>Low-level <code>--pre-release</code> support may remain in the helper, but it is not part
+  of the normal release flow. Staging only packages; production publishes stable.</li>
+</ul>
+<h4 id="permission-only-github-workflow">Permission-only GitHub workflow<a class="headerlink" href="#permission-only-github-workflow" title="Permanent link">&para;</a></h4>
+<p><code>marketplace-preflight.yml</code> is separate from the release workflows and never
+publishes. Its <code>workflow_dispatch</code> inputs select <code>discover</code> or <code>check</code> and one
+of <code>marketplace-validation</code>, <code>marketplace-staging</code>, or <code>marketplace-release</code>.
+It also supports <code>workflow_call</code> for a reviewed bootstrap workflow.</p>
+<p>Use <code>discover</code> first: only client/tenant configuration is required. It reads the
+new identity's Marketplace profile without requiring publisher membership and
+uploads only tenant/profile IDs in the seven-day <code>marketplace-profile</code> artifact.
+After granting Contributor, set <code>MARKETPLACE_PROFILE_ID</code> and run <code>check</code>.
+Discovery alone is not proof of publisher access.</p>
+<p>The existing optional <code>marketplace-validation</code> and legacy <code>marketplace-staging</code>
+environments can be used for read-only diagnostics under their configured ref,
+reviewer, and federation policies. Neither is required by <code>build-vsix</code> or the
+local staging scripts. Do not change the existing environment policies to admit
+test branches, create dummy release refs, or bypass reviewers.
+An approval pause is a real human handoff, not a reason to use another identity.
+Only the selected context is validated; validation/staging diagnostic success
+does not prove release-context authentication or actual stable publication.
+This flow requires no new diagnostic environment or approval.</p>
+<h4 id="local-publishing">Local Publishing<a class="headerlink" href="#local-publishing" title="Permanent link">&para;</a></h4>
+<p>The local <code>scripts/staging.ps1</code> and <code>scripts/staging.sh</code> run lint/tests, Python
+build, TestPyPI upload, smoke verification, and VSIX artifact packaging only.
+They need no Azure preflight, Marketplace identity, or Marketplace approval.
+They never upload the extension. For pure artifact packaging without even a
+TestPyPI upload, use <code>uv build</code> and extension <code>npm run package:prerelease</code>.</p>
+<p>The local <code>scripts/release.ps1</code> and <code>scripts/release.sh</code> retain stable publishing
+and permission preflight before side effects when <code>vsce</code> is available. The
+existing missing-<code>vsce</code> extension-packaging skip is not proof of Marketplace
+access. Release scripts are publication scripts, not credential tests.</p>
+<p>The extension's <code>npm run publish</code> packages a stable VSIX and invokes the shared
+helper. <code>npm run publish:prerelease</code> is removed; <code>npm run package:prerelease</code>
+remains artifact-only, preserving <code>package --pre-release</code> without reserving a
+cloud version. Stable publishing requires Python 3.11+ and
+the helper from a repository checkout, not just a standalone extension folder.
+The helper preflights before upload; <code>npm run publish</code> packages before preflight.</p>
+<p>Log in with <code>az login --tenant &lt;publisher-identity-tenant&gt; --allow-no-subscriptions</code>.
+Set <code>MARKETPLACE_AZURE_TENANT_ID</code> and <code>MARKETPLACE_PROFILE_ID</code> for <strong>your interactive
+publishing identity</strong>, not the CI UAMI. Resolve your profile using the same
+<code>profiles/me</code> endpoint above; your identity needs publisher Contributor or Owner
+membership. Then run <code>python scripts/marketplace.py check</code> alone first.
+Only invoke a publishing script or <code>publish</code> for an explicitly authorized release.</p>
+<h3 id="106-staged-rollout-checklist">10.6 Staged Rollout Checklist<a class="headerlink" href="#106-staged-rollout-checklist" title="Permanent link">&para;</a></h3>
+<p>This is a deployment checklist, <strong>not a claim that permanent resources are
+configured or publication has been tested</strong>.</p>
+<ul>
+<li>[ ] Confirm permanent identity ownership, approved production tenant/subscription
+  placement, and operational responsibility under existing policy; code rollout
+  and earlier feasibility probes do not settle these decisions.</li>
+<li>[ ] Verify the dedicated UAMI and exact release federated credential; resolve
+  its Marketplace profile and have a publisher Owner grant Contributor.</li>
+<li>[ ] Verify required reviewers and selected branch/tag deployment policies
+  on <code>marketplace-release</code> <strong>before setting its three variables</strong>. Optional
+  legacy diagnostic environments are not staging prerequisites. Preserve
+  Python <code>staging</code>/<code>release</code>, repository-wide OIDC, shared E2E variables, and
+  <code>RELEASE_PAT</code>.</li>
+<li>[ ] Run a permission-only preflight under the intended federated identity:
+  <code>python scripts/marketplace.py check</code>. Verify the pinned profile and explicit
+  role with no deny permissions. Do not call publishing scripts.
+  Use the dedicated <code>marketplace-preflight.yml</code> workflow, not staging/release.
+  Its discovery mode resolves the profile before checking publisher membership.
+  A local interactive <code>check</code> validates that local identity, not CI federation.</li>
+<li>[ ] Verify the legitimate staging candidate uploads to TestPyPI and produces a
+  VSIX artifact for manual evaluation without any Marketplace upload.</li>
+<li>[ ] Obtain explicit authorization for a legitimate stable release, approve its
+  <code>marketplace-release</code> deployment, publish it, and verify the Marketplace result.
+  Do not create dummy production versions for validation.</li>
+<li>[ ] <strong>Only after actual stable Marketplace publication succeeds and remaining
+  consumers are checked</strong>, remove the GitHub <code>VSCE_PAT</code> secret. Have its owner
+  revoke the underlying Azure DevOps PAT only after confirming there are no other
+  consumers. No pre-release publication is required for acceptance.
+  <strong>Never remove or revoke <code>RELEASE_PAT</code>.</strong>
+  Include historical workflow re-runs in that consumer review: retire old PAT
+  execution paths and use the migrated workflow on <code>main</code> for authorized old-tag
+  retries rather than re-running historical workflows.</li>
+</ul>
+<p>Prior evidence:
+<a href="https://github.com/Azure/agentops/actions/runs/34046045685/attempts/3">successful no-upload preflight, attempt 3</a>.
+All temporary probe resources were deleted. This proves feasibility only, not
+permanent configuration, policy approval, actual publication, or legacy-secret
+retirement.</p>
 <h2 id="11-workflow-file-reference">11. Workflow File Reference<a class="headerlink" href="#11-workflow-file-reference" title="Permanent link">&para;</a></h2>
 <p>All workflow files are in <code>.github/workflows/</code>:</p>
 <h3 id="ciyml-continuous-integration"><code>ci.yml</code> - Continuous Integration<a class="headerlink" href="#ciyml-continuous-integration" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Trigger: push to develop, PR to develop
-<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>Flow:    lint → test (matrix) → coverage
-<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>         + on develop push: publish-dev → verify-dev (TestPyPI)
-<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>Purpose: Quality gate for all code changes; auto-publish dev builds
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>Trigger: push to develop, PR to develop
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>Flow:    lint → test (matrix) → coverage
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>         + on develop push: publish-dev → verify-dev (TestPyPI)
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>Purpose: Quality gate for all code changes; auto-publish dev builds
 </code></pre></div>
 <p>Key detail: <code>publish-dev</code> and <code>verify-dev</code> only run on pushes to <code>develop</code> (not PRs). Every merge to develop produces a dev version on TestPyPI (e.g. <code>0.1.3.dev12</code>) via setuptools-scm. PRs to <code>main</code> are not covered by CI because they come from <code>release/*</code> branches which are already validated by the staging pipeline.</p>
 <h3 id="_buildyml-reusable-build"><code>_build.yml</code> - Reusable Build<a class="headerlink" href="#_buildyml-reusable-build" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>Trigger: workflow_call (called by staging.yml and release.yml)
-<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>Flow:    checkout (full history) → uv sync → pytest → uv build → upload artifact
-<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>Purpose: Single source of truth for the build process
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>Trigger: workflow_call (called by staging.yml and release.yml)
+<a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a>Flow:    checkout (full history) → uv sync → pytest → uv build → upload artifact
+<a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a>Purpose: Single source of truth for the build process
 </code></pre></div>
 <p>Key detail: Uses <code>fetch-depth: 0</code> to ensure setuptools-scm has full git history for version derivation.</p>
 <h3 id="stagingyml-staging-pipeline"><code>staging.yml</code> - Staging Pipeline<a class="headerlink" href="#stagingyml-staging-pipeline" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>Trigger: push to release/* branches, or workflow_dispatch
-<a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a>Flow:    _build → publish-testpypi → verify-testpypi
-<a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a>Purpose: Validate release candidates before production
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>Trigger: push to release/* branches, or workflow_dispatch
+<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>Flow:    _build → publish-testpypi → verify-testpypi
+<a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>         + parallel build-vsix (artifact-only pre-release package)
+<a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>Purpose: Validate release candidates before production
 </code></pre></div>
 <p>Key details:
 - <code>skip-existing: true</code> allows re-pushes without upload failures
 - Verify step uses a retry loop (5 attempts, 30s apart) for TestPyPI index propagation
-- Smoke tests cover <code>--version</code>, <code>--help</code>, and <code>agentops init</code></p>
+- Smoke tests cover <code>--version</code>, <code>--help</code>, and <code>agentops init</code>
+- <code>build-vsix</code> packages with <code>--pre-release</code> for manual evaluation only. It has
+  no environment, <code>id-token</code>, Azure login, profile variables, or Marketplace
+  upload. TestPyPI still uploads; staging is not a disposable-branch dry run.</p>
 <h3 id="releaseyml-production-release"><code>release.yml</code> - Production Release<a class="headerlink" href="#releaseyml-production-release" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>Trigger: push v* tags, or workflow_dispatch
-<a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a>Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi → github-release
-<a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a>Purpose: Publish to PyPI and create GitHub Release
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>Trigger: push v* tags, or workflow_dispatch
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>Flow:    _build → publish-testpypi → verify-testpypi → publish-pypi → publish-vsix → github-release
+<a id="__codelineno-26-3" name="__codelineno-26-3" href="#__codelineno-26-3"></a>Purpose: Publish to PyPI and Marketplace, then create GitHub Release
 </code></pre></div>
 <p>Key details:
 - <code>publish-pypi</code> declares <code>environment: release</code>, but that environment has no protection rules, so it publishes without pausing
 - PyPI upload uses Trusted Publishing (<code>id-token: write</code>), not an API token
 - <code>github-release</code> uses <code>gh release create</code> with <code>--generate-notes</code> for automatic release notes
-- Built artifacts (.whl, .tar.gz) are attached to the GitHub Release</p>
+- Built artifacts (.whl, .tar.gz) are attached to the GitHub Release
+- The extension job separately uses <code>marketplace-release</code>, Entra OIDC, and the
+  shared helper with <code>--allow-already-exists</code>. Python publishes before its human
+  approval; GitHub Release waits for successful stable Marketplace publication.
+- Marketplace tooling is checked out from <code>github.workflow_sha</code> at the root;
+  extension source comes from the requested release tag under <code>release-source/</code>.
+  Retry pre-migration tags by dispatching the migrated workflow on protected
+  <code>main</code>, not by re-running historical PAT-based workflows.</p>
 <h3 id="cut-releaseyml-cut-release-manual-dispatch"><code>cut-release.yml</code> - Cut Release (Manual Dispatch)<a class="headerlink" href="#cut-releaseyml-cut-release-manual-dispatch" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>Trigger: workflow_dispatch (manual button in Actions tab)
-<a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a>Input:   version - semver string (e.g. 0.2.0)
-<a id="__codelineno-31-3" name="__codelineno-31-3" href="#__codelineno-31-3"></a>Flow:    validate → check [Unreleased] not empty → create release branch → update CHANGELOG → push → open PR
-<a id="__codelineno-31-4" name="__codelineno-31-4" href="#__codelineno-31-4"></a>Purpose: One-click release branch creation from develop
+<div class="highlight"><pre><span></span><code><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>Trigger: workflow_dispatch (manual button in Actions tab)
+<a id="__codelineno-27-2" name="__codelineno-27-2" href="#__codelineno-27-2"></a>Input:   version - semver string (e.g. 0.2.0)
+<a id="__codelineno-27-3" name="__codelineno-27-3" href="#__codelineno-27-3"></a>Flow:    validate → check [Unreleased] not empty → create release branch → update CHANGELOG → push → open PR
+<a id="__codelineno-27-4" name="__codelineno-27-4" href="#__codelineno-27-4"></a>Purpose: One-click release branch creation from develop
 </code></pre></div>
 <p>Key details:
 - Creates <code>release/v&lt;version&gt;</code> branch from <code>develop</code>
@@ -2568,24 +2797,40 @@ registered on both indexes, so this only matters if the package is renamed.</p>
 - The branch push triggers <code>staging.yml</code> automatically
 - Fails safely if the branch already exists
 - Refuses to run when <code>## [Unreleased]</code> is empty, because this workflow only inserts a versioned heading beneath that one and would otherwise publish an empty release section
-- Does NOT auto-tag or auto-publish - tagging remains a manual, intentional step</p>
+- Does NOT auto-tag; stable tagging remains a manual, intentional step. The
+  release-branch push triggers TestPyPI publication and VSIX artifact packaging,
+  never Marketplace publication.</p>
+<h3 id="marketplace-preflightyml-read-only-diagnostics"><code>marketplace-preflight.yml</code> - Read-Only Diagnostics<a class="headerlink" href="#marketplace-preflightyml-read-only-diagnostics" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>Trigger: workflow_dispatch or reviewed workflow_call
+<a id="__codelineno-28-2" name="__codelineno-28-2" href="#__codelineno-28-2"></a>Inputs:  discover/check; marketplace-validation/marketplace-staging/marketplace-release
+<a id="__codelineno-28-3" name="__codelineno-28-3" href="#__codelineno-28-3"></a>Flow:    selected environment → Entra OIDC → profile discovery or permission check
+<a id="__codelineno-28-4" name="__codelineno-28-4" href="#__codelineno-28-4"></a>Purpose: Diagnose the selected identity context without publishing
+</code></pre></div>
+<p>Key detail: Existing environment protections apply to the selected diagnostic
+context only. Validation and legacy staging contexts are optional, not staging
+or packaging prerequisites. No preflight result substitutes for verifying an
+actual stable publication.</p>
 <h2 id="12-release-checklist">12. Release Checklist<a class="headerlink" href="#12-release-checklist" title="Permanent link">&para;</a></h2>
 <p>Use this checklist when cutting a release:</p>
 <p><strong>Preparation</strong>
 - [ ] All intended features/fixes are merged to <code>develop</code>
 - [ ] <code>CHANGELOG.md</code> has entries under <code>## [Unreleased]</code> for all user-visible changes, including anything Dependabot merged (Cut Release aborts if the section is empty)
 - [ ] Tests pass locally: <code>uv run pytest tests/ -x -q</code>
-- [ ] Version from setuptools-scm looks correct: <code>python -m setuptools_scm</code></p>
+- [ ] Version from setuptools-scm looks correct: <code>python -m setuptools_scm</code>
+- [ ] Marketplace identity, reviewer and deployment protections are ready;
+  read-only preflight passed and a legitimate publication is authorized</p>
 <p><strong>Staging</strong>
 - [ ] Release branch created via <strong>Cut Release</strong> workflow (or manually)
 - [ ] CHANGELOG automatically updated with version and date
-- [ ] Staging pipeline passes: build + TestPyPI + verify (all 3 green)
+- [ ] Staging Python jobs pass: build + TestPyPI + verify
+- [ ] <code>build-vsix</code> artifact built and manually evaluated; no Marketplace upload
 - [ ] PR opened: <code>release/v0.X.Y</code> → <code>main</code></p>
 <p><strong>Production (tag + sync, do these together)</strong>
 - [ ] PR from <code>release/v0.X.Y</code> → <code>main</code> created and approved
 - [ ] PR merged to <code>main</code>
 - [ ] Version tag created and pushed: <code>v0.X.Y</code> (this publishes to PyPI immediately)
 - [ ] Release pipeline runs: build + TestPyPI + verify + publish-pypi all green
+- [ ] Marketplace stable deployment approved and legitimate publication verified
 - [ ] <strong><code>main</code> merged back into <code>develop</code> and pushed</strong>
 - [ ] <strong><code>git log --oneline origin/develop..origin/main</code> prints nothing</strong>
 - [ ] <code>CHANGELOG.md</code> on <code>develop</code> shows only genuinely unreleased work under <code>## [Unreleased]</code>
@@ -2612,7 +2857,7 @@ registered on both indexes, so this only matters if the package is renamed.</p>
 <tr>
 <td>Version shows <code>0.0.0</code> locally</td>
 <td>Not in a git repo or no tags exist</td>
-<td>Run <code>git tag v0.0.1</code> to create an initial tag</td>
+<td>Verify the checkout and existing tag history; never create a dummy release tag to test versioning</td>
 </tr>
 <tr>
 <td><code>ModuleNotFoundError</code> in tests</td>
@@ -2734,13 +2979,23 @@ registered on both indexes, so this only matters if the package is renamed.</p>
 <tbody>
 <tr>
 <td>"Environment not found" error</td>
-<td>GitHub Environment not created</td>
-<td>Create <code>staging</code> and <code>release</code> environments in Settings → Environments</td>
+<td>Required publishing or selected diagnostic environment unavailable</td>
+<td>Preserve Python <code>staging</code>/<code>release</code>; stable Marketplace publishing requires protected <code>marketplace-release</code> only. Staging VSIX packaging requires no Marketplace environment</td>
 </tr>
 <tr>
-<td>"Secret not found" error</td>
-<td>Secret not added to the environment</td>
-<td>Add secrets to the specific environment, not repository-level secrets</td>
+<td>Marketplace variable missing</td>
+<td>Dedicated environment setup incomplete</td>
+<td>Configure reviewers and deployment policies first, then all three <code>MARKETPLACE_*</code> variables</td>
+</tr>
+<tr>
+<td>Marketplace federation fails</td>
+<td>Issuer, audience, or customized subject mismatch</td>
+<td>Verify repository customization and exact environment subjects; do not change repo-wide OIDC</td>
+</tr>
+<tr>
+<td>Marketplace profile/role preflight fails</td>
+<td>Wrong tenant/account/profile or missing publisher role/deny permissions</td>
+<td>Select the correct tenant, resolve <code>profiles/me</code>, and ask the publisher Owner to review Contributor membership; never fall back to a PAT</td>
 </tr>
 <tr>
 <td>No one was asked to approve the publish</td>
@@ -2764,6 +3019,7 @@ registered on both indexes, so this only matters if the package is renamed.</p>
     rel --&gt; stagingBuild["_build&lt;br/&gt;test + build"]
     stagingBuild --&gt; stagingTest["TestPyPI publish"]
     stagingTest --&gt; stagingVerify["Verify install"]
+    rel --&gt; stagingVsix["build-vsix&lt;br/&gt;Pre-release VSIX artifact for manual evaluation&lt;br/&gt;No Marketplace upload or identity"]
 
     rel --&gt;|PR| main(["main"])
     main --&gt;|tag| tag(["v0.2.0"])
@@ -2772,7 +3028,8 @@ registered on both indexes, so this only matters if the package is renamed.</p>
     relBuild --&gt; relTest["TestPyPI"]
     relTest --&gt; relVerify["Verify"]
     relVerify --&gt; relPypi["PyPI&lt;br/&gt;(no approval gate)"]
-    relPypi --&gt; relGh["GitHub Release"]
+    relPypi --&gt; relVsix["Marketplace stable&lt;br/&gt;marketplace-release: review + Entra OIDC"]
+    relVsix --&gt; relGh["GitHub Release"]
 
     main --&gt;|merge back, REQUIRED| develop
 
@@ -2780,6 +3037,7 @@ registered on both indexes, so this only matters if the package is renamed.</p>
         stagingBuild
         stagingTest
         stagingVerify
+        stagingVsix
     end
 
     subgraph Release["Release (release.yml)"]
@@ -2787,6 +3045,7 @@ registered on both indexes, so this only matters if the package is renamed.</p>
         relTest
         relVerify
         relPypi
+        relVsix
         relGh
     end
 
