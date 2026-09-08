@@ -2543,10 +2543,10 @@ or Marketplace profile variables.</p>
 </tbody>
 </table>
 <p><code>RELEASE_PAT</code> is a <strong>GitHub</strong> PAT and is unchanged by this migration. Marketplace
-publishing has no PAT fallback. The legacy repository <code>VSCE_PAT</code> must be retained
-until an actual stable Marketplace publication succeeds and remaining consumers
-are checked; do not interpret this documentation as
-confirmation it has been removed. No PyPI API token is stored. Check the current
+publishing has no PAT fallback. The legacy repository <code>VSCE_PAT</code> was removed
+after the successful 0.15.1 stable publication and a review of repository
+consumers; see section 10.6 for evidence and the separate underlying-token
+revocation caveat. No PyPI API token is stored. Check the current
 rules and secret names (never secret values) at any time:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.protection_rules'</span>
 <a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>gh<span class="w"> </span>api<span class="w"> </span>repos/Azure/agentops/environments/release/secrets<span class="w"> </span>--jq<span class="w"> </span><span class="s1">'.secrets[].name'</span>
@@ -2701,8 +2701,35 @@ publishing identity</strong>, not the CI UAMI. Resolve your profile using the sa
 membership. Then run <code>python scripts/marketplace.py check</code> alone first.
 Only invoke a publishing script or <code>publish</code> for an explicitly authorized release.</p>
 <h3 id="106-staged-rollout-checklist">10.6 Staged Rollout Checklist<a class="headerlink" href="#106-staged-rollout-checklist" title="Permanent link">&para;</a></h3>
-<p>This is a deployment checklist, <strong>not a claim that permanent resources are
-configured or publication has been tested</strong>.</p>
+<h4 id="completed-migration-release-0151">Completed migration: release 0.15.1<a class="headerlink" href="#completed-migration-release-0151" title="Permanent link">&para;</a></h4>
+<p>The repository's PAT-free publishing migration shipped on 2026-09-07 in
+<a href="https://github.com/Azure/agentops/releases/tag/v0.15.1">release 0.15.1</a>.
+<a href="https://github.com/Azure/agentops/pull/490">Implementation PR #490</a> and
+<a href="https://github.com/Azure/agentops/pull/491">release PR #491</a> are merged.</p>
+<ul>
+<li><a href="https://github.com/Azure/agentops/actions/runs/34135441369">Staging</a>
+  uploaded Python to TestPyPI and produced a downloadable VSIX without
+  Marketplace authentication or publication.</li>
+<li><a href="https://github.com/Azure/agentops/actions/runs/34135815964">The release workflow</a>
+  published Python to PyPI, then published the stable extension using the
+  dedicated Entra OIDC identity after human <code>marketplace-release</code> approval.
+  The log records an actual upload, not a duplicate-version skip; the public
+  Marketplace entry for 0.15.1 was confirmed as stable.</li>
+<li>The GitHub Release contains the VSIX, wheel, and source distribution.
+  <code>develop</code> was synchronized with <code>main</code>, and the release branch was deleted.</li>
+<li>The repository <code>VSCE_PAT</code> secret was removed after successful publication and
+  review of the current publishing paths. <code>RELEASE_PAT</code> remains unchanged.</li>
+</ul>
+<p><strong>Remaining credential hygiene:</strong> the underlying Azure DevOps PAT was not
+revoked because its unique identity and other consumers could not be confirmed.
+Its owner should revoke it only after identifying it and checking those
+consumers. Current repository publishing no longer uses it; historical
+PAT-based workflow re-runs are not a supported recovery path.</p>
+<p>These are operational release results, not an attestation of corporate policy
+approval. The checklist below remains guidance for provisioning a replacement
+identity or repeating the migration in another repository.</p>
+<p>For a new migration, use this deployment checklist; do not treat the completed
+release above as proof that another identity or repository is configured.</p>
 <ul>
 <li>[ ] Confirm permanent identity ownership, approved production tenant/subscription
   placement, and operational responsibility under existing policy; code rollout
