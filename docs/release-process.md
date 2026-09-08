@@ -754,10 +754,10 @@ or Marketplace profile variables.
 | `RELEASE_PAT`| PAT used by `cut-release.yml` to open the release PR | GitHub → Settings → Developer settings → Personal access tokens                 |
 
 `RELEASE_PAT` is a **GitHub** PAT and is unchanged by this migration. Marketplace
-publishing has no PAT fallback. The legacy repository `VSCE_PAT` must be retained
-until an actual stable Marketplace publication succeeds and remaining consumers
-are checked; do not interpret this documentation as
-confirmation it has been removed. No PyPI API token is stored. Check the current
+publishing has no PAT fallback. The legacy repository `VSCE_PAT` was removed
+after the successful 0.15.1 stable publication and a review of repository
+consumers; see section 10.6 for evidence and the separate underlying-token
+revocation caveat. No PyPI API token is stored. Check the current
 rules and secret names (never secret values) at any time:
 
 ```bash
@@ -922,8 +922,38 @@ Only invoke a publishing script or `publish` for an explicitly authorized releas
 
 ### 10.6 Staged Rollout Checklist
 
-This is a deployment checklist, **not a claim that permanent resources are
-configured or publication has been tested**.
+#### Completed migration: release 0.15.1
+
+The repository's PAT-free publishing migration shipped on 2026-09-07 in
+[release 0.15.1](https://github.com/Azure/agentops/releases/tag/v0.15.1).
+[Implementation PR #490](https://github.com/Azure/agentops/pull/490) and
+[release PR #491](https://github.com/Azure/agentops/pull/491) are merged.
+
+- [Staging](https://github.com/Azure/agentops/actions/runs/34135441369)
+  uploaded Python to TestPyPI and produced a downloadable VSIX without
+  Marketplace authentication or publication.
+- [The release workflow](https://github.com/Azure/agentops/actions/runs/34135815964)
+  published Python to PyPI, then published the stable extension using the
+  dedicated Entra OIDC identity after human `marketplace-release` approval.
+  The log records an actual upload, not a duplicate-version skip; the public
+  Marketplace entry for 0.15.1 was confirmed as stable.
+- The GitHub Release contains the VSIX, wheel, and source distribution.
+  `develop` was synchronized with `main`, and the release branch was deleted.
+- The repository `VSCE_PAT` secret was removed after successful publication and
+  review of the current publishing paths. `RELEASE_PAT` remains unchanged.
+
+**Remaining credential hygiene:** the underlying Azure DevOps PAT was not
+revoked because its unique identity and other consumers could not be confirmed.
+Its owner should revoke it only after identifying it and checking those
+consumers. Current repository publishing no longer uses it; historical
+PAT-based workflow re-runs are not a supported recovery path.
+
+These are operational release results, not an attestation of corporate policy
+approval. The checklist below remains guidance for provisioning a replacement
+identity or repeating the migration in another repository.
+
+For a new migration, use this deployment checklist; do not treat the completed
+release above as proof that another identity or repository is configured.
 
 - [ ] Confirm permanent identity ownership, approved production tenant/subscription
   placement, and operational responsibility under existing policy; code rollout
