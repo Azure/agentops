@@ -348,6 +348,21 @@ Owner must grant that profile **Contributor, not Owner**, on `AgentOpsAccelerato
 
 ### Staged rollout (not completed by merging code)
 
+**Repository status:** release 0.15.1 completed the migration on 2026-09-07.
+[The successful release run](https://github.com/Azure/agentops/actions/runs/34135815964)
+published the stable extension through Entra OIDC after human approval, and
+created the GitHub Release with Python and VSIX artifacts. Staging is
+artifact-only for the extension. The GitHub `VSCE_PAT` secret was removed;
+`RELEASE_PAT` was preserved. Do not ask maintainers to repeat initial identity
+setup for every release. The checklist below applies to replacement identities
+or a new migration.
+
+The underlying Azure DevOps PAT was **not revoked**: its identity and other
+consumers were not confirmed. Do not infer revocation from GitHub secret removal
+or revoke tokens by guessing. See the release guide's section 10.6 for the
+operational closeout and evidence. Successful publishing is not a corporate
+policy approval.
+
 1. Confirm permanent ownership, approved production tenant/subscription
    placement, and operational responsibility under existing policy outside code
    rollout. The earlier non-production
