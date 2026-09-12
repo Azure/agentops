@@ -66,7 +66,10 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    - Updates `CHANGELOG.md` (adds versioned section `[0.2.0] - YYYY-MM-DD`)
    - Pushes the branch (triggers staging pipeline automatically)
    - Opens a PR: `release/v0.2.0` → `main`
-4. Wait for staging pipeline to pass (build → TestPyPI → verify).
+4. Wait for staging to pass (build → TestPyPI → verify, plus parallel `build-vsix`).
+   Download and manually evaluate the pre-release VSIX artifact. Staging uploads
+   Python to TestPyPI but never uploads to Marketplace or reserves a Marketplace
+   version. No Marketplace environment or approval is required during staging.
 5. Get the PR reviewed and merge into `main`.
 6. Tag the release on `main` **and sync `develop` in the same sitting**. Tagging
    publishes to PyPI immediately; there is no approval prompt. Leaving `develop`
@@ -90,8 +93,10 @@ Examples: `release/v2.4.2`, `release/v0.2.0`
    `## [0.2.0]` heading above develop's unreleased entries, nesting new work
    inside a shipped version.
 7. Watch the Release workflow finish (build → TestPyPI → verify → publish-pypi →
-   github-release). The `release` environment has no protection rules, so nothing
-   pauses for review.
+   publish-vsix → github-release). The Python `release` environment has no
+   protection rules: Python publishes **before Marketplace approval**. A human
+   must approve `marketplace-release` for stable extension publication; do not
+   bypass that gate. GitHub Release waits for successful Marketplace publication.
 8. Delete the release branch:
    ```bash
    git push origin --delete release/v0.2.0
@@ -217,7 +222,7 @@ docs: update changelog for 2.4.2
 chore: prepare release 2.4.2
 ```
 
-## Required Secrets
+## Publishing Authentication
 
 Both `staging.yml` and `release.yml` publish through
 [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/) using
@@ -225,7 +230,6 @@ Both `staging.yml` and `release.yml` publish through
 
 | Secret | Scope | Purpose |
 |---|---|---|
-| `VSCE_PAT` | repository | VS Code Marketplace PAT with **Marketplace: Manage**, used by the extension publish jobs in both `staging.yml` and `release.yml` |
 | `RELEASE_PAT` | repository | Used by `cut-release.yml` to open the release PR |
 
 Neither the `staging` nor the `release` environment holds any secret. Confirm with
@@ -234,6 +238,143 @@ Neither the `staging` nor the `release` environment holds any secret. Confirm wi
 Trusted Publishing is configured on the index side (pypi.org and test.pypi.org →
 **Manage → Publishing**) and must match the repository, workflow filename, and
 environment name exactly. A mismatch fails with `403` at upload time.
+
+### Marketplace: dedicated Entra OIDC identity
+
+Marketplace publishing jobs use a **dedicated user-assigned managed identity (UAMI)**,
+`azure/login@v3` with `allow-no-subscriptions: true`, and `id-token: write`.
+No Azure RBAC grant is needed solely to publish. Publisher membership supplies
+that permission. Do not change Python Trusted Publishing, shared `AZURE_*` E2E
+variables, repository-wide OIDC configuration, or the GitHub `RELEASE_PAT`.
+
+Marketplace publication is **stable-only**, through the production `vX.Y.Z`
+tag flow. Previously staging could publish pre-release `X.Y.Z`, causing stable
+publication of the same version to skip as a duplicate. Artifact-only staging
+eliminates that collision; `package --pre-release` reserves no cloud version.
+
+`marketplace-release` is the only required publishing environment, separate
+from Python `staging`/`release`. Retain its required human reviewers and selected
+branch/tag deployment policies **before enabling identity variables**:
+
+| Environment | Allowed deployment refs |
+| --- | --- |
+| `marketplace-release` | Tags `v*`; optionally protected `main` for manual dispatch with tag input |
+| `marketplace-staging` | Existing policy; optional legacy/read-only preflight context |
+| `marketplace-validation` | Existing approved validation-ref policy; optional read-only preflight context |
+
+The staging and validation Marketplace environments were created earlier, not
+deleted by this change. Neither is required to stage/package or adds a staging
+approval. `build-vsix` has no environment, `id-token`, Azure login, or profile
+variables; it only produces a VSIX artifact for manual evaluation.
+
+Stable manual job guards allow only `main` or the same release tag as the input.
+An environment subject alone does not restrict branches; protections are essential.
+For an authorized pre-migration-tag retry, explicitly dispatch the **new migrated
+workflow on protected `main`** with a valid release tag. The Marketplace job
+checks out tooling from `github.workflow_sha` at the workspace root and extension
+source from `refs/tags/<tag>` into `release-source/`: old extension source uses
+the new OIDC action/helper. Tag-based dispatch must match the tag input.
+Re-running a historical old workflow still executes its old PAT code, not the
+migrated workflow. A retry is a real publication attempt.
+
+The publishing environment needs these variables (optional diagnostic
+environments need them only when their preflight is used):
+
+- `MARKETPLACE_AZURE_CLIENT_ID`: UAMI client GUID.
+- `MARKETPLACE_AZURE_TENANT_ID`: approved identity tenant GUID.
+- `MARKETPLACE_PROFILE_ID`: Marketplace `profiles/me` profile `id`,
+  **not** the Entra principal/object ID.
+
+Verify customization read-only with
+`gh api repos/Azure/agentops/actions/oidc/customization/sub`. The verified ordered
+claim keys are `repository_owner_id`, `repository_id`, `context` with
+`use_default: false`. Federation must use:
+
+- Issuer: `https://token.actions.githubusercontent.com`
+- Audience: `api://AzureADTokenExchange`
+- Release subject: `repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-release`
+- Optional legacy staging preflight subject: `repository_owner_id:6844498:repository_id:1161883340:environment:marketplace-staging`
+
+Resolve the UAMI Marketplace profile using a CLI token for resource
+`499b84ac-1321-427f-aa17-267ca6975798` and a read-only request to
+`https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1`.
+Record only the profile `id`; never print or store token values. A publisher
+Owner must grant that profile **Contributor, not Owner**, on `AgentOpsAccelerator`.
+
+### Shared helper and local publishing
+
+- Requires Python 3.11+ (stdlib), Azure CLI, and Node 22 with `vsce >=3.9.2`
+  for publishing. Workflows pin `npm install -g @vscode/vsce@3.9.2`.
+- `python scripts/marketplace.py check` is read-only: it selects
+  `MARKETPLACE_AZURE_TENANT_ID`, pins the self profile to
+  `MARKETPLACE_PROFILE_ID`, and checks explicit Contributor/Owner/Creator
+  membership with zero deny permissions. A generic HTTP 200 is not sufficient.
+- `python scripts/marketplace.py discover --out marketplace-profile.json`
+  bootstraps the Marketplace profile without an expected ID or publisher access.
+  Only tenant/profile IDs are written, never tokens.
+- `marketplace-preflight.yml` provides discover/check via manual dispatch or a
+  reviewed reusable-workflow caller. It never publishes and retains
+  validation/staging/release environment choices for diagnostics. Respect the
+  selected environment's existing ref policy and human review; no new
+  diagnostic environment or approval is required by staging. Never create
+  dummy release refs. A validation/staging-context result does not prove
+  release-context authentication or actual stable publication.
+- `python scripts/marketplace.py publish --package-path PATH [--pre-release] [--allow-already-exists]`
+  preflights before uploading. CI opts into already-existing-version handling;
+  local defaults fail. The flag maps to native `vsce --skip-duplicate`
+  (existing-version/409 only), not output substring matching; other errors
+  always propagate. The child environment clears inherited PAT and
+  EnvironmentCredential variables and selects the tenant. **No PAT fallback.**
+  Low-level `--pre-release` support is not part of the normal release flow.
+- Local `scripts/staging.sh` and `scripts/staging.ps1` run lint/tests, Python
+  build, TestPyPI upload, smoke verification, and VSIX artifact packaging only.
+  They perform no Azure preflight or Marketplace publication. For pure
+  no-upload packaging use `uv build` and extension `npm run package:prerelease`;
+  the staging scripts still upload Python to TestPyPI.
+- Local release scripts preflight before side effects when `vsce` exists, then
+  publish stable. Their prior missing-`vsce` extension-packaging skip remains
+  unchanged and does not prove Marketplace access.
+  Use `check` alone for no-upload validation. First run
+  `az login --tenant <publisher-identity-tenant> --allow-no-subscriptions` and set
+  `MARKETPLACE_AZURE_TENANT_ID` and `MARKETPLACE_PROFILE_ID` for **your interactive
+  publishing identity**, not the UAMI. Your identity needs publisher Contributor
+  or Owner membership. Profile pinning prevents wrong account/tenant publishing.
+- Extension `npm run publish` packages a stable VSIX before calling the shared
+  helper, which preflights before upload. It requires
+  Python 3.11+ and the helper from the repository checkout.
+- `npm run publish:prerelease` is removed. `npm run package:prerelease` remains
+  artifact-only with `package --pre-release`, not a Marketplace upload.
+- CLI profile and role preflight success is **not proof of actual upload**.
+
+### Staged rollout (not completed by merging code)
+
+1. Confirm permanent ownership, approved production tenant/subscription
+   placement, and operational responsibility under existing policy outside code
+   rollout. The earlier non-production
+   personal-subscription probe is feasibility evidence, not policy approval.
+2. Verify the dedicated UAMI, exact release federation, publisher Contributor
+   membership, `marketplace-release` reviewers and deployment policies, then
+   variables. Legacy diagnostic environments are not staging prerequisites.
+3. Run an authorized permission-only preflight (`check`, no publishing scripts).
+   Use `marketplace-preflight.yml`: discover the profile, grant Contributor,
+   then check its explicit publishing role. A local interactive `check` alone
+   does not validate CI federation. Do not bypass required human approvals.
+4. Verify a legitimate staging candidate's TestPyPI upload and artifact-only
+   VSIX for manual evaluation. No Marketplace pre-release publication is needed.
+5. Explicitly authorize a **legitimate** stable release, obtain human
+   `marketplace-release` approval, and verify actual Marketplace publication.
+6. **Only after actual stable publication succeeds and remaining consumers are
+   checked**, remove the legacy GitHub `VSCE_PAT`. Its owner must confirm no
+   other consumers before revoking the underlying Azure DevOps PAT.
+   Include historical workflow re-runs in that review; retire old PAT paths
+   and use the migrated workflow on `main` for authorized old-tag retries.
+   **Never touch `RELEASE_PAT`.**
+
+[Prior successful no-upload proof](https://github.com/Azure/agentops/actions/runs/34046045685/attempts/3)
+used temporary resources, all since deleted. Do not claim permanent resources,
+actual publication, or legacy-secret removal are complete based on that proof.
+See [the release guide](../../../docs/release-process.md#104-marketplace-entra-oidc-identity-setup)
+for setup and rollout details.
 
 ## Default Decision Logic
 
@@ -254,3 +395,8 @@ environment name exactly. A mismatch fails with `403` at upload time.
 - Never end a release without running `git log --oneline origin/develop..origin/main`
   and seeing empty output.
 - Never publish without running `python -m pytest tests/ -x -q` first.
+- Never treat release workflows as dry runs or create dummy release branches,
+  tags, or production versions to test them. Staging uploads to TestPyPI but
+  packages the VSIX only. Use pure local packaging and standalone read-only
+  preflight for no-upload validation. Marketplace approval does not pause Python
+  publishing; GitHub Release waits for successful stable Marketplace publication.

@@ -3,7 +3,7 @@
 # Workflows:
 #   1. ci.yml          — Lint + test on every push/PR; VSIX build validation
 #   2. _build.yml      — Reusable build (test + package), called by staging and release
-#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX pre-release → Marketplace
+#   3. staging.yml     — Staging: release/* → TestPyPI → verify; VSIX artifact only
 #   4. release.yml     — Production: v* tag → TestPyPI → verify → PyPI → GH Release; VSIX stable → Marketplace
 #   5. cut-release.yml — Manual dispatch: create release branch + PR from develop
 #
@@ -34,13 +34,14 @@
 #   Authentication is handled via OpenID Connect (OIDC) between GitHub Actions
 #   and PyPI/TestPyPI.
 #
-# Required GitHub secrets:
-#   VSCE_PAT — VS Code Marketplace PAT (repository secret, not an environment secret).
-#              MUST have "Marketplace: Manage" scope on the AgentOpsAccelerator publisher.
+# Marketplace uses Entra OIDC, not a PAT. The separate marketplace-release
+# environment requires protected deployment refs and dedicated identity variables:
+# MARKETPLACE_AZURE_CLIENT_ID, MARKETPLACE_AZURE_TENANT_ID, MARKETPLACE_PROFILE_ID.
+# See docs/release-process.md for approval, federation and rollout prerequisites.
 #
 # Required GitHub environments:
 #   staging  — TestPyPI publish
-#   release  — PyPI + VSIX stable publish
+#   release  — PyPI publish (unchanged)
 #   Both exist only to scope Trusted Publishing. Neither has protection rules
 #   today, so neither gates anything. Check with:
 #     gh api repos/Azure/agentops/environments \
@@ -51,9 +52,9 @@
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=staging
 #   2. https://pypi.org/manage/project/agentops-accelerator/settings/publishing/
 #      → Add publisher: GitHub, owner=Azure, repo=agentops, workflow=release.yml, environment=release
-#   3. https://dev.azure.com/ → PAT with Marketplace scope on the AzDO account that
-#      owns the AgentOpsAccelerator publisher → Create VSCE_PAT.
-#      Verify scope with: vsce ls-publishers -p $VSCE_PAT (must list AgentOpsAccelerator).
+#   3. Configure marketplace-release, federate the dedicated managed identity,
+#      and grant it Contributor on AgentOpsAccelerator (not Azure Contributor).
+#      Python Trusted Publishing and the GitHub RELEASE_PAT are unchanged.
 #   4. GitHub repo → Settings → Environments → Create "release" (the name must match
 #      the publisher config in step 2). Required reviewers are NOT configured today,
 #      so the PyPI publish runs unattended.
@@ -200,26 +201,53 @@ jobs:
   # Runs after PyPI publish so PyPI and Marketplace identity stay consistent on every release.
   publish-vsix:
     needs: [build, publish-pypi] # gate on successful lint + test (build) and on PyPI publish
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    environment: release # same environment as the PyPI publish; no protection rules, does not gate
+    environment: marketplace-release
+    permissions:
+      contents: read
+      id-token: write
     env:
       VSIX_FILE: agentops-skills.vsix
+      MARKETPLACE_AZURE_TENANT_ID: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
+      MARKETPLACE_PROFILE_ID: ${{ vars.MARKETPLACE_PROFILE_ID }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Validate Marketplace release ref
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Marketplace stable publishing requires a vX.Y.Z release tag."
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* && "$GITHUB_REF_NAME" != "$RELEASE_TAG" ]]; then
+            echo "::error::The requested release tag must match the workflow tag ref."
+            exit 1
+          fi
+
+      - name: Check out trusted publishing tooling
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+
+      - name: Check out release sources
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # Full history for version derivation
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+          path: release-source
 
       - name: Sync VSIX version from git tag
+        working-directory: release-source
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           # Derive version from the tag name directly (most reliable for releases)
-          TAG="${{ inputs.tag || github.ref_name }}"
-          TAG=${TAG:-$(git tag -l 'v*' --sort=-v:refname | head -1)}
-          TAG=${TAG:-v0.0.0}
-          VERSION=${TAG#v}
+          VERSION=${RELEASE_TAG#v}
           jq --arg v "$VERSION" '.version = $v' \
             plugins/agentops/package.json > plugins/agentops/package.json.tmp
           mv plugins/agentops/package.json.tmp plugins/agentops/package.json
-          echo "VSIX version set to $VERSION (from tag $TAG)"
+          echo "VSIX version set to $VERSION (from tag $RELEASE_TAG)"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -227,44 +255,42 @@ jobs:
           node-version: "22"
 
       - name: Install vsce
-        run: npm install -g @vscode/vsce
+        run: npm install -g @vscode/vsce@3.9.2
+
+      - name: Set up Python for Marketplace preflight
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Authenticate Marketplace identity
+        uses: ./.github/actions/marketplace-login
+        with:
+          client-id: ${{ vars.MARKETPLACE_AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.MARKETPLACE_AZURE_TENANT_ID }}
+          profile-id: ${{ vars.MARKETPLACE_PROFILE_ID }}
 
       - name: Copy root assets for VSIX
+        working-directory: release-source
         run: |
           cp CHANGELOG.md plugins/agentops/CHANGELOG.md
           cp icon.png plugins/agentops/icon.png
 
       - name: Package VSIX
-        working-directory: plugins/agentops
+        working-directory: release-source/plugins/agentops
         run: vsce package -o "${VSIX_FILE}"
 
       - name: Publish stable to VS Code Marketplace
-        # Tolerate ONLY the "already exists" case (staging pre-release may have
-        # published the same version first). Any other failure must fail the job.
-        working-directory: plugins/agentops
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        # Preflight requires the exact profile and an explicit publishing role.
+        # Only a duplicate-version publish error is tolerated on reruns.
         run: |
-          set -o pipefail
-          if OUTPUT=$(vsce publish --packagePath "${VSIX_FILE}" -p "${VSCE_PAT}" 2>&1); then
-            RC=0
-          else
-            RC=$?
-          fi
-          echo "$OUTPUT"
-          if [ "$RC" -ne 0 ]; then
-            if echo "$OUTPUT" | grep -qi "already exists"; then
-              echo "::warning::VSIX version already published (likely by staging pre-release). Treating as success."
-              exit 0
-            fi
-            exit "$RC"
-          fi
+          python scripts/marketplace.py publish \
+            --package-path "release-source/plugins/agentops/${VSIX_FILE}" --allow-already-exists
 
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v7
         with:
           name: vsix
-          path: plugins/agentops/${{ env.VSIX_FILE }}
+          path: release-source/plugins/agentops/${{ env.VSIX_FILE }}
 
   # Create GitHub Release with built artifacts (Python dist + VSIX).
   # Gating: publish-pypi + publish-vsix MUST succeed.

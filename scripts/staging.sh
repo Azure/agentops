@@ -10,15 +10,14 @@
 #   4. Publish to TestPyPI
 #   5. Verify install from TestPyPI + smoke test
 #   6. Build VSIX pre-release
-#   7. Publish VSIX pre-release to Marketplace
+#   Marketplace publication happens only in the stable release.
 #
 # Usage:  ./scripts/staging.sh
 # Prereqs:
 #   - uv installed
 #   - twine: pip install twine (for TestPyPI upload)
-#   - npm + vsce: npm install -g @vscode/vsce
+#   - Node.js 22 + vsce: npm install -g @vscode/vsce@3.9.2
 #   - TESTPYPI_TOKEN env var (API token from test.pypi.org)
-#   - VSCE_PAT env var (VS Code Marketplace PAT)
 # ─────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -27,24 +26,24 @@ skip_testpypi=false
 skip_vsix=false
 
 # ── Step 1: Lint ────────────────────────────────────────────────────
-echo -e "\n>>> [1/7] Linting with ruff..."
+echo -e "\n>>> [1/6] Linting with ruff..."
 uv run ruff check src/ tests/
 echo ">>> Lint passed"
 
 # ── Step 2: Test ────────────────────────────────────────────────────
-echo -e "\n>>> [2/7] Running tests..."
+echo -e "\n>>> [2/6] Running tests..."
 uv run pytest tests/ -v --tb=short
 echo ">>> Tests passed"
 
 # ── Step 3: Build ───────────────────────────────────────────────────
-echo -e "\n>>> [3/7] Building package..."
+echo -e "\n>>> [3/6] Building package..."
 rm -rf dist/
 uv build
 echo ">>> Build artifacts:"
 ls -lh dist/
 
 # ── Step 4: Publish to TestPyPI ─────────────────────────────────────
-echo -e "\n>>> [4/7] Publishing to TestPyPI..."
+echo -e "\n>>> [4/6] Publishing to TestPyPI..."
 if [ -z "${TESTPYPI_TOKEN:-}" ]; then
     echo ">>> TESTPYPI_TOKEN not set — skipping TestPyPI publish"
     echo '    Set it with: export TESTPYPI_TOKEN="pypi-..."'
@@ -55,7 +54,7 @@ else
 fi
 
 # ── Step 5: Verify TestPyPI install ─────────────────────────────────
-echo -e "\n>>> [5/7] Verifying TestPyPI install..."
+echo -e "\n>>> [5/6] Verifying TestPyPI install..."
 if $skip_testpypi; then
     echo ">>> Skipped (no TestPyPI publish)"
 else
@@ -86,10 +85,10 @@ else
 fi
 
 # ── Step 6: Build VSIX ──────────────────────────────────────────────
-echo -e "\n>>> [6/7] Building VSIX pre-release..."
+echo -e "\n>>> [6/6] Building VSIX pre-release artifact (no Marketplace upload)..."
 if ! command -v vsce &>/dev/null; then
     echo ">>> vsce not found — skipping VSIX build"
-    echo "    Install with: npm install -g @vscode/vsce"
+    echo "    Install with: npm install -g @vscode/vsce@3.9.2"
     skip_vsix=true
 else
     # Sync version from latest git tag
@@ -120,21 +119,6 @@ else
     # Restore original package.json to prevent version drift
     echo "$pkg_original" > "$pkg_path"
     echo ">>> package.json restored to committed version"
-fi
-
-# ── Step 7: Publish VSIX pre-release ────────────────────────────────
-echo -e "\n>>> [7/7] Publishing VSIX pre-release..."
-if $skip_vsix; then
-    echo ">>> Skipped (vsce not available)"
-elif [ -z "${VSCE_PAT:-}" ]; then
-    echo ">>> VSCE_PAT not set — skipping Marketplace publish"
-    echo '    Set it with: export VSCE_PAT="your-pat"'
-else
-    pushd plugins/agentops >/dev/null
-    echo "    VSIX will publish from packagePath (version in VSIX: $base_version)"
-    vsce publish --pre-release --packagePath agentops-skills.vsix -p "$VSCE_PAT"
-    popd >/dev/null
-    echo ">>> VSIX pre-release published to Marketplace"
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────

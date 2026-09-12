@@ -19,14 +19,20 @@
 #   - twine: pip install twine
 #   - TESTPYPI_TOKEN env var
 #   - PYPI_TOKEN env var (API token from pypi.org)
-#   - VSCE_PAT env var (VS Code Marketplace PAT)
-#   - npm + vsce: npm install -g @vscode/vsce
+#   - Python 3.11+, Azure CLI login in the publisher identity's tenant
+#   - MARKETPLACE_AZURE_TENANT_ID and MARKETPLACE_PROFILE_ID (see docs/release-process.md)
+#   - Node.js 22 + vsce: npm install -g @vscode/vsce@3.9.2
 # ─────────────────────────────────────────────────────────────────────
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $skipVSIX = $false
+$marketplaceScript = Join-Path $PSScriptRoot "marketplace.py"
+if (Get-Command vsce -ErrorAction SilentlyContinue) {
+    python $marketplaceScript check
+    if ($LASTEXITCODE -ne 0) { throw "Marketplace preflight failed; no release actions were started." }
+}
 
 # ── Step 1: Prompt for version ──────────────────────────────────────
 $version = Read-Host "Enter release version to publish (e.g. 0.1.6) — no 'v' prefix"
@@ -125,23 +131,22 @@ if (-not $vsceAvailable) {
     Copy-Item icon.png plugins/agentops/icon.png -Force -ErrorAction SilentlyContinue
 
     Push-Location plugins/agentops
-    vsce package -o agentops-skills.vsix
-    Write-Host ">>> VSIX built: agentops-skills.vsix (v$version)" -ForegroundColor Green
+    try {
+        vsce package -o agentops-skills.vsix
+        if ($LASTEXITCODE -ne 0) { throw "VSIX packaging failed; publication aborted." }
+        Write-Host ">>> VSIX built: agentops-skills.vsix (v$version)" -ForegroundColor Green
 
-    if (-not $env:VSCE_PAT) {
-        Write-Host ">>> VSCE_PAT not set — skipping Marketplace publish" -ForegroundColor DarkYellow
-    } else {
         # Verify the VSIX package.json matches the release version
         $vsixPkg = Get-Content package.json -Raw | ConvertFrom-Json
         if ($vsixPkg.version -ne $version) {
-            Write-Error "VSIX version mismatch! package.json=$($vsixPkg.version), expected=$version. Aborting publish."
-            Pop-Location
-            exit 1
+            throw "VSIX version mismatch! package.json=$($vsixPkg.version), expected=$version. Aborting publish."
         }
-        vsce publish --packagePath agentops-skills.vsix -p $env:VSCE_PAT
+        python $marketplaceScript publish --package-path agentops-skills.vsix
+        if ($LASTEXITCODE -ne 0) { throw "Marketplace stable publication failed." }
         Write-Host ">>> VSIX stable published to Marketplace (v$version)" -ForegroundColor Green
+    } finally {
+        Pop-Location
     }
-    Pop-Location
 }
 
 # ── Step 8: Create GitHub Release ───────────────────────────────────

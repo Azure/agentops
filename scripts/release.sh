@@ -20,14 +20,19 @@
 #   - twine: pip install twine
 #   - TESTPYPI_TOKEN env var
 #   - PYPI_TOKEN env var (API token from pypi.org)
-#   - VSCE_PAT env var (VS Code Marketplace PAT)
-#   - npm + vsce: npm install -g @vscode/vsce
+#   - Python 3.11+, Azure CLI login in the publisher identity's tenant
+#   - MARKETPLACE_AZURE_TENANT_ID and MARKETPLACE_PROFILE_ID (see docs/release-process.md)
+#   - Node.js 22 + vsce: npm install -g @vscode/vsce@3.9.2
 #   - jq installed
 # ─────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
 
 skip_vsix=false
+marketplace_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/marketplace.py"
+if command -v vsce &>/dev/null; then
+    python "$marketplace_script" check
+fi
 
 # ── Step 1: Prompt for version ──────────────────────────────────────
 read -rp "Enter release version to publish (e.g. 0.1.6) — no 'v' prefix: " version
@@ -126,19 +131,15 @@ else
     vsce package -o agentops-skills.vsix
     echo ">>> VSIX built: agentops-skills.vsix (v$version)"
 
-    if [ -z "${VSCE_PAT:-}" ]; then
-        echo ">>> VSCE_PAT not set — skipping Marketplace publish"
-    else
-        # Verify the VSIX package.json matches the release version
-        vsix_version=$(jq -r '.version' package.json)
-        if [ "$vsix_version" != "$version" ]; then
-            echo "ERROR: VSIX version mismatch! package.json=$vsix_version, expected=$version. Aborting publish." >&2
-            popd >/dev/null
-            exit 1
-        fi
-        vsce publish --packagePath agentops-skills.vsix -p "$VSCE_PAT"
-        echo ">>> VSIX stable published to Marketplace (v$version)"
+    # Verify the VSIX package.json matches the release version
+    vsix_version=$(jq -r '.version' package.json)
+    if [ "$vsix_version" != "$version" ]; then
+        echo "ERROR: VSIX version mismatch! package.json=$vsix_version, expected=$version. Aborting publish." >&2
+        popd >/dev/null
+        exit 1
     fi
+    python "$marketplace_script" publish --package-path agentops-skills.vsix
+    echo ">>> VSIX stable published to Marketplace (v$version)"
     popd >/dev/null
 fi
 
