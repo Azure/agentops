@@ -40,6 +40,7 @@ from agentops.core.results import (
 )
 from agentops.pipeline import comparison as comparison_module
 from agentops.pipeline import invocations, publisher, reporter, runtime, thresholds
+from agentops.pipeline.commit_info import resolve_commit_info
 from agentops.services.dataset_source import DatasetSnapshot, resolve_dataset_source
 from agentops.utils import telemetry
 from agentops.utils.colors import style
@@ -264,13 +265,7 @@ def _run_evaluation_local_snapshot(
         },
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options)
 
     _persist(result, options.output_dir)
 
@@ -549,13 +544,7 @@ def _run_evaluation_cloud_snapshot(
         },
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options)
 
     _persist(result, options.output_dir)
 
@@ -684,13 +673,7 @@ def _run_evaluation_azd_legacy(
         started_at=started_at,
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options)
 
     _persist(result, options.output_dir)
     azd_runner.write_raw_artifacts(azd_run, options.output_dir)
@@ -758,13 +741,7 @@ def _run_evaluation_azd_current(
         resolution=resolution,
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options)
 
     _persist(result, options.output_dir)
     return result
@@ -1140,10 +1117,33 @@ def _summarize(
 # ---------------------------------------------------------------------------
 
 
+def _finalize_commit_and_comparison(result: RunResult, options: RunOptions) -> None:
+    """Attach commit metadata, then build the ``--baseline`` comparison.
+
+    Commit metadata must be resolved before the comparison is built so a
+    regression can be attributed to a commit on both sides (see
+    ``pipeline.regression_insight.build_regression_insight``); resolving it
+    only at persist time (after the comparison already ran) would always
+    leave ``current.commit`` unset for this call.
+    """
+    if result.commit is None:
+        result.commit = resolve_commit_info()
+    if options.baseline_path is not None:
+        baseline = comparison_module.load_baseline(options.baseline_path)
+        result.comparison = comparison_module.build_comparison(
+            current=result,
+            baseline=baseline,
+            baseline_path=options.baseline_path,
+        )
+
+
 def _persist(result: RunResult, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     results_path = output_dir / "results.json"
     report_path = output_dir / "report.md"
+
+    if result.commit is None:
+        result.commit = resolve_commit_info()
 
     payload = result.model_dump(mode="json")
     results_path.write_text(
