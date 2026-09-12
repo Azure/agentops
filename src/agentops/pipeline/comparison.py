@@ -12,6 +12,7 @@ from agentops.core.results import (
     ComparisonRow,
     RunResult,
 )
+from agentops.pipeline.regression_insight import build_regression_insight
 
 
 def load_baseline(path: Path) -> RunResult:
@@ -36,6 +37,18 @@ def _direction(current: Optional[float], baseline: Optional[float]) -> str:
 def _row_passed(row_metrics: List[Dict[str, float | None]]) -> bool:
     """Best-effort proxy: a row is "passing" when no metric reports an error."""
     return all("error" not in metric or not metric["error"] for metric in row_metrics)
+
+
+def _relative_drop(metric: ComparisonMetric) -> float:
+    """Fraction the metric dropped relative to baseline (same formula as
+    ``agent.checks.regression``'s rolling-baseline drop calculation), used to
+    pick which regressed metric to attribute a cause to when several
+    regressed at once. Non-positive or missing baselines can't produce a
+    meaningful ratio, so they sort last rather than raising.
+    """
+    if metric.baseline is None or metric.current is None or metric.baseline <= 0:
+        return 0.0
+    return (metric.baseline - metric.current) / metric.baseline
 
 
 def build_comparison(
@@ -99,10 +112,18 @@ def build_comparison(
             )
         )
 
+    insight = None
+    if current.commit is not None and baseline.commit is not None:
+        regressed = [m for m in metrics if m.direction == "regressed"]
+        if regressed:
+            worst = max(regressed, key=_relative_drop)
+            insight = build_regression_insight(baseline, current, metric=worst.metric)
+
     return ComparisonInfo(
         baseline_path=str(baseline_path),
         baseline_started_at=baseline.started_at,
         baseline_overall_passed=baseline.summary.overall_passed,
         metrics=metrics,
         rows=rows,
+        insight=insight,
     )
