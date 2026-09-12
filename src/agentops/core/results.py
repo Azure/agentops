@@ -6,7 +6,7 @@ and consumed by the reporter and comparison logic.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -87,6 +87,42 @@ class ComparisonRow(BaseModel):
     direction: str  # "improved" | "regressed" | "unchanged" | "new"
 
 
+class CommitInfo(BaseModel):
+    """The git commit a single evaluation run was produced from."""
+
+    sha: str
+    short_sha: str
+    subject: str
+    author: str
+    authored_at: str
+    source: Literal["ci", "local"]
+
+
+class ChangedInput(BaseModel):
+    """One concrete difference detected between two runs' recorded fields."""
+
+    field: str
+    description: str
+    from_value: Optional[str] = None
+    to_value: Optional[str] = None
+
+
+class RegressionInsight(BaseModel):
+    """Causal explanation for a detected regression between two runs."""
+
+    from_run_id: str
+    to_run_id: str
+    from_commit: Optional[CommitInfo] = None
+    to_commit: Optional[CommitInfo] = None
+    metric: str
+    from_value: float
+    to_value: float
+    changed_inputs: List[ChangedInput] = Field(default_factory=list)
+    explanation: str
+    suggested_action: Optional[str] = None
+    used_git_diff: bool = False
+
+
 class ComparisonInfo(BaseModel):
     """Comparison block included when ``--baseline`` was provided."""
 
@@ -95,6 +131,7 @@ class ComparisonInfo(BaseModel):
     baseline_overall_passed: Optional[bool] = None
     metrics: List[ComparisonMetric] = Field(default_factory=list)
     rows: List[ComparisonRow] = Field(default_factory=list)
+    insight: Optional[RegressionInsight] = None
 
 
 class RunResult(BaseModel):
@@ -113,5 +150,6 @@ class RunResult(BaseModel):
     summary: RunSummary
     comparison: Optional[ComparisonInfo] = None
     config: Dict[str, Any] = Field(default_factory=dict)
+    commit: Optional[CommitInfo] = None
 
     model_config = ConfigDict(extra="forbid")
