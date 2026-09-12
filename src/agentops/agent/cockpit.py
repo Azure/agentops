@@ -15,6 +15,7 @@ Monitor; the cockpit deep-links into them.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -37,6 +38,8 @@ from agentops.core.governance import (
     REDTEAM_STATE_READY,
     summarize_redteam_readiness,
 )
+from agentops.core.results import RunResult
+from agentops.pipeline.regression_insight import build_changed_inputs
 from agentops.utils.yaml import load_yaml
 
 
@@ -92,6 +95,7 @@ def build_cockpit_payload(
         watchdog_payload, readiness,
         initialized=(workspace / "agentops.yaml").exists(),
     )
+    eval_history = _build_eval_history_section(_load_eval_runs(workspace))
 
     return {
         "workspace": str(workspace.resolve()),
@@ -100,6 +104,7 @@ def build_cockpit_payload(
         "connections": _build_connections(workspace),
         "readiness": readiness,
         "next_actions": next_actions,
+        "eval_history": eval_history,
     }
 
 
@@ -824,6 +829,37 @@ def _workflow_conclusion_badge(conclusion: str) -> Dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+def _build_eval_history_section(eval_runs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Builds the payload for Cockpit's version-history view (User Story 2).
+
+    Lists every locally recorded evaluation run, newest first, with its
+    commit (when known) and what changed relative to the previous entry in
+    its version lineage - independent of whether that run regressed, so an
+    operator can browse the causal trail across prompt/model/config changes
+    over time.
+    """
+    if not eval_runs:
+        return {"has_runs": False, "entries": []}
+
+    entries: List[Dict[str, Any]] = []
+    for run in reversed(eval_runs):  # newest first for display
+        commit = run.get("commit")
+        entries.append(
+            {
+                "run_id": run["run_id"],
+                "timestamp": run.get("timestamp"),
+                "target": run.get("target"),
+                "metrics": run.get("metrics") or {},
+                "commit_short_sha": commit.get("short_sha") if commit else None,
+                "commit_subject": commit.get("subject") if commit else None,
+                "changed_inputs": run.get("changed_inputs") or [],
+                "regressed": bool(run.get("regressed")),
+                "report_link": run.get("report_link"),
+            }
+        )
+    return {"has_runs": True, "entries": entries}
+
+
 def _load_eval_runs(workspace: Path, *, limit: int = 24) -> List[Dict[str, Any]]:
     """Scan ``.agentops/results/<timestamp>/results.json`` and project the
     fields the cockpit cares about. ``latest/`` is skipped because it is
@@ -850,7 +886,78 @@ def _load_eval_runs(workspace: Path, *, limit: int = 24) -> List[Dict[str, Any]]
         run = _project_run(path, run_id=run_id)
         if run is not None:
             runs.append(run)
+
+    _attach_version_history(runs)
     return runs
+
+
+def _version_lineage_key(data: Dict[str, Any]) -> Optional[str]:
+    """Groups runs into a version-history lineage: same agent identity,
+    dataset, and evaluator set - deliberately ignoring the agent's
+    version/deployment, since detecting *those* changing between
+    consecutive runs is the entire point of this view (see
+    ``pipeline.regression_insight.build_changed_inputs``).
+
+    This is intentionally coarser than
+    ``results_history._methodology_fingerprint`` (which Doctor's rolling
+    regression check uses and which hashes the *whole* target, version
+    included, so it excludes version-bumped runs from its automatic
+    baseline by design) - the version-history view exists specifically to
+    show what changed *across* those version bumps.
+    """
+    raw_target = data.get("target")
+    target: Dict[str, Any] = raw_target if isinstance(raw_target, dict) else {}
+    agent_identity = target.get("name") or target.get("url") or target.get("raw")
+    dataset_path = data.get("dataset_path")
+    evaluators_raw = data.get("evaluators")
+    evaluators = (
+        sorted(str(e) for e in evaluators_raw) if isinstance(evaluators_raw, list) else []
+    )
+    if not agent_identity and not dataset_path and not evaluators:
+        return None
+    payload = json.dumps(
+        {
+            "agent_identity": str(agent_identity) if agent_identity else None,
+            "dataset": str(dataset_path) if dataset_path else None,
+            "evaluators": evaluators,
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _attach_version_history(runs: List[Dict[str, Any]]) -> None:
+    """Fill in ``changed_inputs``/``regressed`` for each run, in place.
+
+    Compares each run against the previous entry (in the already
+    oldest-to-newest ordered ``runs`` list) that shares the same
+    ``methodology_fingerprint`` - the same grouping key Doctor's regression
+    check and ``results_history`` already use. A run with no fingerprint or
+    no prior comparable run gets an empty ``changed_inputs`` list, not a
+    fabricated one. The private ``_full_result`` helper key (a parsed
+    ``RunResult``, not JSON-safe) is removed before returning.
+    """
+    last_by_fingerprint: Dict[str, RunResult] = {}
+    for run in runs:
+        fingerprint = run.get("methodology_fingerprint")
+        current_full = cast(Optional[RunResult], run.pop("_full_result", None))
+        run["changed_inputs"] = []
+        run["regressed"] = False
+
+        if fingerprint is not None:
+            previous_full = last_by_fingerprint.get(fingerprint)
+            if previous_full is not None and current_full is not None:
+                changes = build_changed_inputs(previous_full, current_full)
+                run["changed_inputs"] = [c.model_dump(mode="json") for c in changes]
+                shared_metrics = set(previous_full.aggregate_metrics) & set(
+                    current_full.aggregate_metrics
+                )
+                run["regressed"] = any(
+                    current_full.aggregate_metrics[m] < previous_full.aggregate_metrics[m]
+                    for m in shared_metrics
+                )
+            if current_full is not None:
+                last_by_fingerprint[fingerprint] = current_full
 
 
 def _project_run(path: Path, *, run_id: str) -> Optional[Dict[str, Any]]:
@@ -889,6 +996,13 @@ def _project_run(path: Path, *, run_id: str) -> Optional[Dict[str, Any]]:
     alt_link = local_report_url if cloud_report_url else None
     alt_label = "Local report" if cloud_report_url else None
 
+    commit = data.get("commit")
+    full_result: Optional[RunResult] = None
+    try:
+        full_result = RunResult.model_validate(data)
+    except ValueError:
+        full_result = None
+
     return {
         "run_id": run_id,
         "timestamp": data.get("started_at") or data.get("finished_at"),
@@ -904,6 +1018,10 @@ def _project_run(path: Path, *, run_id: str) -> Optional[Dict[str, Any]]:
         "report_link": report_link,
         "alt_link": alt_link,
         "alt_label": alt_label,
+        "commit": commit if isinstance(commit, dict) else None,
+        "methodology_fingerprint": _version_lineage_key(data),
+        # Internal only - consumed and removed by `_attach_version_history`.
+        "_full_result": full_result,
     }
 
 
@@ -4178,6 +4296,71 @@ def _render_readiness_section(readiness: Dict[str, Any]) -> str:
     )
 
 
+def _render_eval_history_section(eval_history: Dict[str, Any]) -> str:
+    """Renders Cockpit's version-history view (User Story 2).
+
+    One row per evaluated run, newest first, showing its commit (when
+    known) and what changed relative to the previous run in its lineage -
+    shown regardless of whether that run regressed.
+    """
+    entries = eval_history.get("entries") or []
+    if not entries:
+        return (
+            '<div class="empty-state">'
+            "No evaluation runs recorded yet. Run "
+            "<code>agentops eval run</code> to populate this section."
+            "</div>"
+        )
+
+    rows: List[str] = []
+    for entry in entries:
+        timestamp = _html_escape(str(entry.get("timestamp") or "unknown"))
+
+        commit_sha = entry.get("commit_short_sha")
+        commit_subject = entry.get("commit_subject") or ""
+        if commit_sha:
+            commit_html = (
+                f'<code title="{_html_escape(commit_subject)}">{_html_escape(commit_sha)}</code>'
+            )
+        else:
+            commit_html = '<span class="muted">unknown commit</span>'
+
+        metrics = entry.get("metrics") or {}
+        metrics_html = ", ".join(
+            f"{_html_escape(str(name))}={value:.3f}"
+            for name, value in sorted(metrics.items())
+        ) or "&mdash;"
+
+        changes = entry.get("changed_inputs") or []
+        if changes:
+            changes_html = "; ".join(
+                _html_escape(str(c.get("description") or c.get("field")))
+                for c in changes
+            )
+        else:
+            changes_html = '<span class="muted">no tracked changes</span>'
+
+        regressed_badge = (
+            '<span class="pillar-chip chip-crit">regressed</span>'
+            if entry.get("regressed")
+            else ""
+        )
+        report_link = entry.get("report_link")
+        run_label = _html_escape(str(entry.get("target") or entry.get("run_id")))
+        if report_link:
+            run_label = f'<a href="{_html_escape(str(report_link))}">{run_label}</a>'
+
+        rows.append(
+            '<div class="history-row">'
+            f'<div class="history-run">{run_label} {regressed_badge}</div>'
+            f'<div class="history-meta">{timestamp} &middot; {commit_html}</div>'
+            f'<div class="history-metrics">{metrics_html}</div>'
+            f'<div class="history-changes">{changes_html}</div>'
+            "</div>"
+        )
+    return '<div class="history-list">' + "".join(rows) + "</div>"
+
+
 def _render_next_actions_section(next_actions: Dict[str, Any]) -> str:
     rows: List[str] = []
     for action in next_actions.get("actions", []):
@@ -4413,6 +4596,12 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         payload.get("readiness") or {"checks": [], "label": "0/0 ready"},
         payload.get("watchdog") or {},
     )
+    eval_history_section = _collapsible_section(
+        "Evaluation Version History",
+        _render_eval_history_section(payload.get("eval_history") or {"entries": []}),
+        section_id="section-eval-history",
+        open_by_default=False,
+    )
 
     return _COCKPIT_TEMPLATE.format(
         theme_variables=_THEME_VARIABLES,
@@ -4420,6 +4609,7 @@ def render_cockpit_html(payload: Dict[str, Any]) -> str:
         connections_section=connections_section,
         readiness_section=readiness_section,
         watchdog_section=watchdog_section,
+        eval_history_section=eval_history_section,
         next_actions_section=next_actions_section,
         workspace_display=workspace_display,
         workspace=payload["workspace"],
@@ -4891,6 +5081,25 @@ _COCKPIT_TEMPLATE = """<!doctype html>
   .next-cta:hover {{ background: rgba(56, 189, 248, 0.18); }}
   code.next-cta {{ background: rgba(255, 255, 255, 0.05); color: var(--text); }}
   .muted {{ color: var(--text-dim); }}
+  /* Evaluation version history */
+  .history-list {{
+    display: flex; flex-direction: column; gap: 8px;
+  }}
+  .history-row {{
+    padding: 12px 14px; border: 1px solid var(--border);
+    border-radius: 10px; background: rgba(255, 255, 255, 0.015);
+  }}
+  .history-run {{ font-size: 13px; font-weight: 600; color: var(--text); }}
+  .history-run a {{ color: inherit; }}
+  .history-meta {{
+    font-size: 12px; color: var(--text-dim); margin-top: 2px;
+  }}
+  .history-metrics {{
+    font-size: 12px; color: var(--text); margin-top: 6px;
+  }}
+  .history-changes {{
+    font-size: 12px; color: var(--text-dim); margin-top: 4px;
+  }}
   @keyframes live-pulse {{
     0%, 100% {{ opacity: 1; }}
     50% {{ opacity: 0.6; }}
@@ -5290,6 +5499,7 @@ _COCKPIT_TEMPLATE = """<!doctype html>
 {connections_section}
 {readiness_section}
 {watchdog_section}
+{eval_history_section}
 {next_actions_section}
 
 <footer><code>agentops cockpit</code></footer>
