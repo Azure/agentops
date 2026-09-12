@@ -716,6 +716,31 @@ AgentOps writes to both:
 
 If you pass `--output`, AgentOps writes to that directory and still updates `.agentops/results/latest/` with the newest run content.
 
+### Regression commit attribution
+
+Every run's `results.json` also carries a `commit` field (SHA, subject,
+author, timestamp) when it can be determined - reliably in CI (via the same
+`GITHUB_SHA`/`BUILD_SOURCEVERSION` environment variables already used for
+Foundry prompt-agent deploy gating), and on a best-effort basis locally via
+`git rev-parse HEAD`. It's `null` when the workspace isn't a git repository
+or `git` is unavailable; nothing else about the run changes.
+
+When a metric regresses between two comparable runs (same agent target,
+dataset, and evaluator set) that both have commit metadata - whether
+detected via an explicit `--baseline` comparison or Doctor's rolling
+regression check - `report.md` gains a "Regression Insight" section
+explaining what changed between the two commits (system prompt, model,
+dataset, evaluators, or thresholds) and suggesting a corrective action. This
+is deterministic field-diffing, not an LLM call, and it's purely
+informational: it never affects the exit-code/threshold-gating contract.
+Runs without commit metadata, or where nothing tracked changed, behave
+exactly as they did before this existed.
+
+Cockpit's dashboard also gains an "Evaluation Version History" section
+listing every locally recorded run, newest first, with its commit and what
+changed relative to the previous run in its lineage - shown regardless of
+whether that run regressed, so you can browse the causal trail over time.
+
 ## Testing
 
 Tests live in `tests/` and are organized as:
