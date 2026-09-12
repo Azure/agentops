@@ -7,6 +7,7 @@ from typing import List
 from agentops.core.results import (
     ComparisonInfo,
     ComparisonMetric,
+    RegressionInsight,
     RowResult,
     RunResult,
     ThresholdEvaluation,
@@ -52,6 +53,9 @@ def render(result: RunResult) -> str:
     if result.comparison is not None:
         lines.extend(_render_comparison(result.comparison))
         lines.append("")
+        if result.comparison.insight is not None:
+            lines.extend(_render_regression_insight(result.comparison.insight))
+            lines.append("")
 
     error_rows = [row for row in result.rows if row.error]
     if error_rows:
@@ -219,6 +223,15 @@ def _render_comparison(comparison: ComparisonInfo) -> List[str]:
             lines.append(
                 "- ✅ Improved rows: " + ", ".join(str(r.row_index) for r in improved)
             )
+    return lines
+
+
+def _render_regression_insight(insight: RegressionInsight) -> List[str]:
+    lines = ["## Regression Insight", ""]
+    lines.append(_short(insight.explanation, 500))
+    if insight.suggested_action:
+        lines.append("")
+        lines.append(f"**Suggested action:** {_short(insight.suggested_action, 300)}")
     return lines
 
 

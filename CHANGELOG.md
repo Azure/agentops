@@ -5,6 +5,26 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Added
+- **Regression commit attribution.** Every evaluation run now records the
+  git commit it was produced from (`commit` field in `results.json`) when
+  it can be determined - reliably for Foundry hosted/prompt agents
+  evaluated via cloud or azd execution in CI, and on a best-effort basis
+  for local runs inside a git repository. When a metric regresses between
+  two comparable runs that both have commit metadata, the evaluation
+  report gains a "Regression Insight" section explaining, in plain
+  language, what changed (system prompt, model, dataset, evaluators, or
+  thresholds) and suggesting a corrective action - surfaced automatically
+  in the same `report.md` already attached to the PR pipeline, with no new
+  CI step required. Doctor's rolling-baseline regression check gains the
+  same explanation in its finding's recommendation. Cockpit gains a new
+  "Evaluation Version History" section listing every evaluated run with
+  its commit and what changed relative to the previous run in its
+  lineage, independent of whether that run regressed. This feature is
+  purely additive and informational: no new CLI flags, no change to
+  exit-code/threshold-gating behavior, and existing runs without commit
+  metadata continue to work exactly as before.
+  
 ## [0.15.1] - 2026-09-07
 
 ### Changed
@@ -19,6 +39,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 - **Marketplace permissions can be validated without publishing.** A dedicated
   discover/check workflow bootstraps the identity's profile ID and verifies its
   explicit publisher role behind environment approvals, without release uploads.
+
 
 ## [0.15.0] - 2026-09-06
 

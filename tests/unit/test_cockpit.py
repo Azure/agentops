@@ -11,6 +11,7 @@ from urllib.parse import unquote
 import pytest
 
 from agentops.agent.cockpit import (
+    _load_eval_runs,
     build_cockpit_payload,
     render_cockpit_html,
 )
@@ -1788,3 +1789,199 @@ def test_cockpit_html_agentless_not_blanket_no_go(tmp_path: Path):
     assert "No evaluation target configured" in html
     assert "OBSERVABILITY ONLY" not in html
     assert "NO-GO" not in html
+
+
+# ---------------------------------------------------------------------------
+# Version history (commit + changed-inputs projection)
+# ---------------------------------------------------------------------------
+
+
+def _write_full_eval_run(
+    workspace: Path,
+    *,
+    timestamp_dir: str,
+    accuracy: float,
+    version: str = "3",
+    deployment: str = "gpt-4o",
+    commit_sha: str | None,
+    started_at: str,
+) -> None:
+    """Writes a ``results.json`` with every field ``RunResult`` requires.
+
+    Unlike ``_write_eval_run`` (used elsewhere in this file for the basic
+    sparkline-card projection, which tolerates a minimal payload), the
+    version-history diff needs a fully valid ``RunResult`` to reload and
+    compare - so this helper fills in ``dataset_path``/``evaluators``/rows
+    too.
+    """
+    out = workspace / ".agentops" / "results" / timestamp_dir
+    out.mkdir(parents=True, exist_ok=True)
+    payload: dict = {
+        "version": 1,
+        "started_at": started_at,
+        "finished_at": started_at,
+        "duration_seconds": 1.0,
+        "target": {
+            "kind": "foundry_prompt",
+            "raw": f"greeter:{version}",
+            "name": "greeter",
+            "version": version,
+            "deployment": deployment,
+        },
+        "dataset_path": "data/smoke.jsonl",
+        "evaluators": ["CoherenceEvaluator"],
+        "rows": [],
+        "aggregate_metrics": {"accuracy": accuracy},
+        "thresholds": [],
+        "summary": {
+            "items_total": 1,
+            "items_passed_all": 1,
+            "items_pass_rate": 1.0,
+            "thresholds_total": 0,
+            "thresholds_passed": 0,
+            "threshold_pass_rate": 1.0,
+            "overall_passed": True,
+        },
+        "config": {},
+    }
+    if commit_sha is not None:
+        payload["commit"] = {
+            "sha": commit_sha,
+            "short_sha": commit_sha[:7],
+            "subject": "A commit",
+            "author": "Dev",
+            "authored_at": started_at,
+            "source": "ci",
+        }
+    (out / "results.json").write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_project_run_includes_commit_and_fingerprint(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 1
+    run = runs[0]
+    assert run["commit"]["sha"] == "a" * 40
+    assert run["methodology_fingerprint"] is not None
+    assert "_full_result" not in run
+    assert run["changed_inputs"] == []
+    assert run["regressed"] is False
+
+
+def test_project_run_commit_is_none_when_unknown(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        commit_sha=None,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert runs[0]["commit"] is None
+    assert runs[0]["changed_inputs"] == []
+
+
+def test_version_history_names_changes_vs_previous_run(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        version="3",
+        deployment="gpt-4o",
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.79,
+        version="4",
+        deployment="gpt-4o-mini",
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    assert len(runs) == 2
+    first, second = runs
+    assert first["changed_inputs"] == []
+    assert first["regressed"] is False
+
+    fields = {c["field"] for c in second["changed_inputs"]}
+    assert fields == {"system_prompt", "model"}
+    assert second["regressed"] is True
+
+
+def test_cockpit_html_renders_version_history_section(tmp_path: Path):
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.91,
+        version="3",
+        deployment="gpt-4o",
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.79,
+        version="4",
+        deployment="gpt-4o-mini",
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+
+    assert "Evaluation Version History" in html
+    assert "aaaaaaa" in html
+    assert "bbbbbbb" in html
+    assert "model changed from gpt-4o to gpt-4o-mini" in html
+    assert "regressed" in html
+
+
+def test_cockpit_html_version_history_empty_state(tmp_path: Path):
+    payload = build_cockpit_payload(tmp_path)
+    html = render_cockpit_html(payload)
+
+    assert "Evaluation Version History" in html
+    assert "No evaluation runs recorded yet" in html
+
+
+def test_version_history_shown_even_when_nothing_regressed(tmp_path: Path):
+    """The history list is not gated on regression (User Story 2)."""
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-01T10-00-00Z",
+        accuracy=0.79,
+        version="3",
+        commit_sha="a" * 40,
+        started_at="2026-09-01T10:00:00+00:00",
+    )
+    _write_full_eval_run(
+        tmp_path,
+        timestamp_dir="2026-09-10T14-03-00Z",
+        accuracy=0.91,
+        version="4",
+        commit_sha="b" * 40,
+        started_at="2026-09-10T14:03:00+00:00",
+    )
+
+    runs = _load_eval_runs(tmp_path)
+
+    second = runs[1]
+    assert second["regressed"] is False
+    assert any(c["field"] == "system_prompt" for c in second["changed_inputs"])
