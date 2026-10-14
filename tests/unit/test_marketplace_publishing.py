@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -24,7 +25,7 @@ TOKEN = "dummy-access-token"
 
 
 def _is_action(step, name):
-    return str(step.get("uses", "")).startswith(name + "@")
+    return re.fullmatch(re.escape(name) + r"@[0-9a-f]{40}", str(step.get("uses", "")).split(" ")[0]) is not None
 
 
 @pytest.fixture
@@ -342,7 +343,7 @@ def test_login_does_not_require_subscription_or_shared_e2e_identity():
     steps = action["runs"]["steps"]
     assert "PROFILE_ID" in steps[0]["run"]
     login = steps[1]
-    assert login["uses"].startswith("azure/login@")
+    assert _is_action(login, "azure/login")
     assert login["with"]["allow-no-subscriptions"] is True
     assert "subscription-id" not in login["with"]
 
