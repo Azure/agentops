@@ -196,7 +196,12 @@ CHECKS: Tuple[CheckSpec, ...] = (
         summary=(
             "For each metric in the regression watchlist, compare the "
             "latest run to a rolling baseline of previous runs and flag "
-            "drops that exceed the configured tolerance."
+            "drops that exceed the configured tolerance. When both runs "
+            "have commit metadata, the recommendation also explains what "
+            "changed between them; when one side is a Foundry cloud run "
+            "fetched as a fallback (no local results.json, no commit), the "
+            "recommendation says attribution is unavailable instead of "
+            "omitting it silently."
         ),
         severities=(Severity.WARNING, Severity.CRITICAL),
         requires=("results_history",),

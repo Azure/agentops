@@ -19,6 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
+# Captured once, at module import time, before any test can monkeypatch
+# ``subprocess.Popen``. A test that installs two ``AzdStub`` instances in
+# sequence (e.g. one per run) would otherwise have the second instance
+# capture the first instance's fake Popen as "real" off ``subprocess.Popen``
+# itself, since monkeypatch only reverts at test teardown.
+_REAL_POPEN = subprocess.Popen
+
 
 @dataclass
 class _Expectation:
@@ -135,6 +142,37 @@ class AzdStub:
         monkeypatch.setattr(subprocess, "Popen", self._popen)
         return self
 
+    def _passthrough_run(
+        self, command: Sequence[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess:
+        """Runs a non-azd command for real, using the real ``Popen`` class.
+
+        Cannot simply call the real ``subprocess.run`` here: its
+        implementation looks up ``Popen`` via the (now-patched) module
+        global, so it would recurse into ``self._popen`` instead of actually
+        running the command. Using the module-import-time ``_REAL_POPEN``
+        class avoids that.
+        """
+        capture_output = kwargs.pop("capture_output", False)
+        timeout = kwargs.pop("timeout", None)
+        check = kwargs.pop("check", False)
+        if capture_output:
+            kwargs.setdefault("stdout", subprocess.PIPE)
+            kwargs.setdefault("stderr", subprocess.PIPE)
+        process = _REAL_POPEN(command, **kwargs)
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except BaseException:
+            process.kill()
+            process.wait()
+            raise
+        completed = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+        if check and completed.returncode != 0:
+            raise subprocess.CalledProcessError(
+                completed.returncode, command, output=stdout, stderr=stderr
+            )
+        return completed
+
     def _popen(self, command: Sequence[str], **kwargs: Any) -> "_FakePopen":
         completed = self(command, **kwargs)
         for stream_name in ("stdout", "stderr"):
@@ -149,6 +187,13 @@ class AzdStub:
     # ------------------------------------------------------------------
     def __call__(self, command: Sequence[str], **kwargs: Any) -> subprocess.CompletedProcess:
         argv = [str(part) for part in command]
+        if not argv or argv[0] != "azd":
+            # This stub only covers the azd boundary (see module docstring).
+            # Other subprocess calls made during a run - e.g. the `git`
+            # calls behind commit-metadata capture - are unrelated to azd
+            # and are let through for real so this stub doesn't have to know
+            # about every other subprocess caller.
+            return self._passthrough_run(command, **kwargs)
         self.calls.append(argv)
         joined = " ".join(argv)
 

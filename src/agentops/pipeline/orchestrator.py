@@ -32,6 +32,7 @@ from agentops.core.evaluators import (
     select_evaluators,
 )
 from agentops.core.results import (
+    CommitInfo,
     RowMetric,
     RowResult,
     RunResult,
@@ -40,6 +41,7 @@ from agentops.core.results import (
 )
 from agentops.pipeline import comparison as comparison_module
 from agentops.pipeline import invocations, publisher, reporter, runtime, thresholds
+from agentops.pipeline.commit_info import resolve_commit_info
 from agentops.services.dataset_source import DatasetSnapshot, resolve_dataset_source
 from agentops.utils import telemetry
 from agentops.utils.colors import style
@@ -149,6 +151,11 @@ def _run_evaluation_local_snapshot(
 
     started_at = datetime.now(timezone.utc)
     started_perf = time.perf_counter()
+    # Captured now, before the (potentially long-running) row-by-row loop
+    # below, not after it finishes - otherwise a commit or checkout made
+    # locally while this run is still executing would attribute the
+    # result to code that was never actually evaluated.
+    commit = resolve_commit_info(workspace=options.config_path.parent)
 
     target = classify_agent(
         options.agent_override or config.agent,
@@ -264,20 +271,25 @@ def _run_evaluation_local_snapshot(
         },
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options, commit=commit)
 
-    _persist(result, options.output_dir)
+    _persist(
+        result,
+        options.output_dir,
+        workspace=options.config_path.parent,
+        commit_resolution_attempted=True,
+    )
 
     # Local execution only ever publishes to Classic Foundry. Cloud
     # execution goes through _run_evaluation_cloud and never reaches here.
     if config.publish_target() == "foundry":
-        _publish_to_foundry_safely(result, config, options.output_dir, progress=progress)
+        _publish_to_foundry_safely(
+            result,
+            config,
+            options.output_dir,
+            workspace=options.config_path.parent,
+            progress=progress,
+        )
 
     return result
 
@@ -316,6 +328,10 @@ def _run_evaluation_cloud_snapshot(
     """
     started_at = datetime.now(timezone.utc)
     started_perf = time.perf_counter()
+    # Captured now, before Foundry's (potentially long-running) server-side
+    # run below, not after it completes - see the matching comment in
+    # _run_evaluation_local_snapshot.
+    commit = resolve_commit_info(workspace=options.config_path.parent)
 
     target = classify_agent(
         options.agent_override or config.agent,
@@ -549,15 +565,14 @@ def _run_evaluation_cloud_snapshot(
         },
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options, commit=commit)
 
-    _persist(result, options.output_dir)
+    _persist(
+        result,
+        options.output_dir,
+        workspace=options.config_path.parent,
+        commit_resolution_attempted=True,
+    )
 
     # Write cloud_evaluation.json next to the other artifacts for parity
     # with the (now-removed) post-run cloud publish path.
@@ -602,6 +617,10 @@ def _run_evaluation_azd(
     started_at = datetime.now(timezone.utc)
     progress = options.progress or (lambda _msg: None)
     workspace = options.config_path.parent
+    # Captured now, before azd's (potentially long-running) subprocess
+    # below, not after it finishes - see the matching comment in
+    # _run_evaluation_local_snapshot.
+    commit = resolve_commit_info(workspace=workspace)
 
     target = classify_agent(
         options.agent_override or config.agent,
@@ -637,6 +656,7 @@ def _run_evaluation_azd(
             resolution=resolution,
             workspace=workspace,
             started_at=started_at,
+            commit=commit,
             recipe_display=_display(resolution.path),
         )
     return _run_evaluation_azd_legacy(
@@ -645,6 +665,7 @@ def _run_evaluation_azd(
         recipe_path=resolution.path,
         workspace=workspace,
         started_at=started_at,
+        commit=commit,
         recipe_display=_display(resolution.path),
     )
 
@@ -656,6 +677,7 @@ def _run_evaluation_azd_legacy(
     recipe_path: Path,
     workspace: Path,
     started_at: datetime,
+    commit: Optional[CommitInfo] = None,
     recipe_display: str,
 ) -> RunResult:
     """Legacy surface: ``azd ai agent eval`` via the original adapter."""
@@ -684,15 +706,14 @@ def _run_evaluation_azd_legacy(
         started_at=started_at,
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options, commit=commit)
 
-    _persist(result, options.output_dir)
+    _persist(
+        result,
+        options.output_dir,
+        workspace=options.config_path.parent,
+        commit_resolution_attempted=True,
+    )
     azd_runner.write_raw_artifacts(azd_run, options.output_dir)
     return result
 
@@ -704,6 +725,7 @@ def _run_evaluation_azd_current(
     resolution: Any,
     workspace: Path,
     started_at: datetime,
+    commit: Optional[CommitInfo] = None,
     recipe_display: str,
 ) -> RunResult:
     """Current surface: ``azd ai eval`` via the current-surface adapter."""
@@ -758,15 +780,14 @@ def _run_evaluation_azd_current(
         resolution=resolution,
     )
 
-    if options.baseline_path is not None:
-        baseline = comparison_module.load_baseline(options.baseline_path)
-        result.comparison = comparison_module.build_comparison(
-            current=result,
-            baseline=baseline,
-            baseline_path=options.baseline_path,
-        )
+    _finalize_commit_and_comparison(result, options, commit=commit)
 
-    _persist(result, options.output_dir)
+    _persist(
+        result,
+        options.output_dir,
+        workspace=options.config_path.parent,
+        commit_resolution_attempted=True,
+    )
     return result
 
 
@@ -776,9 +797,17 @@ def _publish_to_foundry_safely(
     config: AgentOpsConfig,
     output_dir: Path,
     *,
+    workspace: Path,
     progress: Optional[Callable[[str], None]] = None,
 ) -> None:
-    """Best-effort Classic Foundry publish. Failures are logged, never fatal."""
+    """Best-effort Classic Foundry publish. Failures are logged, never fatal.
+
+    On success, also patches ``result.comparison.insight.to_report_url``
+    (left ``None`` by ``_persist``, since this run's own report_url only
+    exists after this publish step completes) and re-persists, so this
+    run's own already-written results.json/report.md don't permanently
+    miss the link to its own Foundry Evaluations page.
+    """
     if config.publish_target() != "foundry":
         return
 
@@ -809,6 +838,18 @@ def _publish_to_foundry_safely(
         ),
         encoding="utf-8",
     )
+
+    # `_persist` already wrote results.json/report.md with
+    # comparison.insight.to_report_url=None, since this publish step (the
+    # only source of this run's own report_url for `publish: true`) runs
+    # after persistence. Patch it in now and re-persist, rather than
+    # leaving the already-published run's own link permanently missing
+    # from its own results.json/report.md.
+    insight = result.comparison.insight if result.comparison is not None else None
+    if insight is not None and insight.to_report_url is None:
+        insight.to_report_url = published.studio_url
+        _persist(result, output_dir, workspace=workspace, commit_resolution_attempted=True)
+
     notify(
         f"Published to {style('Classic Foundry Evaluations', 'bold')}: "
         f"{style(published.studio_url, 'cyan')}"
@@ -1140,10 +1181,68 @@ def _summarize(
 # ---------------------------------------------------------------------------
 
 
-def _persist(result: RunResult, output_dir: Path) -> None:
+def _finalize_commit_and_comparison(
+    result: RunResult,
+    options: RunOptions,
+    *,
+    commit: Optional[CommitInfo] = None,
+) -> None:
+    """Attach commit metadata, then build the ``--baseline`` comparison.
+
+    Commit metadata must be resolved before the comparison is built so a
+    regression can be attributed to a commit on both sides (see
+    ``pipeline.regression_insight.build_regression_insight``); resolving it
+    only at persist time (after the comparison already ran) would always
+    leave ``current.commit`` unset for this call.
+
+    ``commit``, when given, is a value every current call site captures
+    *before* dispatching the (potentially long-running) evaluation/azd
+    subprocess/Foundry run - not resolving it here, after execution has
+    already finished, avoids attributing the result to whatever the repo's
+    HEAD happens to be by the time execution completes (which, for a local
+    run that takes minutes, is not guaranteed to still be the commit that
+    was actually evaluated). Falling back to resolving it now - the
+    previous behavior - stays as a safety net for a caller that doesn't
+    pre-capture it.
+    """
+    workspace = options.config_path.parent
+    if result.commit is None:
+        result.commit = commit if commit is not None else resolve_commit_info(workspace=workspace)
+    if options.baseline_path is not None:
+        baseline = comparison_module.load_baseline(options.baseline_path)
+        result.comparison = comparison_module.build_comparison(
+            current=result,
+            baseline=baseline,
+            baseline_path=options.baseline_path,
+            workspace=workspace,
+        )
+
+
+def _persist(
+    result: RunResult,
+    output_dir: Path,
+    *,
+    workspace: Path,
+    commit_resolution_attempted: bool = False,
+) -> None:
+    """Write ``results.json``/``report.md``.
+
+    ``commit_resolution_attempted`` lets a caller that already tried
+    resolving the commit (``_finalize_commit_and_comparison``, which every
+    current call site runs immediately before this) signal that a second
+    attempt here would just repeat the same (possibly failed, possibly
+    5-second-timeout-each) git subprocess calls for the identical result -
+    this skips that retry rather than paying the cost twice for no new
+    information. A direct caller that skipped
+    ``_finalize_commit_and_comparison`` still gets the fallback, since the
+    default is ``False``.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
     results_path = output_dir / "results.json"
     report_path = output_dir / "report.md"
+
+    if result.commit is None and not commit_resolution_attempted:
+        result.commit = resolve_commit_info(workspace=workspace)
 
     payload = result.model_dump(mode="json")
     results_path.write_text(
