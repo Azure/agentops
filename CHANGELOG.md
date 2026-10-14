@@ -5,6 +5,11 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+### Changed
+- **Contributor tooling files use consistent LF line endings.** Normalized the
+  Python code-quality instructions and pre-commit configuration without changing
+  their content or runtime behavior.
+
 ## [0.15.1] - 2026-09-07
 
 ### Changed
