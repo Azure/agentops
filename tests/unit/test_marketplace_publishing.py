@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -21,6 +22,10 @@ TENANT = "11111111-1111-1111-1111-111111111111"
 PROFILE = "22222222-2222-2222-2222-222222222222"
 OTHER = "33333333-3333-3333-3333-333333333333"
 TOKEN = "dummy-access-token"
+
+
+def _is_action(step, name):
+    return re.fullmatch(re.escape(name) + r"@[0-9a-f]{40}", str(step.get("uses", "")).split(" ")[0]) is not None
 
 
 @pytest.fixture
@@ -327,7 +332,7 @@ def test_staging_only_packages_candidate_without_marketplace_credentials():
         assert forbidden not in serialized
     steps = job["steps"]
     assert any(step.get("run") == "vsce package --pre-release -o agentops-skills.vsix" for step in steps)
-    artifact = next(step for step in steps if step.get("uses") == "actions/upload-artifact@v7")
+    artifact = next(step for step in steps if _is_action(step, "actions/upload-artifact"))
     assert artifact["with"]["name"] == "vsix"
 
 
@@ -338,14 +343,14 @@ def test_login_does_not_require_subscription_or_shared_e2e_identity():
     steps = action["runs"]["steps"]
     assert "PROFILE_ID" in steps[0]["run"]
     login = steps[1]
-    assert login["uses"] == "azure/login@v3"
+    assert _is_action(login, "azure/login")
     assert login["with"]["allow-no-subscriptions"] is True
     assert "subscription-id" not in login["with"]
 
 
 def test_release_retry_keeps_tooling_separate_from_older_release_sources():
     steps = load_workflow("release.yml")["jobs"]["publish-vsix"]["steps"]
-    checkouts = [step for step in steps if step.get("uses") == "actions/checkout@v7"]
+    checkouts = [step for step in steps if _is_action(step, "actions/checkout")]
     assert checkouts[0]["with"] == {"ref": "${{ github.workflow_sha }}"}
     assert checkouts[1]["with"]["ref"] == "refs/tags/${{ inputs.tag || github.ref_name }}"
     assert checkouts[1]["with"]["path"] == "release-source"
@@ -353,7 +358,7 @@ def test_release_retry_keeps_tooling_separate_from_older_release_sources():
         assert next(step for step in steps if step.get("name") == name)["working-directory"] == "release-source"
     package = next(step for step in steps if step.get("name") == "Package VSIX")
     assert package["working-directory"] == "release-source/plugins/agentops"
-    artifact = next(step for step in steps if step.get("uses") == "actions/upload-artifact@v7")
+    artifact = next(step for step in steps if _is_action(step, "actions/upload-artifact"))
     assert artifact["with"]["path"] == "release-source/plugins/agentops/${{ env.VSIX_FILE }}"
 
 
@@ -366,7 +371,7 @@ def test_python_publishing_and_github_release_contracts_stay_intact():
     ]:
         assert job["environment"] == environment
         assert job["permissions"]["id-token"] == "write"
-        assert any(step.get("uses") == "pypa/gh-action-pypi-publish@release/v1" for step in job["steps"])
+        assert any(_is_action(step, "pypa/gh-action-pypi-publish") for step in job["steps"])
     assert release["publish-vsix"]["needs"] == ["build", "publish-pypi"]
     assert release["github-release"]["needs"] == ["publish-pypi", "publish-vsix"]
     cut_release = (ROOT / ".github" / "workflows" / "cut-release.yml").read_text(encoding="utf-8")
@@ -495,7 +500,7 @@ def test_preflight_workflow_has_no_upload_or_mutation_commands():
         assert forbidden not in runs
     assert "python scripts/marketplace.py discover --out marketplace-profile.json" in runs
     assert "python scripts/marketplace.py check" in runs
-    artifact = next(step for step in steps if step.get("uses") == "actions/upload-artifact@v7")
+    artifact = next(step for step in steps if _is_action(step, "actions/upload-artifact"))
     assert artifact["with"]["path"] == "marketplace-profile.json"
     assert artifact["if"] == "inputs.mode == 'discover'"
     login = next(step for step in steps if step.get("uses") == "./.github/actions/marketplace-login")

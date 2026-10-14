@@ -17,6 +17,8 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "npm"
     directory: "/plugins/agentops"
     schedule:
