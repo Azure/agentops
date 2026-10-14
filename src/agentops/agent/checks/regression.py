@@ -173,7 +173,11 @@ def run_regression_check(
 
         insight: Optional[RegressionInsight] = None
         reason: Optional[str] = None
-        if latest_result is not None and previous_result is not None:
+        if (
+            latest_result is not None
+            and previous_run is not None
+            and previous_result is not None
+        ):
             # `previous_run` is selected independently of `baseline_runs`
             # (by lineage, not fingerprint - see above), so the metric can
             # have regressed against the rolling baseline while actually
