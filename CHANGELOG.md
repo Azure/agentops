@@ -5,6 +5,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-14
+
 ### Added
 - **Regression commit attribution.** Every evaluation run now records the
   git commit it was produced from (`commit` field in `results.json`) when
