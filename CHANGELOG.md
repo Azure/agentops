@@ -24,7 +24,23 @@ This format follows [Keep a Changelog](https://keepachangelog.com/) and adheres 
   purely additive and informational: no new CLI flags, no change to
   exit-code/threshold-gating behavior, and existing runs without commit
   metadata continue to work exactly as before.
-  
+- **Regression Insight lists every regressed metric.** The insight names all
+  regressed metrics, worst first, and judges direction per metric, so a
+  lower-is-better metric such as latency is not reported as a regression when
+  it improves. Where a run has a cloud evaluation, the insight links to its
+  `report_url`.
+
+### Security
+- **GitHub Actions are pinned to full commit SHAs.** Workflow action
+  references use immutable SHAs with a version comment, and Dependabot applies
+  a 7-day cooldown to GitHub Actions updates, reducing supply-chain risk from
+  retargeted tags. The workflow contract tests now require SHA pins.
+
+### Changed
+- **Dependency updates.** Bumps `anyio`, `pyjwt`, `urllib3` and `virtualenv`,
+  plus the `azure/login`, `actions/setup-python`, `actions/setup-node`,
+  `actions/download-artifact` and `gh-aw-actions/setup` actions.
+
 ## [0.15.1] - 2026-09-07
 
 ### Changed
